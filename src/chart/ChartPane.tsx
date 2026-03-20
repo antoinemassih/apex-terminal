@@ -6,6 +6,7 @@ import { LineRenderer } from '../renderer/LineRenderer'
 import { sma, ema } from '../data/indicators'
 import { useChartData } from './useChartData'
 import { CrosshairOverlay, CrosshairHandle } from './CrosshairOverlay'
+import { DrawingOverlay } from './DrawingOverlay'
 import type { Timeframe } from '../types'
 
 interface Props {
@@ -157,6 +158,10 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
       )}
       <canvas ref={axisRef} width={width} height={height}
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
+      {cs && data && (
+        <DrawingOverlay symbol={symbol} timeframe={timeframe} cs={cs}
+          width={width} height={height} viewStart={viewStart} />
+      )}
     </div>
   )
 }
