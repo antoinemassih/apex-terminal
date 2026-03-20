@@ -1,10 +1,14 @@
 import './global.css'
-import { ChartPane } from './chart/ChartPane'
+import { Toolbar } from './toolbar/Toolbar'
+import { Workspace } from './workspace/Workspace'
 
 export default function App() {
   return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#0d0d0d' }}>
-      <ChartPane symbol="AAPL" timeframe="5m" width={1200} height={700} />
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <Toolbar />
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <Workspace />
+      </div>
     </div>
   )
 }
