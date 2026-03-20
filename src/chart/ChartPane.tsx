@@ -2,6 +2,8 @@ import { useEffect, useRef, useCallback } from 'react'
 import { getGPUContext, configureCanvas } from '../renderer/gpu'
 import { CandleRenderer } from '../renderer/CandleRenderer'
 import { GridRenderer } from '../renderer/GridRenderer'
+import { LineRenderer } from '../renderer/LineRenderer'
+import { sma, ema } from '../data/indicators'
 import { useChartData } from './useChartData'
 import { CrosshairOverlay, CrosshairHandle } from './CrosshairOverlay'
 import type { Timeframe } from '../types'
@@ -15,7 +17,7 @@ interface Props {
 
 export function ChartPane({ symbol, timeframe, width, height }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const renderers = useRef<{ candle: CandleRenderer; grid: GridRenderer } | null>(null)
+  const renderers = useRef<{ candle: CandleRenderer; grid: GridRenderer; sma20: LineRenderer; ema50: LineRenderer } | null>(null)
   const gpuCanvas = useRef<GPUCanvasContext | null>(null)
   const crosshairRef = useRef<CrosshairHandle>(null)
   const axisRef = useRef<HTMLCanvasElement>(null)
@@ -31,23 +33,32 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
       renderers.current = {
         candle: new CandleRenderer(ctx),
         grid: new GridRenderer(ctx),
+        sma20: new LineRenderer(ctx),
+        ema50: new LineRenderer(ctx),
       }
     })
     return () => {
       cancelled = true
       renderers.current?.candle.destroy()
       renderers.current?.grid.destroy()
+      renderers.current?.sma20.destroy()
+      renderers.current?.ema50.destroy()
     }
   }, [])
 
   // Render frame
   useEffect(() => {
     if (!renderers.current || !gpuCanvas.current || !cs || !data) return
-    const { candle, grid } = renderers.current
+    const { candle, grid, sma20: sma20R, ema50: ema50R } = renderers.current
 
     getGPUContext().then(({ device }) => {
       grid.upload(cs)
       candle.upload(data, cs, viewStart, viewCount)
+
+      const sma20 = sma(data.closes, 20)
+      const ema50 = ema(data.closes, 50)
+      sma20R.upload(sma20, cs, viewStart, viewCount, [0.3, 0.6, 1.0, 0.8], 1.5)
+      ema50R.upload(ema50, cs, viewStart, viewCount, [1.0, 0.6, 0.2, 0.8], 1.5)
 
       const encoder = device.createCommandEncoder()
       const view = gpuCanvas.current!.getCurrentTexture().createView()
@@ -61,6 +72,8 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
       })
       grid.render(pass)
       candle.render(pass)
+      sma20R.render(pass)
+      ema50R.render(pass)
       pass.end()
 
       device.queue.submit([encoder.finish()])
