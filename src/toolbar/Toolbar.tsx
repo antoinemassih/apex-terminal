@@ -7,7 +7,7 @@ import type { Timeframe } from '../types'
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1d', '1wk']
 
 export function Toolbar() {
-  const { panes, activePane, setSymbol, setTimeframe } = useChartStore()
+  const { panes, activePane, setSymbol, setTimeframe, resetAutoScroll } = useChartStore()
   const { activeTool, setActiveTool } = useDrawingStore()
   const [symbolInput, setSymbolInput] = useState('')
   const pane = panes.find(p => p.id === activePane)
@@ -54,6 +54,13 @@ export function Toolbar() {
         ))}
       </div>
       <div style={{ marginLeft: 'auto', color: '#333', fontSize: 10, letterSpacing: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={() => resetAutoScroll()}
+          style={{
+            background: '#1a3a1a', color: '#4caf50', border: '1px solid #2e7d32',
+            padding: '2px 8px', cursor: 'pointer', fontSize: 11, fontFamily: 'monospace',
+          }}
+        >LIVE</button>
         <button
           onClick={async () => {
             const label = `chart-${Date.now()}`

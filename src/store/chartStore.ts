@@ -10,9 +10,11 @@ interface PaneConfig {
 interface ChartStore {
   panes: PaneConfig[]
   activePane: string
+  autoScrollVersion: number
   setActivePane: (id: string) => void
   setSymbol: (id: string, symbol: string) => void
   setTimeframe: (id: string, tf: Timeframe) => void
+  resetAutoScroll: () => void
 }
 
 const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'QQQ', 'AMZN']
@@ -24,9 +26,11 @@ export const useChartStore = create<ChartStore>(set => ({
     timeframe: '5m' as Timeframe,
   })),
   activePane: 'pane-0',
+  autoScrollVersion: 0,
   setActivePane: (id) => set({ activePane: id }),
   setSymbol: (id, symbol) =>
     set(s => ({ panes: s.panes.map(p => p.id === id ? { ...p, symbol } : p) })),
   setTimeframe: (id, timeframe) =>
     set(s => ({ panes: s.panes.map(p => p.id === id ? { ...p, timeframe } : p) })),
+  resetAutoScroll: () => set(s => ({ autoScrollVersion: s.autoScrollVersion + 1 })),
 }))

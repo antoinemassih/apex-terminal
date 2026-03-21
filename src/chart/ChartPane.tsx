@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { getGPUContext, configureCanvas } from '../renderer/gpu'
 import { CandleRenderer } from '../renderer/CandleRenderer'
 import { GridRenderer } from '../renderer/GridRenderer'
@@ -7,6 +7,7 @@ import { sma, ema } from '../data/indicators'
 import { useChartData } from './useChartData'
 import { CrosshairOverlay, CrosshairHandle } from './CrosshairOverlay'
 import { DrawingOverlay } from './DrawingOverlay'
+import { useDrawingStore } from '../store/drawingStore'
 import type { Timeframe } from '../types'
 
 interface Props {
@@ -22,7 +23,8 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
   const gpuCanvas = useRef<GPUCanvasContext | null>(null)
   const crosshairRef = useRef<CrosshairHandle>(null)
   const axisRef = useRef<HTMLCanvasElement>(null)
-  const { data, cs, viewStart, viewCount, pan, zoom } = useChartData(symbol, timeframe, width, height)
+  const { data, cs, viewStart, viewCount, pan, zoomX, zoomY, panY, resetYZoom, tickVersion, autoScrolling, pauseAutoScroll } = useChartData(symbol, timeframe, width, height)
+  const [gpuReady, setGpuReady] = useState(false)
 
   // Init GPU
   useEffect(() => {
@@ -37,6 +39,7 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
         sma20: new LineRenderer(ctx),
         ema50: new LineRenderer(ctx),
       }
+      setGpuReady(true)
     })
     return () => {
       cancelled = true
@@ -79,7 +82,7 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
 
       device.queue.submit([encoder.finish()])
     })
-  }, [data, cs, viewStart, viewCount])
+  }, [data, cs, viewStart, viewCount, gpuReady, tickVersion])
 
   // Axis labels
   useEffect(() => {
@@ -90,14 +93,12 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
     ctx.font = '10px monospace'
     ctx.textAlign = 'left'
 
-    // Price labels
     const priceStep = (cs.maxPrice - cs.minPrice) / 8
     for (let i = 0; i <= 8; i++) {
       const price = cs.minPrice + i * priceStep
       ctx.fillText(price.toFixed(2), width - cs.pr + 4, cs.priceToY(price) + 4)
     }
 
-    // Time labels
     const barStep = Math.max(1, Math.floor(100 / cs.barStep))
     for (let i = 0; i < cs.barCount; i += barStep) {
       const dataIdx = viewStart + i
@@ -107,41 +108,127 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
         ctx.fillText(label, cs.barToX(i) - 16, height - cs.pb + 14)
       }
     }
-  }, [cs, data, viewStart, width, height])
+  }, [cs, data, viewStart, width, height, tickVersion])
 
-  // Pan on drag
-  const dragRef = useRef<{ x: number } | null>(null)
+  // --- Drag handling ---
+  const dragRef = useRef<{ x: number; y: number; zone: 'chart' | 'xaxis' | 'yaxis' } | null>(null)
+
+  const getZone = useCallback((e: React.MouseEvent): 'chart' | 'xaxis' | 'yaxis' => {
+    if (!cs) return 'chart'
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    if (x >= width - cs.pr && y < height - cs.pb) return 'yaxis'
+    if (y >= height - cs.pb) return 'xaxis'
+    return 'chart'
+  }, [cs, width, height])
+
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    dragRef.current = { x: e.clientX }
-  }, [])
+    const zone = getZone(e)
+    dragRef.current = { x: e.clientX, y: e.clientY, zone }
+  }, [getZone])
+
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect()
     if (rect && cs && data) {
       crosshairRef.current?.update(e.clientX - rect.left, e.clientY - rect.top)
     }
     if (!dragRef.current) return
-    pan(e.clientX - dragRef.current.x)
-    dragRef.current = { x: e.clientX }
-  }, [pan, cs, data])
+
+    const dx = e.clientX - dragRef.current.x
+    const dy = e.clientY - dragRef.current.y
+
+    switch (dragRef.current.zone) {
+      case 'chart':
+        pan(dx)
+        break
+      case 'xaxis':
+        // Drag left = zoom in (fewer bars), drag right = zoom out
+        if (Math.abs(dx) > 2) {
+          zoomX(dx > 0 ? 1.02 : 0.98)
+        }
+        break
+      case 'yaxis':
+        // Drag up/down = pan price range
+        if (Math.abs(dy) > 1) {
+          panY(dy)
+        }
+        break
+    }
+
+    dragRef.current = { ...dragRef.current, x: e.clientX, y: e.clientY }
+  }, [pan, zoomX, panY, cs, data])
+
+  const onMouseUp = useCallback(() => { dragRef.current = null }, [])
   const onMouseLeave = useCallback(() => {
     dragRef.current = null
     crosshairRef.current?.clear()
   }, [])
+
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
-    zoom(e.deltaY > 0 ? 1.1 : 0.9)
-  }, [zoom])
+    if (!cs) return
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const factor = e.deltaY > 0 ? 1.1 : 0.9
+
+    if (x >= width - cs.pr && y < height - cs.pb) {
+      // Scroll on Y axis = zoom Y
+      const anchorPrice = cs.yToPrice(y)
+      zoomY(factor, anchorPrice)
+    } else if (y >= height - cs.pb) {
+      // Scroll on X axis = zoom X
+      zoomX(factor)
+    } else {
+      // Scroll on chart body = zoom X (keep it simple)
+      zoomX(factor)
+    }
+  }, [cs, zoomX, zoomY, width, height])
+
+  // Middle-click to toggle draw tool
+  const onAuxClick = useCallback((e: React.MouseEvent) => {
+    if (e.button === 1) {
+      e.preventDefault()
+      useDrawingStore.getState().toggleDrawTool()
+    }
+  }, [])
+
+  // Double-click Y axis to reset
+  const onDoubleClick = useCallback((e: React.MouseEvent) => {
+    if (!cs) return
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = e.clientX - rect.left
+    if (x >= width - cs.pr) {
+      resetYZoom()
+    }
+  }, [cs, width, resetYZoom])
+
+  // Cursor style based on zone
+  const [cursorZone, setCursorZone] = useState<'chart' | 'xaxis' | 'yaxis'>('chart')
+  const onMouseMoveForCursor = useCallback((e: React.MouseEvent) => {
+    setCursorZone(getZone(e))
+    onMouseMove(e)
+  }, [getZone, onMouseMove])
+
+  const cursor = cursorZone === 'yaxis' ? 'ns-resize' : cursorZone === 'xaxis' ? 'ew-resize' : 'default'
 
   return (
-    <div style={{ position: 'relative', width, height, background: '#0d0d0d' }}>
+    <div
+      style={{ position: 'relative', width, height, background: '#0d0d0d', cursor }}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMoveForCursor}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseLeave}
+      onWheel={onWheel}
+      onDoubleClick={onDoubleClick}
+      onAuxClick={onAuxClick}
+    >
       <canvas
         ref={canvasRef} width={width} height={height}
-        style={{ display: 'block' }}
-        onMouseDown={onMouseDown} onMouseMove={onMouseMove}
-        onMouseUp={() => { dragRef.current = null }}
-        onMouseLeave={onMouseLeave}
-        onWheel={onWheel}
+        style={{ display: 'block', pointerEvents: 'none' }}
       />
+      {/* Live OHLC label */}
       <div style={{
         position: 'absolute', top: 4, left: 8,
         color: '#666', fontSize: 11, fontFamily: 'monospace', pointerEvents: 'none',
@@ -149,7 +236,10 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
         {symbol} · {timeframe}
         {data && viewStart + viewCount - 1 < data.length && (() => {
           const last = viewStart + viewCount - 1
-          return ` · O ${data.opens[last]?.toFixed(2)} H ${data.highs[last]?.toFixed(2)} L ${data.lows[last]?.toFixed(2)} C ${data.closes[last]?.toFixed(2)}`
+          const c = data.closes[last]
+          const o = data.opens[last]
+          const color = c >= o ? '#2ecc71' : '#e74c3c'
+          return <span style={{ color }}>{` · O ${data.opens[last]?.toFixed(2)} H ${data.highs[last]?.toFixed(2)} L ${data.lows[last]?.toFixed(2)} C ${data.closes[last]?.toFixed(2)}`}</span>
         })()}
       </div>
       {cs && data && (
@@ -160,7 +250,18 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
       {cs && data && (
         <DrawingOverlay symbol={symbol} timeframe={timeframe} cs={cs}
-          width={width} height={height} viewStart={viewStart} />
+          width={width} height={height} viewStart={viewStart}
+          onInteraction={pauseAutoScroll} />
+      )}
+      {/* Auto-scroll indicator */}
+      {!autoScrolling && (
+        <div style={{
+          position: 'absolute', bottom: cs ? cs.pb + 4 : 44, right: cs ? cs.pr + 4 : 84,
+          color: '#555', fontSize: 9, fontFamily: 'monospace', pointerEvents: 'none',
+          background: '#1a1a1a', padding: '1px 4px', borderRadius: 2,
+        }}>
+          SCROLL PAUSED
+        </div>
       )}
     </div>
   )
