@@ -1,5 +1,5 @@
-import { GPUContext } from './gpu'
-import { CoordSystem } from '../chart/CoordSystem'
+import type { GPUContext } from '../engine/types'
+import { CoordSystem } from '../engine/types'
 import shaderSrc from './shaders/line.wgsl?raw'
 
 export class LineRenderer {

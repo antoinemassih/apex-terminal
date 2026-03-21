@@ -15,6 +15,9 @@ export interface Drawing {
   type: DrawingTool
   points: Point[]
   color: string
+  opacity: number           // 0-1, default 1
+  lineStyle: 'solid' | 'dashed' | 'dotted'  // default 'solid'
+  thickness: number         // px, default 1.5
   symbol: string
   timeframe: Timeframe
 }

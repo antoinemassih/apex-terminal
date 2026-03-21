@@ -11,6 +11,7 @@ interface DrawingStore {
   toggleDrawTool: () => void  // middle-click: cursor ↔ lastDrawTool
   addDrawing: (d: Drawing) => void
   updateDrawing: (id: string, points: Point[]) => void
+  updateDrawingStyle: (id: string, style: Partial<Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>>) => void
   removeDrawing: (id: string) => void
   selectDrawing: (id: string | null) => void
   drawingsFor: (symbol: string, tf: Timeframe) => Drawing[]
@@ -36,9 +37,19 @@ export const useDrawingStore = create<DrawingStore>()(
           set({ activeTool: 'cursor' })
         }
       },
-      addDrawing: d => set(s => ({ drawings: [...s.drawings, d] })),
+      addDrawing: d => set(s => ({
+        drawings: [...s.drawings, {
+          ...d,
+          opacity: d.opacity ?? 1,
+          lineStyle: d.lineStyle ?? 'solid',
+          thickness: d.thickness ?? 1.5,
+        }],
+      })),
       updateDrawing: (id, points) => set(s => ({
         drawings: s.drawings.map(d => d.id === id ? { ...d, points } : d),
+      })),
+      updateDrawingStyle: (id, style) => set(s => ({
+        drawings: s.drawings.map(d => d.id === id ? { ...d, ...style } : d),
       })),
       removeDrawing: id => set(s => ({
         drawings: s.drawings.filter(d => d.id !== id),

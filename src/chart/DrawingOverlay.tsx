@@ -1,11 +1,12 @@
-import { useRef, useCallback, useState, useEffect } from 'react'
+import { useRef, useCallback, useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { useDrawingStore } from '../store/drawingStore'
+import { LineStylePopup } from './LineStylePopup'
 import { CoordSystem } from './CoordSystem'
 import type { Point, Timeframe } from '../types'
 import { v4 as uuid } from 'uuid'
 
-const HIT_RADIUS = 8       // px distance to count as "near" a line
-const HANDLE_RADIUS = 5    // px radius of endpoint handles
+const HIT_RADIUS = 8
+const HANDLE_RADIUS = 5
 
 interface Props {
   symbol: string
@@ -17,15 +18,23 @@ interface Props {
   onInteraction?: () => void
 }
 
+export interface DrawingOverlayHandle {
+  /** Returns true if the drawing layer handled this mousedown (hit a drawing or in draw mode) */
+  handleMouseDown: (mx: number, my: number) => boolean
+  handleMouseMove: (mx: number, my: number) => void
+  handleMouseUp: () => void
+  /** Returns a cursor string if drawings want to override, or null for default */
+  getCursor: () => string | null
+}
+
 type DragState = {
   drawingId: string
   mode: 'move' | 'endpoint'
-  pointIndex: number        // which endpoint (for endpoint mode)
+  pointIndex: number
   startMouse: { x: number; y: number }
   origPoints: Point[]
 }
 
-/** Point-to-segment distance in pixels */
 function distToSegment(px: number, py: number, x0: number, y0: number, x1: number, y1: number): number {
   const dx = x1 - x0, dy = y1 - y0
   const lenSq = dx * dx + dy * dy
@@ -34,36 +43,33 @@ function distToSegment(px: number, py: number, x0: number, y0: number, x1: numbe
   return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy))
 }
 
-export function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart, onInteraction }: Props) {
+export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
+  function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart, onInteraction }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectDrawing, setActiveTool } = useDrawingStore()
   const [inProgress, setInProgress] = useState<Point | null>(null)
   const mouseRef = useRef({ x: 0, y: 0 })
   const dragRef = useRef<DragState | null>(null)
-  const [hoveringDrawing, setHoveringDrawing] = useState(false)
+  const cursorRef = useRef<string | null>(null)
 
-  // Convert drawing point to pixel
   const toPixel = useCallback((p: Point) => ({
     x: cs.barToX(p.time - viewStart),
     y: cs.priceToY(p.price),
   }), [cs, viewStart])
 
-  // Convert pixel to drawing point
   const toPoint = useCallback((px: number, py: number): Point => ({
     time: Math.round(cs.xToBar(px)) + viewStart,
     price: cs.yToPrice(py),
   }), [cs, viewStart])
 
-  // Hit test: find drawing near pixel position, returns { id, pointIndex } or null
   const hitTest = useCallback((mx: number, my: number): { id: string; nearEndpoint: number } | null => {
+    if (mx >= width - cs.pr || my >= height - cs.pb) return null
     const drawings = drawingsFor(symbol, timeframe)
     for (const d of drawings) {
       if (d.type === 'trendline' && d.points.length === 2) {
         const p0 = toPixel(d.points[0]), p1 = toPixel(d.points[1])
-        // Check endpoints first (higher priority)
         if (Math.hypot(mx - p0.x, my - p0.y) < HANDLE_RADIUS + 3) return { id: d.id, nearEndpoint: 0 }
         if (Math.hypot(mx - p1.x, my - p1.y) < HANDLE_RADIUS + 3) return { id: d.id, nearEndpoint: 1 }
-        // Check line body
         if (distToSegment(mx, my, p0.x, p0.y, p1.x, p1.y) < HIT_RADIUS) return { id: d.id, nearEndpoint: -1 }
       }
       if (d.type === 'hline' && d.points.length >= 1) {
@@ -72,21 +78,29 @@ export function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart
       }
     }
     return null
-  }, [drawingsFor, symbol, timeframe, toPixel, cs, width])
+  }, [drawingsFor, symbol, timeframe, toPixel, cs, width, height])
 
   // --- Drawing ---
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
-    ctx.clearRect(0, 0, width, height)
+    const cw = width - cs.pr
+    const ch = height - cs.pb
+    ctx.clearRect(0, 0, cw, ch)
 
     const drawings = drawingsFor(symbol, timeframe)
 
     for (const d of drawings) {
       const isSelected = d.id === selectedId
+      const dOpacity = d.opacity ?? 1
+      const dLineStyle = d.lineStyle ?? 'solid'
+      const dThickness = d.thickness ?? 1.5
+
+      ctx.globalAlpha = dOpacity
+      ctx.setLineDash(dLineStyle === 'dashed' ? [8, 4] : dLineStyle === 'dotted' ? [2, 3] : [])
       ctx.strokeStyle = isSelected ? '#fff' : d.color
-      ctx.lineWidth = isSelected ? 2 : 1.5
+      ctx.lineWidth = isSelected ? dThickness + 0.5 : dThickness
 
       if (d.type === 'trendline' && d.points.length === 2) {
         const p0 = toPixel(d.points[0]), p1 = toPixel(d.points[1])
@@ -95,8 +109,9 @@ export function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart
         ctx.lineTo(p1.x, p1.y)
         ctx.stroke()
 
-        // Draw endpoint handles when selected
         if (isSelected) {
+          ctx.globalAlpha = 1
+          ctx.setLineDash([])
           for (const p of [p0, p1]) {
             ctx.fillStyle = '#4a9eff'
             ctx.beginPath()
@@ -106,30 +121,32 @@ export function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart
             ctx.lineWidth = 1
             ctx.stroke()
           }
-          ctx.lineWidth = 2
         }
       }
       if (d.type === 'hline' && d.points.length >= 1) {
         const y = cs.priceToY(d.points[0].price)
         ctx.beginPath()
         ctx.moveTo(0, y)
-        ctx.lineTo(width - cs.pr, y)
+        ctx.lineTo(cw, y)
         ctx.stroke()
 
-        // Handle on the right when selected
         if (isSelected) {
+          ctx.globalAlpha = 1
+          ctx.setLineDash([])
           ctx.fillStyle = '#4a9eff'
           ctx.beginPath()
-          ctx.arc(width - cs.pr - 10, y, HANDLE_RADIUS, 0, Math.PI * 2)
+          ctx.arc(cw - 10, y, HANDLE_RADIUS, 0, Math.PI * 2)
           ctx.fill()
           ctx.strokeStyle = '#fff'
           ctx.lineWidth = 1
           ctx.stroke()
         }
       }
+
+      ctx.globalAlpha = 1
+      ctx.setLineDash([])
     }
 
-    // In-progress drawing
     if (inProgress && (activeTool === 'trendline')) {
       ctx.strokeStyle = 'rgba(74,158,255,0.6)'
       ctx.setLineDash([4, 4])
@@ -145,15 +162,39 @@ export function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart
 
   useEffect(() => { draw() }, [draw])
 
-  // --- Mouse handlers ---
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return // left click only
-    const rect = canvasRef.current!.getBoundingClientRect()
-    const mx = e.clientX - rect.left
-    const my = e.clientY - rect.top
+  // Expose imperative handle for ChartPane to call
+  useImperativeHandle(ref, () => ({
+    handleMouseDown(mx: number, my: number): boolean {
+      // In draw mode: always handle
+      if (activeTool !== 'cursor') {
+        onInteraction?.()
+        if (activeTool === 'trendline') {
+          if (!inProgress) {
+            setInProgress(toPoint(mx, my))
+          } else {
+            addDrawing({
+              id: uuid(), type: 'trendline',
+              points: [inProgress, toPoint(mx, my)],
+              color: '#4a9eff', opacity: 1, lineStyle: 'solid', thickness: 1.5,
+              symbol, timeframe,
+            })
+            setInProgress(null)
+            setActiveTool('cursor')
+          }
+        }
+        if (activeTool === 'hline') {
+          addDrawing({
+            id: uuid(), type: 'hline',
+            points: [toPoint(mx, my)],
+            color: '#4a9eff', opacity: 1, lineStyle: 'solid', thickness: 1.5,
+            symbol, timeframe,
+          })
+          setActiveTool('cursor')
+        }
+        return true
+      }
 
-    // In cursor mode: try to select/grab a drawing
-    if (activeTool === 'cursor') {
+      // In cursor mode: check for drawing hit
       const hit = hitTest(mx, my)
       if (hit) {
         onInteraction?.()
@@ -166,91 +207,62 @@ export function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart
           startMouse: { x: mx, y: my },
           origPoints: drawing.points.map(p => ({ ...p })),
         }
-        e.stopPropagation()
-      } else {
-        selectDrawing(null)
+        return true // consumed — don't start chart pan
       }
-      return
-    }
 
-    // In draw mode: create drawings
-    onInteraction?.()
-    if (activeTool === 'trendline') {
-      if (!inProgress) {
-        setInProgress(toPoint(mx, my))
-      } else {
-        addDrawing({
-          id: uuid(), type: 'trendline',
-          points: [inProgress, toPoint(mx, my)],
-          color: '#4a9eff', symbol, timeframe,
-        })
-        setInProgress(null)
-        setActiveTool('cursor') // auto-switch back to cursor
+      selectDrawing(null)
+      return false // not consumed — let chart handle it
+    },
+
+    handleMouseMove(mx: number, my: number) {
+      mouseRef.current = { x: mx, y: my }
+
+      if (dragRef.current) {
+        const { drawingId, mode, pointIndex, origPoints } = dragRef.current
+        const drawing = drawingsFor(symbol, timeframe).find(d => d.id === drawingId)
+        if (!drawing) return
+
+        if (mode === 'endpoint') {
+          const newPoints = origPoints.map((p, i) => i === pointIndex ? toPoint(mx, my) : { ...p })
+          updateDrawing(drawingId, newPoints)
+        } else {
+          const dx = mx - dragRef.current.startMouse.x
+          const dy = my - dragRef.current.startMouse.y
+          const newPoints = origPoints.map(p => {
+            const px = toPixel(p)
+            return toPoint(px.x + dx, px.y + dy)
+          })
+          updateDrawing(drawingId, newPoints)
+        }
+        draw()
+        return
       }
-    }
-    if (activeTool === 'hline') {
-      addDrawing({
-        id: uuid(), type: 'hline',
-        points: [toPoint(mx, my)],
-        color: '#4a9eff', symbol, timeframe,
-      })
-      setActiveTool('cursor') // auto-switch back to cursor
-    }
-  }, [activeTool, inProgress, cs, addDrawing, symbol, timeframe, viewStart, hitTest, selectDrawing, drawingsFor, toPoint, onInteraction, setActiveTool])
 
-  const onMouseMove = useCallback((e: React.MouseEvent) => {
-    const rect = canvasRef.current!.getBoundingClientRect()
-    const mx = e.clientX - rect.left
-    const my = e.clientY - rect.top
-    mouseRef.current = { x: mx, y: my }
-
-    // Dragging a selected drawing
-    if (dragRef.current) {
-      e.stopPropagation()
-      const { drawingId, mode, pointIndex, origPoints } = dragRef.current
-      const drawing = drawingsFor(symbol, timeframe).find(d => d.id === drawingId)
-      if (!drawing) return
-
-      if (mode === 'endpoint') {
-        // Move a single endpoint
-        const newPoints = origPoints.map((p, i) => i === pointIndex ? toPoint(mx, my) : { ...p })
-        updateDrawing(drawingId, newPoints)
+      // Hover detection for cursor
+      if (activeTool === 'cursor') {
+        const hit = hitTest(mx, my)
+        if (hit && hit.nearEndpoint >= 0) {
+          cursorRef.current = 'grab'
+        } else if (hit) {
+          cursorRef.current = 'move'
+        } else {
+          cursorRef.current = null
+        }
       } else {
-        // Move entire drawing
-        const dx = mx - dragRef.current.startMouse.x
-        const dy = my - dragRef.current.startMouse.y
-        const newPoints = origPoints.map(p => {
-          const px = toPixel(p)
-          return toPoint(px.x + dx, px.y + dy)
-        })
-        updateDrawing(drawingId, newPoints)
+        cursorRef.current = 'crosshair'
       }
-      draw()
-      return
-    }
 
-    // Update cursor and hover state based on what's under mouse
-    if (activeTool === 'cursor') {
-      const hit = hitTest(mx, my)
-      const canvas = canvasRef.current!
-      if (hit && hit.nearEndpoint >= 0) {
-        canvas.style.cursor = 'grab'
-        setHoveringDrawing(true)
-      } else if (hit) {
-        canvas.style.cursor = 'move'
-        setHoveringDrawing(true)
-      } else {
-        canvas.style.cursor = 'default'
-        setHoveringDrawing(false)
-      }
-    }
+      if (inProgress) draw()
+    },
 
-    if (inProgress) draw()
-  }, [inProgress, draw, activeTool, hitTest, drawingsFor, symbol, timeframe, toPoint, toPixel, updateDrawing])
+    handleMouseUp() {
+      dragRef.current = null
+    },
 
-  const onMouseUp = useCallback(() => {
-    dragRef.current = null
-  }, [])
+    getCursor(): string | null {
+      return cursorRef.current
+    },
+  }))
 
   // Delete selected drawing with Delete/Backspace
   useEffect(() => {
@@ -267,17 +279,46 @@ export function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedId, activeTool, setActiveTool])
 
-  const isDrawMode = activeTool !== 'cursor'
+  // Compute popup position for selected drawing
+  const popupPos = useMemo(() => {
+    if (!selectedId) return null
+    const drawings = drawingsFor(symbol, timeframe)
+    const d = drawings.find(dr => dr.id === selectedId)
+    if (!d) return null
+
+    if (d.type === 'trendline' && d.points.length === 2) {
+      const p0 = toPixel(d.points[0])
+      const p1 = toPixel(d.points[1])
+      let x = (p0.x + p1.x) / 2 + 12
+      let y = (p0.y + p1.y) / 2 - 80
+      if (x + 210 > width) x = width - 220
+      if (x < 4) x = 4
+      if (y < 4) y = 4
+      if (y + 160 > height) y = height - 170
+      return { x, y }
+    }
+    if (d.type === 'hline' && d.points.length >= 1) {
+      const py = cs.priceToY(d.points[0].price)
+      let x = width / 2 - 100
+      let y = py - 170
+      if (x < 4) x = 4
+      if (y < 4) y = py + 12
+      return { x, y }
+    }
+    return null
+  }, [selectedId, drawingsFor, symbol, timeframe, toPixel, cs, width, height])
+
+  const handleClosePopup = useCallback(() => {
+    selectDrawing(null)
+  }, [selectDrawing])
 
   return (
-    <canvas ref={canvasRef} width={width} height={height}
-      style={{
-        position: 'absolute', top: 0, left: 0,
-        cursor: isDrawMode ? 'crosshair' : (hoveringDrawing ? undefined : 'default'),
-        pointerEvents: 'auto',
-      }}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp} />
+    <>
+      <canvas ref={canvasRef} width={width - cs.pr} height={height - cs.pb}
+        style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
+      {selectedId && popupPos && (
+        <LineStylePopup drawingId={selectedId} position={popupPos} onClose={handleClosePopup} />
+      )}
+    </>
   )
-}
+})

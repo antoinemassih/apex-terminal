@@ -6,14 +6,14 @@ describe('drawingStore', () => {
 
   it('adds a drawing', () => {
     useDrawingStore.getState().addDrawing({
-      id: '1', type: 'trendline', points: [], color: '#fff', symbol: 'AAPL', timeframe: '5m'
+      id: '1', type: 'trendline', points: [], color: '#fff', opacity: 1, lineStyle: 'solid' as const, thickness: 1.5, symbol: 'AAPL', timeframe: '5m'
     })
     expect(useDrawingStore.getState().drawings).toHaveLength(1)
   })
 
   it('removes a drawing', () => {
     useDrawingStore.getState().addDrawing({
-      id: '1', type: 'trendline', points: [], color: '#fff', symbol: 'AAPL', timeframe: '5m'
+      id: '1', type: 'trendline', points: [], color: '#fff', opacity: 1, lineStyle: 'solid' as const, thickness: 1.5, symbol: 'AAPL', timeframe: '5m'
     })
     useDrawingStore.getState().removeDrawing('1')
     expect(useDrawingStore.getState().drawings).toHaveLength(0)
@@ -22,7 +22,7 @@ describe('drawingStore', () => {
   it('updates drawing points', () => {
     useDrawingStore.getState().addDrawing({
       id: '1', type: 'trendline', points: [{ time: 0, price: 100 }, { time: 1, price: 200 }],
-      color: '#fff', symbol: 'AAPL', timeframe: '5m'
+      color: '#fff', opacity: 1, lineStyle: 'solid' as const, thickness: 1.5, symbol: 'AAPL', timeframe: '5m'
     })
     useDrawingStore.getState().updateDrawing('1', [{ time: 5, price: 150 }, { time: 10, price: 250 }])
     const d = useDrawingStore.getState().drawings[0]
@@ -42,8 +42,8 @@ describe('drawingStore', () => {
 
   it('filters by symbol and timeframe', () => {
     const s = useDrawingStore.getState()
-    s.addDrawing({ id: '1', type: 'trendline', points: [], color: '#fff', symbol: 'AAPL', timeframe: '5m' })
-    s.addDrawing({ id: '2', type: 'trendline', points: [], color: '#fff', symbol: 'MSFT', timeframe: '5m' })
+    s.addDrawing({ id: '1', type: 'trendline', points: [], color: '#fff', opacity: 1, lineStyle: 'solid' as const, thickness: 1.5, symbol: 'AAPL', timeframe: '5m' })
+    s.addDrawing({ id: '2', type: 'trendline', points: [], color: '#fff', opacity: 1, lineStyle: 'solid' as const, thickness: 1.5, symbol: 'MSFT', timeframe: '5m' })
     expect(s.drawingsFor('AAPL', '5m')).toHaveLength(1)
   })
 })
