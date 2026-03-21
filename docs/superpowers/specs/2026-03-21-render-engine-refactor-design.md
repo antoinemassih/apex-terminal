@@ -48,7 +48,7 @@ src/
 │   └── types.ts
 │
 ├── data/                # Data storage and feed ingestion
-│   ├── index.ts         # Public API: DataStore, Feed interface
+│   ├── index.ts         # Public API: DataStore, Feed interface, timeframes
 │   ├── DataStore.ts     # Per-symbol ColumnStore management + Tauri history loading
 │   ├── columns.ts       # ColumnStore (hardened)
 │   ├── Feed.ts          # Feed interface
@@ -138,7 +138,7 @@ class RenderEngine {
 ```typescript
 onDeviceReplaced(cb: (device: GPUDevice) => void): () => void
 ```
-Used by ComputeDispatcher to update its device reference after recovery.
+Reserved for future GPU consumers (e.g., pattern recognition compute pipelines). No subscribers in initial implementation.
 
 ---
 
@@ -184,10 +184,13 @@ class FrameScheduler {
       this.device.queue.submit(commandBuffers)
     }
 
-    // Only schedule next frame if there might be more work
-    // markDirty() restarts the loop if stopped
-    if (this.running) {
-      this.rafId = requestAnimationFrame(() => this.tick())
+    // Stop loop when idle — markDirty() restarts it
+    this.rafId = null
+    for (const pane of this.panes.values()) {
+      if (pane.dirty) {
+        this.rafId = requestAnimationFrame(() => this.tick())
+        break
+      }
     }
   }
 
@@ -316,7 +319,8 @@ class IndicatorEngine {
   private subscribers: Map<string, Set<(snapshot: IndicatorSnapshot) => void>>
 
   // Called by data layer when a tick arrives — O(1) per tick
-  onTick(symbol: string, timeframe: string, price: number): IndicatorSnapshot
+  // action: 'updated' = last bar modified, 'created' = new bar added
+  onTick(symbol: string, timeframe: string, price: number, action: 'updated' | 'created'): IndicatorSnapshot
 
   // Called when chart loads history — CPU bootstrap, populates incremental state
   bootstrap(symbol: string, timeframe: string, data: ColumnStore): IndicatorSnapshot
@@ -385,7 +389,11 @@ class DataStore {
   private subscribers: Map<string, Set<() => void>>
 
   // Called by feed adapter — updates store, runs incremental indicators, notifies panes
-  applyTick(symbol: string, timeframe: string, tick: TickData): void
+  applyTick(symbol: string, timeframe: string, tick: TickData): void {
+    const action = store.applyTick(...)  // returns 'updated' | 'created'
+    this.indicatorEngine.onTick(symbol, timeframe, tick.price, action)
+    // ...notify subscribers
+  }
 
   // Loads historical data via Tauri IPC, bootstraps indicators
   async load(symbol: string, timeframe: string): Promise<{ data: ColumnStore, indicators: IndicatorSnapshot }>
@@ -449,6 +457,7 @@ const TF_TO_INTERVAL: Record<Timeframe, { interval: string; period: string; seco
   '5m':  { interval: '5m',  period: '5d',  seconds: 300 },
   '15m': { interval: '15m', period: '5d',  seconds: 900 },
   '1h':  { interval: '1h',  period: '1mo', seconds: 3600 },
+  '4h':  { interval: '1h',  period: '3mo', seconds: 14400 },
   '1d':  { interval: '1d',  period: '1y',  seconds: 86400 },
   '1wk': { interval: '1wk', period: '5y',  seconds: 604800 },
 }
@@ -515,6 +524,9 @@ function ChartPane({ symbol, timeframe, width, height }: Props) {
         width={width} height={height} />
       <CrosshairOverlay ref={crosshairRef} ... />
       <DrawingOverlay ref={drawingRef} ... />
+      {/* OHLC label: symbol, timeframe, O/H/L/C of last visible bar */}
+      <OHLCLabel symbol={symbol} timeframe={timeframe} data={...} viewStart={viewport.viewStart}
+        viewCount={viewport.viewCount} />
       {engineState === 'recovering' && (
         <div className="gpu-overlay">Reconnecting GPU...</div>
       )}
@@ -701,10 +713,12 @@ failed → recovering (user calls retry())
 - `src/data/columns.ts` — hardened (auto-grow, max capacity, eviction, guards)
 - `src/chart/CoordSystem.ts` — relocated to `src/engine/types.ts`
 
-### Files Unchanged
-- `src/renderer/CandleRenderer.ts` — same API, receives device via PaneContext
+### Files Minor Changes (import paths only)
+- `src/renderer/CandleRenderer.ts` — same API, import paths updated (`gpu` → `engine`, `CoordSystem` → `engine/types`)
 - `src/renderer/GridRenderer.ts` — same
 - `src/renderer/LineRenderer.ts` — same
+
+### Files Unchanged
 - `src/renderer/shaders/*` — same
 - `src/chart/CrosshairOverlay.tsx` — same
 - `src/chart/DrawingOverlay.tsx` — same
