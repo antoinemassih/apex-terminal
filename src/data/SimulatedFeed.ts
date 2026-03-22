@@ -66,7 +66,7 @@ export class SimulatedFeed implements Feed {
 
   private startTicking(): void {
     if (this.intervalId !== null) clearInterval(this.intervalId)
-    this.intervalId = window.setInterval(() => this.tick(), 250)
+    this.intervalId = window.setInterval(() => this.tick(), 50)
   }
 
   private tick(): void {

@@ -115,9 +115,9 @@ export type IndicatorFactory = () => IncrementalIndicator
 
 /** Registry of available indicators. Use getDefaultIndicatorIds() for the standard set. */
 export const INDICATOR_CATALOG: Record<string, { name: string; factory: IndicatorFactory }> = {
-  sma20:     { name: 'SMA 20',    factory: () => new SMAIndicator(20, [0.3, 0.6, 1.0, 0.8], 2.0) },
-  ema50:     { name: 'EMA 50',    factory: () => new EMAIndicator(50, [1.0, 0.6, 0.2, 0.8], 2.0) },
-  bollinger: { name: 'Bollinger', factory: () => new BollingerIndicator(20, 2, [0.5, 0.5, 0.5, 0.4], 1.0) },
+  sma20:     { name: 'SMA 20',    factory: () => new SMAIndicator(20, [0.3, 0.6, 1.0, 0.8], 1.0) },
+  ema50:     { name: 'EMA 50',    factory: () => new EMAIndicator(50, [1.0, 0.6, 0.2, 0.8], 1.0) },
+  bollinger: { name: 'Bollinger', factory: () => new BollingerIndicator(20, 2, [0.5, 0.5, 0.5, 0.4], 0.5) },
 }
 
 export function getDefaultIndicatorIds(): string[] {
