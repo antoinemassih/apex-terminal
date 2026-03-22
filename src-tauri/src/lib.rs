@@ -4,6 +4,7 @@ mod drawings;
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
 use tauri::Manager;
+use tauri::async_runtime;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -15,8 +16,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let rt = tokio::runtime::Handle::current();
-            let pool = rt.block_on(async {
+            let pool = async_runtime::block_on(async {
                 PgPoolOptions::new()
                     .max_connections(5)
                     .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
