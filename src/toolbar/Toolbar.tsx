@@ -21,7 +21,8 @@ const LAYOUTS: { key: Layout; label: string }[] = [
 
 export function Toolbar() {
   const { panes, activePane, setTimeframe, resetAutoScroll,
-    toggleVolume, toggleIndicator, layout, setLayout, theme: themeName, setTheme } = useChartStore()
+    toggleVolume, toggleIndicator, layout, setLayout, theme: themeName, setTheme,
+    annotationFilters, toggleFilter } = useChartStore()
   const { activeTool, setActiveTool } = useDrawingStore()
   const [pickerOpen, setPickerOpen] = useState(false)
   const tickerRef = useRef<HTMLSpanElement>(null)
@@ -106,6 +107,21 @@ export function Toolbar() {
           <button key={tool} onClick={() => setActiveTool(tool)}
             style={btnStyle(activeTool === tool)}>
             {tool}
+          </button>
+        ))}
+      </div>
+      {/* Annotation filters */}
+      <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
+        {(['1H', '4H', '1D', '1W'] as const).map(k => (
+          <button key={k} onClick={() => toggleFilter(k)} style={btnStyle(annotationFilters[k])}>{k}</button>
+        ))}
+        {(['wick', 'body'] as const).map(k => (
+          <button key={k} onClick={() => toggleFilter(k)} style={btnStyle(annotationFilters[k])}>{k}</button>
+        ))}
+        {(['support', 'resistance', 'channel'] as const).map(k => (
+          <button key={k} onClick={() => toggleFilter(k)}
+            style={btnStyle(annotationFilters[k])}>
+            {k === 'support' ? 'S' : k === 'resistance' ? 'R' : 'CH'}
           </button>
         ))}
       </div>

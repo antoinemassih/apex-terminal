@@ -11,12 +11,39 @@ export interface PaneConfig {
 
 export type Layout = '1' | '2' | '2h' | '3' | '4' | '6' | '6h' | '9'
 
+/** Annotation filter categories for auto-trendlines */
+export interface AnnotationFilters {
+  // By timeframe
+  '1H': boolean
+  '4H': boolean
+  '1D': boolean
+  '1W': boolean
+  // By source type
+  wick: boolean
+  body: boolean
+  // By direction
+  support: boolean
+  resistance: boolean
+  // Channels
+  channel: boolean
+  // User drawings
+  user: boolean
+}
+
+const DEFAULT_FILTERS: AnnotationFilters = {
+  '1H': true, '4H': true, '1D': true, '1W': true,
+  wick: true, body: true,
+  support: true, resistance: true,
+  channel: true, user: true,
+}
+
 interface ChartStore {
   panes: PaneConfig[]
   activePane: string
   autoScrollVersion: number
   layout: Layout
   theme: string
+  annotationFilters: AnnotationFilters
   setActivePane: (id: string) => void
   setSymbol: (id: string, symbol: string) => void
   setTimeframe: (id: string, tf: Timeframe) => void
@@ -25,6 +52,7 @@ interface ChartStore {
   toggleIndicator: (paneId: string, indicatorId: string) => void
   setLayout: (layout: Layout) => void
   setTheme: (theme: string) => void
+  toggleFilter: (key: keyof AnnotationFilters) => void
 }
 
 const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'QQQ', 'AMZN', 'GOOG', 'META']
@@ -42,6 +70,7 @@ export const useChartStore = create<ChartStore>(set => ({
   autoScrollVersion: 0,
   layout: '9' as Layout,
   theme: 'midnight',
+  annotationFilters: { ...DEFAULT_FILTERS },
   setActivePane: (id) => set({ activePane: id }),
   setSymbol: (id, symbol) =>
     set(s => ({ panes: s.panes.map(p => p.id === id ? { ...p, symbol } : p) })),
@@ -62,4 +91,7 @@ export const useChartStore = create<ChartStore>(set => ({
     })),
   setLayout: (layout) => set({ layout }),
   setTheme: (theme) => set({ theme }),
+  toggleFilter: (key) => set(s => ({
+    annotationFilters: { ...s.annotationFilters, [key]: !s.annotationFilters[key] },
+  })),
 }))

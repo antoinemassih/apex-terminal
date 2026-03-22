@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { useDrawingStore } from '../store/drawingStore'
+import { useChartStore } from '../store/chartStore'
 import { LineStylePopup } from './LineStylePopup'
 import { CoordSystem } from './CoordSystem'
 import type { Point, Timeframe } from '../types'
@@ -48,17 +49,36 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   function DrawingOverlay({ symbol, timeframe, cs, data: chartData, width, height, viewStart, onInteraction }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectDrawing, setActiveTool } = useDrawingStore()
+  const annotationFilters = useChartStore(s => s.annotationFilters)
+  const [serverAnnotations, setServerAnnotations] = useState<any[]>([])
   const [inProgress, setInProgress] = useState<Point | null>(null)
   const mouseRef = useRef({ x: 0, y: 0 })
   const dragRef = useRef<DragState | null>(null)
   const cursorRef = useRef<string | null>(null)
   const prevToolRef = useRef(activeTool)
 
-  // Reset inProgress when tool changes (e.g., mid-draw tool switch via middle-click)
+  // Reset inProgress when tool changes
   if (activeTool !== prevToolRef.current) {
     prevToolRef.current = activeTool
     if (inProgress) setInProgress(null)
   }
+
+  // Fetch server annotations (auto-trendlines etc.) periodically
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const resp = await fetch(`http://192.168.1.60:30300/api/annotations?symbol=${symbol}&source=auto-trend`)
+        if (resp.ok && !cancelled) {
+          const anns = await resp.json()
+          setServerAnnotations(anns)
+        }
+      } catch { /* API unreachable */ }
+    }
+    load()
+    const id = setInterval(load, 30000) // refresh every 30s
+    return () => { cancelled = true; clearInterval(id) }
+  }, [symbol])
 
   const toPixel = useCallback((p: Point) => {
     if (!chartData || chartData.length === 0) return { x: 0, y: cs.priceToY(p.price) }
@@ -237,6 +257,51 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       ctx.setLineDash([])
     }
 
+    // Render server annotations (auto-trendlines) with filter logic
+    for (const ann of serverAnnotations) {
+      const tags: string[] = ann.tags ?? []
+      // Apply filters
+      if (!annotationFilters.user && ann.source === 'user') continue
+      if (tags.includes('1H') && !annotationFilters['1H']) continue
+      if (tags.includes('4H') && !annotationFilters['4H']) continue
+      if (tags.includes('1D') && !annotationFilters['1D']) continue
+      if (tags.includes('1W') && !annotationFilters['1W']) continue
+      if (tags.includes('wick') && !annotationFilters.wick) continue
+      if (tags.includes('body') && !annotationFilters.body) continue
+      if (tags.includes('support') && !annotationFilters.support) continue
+      if (tags.includes('resistance') && !annotationFilters.resistance) continue
+      if (tags.includes('channel') && !annotationFilters.channel) continue
+
+      const style = ann.style ?? {}
+      ctx.globalAlpha = style.opacity ?? 0.5
+      ctx.strokeStyle = style.color ?? '#888'
+      ctx.lineWidth = style.thickness ?? 1
+      ctx.setLineDash(style.lineStyle === 'dashed' ? [6, 3] : style.lineStyle === 'dotted' ? [2, 2] : [])
+
+      if (ann.type === 'trendline' && ann.points?.length === 2) {
+        const p0 = toPixel(ann.points[0])
+        const p1 = toPixel(ann.points[1])
+        ctx.beginPath()
+        ctx.moveTo(p0.x, p0.y)
+        ctx.lineTo(p1.x, p1.y)
+        ctx.stroke()
+
+        // Label
+        const meta = ann.metadata ?? {}
+        if (meta.label) {
+          ctx.font = '8px monospace'
+          ctx.fillStyle = style.color ?? '#888'
+          ctx.globalAlpha = 0.7
+          const mx = (p0.x + p1.x) / 2
+          const my = (p0.y + p1.y) / 2
+          ctx.fillText(meta.label, mx + 4, my - 4)
+        }
+      }
+
+      ctx.globalAlpha = 1
+      ctx.setLineDash([])
+    }
+
     if (inProgress && activeTool === 'trendline') {
       ctx.strokeStyle = 'rgba(74,158,255,0.6)'
       ctx.setLineDash([4, 4])
@@ -263,7 +328,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [cs, symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, viewStart, selectedId, toPixel])
+  }, [cs, symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, viewStart, selectedId, toPixel, serverAnnotations, annotationFilters])
 
   useEffect(() => { draw() }, [draw])
 

@@ -1,8 +1,26 @@
 import * as ann from './annotations.js';
 import * as alerts from './alerts.js';
 import * as sym from './symbols.js';
+import { runTrendlineDetection } from './trendlines.js';
 import { healthCheck } from './db.js';
 import { getClientCount, getSubscriptionCount } from './signalBus.js';
+function aggregate4h(bars1h) {
+    const result = [];
+    for (let i = 0; i < bars1h.length; i += 4) {
+        const chunk = bars1h.slice(i, i + 4);
+        if (chunk.length === 0)
+            continue;
+        result.push({
+            time: chunk[0].time,
+            open: chunk[0].open,
+            high: Math.max(...chunk.map((b) => b.high)),
+            low: Math.min(...chunk.map((b) => b.low)),
+            close: chunk[chunk.length - 1].close,
+            volume: chunk.reduce((s, b) => s + b.volume, 0),
+        });
+    }
+    return result;
+}
 export async function registerRoutes(app) {
     // Health
     app.get('/api/health', async () => {
@@ -92,6 +110,39 @@ export async function registerRoutes(app) {
     app.post('/api/symbols', async (req) => {
         await sym.upsertSymbol(req.body);
         return { ok: true };
+    });
+    // ---- Trendline Detection ----
+    app.post('/api/trendlines/detect', async (req, reply) => {
+        const symbol = req.query.symbol;
+        if (!symbol)
+            return reply.code(400).send({ error: 'symbol required' });
+        // Fetch bars from yfinance sidecar for multiple timeframes
+        const timeframes = [
+            { tf: '1h', interval: '1h', period: '1mo' },
+            { tf: '4h', interval: '1h', period: '3mo' }, // 4h = aggregate from 1h
+            { tf: '1d', interval: '1d', period: '1y' },
+            { tf: '1wk', interval: '1wk', period: '5y' },
+        ];
+        const barsMap = {};
+        for (const config of timeframes) {
+            try {
+                const url = `http://127.0.0.1:8777/bars?symbol=${symbol}&interval=${config.interval}&period=${config.period}`;
+                const resp = await fetch(url);
+                if (resp.ok) {
+                    let bars = await resp.json();
+                    // For 4h: aggregate 1h bars into 4h
+                    if (config.tf === '4h' && bars.length > 0) {
+                        bars = aggregate4h(bars);
+                    }
+                    barsMap[config.tf] = bars;
+                }
+            }
+            catch (e) {
+                console.warn(`Failed to fetch ${config.tf} bars for ${symbol}:`, e);
+            }
+        }
+        await runTrendlineDetection(symbol, barsMap);
+        return { ok: true, timeframes: Object.keys(barsMap).map(k => `${k}: ${barsMap[k].length} bars`) };
     });
     // ---- Recents ----
     app.get('/api/recents', async (req) => {
