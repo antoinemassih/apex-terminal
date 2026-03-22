@@ -29,6 +29,57 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(bars).encode())
+        elif parsed.path == "/options":
+            symbol = params.get("symbol", ["AAPL"])[0]
+            date = params.get("date", [None])[0]  # YYYY-MM-DD or None for nearest
+            ticker = yf.Ticker(symbol)
+            try:
+                expirations = list(ticker.options)  # list of date strings
+                if date and date in expirations:
+                    target_date = date
+                elif expirations:
+                    target_date = expirations[0]
+                else:
+                    target_date = None
+
+                result = {"expirations": expirations, "calls": [], "puts": []}
+                if target_date:
+                    chain = ticker.option_chain(target_date)
+                    result["date"] = target_date
+                    for _, row in chain.calls.iterrows():
+                        result["calls"].append({
+                            "strike": round(float(row["strike"]), 2),
+                            "lastPrice": round(float(row.get("lastPrice", 0)), 2),
+                            "bid": round(float(row.get("bid", 0)), 2),
+                            "ask": round(float(row.get("ask", 0)), 2),
+                            "volume": int(row.get("volume", 0)) if row.get("volume") and str(row.get("volume")) != "nan" else 0,
+                            "openInterest": int(row.get("openInterest", 0)) if row.get("openInterest") and str(row.get("openInterest")) != "nan" else 0,
+                            "impliedVolatility": round(float(row.get("impliedVolatility", 0)), 4),
+                            "inTheMoney": bool(row.get("inTheMoney", False)),
+                            "contractSymbol": str(row.get("contractSymbol", "")),
+                        })
+                    for _, row in chain.puts.iterrows():
+                        result["puts"].append({
+                            "strike": round(float(row["strike"]), 2),
+                            "lastPrice": round(float(row.get("lastPrice", 0)), 2),
+                            "bid": round(float(row.get("bid", 0)), 2),
+                            "ask": round(float(row.get("ask", 0)), 2),
+                            "volume": int(row.get("volume", 0)) if row.get("volume") and str(row.get("volume")) != "nan" else 0,
+                            "openInterest": int(row.get("openInterest", 0)) if row.get("openInterest") and str(row.get("openInterest")) != "nan" else 0,
+                            "impliedVolatility": round(float(row.get("impliedVolatility", 0)), 4),
+                            "inTheMoney": bool(row.get("inTheMoney", False)),
+                            "contractSymbol": str(row.get("contractSymbol", "")),
+                        })
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
         elif parsed.path == "/health":
             self.send_response(200)
             self.end_headers()

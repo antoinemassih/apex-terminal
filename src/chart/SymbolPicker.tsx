@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { getTheme } from '../themes'
 import { useChartStore } from '../store/chartStore'
+import { OptionsPanel } from './OptionsPanel'
 
 const OCOCO_API = 'http://192.168.1.60:30300'
 
@@ -57,6 +58,8 @@ export function SymbolPicker({ paneId, anchorX, anchorY, onClose }: Props) {
   const [recents, setRecents] = useState<SymbolInfo[]>([])
   const [popular, setPopular] = useState<SymbolInfo[]>([])
   const [loading, setLoading] = useState(false)
+  const [optionsSymbol, setOptionsSymbol] = useState<string | null>(null)
+  const [optionsAnchor, setOptionsAnchor] = useState({ x: 0, y: 0 })
   const inputRef = useRef<HTMLInputElement>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const theme = getTheme(useChartStore(s => s.theme))
@@ -139,7 +142,8 @@ export function SymbolPicker({ paneId, anchorX, anchorY, onClose }: Props) {
           <>
             {loading && <div style={{ padding: '6px 8px', color: dim }}>Searching...</div>}
             {!loading && results.map(s => (
-              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg} onSelect={select} />
+              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg}
+                onSelect={select} onOptions={(x, y) => { setOptionsSymbol(s.symbol); setOptionsAnchor({ x, y }) }} />
             ))}
             {!loading && results.length === 0 && query.length >= 1 && (
               <Item symbol={query.toUpperCase()} name="Custom symbol" accent={accent} text={text} dim={dim} bg={bg} onSelect={select} />
@@ -152,7 +156,8 @@ export function SymbolPicker({ paneId, anchorX, anchorY, onClose }: Props) {
           <>
             <div style={{ padding: '5px 8px 2px', color: accent, fontSize: 9, letterSpacing: 1 }}>RECENT</div>
             {recents.map(s => (
-              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg} onSelect={select} />
+              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg}
+                onSelect={select} onOptions={(x, y) => { setOptionsSymbol(s.symbol); setOptionsAnchor({ x, y }) }} />
             ))}
           </>
         )}
@@ -162,21 +167,39 @@ export function SymbolPicker({ paneId, anchorX, anchorY, onClose }: Props) {
           <>
             <div style={{ padding: '5px 8px 2px', color: accent, fontSize: 9, letterSpacing: 1, marginTop: 2 }}>ALL SYMBOLS</div>
             {popular.map(s => (
-              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg} onSelect={select} />
+              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg}
+                onSelect={select} onOptions={(x, y) => { setOptionsSymbol(s.symbol); setOptionsAnchor({ x, y }) }} />
             ))}
           </>
         )}
       </div>
+
+      {/* Options chain slide-out */}
+      {optionsSymbol && (
+        <OptionsPanel
+          symbol={optionsSymbol}
+          anchorX={optionsAnchor.x}
+          anchorY={anchorY}
+          maxHeight={380}
+          onClose={() => setOptionsSymbol(null)}
+          onSelect={(contract) => {
+            select(contract)
+            setOptionsSymbol(null)
+          }}
+        />
+      )}
     </div>
   )
 }
 
-function Item({ symbol, name, accent, text, dim, bg, onSelect }: {
-  symbol: string; name: string | null; accent: string; text: string; dim: string; bg: string; onSelect: (s: string) => void
+function Item({ symbol, name, accent, text, dim, bg, onSelect, onOptions }: {
+  symbol: string; name: string | null; accent: string; text: string; dim: string; bg: string
+  onSelect: (s: string) => void; onOptions?: (x: number, y: number) => void
 }) {
   const [hover, setHover] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
   return (
-    <div
+    <div ref={ref}
       onClick={() => onSelect(symbol)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -185,9 +208,27 @@ function Item({ symbol, name, accent, text, dim, bg, onSelect }: {
         background: hover ? accent + '22' : bg,
         color: hover ? accent : text,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        position: 'relative',
       }}>
       <span style={{ fontWeight: 'bold' }}>{symbol}</span>
-      {name && <span style={{ color: dim, fontSize: 9, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {name && !hover && <span style={{ color: dim, fontSize: 9, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>}
+        {hover && onOptions && (
+          <span
+            onClick={e => {
+              e.stopPropagation()
+              const rect = ref.current?.getBoundingClientRect()
+              if (rect) onOptions(rect.right + 4, rect.top)
+            }}
+            style={{
+              fontSize: 9, color: accent, background: accent + '22',
+              padding: '1px 6px', borderRadius: 3, cursor: 'pointer',
+              border: `1px solid ${accent}44`,
+            }}>
+            Options
+          </span>
+        )}
+      </div>
     </div>
   )
 }

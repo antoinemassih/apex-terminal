@@ -29,6 +29,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             data::get_bars,
+            data::get_options_chain,
             drawings::drawings_load_all,
             drawings::drawings_load_symbol,
             drawings::drawings_save,
