@@ -49,7 +49,8 @@ export class VolumeRenderer {
     })
   }
 
-  upload(data: ColumnStore, cs: CoordSystem, viewStart: number, viewCount: number) {
+  upload(data: ColumnStore, cs: CoordSystem, viewStart: number, viewCount: number,
+         bullColor?: readonly number[], bearColor?: readonly number[]) {
     const end = Math.min(viewStart + viewCount, data.length)
     const count = end - viewStart
     if (count <= 0) return
@@ -72,7 +73,7 @@ export class VolumeRenderer {
       const di = viewStart + i
       const base = i * FLOATS_PER_INSTANCE
       const isBull = data.closes[di] >= data.opens[di]
-      const color = isBull ? BULL_COLOR : BEAR_COLOR
+      const color = isBull ? (bullColor ?? BULL_COLOR) : (bearColor ?? BEAR_COLOR)
 
       arr[base + 0] = cs.barToClipX(i)
       arr[base + 1] = data.volumes[di] / maxVol // normalized 0-1

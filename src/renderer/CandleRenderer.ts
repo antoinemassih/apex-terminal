@@ -60,17 +60,19 @@ export class CandleRenderer {
     })
   }
 
-  upload(data: ColumnStore, cs: CoordSystem, viewStart: number, viewCount: number) {
+  upload(data: ColumnStore, cs: CoordSystem, viewStart: number, viewCount: number,
+         bullColor?: readonly number[], bearColor?: readonly number[]) {
     const end = Math.min(viewStart + viewCount, data.length)
     const count = end - viewStart
     if (count <= 0) return
 
     const floatsNeeded = count * FLOATS_PER_INSTANCE
-    // Reuse CPU-side buffer if large enough
     if (!this.cpuBuffer || this.cpuBuffer.length < floatsNeeded) {
       this.cpuBuffer = new Float32Array(Math.ceil(floatsNeeded * 1.5))
     }
     const arr = this.cpuBuffer
+    const bc = bullColor ?? BULL_COLOR
+    const rc = bearColor ?? BEAR_COLOR
 
     const bodyW = cs.clipBarWidth() * 0.5
     const wickW = Math.max(bodyW * 0.15, 0.001)
@@ -79,7 +81,7 @@ export class CandleRenderer {
       const di = viewStart + i
       const base = i * FLOATS_PER_INSTANCE
       const isBull = data.closes[di] >= data.opens[di]
-      const color = isBull ? BULL_COLOR : BEAR_COLOR
+      const color = isBull ? bc : rc
 
       arr[base + 0] = cs.barToClipX(i)
       arr[base + 1] = cs.priceToClipY(data.opens[di])

@@ -9,16 +9,22 @@ export interface PaneConfig {
   visibleIndicators: string[]
 }
 
+export type Layout = '1' | '2' | '4' | '6' | '9'
+
 interface ChartStore {
   panes: PaneConfig[]
   activePane: string
   autoScrollVersion: number
+  layout: Layout
+  theme: string
   setActivePane: (id: string) => void
   setSymbol: (id: string, symbol: string) => void
   setTimeframe: (id: string, tf: Timeframe) => void
   resetAutoScroll: () => void
   toggleVolume: (paneId: string) => void
   toggleIndicator: (paneId: string, indicatorId: string) => void
+  setLayout: (layout: Layout) => void
+  setTheme: (theme: string) => void
 }
 
 const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'QQQ', 'AMZN']
@@ -34,6 +40,8 @@ export const useChartStore = create<ChartStore>(set => ({
   })),
   activePane: 'pane-0',
   autoScrollVersion: 0,
+  layout: '9' as Layout,
+  theme: 'midnight',
   setActivePane: (id) => set({ activePane: id }),
   setSymbol: (id, symbol) =>
     set(s => ({ panes: s.panes.map(p => p.id === id ? { ...p, symbol } : p) })),
@@ -52,4 +60,6 @@ export const useChartStore = create<ChartStore>(set => ({
         return { ...p, visibleIndicators: vis }
       }),
     })),
+  setLayout: (layout) => set({ layout }),
+  setTheme: (theme) => set({ theme }),
 }))

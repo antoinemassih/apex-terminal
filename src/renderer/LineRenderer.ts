@@ -53,17 +53,20 @@ export class LineRenderer {
   }
 
   upload(values: Float64Array, cs: CoordSystem, viewStart: number, viewCount: number,
-         color: [number, number, number, number], lineWidthPx: number) {
+         color: [number, number, number, number], lineWidthPx: number, dataLength?: number) {
     // Ensure CPU buffer is large enough (2 floats per point, max viewCount points)
     const maxFloats = viewCount * 2
     if (!this.cpuPoints || this.cpuPoints.length < maxFloats) {
       this.cpuPoints = new Float32Array(Math.ceil(maxFloats * 1.5))
     }
 
+    // Clamp to actual data length — prevents lines drawing into empty right margin
+    const maxIdx = dataLength ?? values.length
+
     let count = 0
     for (let i = 0; i < viewCount; i++) {
       const di = viewStart + i
-      if (di >= values.length || isNaN(values[di])) continue
+      if (di >= maxIdx || di >= values.length || isNaN(values[di])) continue
       this.cpuPoints[count++] = cs.barToClipX(i)
       this.cpuPoints[count++] = cs.priceToClipY(values[di])
     }

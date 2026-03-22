@@ -1,8 +1,20 @@
-import { CandleRenderer, GridRenderer, LineRenderer, VolumeRenderer } from '../renderer'
+import { CandleRenderer, LineRenderer, VolumeRenderer } from '../renderer'
 import type { GPUContext } from './types'
 import { CoordSystem } from './types'
 import type { ColumnStore } from '../data/columns'
 import type { IndicatorSnapshot, IndicatorOutput } from '../indicators'
+import type { ChartTheme } from '../themes'
+import { getTheme } from '../themes'
+
+function hexToGPUColor(hex: string): { r: number; g: number; b: number; a: number } {
+  const h = hex.replace('#', '')
+  return {
+    r: parseInt(h.substring(0, 2), 16) / 255,
+    g: parseInt(h.substring(2, 4), 16) / 255,
+    b: parseInt(h.substring(4, 6), 16) / 255,
+    a: 1,
+  }
+}
 
 export class PaneContext {
   dirty = true
@@ -15,15 +27,14 @@ export class PaneContext {
   private format: GPUTextureFormat
   gpuContext: GPUCanvasContext
   private candle: CandleRenderer
-  private grid: GridRenderer
   private volume: VolumeRenderer
   private lineRenderers: LineRenderer[] = []
   private indicatorOutputs: IndicatorOutput[] = []
   private showVolume = true
+  private theme: ChartTheme = getTheme('midnight')
   private resizeTimer: number | null = null
   private markDirtyFn: () => void
   private destroyed = false
-  /** Tracks what changed for potential partial upload optimization */
   lastAction: 'updated' | 'created' | null = null
 
   constructor(
@@ -40,7 +51,6 @@ export class PaneContext {
     this.gpuContext.configure({ device: ctx.device, format: ctx.format, alphaMode: 'premultiplied' })
 
     this.candle = new CandleRenderer(ctx)
-    this.grid = new GridRenderer(ctx)
     this.volume = new VolumeRenderer(ctx)
   }
 
@@ -68,6 +78,13 @@ export class PaneContext {
     this.markDirtyFn()
   }
 
+  setTheme(themeName: string): void {
+    if (this.destroyed) return
+    this.theme = getTheme(themeName)
+    this.dirty = true
+    this.markDirtyFn()
+  }
+
   resize(width: number, height: number): void {
     if (this.destroyed) return
     if (this.resizeTimer) clearTimeout(this.resizeTimer)
@@ -90,36 +107,34 @@ export class PaneContext {
   render(): GPUCommandBuffer {
     const encoder = this.device.createCommandEncoder()
     const view = this.gpuContext.getCurrentTexture().createView()
+    const bg = hexToGPUColor(this.theme.background)
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
         view, loadOp: 'clear',
-        clearValue: { r: 0.05, g: 0.05, b: 0.05, a: 1 },
+        clearValue: bg,
         storeOp: 'store',
       }],
     })
 
     if (this.viewport?.cs && this.data) {
       const { cs, viewStart, viewCount } = this.viewport
+      const t = this.theme
 
       // Volume bars first (behind everything)
       if (this.showVolume) {
-        this.volume.upload(this.data, cs, viewStart, viewCount)
+        this.volume.upload(this.data, cs, viewStart, viewCount, t.bullVolumeRGBA, t.bearVolumeRGBA)
         this.volume.render(pass)
       }
 
-      // Grid
-      this.grid.upload(cs)
-      this.grid.render(pass)
-
       // Candles
-      this.candle.upload(this.data, cs, viewStart, viewCount)
+      this.candle.upload(this.data, cs, viewStart, viewCount, t.bullRGBA, t.bearRGBA)
       this.candle.render(pass)
 
-      // Dynamic indicator lines
+      // Dynamic indicator lines — clamp to data.length so lines don't draw past last candle
       this.ensureLineRenderers(this.indicatorOutputs.length)
       for (let i = 0; i < this.indicatorOutputs.length; i++) {
         const out = this.indicatorOutputs[i]
-        this.lineRenderers[i].upload(out.values, cs, viewStart, viewCount, out.color, out.width)
+        this.lineRenderers[i].upload(out.values, cs, viewStart, viewCount, out.color, out.width, this.data.length)
         this.lineRenderers[i].render(pass)
       }
     }
@@ -137,7 +152,6 @@ export class PaneContext {
     this.gpuContext.configure({ device: ctx.device, format: ctx.format, alphaMode: 'premultiplied' })
     this.destroyRenderers()
     this.candle = new CandleRenderer(ctx)
-    this.grid = new GridRenderer(ctx)
     this.volume = new VolumeRenderer(ctx)
     this.lineRenderers = []
     this.needsReconfigure = false
@@ -151,7 +165,6 @@ export class PaneContext {
     this.destroyRenderers()
   }
 
-  /** Ensure we have enough LineRenderers for the current indicator outputs */
   private ensureLineRenderers(needed: number): void {
     const ctx = { device: this.device, format: this.format }
     while (this.lineRenderers.length < needed) {
@@ -161,7 +174,6 @@ export class PaneContext {
 
   private destroyRenderers(): void {
     try { this.candle.destroy() } catch (e) { /* */ }
-    try { this.grid.destroy() } catch (e) { /* */ }
     try { this.volume.destroy() } catch (e) { /* */ }
     for (const l of this.lineRenderers) {
       try { l.destroy() } catch (e) { /* */ }

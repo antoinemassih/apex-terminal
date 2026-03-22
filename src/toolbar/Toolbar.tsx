@@ -1,36 +1,46 @@
 import { useState } from 'react'
-import { useChartStore } from '../store/chartStore'
+import { useChartStore, type Layout } from '../store/chartStore'
 import { useDrawingStore } from '../store/drawingStore'
 import { INDICATOR_CATALOG } from '../indicators'
+import { THEMES, getTheme } from '../themes'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { Timeframe } from '../types'
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1d', '1wk']
-
-const toggleStyle = (active: boolean) => ({
-  background: active ? '#1a3a5c' : '#1a1a1a',
-  color: active ? '#4a9eff' : '#555',
-  border: `1px solid ${active ? '#2a5a8c' : '#333'}`,
-  borderRadius: 3,
-  padding: '2px 8px',
-  fontSize: 11,
-  fontFamily: 'monospace',
-  cursor: 'pointer' as const,
-})
+const LAYOUTS: { key: Layout; label: string }[] = [
+  { key: '1', label: '1' },
+  { key: '2', label: '2' },
+  { key: '4', label: '4' },
+  { key: '6', label: '6' },
+  { key: '9', label: '9' },
+]
 
 export function Toolbar() {
-  const { panes, activePane, setSymbol, setTimeframe, resetAutoScroll, toggleVolume, toggleIndicator } = useChartStore()
+  const { panes, activePane, setSymbol, setTimeframe, resetAutoScroll,
+    toggleVolume, toggleIndicator, layout, setLayout, theme: themeName, setTheme } = useChartStore()
   const { activeTool, setActiveTool } = useDrawingStore()
   const [symbolInput, setSymbolInput] = useState('')
   const pane = panes.find(p => p.id === activePane)
+  const theme = getTheme(themeName)
+
+  const btnStyle = (active: boolean) => ({
+    background: active ? theme.borderActive + '33' : theme.toolbarBackground,
+    color: active ? theme.borderActive : theme.axisText,
+    border: `1px solid ${active ? theme.borderActive + '88' : theme.toolbarBorder}`,
+    borderRadius: 3,
+    padding: '2px 8px',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    cursor: 'pointer' as const,
+  })
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      height: 36, background: '#111', borderBottom: '1px solid #222',
+      display: 'flex', alignItems: 'center', gap: 6,
+      height: 36, background: theme.toolbarBackground, borderBottom: `1px solid ${theme.toolbarBorder}`,
       padding: '0 12px', flexShrink: 0, fontFamily: 'monospace', fontSize: 12,
     }}>
-      <span style={{ color: '#4a9eff', fontWeight: 'bold' }}>{pane?.symbol ?? '—'}</span>
+      <span style={{ color: theme.borderActive, fontWeight: 'bold' }}>{pane?.symbol ?? '—'}</span>
       <form onSubmit={e => {
         e.preventDefault()
         if (symbolInput.trim() && activePane) {
@@ -40,75 +50,74 @@ export function Toolbar() {
       }} style={{ display: 'flex' }}>
         <input value={symbolInput} onChange={e => setSymbolInput(e.target.value)}
           placeholder="Symbol..."
-          style={{ background: '#1a1a1a', color: '#ccc', border: '1px solid #333',
+          style={{ background: theme.background, color: theme.ohlcLabel, border: `1px solid ${theme.toolbarBorder}`,
             padding: '2px 8px', width: 80, fontSize: 12, fontFamily: 'monospace' }} />
       </form>
+      {/* Timeframes */}
       <div style={{ display: 'flex', gap: 2 }}>
         {TIMEFRAMES.map(tf => (
           <button key={tf} onClick={() => activePane && setTimeframe(activePane, tf)}
-            style={{ background: pane?.timeframe === tf ? '#2a6496' : '#1a1a1a',
-              color: '#ccc', border: '1px solid #333',
-              padding: '2px 8px', cursor: 'pointer', fontSize: 11, fontFamily: 'monospace' }}>
+            style={btnStyle(pane?.timeframe === tf)}>
             {tf}
           </button>
         ))}
       </div>
       {/* Indicator & Volume toggles */}
-      <div style={{ display: 'flex', gap: 2, marginLeft: 8, borderLeft: '1px solid #333', paddingLeft: 8 }}>
-        {Object.entries(INDICATOR_CATALOG).map(([id, { name }]) => {
-          const active = pane?.visibleIndicators?.includes(id) ?? false
-          return (
-            <button key={id}
-              onClick={() => activePane && toggleIndicator(activePane, id)}
-              style={toggleStyle(active)}>
-              {name}
-            </button>
-          )
-        })}
-        <button
-          onClick={() => activePane && toggleVolume(activePane)}
-          style={toggleStyle(pane?.showVolume ?? false)}>
+      <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
+        {Object.entries(INDICATOR_CATALOG).map(([id, { name }]) => (
+          <button key={id}
+            onClick={() => activePane && toggleIndicator(activePane, id)}
+            style={btnStyle(pane?.visibleIndicators?.includes(id) ?? false)}>
+            {name}
+          </button>
+        ))}
+        <button onClick={() => activePane && toggleVolume(activePane)}
+          style={btnStyle(pane?.showVolume ?? false)}>
           VOL
         </button>
       </div>
-      {/* Drawing tools */}
-      <div style={{ display: 'flex', gap: 2, marginLeft: 8, borderLeft: '1px solid #333', paddingLeft: 8 }}>
-        {(['cursor', 'trendline', 'hline'] as const).map(tool => (
-          <button key={tool}
-            onClick={() => setActiveTool(tool)}
-            style={{
-              background: activeTool === tool ? '#2a6496' : '#1a1a1a',
-              color: '#ccc', border: '1px solid #333',
-              padding: '2px 8px', cursor: 'pointer', fontSize: 11, fontFamily: 'monospace',
-            }}
-          >{tool}</button>
+      {/* Layout */}
+      <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
+        {LAYOUTS.map(l => (
+          <button key={l.key} onClick={() => setLayout(l.key)}
+            style={btnStyle(layout === l.key)}>
+            {l.label}
+          </button>
         ))}
       </div>
-      <div style={{ marginLeft: 'auto', color: '#333', fontSize: 10, letterSpacing: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          onClick={() => resetAutoScroll()}
+      {/* Theme picker */}
+      <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
+        <select value={themeName} onChange={e => setTheme(e.target.value)}
           style={{
-            background: '#1a3a1a', color: '#4caf50', border: '1px solid #2e7d32',
-            padding: '2px 8px', cursor: 'pointer', fontSize: 11, fontFamily: 'monospace',
-          }}
-        >LIVE</button>
-        <button
-          onClick={async () => {
-            const label = `chart-${Date.now()}`
-            new WebviewWindow(label, {
-              title: 'Apex Terminal',
-              width: 1920,
-              height: 1080,
-              decorations: true,
-            })
-          }}
-          style={{
-            background: '#1a1a1a', color: '#555', border: '1px solid #333',
-            padding: '2px 8px', cursor: 'pointer', fontSize: 11, fontFamily: 'monospace',
-            marginLeft: 8,
-          }}
-        >+ Window</button>
-        APEX TERMINAL
+            background: theme.background, color: theme.ohlcLabel,
+            border: `1px solid ${theme.toolbarBorder}`,
+            padding: '2px 4px', fontSize: 11, fontFamily: 'monospace', cursor: 'pointer',
+          }}>
+          {Object.entries(THEMES).map(([key, t]) => (
+            <option key={key} value={key}>{t.name}</option>
+          ))}
+        </select>
+      </div>
+      {/* Drawing tools */}
+      <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
+        {(['cursor', 'trendline', 'hline'] as const).map(tool => (
+          <button key={tool} onClick={() => setActiveTool(tool)}
+            style={btnStyle(activeTool === tool)}>
+            {tool}
+          </button>
+        ))}
+      </div>
+      <div style={{ marginLeft: 'auto', color: theme.axisText, fontSize: 10, letterSpacing: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button onClick={() => resetAutoScroll()}
+          style={{ ...btnStyle(false), background: theme.background, color: theme.bull, border: `1px solid ${theme.bull}44` }}>
+          LIVE
+        </button>
+        <button onClick={async () => {
+          new WebviewWindow(`chart-${Date.now()}`, { title: 'Apex Terminal', width: 1920, height: 1080, decorations: true })
+        }} style={btnStyle(false)}>
+          + Window
+        </button>
+        APEX
       </div>
     </div>
   )

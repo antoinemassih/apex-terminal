@@ -1,9 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { ChartPane } from '../chart/ChartPane'
 import { useChartStore } from '../store/chartStore'
+import { getTheme } from '../themes'
+import type { Layout } from '../store/chartStore'
+
+const LAYOUT_CONFIG: Record<Layout, { cols: number; maxPanes: number }> = {
+  '1': { cols: 1, maxPanes: 1 },
+  '2': { cols: 2, maxPanes: 2 },
+  '4': { cols: 2, maxPanes: 4 },
+  '6': { cols: 3, maxPanes: 6 },
+  '9': { cols: 3, maxPanes: 9 },
+}
 
 export function Workspace() {
-  const { panes, activePane, setActivePane } = useChartStore()
+  const { panes, activePane, setActivePane, layout, theme: themeName } = useChartStore()
+  const theme = getTheme(themeName)
   const containerRef = useRef<HTMLDivElement>(null)
   const [dims, setDims] = useState({ w: 0, h: 0 })
 
@@ -18,8 +29,22 @@ export function Workspace() {
     return () => ro.disconnect()
   }, [])
 
-  const cols = 3
-  const rows = Math.ceil(panes.length / cols)
+  const { cols, maxPanes } = LAYOUT_CONFIG[layout]
+
+  const visiblePanes = useMemo(() => {
+    if (panes.length <= maxPanes) return panes
+
+    const activeIndex = panes.findIndex(p => p.id === activePane)
+    const startIndex = activeIndex >= 0 ? activeIndex : 0
+
+    const result = []
+    for (let i = 0; i < maxPanes; i++) {
+      result.push(panes[(startIndex + i) % panes.length])
+    }
+    return result
+  }, [panes, activePane, maxPanes])
+
+  const rows = Math.ceil(visiblePanes.length / cols)
   const paneW = dims.w > 0 ? Math.floor(dims.w / cols) : 0
   const paneH = dims.h > 0 ? Math.floor(dims.h / rows) : 0
 
@@ -27,21 +52,24 @@ export function Workspace() {
     <div ref={containerRef} style={{
       display: 'grid',
       gridTemplateColumns: `repeat(${cols}, 1fr)`,
-      width: '100%', height: '100%', background: '#0a0a0a', gap: 1,
+      width: '100%', height: '100%', background: theme.background, gap: 1,
     }}>
-      {panes.map((pane, index) => (
-        <div key={pane.id}
-          onClick={() => setActivePane(pane.id)}
-          style={{
-            border: `1px solid ${activePane === pane.id ? '#2a6496' : '#1a1a1a'}`,
-            overflow: 'hidden',
-          }}>
-          {paneW > 0 && paneH > 0 && (
-            <ChartPane paneIndex={index} symbol={pane.symbol} timeframe={pane.timeframe}
-              width={paneW - 2} height={paneH - 2} />
-          )}
-        </div>
-      ))}
+      {visiblePanes.map((pane) => {
+        const originalIndex = panes.findIndex(p => p.id === pane.id)
+        return (
+          <div key={pane.id}
+            onClick={() => setActivePane(pane.id)}
+            style={{
+              border: `1px solid ${activePane === pane.id ? theme.borderActive : theme.borderInactive}`,
+              overflow: 'hidden',
+            }}>
+            {paneW > 0 && paneH > 0 && (
+              <ChartPane paneIndex={originalIndex} symbol={pane.symbol} timeframe={pane.timeframe}
+                width={paneW - 2} height={paneH - 2} />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

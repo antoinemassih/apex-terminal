@@ -7,6 +7,7 @@ import { CrosshairOverlay, CrosshairHandle } from './CrosshairOverlay'
 import { DrawingOverlay, DrawingOverlayHandle } from './DrawingOverlay'
 import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
+import { getTheme } from '../themes'
 import type { Timeframe } from '../types'
 
 interface Props {
@@ -30,6 +31,8 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const paneConfig = useChartStore(s => s.panes[paneIndex])
   const showVolume = paneConfig?.showVolume ?? true
   const visibleIndicators = paneConfig?.visibleIndicators ?? []
+  const themeName = useChartStore(s => s.theme)
+  const theme = getTheme(themeName)
 
   const { cs } = viewport
   const data = getDataStore().getData(symbol, timeframe)
@@ -83,6 +86,11 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       .filter(out => visibleIndicators.includes(out.indicatorId))
     paneRef.current?.setVisibility(showVolume, outputs)
   }, [showVolume, visibleIndicators, symbol, timeframe, data])
+
+  // Push theme to PaneContext
+  useEffect(() => {
+    paneRef.current?.setTheme(themeName)
+  }, [themeName])
 
   // --- Drag handling ---
   const dragRef = useRef<{ x: number; y: number; zone: 'chart' | 'xaxis' | 'yaxis' } | null>(null)
@@ -175,7 +183,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
 
   return (
     <div
-      style={{ position: 'relative', width, height, background: '#0d0d0d', cursor: cursorStyle }}
+      style={{ position: 'relative', width, height, background: theme.background, cursor: cursorStyle }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMoveForCursor}
       onMouseUp={onMouseUp}
@@ -189,7 +197,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       {/* OHLC label */}
       <div style={{
         position: 'absolute', top: 4, left: 8,
-        color: '#666', fontSize: 11, fontFamily: 'monospace', pointerEvents: 'none',
+        color: theme.axisText, fontSize: 11, fontFamily: 'monospace', pointerEvents: 'none',
       }}>
         {symbol} · {timeframe}
         {data && viewport.viewStart + viewport.viewCount - 1 < data.length && (() => {
