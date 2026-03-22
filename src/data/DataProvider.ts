@@ -195,6 +195,8 @@ export class YFinanceProvider implements DataProvider {
   }
 
   private tick(): void {
+    const now = Date.now() / 1000 // real wall-clock time
+
     for (const [key, sub] of this.subscriptions) {
       const lastPrice = this.lastPrices.get(key) ?? 100
       const tf = TF_TO_INTERVAL[sub.timeframe as keyof typeof TF_TO_INTERVAL]
@@ -205,10 +207,12 @@ export class YFinanceProvider implements DataProvider {
       const volume = Math.random() * 500
 
       sub.tickCount++
+      // Use real wall-clock time so simulated bars stay in sync with real timestamps
+      // This means the chart shows "now" and trendlines on historical bars are visible
       if (sub.tickCount % 20 === 0) {
-        sub.simTime += tf.seconds
+        sub.simTime = now // snap to real time on candle boundary
       } else {
-        sub.simTime += tf.seconds / 20
+        sub.simTime = now // always use real time
       }
 
       this.lastPrices.set(key, price)
