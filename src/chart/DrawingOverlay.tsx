@@ -92,6 +92,20 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
         const y = cs.priceToY(d.points[0].price)
         if (Math.abs(my - y) < HIT_RADIUS && mx < width - cs.pr) return { id: d.id, nearEndpoint: -1 }
       }
+      if (d.type === 'hzone' && d.points.length === 2) {
+        const y0 = cs.priceToY(d.points[0].price)
+        const y1 = cs.priceToY(d.points[1].price)
+        const top = Math.min(y0, y1), bot = Math.max(y0, y1)
+        if (my >= top - 4 && my <= bot + 4 && mx < width - cs.pr) {
+          if (Math.abs(my - y0) < HIT_RADIUS) return { id: d.id, nearEndpoint: 0 }
+          if (Math.abs(my - y1) < HIT_RADIUS) return { id: d.id, nearEndpoint: 1 }
+          return { id: d.id, nearEndpoint: -1 }
+        }
+      }
+      if (d.type === 'barmarker' && d.points.length >= 1) {
+        const px = toPixel(d.points[0])
+        if (Math.hypot(mx - px.x, my - px.y) < HIT_RADIUS + 4) return { id: d.id, nearEndpoint: -1 }
+      }
     }
     return null
   }, [drawingsFor, symbol, timeframe, toPixel, cs, width, height])
@@ -159,11 +173,64 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
         }
       }
 
+      // Horizontal zone (two hlines with filled area)
+      if (d.type === 'hzone' && d.points.length === 2) {
+        const y0 = cs.priceToY(d.points[0].price)
+        const y1 = cs.priceToY(d.points[1].price)
+        const top = Math.min(y0, y1), bot = Math.max(y0, y1)
+
+        // Fill
+        ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.08)' : (d.color + '18')
+        ctx.fillRect(0, top, cw, bot - top)
+
+        // Top and bottom lines
+        ctx.beginPath()
+        ctx.moveTo(0, y0); ctx.lineTo(cw, y0)
+        ctx.moveTo(0, y1); ctx.lineTo(cw, y1)
+        ctx.stroke()
+
+        if (isSelected) {
+          ctx.globalAlpha = 1
+          ctx.setLineDash([])
+          ctx.fillStyle = '#4a9eff'
+          for (const y of [y0, y1]) {
+            ctx.beginPath()
+            ctx.arc(cw - 10, y, HANDLE_RADIUS, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.strokeStyle = '#fff'
+            ctx.lineWidth = 1
+            ctx.stroke()
+          }
+        }
+      }
+
+      // Bar marker (triangle/arrow anchored to bar high or low)
+      if (d.type === 'barmarker' && d.points.length >= 1) {
+        const px = toPixel(d.points[0])
+        const isTop = d.points[0].price >= (chartData ? (chartData.opens[Math.max(0, Math.min(chartData.length - 1, chartData.indexAtTime(d.points[0].time)))] + chartData.closes[Math.max(0, Math.min(chartData.length - 1, chartData.indexAtTime(d.points[0].time)))]) / 2 : d.points[0].price)
+        const dir = isTop ? -1 : 1 // -1 = pointing down from above, 1 = pointing up from below
+        const sz = 6
+
+        ctx.fillStyle = isSelected ? '#fff' : d.color
+        ctx.beginPath()
+        ctx.moveTo(px.x, px.y + dir * 2)
+        ctx.lineTo(px.x - sz, px.y + dir * (sz + 4))
+        ctx.lineTo(px.x + sz, px.y + dir * (sz + 4))
+        ctx.closePath()
+        ctx.fill()
+
+        if (isSelected) {
+          ctx.strokeStyle = '#fff'
+          ctx.lineWidth = 1
+          ctx.stroke()
+        }
+      }
+
       ctx.globalAlpha = 1
       ctx.setLineDash([])
     }
 
-    if (inProgress && (activeTool === 'trendline')) {
+    if (inProgress && activeTool === 'trendline') {
       ctx.strokeStyle = 'rgba(74,158,255,0.6)'
       ctx.setLineDash([4, 4])
       ctx.lineWidth = 1.5
@@ -171,6 +238,21 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       const p = toPixel(inProgress)
       ctx.moveTo(p.x, p.y)
       ctx.lineTo(mouseRef.current.x, mouseRef.current.y)
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+    if (inProgress && activeTool === 'hzone') {
+      const y0 = cs.priceToY(inProgress.price)
+      const y1 = mouseRef.current.y
+      const top = Math.min(y0, y1), bot = Math.max(y0, y1)
+      ctx.fillStyle = 'rgba(74,158,255,0.08)'
+      ctx.fillRect(0, top, cw, bot - top)
+      ctx.strokeStyle = 'rgba(74,158,255,0.6)'
+      ctx.setLineDash([4, 4])
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(0, y0); ctx.lineTo(cw, y0)
+      ctx.moveTo(0, y1); ctx.lineTo(cw, y1)
       ctx.stroke()
       ctx.setLineDash([])
     }
@@ -203,6 +285,41 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
             id: uuid(), type: 'hline',
             points: [toPoint(mx, my)],
             color: '#4a9eff', opacity: 1, lineStyle: 'solid', thickness: 1.5,
+            symbol, timeframe,
+          })
+          setActiveTool('cursor')
+        }
+        if (activeTool === 'hzone') {
+          if (!inProgress) {
+            setInProgress(toPoint(mx, my))
+          } else {
+            addDrawing({
+              id: uuid(), type: 'hzone',
+              points: [inProgress, toPoint(mx, my)],
+              color: '#4a9eff', opacity: 0.6, lineStyle: 'solid', thickness: 1,
+              symbol, timeframe,
+            })
+            setInProgress(null)
+            setActiveTool('cursor')
+          }
+        }
+        if (activeTool === 'barmarker') {
+          // Snap to bar high or low based on click position
+          const pt = toPoint(mx, my)
+          if (chartData) {
+            const barIdx = chartData.indexAtTime(pt.time)
+            if (barIdx >= 0 && barIdx < chartData.length) {
+              const high = chartData.highs[barIdx]
+              const low = chartData.lows[barIdx]
+              const mid = (high + low) / 2
+              // Snap to high if clicked above midpoint, low if below
+              pt.price = pt.price >= mid ? high : low
+            }
+          }
+          addDrawing({
+            id: uuid(), type: 'barmarker',
+            points: [pt],
+            color: '#ffaa00', opacity: 1, lineStyle: 'solid', thickness: 1,
             symbol, timeframe,
           })
           setActiveTool('cursor')

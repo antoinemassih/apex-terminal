@@ -41,8 +41,12 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
   },
 
   toggleDrawTool: () => {
-    const { activeTool, lastDrawTool } = get()
-    if (activeTool === 'cursor') set({ activeTool: lastDrawTool, selectedId: null })
+    const { activeTool } = get()
+    // Cycle: cursor → trendline → hline → hzone → barmarker → cursor
+    const cycle: DrawingTool[] = ['cursor', 'trendline', 'hline', 'hzone', 'barmarker']
+    const idx = cycle.indexOf(activeTool)
+    const next = cycle[(idx + 1) % cycle.length]
+    if (next !== 'cursor') set({ activeTool: next, lastDrawTool: next, selectedId: null })
     else set({ activeTool: 'cursor' })
   },
 

@@ -103,7 +103,7 @@ export function Toolbar() {
       </div>
       {/* Drawing tools */}
       <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
-        {(['cursor', 'trendline', 'hline'] as const).map(tool => (
+        {(['cursor', 'trendline', 'hline', 'hzone', 'barmarker'] as const).map(tool => (
           <button key={tool} onClick={() => setActiveTool(tool)}
             style={btnStyle(activeTool === tool)}>
             {tool}
