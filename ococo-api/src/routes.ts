@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import * as ann from './annotations.js'
 import * as alerts from './alerts.js'
+import * as sym from './symbols.js'
 import { healthCheck } from './db.js'
 import { getClientCount, getSubscriptionCount } from './signalBus.js'
 
@@ -95,6 +96,31 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: { id: string } }>('/api/alerts/:id', async (req) => {
     await alerts.deleteAlert(req.params.id)
+    return { ok: true }
+  })
+
+  // ---- Symbols ----
+
+  app.get<{ Querystring: { q?: string; type?: string } }>('/api/symbols', async (req) => {
+    if (req.query.q) return sym.searchSymbols(req.query.q)
+    return sym.listSymbols(req.query.type)
+  })
+
+  app.post('/api/symbols', async (req) => {
+    await sym.upsertSymbol(req.body as any)
+    return { ok: true }
+  })
+
+  // ---- Recents ----
+
+  app.get<{ Querystring: { session?: string } }>('/api/recents', async (req) => {
+    return sym.getRecents(req.query.session ?? 'default')
+  })
+
+  app.post<{ Querystring: { session?: string } }>('/api/recents', async (req) => {
+    const body = req.body as any
+    if (!body.symbol) return { error: 'symbol required' }
+    await sym.touchRecent(body.symbol, req.query.session ?? 'default')
     return { ok: true }
   })
 }

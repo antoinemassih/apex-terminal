@@ -47,6 +47,87 @@ async function migrate() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_alert_rules_symbol ON alert_rules (symbol) WHERE active = true`)
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_alert_rules_annotation ON alert_rules (annotation_id)`)
 
+  // Symbols catalog: known symbols with metadata
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS symbols (
+      symbol          VARCHAR(20) PRIMARY KEY,
+      name            VARCHAR(100),
+      type            VARCHAR(20) NOT NULL DEFAULT 'stock',
+      exchange        VARCHAR(20),
+      sector          VARCHAR(50),
+      metadata        JSONB NOT NULL DEFAULT '{}',
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols (type)`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_symbols_name_search ON symbols USING GIN (to_tsvector('english', name))`)
+
+  // Recent symbols per user/session
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recent_symbols (
+      id              SERIAL PRIMARY KEY,
+      session_id      VARCHAR(50) NOT NULL DEFAULT 'default',
+      symbol          VARCHAR(20) NOT NULL,
+      accessed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_recent_session ON recent_symbols (session_id, accessed_at DESC)`)
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recent_unique ON recent_symbols (session_id, symbol)`)
+
+  // Seed popular symbols if empty
+  const symbolCount = await pool.query(`SELECT COUNT(*) FROM symbols`)
+  if (parseInt(symbolCount.rows[0].count) === 0) {
+    const seeds = [
+      ['AAPL', 'Apple Inc.', 'stock', 'NASDAQ', 'Technology'],
+      ['MSFT', 'Microsoft Corporation', 'stock', 'NASDAQ', 'Technology'],
+      ['GOOG', 'Alphabet Inc.', 'stock', 'NASDAQ', 'Technology'],
+      ['AMZN', 'Amazon.com Inc.', 'stock', 'NASDAQ', 'Consumer Cyclical'],
+      ['META', 'Meta Platforms Inc.', 'stock', 'NASDAQ', 'Technology'],
+      ['NVDA', 'NVIDIA Corporation', 'stock', 'NASDAQ', 'Technology'],
+      ['TSLA', 'Tesla Inc.', 'stock', 'NASDAQ', 'Consumer Cyclical'],
+      ['AMD', 'Advanced Micro Devices', 'stock', 'NASDAQ', 'Technology'],
+      ['NFLX', 'Netflix Inc.', 'stock', 'NASDAQ', 'Communication'],
+      ['CRM', 'Salesforce Inc.', 'stock', 'NYSE', 'Technology'],
+      ['SPY', 'S&P 500 ETF', 'etf', 'NYSE', null],
+      ['QQQ', 'Nasdaq-100 ETF', 'etf', 'NASDAQ', null],
+      ['IWM', 'Russell 2000 ETF', 'etf', 'NYSE', null],
+      ['DIA', 'Dow Jones ETF', 'etf', 'NYSE', null],
+      ['VIX', 'CBOE Volatility Index', 'index', 'CBOE', null],
+      ['JPM', 'JPMorgan Chase & Co.', 'stock', 'NYSE', 'Financial'],
+      ['BAC', 'Bank of America Corp.', 'stock', 'NYSE', 'Financial'],
+      ['GS', 'Goldman Sachs Group', 'stock', 'NYSE', 'Financial'],
+      ['V', 'Visa Inc.', 'stock', 'NYSE', 'Financial'],
+      ['MA', 'Mastercard Inc.', 'stock', 'NYSE', 'Financial'],
+      ['XOM', 'Exxon Mobil Corporation', 'stock', 'NYSE', 'Energy'],
+      ['CVX', 'Chevron Corporation', 'stock', 'NYSE', 'Energy'],
+      ['COIN', 'Coinbase Global Inc.', 'stock', 'NASDAQ', 'Financial'],
+      ['MARA', 'Marathon Digital Holdings', 'stock', 'NASDAQ', 'Technology'],
+      ['SQ', 'Block Inc.', 'stock', 'NYSE', 'Technology'],
+      ['BTC-USD', 'Bitcoin USD', 'crypto', null, null],
+      ['ETH-USD', 'Ethereum USD', 'crypto', null, null],
+      ['SOL-USD', 'Solana USD', 'crypto', null, null],
+      ['PLTR', 'Palantir Technologies', 'stock', 'NYSE', 'Technology'],
+      ['INTC', 'Intel Corporation', 'stock', 'NASDAQ', 'Technology'],
+      ['UBER', 'Uber Technologies', 'stock', 'NYSE', 'Technology'],
+      ['SNAP', 'Snap Inc.', 'stock', 'NYSE', 'Communication'],
+      ['ROKU', 'Roku Inc.', 'stock', 'NASDAQ', 'Communication'],
+      ['RIVN', 'Rivian Automotive', 'stock', 'NASDAQ', 'Consumer Cyclical'],
+      ['SOFI', 'SoFi Technologies', 'stock', 'NASDAQ', 'Financial'],
+      ['ARM', 'Arm Holdings', 'stock', 'NASDAQ', 'Technology'],
+      ['SMCI', 'Super Micro Computer', 'stock', 'NASDAQ', 'Technology'],
+      ['AVGO', 'Broadcom Inc.', 'stock', 'NASDAQ', 'Technology'],
+      ['PANW', 'Palo Alto Networks', 'stock', 'NASDAQ', 'Technology'],
+      ['CRWD', 'CrowdStrike Holdings', 'stock', 'NASDAQ', 'Technology'],
+    ]
+    for (const [sym, name, type, exchange, sector] of seeds) {
+      await pool.query(
+        'INSERT INTO symbols (symbol, name, type, exchange, sector) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+        [sym, name, type, exchange, sector]
+      )
+    }
+    console.info(`Seeded ${seeds.length} symbols`)
+  }
+
   // Migrate old drawings table data if it exists
   const oldTable = await pool.query(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'drawings')`)
   if (oldTable.rows[0].exists) {

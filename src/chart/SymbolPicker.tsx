@@ -2,35 +2,50 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { getTheme } from '../themes'
 import { useChartStore } from '../store/chartStore'
 
-const POPULAR = [
-  'AAPL', 'MSFT', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA', 'AMD', 'NFLX', 'CRM',
-  'SPY', 'QQQ', 'IWM', 'DIA', 'VIX',
-  'JPM', 'BAC', 'GS', 'V', 'MA',
-  'XOM', 'CVX', 'COIN', 'MARA', 'SQ',
-  'BTC-USD', 'ETH-USD', 'SOL-USD',
-]
+const OCOCO_API = 'http://192.168.1.60:30300'
 
-const RECENT_KEY = 'apex-recent-symbols'
-const MAX_RECENT = 12
+interface SymbolInfo {
+  symbol: string
+  name: string | null
+  type?: string
+}
 
-function getRecent(): string[] {
+async function apiSearch(q: string): Promise<SymbolInfo[]> {
   try {
-    const raw = localStorage.getItem(RECENT_KEY)
-    return raw ? JSON.parse(raw) : []
+    const res = await fetch(`${OCOCO_API}/api/symbols?q=${encodeURIComponent(q)}`)
+    if (!res.ok) return []
+    return res.json()
   } catch { return [] }
 }
 
-function addRecent(symbol: string): void {
-  const recent = getRecent().filter(s => s !== symbol)
-  recent.unshift(symbol)
-  if (recent.length > MAX_RECENT) recent.length = MAX_RECENT
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)) } catch { /* */ }
+async function apiRecents(): Promise<SymbolInfo[]> {
+  try {
+    const res = await fetch(`${OCOCO_API}/api/recents`)
+    if (!res.ok) return []
+    return res.json()
+  } catch { return [] }
+}
+
+async function apiTouchRecent(symbol: string): Promise<void> {
+  try {
+    await fetch(`${OCOCO_API}/api/recents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol }),
+    })
+  } catch { /* */ }
+}
+
+async function apiAllSymbols(): Promise<SymbolInfo[]> {
+  try {
+    const res = await fetch(`${OCOCO_API}/api/symbols`)
+    if (!res.ok) return []
+    return res.json()
+  } catch { return [] }
 }
 
 interface Props {
-  /** Which pane to change symbol on */
   paneId: string
-  /** Position anchor for the dropdown */
   anchorX: number
   anchorY: number
   onClose: () => void
@@ -38,12 +53,21 @@ interface Props {
 
 export function SymbolPicker({ paneId, anchorX, anchorY, onClose }: Props) {
   const [query, setQuery] = useState('')
-  const [recent] = useState(getRecent)
+  const [results, setResults] = useState<SymbolInfo[]>([])
+  const [recents, setRecents] = useState<SymbolInfo[]>([])
+  const [popular, setPopular] = useState<SymbolInfo[]>([])
+  const [loading, setLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const theme = getTheme(useChartStore(s => s.theme))
   const { setSymbol } = useChartStore()
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  // Load recents + popular on open
+  useEffect(() => {
+    inputRef.current?.focus()
+    apiRecents().then(setRecents)
+    apiAllSymbols().then(all => setPopular(all.slice(0, 30)))
+  }, [])
 
   // Close on escape or click outside
   useEffect(() => {
@@ -60,82 +84,85 @@ export function SymbolPicker({ paneId, anchorX, anchorY, onClose }: Props) {
     }
   }, [onClose])
 
+  // Debounced search
+  useEffect(() => {
+    if (query.length === 0) { setResults([]); return }
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    setLoading(true)
+    searchTimer.current = setTimeout(() => {
+      apiSearch(query).then(r => { setResults(r); setLoading(false) })
+    }, 150)
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current) }
+  }, [query])
+
   const select = useCallback((sym: string) => {
     const s = sym.trim().toUpperCase()
     if (!s) return
     setSymbol(paneId, s)
-    addRecent(s)
+    apiTouchRecent(s)
     onClose()
   }, [paneId, setSymbol, onClose])
-
-  const q = query.toUpperCase()
-  const filtered = q.length > 0
-    ? POPULAR.filter(s => s.includes(q))
-    : []
 
   const bg = theme.toolbarBackground
   const border = theme.toolbarBorder
   const text = theme.ohlcLabel
   const accent = theme.borderActive
+  const dim = theme.axisText
 
   return (
     <div id="symbol-picker" style={{
-      position: 'fixed', left: anchorX, top: anchorY,
-      width: 220, maxHeight: 340, overflow: 'hidden',
+      position: 'fixed', left: Math.min(anchorX, window.innerWidth - 260), top: anchorY,
+      width: 250, maxHeight: 380, overflow: 'hidden',
       background: bg, border: `1px solid ${border}`, borderRadius: 4,
       boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
       zIndex: 10000, fontFamily: 'monospace', fontSize: 11,
       display: 'flex', flexDirection: 'column',
     }}
     onMouseDown={e => e.stopPropagation()}>
-      {/* Search input */}
       <div style={{ padding: '6px 8px', borderBottom: `1px solid ${border}` }}>
         <input ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && query.trim()) select(query)
-          }}
-          placeholder="Search symbol..."
+          onKeyDown={e => { if (e.key === 'Enter' && query.trim()) select(query) }}
+          placeholder="Search symbols..."
           style={{
             width: '100%', background: theme.background, color: text,
             border: `1px solid ${border}`, borderRadius: 3,
-            padding: '4px 8px', fontSize: 12, fontFamily: 'monospace',
-            outline: 'none',
+            padding: '5px 8px', fontSize: 12, fontFamily: 'monospace', outline: 'none',
           }}
         />
       </div>
 
       <div style={{ overflowY: 'auto', flex: 1 }}>
         {/* Search results */}
-        {q.length > 0 && (
+        {query.length > 0 && (
           <>
-            {filtered.map(s => (
-              <Item key={s} symbol={s} accent={accent} text={text} bg={bg} onSelect={select} />
+            {loading && <div style={{ padding: '6px 8px', color: dim }}>Searching...</div>}
+            {!loading && results.map(s => (
+              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg} onSelect={select} />
             ))}
-            {/* Always show typed query as an option */}
-            {!filtered.includes(q) && q.length >= 1 && (
-              <Item symbol={q} accent={accent} text={text} bg={bg} onSelect={select} suffix="(custom)" />
+            {!loading && results.length === 0 && query.length >= 1 && (
+              <Item symbol={query.toUpperCase()} name="Custom symbol" accent={accent} text={text} dim={dim} bg={bg} onSelect={select} />
             )}
           </>
         )}
 
-        {/* Recent (only when not searching) */}
-        {q.length === 0 && recent.length > 0 && (
+        {/* Recents */}
+        {query.length === 0 && recents.length > 0 && (
           <>
-            <div style={{ padding: '4px 8px', color: accent, fontSize: 9, letterSpacing: 1 }}>RECENT</div>
-            {recent.map(s => (
-              <Item key={s} symbol={s} accent={accent} text={text} bg={bg} onSelect={select} />
+            <div style={{ padding: '5px 8px 2px', color: accent, fontSize: 9, letterSpacing: 1 }}>RECENT</div>
+            {recents.map(s => (
+              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg} onSelect={select} />
             ))}
           </>
         )}
 
-        {/* Popular (only when not searching) */}
-        {q.length === 0 && (
+        {/* Popular */}
+        {query.length === 0 && popular.length > 0 && (
           <>
-            <div style={{ padding: '4px 8px', color: accent, fontSize: 9, letterSpacing: 1, marginTop: 4 }}>POPULAR</div>
-            {POPULAR.slice(0, 20).map(s => (
-              <Item key={s} symbol={s} accent={accent} text={text} bg={bg} onSelect={select} />
+            <div style={{ padding: '5px 8px 2px', color: accent, fontSize: 9, letterSpacing: 1, marginTop: 2 }}>ALL SYMBOLS</div>
+            {popular.map(s => (
+              <Item key={s.symbol} symbol={s.symbol} name={s.name} accent={accent} text={text} dim={dim} bg={bg} onSelect={select} />
             ))}
           </>
         )}
@@ -144,8 +171,8 @@ export function SymbolPicker({ paneId, anchorX, anchorY, onClose }: Props) {
   )
 }
 
-function Item({ symbol, accent, text, bg, onSelect, suffix }: {
-  symbol: string; accent: string; text: string; bg: string; onSelect: (s: string) => void; suffix?: string
+function Item({ symbol, name, accent, text, dim, bg, onSelect }: {
+  symbol: string; name: string | null; accent: string; text: string; dim: string; bg: string; onSelect: (s: string) => void
 }) {
   const [hover, setHover] = useState(false)
   return (
@@ -157,10 +184,10 @@ function Item({ symbol, accent, text, bg, onSelect, suffix }: {
         padding: '4px 8px', cursor: 'pointer',
         background: hover ? accent + '22' : bg,
         color: hover ? accent : text,
-        display: 'flex', justifyContent: 'space-between',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
-      <span>{symbol}</span>
-      {suffix && <span style={{ color: '#555', fontSize: 9 }}>{suffix}</span>}
+      <span style={{ fontWeight: 'bold' }}>{symbol}</span>
+      {name && <span style={{ color: dim, fontSize: 9, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>}
     </div>
   )
 }
