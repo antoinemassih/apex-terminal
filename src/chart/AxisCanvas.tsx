@@ -90,9 +90,9 @@ export function AxisCanvas({ cs, data, viewStart, width, height }: Props) {
     const firstLabel = Math.ceil(firstVisibleTime / interval) * interval
 
     // Walk through round time boundaries and find their bar positions
+    const lastVisibleTime = data.times[Math.min(viewStart + cs.barCount, data.length) - 1] ?? firstVisibleTime
     ctx.textAlign = 'center'
-    for (let t = firstLabel; ; t += interval) {
-      // Binary search for the bar closest to this time
+    for (let t = firstLabel; t <= lastVisibleTime + interval; t += interval) {
       const barIdx = data.indexAtTime(t)
       const viewIdx = barIdx - viewStart
       if (viewIdx < 0) continue
