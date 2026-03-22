@@ -20,7 +20,7 @@ async function bootstrap() {
   await barCache.init()
 
   // Drawing persistence: OCOCO API → Tauri IPC → IndexedDB (fallback chain)
-  const OCOCO_API = 'http://ococo-dev.xllio.com'
+  const OCOCO_API = 'http://192.168.1.60:30300'
   let drawingRepo: OcocoClient | TauriDrawingRepository | LocalDrawingRepository
   // Store OCOCO client globally for WS signal subscription from chart panes
   ;(window as any).__ococoClient = null as OcocoClient | null
