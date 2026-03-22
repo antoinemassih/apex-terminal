@@ -52,10 +52,13 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     paneRef.current?.resize(width, height)
   }, [width, height])
 
-  // Load data + subscribe to updates
+  // Load data + subscribe to feed + subscribe to updates
   useEffect(() => {
     const ds = getDataStore()
     const feed = getFeed()
+
+    // Subscribe this symbol+timeframe to the feed so ticks arrive
+    feed.subscribe(symbol, timeframe)
 
     // Load historical data, then seed simulation
     ds.load(symbol, timeframe).then(({ data: store }) => {
@@ -65,12 +68,17 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     }).catch(err => console.error(`Failed to load ${symbol}:${timeframe}:`, err))
 
     // Subscribe to data changes → push to PaneContext
-    return ds.subscribe(symbol, timeframe, () => {
+    const unsub = ds.subscribe(symbol, timeframe, () => {
       const d = ds.getData(symbol, timeframe)
       const indicators = ds.getIndicators(symbol, timeframe)
       const action = ds.getLastAction(symbol, timeframe)
       if (d && indicators) paneRef.current?.setData(d, indicators, action)
     })
+
+    return () => {
+      unsub()
+      feed.unsubscribe(symbol, timeframe)
+    }
   }, [symbol, timeframe])
 
   // Push viewport to PaneContext when it changes
