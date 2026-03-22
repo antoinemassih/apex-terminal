@@ -8,8 +8,7 @@ export function FrameStats() {
   useEffect(() => {
     const id = setInterval(() => {
       try {
-        const s = getRenderEngine().scheduler.getStats()
-        setStats(s)
+        setStats(getRenderEngine().scheduler.getStats())
       } catch {
         // Engine not ready yet
       }
@@ -28,14 +27,14 @@ export function FrameStats() {
       background: 'rgba(0,0,0,0.75)',
       color: '#0f0',
       fontFamily: 'monospace',
-      fontSize: 11,
-      lineHeight: '16px',
+      fontSize: 10,
+      lineHeight: '14px',
       borderRadius: 4,
       zIndex: 9999,
       pointerEvents: 'none',
       whiteSpace: 'nowrap',
     }}>
-      {stats.fps.toFixed(0)} fps &middot; {stats.frameTimeMs.toFixed(1)}ms &middot; peak {stats.frameTimePeak.toFixed(1)}ms &middot; {stats.dirtyPanes} dirty
+      {stats.updatesPerSec} upd/s &middot; {stats.renderTimeMs.toFixed(1)}ms &middot; peak {stats.renderTimePeak.toFixed(1)}ms &middot; {stats.panesRendered}/{stats.panesTotal}
     </div>
   )
 }

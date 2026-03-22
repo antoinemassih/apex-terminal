@@ -10,13 +10,18 @@ export class FrameScheduler {
   private paused = false
   private device: GPUDevice
 
-  private frameTimes = new Float64Array(RING_SIZE)
-  private frameIdx = 0
-  private lastFrameTime = 0
-  private lastDirtyCount = 0
+  // Timing: render duration (not inter-frame gap)
+  private renderTimes = new Float64Array(RING_SIZE)
+  private renderIdx = 0
+  private lastRenderPanes = 0
+  // Update rate tracking
+  private frameCount = 0
+  private frameCountStart = 0
+  private updatesPerSec = 0
 
   constructor(device: GPUDevice) {
     this.device = device
+    this.frameCountStart = performance.now()
   }
 
   addPane(pane: PaneContext): void { this.panes.set(pane.id, pane) }
@@ -54,38 +59,37 @@ export class FrameScheduler {
   }
 
   getStats(): FrameStats {
-    const filled = Math.min(this.frameIdx, RING_SIZE)
-    if (filled === 0) return { fps: 0, frameTimeMs: 0, frameTimePeak: 0, dirtyPanes: this.lastDirtyCount }
-
-    let sum = 0
-    let peak = 0
-    for (let i = 0; i < filled; i++) {
-      const t = this.frameTimes[i]
-      sum += t
-      if (t > peak) peak = t
+    const filled = Math.min(this.renderIdx, RING_SIZE)
+    let avg = 0, peak = 0
+    if (filled > 0) {
+      let sum = 0
+      for (let i = 0; i < filled; i++) {
+        const t = this.renderTimes[i]
+        sum += t
+        if (t > peak) peak = t
+      }
+      avg = sum / filled
     }
-    const avg = sum / filled
-    const fps = avg > 0 ? 1000 / avg : 0
 
-    return { fps, frameTimeMs: avg, frameTimePeak: peak, dirtyPanes: this.lastDirtyCount }
+    return {
+      updatesPerSec: this.updatesPerSec,
+      renderTimeMs: avg,
+      renderTimePeak: peak,
+      panesRendered: this.lastRenderPanes,
+      panesTotal: this.panes.size,
+    }
   }
 
   private tick(): void {
     this.rafId = null
 
-    // Record frame timing
-    const now = performance.now()
-    if (this.lastFrameTime > 0) {
-      this.frameTimes[this.frameIdx % RING_SIZE] = now - this.lastFrameTime
-      this.frameIdx++
-    }
-    this.lastFrameTime = now
-
     if (this.paused) {
-      // Keep loop alive during recovery so resume() doesn't need to restart
       if (this.running) this.rafId = requestAnimationFrame(() => this.tick())
       return
     }
+
+    // Measure render time (not gap between frames)
+    const t0 = performance.now()
 
     const commandBuffers: GPUCommandBuffer[] = []
     let dirtyCount = 0
@@ -95,18 +99,32 @@ export class FrameScheduler {
       dirtyCount++
       this.renderPane(id, commandBuffers)
     }
-    this.lastDirtyCount = dirtyCount
+    this.lastRenderPanes = dirtyCount
 
     if (commandBuffers.length > 0) {
       try {
         this.device.queue.submit(commandBuffers)
       } catch (e) {
         console.error('GPU submit failed:', e)
-        // Don't crash — device.lost will fire and trigger recovery
       }
     }
 
-    // Schedule next frame only if there's still dirty work or running continuously
+    const t1 = performance.now()
+    if (dirtyCount > 0) {
+      this.renderTimes[this.renderIdx % RING_SIZE] = t1 - t0
+      this.renderIdx++
+
+      // Update rate: count frames in 1-second windows
+      this.frameCount++
+      const elapsed = t1 - this.frameCountStart
+      if (elapsed >= 1000) {
+        this.updatesPerSec = Math.round(this.frameCount * 1000 / elapsed)
+        this.frameCount = 0
+        this.frameCountStart = t1
+      }
+    }
+
+    // Schedule next frame only if there's still dirty work
     let hasDirty = false
     for (const pane of this.panes.values()) {
       if (pane.dirty) { hasDirty = true; break }
@@ -123,7 +141,7 @@ export class FrameScheduler {
       pane.dirty = false
     } catch (e) {
       console.warn(`Pane ${id} render failed:`, e)
-      pane.dirty = false // don't retry broken frame endlessly
+      pane.dirty = false
     }
   }
 }
