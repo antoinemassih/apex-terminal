@@ -1,0 +1,21 @@
+app: ococo
+domain: ococo
+
+services:
+  api:
+    dockerfile: ococo-api/Dockerfile
+    port: 3000
+    env_secret: ococo-api-env
+    health: /api/health
+    routes:
+      - path: /
+
+infrastructure:
+  postgresql:
+    type: ExternalName
+    host: 192.168.1.143
+    port: 5432
+  redis:
+    type: ExternalName
+    host: 192.168.1.89
+    port: 6379
