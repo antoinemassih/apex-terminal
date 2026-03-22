@@ -87,6 +87,15 @@ async function getSymbols(): Promise<string[]> {
 
 /** Full ingestion + detection cycle for all symbols */
 export async function runIngestionCycle(): Promise<void> {
+  // Check if yfinance sidecar is reachable before running
+  try {
+    const health = await fetch(`${YFINANCE_URL}/health`, { signal: AbortSignal.timeout(2000) })
+    if (!health.ok) { console.info('Ingestion skipped: yfinance not reachable'); return }
+  } catch {
+    console.info('Ingestion skipped: yfinance not reachable')
+    return
+  }
+
   const symbols = await getSymbols()
   console.info(`Ingestion cycle starting for ${symbols.length} symbols`)
 
