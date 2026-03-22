@@ -74,7 +74,7 @@ const OCOCO_API = 'http://192.168.1.60:30300'
 export class YFinanceProvider implements DataProvider {
   readonly name = 'yfinance + influx'
 
-  private subscriptions = new Map<string, { symbol: string; timeframe: string; simTime: number; tickCount: number }>()
+  private subscriptions = new Map<string, { symbol: string; timeframe: string; simTime: number; baseTime: number; tickCount: number }>()
   private tickCb: ((symbol: string, tf: string, tick: TickData) => void) | null = null
   private disconnectListeners = new Set<() => void>()
   private reconnectListeners = new Set<() => void>()
@@ -151,7 +151,8 @@ export class YFinanceProvider implements DataProvider {
   subscribe(symbol: string, timeframe: string): void {
     const key = `${symbol}:${timeframe}`
     if (!this.subscriptions.has(key)) {
-      this.subscriptions.set(key, { symbol, timeframe, simTime: Date.now() / 1000, tickCount: 0 })
+      const now = Date.now() / 1000
+      this.subscriptions.set(key, { symbol, timeframe, simTime: now, baseTime: now, tickCount: 0 })
     }
   }
 
@@ -191,12 +192,13 @@ export class YFinanceProvider implements DataProvider {
     const key = `${symbol}:${timeframe}`
     this.lastPrices.set(key, price)
     const sub = this.subscriptions.get(key)
-    if (sub) sub.simTime = time
+    if (sub) {
+      sub.simTime = time
+      sub.baseTime = time // anchor base to last historical bar
+    }
   }
 
   private tick(): void {
-    const now = Date.now() / 1000 // real wall-clock time
-
     for (const [key, sub] of this.subscriptions) {
       const lastPrice = this.lastPrices.get(key) ?? 100
       const tf = TF_TO_INTERVAL[sub.timeframe as keyof typeof TF_TO_INTERVAL]
@@ -207,12 +209,18 @@ export class YFinanceProvider implements DataProvider {
       const volume = Math.random() * 500
 
       sub.tickCount++
-      // Use real wall-clock time so simulated bars stay in sync with real timestamps
-      // This means the chart shows "now" and trendlines on historical bars are visible
+      // Advance simTime from the last historical bar
+      // Creates new candles every ~1 second real time (20 ticks × 50ms)
+      // Caps drift to 50 candles past the last historical bar to keep
+      // trendlines (which are on historical timestamps) in the viewport
+      const MAX_SIM_CANDLES = 50
+      const baseTime = sub.baseTime ?? sub.simTime
+      const maxTime = baseTime + tf.seconds * MAX_SIM_CANDLES
+
       if (sub.tickCount % 20 === 0) {
-        sub.simTime = now // snap to real time on candle boundary
+        sub.simTime = Math.min(sub.simTime + tf.seconds, maxTime)
       } else {
-        sub.simTime = now // always use real time
+        sub.simTime = Math.min(sub.simTime + tf.seconds / 20, maxTime)
       }
 
       this.lastPrices.set(key, price)
