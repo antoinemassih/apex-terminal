@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import * as ann from './annotations.js'
 import * as alerts from './alerts.js'
 import * as sym from './symbols.js'
-import { runTrendlineDetection } from './trendlines.js'
+import { runAdvancedDetection, DEFAULT_CONFIG, type DetectionConfig } from './trendlines-v2.js'
 import { runIngestionCycle, ingestSingle } from './ingest.js'
 import { readBars, barCount } from './influx.js'
 import { healthCheck } from './db.js'
@@ -133,44 +133,49 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // ---- Trendline Detection ----
 
+  app.get('/api/trendlines/config', async () => {
+    return DEFAULT_CONFIG
+  })
+
   app.post<{ Querystring: { symbol?: string } }>('/api/trendlines/detect', async (req, reply) => {
     const symbol = req.query.symbol
     if (!symbol) return reply.code(400).send({ error: 'symbol required' })
+    const customConfig = req.body ? { ...DEFAULT_CONFIG, ...(req.body as any) } : DEFAULT_CONFIG
 
-    // Read bars from InfluxDB (server-side data)
+    // Read bars from InfluxDB first
     const barsMap: Record<string, any[]> = {}
-    for (const tf of ['1h', '4h', '1d', '1wk']) {
+    for (const tf of ['15m', '30m', '1h', '4h', '1d', '1wk']) {
       try {
         const bars = await readBars(symbol, tf, { start: tf === '1wk' ? '-10y' : tf === '1d' ? '-2y' : '-3mo' })
         if (bars.length > 20) barsMap[tf] = bars
-      } catch (e) {
-        console.warn(`Failed to read ${tf} bars for ${symbol} from InfluxDB:`, e)
-      }
+      } catch { /* */ }
     }
 
-    // Fallback to yfinance if InfluxDB is empty
+    // Fallback to yfinance
     if (Object.keys(barsMap).length === 0) {
       const timeframes = [
+        { tf: '15m', interval: '15m', period: '5d' },
+        { tf: '30m', interval: '30m', period: '5d' },
         { tf: '1h', interval: '1h', period: '1mo' },
         { tf: '4h', interval: '1h', period: '3mo' },
         { tf: '1d', interval: '1d', period: '1y' },
         { tf: '1wk', interval: '1wk', period: '5y' },
       ]
-      for (const config of timeframes) {
+      for (const c of timeframes) {
         try {
-          const url = `http://127.0.0.1:8777/bars?symbol=${symbol}&interval=${config.interval}&period=${config.period}`
+          const url = `http://127.0.0.1:8777/bars?symbol=${symbol}&interval=${c.interval}&period=${c.period}`
           const resp = await fetch(url)
           if (resp.ok) {
             let bars = await resp.json() as any[]
-            if (config.tf === '4h') bars = aggregate4h(bars)
-            barsMap[config.tf] = bars
+            if (c.tf === '4h') bars = aggregate4h(bars)
+            barsMap[c.tf] = bars
           }
-        } catch { /* yfinance not reachable */ }
+        } catch { /* */ }
       }
     }
 
-    await runTrendlineDetection(symbol, barsMap)
-    return { ok: true, timeframes: Object.keys(barsMap).map(k => `${k}: ${barsMap[k].length} bars`) }
+    const result = await runAdvancedDetection(symbol, barsMap, customConfig)
+    return { ok: true, ...result, timeframes: Object.keys(barsMap).map(k => `${k}: ${barsMap[k].length} bars`) }
   })
 
   // ---- Data Ingestion ----

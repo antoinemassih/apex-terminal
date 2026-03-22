@@ -28,6 +28,12 @@ export interface AnnotationFilters {
   resistance: boolean
   // Channels
   channel: boolean
+  // By method
+  pivot: boolean
+  regression: boolean
+  fractal: boolean
+  volume: boolean
+  density: boolean
   // User drawings
   user: boolean
 }
@@ -36,7 +42,9 @@ const DEFAULT_FILTERS: AnnotationFilters = {
   '15m': true, '30m': true, '1H': true, '4H': true, '1D': true, '1W': true,
   wick: true, body: true,
   support: true, resistance: true,
-  channel: true, user: true,
+  channel: true,
+  pivot: true, regression: true, fractal: true, volume: true, density: true,
+  user: true,
 }
 
 interface ChartStore {

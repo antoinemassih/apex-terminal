@@ -30,6 +30,16 @@ const SECTIONS: { label: string; items: { key: keyof AnnotationFilters; label: s
     ],
   },
   {
+    label: 'Method',
+    items: [
+      { key: 'pivot', label: 'Pivot-based' },
+      { key: 'regression', label: 'Linear Regression' },
+      { key: 'fractal', label: 'Fractal (Williams)' },
+      { key: 'volume', label: 'Volume-weighted' },
+      { key: 'density', label: 'Touch Density' },
+    ],
+  },
+  {
     label: 'Other',
     items: [
       { key: 'user', label: 'My drawings' },

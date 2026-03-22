@@ -7,7 +7,7 @@
  * Also triggers trendline detection after ingestion.
  */
 import { writeBars, readBars } from './influx.js';
-import { runTrendlineDetection } from './trendlines.js';
+import { runAdvancedDetection } from './trendlines-v2.js';
 import { query } from './db.js';
 const YFINANCE_URL = process.env.YFINANCE_URL ?? 'http://127.0.0.1:8777';
 const INTERVALS = [
@@ -88,7 +88,7 @@ export async function runIngestionCycle() {
                 if (bars.length > 20)
                     barsMap[tf] = bars;
             }
-            await runTrendlineDetection(symbol, barsMap);
+            await runAdvancedDetection(symbol, barsMap);
         }
         catch (e) {
             console.error(`  ${symbol}: ingestion failed:`, e);
@@ -114,7 +114,7 @@ export async function ingestSingle(symbol) {
         }
     }
     // Run detection with the bars we just fetched (not from InfluxDB)
-    await runTrendlineDetection(symbol, barsMap);
+    await runAdvancedDetection(symbol, barsMap);
     const counts = {};
     for (const [k, v] of Object.entries(barsMap))
         counts[k] = v.length;

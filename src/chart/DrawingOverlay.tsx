@@ -276,6 +276,12 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       if (tags.includes('support') && !annotationFilters.support) continue
       if (tags.includes('resistance') && !annotationFilters.resistance) continue
       if (tags.includes('channel') && !annotationFilters.channel) continue
+      // Method filters
+      if (tags.includes('pivot') && !annotationFilters.pivot) continue
+      if (tags.includes('regression') && !annotationFilters.regression) continue
+      if (tags.includes('fractal') && !annotationFilters.fractal) continue
+      if (tags.includes('volume') && !annotationFilters.volume) continue
+      if (tags.includes('density') && !annotationFilters.density) continue
 
       const style = ann.style ?? {}
       ctx.globalAlpha = style.opacity ?? 0.5
@@ -291,15 +297,17 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
         ctx.lineTo(p1.x, p1.y)
         ctx.stroke()
 
-        // Label
+        // Label with strength score
         const meta = ann.metadata ?? {}
         if (meta.label) {
+          const strength = meta.strength?.total ?? Math.round((ann.strength ?? 0) * 100)
+          const labelText = `${meta.label} [${strength}]`
           ctx.font = '8px monospace'
           ctx.fillStyle = style.color ?? '#888'
           ctx.globalAlpha = 0.7
           const mx = (p0.x + p1.x) / 2
           const my = (p0.y + p1.y) / 2
-          ctx.fillText(meta.label, mx + 4, my - 4)
+          ctx.fillText(labelText, mx + 4, my - 4)
         }
       }
 
