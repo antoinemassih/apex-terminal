@@ -131,6 +131,42 @@ export class ColumnStore {
     return { min, max }
   }
 
+  /** Prepend older bars at the beginning. Returns count actually prepended. */
+  prepend(bars: Bar[]): number {
+    if (bars.length === 0) return 0
+    // Limit: don't exceed MAX_CAPACITY
+    const maxPrepend = Math.max(0, MAX_CAPACITY - this.length)
+    const actualBars = bars.length <= maxPrepend ? bars : bars.slice(-maxPrepend)
+    if (actualBars.length === 0) return 0
+
+    const newLen = this.length + actualBars.length
+    const names = ['times', 'opens', 'highs', 'lows', 'closes', 'volumes'] as const
+    const barKeys = ['time', 'open', 'high', 'low', 'close', 'volume'] as const
+
+    if (newLen > this.capacity) {
+      const newCap = Math.min(Math.max(newLen, this.capacity * 2), MAX_CAPACITY)
+      for (const name of names) {
+        const old = this[name]
+        const arr = new Float64Array(newCap)
+        arr.set(old.subarray(0, this.length), actualBars.length)
+        this[name] = arr
+      }
+      this.capacity = newCap
+    } else {
+      for (const name of names) {
+        this[name].copyWithin(actualBars.length, 0, this.length)
+      }
+    }
+
+    for (let i = 0; i < actualBars.length; i++) {
+      for (let j = 0; j < names.length; j++) {
+        this[names[j]][i] = actualBars[i][barKeys[j] as keyof Bar] as number
+      }
+    }
+    this.length = newLen
+    return actualBars.length
+  }
+
   indexAtTime(time: number): number {
     let lo = 0, hi = this.length - 1
     while (lo <= hi) {

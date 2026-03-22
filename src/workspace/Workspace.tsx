@@ -29,7 +29,7 @@ export function Workspace() {
       gridTemplateColumns: `repeat(${cols}, 1fr)`,
       width: '100%', height: '100%', background: '#0a0a0a', gap: 1,
     }}>
-      {panes.map(pane => (
+      {panes.map((pane, index) => (
         <div key={pane.id}
           onClick={() => setActivePane(pane.id)}
           style={{
@@ -37,7 +37,7 @@ export function Workspace() {
             overflow: 'hidden',
           }}>
           {paneW > 0 && paneH > 0 && (
-            <ChartPane symbol={pane.symbol} timeframe={pane.timeframe}
+            <ChartPane paneIndex={index} symbol={pane.symbol} timeframe={pane.timeframe}
               width={paneW - 2} height={paneH - 2} />
           )}
         </div>

@@ -1,6 +1,7 @@
 import './global.css'
 import { Toolbar } from './toolbar/Toolbar'
 import { Workspace } from './workspace/Workspace'
+import { FrameStats } from './chart/FrameStats'
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <Workspace />
       </div>
+      <FrameStats />
     </div>
   )
 }

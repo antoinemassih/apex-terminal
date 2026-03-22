@@ -1,13 +1,25 @@
 import { useState } from 'react'
 import { useChartStore } from '../store/chartStore'
 import { useDrawingStore } from '../store/drawingStore'
+import { INDICATOR_CATALOG } from '../indicators'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { Timeframe } from '../types'
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1d', '1wk']
 
+const toggleStyle = (active: boolean) => ({
+  background: active ? '#1a3a5c' : '#1a1a1a',
+  color: active ? '#4a9eff' : '#555',
+  border: `1px solid ${active ? '#2a5a8c' : '#333'}`,
+  borderRadius: 3,
+  padding: '2px 8px',
+  fontSize: 11,
+  fontFamily: 'monospace',
+  cursor: 'pointer' as const,
+})
+
 export function Toolbar() {
-  const { panes, activePane, setSymbol, setTimeframe, resetAutoScroll } = useChartStore()
+  const { panes, activePane, setSymbol, setTimeframe, resetAutoScroll, toggleVolume, toggleIndicator } = useChartStore()
   const { activeTool, setActiveTool } = useDrawingStore()
   const [symbolInput, setSymbolInput] = useState('')
   const pane = panes.find(p => p.id === activePane)
@@ -41,7 +53,26 @@ export function Toolbar() {
           </button>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 2, marginLeft: 12, borderLeft: '1px solid #333', paddingLeft: 12 }}>
+      {/* Indicator & Volume toggles */}
+      <div style={{ display: 'flex', gap: 2, marginLeft: 8, borderLeft: '1px solid #333', paddingLeft: 8 }}>
+        {Object.entries(INDICATOR_CATALOG).map(([id, { name }]) => {
+          const active = pane?.visibleIndicators?.includes(id) ?? false
+          return (
+            <button key={id}
+              onClick={() => activePane && toggleIndicator(activePane, id)}
+              style={toggleStyle(active)}>
+              {name}
+            </button>
+          )
+        })}
+        <button
+          onClick={() => activePane && toggleVolume(activePane)}
+          style={toggleStyle(pane?.showVolume ?? false)}>
+          VOL
+        </button>
+      </div>
+      {/* Drawing tools */}
+      <div style={{ display: 'flex', gap: 2, marginLeft: 8, borderLeft: '1px solid #333', paddingLeft: 8 }}>
         {(['cursor', 'trendline', 'hline'] as const).map(tool => (
           <button key={tool}
             onClick={() => setActiveTool(tool)}

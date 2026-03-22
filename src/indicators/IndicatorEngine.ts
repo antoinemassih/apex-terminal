@@ -1,21 +1,14 @@
-import { IncrementalSMA } from './incremental/sma'
-import { IncrementalEMA } from './incremental/ema'
-import { IncrementalBollinger } from './incremental/bollinger'
-import type { IndicatorSnapshot } from './types'
+import { INDICATOR_CATALOG } from './registry'
+import type { IncrementalIndicator, IndicatorSnapshot, IndicatorOutput } from './types'
 
-// Import ColumnStore type only
+interface SymbolState {
+  indicators: Map<string, IncrementalIndicator>  // id -> indicator
+}
+
 interface ColumnStoreLike {
   closes: Float64Array
   length: number
 }
-
-interface SymbolState {
-  sma20: IncrementalSMA
-  ema50: IncrementalEMA
-  bollinger: IncrementalBollinger
-}
-
-const INITIAL_CAPACITY = 2048
 
 export class IndicatorEngine {
   private state = new Map<string, SymbolState>()
@@ -23,19 +16,21 @@ export class IndicatorEngine {
 
   private key(symbol: string, tf: string): string { return `${symbol}:${tf}` }
 
-  bootstrap(symbol: string, timeframe: string, data: ColumnStoreLike): IndicatorSnapshot {
+  bootstrap(symbol: string, timeframe: string, data: ColumnStoreLike, indicatorIds?: string[]): IndicatorSnapshot {
     const k = this.key(symbol, timeframe)
-    const cap = Math.max(data.length + 512, INITIAL_CAPACITY)
-    const state: SymbolState = {
-      sma20: new IncrementalSMA(20, cap),
-      ema50: new IncrementalEMA(50, cap),
-      bollinger: new IncrementalBollinger(20, 2, cap),
+    const ids = indicatorIds ?? Object.keys(INDICATOR_CATALOG)
+    const indicators = new Map<string, IncrementalIndicator>()
+
+    for (const id of ids) {
+      const entry = INDICATOR_CATALOG[id]
+      if (!entry) { console.warn(`Unknown indicator: ${id}`); continue }
+      const ind = entry.factory()
+      ind.bootstrap(data.closes, data.length)
+      indicators.set(id, ind)
     }
-    state.sma20.bootstrap(data.closes, data.length)
-    state.ema50.bootstrap(data.closes, data.length)
-    state.bollinger.bootstrap(data.closes, data.length)
-    this.state.set(k, state)
-    return this.buildSnapshot(state)
+
+    this.state.set(k, { indicators })
+    return this.buildSnapshot(indicators)
   }
 
   onTick(symbol: string, timeframe: string, price: number, action: 'updated' | 'created'): IndicatorSnapshot {
@@ -43,24 +38,30 @@ export class IndicatorEngine {
     const state = this.state.get(k)
     if (!state) throw new Error(`No indicator state for ${k}`)
 
-    if (action === 'created') {
-      state.sma20.push(price)
-      state.ema50.push(price)
-      state.bollinger.push(price)
-    } else {
-      state.sma20.updateLast(price)
-      state.ema50.updateLast(price)
-      state.bollinger.updateLast(price)
+    for (const ind of state.indicators.values()) {
+      if (action === 'created') ind.push(price)
+      else ind.updateLast(price)
     }
 
-    const snapshot = this.buildSnapshot(state)
-    this.subscribers.get(k)?.forEach(cb => cb(snapshot))
+    const snapshot = this.buildSnapshot(state.indicators)
+    this.subscribers.get(k)?.forEach(cb => { try { cb(snapshot) } catch (_e) { /* swallow subscriber errors */ } })
     return snapshot
+  }
+
+  /** Get all outputs for rendering (flat list of IndicatorOutput) */
+  getOutputs(symbol: string, timeframe: string): IndicatorOutput[] {
+    const state = this.state.get(this.key(symbol, timeframe))
+    if (!state) return []
+    const outputs: IndicatorOutput[] = []
+    for (const ind of state.indicators.values()) {
+      outputs.push(...ind.getOutputs())
+    }
+    return outputs
   }
 
   getSnapshot(symbol: string, timeframe: string): IndicatorSnapshot | null {
     const state = this.state.get(this.key(symbol, timeframe))
-    return state ? this.buildSnapshot(state) : null
+    return state ? this.buildSnapshot(state.indicators) : null
   }
 
   subscribe(symbol: string, timeframe: string, cb: (snapshot: IndicatorSnapshot) => void): () => void {
@@ -76,12 +77,13 @@ export class IndicatorEngine {
     this.subscribers.delete(k)
   }
 
-  private buildSnapshot(s: SymbolState): IndicatorSnapshot {
-    return {
-      sma20: s.sma20.getOutput(),
-      ema50: s.ema50.getOutput(),
-      bbUpper: s.bollinger.getUpper(),
-      bbLower: s.bollinger.getLower(),
+  private buildSnapshot(indicators: Map<string, IncrementalIndicator>): IndicatorSnapshot {
+    const snapshot: IndicatorSnapshot = {} as IndicatorSnapshot
+    for (const ind of indicators.values()) {
+      for (const out of ind.getOutputs()) {
+        snapshot[out.key] = out.values
+      }
     }
+    return snapshot
   }
 }

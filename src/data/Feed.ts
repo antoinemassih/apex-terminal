@@ -7,4 +7,5 @@ export interface Feed {
   unsubscribe(symbol: string, timeframe: string): void
   onTick(cb: (symbol: string, timeframe: string, tick: TickData) => void): () => void
   onDisconnect(cb: () => void): () => void
+  onReconnect(cb: () => void): () => void
 }

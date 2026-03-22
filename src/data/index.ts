@@ -1,5 +1,6 @@
 export { DataStore } from './DataStore'
 export { SimulatedFeed } from './SimulatedFeed'
+export { BarCache } from './BarCache'
 export { TF_TO_INTERVAL } from './timeframes'
 export type { Feed } from './Feed'
 export type { TickData } from './types'

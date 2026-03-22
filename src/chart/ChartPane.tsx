@@ -1,21 +1,23 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { getRenderEngine, getDataStore, getFeed } from '../globals'
+import { getRenderEngine, getDataStore, getIndicatorEngine, getFeed } from '../globals'
 import type { PaneContext, EngineState } from '../engine'
 import { useChartViewport } from './useChartViewport'
 import { AxisCanvas } from './AxisCanvas'
 import { CrosshairOverlay, CrosshairHandle } from './CrosshairOverlay'
 import { DrawingOverlay, DrawingOverlayHandle } from './DrawingOverlay'
 import { useDrawingStore } from '../store/drawingStore'
+import { useChartStore } from '../store/chartStore'
 import type { Timeframe } from '../types'
 
 interface Props {
+  paneIndex: number
   symbol: string
   timeframe: Timeframe
   width: number
   height: number
 }
 
-export function ChartPane({ symbol, timeframe, width, height }: Props) {
+export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props) {
   const paneId = `${symbol}:${timeframe}`
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const paneRef = useRef<PaneContext | null>(null)
@@ -24,6 +26,10 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
   const [engineState, setEngineState] = useState<EngineState>('ready')
   const { viewport, pan, zoomX, zoomY, panY, resetYZoom, autoScrolling, pauseAutoScroll } =
     useChartViewport(symbol, timeframe, width, height)
+
+  const paneConfig = useChartStore(s => s.panes[paneIndex])
+  const showVolume = paneConfig?.showVolume ?? true
+  const visibleIndicators = paneConfig?.visibleIndicators ?? []
 
   const { cs } = viewport
   const data = getDataStore().getData(symbol, timeframe)
@@ -59,7 +65,8 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
     return ds.subscribe(symbol, timeframe, () => {
       const d = ds.getData(symbol, timeframe)
       const indicators = ds.getIndicators(symbol, timeframe)
-      if (d && indicators) paneRef.current?.setData(d, indicators)
+      const action = ds.getLastAction(symbol, timeframe)
+      if (d && indicators) paneRef.current?.setData(d, indicators, action)
     })
   }, [symbol, timeframe])
 
@@ -69,6 +76,13 @@ export function ChartPane({ symbol, timeframe, width, height }: Props) {
       paneRef.current?.setViewport({ viewStart: viewport.viewStart, viewCount: viewport.viewCount, cs })
     }
   }, [viewport, cs])
+
+  // Push visibility settings to PaneContext
+  useEffect(() => {
+    const outputs = getIndicatorEngine().getOutputs(symbol, timeframe)
+      .filter(out => visibleIndicators.includes(out.indicatorId))
+    paneRef.current?.setVisibility(showVolume, outputs)
+  }, [showVolume, visibleIndicators, symbol, timeframe, data])
 
   // --- Drag handling ---
   const dragRef = useRef<{ x: number; y: number; zone: 'chart' | 'xaxis' | 'yaxis' } | null>(null)

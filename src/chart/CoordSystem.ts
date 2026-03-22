@@ -9,6 +9,16 @@ export interface CoordConfig {
   paddingBottom?: number
 }
 
+const MAX_CACHE = 64
+const cache = new Map<string, CoordSystem>()
+
+function cacheKey(c: CoordConfig): string {
+  const pr = c.paddingRight ?? 80
+  const pt = c.paddingTop ?? 20
+  const pb = c.paddingBottom ?? 40
+  return `${c.width}|${c.height}|${c.barCount}|${c.minPrice.toFixed(6)}|${c.maxPrice.toFixed(6)}|${pr}|${pt}|${pb}`
+}
+
 export class CoordSystem {
   readonly width: number
   readonly height: number
@@ -26,6 +36,21 @@ export class CoordSystem {
     this.pr = c.paddingRight ?? 80
     this.pt = c.paddingTop ?? 20
     this.pb = c.paddingBottom ?? 40
+  }
+
+  static create(config: CoordConfig): CoordSystem {
+    const key = cacheKey(config)
+    const cached = cache.get(key)
+    if (cached) return cached
+
+    const cs = new CoordSystem(config)
+    if (cache.size >= MAX_CACHE) {
+      // Evict oldest entry (first inserted)
+      const first = cache.keys().next().value!
+      cache.delete(first)
+    }
+    cache.set(key, cs)
+    return cs
   }
 
   get chartWidth() { return this.width - this.pr }
@@ -48,13 +73,13 @@ export class CoordSystem {
   clipBarWidth(): number { return (this.barWidth / this.width) * 2 }
 
   withSize(w: number, h: number): CoordSystem {
-    return new CoordSystem({ ...this.toConfig(), width: w, height: h })
+    return CoordSystem.create({ ...this.toConfig(), width: w, height: h })
   }
   withPriceRange(min: number, max: number): CoordSystem {
-    return new CoordSystem({ ...this.toConfig(), minPrice: min, maxPrice: max })
+    return CoordSystem.create({ ...this.toConfig(), minPrice: min, maxPrice: max })
   }
   withBarCount(count: number): CoordSystem {
-    return new CoordSystem({ ...this.toConfig(), barCount: count })
+    return CoordSystem.create({ ...this.toConfig(), barCount: count })
   }
   private toConfig(): CoordConfig {
     return { width: this.width, height: this.height, barCount: this.barCount,

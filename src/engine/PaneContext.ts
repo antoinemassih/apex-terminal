@@ -1,15 +1,8 @@
-import { CandleRenderer, GridRenderer, LineRenderer } from '../renderer'
+import { CandleRenderer, GridRenderer, LineRenderer, VolumeRenderer } from '../renderer'
 import type { GPUContext } from './types'
 import { CoordSystem } from './types'
 import type { ColumnStore } from '../data/columns'
-import type { IndicatorSnapshot } from '../indicators'
-
-const LINE_CONFIGS = [
-  { key: 'sma20' as const, color: [0.3, 0.6, 1.0, 0.8] as [number, number, number, number], width: 2.0 },
-  { key: 'ema50' as const, color: [1.0, 0.6, 0.2, 0.8] as [number, number, number, number], width: 2.0 },
-  { key: 'bbUpper' as const, color: [0.5, 0.5, 0.5, 0.4] as [number, number, number, number], width: 1.0 },
-  { key: 'bbLower' as const, color: [0.5, 0.5, 0.5, 0.4] as [number, number, number, number], width: 1.0 },
-]
+import type { IndicatorSnapshot, IndicatorOutput } from '../indicators'
 
 export class PaneContext {
   dirty = true
@@ -21,10 +14,17 @@ export class PaneContext {
   private device: GPUDevice
   private format: GPUTextureFormat
   gpuContext: GPUCanvasContext
-  private renderers: { candle: CandleRenderer; grid: GridRenderer; lines: LineRenderer[] }
+  private candle: CandleRenderer
+  private grid: GridRenderer
+  private volume: VolumeRenderer
+  private lineRenderers: LineRenderer[] = []
+  private indicatorOutputs: IndicatorOutput[] = []
+  private showVolume = true
   private resizeTimer: number | null = null
   private markDirtyFn: () => void
   private destroyed = false
+  /** Tracks what changed for potential partial upload optimization */
+  lastAction: 'updated' | 'created' | null = null
 
   constructor(
     readonly id: string,
@@ -39,11 +39,9 @@ export class PaneContext {
     this.gpuContext = canvas.getContext('webgpu') as GPUCanvasContext
     this.gpuContext.configure({ device: ctx.device, format: ctx.format, alphaMode: 'premultiplied' })
 
-    this.renderers = {
-      candle: new CandleRenderer(ctx),
-      grid: new GridRenderer(ctx),
-      lines: LINE_CONFIGS.map(() => new LineRenderer(ctx)),
-    }
+    this.candle = new CandleRenderer(ctx)
+    this.grid = new GridRenderer(ctx)
+    this.volume = new VolumeRenderer(ctx)
   }
 
   setViewport(v: { viewStart: number; viewCount: number; cs: CoordSystem }): void {
@@ -53,10 +51,19 @@ export class PaneContext {
     this.markDirtyFn()
   }
 
-  setData(d: ColumnStore, indicators: IndicatorSnapshot): void {
+  setData(d: ColumnStore, indicators: IndicatorSnapshot, action?: 'updated' | 'created' | null): void {
     if (this.destroyed) return
     this.data = d
     this.indicators = indicators
+    this.lastAction = action ?? null
+    this.dirty = true
+    this.markDirtyFn()
+  }
+
+  setVisibility(showVol: boolean, outputs: IndicatorOutput[]): void {
+    if (this.destroyed) return
+    this.showVolume = showVol
+    this.indicatorOutputs = outputs
     this.dirty = true
     this.markDirtyFn()
   }
@@ -69,7 +76,6 @@ export class PaneContext {
       const dpr = window.devicePixelRatio || 1
       const pw = Math.round(width * dpr)
       const ph = Math.round(height * dpr)
-      // Skip if size hasn't actually changed
       if (this.canvas.width === pw && this.canvas.height === ph) return
       this.canvas.width = pw
       this.canvas.height = ph
@@ -95,24 +101,31 @@ export class PaneContext {
     if (this.viewport?.cs && this.data) {
       const { cs, viewStart, viewCount } = this.viewport
 
-      this.renderers.grid.upload(cs)
-      this.renderers.candle.upload(this.data, cs, viewStart, viewCount)
-
-      if (this.indicators) {
-        LINE_CONFIGS.forEach((cfg, i) => {
-          const values = this.indicators![cfg.key]
-          if (values) {
-            this.renderers.lines[i].upload(values, cs, viewStart, viewCount, cfg.color, cfg.width)
-          }
-        })
+      // Volume bars first (behind everything)
+      if (this.showVolume) {
+        this.volume.upload(this.data, cs, viewStart, viewCount)
+        this.volume.render(pass)
       }
 
-      this.renderers.grid.render(pass)
-      this.renderers.candle.render(pass)
-      for (const line of this.renderers.lines) line.render(pass)
+      // Grid
+      this.grid.upload(cs)
+      this.grid.render(pass)
+
+      // Candles
+      this.candle.upload(this.data, cs, viewStart, viewCount)
+      this.candle.render(pass)
+
+      // Dynamic indicator lines
+      this.ensureLineRenderers(this.indicatorOutputs.length)
+      for (let i = 0; i < this.indicatorOutputs.length; i++) {
+        const out = this.indicatorOutputs[i]
+        this.lineRenderers[i].upload(out.values, cs, viewStart, viewCount, out.color, out.width)
+        this.lineRenderers[i].render(pass)
+      }
     }
 
     pass.end()
+    this.lastAction = null
     return encoder.finish()
   }
 
@@ -122,13 +135,11 @@ export class PaneContext {
     this.device = ctx.device
     this.format = ctx.format
     this.gpuContext.configure({ device: ctx.device, format: ctx.format, alphaMode: 'premultiplied' })
-    // Destroy old renderers safely
     this.destroyRenderers()
-    this.renderers = {
-      candle: new CandleRenderer(ctx),
-      grid: new GridRenderer(ctx),
-      lines: LINE_CONFIGS.map(() => new LineRenderer(ctx)),
-    }
+    this.candle = new CandleRenderer(ctx)
+    this.grid = new GridRenderer(ctx)
+    this.volume = new VolumeRenderer(ctx)
+    this.lineRenderers = []
     this.needsReconfigure = false
     this.dirty = true
   }
@@ -140,11 +151,21 @@ export class PaneContext {
     this.destroyRenderers()
   }
 
-  private destroyRenderers(): void {
-    try { this.renderers.candle.destroy() } catch (e) { /* already destroyed */ }
-    try { this.renderers.grid.destroy() } catch (e) { /* already destroyed */ }
-    for (const l of this.renderers.lines) {
-      try { l.destroy() } catch (e) { /* already destroyed */ }
+  /** Ensure we have enough LineRenderers for the current indicator outputs */
+  private ensureLineRenderers(needed: number): void {
+    const ctx = { device: this.device, format: this.format }
+    while (this.lineRenderers.length < needed) {
+      this.lineRenderers.push(new LineRenderer(ctx))
     }
+  }
+
+  private destroyRenderers(): void {
+    try { this.candle.destroy() } catch (e) { /* */ }
+    try { this.grid.destroy() } catch (e) { /* */ }
+    try { this.volume.destroy() } catch (e) { /* */ }
+    for (const l of this.lineRenderers) {
+      try { l.destroy() } catch (e) { /* */ }
+    }
+    this.lineRenderers = []
   }
 }

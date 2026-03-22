@@ -79,7 +79,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
       maxP = range.max + pad
     }
 
-    setCs(new CoordSystem({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP }))
+    setCs(CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP }))
   }, [viewStart, viewCount, width, height, priceOverride, dataVersion, symbol, timeframe])
 
   // Reset on symbol/timeframe change

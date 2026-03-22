@@ -3,14 +3,19 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { RenderEngine } from './engine'
 import { IndicatorEngine } from './indicators'
-import { DataStore, SimulatedFeed } from './data'
+import { DataStore, SimulatedFeed, BarCache } from './data'
 import { setRenderEngine, setDataStore, setIndicatorEngine, setFeed } from './globals'
 import { useChartStore } from './store/chartStore'
 
 async function bootstrap() {
   const engine = await RenderEngine.create()
   const indicatorEngine = new IndicatorEngine()
-  const dataStore = new DataStore(indicatorEngine)
+
+  // Init bar cache for instant chart load on restart
+  const barCache = new BarCache()
+  await barCache.init()
+
+  const dataStore = new DataStore(indicatorEngine, barCache)
   const feed = new SimulatedFeed()
 
   feed.onTick((symbol, tf, tick) => dataStore.applyTick(symbol, tf, tick))
@@ -22,6 +27,13 @@ async function bootstrap() {
   }
 
   await feed.connect()
+
+  // Feed lifecycle events
+  feed.onDisconnect(() => console.warn('Feed disconnected'))
+  feed.onReconnect(() => {
+    console.info('Feed reconnected')
+    for (const pane of engine.getAllPanes()) pane.dirty = true
+  })
 
   setRenderEngine(engine)
   setDataStore(dataStore)

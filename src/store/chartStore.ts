@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import type { Timeframe } from '../types'
 
-interface PaneConfig {
+export interface PaneConfig {
   id: string
   symbol: string
   timeframe: Timeframe
+  showVolume: boolean
+  visibleIndicators: string[]
 }
 
 interface ChartStore {
@@ -15,15 +17,20 @@ interface ChartStore {
   setSymbol: (id: string, symbol: string) => void
   setTimeframe: (id: string, tf: Timeframe) => void
   resetAutoScroll: () => void
+  toggleVolume: (paneId: string) => void
+  toggleIndicator: (paneId: string, indicatorId: string) => void
 }
 
 const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'QQQ', 'AMZN']
+const DEFAULT_INDICATORS = ['sma20', 'ema50', 'bollinger']
 
 export const useChartStore = create<ChartStore>(set => ({
   panes: DEFAULT_SYMBOLS.map((symbol, i) => ({
     id: `pane-${i}`,
     symbol,
     timeframe: '5m' as Timeframe,
+    showVolume: true,
+    visibleIndicators: [...DEFAULT_INDICATORS],
   })),
   activePane: 'pane-0',
   autoScrollVersion: 0,
@@ -33,4 +40,16 @@ export const useChartStore = create<ChartStore>(set => ({
   setTimeframe: (id, timeframe) =>
     set(s => ({ panes: s.panes.map(p => p.id === id ? { ...p, timeframe } : p) })),
   resetAutoScroll: () => set(s => ({ autoScrollVersion: s.autoScrollVersion + 1 })),
+  toggleVolume: (paneId) =>
+    set(s => ({ panes: s.panes.map(p => p.id === paneId ? { ...p, showVolume: !p.showVolume } : p) })),
+  toggleIndicator: (paneId, indicatorId) =>
+    set(s => ({
+      panes: s.panes.map(p => {
+        if (p.id !== paneId) return p
+        const vis = p.visibleIndicators.includes(indicatorId)
+          ? p.visibleIndicators.filter(id => id !== indicatorId)
+          : [...p.visibleIndicators, indicatorId]
+        return { ...p, visibleIndicators: vis }
+      }),
+    })),
 }))

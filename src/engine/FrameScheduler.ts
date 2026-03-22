@@ -1,4 +1,7 @@
 import type { PaneContext } from './PaneContext'
+import type { FrameStats } from './types'
+
+const RING_SIZE = 120
 
 export class FrameScheduler {
   private panes = new Map<string, PaneContext>()
@@ -6,6 +9,11 @@ export class FrameScheduler {
   private running = false
   private paused = false
   private device: GPUDevice
+
+  private frameTimes = new Float64Array(RING_SIZE)
+  private frameIdx = 0
+  private lastFrameTime = 0
+  private lastDirtyCount = 0
 
   constructor(device: GPUDevice) {
     this.device = device
@@ -45,8 +53,33 @@ export class FrameScheduler {
     this.device = device
   }
 
+  getStats(): FrameStats {
+    const filled = Math.min(this.frameIdx, RING_SIZE)
+    if (filled === 0) return { fps: 0, frameTimeMs: 0, frameTimePeak: 0, dirtyPanes: this.lastDirtyCount }
+
+    let sum = 0
+    let peak = 0
+    for (let i = 0; i < filled; i++) {
+      const t = this.frameTimes[i]
+      sum += t
+      if (t > peak) peak = t
+    }
+    const avg = sum / filled
+    const fps = avg > 0 ? 1000 / avg : 0
+
+    return { fps, frameTimeMs: avg, frameTimePeak: peak, dirtyPanes: this.lastDirtyCount }
+  }
+
   private tick(): void {
     this.rafId = null
+
+    // Record frame timing
+    const now = performance.now()
+    if (this.lastFrameTime > 0) {
+      this.frameTimes[this.frameIdx % RING_SIZE] = now - this.lastFrameTime
+      this.frameIdx++
+    }
+    this.lastFrameTime = now
 
     if (this.paused) {
       // Keep loop alive during recovery so resume() doesn't need to restart
@@ -55,11 +88,14 @@ export class FrameScheduler {
     }
 
     const commandBuffers: GPUCommandBuffer[] = []
+    let dirtyCount = 0
 
     for (const [id, pane] of this.panes) {
       if (!pane.dirty) continue
+      dirtyCount++
       this.renderPane(id, commandBuffers)
     }
+    this.lastDirtyCount = dirtyCount
 
     if (commandBuffers.length > 0) {
       try {
