@@ -6,6 +6,7 @@ import { IndicatorEngine } from './indicators'
 import { DataStore, SimulatedFeed, BarCache } from './data'
 import { LocalDrawingRepository } from './data/DrawingRepository'
 import { TauriDrawingRepository } from './data/TauriDrawingRepository'
+import { OcocoClient } from './data/OcocoClient'
 import { setRenderEngine, setDataStore, setIndicatorEngine, setFeed } from './globals'
 import { useChartStore } from './store/chartStore'
 import { initDrawingStore } from './store/drawingStore'
@@ -18,31 +19,32 @@ async function bootstrap() {
   const barCache = new BarCache()
   await barCache.init()
 
-  // Use PostgreSQL via Tauri IPC for drawing persistence
-  // Falls back to IndexedDB if DB connection fails
-  let drawingRepo: LocalDrawingRepository | TauriDrawingRepository
-  try {
-    const tauriRepo = new TauriDrawingRepository()
-    // Test connection by loading (will throw if DB is unreachable)
-    await tauriRepo.loadAll()
-    drawingRepo = tauriRepo
-    console.info('Drawings: using PostgreSQL (ococo)')
+  // Drawing persistence: OCOCO API → Tauri IPC → IndexedDB (fallback chain)
+  const OCOCO_API = 'http://ococo-dev.xllio.com'
+  let drawingRepo: OcocoClient | TauriDrawingRepository | LocalDrawingRepository
+  // Store OCOCO client globally for WS signal subscription from chart panes
+  ;(window as any).__ococoClient = null as OcocoClient | null
 
-    // Migrate any local drawings to DB
-    const localRepo = new LocalDrawingRepository()
-    await localRepo.init()
-    const localDrawings = await localRepo.loadAll()
-    if (localDrawings.length > 0) {
-      for (const d of localDrawings) await tauriRepo.save(d)
-      await localRepo.clear()
-      console.info(`Migrated ${localDrawings.length} local drawings to PostgreSQL`)
+  try {
+    const client = new OcocoClient(OCOCO_API)
+    await client.loadAll() // test connection
+    drawingRepo = client
+    ;(window as any).__ococoClient = client
+    client.connectWs()
+    console.info('Drawings: using OCOCO API')
+  } catch {
+    try {
+      const tauriRepo = new TauriDrawingRepository()
+      await tauriRepo.loadAll()
+      drawingRepo = tauriRepo
+      console.info('Drawings: using Tauri → PostgreSQL')
+    } catch {
+      const localRepo = new LocalDrawingRepository()
+      await localRepo.init()
+      await localRepo.migrateFromLocalStorage()
+      drawingRepo = localRepo
+      console.info('Drawings: using IndexedDB (offline)')
     }
-  } catch (e) {
-    console.warn('PostgreSQL unavailable, falling back to IndexedDB:', e)
-    const localRepo = new LocalDrawingRepository()
-    await localRepo.init()
-    await localRepo.migrateFromLocalStorage()
-    drawingRepo = localRepo
   }
   await initDrawingStore(drawingRepo)
 
