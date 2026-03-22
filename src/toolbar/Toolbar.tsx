@@ -6,7 +6,7 @@ import { THEMES, getTheme } from '../themes'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { Timeframe } from '../types'
 
-const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1d', '1wk']
+const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1wk']
 const LAYOUTS: { key: Layout; label: string }[] = [
   { key: '1', label: '1' },
   { key: '2', label: '2' },
