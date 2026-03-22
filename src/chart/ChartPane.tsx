@@ -25,7 +25,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const crosshairRef = useRef<CrosshairHandle>(null)
   const drawingRef = useRef<DrawingOverlayHandle>(null)
   const [engineState, setEngineState] = useState<EngineState>('ready')
-  const { viewport, pan, zoomX, zoomY, panY, resetYZoom, autoScrolling, pauseAutoScroll } =
+  const { viewport, pan, zoomX, zoomY, resetYZoom, autoScrolling, pauseAutoScroll } =
     useChartViewport(symbol, timeframe, width, height)
 
   const paneConfig = useChartStore(s => s.panes[paneIndex])
@@ -137,10 +137,10 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     switch (dragRef.current.zone) {
       case 'chart': pan(dx); break
       case 'xaxis': if (Math.abs(dx) > 2) zoomX(dx > 0 ? 1.02 : 0.98); break
-      case 'yaxis': if (Math.abs(dy) > 1) panY(dy); break
+      case 'yaxis': if (Math.abs(dy) > 2) zoomY(dy > 0 ? 1.02 : 0.98); break
     }
     dragRef.current = { ...dragRef.current, x: e.clientX, y: e.clientY }
-  }, [pan, zoomX, panY, cs, data])
+  }, [pan, zoomX, zoomY, cs, data])
 
   const onMouseUp = useCallback(() => {
     dragRef.current = null
