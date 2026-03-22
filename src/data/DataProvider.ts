@@ -102,7 +102,7 @@ export class YFinanceProvider implements DataProvider {
       // InfluxDB/OCOCO API not reachable — fall through to yfinance
     }
 
-    // Fallback: yfinance sidecar (local)
+    // Fallback: yfinance sidecar (local) — also backfill InfluxDB
     let period = tf.period
     if (req.before) period = this.expandPeriod(tf.period)
 
@@ -110,6 +110,11 @@ export class YFinanceProvider implements DataProvider {
       const bars: Bar[] = await invoke('get_bars', {
         symbol: req.symbol, interval: tf.interval, period
       })
+
+      // Backfill InfluxDB so next request is served from there
+      if (bars.length > 0) {
+        this.backfillInflux(req.symbol, req.timeframe, bars)
+      }
 
       let filtered = bars
       if (req.before) filtered = bars.filter(b => b.time < req.before!)
@@ -123,6 +128,12 @@ export class YFinanceProvider implements DataProvider {
       console.error(`getHistory failed:`, e)
       return { bars: [], hasMore: false }
     }
+  }
+
+  /** Fire-and-forget: push bars to InfluxDB via OCOCO API ingestion endpoint */
+  private backfillInflux(symbol: string, _timeframe: string, _bars: Bar[]): void {
+    fetch(`${OCOCO_API}/api/ingest/symbol?symbol=${symbol}`, { method: 'POST' })
+      .catch(() => { /* non-blocking, don't care if it fails */ })
   }
 
   private periodToFluxRange(period: string): string {
