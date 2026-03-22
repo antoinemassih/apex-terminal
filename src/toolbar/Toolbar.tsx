@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useChartStore, type Layout } from '../store/chartStore'
 import { useDrawingStore } from '../store/drawingStore'
 import { INDICATOR_CATALOG } from '../indicators'
 import { THEMES, getTheme } from '../themes'
+import { SymbolPicker } from '../chart/SymbolPicker'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { Timeframe } from '../types'
 
@@ -19,10 +20,11 @@ const LAYOUTS: { key: Layout; label: string }[] = [
 ]
 
 export function Toolbar() {
-  const { panes, activePane, setSymbol, setTimeframe, resetAutoScroll,
+  const { panes, activePane, setTimeframe, resetAutoScroll,
     toggleVolume, toggleIndicator, layout, setLayout, theme: themeName, setTheme } = useChartStore()
   const { activeTool, setActiveTool } = useDrawingStore()
-  const [symbolInput, setSymbolInput] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const tickerRef = useRef<HTMLSpanElement>(null)
   const pane = panes.find(p => p.id === activePane)
   const theme = getTheme(themeName)
 
@@ -43,19 +45,16 @@ export function Toolbar() {
       height: 36, background: theme.toolbarBackground, borderBottom: `1px solid ${theme.toolbarBorder}`,
       padding: '0 12px', flexShrink: 0, fontFamily: 'monospace', fontSize: 12,
     }}>
-      <span style={{ color: theme.borderActive, fontWeight: 'bold' }}>{pane?.symbol ?? '—'}</span>
-      <form onSubmit={e => {
-        e.preventDefault()
-        if (symbolInput.trim() && activePane) {
-          setSymbol(activePane, symbolInput.trim().toUpperCase())
-          setSymbolInput('')
-        }
-      }} style={{ display: 'flex' }}>
-        <input value={symbolInput} onChange={e => setSymbolInput(e.target.value)}
-          placeholder="Symbol..."
-          style={{ background: theme.background, color: theme.ohlcLabel, border: `1px solid ${theme.toolbarBorder}`,
-            padding: '2px 8px', width: 80, fontSize: 12, fontFamily: 'monospace' }} />
-      </form>
+      <span ref={tickerRef}
+        onClick={() => setPickerOpen(!pickerOpen)}
+        style={{ color: theme.borderActive, fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px',
+          background: pickerOpen ? theme.borderActive + '22' : 'transparent', borderRadius: 3 }}>
+        {pane?.symbol ?? '—'} &#9662;
+      </span>
+      {pickerOpen && activePane && tickerRef.current && (() => {
+        const r = tickerRef.current!.getBoundingClientRect()
+        return <SymbolPicker paneId={activePane} anchorX={r.left} anchorY={r.bottom + 4} onClose={() => setPickerOpen(false)} />
+      })()}
       {/* Timeframes */}
       <div style={{ display: 'flex', gap: 2 }}>
         {TIMEFRAMES.map(tf => (

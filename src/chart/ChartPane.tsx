@@ -8,6 +8,7 @@ import { DrawingOverlay, DrawingOverlayHandle } from './DrawingOverlay'
 import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
 import { getTheme } from '../themes'
+import { SymbolPicker } from './SymbolPicker'
 import type { Timeframe } from '../types'
 
 interface Props {
@@ -33,6 +34,8 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const visibleIndicators = paneConfig?.visibleIndicators ?? []
   const themeName = useChartStore(s => s.theme)
   const theme = getTheme(themeName)
+
+  const [pickerPos, setPickerPos] = useState<{ x: number; y: number } | null>(null)
 
   const { cs } = viewport
   const data = getDataStore().getData(symbol, timeframe)
@@ -202,12 +205,21 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     >
       <canvas ref={canvasRef} width={width} height={height}
         style={{ display: 'block', pointerEvents: 'none' }} />
-      {/* OHLC label */}
+      {/* OHLC label — double-click ticker to open symbol picker */}
       <div style={{
         position: 'absolute', top: 4, left: 8,
-        color: theme.axisText, fontSize: 11, fontFamily: 'monospace', pointerEvents: 'none',
+        color: theme.axisText, fontSize: 11, fontFamily: 'monospace',
+        display: 'flex', alignItems: 'center', gap: 4,
       }}>
-        {symbol} · {timeframe}
+        <span
+          style={{ cursor: 'pointer', color: theme.borderActive, fontWeight: 'bold' }}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            const rect = (e.target as HTMLElement).getBoundingClientRect()
+            setPickerPos({ x: rect.left, y: rect.bottom + 4 })
+          }}
+        >{symbol}</span>
+        <span style={{ pointerEvents: 'none' }}>· {timeframe}</span>
         {data && viewport.viewStart + viewport.viewCount - 1 < data.length && (() => {
           const last = viewport.viewStart + viewport.viewCount - 1
           const c = data.closes[last]
@@ -250,6 +262,14 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
         }} onClick={() => getRenderEngine().retry()}>
           GPU unavailable — click to retry
         </div>
+      )}
+      {pickerPos && (
+        <SymbolPicker
+          paneId={paneConfig?.id ?? paneId}
+          anchorX={pickerPos.x}
+          anchorY={pickerPos.y}
+          onClose={() => setPickerPos(null)}
+        />
       )}
     </div>
   )
