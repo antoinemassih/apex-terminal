@@ -7,9 +7,12 @@ export class LineRenderer {
   private uniformBuffer: GPUBuffer
   private bindGroup: GPUBindGroup
   private pointBuffer: GPUBuffer | null = null
-  private pointBufferSize = 0 // track allocated size for reuse
+  private pointBufferSize = 0
   private segmentCount = 0
   private readonly device: GPUDevice
+  // Reusable CPU-side buffers — avoid allocation per frame
+  private cpuPoints: Float32Array | null = null
+  private readonly uniformData = new Float32Array(8) // [clipWidth, 0, 0, 0, r, g, b, a]
 
   constructor(ctx: GPUContext) {
     this.device = ctx.device
@@ -51,43 +54,48 @@ export class LineRenderer {
 
   upload(values: Float64Array, cs: CoordSystem, viewStart: number, viewCount: number,
          color: [number, number, number, number], lineWidthPx: number) {
-    const points: number[] = []
+    // Ensure CPU buffer is large enough (2 floats per point, max viewCount points)
+    const maxFloats = viewCount * 2
+    if (!this.cpuPoints || this.cpuPoints.length < maxFloats) {
+      this.cpuPoints = new Float32Array(Math.ceil(maxFloats * 1.5))
+    }
+
+    let count = 0
     for (let i = 0; i < viewCount; i++) {
       const di = viewStart + i
       if (di >= values.length || isNaN(values[di])) continue
-      points.push(cs.barToClipX(i), cs.priceToClipY(values[di]))
+      this.cpuPoints[count++] = cs.barToClipX(i)
+      this.cpuPoints[count++] = cs.priceToClipY(values[di])
     }
-    if (points.length < 4) { this.segmentCount = 0; return }
+    if (count < 4) { this.segmentCount = 0; return }
 
-    const data = new Float32Array(points)
-    const neededBytes = data.byteLength
+    const neededBytes = count * 4
 
-    // Reuse existing buffer if it's large enough, avoiding GPU allocation per frame
+    // Reuse GPU buffer if large enough
     if (this.pointBuffer && this.pointBufferSize >= neededBytes) {
-      this.device.queue.writeBuffer(this.pointBuffer, 0, data)
+      this.device.queue.writeBuffer(this.pointBuffer, 0, this.cpuPoints, 0, count)
     } else {
-      // Need a new buffer — destroy old one first
       if (this.pointBuffer) this.pointBuffer.destroy()
-      // Allocate with 50% headroom to reduce future reallocations
       const allocSize = Math.ceil(neededBytes * 1.5)
       this.pointBuffer = this.device.createBuffer({
         size: allocSize, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       })
       this.pointBufferSize = allocSize
-      this.device.queue.writeBuffer(this.pointBuffer, 0, data)
+      this.device.queue.writeBuffer(this.pointBuffer, 0, this.cpuPoints, 0, count)
     }
 
-    this.segmentCount = (points.length / 2) - 1
+    this.segmentCount = (count / 2) - 1
 
-    const clipWidth = (lineWidthPx / cs.width) * 2
-    this.device.queue.writeBuffer(this.uniformBuffer, 0,
-      new Float32Array([clipWidth, 0, 0, 0, ...color]))
+    // Write uniform without allocation
+    const u = this.uniformData
+    u[0] = (lineWidthPx / cs.width) * 2
+    u[4] = color[0]; u[5] = color[1]; u[6] = color[2]; u[7] = color[3]
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, u)
   }
 
   render(pass: GPURenderPassEncoder) {
     if (!this.pointBuffer || this.segmentCount <= 0) return
-    // Only use the portion of the buffer that has valid data
-    const usedBytes = (this.segmentCount + 1) * 8 // each point is 2 floats = 8 bytes
+    const usedBytes = (this.segmentCount + 1) * 8
     const segmentBytes = usedBytes - 8
     pass.setPipeline(this.pipeline)
     pass.setBindGroup(0, this.bindGroup)
@@ -101,5 +109,6 @@ export class LineRenderer {
     this.pointBuffer = null
     this.pointBufferSize = 0
     this.uniformBuffer.destroy()
+    this.cpuPoints = null
   }
 }

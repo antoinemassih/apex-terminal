@@ -13,8 +13,13 @@ export class CandleRenderer {
   private uniformBuffer: GPUBuffer
   private uniformBindGroup: GPUBindGroup
   private instanceBuffer: GPUBuffer | null = null
+  private instanceBufferSize = 0
   private instanceCount = 0
   private readonly device: GPUDevice
+  // Reusable typed array — avoids allocation per frame
+  private cpuBuffer: Float32Array | null = null
+  // Reusable uniform data
+  private readonly uniformData = new Float32Array(4)
 
   constructor(ctx: GPUContext) {
     this.device = ctx.device
@@ -60,7 +65,13 @@ export class CandleRenderer {
     const count = end - viewStart
     if (count <= 0) return
 
-    const arr = new Float32Array(count * FLOATS_PER_INSTANCE)
+    const floatsNeeded = count * FLOATS_PER_INSTANCE
+    // Reuse CPU-side buffer if large enough
+    if (!this.cpuBuffer || this.cpuBuffer.length < floatsNeeded) {
+      this.cpuBuffer = new Float32Array(Math.ceil(floatsNeeded * 1.5))
+    }
+    const arr = this.cpuBuffer
+
     const bodyW = cs.clipBarWidth() * 0.5
     const wickW = Math.max(bodyW * 0.15, 0.001)
 
@@ -82,13 +93,23 @@ export class CandleRenderer {
       arr[base + 9] = color[3]
     }
 
-    if (this.instanceBuffer) this.instanceBuffer.destroy()
-    this.instanceBuffer = this.device.createBuffer({
-      size: arr.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    })
-    this.device.queue.writeBuffer(this.instanceBuffer, 0, arr)
+    const byteLength = floatsNeeded * 4
+    // Reuse GPU buffer if large enough
+    if (this.instanceBuffer && this.instanceBufferSize >= byteLength) {
+      this.device.queue.writeBuffer(this.instanceBuffer, 0, arr, 0, floatsNeeded)
+    } else {
+      if (this.instanceBuffer) this.instanceBuffer.destroy()
+      const allocSize = Math.ceil(byteLength * 1.5)
+      this.instanceBuffer = this.device.createBuffer({
+        size: allocSize, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      })
+      this.instanceBufferSize = allocSize
+      this.device.queue.writeBuffer(this.instanceBuffer, 0, arr, 0, floatsNeeded)
+    }
+
     this.instanceCount = count
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, new Float32Array([wickW, 0, 0, 0]))
+    this.uniformData[0] = wickW
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformData)
   }
 
   render(pass: GPURenderPassEncoder) {
@@ -101,6 +122,9 @@ export class CandleRenderer {
 
   destroy() {
     this.instanceBuffer?.destroy()
+    this.instanceBuffer = null
+    this.instanceBufferSize = 0
     this.uniformBuffer.destroy()
+    this.cpuBuffer = null
   }
 }
