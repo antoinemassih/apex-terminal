@@ -189,6 +189,12 @@ const COLORS = {
     '1W-body-resistance': '#ff8a65',
 };
 export async function runTrendlineDetection(symbol, barsMap) {
+    // Don't clear if we have no data — prevents wiping valid trendlines when data source is unreachable
+    const totalBars = Object.values(barsMap).reduce((s, b) => s + b.length, 0);
+    if (totalBars < 30) {
+        console.warn(`Skipping trendline detection for ${symbol}: insufficient data (${totalBars} bars)`);
+        return;
+    }
     // Clear old auto-trendlines for this symbol
     await query(`DELETE FROM annotations WHERE symbol = $1 AND source = 'auto-trend'`, [symbol]);
     await invalidate(symbol);

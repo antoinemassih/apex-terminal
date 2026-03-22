@@ -98,15 +98,26 @@ export async function runIngestionCycle() {
 }
 /** Ingest a single symbol (for on-demand use) */
 export async function ingestSingle(symbol) {
-    const counts = await ingestSymbol(symbol);
-    // Run detection after ingestion
+    // Fetch bars and keep them in memory for detection (don't re-read from InfluxDB)
     const barsMap = {};
-    for (const tf of ['1h', '4h', '1d', '1wk']) {
-        const bars = await readBars(symbol, tf, { start: tf === '1wk' ? '-10y' : tf === '1d' ? '-2y' : '-3mo' });
-        if (bars.length > 20)
-            barsMap[tf] = bars;
+    for (const { interval, period, label } of INTERVALS) {
+        const bars = await fetchBars(symbol, interval, period);
+        if (bars.length > 0) {
+            // Write to InfluxDB (async, non-blocking for detection)
+            writeBars(symbol, label, bars).catch(e => console.warn(`InfluxDB write failed for ${symbol}/${label}:`, e));
+            barsMap[label] = bars;
+            if (label === '1h') {
+                const bars4h = aggregate4h(bars);
+                writeBars(symbol, '4h', bars4h).catch(e => console.warn(`InfluxDB write failed for ${symbol}/4h:`, e));
+                barsMap['4h'] = bars4h;
+            }
+        }
     }
+    // Run detection with the bars we just fetched (not from InfluxDB)
     await runTrendlineDetection(symbol, barsMap);
+    const counts = {};
+    for (const [k, v] of Object.entries(barsMap))
+        counts[k] = v.length;
     return counts;
 }
 //# sourceMappingURL=ingest.js.map
