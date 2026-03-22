@@ -136,8 +136,8 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     const dy = e.clientY - dragRef.current.y
     switch (dragRef.current.zone) {
       case 'chart': pan(dx); break
-      case 'xaxis': if (Math.abs(dx) > 2) zoomX(dx > 0 ? 1.02 : 0.98); break
-      case 'yaxis': if (Math.abs(dy) > 2) zoomY(dy > 0 ? 1.02 : 0.98); break
+      case 'xaxis': if (Math.abs(dx) > 1) zoomX(dx > 0 ? 1.05 : 0.95); break
+      case 'yaxis': if (Math.abs(dy) > 1) zoomY(dy > 0 ? 1.05 : 0.95); break
     }
     dragRef.current = { ...dragRef.current, x: e.clientX, y: e.clientY }
   }, [pan, zoomX, zoomY, cs, data])
