@@ -69,8 +69,10 @@ export interface DataProvider {
 import { invoke } from '@tauri-apps/api/core'
 import { TF_TO_INTERVAL } from './timeframes'
 
+const OCOCO_API = 'http://192.168.1.60:30300'
+
 export class YFinanceProvider implements DataProvider {
-  readonly name = 'yfinance'
+  readonly name = 'yfinance + influx'
 
   private subscriptions = new Map<string, { symbol: string; timeframe: string; simTime: number; tickCount: number }>()
   private tickCb: ((symbol: string, tf: string, tick: TickData) => void) | null = null
@@ -83,12 +85,26 @@ export class YFinanceProvider implements DataProvider {
   async getHistory(req: HistoryRequest): Promise<HistoryResponse> {
     const tf = TF_TO_INTERVAL[req.timeframe] ?? TF_TO_INTERVAL['5m']
 
-    // Determine period based on whether we're paginating
-    let period = tf.period
-    if (req.before) {
-      // Request a larger period to get older data
-      period = this.expandPeriod(tf.period)
+    // Try InfluxDB (via OCOCO API) first — fast, server-side, deep history
+    try {
+      const start = req.before ? `-10y` : this.periodToFluxRange(tf.period)
+      const url = `${OCOCO_API}/api/bars?symbol=${req.symbol}&interval=${req.timeframe}&start=${start}`
+      const resp = await fetch(url)
+      if (resp.ok) {
+        let bars: Bar[] = await resp.json()
+        if (bars.length > 10) {
+          if (req.before) bars = bars.filter(b => b.time < req.before!)
+          if (req.limit) bars = bars.slice(-req.limit)
+          return { bars, hasMore: bars.length > 0 }
+        }
+      }
+    } catch {
+      // InfluxDB/OCOCO API not reachable — fall through to yfinance
     }
+
+    // Fallback: yfinance sidecar (local)
+    let period = tf.period
+    if (req.before) period = this.expandPeriod(tf.period)
 
     try {
       const bars: Bar[] = await invoke('get_bars', {
@@ -96,21 +112,25 @@ export class YFinanceProvider implements DataProvider {
       })
 
       let filtered = bars
-      if (req.before) {
-        filtered = bars.filter(b => b.time < req.before!)
-      }
-      if (req.limit) {
-        filtered = filtered.slice(-req.limit)
-      }
+      if (req.before) filtered = bars.filter(b => b.time < req.before!)
+      if (req.limit) filtered = filtered.slice(-req.limit)
 
       return {
         bars: filtered,
         hasMore: filtered.length > 0 && filtered.length === (req.limit ?? filtered.length),
       }
     } catch (e) {
-      console.error(`YFinance getHistory failed:`, e)
+      console.error(`getHistory failed:`, e)
       return { bars: [], hasMore: false }
     }
+  }
+
+  private periodToFluxRange(period: string): string {
+    const map: Record<string, string> = {
+      '1d': '-1d', '5d': '-5d', '1mo': '-30d', '3mo': '-90d',
+      '6mo': '-180d', '1y': '-365d', '2y': '-730d', '5y': '-1825d', '10y': '-3650d',
+    }
+    return map[period] ?? '-365d'
   }
 
   subscribe(symbol: string, timeframe: string): void {
