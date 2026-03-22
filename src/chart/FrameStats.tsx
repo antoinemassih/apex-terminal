@@ -22,7 +22,7 @@ export function FrameStats() {
   return (
     <div style={{
       position: 'fixed',
-      top: 8,
+      top: 40,
       right: 8,
       padding: '4px 8px',
       background: 'rgba(0,0,0,0.75)',

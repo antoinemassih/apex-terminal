@@ -27,7 +27,7 @@ interface ChartStore {
   setTheme: (theme: string) => void
 }
 
-const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'QQQ', 'AMZN']
+const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'QQQ', 'AMZN', 'GOOG', 'META']
 const DEFAULT_INDICATORS = ['sma20', 'ema50', 'bollinger']
 
 export const useChartStore = create<ChartStore>(set => ({
