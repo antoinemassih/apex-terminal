@@ -69,7 +69,7 @@ export const useChartStore = create<ChartStore>(set => ({
   activePane: 'pane-0',
   autoScrollVersion: 0,
   layout: '9' as Layout,
-  theme: 'midnight',
+  theme: 'catppuccin',
   annotationFilters: { ...DEFAULT_FILTERS },
   setActivePane: (id) => set({ activePane: id }),
   setSymbol: (id, symbol) =>
