@@ -12,6 +12,7 @@ interface Props {
   symbol: string
   timeframe: Timeframe
   cs: CoordSystem
+  data: import('../data/columns').ColumnStore
   width: number
   height: number
   viewStart: number
@@ -44,7 +45,7 @@ function distToSegment(px: number, py: number, x0: number, y0: number, x1: numbe
 }
 
 export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
-  function DrawingOverlay({ symbol, timeframe, cs, width, height, viewStart, onInteraction }, ref) {
+  function DrawingOverlay({ symbol, timeframe, cs, data: chartData, width, height, viewStart, onInteraction }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectDrawing, setActiveTool } = useDrawingStore()
   const [inProgress, setInProgress] = useState<Point | null>(null)
@@ -52,15 +53,23 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   const dragRef = useRef<DragState | null>(null)
   const cursorRef = useRef<string | null>(null)
 
-  const toPixel = useCallback((p: Point) => ({
-    x: cs.barToX(p.time - viewStart),
-    y: cs.priceToY(p.price),
-  }), [cs, viewStart])
+  const toPixel = useCallback((p: Point) => {
+    // p.time is a unix timestamp — find its bar index via binary search
+    if (chartData) {
+      const barIdx = chartData.indexAtTime(p.time) - viewStart
+      return { x: cs.barToX(barIdx), y: cs.priceToY(p.price) }
+    }
+    return { x: cs.barToX(p.time - viewStart), y: cs.priceToY(p.price) }
+  }, [cs, viewStart, chartData])
 
-  const toPoint = useCallback((px: number, py: number): Point => ({
-    time: Math.round(cs.xToBar(px)) + viewStart,
-    price: cs.yToPrice(py),
-  }), [cs, viewStart])
+  const toPoint = useCallback((px: number, py: number): Point => {
+    // Convert pixel position to unix timestamp + price
+    const barIdx = Math.round(cs.xToBar(px)) + viewStart
+    if (chartData && barIdx >= 0 && barIdx < chartData.length) {
+      return { time: chartData.times[barIdx], price: cs.yToPrice(py) }
+    }
+    return { time: barIdx, price: cs.yToPrice(py) }
+  }, [cs, viewStart, chartData])
 
   const hitTest = useCallback((mx: number, my: number): { id: string; nearEndpoint: number } | null => {
     if (mx >= width - cs.pr || my >= height - cs.pb) return null

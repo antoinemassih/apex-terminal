@@ -223,7 +223,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       <AxisCanvas cs={cs} data={data} viewStart={viewport.viewStart} width={width} height={height} />
       {cs && data && (
         <DrawingOverlay ref={drawingRef} symbol={symbol} timeframe={timeframe} cs={cs}
-          width={width} height={height} viewStart={viewport.viewStart}
+          data={data} width={width} height={height} viewStart={viewport.viewStart}
           onInteraction={pauseAutoScroll} />
       )}
       {!autoScrolling && (
