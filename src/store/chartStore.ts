@@ -9,7 +9,7 @@ export interface PaneConfig {
   visibleIndicators: string[]
 }
 
-export type Layout = '1' | '2' | '4' | '6' | '9'
+export type Layout = '1' | '2' | '2h' | '3' | '4' | '6' | '6h' | '9'
 
 interface ChartStore {
   panes: PaneConfig[]

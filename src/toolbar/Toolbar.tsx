@@ -10,8 +10,11 @@ const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1d', '1wk']
 const LAYOUTS: { key: Layout; label: string }[] = [
   { key: '1', label: '1' },
   { key: '2', label: '2' },
+  { key: '2h', label: '2H' },
+  { key: '3', label: '3' },
   { key: '4', label: '4' },
   { key: '6', label: '6' },
+  { key: '6h', label: '6H' },
   { key: '9', label: '9' },
 ]
 
