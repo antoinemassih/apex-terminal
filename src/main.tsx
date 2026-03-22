@@ -4,16 +4,23 @@ import App from './App'
 import { RenderEngine } from './engine'
 import { IndicatorEngine } from './indicators'
 import { DataStore, SimulatedFeed, BarCache } from './data'
+import { LocalDrawingRepository } from './data/DrawingRepository'
 import { setRenderEngine, setDataStore, setIndicatorEngine, setFeed } from './globals'
 import { useChartStore } from './store/chartStore'
+import { initDrawingStore } from './store/drawingStore'
 
 async function bootstrap() {
   const engine = await RenderEngine.create()
   const indicatorEngine = new IndicatorEngine()
 
-  // Init bar cache for instant chart load on restart
+  // Init persistence layers
   const barCache = new BarCache()
   await barCache.init()
+
+  const drawingRepo = new LocalDrawingRepository()
+  await drawingRepo.init()
+  await drawingRepo.migrateFromLocalStorage()
+  await initDrawingStore(drawingRepo)
 
   const dataStore = new DataStore(indicatorEngine, barCache)
   const feed = new SimulatedFeed()

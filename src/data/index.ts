@@ -1,6 +1,8 @@
 export { DataStore } from './DataStore'
 export { SimulatedFeed } from './SimulatedFeed'
 export { BarCache } from './BarCache'
+export { LocalDrawingRepository } from './DrawingRepository'
+export type { DrawingRepository } from './DrawingRepository'
 export { TF_TO_INTERVAL } from './timeframes'
 export type { Feed } from './Feed'
 export type { TickData } from './types'
