@@ -14,6 +14,8 @@ export type Layout = '1' | '2' | '2h' | '3' | '4' | '6' | '6h' | '9'
 /** Annotation filter categories for auto-trendlines */
 export interface AnnotationFilters {
   // By timeframe
+  '15m': boolean
+  '30m': boolean
   '1H': boolean
   '4H': boolean
   '1D': boolean
@@ -31,7 +33,7 @@ export interface AnnotationFilters {
 }
 
 const DEFAULT_FILTERS: AnnotationFilters = {
-  '1H': true, '4H': true, '1D': true, '1W': true,
+  '15m': true, '30m': true, '1H': true, '4H': true, '1D': true, '1W': true,
   wick: true, body: true,
   support: true, resistance: true,
   channel: true, user: true,

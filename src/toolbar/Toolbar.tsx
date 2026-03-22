@@ -4,6 +4,7 @@ import { useDrawingStore } from '../store/drawingStore'
 import { INDICATOR_CATALOG } from '../indicators'
 import { THEMES, getTheme } from '../themes'
 import { SymbolPicker } from '../chart/SymbolPicker'
+import { TrendlineFilters } from './TrendlineFilters'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { Timeframe } from '../types'
 
@@ -21,8 +22,7 @@ const LAYOUTS: { key: Layout; label: string }[] = [
 
 export function Toolbar() {
   const { panes, activePane, setTimeframe, resetAutoScroll,
-    toggleVolume, toggleIndicator, layout, setLayout, theme: themeName, setTheme,
-    annotationFilters, toggleFilter } = useChartStore()
+    toggleVolume, toggleIndicator, layout, setLayout, theme: themeName, setTheme } = useChartStore()
   const { activeTool, setActiveTool } = useDrawingStore()
   const [pickerOpen, setPickerOpen] = useState(false)
   const tickerRef = useRef<HTMLSpanElement>(null)
@@ -110,20 +110,9 @@ export function Toolbar() {
           </button>
         ))}
       </div>
-      {/* Annotation filters */}
-      <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
-        {(['1H', '4H', '1D', '1W'] as const).map(k => (
-          <button key={k} onClick={() => toggleFilter(k)} style={btnStyle(annotationFilters[k])}>{k}</button>
-        ))}
-        {(['wick', 'body'] as const).map(k => (
-          <button key={k} onClick={() => toggleFilter(k)} style={btnStyle(annotationFilters[k])}>{k}</button>
-        ))}
-        {(['support', 'resistance', 'channel'] as const).map(k => (
-          <button key={k} onClick={() => toggleFilter(k)}
-            style={btnStyle(annotationFilters[k])}>
-            {k === 'support' ? 'S' : k === 'resistance' ? 'R' : 'CH'}
-          </button>
-        ))}
+      {/* Trendline filters dropdown */}
+      <div style={{ marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
+        <TrendlineFilters />
       </div>
       <div style={{ marginLeft: 'auto', color: theme.axisText, fontSize: 10, letterSpacing: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
         <button onClick={() => resetAutoScroll()}

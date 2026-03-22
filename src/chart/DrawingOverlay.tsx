@@ -262,12 +262,17 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       const tags: string[] = ann.tags ?? []
       // Apply filters
       if (!annotationFilters.user && ann.source === 'user') continue
+      // Timeframe filters
+      if (tags.includes('15m') && !annotationFilters['15m']) continue
+      if (tags.includes('30m') && !annotationFilters['30m']) continue
       if (tags.includes('1H') && !annotationFilters['1H']) continue
       if (tags.includes('4H') && !annotationFilters['4H']) continue
       if (tags.includes('1D') && !annotationFilters['1D']) continue
       if (tags.includes('1W') && !annotationFilters['1W']) continue
+      // Source filters
       if (tags.includes('wick') && !annotationFilters.wick) continue
       if (tags.includes('body') && !annotationFilters.body) continue
+      // Type filters
       if (tags.includes('support') && !annotationFilters.support) continue
       if (tags.includes('resistance') && !annotationFilters.resistance) continue
       if (tags.includes('channel') && !annotationFilters.channel) continue
