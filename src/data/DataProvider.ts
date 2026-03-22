@@ -86,10 +86,14 @@ export class YFinanceProvider implements DataProvider {
     const tf = TF_TO_INTERVAL[req.timeframe] ?? TF_TO_INTERVAL['5m']
 
     // Try InfluxDB (via OCOCO API) first — fast, server-side, deep history
+    // Timeout after 3s to avoid blocking chart if API is slow
     try {
       const start = req.before ? `-10y` : this.periodToFluxRange(tf.period)
       const url = `${OCOCO_API}/api/bars?symbol=${req.symbol}&interval=${req.timeframe}&start=${start}`
-      const resp = await fetch(url)
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 3000)
+      const resp = await fetch(url, { signal: controller.signal })
+      clearTimeout(timeout)
       if (resp.ok) {
         let bars: Bar[] = await resp.json()
         if (bars.length > 10) {
@@ -99,7 +103,7 @@ export class YFinanceProvider implements DataProvider {
         }
       }
     } catch {
-      // InfluxDB/OCOCO API not reachable — fall through to yfinance
+      // InfluxDB/OCOCO API not reachable or timed out — fall through
     }
 
     // Fallback: yfinance sidecar (local) — also backfill InfluxDB
