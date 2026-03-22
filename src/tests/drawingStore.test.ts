@@ -30,14 +30,19 @@ describe('drawingStore', () => {
     expect(d.points[1].price).toBe(250)
   })
 
-  it('toggles draw tool', () => {
-    const s = useDrawingStore.getState()
-    s.setActiveTool('trendline')
-    expect(useDrawingStore.getState().activeTool).toBe('trendline')
-    useDrawingStore.getState().toggleDrawTool() // should go back to cursor
+  it('toggles draw tool — cycles through all tools', () => {
+    // Starts at cursor
     expect(useDrawingStore.getState().activeTool).toBe('cursor')
-    useDrawingStore.getState().toggleDrawTool() // should go back to trendline
+    useDrawingStore.getState().toggleDrawTool() // cursor → trendline
     expect(useDrawingStore.getState().activeTool).toBe('trendline')
+    useDrawingStore.getState().toggleDrawTool() // trendline → hline
+    expect(useDrawingStore.getState().activeTool).toBe('hline')
+    useDrawingStore.getState().toggleDrawTool() // hline → hzone
+    expect(useDrawingStore.getState().activeTool).toBe('hzone')
+    useDrawingStore.getState().toggleDrawTool() // hzone → barmarker
+    expect(useDrawingStore.getState().activeTool).toBe('barmarker')
+    useDrawingStore.getState().toggleDrawTool() // barmarker → cursor
+    expect(useDrawingStore.getState().activeTool).toBe('cursor')
   })
 
   it('filters by symbol and timeframe', () => {

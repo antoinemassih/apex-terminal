@@ -1,10 +1,10 @@
-import { invoke } from '@tauri-apps/api/core'
 import { ColumnStore } from './columns'
 import { TF_TO_INTERVAL } from './timeframes'
 import type { TickData } from './types'
 import type { IndicatorEngine, IndicatorSnapshot } from '../indicators'
-import type { Bar, Timeframe } from '../types'
+import type { Timeframe } from '../types'
 import type { BarCache } from './BarCache'
+import type { DataProvider } from './DataProvider'
 
 export class DataStore {
   private stores = new Map<string, ColumnStore>()
@@ -12,9 +12,23 @@ export class DataStore {
   private subscribers = new Map<string, Set<() => void>>()
   private loadPromises = new Map<string, Promise<{ data: ColumnStore; indicators: IndicatorSnapshot }>>()
   private lastActions = new Map<string, 'updated' | 'created'>()
+  private paginationState = new Map<string, { loading: boolean; hasMore: boolean }>()
+
+  // Performance metrics
+  private metrics = {
+    loadCount: 0,
+    loadTotalMs: 0,
+    loadPeakMs: 0,
+    paginationCount: 0,
+    tickCount: 0,
+    tickTotalMs: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+  }
 
   constructor(
     private indicatorEngine: IndicatorEngine,
+    private provider: DataProvider,
     private barCache?: BarCache,
   ) {}
 
@@ -41,51 +55,58 @@ export class DataStore {
   }
 
   private async doLoad(symbol: string, timeframe: string, k: string): Promise<{ data: ColumnStore; indicators: IndicatorSnapshot }> {
-    const tf = TF_TO_INTERVAL[timeframe as Timeframe] ?? TF_TO_INTERVAL['5m']
+    const t0 = performance.now()
 
-    // Try cache first for instant render
+    // Try cache first
     if (this.barCache) {
       const cached = await this.barCache.get(symbol, timeframe)
       if (cached && cached.length > 0) {
+        this.metrics.cacheHits++
         const store = ColumnStore.fromBars(cached)
         this.stores.set(k, store)
         const indicators = this.indicatorEngine.bootstrap(symbol, timeframe, store)
         this.snapshots.set(k, indicators)
+        this.paginationState.set(k, { loading: false, hasMore: true })
+        this.recordLoadMetric(t0)
         this.notify(k)
-        // Background refresh from API
-        this.refreshFromAPI(symbol, timeframe, k, tf).catch(() => {})
+        // Background refresh
+        this.refreshFromProvider(symbol, timeframe as Timeframe, k).catch(() => {})
         return { data: store, indicators }
       }
+      this.metrics.cacheMisses++
     }
 
-    // No cache — load from API
-    const bars: Bar[] = await invoke('get_bars', { symbol, interval: tf.interval, period: tf.period })
-    const store = ColumnStore.fromBars(bars)
+    // Load from provider
+    const resp = await this.provider.getHistory({ symbol, timeframe: timeframe as Timeframe })
+    const store = ColumnStore.fromBars(resp.bars)
     this.stores.set(k, store)
     const indicators = this.indicatorEngine.bootstrap(symbol, timeframe, store)
     this.snapshots.set(k, indicators)
+    this.paginationState.set(k, { loading: false, hasMore: resp.hasMore || resp.bars.length > 50 })
+    this.recordLoadMetric(t0)
     this.notify(k)
-    this.barCache?.set(symbol, timeframe, bars).catch(() => {})
+    this.barCache?.set(symbol, timeframe, resp.bars).catch(() => {})
     return { data: store, indicators }
   }
 
-  private async refreshFromAPI(symbol: string, timeframe: string, k: string, tf: { interval: string; period: string; seconds: number }): Promise<void> {
+  private async refreshFromProvider(symbol: string, timeframe: Timeframe, k: string): Promise<void> {
     try {
-      const bars: Bar[] = await invoke('get_bars', { symbol, interval: tf.interval, period: tf.period })
-      if (bars.length === 0) return
-      const store = ColumnStore.fromBars(bars)
+      const resp = await this.provider.getHistory({ symbol, timeframe })
+      if (resp.bars.length === 0) return
+      const store = ColumnStore.fromBars(resp.bars)
       this.stores.set(k, store)
       const indicators = this.indicatorEngine.bootstrap(symbol, timeframe, store)
       this.snapshots.set(k, indicators)
+      this.paginationState.set(k, { loading: false, hasMore: resp.hasMore || resp.bars.length > 50 })
       this.notify(k)
-      this.barCache?.set(symbol, timeframe, bars).catch(() => {})
+      this.barCache?.set(symbol, timeframe as string, resp.bars).catch(() => {})
     } catch (e) {
-      // Refresh failed — we still have cached data, so this is non-fatal
       console.warn(`Background refresh failed for ${symbol}:${timeframe}:`, e)
     }
   }
 
   applyTick(symbol: string, timeframe: string, tick: TickData): void {
+    const t0 = performance.now()
     const k = this.key(symbol, timeframe)
     const store = this.stores.get(k)
     if (!store) return
@@ -101,35 +122,67 @@ export class DataStore {
     } catch (e) {
       console.warn(`Indicator update failed for ${k}:`, e)
     }
+    this.metrics.tickCount++
+    this.metrics.tickTotalMs += performance.now() - t0
     this.notify(k)
   }
 
-  /** Load more historical data by prepending older bars */
+  /** Load older history when user scrolls left. Returns bars added. */
   async loadMore(symbol: string, timeframe: string): Promise<number> {
     const k = this.key(symbol, timeframe)
     const store = this.stores.get(k)
     if (!store || store.length === 0) return 0
 
-    const tf = TF_TO_INTERVAL[timeframe as Timeframe] ?? TF_TO_INTERVAL['5m']
+    const state = this.paginationState.get(k)
+    if (state?.loading) return 0 // already fetching
+    if (state && !state.hasMore) return 0 // no more history
+
+    this.paginationState.set(k, { loading: true, hasMore: state?.hasMore ?? true })
+
+    const t0 = performance.now()
     const oldestTime = store.times[0]
 
     try {
-      const bars: Bar[] = await invoke('get_bars', {
-        symbol, interval: tf.interval, period: tf.period
+      const resp = await this.provider.getHistory({
+        symbol,
+        timeframe: timeframe as Timeframe,
+        before: oldestTime,
+        limit: 500,
       })
-      const newBars = bars.filter(b => b.time < oldestTime)
-      if (newBars.length === 0) return 0
+
+      const newBars = resp.bars.filter(b => b.time < oldestTime)
+      if (newBars.length === 0) {
+        this.paginationState.set(k, { loading: false, hasMore: false })
+        return 0
+      }
+
       const added = store.prepend(newBars)
       if (added > 0) {
         const indicators = this.indicatorEngine.bootstrap(symbol, timeframe, store)
         this.snapshots.set(k, indicators)
+        this.metrics.paginationCount++
+        this.recordLoadMetric(t0)
         this.notify(k)
       }
+
+      this.paginationState.set(k, { loading: false, hasMore: resp.hasMore && newBars.length > 0 })
       return added
     } catch (e) {
       console.warn(`Failed to load more ${k}:`, e)
+      this.paginationState.set(k, { loading: false, hasMore: state?.hasMore ?? false })
       return 0
     }
+  }
+
+  /** Check if more history is available for a symbol+timeframe */
+  canLoadMore(symbol: string, timeframe: string): boolean {
+    const state = this.paginationState.get(this.key(symbol, timeframe))
+    return state ? state.hasMore && !state.loading : false
+  }
+
+  /** Check if currently loading more history */
+  isLoadingMore(symbol: string, timeframe: string): boolean {
+    return this.paginationState.get(this.key(symbol, timeframe))?.loading ?? false
   }
 
   getData(symbol: string, timeframe: string): ColumnStore | null {
@@ -142,6 +195,14 @@ export class DataStore {
 
   getLastAction(symbol: string, timeframe: string): 'updated' | 'created' | null {
     return this.lastActions.get(this.key(symbol, timeframe)) ?? null
+  }
+
+  getMetrics() {
+    return {
+      ...this.metrics,
+      avgLoadMs: this.metrics.loadCount > 0 ? Math.round(this.metrics.loadTotalMs / this.metrics.loadCount * 10) / 10 : 0,
+      avgTickMs: this.metrics.tickCount > 0 ? Math.round(this.metrics.tickTotalMs / this.metrics.tickCount * 1000) / 1000 : 0,
+    }
   }
 
   subscribe(symbol: string, timeframe: string, cb: () => void): () => void {
@@ -158,6 +219,7 @@ export class DataStore {
     this.subscribers.delete(k)
     this.loadPromises.delete(k)
     this.lastActions.delete(k)
+    this.paginationState.delete(k)
     this.indicatorEngine.remove(symbol, timeframe)
   }
 
@@ -167,5 +229,12 @@ export class DataStore {
     for (const cb of subs) {
       try { cb() } catch (e) { console.error('DataStore subscriber error:', e) }
     }
+  }
+
+  private recordLoadMetric(t0: number): void {
+    const elapsed = performance.now() - t0
+    this.metrics.loadCount++
+    this.metrics.loadTotalMs += elapsed
+    if (elapsed > this.metrics.loadPeakMs) this.metrics.loadPeakMs = elapsed
   }
 }

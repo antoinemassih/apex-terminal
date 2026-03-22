@@ -1,12 +1,12 @@
 import type { RenderEngine } from './engine'
 import type { DataStore } from './data'
 import type { IndicatorEngine } from './indicators'
-import type { SimulatedFeed } from './data/SimulatedFeed'
+import type { DataProvider } from './data/DataProvider'
 
 let _engine: RenderEngine | null = null
 let _dataStore: DataStore | null = null
 let _indicatorEngine: IndicatorEngine | null = null
-let _feed: SimulatedFeed | null = null
+let _provider: DataProvider | null = null
 
 export function getRenderEngine(): RenderEngine {
   if (!_engine) throw new Error('RenderEngine not initialized')
@@ -26,8 +26,8 @@ export function getIndicatorEngine(): IndicatorEngine {
 }
 export function setIndicatorEngine(i: IndicatorEngine) { _indicatorEngine = i }
 
-export function getFeed(): SimulatedFeed {
-  if (!_feed) throw new Error('Feed not initialized')
-  return _feed
+export function getDataProvider(): DataProvider {
+  if (!_provider) throw new Error('DataProvider not initialized')
+  return _provider
 }
-export function setFeed(f: SimulatedFeed) { _feed = f }
+export function setDataProvider(p: DataProvider) { _provider = p }

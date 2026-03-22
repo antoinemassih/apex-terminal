@@ -82,6 +82,23 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     setCs(CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP }))
   }, [viewStart, viewCount, width, height, priceOverride, dataVersion, symbol, timeframe])
 
+  // Scroll-left pagination: load more history when viewStart hits 0
+  const loadingMoreRef = useRef(false)
+
+  useEffect(() => {
+    if (viewStart > 5 || loadingMoreRef.current || autoScrolling) return
+    const ds = getDataStore()
+    if (!ds.canLoadMore(symbol, timeframe)) return
+    loadingMoreRef.current = true
+    ds.loadMore(symbol, timeframe).then(added => {
+      if (added > 0) {
+        // Shift viewStart right by the number of prepended bars so the view doesn't jump
+        setViewStart(v => v + added)
+      }
+      loadingMoreRef.current = false
+    }).catch(() => { loadingMoreRef.current = false })
+  }, [viewStart, symbol, timeframe, autoScrolling])
+
   // Reset on symbol/timeframe change
   useEffect(() => {
     const data = getDataStore().getData(symbol, timeframe)
@@ -91,6 +108,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     }
     setPriceOverride(null)
     setAutoScrolling(true)
+    loadingMoreRef.current = false
   }, [symbol, timeframe])
 
   const pan = useCallback((deltaPixels: number) => {

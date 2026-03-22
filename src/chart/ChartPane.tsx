@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { getRenderEngine, getDataStore, getIndicatorEngine, getFeed } from '../globals'
+import { getRenderEngine, getDataStore, getIndicatorEngine, getDataProvider } from '../globals'
 import type { PaneContext, EngineState } from '../engine'
 import { useChartViewport } from './useChartViewport'
 import { AxisCanvas } from './AxisCanvas'
@@ -55,15 +55,15 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   // Load data + subscribe to feed + subscribe to updates
   useEffect(() => {
     const ds = getDataStore()
-    const feed = getFeed()
+    const provider = getDataProvider()
 
-    // Subscribe this symbol+timeframe to the feed so ticks arrive
-    feed.subscribe(symbol, timeframe)
+    // Subscribe to real-time ticks
+    provider.subscribe(symbol, timeframe)
 
-    // Load historical data, then seed simulation
+    // Load historical data, then seed simulation prices
     ds.load(symbol, timeframe).then(({ data: store }) => {
-      if (store.length > 0) {
-        feed.setLastPrice(symbol, timeframe, store.closes[store.length - 1], store.times[store.length - 1])
+      if (store.length > 0 && 'setLastPrice' in provider) {
+        (provider as any).setLastPrice(symbol, timeframe, store.closes[store.length - 1], store.times[store.length - 1])
       }
     }).catch(err => console.error(`Failed to load ${symbol}:${timeframe}:`, err))
 
@@ -77,7 +77,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
 
     return () => {
       unsub()
-      feed.unsubscribe(symbol, timeframe)
+      provider.unsubscribe(symbol, timeframe)
     }
   }, [symbol, timeframe])
 

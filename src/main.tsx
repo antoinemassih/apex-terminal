@@ -3,11 +3,12 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { RenderEngine } from './engine'
 import { IndicatorEngine } from './indicators'
-import { DataStore, SimulatedFeed, BarCache } from './data'
+import { DataStore, BarCache } from './data'
+import { YFinanceProvider } from './data/DataProvider'
 import { LocalDrawingRepository } from './data/DrawingRepository'
 import { TauriDrawingRepository } from './data/TauriDrawingRepository'
 import { OcocoClient } from './data/OcocoClient'
-import { setRenderEngine, setDataStore, setIndicatorEngine, setFeed } from './globals'
+import { setRenderEngine, setDataStore, setIndicatorEngine, setDataProvider } from './globals'
 import { useChartStore } from './store/chartStore'
 import { initDrawingStore } from './store/drawingStore'
 
@@ -48,30 +49,33 @@ async function bootstrap() {
   }
   await initDrawingStore(drawingRepo)
 
-  const dataStore = new DataStore(indicatorEngine, barCache)
-  const feed = new SimulatedFeed()
+  // Data provider (swap implementation here for different data sources)
+  const provider = new YFinanceProvider()
 
-  feed.onTick((symbol, tf, tick) => dataStore.applyTick(symbol, tf, tick))
+  const dataStore = new DataStore(indicatorEngine, provider, barCache)
 
-  // Subscribe all default panes to the feed
+  provider.onTick((symbol, tf, tick) => dataStore.applyTick(symbol, tf, tick))
+
+  // Subscribe all default panes to the provider
   const panes = useChartStore.getState().panes
   for (const pane of panes) {
-    feed.subscribe(pane.symbol, pane.timeframe)
+    provider.subscribe(pane.symbol, pane.timeframe)
   }
 
-  await feed.connect()
+  await provider.connect()
+  console.info(`Data provider: ${provider.name}`)
 
   // Feed lifecycle events
-  feed.onDisconnect(() => console.warn('Feed disconnected'))
-  feed.onReconnect(() => {
-    console.info('Feed reconnected')
+  provider.onDisconnect(() => console.warn('Data provider disconnected'))
+  provider.onReconnect(() => {
+    console.info('Data provider reconnected')
     for (const pane of engine.getAllPanes()) pane.dirty = true
   })
 
   setRenderEngine(engine)
   setDataStore(dataStore)
   setIndicatorEngine(indicatorEngine)
-  setFeed(feed)
+  setDataProvider(provider)
 
   engine.scheduler.start()
 
