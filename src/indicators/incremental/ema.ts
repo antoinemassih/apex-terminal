@@ -39,7 +39,8 @@ export class IncrementalEMA {
     const prevIdx = this.outputLen - 2
     const prevEmaVal = !isNaN(this.output[prevIdx]) ? this.output[prevIdx] : this.prevEma
     this.prevEma = value * this.k + prevEmaVal * (1 - this.k)
-    this.output[this.outputLen - 1] = this.count >= this.period ? this.prevEma : NaN
+    // Use same threshold as push: count >= period - 1
+    this.output[this.outputLen - 1] = this.count >= this.period - 1 ? this.prevEma : NaN
   }
 
   getOutput(): Float64Array { return this.output }

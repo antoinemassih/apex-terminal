@@ -6,7 +6,6 @@ export class FrameScheduler {
   private running = false
   private paused = false
   private device: GPUDevice
-  activePaneId: string | null = null
 
   constructor(device: GPUDevice) {
     this.device = device
@@ -50,20 +49,14 @@ export class FrameScheduler {
     this.rafId = null
 
     if (this.paused) {
-      this.rafId = requestAnimationFrame(() => this.tick())
+      // Keep loop alive during recovery so resume() doesn't need to restart
+      if (this.running) this.rafId = requestAnimationFrame(() => this.tick())
       return
     }
 
     const commandBuffers: GPUCommandBuffer[] = []
 
-    // Active pane first for perceived responsiveness
-    if (this.activePaneId) {
-      const active = this.panes.get(this.activePaneId)
-      if (active?.dirty) this.renderPane(this.activePaneId, commandBuffers)
-    }
-
     for (const [id, pane] of this.panes) {
-      if (id === this.activePaneId) continue
       if (!pane.dirty) continue
       this.renderPane(id, commandBuffers)
     }
@@ -73,10 +66,11 @@ export class FrameScheduler {
         this.device.queue.submit(commandBuffers)
       } catch (e) {
         console.error('GPU submit failed:', e)
+        // Don't crash — device.lost will fire and trigger recovery
       }
     }
 
-    // Schedule next frame only if there's still dirty work
+    // Schedule next frame only if there's still dirty work or running continuously
     let hasDirty = false
     for (const pane of this.panes.values()) {
       if (pane.dirty) { hasDirty = true; break }
@@ -93,7 +87,7 @@ export class FrameScheduler {
       pane.dirty = false
     } catch (e) {
       console.warn(`Pane ${id} render failed:`, e)
-      pane.dirty = false
+      pane.dirty = false // don't retry broken frame endlessly
     }
   }
 }

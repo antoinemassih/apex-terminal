@@ -9,7 +9,8 @@ export class DataStore {
   private stores = new Map<string, ColumnStore>()
   private snapshots = new Map<string, IndicatorSnapshot>()
   private subscribers = new Map<string, Set<() => void>>()
-  private loading = new Set<string>()
+  // Promise-based dedup: store the in-flight promise, not just a boolean flag
+  private loadPromises = new Map<string, Promise<{ data: ColumnStore; indicators: IndicatorSnapshot }>>()
 
   constructor(private indicatorEngine: IndicatorEngine) {}
 
@@ -17,48 +18,55 @@ export class DataStore {
 
   async load(symbol: string, timeframe: string): Promise<{ data: ColumnStore; indicators: IndicatorSnapshot }> {
     const k = this.key(symbol, timeframe)
+
+    // Already loaded — return cached
     if (this.stores.has(k)) {
       return { data: this.stores.get(k)!, indicators: this.snapshots.get(k)! }
     }
-    if (this.loading.has(k)) {
-      return new Promise(resolve => {
-        const unsub = this.subscribe(symbol, timeframe, () => {
-          if (this.stores.has(k)) {
-            unsub()
-            resolve({ data: this.stores.get(k)!, indicators: this.snapshots.get(k)! })
-          }
-        })
-      })
-    }
-    this.loading.add(k)
 
-    const tf = TF_TO_INTERVAL[timeframe as Timeframe] ?? TF_TO_INTERVAL['5m']
+    // Already loading — return the same promise (no duplicate IPC calls)
+    const existing = this.loadPromises.get(k)
+    if (existing) return existing
+
+    // Start loading — cache the promise immediately to prevent races
+    const promise = this.doLoad(symbol, timeframe, k)
+    this.loadPromises.set(k, promise)
+
     try {
-      const bars: Bar[] = await invoke('get_bars', { symbol, interval: tf.interval, period: tf.period })
-      const store = ColumnStore.fromBars(bars)
-      this.stores.set(k, store)
-      const indicators = this.indicatorEngine.bootstrap(symbol, timeframe, store)
-      this.snapshots.set(k, indicators)
-      this.loading.delete(k)
-      this.notify(k)
-      return { data: store, indicators }
-    } catch (err) {
-      this.loading.delete(k)
-      throw err
+      const result = await promise
+      return result
+    } finally {
+      this.loadPromises.delete(k)
     }
+  }
+
+  private async doLoad(symbol: string, timeframe: string, k: string): Promise<{ data: ColumnStore; indicators: IndicatorSnapshot }> {
+    const tf = TF_TO_INTERVAL[timeframe as Timeframe] ?? TF_TO_INTERVAL['5m']
+    const bars: Bar[] = await invoke('get_bars', { symbol, interval: tf.interval, period: tf.period })
+    const store = ColumnStore.fromBars(bars)
+    this.stores.set(k, store)
+    const indicators = this.indicatorEngine.bootstrap(symbol, timeframe, store)
+    this.snapshots.set(k, indicators)
+    this.notify(k)
+    return { data: store, indicators }
   }
 
   applyTick(symbol: string, timeframe: string, tick: TickData): void {
     const k = this.key(symbol, timeframe)
     const store = this.stores.get(k)
-    if (!store) return
+    if (!store) return // tick before load — expected during startup, safe to drop
 
     const tf = TF_TO_INTERVAL[timeframe as Timeframe]
     if (!tf) return
 
     const action = store.applyTick(tick.price, tick.volume, tick.time, tf.seconds)
-    const snapshot = this.indicatorEngine.onTick(symbol, timeframe, tick.price, action)
-    this.snapshots.set(k, snapshot)
+    try {
+      const snapshot = this.indicatorEngine.onTick(symbol, timeframe, tick.price, action)
+      this.snapshots.set(k, snapshot)
+    } catch (e) {
+      // Indicator state missing — shouldn't happen if load completed, but don't crash the feed
+      console.warn(`Indicator update failed for ${k}:`, e)
+    }
     this.notify(k)
   }
 
@@ -82,10 +90,15 @@ export class DataStore {
     this.stores.delete(k)
     this.snapshots.delete(k)
     this.subscribers.delete(k)
+    this.loadPromises.delete(k)
     this.indicatorEngine.remove(symbol, timeframe)
   }
 
   private notify(k: string): void {
-    this.subscribers.get(k)?.forEach(cb => cb())
+    const subs = this.subscribers.get(k)
+    if (!subs) return
+    for (const cb of subs) {
+      try { cb() } catch (e) { console.error('DataStore subscriber error:', e) }
+    }
   }
 }

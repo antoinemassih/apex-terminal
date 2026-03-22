@@ -37,15 +37,54 @@ export class IncrementalBollinger {
   updateLast(value: number): void {
     if (this.outputLen === 0) return
     const idx = this.outputLen - 1
+    // Find the position of the last pushed value in the circular buffer
     const prevPos = (this.pos - 1 + this.period) % this.period
+    const oldValue = this.buffer[prevPos]
+
+    if (oldValue === value) {
+      // No change — skip computation
+      return
+    }
+
+    // O(1) Welford update: remove old value's contribution, add new value's
+    if (this.count >= this.period) {
+      // Window is full — both old and new values are in the window
+      // We're replacing oldValue (already in buffer) with value
+      const oldMean = this.mean
+      this.sum -= oldValue
+      this.sum += value
+      this.mean = this.sum / this.period
+      // Welford remove-and-add in one step
+      this.m2 += (value - oldMean) * (value - this.mean) - (oldValue - oldMean) * (oldValue - this.mean)
+      if (this.m2 < 0) this.m2 = 0 // numerical guard
+    } else {
+      // Window not full — simpler update
+      const n = Math.min(this.count, this.period)
+      this.sum -= oldValue
+      this.sum += value
+      this.mean = this.sum / n
+      // Recompute m2 from scratch for partial windows (rare, only during bootstrap)
+      this.m2 = 0
+      this.buffer[prevPos] = value
+      for (let i = 0; i < n; i++) {
+        const d = this.buffer[i] - this.mean
+        this.m2 += d * d
+      }
+      // Output
+      const variance = n >= this.period ? this.m2 / this.period : 0
+      const std = Math.sqrt(Math.max(0, variance))
+      this.upperOut[idx] = this.count >= this.period ? this.mean + this.stdDevs * std : NaN
+      this.lowerOut[idx] = this.count >= this.period ? this.mean - this.stdDevs * std : NaN
+      return
+    }
+
     this.buffer[prevPos] = value
-    this.recomputeFromBuffer()
-    const n = Math.min(this.count, this.period)
-    const sma = this.sum / n
-    const variance = n >= this.period ? this.m2 / this.period : 0
+
+    const sma = this.sum / this.period
+    const variance = this.m2 / this.period
     const std = Math.sqrt(Math.max(0, variance))
-    this.upperOut[idx] = this.count >= this.period ? sma + this.stdDevs * std : NaN
-    this.lowerOut[idx] = this.count >= this.period ? sma - this.stdDevs * std : NaN
+    this.upperOut[idx] = sma + this.stdDevs * std
+    this.lowerOut[idx] = sma - this.stdDevs * std
   }
 
   getUpper(): Float64Array { return this.upperOut }
@@ -79,18 +118,6 @@ export class IncrementalBollinger {
     const std = Math.sqrt(Math.max(0, variance))
     this.upperOut[outputIdx] = this.count >= this.period ? sma + this.stdDevs * std : NaN
     this.lowerOut[outputIdx] = this.count >= this.period ? sma - this.stdDevs * std : NaN
-  }
-
-  private recomputeFromBuffer(): void {
-    const n = Math.min(this.count, this.period)
-    this.sum = 0
-    for (let i = 0; i < n; i++) this.sum += this.buffer[i]
-    this.mean = this.sum / n
-    this.m2 = 0
-    for (let i = 0; i < n; i++) {
-      const d = this.buffer[i] - this.mean
-      this.m2 += d * d
-    }
   }
 
   private ensureCapacity(needed: number): void {

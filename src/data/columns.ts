@@ -1,6 +1,7 @@
 import type { Bar } from '../types'
 
 const MAX_CAPACITY = 50_000
+const EVICT_KEEP_RATIO = 0.75
 
 export class ColumnStore {
   times: Float64Array
@@ -10,19 +11,21 @@ export class ColumnStore {
   closes: Float64Array
   volumes: Float64Array
   length: number
+  private capacity: number
 
   private constructor(
     times: Float64Array, opens: Float64Array, highs: Float64Array,
     lows: Float64Array, closes: Float64Array, volumes: Float64Array,
+    length: number,
   ) {
     this.times = times; this.opens = opens; this.highs = highs
     this.lows = lows; this.closes = closes; this.volumes = volumes
-    this.length = times.length
+    this.length = length
+    this.capacity = times.length
   }
 
   static fromBars(bars: Bar[]): ColumnStore {
-    // Allocate extra capacity for incoming ticks
-    const capacity = bars.length + 512
+    const capacity = Math.min(bars.length + 512, MAX_CAPACITY)
     const n = bars.length
     const times = new Float64Array(capacity)
     const opens = new Float64Array(capacity)
@@ -38,9 +41,7 @@ export class ColumnStore {
       closes[i] = bars[i].close
       volumes[i] = bars[i].volume
     }
-    const store = new ColumnStore(times, opens, highs, lows, closes, volumes)
-    store.length = n
-    return store
+    return new ColumnStore(times, opens, highs, lows, closes, volumes, n)
   }
 
   /** Apply a tick to the last candle or start a new one */
@@ -57,9 +58,9 @@ export class ColumnStore {
       this.volumes[last] += volume
       return 'updated'
     } else {
-      // New candle
+      // New candle — ensure capacity
+      if (this.length >= this.capacity) this.grow()
       const idx = this.length
-      if (idx >= this.times.length) this.grow()
       this.times[idx] = nextCandleTime
       this.opens[idx] = price
       this.highs[idx] = price
@@ -71,57 +72,61 @@ export class ColumnStore {
     }
   }
 
-  /** Double array capacity, copying existing data */
+  /** Double array capacity, evicting oldest data if at max */
   private grow(): void {
-    if (this.times.length >= MAX_CAPACITY) {
+    if (this.capacity >= MAX_CAPACITY) {
+      // At max: evict oldest 25%, then continue with same capacity
       this.evict()
+      // After eviction, length is reduced — there's room now
       return
     }
-    const newCap = Math.min(this.times.length * 2, MAX_CAPACITY)
+    const newCap = Math.min(this.capacity * 2, MAX_CAPACITY)
     const names = ['times', 'opens', 'highs', 'lows', 'closes', 'volumes'] as const
     for (const name of names) {
       const old = this[name]
       const arr = new Float64Array(newCap)
-      arr.set(old)
+      arr.set(old.subarray(0, this.length))
       this[name] = arr
     }
+    this.capacity = newCap
   }
 
-  /** Evict oldest 25% of data, keeping the most recent 75% */
+  /** Evict oldest data, keeping the most recent portion */
   private evict(): void {
-    const keep = Math.floor(this.length * 0.75)
+    const keep = Math.floor(this.length * EVICT_KEEP_RATIO)
     const drop = this.length - keep
     const names = ['times', 'opens', 'highs', 'lows', 'closes', 'volumes'] as const
     for (const name of names) {
       const old = this[name]
-      const arr = new Float64Array(old.length)
-      arr.set(old.subarray(drop, drop + keep))
-      this[name] = arr
+      // Copy in-place: shift data left by `drop` positions
+      // This avoids allocating new arrays during eviction
+      old.copyWithin(0, drop, drop + keep)
     }
     this.length = keep
+    // capacity stays the same — we freed up (capacity - keep) slots
   }
 
   /** Clone for immutable state updates */
   clone(): ColumnStore {
-    const store = new ColumnStore(
-      new Float64Array(this.times),
-      new Float64Array(this.opens),
-      new Float64Array(this.highs),
-      new Float64Array(this.lows),
-      new Float64Array(this.closes),
-      new Float64Array(this.volumes),
+    return new ColumnStore(
+      new Float64Array(this.times.subarray(0, this.length)),
+      new Float64Array(this.opens.subarray(0, this.length)),
+      new Float64Array(this.highs.subarray(0, this.length)),
+      new Float64Array(this.lows.subarray(0, this.length)),
+      new Float64Array(this.closes.subarray(0, this.length)),
+      new Float64Array(this.volumes.subarray(0, this.length)),
+      this.length,
     )
-    store.length = this.length
-    return store
   }
 
   priceRange(start: number, end: number): { min: number; max: number } {
     let min = Infinity, max = -Infinity
     const e = Math.min(end, this.length)
-    for (let i = start; i < e; i++) {
+    for (let i = Math.max(0, start); i < e; i++) {
       if (this.lows[i] < min) min = this.lows[i]
       if (this.highs[i] > max) max = this.highs[i]
     }
+    if (!isFinite(min) || !isFinite(max)) { return { min: 0, max: 1 } }
     if (min === max) { min -= 0.005; max += 0.005 }
     return { min, max }
   }

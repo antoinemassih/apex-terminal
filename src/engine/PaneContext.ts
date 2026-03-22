@@ -13,6 +13,7 @@ const LINE_CONFIGS = [
 
 export class PaneContext {
   dirty = true
+  needsReconfigure = false
   data: ColumnStore | null = null
   indicators: IndicatorSnapshot | null = null
   viewport: { viewStart: number; viewCount: number; cs: CoordSystem } | null = null
@@ -23,6 +24,7 @@ export class PaneContext {
   private renderers: { candle: CandleRenderer; grid: GridRenderer; lines: LineRenderer[] }
   private resizeTimer: number | null = null
   private markDirtyFn: () => void
+  private destroyed = false
 
   constructor(
     readonly id: string,
@@ -45,12 +47,14 @@ export class PaneContext {
   }
 
   setViewport(v: { viewStart: number; viewCount: number; cs: CoordSystem }): void {
+    if (this.destroyed) return
     this.viewport = v
     this.dirty = true
     this.markDirtyFn()
   }
 
   setData(d: ColumnStore, indicators: IndicatorSnapshot): void {
+    if (this.destroyed) return
     this.data = d
     this.indicators = indicators
     this.dirty = true
@@ -58,11 +62,17 @@ export class PaneContext {
   }
 
   resize(width: number, height: number): void {
+    if (this.destroyed) return
     if (this.resizeTimer) clearTimeout(this.resizeTimer)
     this.resizeTimer = window.setTimeout(() => {
+      if (this.destroyed) return
       const dpr = window.devicePixelRatio || 1
-      this.canvas.width = Math.round(width * dpr)
-      this.canvas.height = Math.round(height * dpr)
+      const pw = Math.round(width * dpr)
+      const ph = Math.round(height * dpr)
+      // Skip if size hasn't actually changed
+      if (this.canvas.width === pw && this.canvas.height === ph) return
+      this.canvas.width = pw
+      this.canvas.height = ph
       this.canvas.style.width = width + 'px'
       this.canvas.style.height = height + 'px'
       this.gpuContext.configure({ device: this.device, format: this.format, alphaMode: 'premultiplied' })
@@ -107,25 +117,34 @@ export class PaneContext {
   }
 
   reconfigure(ctx: GPUContext): void {
+    if (this.destroyed) return
     if (!this.canvas.isConnected) return
     this.device = ctx.device
     this.format = ctx.format
     this.gpuContext.configure({ device: ctx.device, format: ctx.format, alphaMode: 'premultiplied' })
-    this.renderers.candle.destroy()
-    this.renderers.grid.destroy()
-    for (const l of this.renderers.lines) l.destroy()
+    // Destroy old renderers safely
+    this.destroyRenderers()
     this.renderers = {
       candle: new CandleRenderer(ctx),
       grid: new GridRenderer(ctx),
       lines: LINE_CONFIGS.map(() => new LineRenderer(ctx)),
     }
+    this.needsReconfigure = false
     this.dirty = true
   }
 
   destroy(): void {
+    if (this.destroyed) return
+    this.destroyed = true
     if (this.resizeTimer) clearTimeout(this.resizeTimer)
-    this.renderers.candle.destroy()
-    this.renderers.grid.destroy()
-    for (const l of this.renderers.lines) l.destroy()
+    this.destroyRenderers()
+  }
+
+  private destroyRenderers(): void {
+    try { this.renderers.candle.destroy() } catch (e) { /* already destroyed */ }
+    try { this.renderers.grid.destroy() } catch (e) { /* already destroyed */ }
+    for (const l of this.renderers.lines) {
+      try { l.destroy() } catch (e) { /* already destroyed */ }
+    }
   }
 }

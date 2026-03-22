@@ -7,6 +7,7 @@ export class LineRenderer {
   private uniformBuffer: GPUBuffer
   private bindGroup: GPUBindGroup
   private pointBuffer: GPUBuffer | null = null
+  private pointBufferSize = 0 // track allocated size for reuse
   private segmentCount = 0
   private readonly device: GPUDevice
 
@@ -59,11 +60,23 @@ export class LineRenderer {
     if (points.length < 4) { this.segmentCount = 0; return }
 
     const data = new Float32Array(points)
-    if (this.pointBuffer) this.pointBuffer.destroy()
-    this.pointBuffer = this.device.createBuffer({
-      size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    })
-    this.device.queue.writeBuffer(this.pointBuffer, 0, data)
+    const neededBytes = data.byteLength
+
+    // Reuse existing buffer if it's large enough, avoiding GPU allocation per frame
+    if (this.pointBuffer && this.pointBufferSize >= neededBytes) {
+      this.device.queue.writeBuffer(this.pointBuffer, 0, data)
+    } else {
+      // Need a new buffer — destroy old one first
+      if (this.pointBuffer) this.pointBuffer.destroy()
+      // Allocate with 50% headroom to reduce future reallocations
+      const allocSize = Math.ceil(neededBytes * 1.5)
+      this.pointBuffer = this.device.createBuffer({
+        size: allocSize, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      })
+      this.pointBufferSize = allocSize
+      this.device.queue.writeBuffer(this.pointBuffer, 0, data)
+    }
+
     this.segmentCount = (points.length / 2) - 1
 
     const clipWidth = (lineWidthPx / cs.width) * 2
@@ -73,12 +86,20 @@ export class LineRenderer {
 
   render(pass: GPURenderPassEncoder) {
     if (!this.pointBuffer || this.segmentCount <= 0) return
+    // Only use the portion of the buffer that has valid data
+    const usedBytes = (this.segmentCount + 1) * 8 // each point is 2 floats = 8 bytes
+    const segmentBytes = usedBytes - 8
     pass.setPipeline(this.pipeline)
     pass.setBindGroup(0, this.bindGroup)
-    pass.setVertexBuffer(0, this.pointBuffer, 0, this.pointBuffer.size - 8)
-    pass.setVertexBuffer(1, this.pointBuffer, 8, this.pointBuffer.size - 8)
+    pass.setVertexBuffer(0, this.pointBuffer, 0, segmentBytes)
+    pass.setVertexBuffer(1, this.pointBuffer, 8, segmentBytes)
     pass.draw(6, this.segmentCount)
   }
 
-  destroy() { this.pointBuffer?.destroy(); this.uniformBuffer.destroy() }
+  destroy() {
+    this.pointBuffer?.destroy()
+    this.pointBuffer = null
+    this.pointBufferSize = 0
+    this.uniformBuffer.destroy()
+  }
 }
