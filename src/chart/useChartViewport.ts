@@ -23,13 +23,6 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoScrollVersion = useChartStore(s => s.autoScrollVersion)
 
-  // Smooth scroll: track wall-clock time of last candle creation
-  const smoothRafRef = useRef<number | null>(null)
-  const lastCandleRealTimeRef = useRef(performance.now())
-  const lastBarCountRef = useRef(0)
-  // Tick interval in real ms between candle boundaries (measured, not computed)
-  const candleIntervalMsRef = useRef(1000) // will be measured from actual data
-
   // Global reset → force auto-scroll
   useEffect(() => {
     setAutoScrolling(true)
@@ -48,29 +41,15 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
 
   useEffect(() => () => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-    if (smoothRafRef.current) cancelAnimationFrame(smoothRafRef.current)
   }, [])
 
   // Subscribe to data changes
   useEffect(() => {
     const ds = getDataStore()
-    return ds.subscribe(symbol, timeframe, () => {
-      setDataVersion(v => v + 1)
-      // Detect new candle creation → record wall-clock time
-      const data = ds.getData(symbol, timeframe)
-      if (data && data.length !== lastBarCountRef.current) {
-        const now = performance.now()
-        if (lastBarCountRef.current > 0) {
-          // Measure actual real-time interval between candle creations
-          candleIntervalMsRef.current = now - lastCandleRealTimeRef.current
-        }
-        lastCandleRealTimeRef.current = now
-        lastBarCountRef.current = data.length
-      }
-    })
+    return ds.subscribe(symbol, timeframe, () => setDataVersion(v => v + 1))
   }, [symbol, timeframe])
 
-  // Auto-scroll: snap viewStart to end of data
+  // Auto-scroll
   useEffect(() => {
     if (!autoScrolling) return
     const data = getDataStore().getData(symbol, timeframe)
@@ -79,64 +58,29 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     setViewStart(maxStart)
   }, [autoScrolling, dataVersion, viewCount, symbol, timeframe])
 
-  // Smooth scroll rAF loop — only runs during auto-scroll
+  // Recompute CoordSystem
   useEffect(() => {
-    if (!autoScrolling) {
-      // When not auto-scrolling, compute CS without offset
-      const data = getDataStore().getData(symbol, timeframe)
-      if (!data || width === 0 || height === 0) return
-      const end = Math.min(viewStart + viewCount, data.length)
-      const dataBars = end - viewStart
-      if (dataBars <= 0) return
-      const totalBars = dataBars + RIGHT_MARGIN_BARS
-      let minP: number, maxP: number
-      if (priceOverride) { minP = priceOverride.min; maxP = priceOverride.max }
-      else {
-        const range = data.priceRange(viewStart, end)
-        const pad = (range.max - range.min) * 0.05
-        minP = range.min - pad; maxP = range.max + pad
-      }
-      setCs(CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP, scrollOffset: 0 }))
-      return
+    const data = getDataStore().getData(symbol, timeframe)
+    if (!data || width === 0 || height === 0) return
+
+    const end = Math.min(viewStart + viewCount, data.length)
+    const dataBars = end - viewStart
+    if (dataBars <= 0) return
+    const totalBars = dataBars + RIGHT_MARGIN_BARS
+
+    let minP: number, maxP: number
+    if (priceOverride) {
+      minP = priceOverride.min
+      maxP = priceOverride.max
+    } else {
+      const range = data.priceRange(viewStart, end)
+      const pad = (range.max - range.min) * 0.05
+      minP = range.min - pad
+      maxP = range.max + pad
     }
 
-    const tick = () => {
-      const data = getDataStore().getData(symbol, timeframe)
-      if (!data || data.length === 0 || width === 0 || height === 0) {
-        smoothRafRef.current = requestAnimationFrame(tick)
-        return
-      }
-
-      // Compute fractional offset from wall-clock time since last candle
-      const elapsed = performance.now() - lastCandleRealTimeRef.current
-      const interval = candleIntervalMsRef.current
-      const offset = interval > 0 ? Math.min(1, Math.max(0, elapsed / interval)) : 0
-
-      const end = Math.min(viewStart + viewCount, data.length)
-      const dataBars = end - viewStart
-      if (dataBars <= 0) {
-        smoothRafRef.current = requestAnimationFrame(tick)
-        return
-      }
-      const totalBars = dataBars + RIGHT_MARGIN_BARS
-
-      let minP: number, maxP: number
-      if (priceOverride) { minP = priceOverride.min; maxP = priceOverride.max }
-      else {
-        const range = data.priceRange(viewStart, end)
-        const pad = (range.max - range.min) * 0.05
-        minP = range.min - pad; maxP = range.max + pad
-      }
-
-      setCs(new CoordSystem({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP, scrollOffset: offset }))
-      smoothRafRef.current = requestAnimationFrame(tick)
-    }
-
-    smoothRafRef.current = requestAnimationFrame(tick)
-    return () => {
-      if (smoothRafRef.current) { cancelAnimationFrame(smoothRafRef.current); smoothRafRef.current = null }
-    }
-  }, [autoScrolling, viewStart, viewCount, width, height, priceOverride, symbol, timeframe, dataVersion])
+    setCs(CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP }))
+  }, [viewStart, viewCount, width, height, priceOverride, dataVersion, symbol, timeframe])
 
   // Reset on symbol/timeframe change
   useEffect(() => {
@@ -147,8 +91,6 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     }
     setPriceOverride(null)
     setAutoScrolling(true)
-    lastBarCountRef.current = 0
-    lastCandleRealTimeRef.current = performance.now()
   }, [symbol, timeframe])
 
   const pan = useCallback((deltaPixels: number) => {
