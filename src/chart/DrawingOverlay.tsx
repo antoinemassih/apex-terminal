@@ -52,6 +52,13 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   const mouseRef = useRef({ x: 0, y: 0 })
   const dragRef = useRef<DragState | null>(null)
   const cursorRef = useRef<string | null>(null)
+  const prevToolRef = useRef(activeTool)
+
+  // Reset inProgress when tool changes (e.g., mid-draw tool switch via middle-click)
+  if (activeTool !== prevToolRef.current) {
+    prevToolRef.current = activeTool
+    if (inProgress) setInProgress(null)
+  }
 
   const toPixel = useCallback((p: Point) => {
     if (!chartData || chartData.length === 0) return { x: 0, y: cs.priceToY(p.price) }
