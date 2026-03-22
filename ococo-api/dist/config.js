@@ -14,6 +14,11 @@ export const config = {
         port: parseInt(process.env.REDIS_PORT ?? '6379'),
         password: process.env.REDIS_PASSWORD ?? 'monkeyxx',
     },
+    influx: {
+        url: process.env.INFLUXDB_URL ?? 'http://192.168.1.67:8086',
+        token: process.env.INFLUXDB_TOKEN ?? 'Fi1WqaQKgpdnWt9l00w6dvbY1x1-wajcxU_G77PvxbL1cD9B82d1a_OLzdtcNlW-zdyAd02GXGqBt5tkDG9cqw==',
+        org: process.env.INFLUXDB_ORG ?? 'homelab',
+    },
     /** TTL reaper interval in ms */
     reaperInterval: 60_000,
     /** Default annotation cache TTL in seconds */

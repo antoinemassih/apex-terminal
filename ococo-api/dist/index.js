@@ -7,6 +7,7 @@ import { initSignalBus } from './signalBus.js';
 import { registerRoutes } from './routes.js';
 import { registerWebSocket } from './ws.js';
 import { reapExpired } from './annotations.js';
+import { runIngestionCycle } from './ingest.js';
 import { healthCheck } from './db.js';
 async function main() {
     const app = Fastify({ logger: true });
@@ -37,9 +38,18 @@ async function main() {
             console.error('Reaper error:', e);
         }
     }, config.reaperInterval);
+    // Scheduled ingestion + trendline detection (every 15 min)
+    const INGEST_INTERVAL = 15 * 60 * 1000;
+    const startIngestion = () => {
+        runIngestionCycle().catch(e => console.error('Scheduled ingestion failed:', e));
+    };
+    // First run 10s after startup (non-blocking)
+    setTimeout(startIngestion, 10_000);
+    setInterval(startIngestion, INGEST_INTERVAL);
     // Start
     await app.listen({ port: config.port, host: config.host });
     console.info(`OCOCO API listening on ${config.host}:${config.port}`);
+    console.info(`Ingestion scheduled every ${INGEST_INTERVAL / 60000} minutes`);
 }
 main().catch(err => {
     console.error('Fatal:', err);

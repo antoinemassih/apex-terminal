@@ -3,6 +3,8 @@ import * as ann from './annotations.js'
 import * as alerts from './alerts.js'
 import * as sym from './symbols.js'
 import { runTrendlineDetection } from './trendlines.js'
+import { runIngestionCycle, ingestSingle } from './ingest.js'
+import { readBars, barCount } from './influx.js'
 import { healthCheck } from './db.js'
 import { getClientCount, getSubscriptionCount } from './signalBus.js'
 
@@ -135,34 +137,70 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const symbol = req.query.symbol
     if (!symbol) return reply.code(400).send({ error: 'symbol required' })
 
-    // Fetch bars from yfinance sidecar for multiple timeframes
-    const timeframes = [
-      { tf: '1h', interval: '1h', period: '1mo' },
-      { tf: '4h', interval: '1h', period: '3mo' }, // 4h = aggregate from 1h
-      { tf: '1d', interval: '1d', period: '1y' },
-      { tf: '1wk', interval: '1wk', period: '5y' },
-    ]
-
+    // Read bars from InfluxDB (server-side data)
     const barsMap: Record<string, any[]> = {}
-    for (const config of timeframes) {
+    for (const tf of ['1h', '4h', '1d', '1wk']) {
       try {
-        const url = `http://127.0.0.1:8777/bars?symbol=${symbol}&interval=${config.interval}&period=${config.period}`
-        const resp = await fetch(url)
-        if (resp.ok) {
-          let bars = await resp.json() as any[]
-          // For 4h: aggregate 1h bars into 4h
-          if (config.tf === '4h' && bars.length > 0) {
-            bars = aggregate4h(bars)
-          }
-          barsMap[config.tf] = bars
-        }
+        const bars = await readBars(symbol, tf, { start: tf === '1wk' ? '-10y' : tf === '1d' ? '-2y' : '-3mo' })
+        if (bars.length > 20) barsMap[tf] = bars
       } catch (e) {
-        console.warn(`Failed to fetch ${config.tf} bars for ${symbol}:`, e)
+        console.warn(`Failed to read ${tf} bars for ${symbol} from InfluxDB:`, e)
+      }
+    }
+
+    // Fallback to yfinance if InfluxDB is empty
+    if (Object.keys(barsMap).length === 0) {
+      const timeframes = [
+        { tf: '1h', interval: '1h', period: '1mo' },
+        { tf: '4h', interval: '1h', period: '3mo' },
+        { tf: '1d', interval: '1d', period: '1y' },
+        { tf: '1wk', interval: '1wk', period: '5y' },
+      ]
+      for (const config of timeframes) {
+        try {
+          const url = `http://127.0.0.1:8777/bars?symbol=${symbol}&interval=${config.interval}&period=${config.period}`
+          const resp = await fetch(url)
+          if (resp.ok) {
+            let bars = await resp.json() as any[]
+            if (config.tf === '4h') bars = aggregate4h(bars)
+            barsMap[config.tf] = bars
+          }
+        } catch { /* yfinance not reachable */ }
       }
     }
 
     await runTrendlineDetection(symbol, barsMap)
     return { ok: true, timeframes: Object.keys(barsMap).map(k => `${k}: ${barsMap[k].length} bars`) }
+  })
+
+  // ---- Data Ingestion ----
+
+  app.post('/api/ingest/all', async () => {
+    // Fire and forget — returns immediately, runs in background
+    runIngestionCycle().catch(e => console.error('Ingestion cycle failed:', e))
+    return { ok: true, message: 'Ingestion cycle started' }
+  })
+
+  app.post<{ Querystring: { symbol?: string } }>('/api/ingest/symbol', async (req, reply) => {
+    const symbol = req.query.symbol
+    if (!symbol) return reply.code(400).send({ error: 'symbol required' })
+    const counts = await ingestSingle(symbol)
+    return { ok: true, symbol, bars: counts }
+  })
+
+  // ---- InfluxDB Bar Query (for clients that want server-side data) ----
+
+  app.get<{ Querystring: { symbol?: string; interval?: string; start?: string } }>('/api/bars', async (req, reply) => {
+    const { symbol, interval } = req.query
+    if (!symbol || !interval) return reply.code(400).send({ error: 'symbol and interval required' })
+    const bars = await readBars(symbol, interval, { start: req.query.start ?? '-1y' })
+    return bars
+  })
+
+  app.get<{ Querystring: { symbol?: string; interval?: string } }>('/api/bars/count', async (req, reply) => {
+    const { symbol, interval } = req.query
+    if (!symbol || !interval) return reply.code(400).send({ error: 'symbol and interval required' })
+    return { count: await barCount(symbol, interval) }
   })
 
   // ---- Recents ----
