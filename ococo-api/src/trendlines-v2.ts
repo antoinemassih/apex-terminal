@@ -113,11 +113,11 @@ export const DEFAULT_CONFIG: DetectionConfig = {
   },
   pivotLookbacks: [3, 5, 8, 13, 21],
   minTouchCount: 2,
-  minStrength: 15,
-  maxLines: 30,
+  minStrength: 20,
+  maxLines: 10, // per TF/source combo — refined via backtesting (10 > 30 in quality score)
   backtestForwardBars: 50,
-  touchTolerance: 0.3, // 0.3%
-  breakThreshold: 0.5, // 0.5%
+  touchTolerance: 0.2, // 0.2% — tighter tolerance refined via backtesting
+  breakThreshold: 0.3, // 0.3% — tighter break detection
 }
 
 // ---------------------------------------------------------------------------
