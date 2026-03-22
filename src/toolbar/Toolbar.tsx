@@ -115,8 +115,10 @@ export function Toolbar() {
           style={{ ...btnStyle(false), background: theme.background, color: theme.bull, border: `1px solid ${theme.bull}44` }}>
           LIVE
         </button>
-        <button onClick={async () => {
-          new WebviewWindow(`chart-${Date.now()}`, { title: 'Apex Terminal', width: 1920, height: 1080, decorations: true })
+        <button onClick={() => {
+          const label = `chart-${Date.now()}`
+          const w = new WebviewWindow(label, { title: 'Apex Terminal', width: 1920, height: 1080, decorations: true })
+          w.once('tauri://error', (e) => console.error('Window creation failed:', e))
         }} style={btnStyle(false)}>
           + Window
         </button>
