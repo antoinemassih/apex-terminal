@@ -54,21 +54,28 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   const cursorRef = useRef<string | null>(null)
 
   const toPixel = useCallback((p: Point) => {
-    // p.time is a unix timestamp — find its bar index via binary search
-    if (chartData) {
-      const barIdx = chartData.indexAtTime(p.time) - viewStart
-      return { x: cs.barToX(barIdx), y: cs.priceToY(p.price) }
+    if (!chartData || chartData.length === 0) return { x: 0, y: cs.priceToY(p.price) }
+    // Binary search for the bar at this timestamp
+    const barIdx = chartData.indexAtTime(p.time)
+    // Interpolate between bars for sub-bar precision
+    let viewIdx = barIdx - viewStart
+    if (barIdx < chartData.length - 1) {
+      const t0 = chartData.times[barIdx]
+      const t1 = chartData.times[barIdx + 1]
+      if (t1 > t0) {
+        const frac = (p.time - t0) / (t1 - t0)
+        viewIdx = barIdx + frac - viewStart
+      }
     }
-    return { x: cs.barToX(p.time - viewStart), y: cs.priceToY(p.price) }
+    return { x: cs.barToX(viewIdx), y: cs.priceToY(p.price) }
   }, [cs, viewStart, chartData])
 
   const toPoint = useCallback((px: number, py: number): Point => {
-    // Convert pixel position to unix timestamp + price
-    const barIdx = Math.round(cs.xToBar(px)) + viewStart
-    if (chartData && barIdx >= 0 && barIdx < chartData.length) {
-      return { time: chartData.times[barIdx], price: cs.yToPrice(py) }
-    }
-    return { time: barIdx, price: cs.yToPrice(py) }
+    if (!chartData || chartData.length === 0) return { time: 0, price: cs.yToPrice(py) }
+    // Clamp bar index to valid data range
+    const rawIdx = cs.xToBar(px) + viewStart
+    const barIdx = Math.max(0, Math.min(chartData.length - 1, Math.round(rawIdx)))
+    return { time: chartData.times[barIdx], price: cs.yToPrice(py) }
   }, [cs, viewStart, chartData])
 
   const hitTest = useCallback((mx: number, my: number): { id: string; nearEndpoint: number } | null => {

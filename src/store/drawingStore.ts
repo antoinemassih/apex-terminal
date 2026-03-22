@@ -77,7 +77,7 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
 
   selectDrawing: id => set({ selectedId: id }),
 
-  drawingsFor: (symbol, tf) => get().drawings.filter(d => d.symbol === symbol && d.timeframe === tf),
+  drawingsFor: (symbol, _tf) => get().drawings.filter(d => d.symbol === symbol),
 
   clear: () => {
     set({ drawings: [], selectedId: null })
