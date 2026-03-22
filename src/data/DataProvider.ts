@@ -211,16 +211,10 @@ export class YFinanceProvider implements DataProvider {
       sub.tickCount++
       // Advance simTime from the last historical bar
       // Creates new candles every ~1 second real time (20 ticks × 50ms)
-      // Caps drift to 50 candles past the last historical bar to keep
-      // trendlines (which are on historical timestamps) in the viewport
-      const MAX_SIM_CANDLES = 50
-      const baseTime = sub.baseTime ?? sub.simTime
-      const maxTime = baseTime + tf.seconds * MAX_SIM_CANDLES
-
       if (sub.tickCount % 20 === 0) {
-        sub.simTime = Math.min(sub.simTime + tf.seconds, maxTime)
+        sub.simTime += tf.seconds
       } else {
-        sub.simTime = Math.min(sub.simTime + tf.seconds / 20, maxTime)
+        sub.simTime += tf.seconds / 20
       }
 
       this.lastPrices.set(key, price)
