@@ -25,7 +25,7 @@ spec:
       containers:
         - name: api
           image: node:22-alpine
-          command: ['sh', '-c', 'cd /workspace/ococo-api && npm install --omit=dev 2>&1 && node dist/index.js']
+          command: ['sh', '-c', 'cd /workspace/ococo-api && node dist/index.js']
           ports:
             - containerPort: 3000
           envFrom:
