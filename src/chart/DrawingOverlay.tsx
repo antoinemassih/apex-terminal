@@ -292,22 +292,49 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       if (ann.type === 'trendline' && ann.points?.length === 2) {
         const p0 = toPixel(ann.points[0])
         const p1 = toPixel(ann.points[1])
-        ctx.beginPath()
-        ctx.moveTo(p0.x, p0.y)
-        ctx.lineTo(p1.x, p1.y)
-        ctx.stroke()
 
-        // Label with strength score
-        const meta = ann.metadata ?? {}
-        if (meta.label) {
-          const strength = meta.strength?.total ?? Math.round((ann.strength ?? 0) * 100)
-          const labelText = `${meta.label} [${strength}]`
-          ctx.font = '8px monospace'
-          ctx.fillStyle = style.color ?? '#888'
-          ctx.globalAlpha = 0.7
-          const mx = (p0.x + p1.x) / 2
-          const my = (p0.y + p1.y) / 2
-          ctx.fillText(labelText, mx + 4, my - 4)
+        // Extrapolate the line across the entire visible viewport
+        // A trendline extends infinitely — not just between anchor points
+        const dx = p1.x - p0.x
+        const dy = p1.y - p0.y
+
+        let x0: number, y0: number, x1: number, y1: number
+        if (Math.abs(dx) < 0.001) {
+          // Vertical line (shouldn't happen for trendlines, but handle it)
+          x0 = p0.x; y0 = 0; x1 = p0.x; y1 = height
+        } else {
+          // Extend to left edge (x=0) and right edge (x=cw)
+          const slope = dy / dx
+          x0 = 0
+          y0 = p0.y + slope * (0 - p0.x)
+          x1 = cw
+          y1 = p0.y + slope * (cw - p0.x)
+        }
+
+        // Only draw if the line crosses the visible area
+        const yMin = Math.min(y0, y1)
+        const yMax = Math.max(y0, y1)
+        if (yMax >= 0 && yMin <= height) {
+          ctx.beginPath()
+          ctx.moveTo(x0, y0)
+          ctx.lineTo(x1, y1)
+          ctx.stroke()
+
+          // Label with strength score at the right edge of the viewport
+          const meta = ann.metadata ?? {}
+          if (meta.label) {
+            const strength = meta.strength?.total ?? Math.round((ann.strength ?? 0) * 100)
+            const labelText = `${meta.label} [${strength}]`
+            ctx.font = '8px monospace'
+            ctx.fillStyle = style.color ?? '#888'
+            ctx.globalAlpha = 0.7
+            // Position label near the right side of visible area
+            const labelX = Math.min(cw - 120, Math.max(10, (p0.x + p1.x) / 2))
+            const labelY = p0.y + (dy / dx) * (labelX - p0.x)
+            if (labelY > 10 && labelY < height - 20) {
+              ctx.fillText(labelText, labelX, labelY - 4)
+            }
+          }
         }
       }
 
