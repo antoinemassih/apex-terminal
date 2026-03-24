@@ -1,10 +1,11 @@
 /**
  * IBKRProvider — Interactive Brokers data provider for Apex Terminal.
  *
- * History flow:  OCOCO (InfluxDB cache, ~1 ms) → ibserver /bars (IB + InfluxDB backfill)
+ * History flow:  yfinance local (localhost:8777) → OCOCO (InfluxDB cache) → ibserver /bars
  * Realtime flow: ibserver WebSocket → conId-keyed quote events → TickData
  *
  * ibserver must be running on localhost:5000 (same machine as TWS/IB Gateway).
+ * yfinance_server.py must be running on localhost:8777 for historical data.
  */
 
 import type { Bar } from '../types'
@@ -13,6 +14,20 @@ import type { DataProvider, HistoryRequest, HistoryResponse } from './DataProvid
 
 const IBSERVER = 'http://localhost:5000'
 const OCOCO = 'http://192.168.1.60:30300'
+const YFINANCE = 'http://localhost:8777'
+
+/** Map Apex timeframe strings to yfinance interval + period */
+const TF_TO_YFINANCE: Record<string, { interval: string; period: string }> = {
+  '1m': { interval: '1m', period: '5d' },
+  '2m': { interval: '2m', period: '5d' },
+  '5m': { interval: '5m', period: '5d' },
+  '15m': { interval: '15m', period: '60d' },
+  '30m': { interval: '30m', period: '60d' },
+  '1H': { interval: '60m', period: '60d' },
+  '4H': { interval: '1h', period: '730d' },
+  '1D': { interval: '1d', period: '5y' },
+  '1W': { interval: '1wk', period: '10y' },
+}
 
 interface IBContractInfo {
   conId: number
@@ -46,7 +61,25 @@ export class IBKRProvider implements DataProvider {
   // ── History ─────────────────────────────────────────────────────────────────
 
   async getHistory(req: HistoryRequest): Promise<HistoryResponse> {
-    // 1. OCOCO (InfluxDB) — fast, deep history
+    // 1. yfinance local server (localhost:8777) — fast, internet-sourced, no IB required
+    if (!req.before) {
+      try {
+        const yf = TF_TO_YFINANCE[req.timeframe]
+        if (yf) {
+          const p = new URLSearchParams({ symbol: req.symbol, interval: yf.interval, period: yf.period })
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 5000)
+          const res = await fetch(`${YFINANCE}/bars?${p}`, { signal: ctrl.signal })
+          clearTimeout(t)
+          if (res.ok) {
+            const bars: Bar[] = await res.json()
+            if (bars.length > 0) return { bars, hasMore: false }
+          }
+        }
+      } catch { /* yfinance not running — fall through */ }
+    }
+
+    // 2. OCOCO (InfluxDB) — fast, deep history, supports pagination
     try {
       const p = new URLSearchParams({
         symbol: req.symbol,
@@ -66,17 +99,21 @@ export class IBKRProvider implements DataProvider {
       }
     } catch { /* OCOCO unreachable or no data — fall through */ }
 
-    // 2. ibserver /bars — fetches from IB and backfills InfluxDB
-    const p = new URLSearchParams({
-      timeframe: req.timeframe,
-      limit: String(req.limit ?? 500),
-    })
-    if (req.before) p.set('before', String(req.before))
+    // 3. ibserver /bars — fetches from IB and backfills InfluxDB
+    try {
+      const p = new URLSearchParams({
+        timeframe: req.timeframe,
+        limit: String(req.limit ?? 500),
+      })
+      if (req.before) p.set('before', String(req.before))
+      const res = await fetch(`${IBSERVER}/bars/${encodeURIComponent(req.symbol)}?${p}`)
+      if (res.ok) {
+        const data = await res.json()
+        return { bars: data.bars ?? [], hasMore: data.hasMore ?? false }
+      }
+    } catch { /* ibserver not running */ }
 
-    const res = await fetch(`${IBSERVER}/bars/${encodeURIComponent(req.symbol)}?${p}`)
-    if (!res.ok) throw new Error(`ibserver /bars returned ${res.status}`)
-    const data = await res.json()
-    return { bars: data.bars ?? [], hasMore: data.hasMore ?? false }
+    return { bars: [], hasMore: false }
   }
 
   // ── Subscription ─────────────────────────────────────────────────────────────
@@ -174,29 +211,34 @@ export class IBKRProvider implements DataProvider {
   }
 
   private onWsMsg(msg: Record<string, unknown>): void {
-    if (msg.type !== 'quote' || !this.tickCb) return
+    if (!this.tickCb) return
+    if (msg.type === 'quote_batch') {
+      const now = msg.t ? Math.floor(Number(msg.t) / 1000) : Math.floor(Date.now() / 1000)
+      for (const q of (msg.quotes as Record<string, unknown>[])) this.dispatchQuote(q, now)
+    } else if (msg.type === 'quote') {
+      this.dispatchQuote(msg, Math.floor(Date.now() / 1000))
+    }
+  }
 
-    const symbol = this.conIdToSymbol.get(msg.conId as number)
+  private dispatchQuote(q: Record<string, unknown>, batchTime: number): void {
+    const symbol = this.conIdToSymbol.get(q.conId as number)
     if (!symbol) return
 
     const tfs = this.subscriptions.get(symbol)
     if (!tfs?.size) return
 
-    const last = Number(msg.last)
-    const bid = Number(msg.bid)
-    const ask = Number(msg.ask)
+    const last = Number(q.last)
+    const bid  = Number(q.bid)
+    const ask  = Number(q.ask)
     const price = last > 0 ? last : (bid > 0 && ask > 0 ? (bid + ask) / 2 : 0)
     if (!(price > 0)) return
 
     const tick: TickData = {
       price,
-      volume: Number(msg.volume) || 0,
-      time: msg.timestamp
-        ? Math.floor(Number(msg.timestamp) / 1000)
-        : Math.floor(Date.now() / 1000),
+      volume: Number(q.volume) || 0,
+      time: batchTime,
     }
-
-    for (const tf of tfs) this.tickCb(symbol, tf, tick)
+    for (const tf of tfs) this.tickCb!(symbol, tf, tick)
   }
 
   private async resolveAndSubscribe(symbol: string): Promise<void> {
