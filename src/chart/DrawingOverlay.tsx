@@ -370,12 +370,12 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     }
   }, [cs, symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, viewStart, selectedId, toPixel, serverAnnotations, annotationFilters])
 
-  // Debounce draw to avoid re-rendering 180 times/sec from tick updates
-  const drawTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Schedule draw via rAF — zero latency, at most one draw per frame
+  const drawRafRef = useRef<number | null>(null)
   useEffect(() => {
-    if (drawTimerRef.current) clearTimeout(drawTimerRef.current)
-    drawTimerRef.current = setTimeout(() => draw(), 50) // max 20 draws/sec
-    return () => { if (drawTimerRef.current) clearTimeout(drawTimerRef.current) }
+    if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current)
+    drawRafRef.current = requestAnimationFrame(() => { drawRafRef.current = null; draw() })
+    return () => { if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current) }
   }, [draw])
 
   // Expose imperative handle for ChartPane to call

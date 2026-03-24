@@ -42,15 +42,23 @@ export function AxisCanvas({ cs, data, viewStart, width, height }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
   const themeName = useChartStore(s => s.theme)
   const theme = getTheme(themeName)
+  // Track last canvas pixel dimensions — only resize when they actually change
+  const canvasSizeRef = useRef({ w: 0, h: 0 })
 
   useEffect(() => {
     if (!ref.current || !cs || !data || data.length === 0) return
     const canvas = ref.current
     const dpr = window.devicePixelRatio || 1
-    canvas.width = width * dpr
-    canvas.height = height * dpr
-    canvas.style.width = width + 'px'
-    canvas.style.height = height + 'px'
+    const pw = Math.round(width * dpr)
+    const ph = Math.round(height * dpr)
+    // Only resize when dimensions actually changed — resizing clears & is expensive
+    if (canvasSizeRef.current.w !== pw || canvasSizeRef.current.h !== ph) {
+      canvas.width = pw
+      canvas.height = ph
+      canvas.style.width = width + 'px'
+      canvas.style.height = height + 'px'
+      canvasSizeRef.current = { w: pw, h: ph }
+    }
     const ctx = canvas.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, width, height)

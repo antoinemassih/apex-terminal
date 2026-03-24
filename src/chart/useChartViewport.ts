@@ -17,7 +17,12 @@ export interface Viewport {
 export function useChartViewport(symbol: string, timeframe: Timeframe, width: number, height: number) {
   // viewStart is a float — fractional part drives sub-pixel pan offset in CoordSystem
   const [viewStart, setViewStart] = useState(0)
+  // Live ref updated synchronously during pan — avoids React re-render on every mouse event.
+  // setViewStart is called via rAF, capping React renders at 60/sec regardless of mouse Hz.
+  const viewStartRef = useRef(0)
+  const panRafRef = useRef<number | null>(null)
   const [viewCount, setViewCount] = useState(200)
+  const viewCountRef = useRef(200)
   const [priceOverride, setPriceOverride] = useState<{ min: number; max: number } | null>(null)
   const [autoScrolling, setAutoScrolling] = useState(true)
   const [dataVersion, setDataVersion] = useState(0)
@@ -42,6 +47,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
 
   useEffect(() => () => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
   }, [])
 
   // Subscribe to data changes — throttle to 4 updates/sec max to avoid React re-render storm
@@ -60,12 +66,16 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     return () => { unsub(); if (throttleTimer) clearTimeout(throttleTimer) }
   }, [symbol, timeframe])
 
+  // Keep viewCountRef in sync
+  useEffect(() => { viewCountRef.current = viewCount }, [viewCount])
+
   // Auto-scroll
   useEffect(() => {
     if (!autoScrolling) return
     const data = getDataStore().getData(symbol, timeframe)
     if (!data) return
     const maxStart = Math.max(0, data.length - viewCount + RIGHT_MARGIN_BARS)
+    viewStartRef.current = maxStart
     setViewStart(maxStart)
   }, [autoScrolling, dataVersion, viewCount, symbol, timeframe])
 
@@ -112,8 +122,8 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     loadingMoreRef.current = true
     ds.loadMore(symbol, timeframe).then(added => {
       if (added > 0) {
-        // Shift viewStart right by the number of prepended bars so the view doesn't jump
-        setViewStart(v => v + added)
+        viewStartRef.current += added
+        setViewStart(viewStartRef.current)
       }
       loadingMoreRef.current = false
     }).catch(() => { loadingMoreRef.current = false })
@@ -123,8 +133,12 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   useEffect(() => {
     const data = getDataStore().getData(symbol, timeframe)
     if (data) {
-      setViewStart(Math.max(0, data.length - 200))
-      setViewCount(Math.min(200, Math.max(20, data.length)))
+      const vs = Math.max(0, data.length - 200)
+      const vc = Math.min(200, Math.max(20, data.length))
+      viewStartRef.current = vs
+      viewCountRef.current = vc
+      setViewStart(vs)
+      setViewCount(vc)
     }
     setPriceOverride(null)
     setAutoScrolling(true)
@@ -133,13 +147,22 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
 
   const pan = useCallback((deltaPixels: number) => {
     const data = getDataStore().getData(symbol, timeframe)
-    if (!data || !cs) return
-    // Float delta — no rounding. Sub-pixel remainder accumulates in viewStart's fractional part.
-    const barDelta = deltaPixels / cs.barStep
+    if (!data) return
+    // Compute barStep directly from geometry — no cs dependency, stays stable during pan.
+    const barStep = (width - 80) / (viewCountRef.current + RIGHT_MARGIN_BARS)
+    const barDelta = deltaPixels / barStep
     if (Math.abs(barDelta) < 0.0001) return
     pauseAutoScroll()
-    setViewStart(v => Math.max(0, Math.min(data.length - viewCount + FUTURE_PAN_BARS, v - barDelta)))
-  }, [cs, viewCount, pauseAutoScroll, symbol, timeframe])
+    const maxVS = data.length - viewCountRef.current + FUTURE_PAN_BARS
+    viewStartRef.current = Math.max(0, Math.min(maxVS, viewStartRef.current - barDelta))
+    // Flush to React state at most once per animation frame (caps renders at 60/sec)
+    if (!panRafRef.current) {
+      panRafRef.current = requestAnimationFrame(() => {
+        panRafRef.current = null
+        setViewStart(viewStartRef.current)
+      })
+    }
+  }, [pauseAutoScroll, symbol, timeframe, width])
 
   const zoomX = useCallback((factor: number) => {
     const data = getDataStore().getData(symbol, timeframe)
