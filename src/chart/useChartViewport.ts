@@ -77,7 +77,9 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     const end = Math.min(viewStart + viewCount, data.length)
     const dataBars = end - viewStart
     if (dataBars <= 0) return
-    const totalBars = dataBars + RIGHT_MARGIN_BARS
+    // Always use viewCount for totalBars so barStep never changes during pan
+    // (only zoom changes viewCount)
+    const totalBars = viewCount + RIGHT_MARGIN_BARS
 
     let minP: number, maxP: number
     if (priceOverride) {
