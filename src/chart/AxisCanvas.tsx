@@ -46,6 +46,14 @@ export const AxisCanvas = forwardRef<AxisCanvasHandle, Props>(
     // Track last canvas pixel dimensions — only resize when they actually change
     const canvasSizeRef = useRef({ w: 0, h: 0 })
 
+    // ── Time-dependent cache ────────────────────────────────────────────────────
+    // candleSec and session break indices only change when which bars are visible
+    // changes (viewStart / barCount / dataLen) — not on every price tick.
+    const timeKeyRef = useRef('')
+    const cachedCandleSecRef = useRef(300)
+    /** viewIdx (relative to viewStart) of each session break */
+    const cachedBreakViewIdxRef = useRef<number[]>([])
+
     useImperativeHandle(ref, () => ({
       draw(cs: CoordSystem, data: ColumnStore, viewStart: number) {
         if (!canvasRef.current || data.length === 0) return
@@ -87,32 +95,47 @@ export const AxisCanvas = forwardRef<AxisCanvasHandle, Props>(
           ctx.fillText(price.toFixed(priceStep < 1 ? 2 : priceStep < 10 ? 1 : 0), width - cs.pr + 4, y + 4)
         }
 
-        // Estimate median candle duration from visible data
+        // ── Time-dependent data — recompute only when visible bar set changes ──
         const visEnd = Math.min(viewStart + cs.barCount, data.length)
-        const gaps: number[] = []
-        for (let i = viewStart + 1; i < visEnd && i < data.length; i++) {
-          gaps.push(data.times[i] - data.times[i - 1])
-        }
-        gaps.sort((a, b) => a - b)
-        const medianGap = gaps.length > 0 ? gaps[Math.floor(gaps.length / 2)] : 300
-        const candleSec = Math.max(1, medianGap)
+        const timeKey = `${viewStart}|${cs.barCount}|${data.length}`
+        if (timeKey !== timeKeyRef.current) {
+          timeKeyRef.current = timeKey
 
-        // Session break lines — where time gap > 2x normal candle duration
-        const sessionBreakThreshold = candleSec * 2.5
+          // Sample up to 20 gaps to estimate candleSec — O(20) vs O(n log n) sort
+          const sampleEnd = Math.min(viewStart + 21, visEnd)
+          const sampleGaps: number[] = []
+          for (let i = viewStart + 1; i < sampleEnd && i < data.length; i++) {
+            sampleGaps.push(data.times[i] - data.times[i - 1])
+          }
+          sampleGaps.sort((a, b) => a - b)
+          cachedCandleSecRef.current = sampleGaps.length > 0
+            ? Math.max(1, sampleGaps[Math.floor(sampleGaps.length / 2)])
+            : 300
+
+          // Find session break bar indices (relative to viewStart)
+          const threshold = cachedCandleSecRef.current * 2.5
+          const breaks: number[] = []
+          for (let i = viewStart + 1; i < visEnd && i < data.length; i++) {
+            if (data.times[i] - data.times[i - 1] > threshold) {
+              breaks.push(i - viewStart)
+            }
+          }
+          cachedBreakViewIdxRef.current = breaks
+        }
+
+        const candleSec = cachedCandleSecRef.current
+
+        // Session break lines — from cached indices, x positions computed from current cs
         ctx.strokeStyle = theme.axisText + '40'
         ctx.lineWidth = 1
         ctx.setLineDash([3, 3])
-        for (let i = viewStart + 1; i < visEnd && i < data.length; i++) {
-          const gap = data.times[i] - data.times[i - 1]
-          if (gap > sessionBreakThreshold) {
-            const viewIdx = i - viewStart
-            const x = cs.barToX(viewIdx) - cs.barStep * 0.5 // between bars
-            if (x > 0 && x < width - cs.pr) {
-              ctx.beginPath()
-              ctx.moveTo(x, cs.pt)
-              ctx.lineTo(x, height - cs.pb)
-              ctx.stroke()
-            }
+        for (const viewIdx of cachedBreakViewIdxRef.current) {
+          const x = cs.barToX(viewIdx) - cs.barStep * 0.5
+          if (x > 0 && x < width - cs.pr) {
+            ctx.beginPath()
+            ctx.moveTo(x, cs.pt)
+            ctx.lineTo(x, height - cs.pb)
+            ctx.stroke()
           }
         }
         ctx.setLineDash([])
