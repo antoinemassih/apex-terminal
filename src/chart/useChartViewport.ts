@@ -5,6 +5,7 @@ import { getDataStore } from '../globals'
 import type { Timeframe } from '../types'
 
 const RIGHT_MARGIN_BARS = 8
+const FUTURE_PAN_BARS = 200
 const AUTO_SCROLL_TIMEOUT = 10_000
 
 export interface Viewport {
@@ -127,7 +128,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     const barDelta = Math.round(deltaPixels / cs.barStep)
     if (barDelta === 0) return
     pauseAutoScroll()
-    setViewStart(v => Math.max(0, Math.min(data.length - viewCount + RIGHT_MARGIN_BARS, v - barDelta)))
+    setViewStart(v => Math.max(0, Math.min(data.length - viewCount + FUTURE_PAN_BARS, v - barDelta)))
   }, [cs, viewCount, pauseAutoScroll, symbol, timeframe])
 
   const zoomX = useCallback((factor: number) => {
