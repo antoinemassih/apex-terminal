@@ -7,6 +7,7 @@ export interface CoordConfig {
   paddingRight?: number
   paddingTop?: number
   paddingBottom?: number
+  pixelOffset?: number  // sub-bar scroll offset in pixels (for smooth panning)
 }
 
 const MAX_CACHE = 64
@@ -16,7 +17,8 @@ function cacheKey(c: CoordConfig): string {
   const pr = c.paddingRight ?? 80
   const pt = c.paddingTop ?? 20
   const pb = c.paddingBottom ?? 40
-  return `${c.width}|${c.height}|${c.barCount}|${c.minPrice.toFixed(6)}|${c.maxPrice.toFixed(6)}|${pr}|${pt}|${pb}`
+  const po = (c.pixelOffset ?? 0).toFixed(3)
+  return `${c.width}|${c.height}|${c.barCount}|${c.minPrice.toFixed(6)}|${c.maxPrice.toFixed(6)}|${pr}|${pt}|${pb}|${po}`
 }
 
 export class CoordSystem {
@@ -28,6 +30,7 @@ export class CoordSystem {
   readonly pr: number
   readonly pt: number
   readonly pb: number
+  readonly pixelOffset: number
   constructor(c: CoordConfig) {
     this.width = c.width; this.height = c.height
     this.barCount = c.barCount
@@ -35,6 +38,7 @@ export class CoordSystem {
     this.pr = c.paddingRight ?? 80
     this.pt = c.paddingTop ?? 20
     this.pb = c.paddingBottom ?? 40
+    this.pixelOffset = c.pixelOffset ?? 0
   }
 
   static create(config: CoordConfig): CoordSystem {
@@ -57,8 +61,8 @@ export class CoordSystem {
   get barWidth() { return this.barCount > 0 ? (this.chartWidth / this.barCount) * 0.8 : 1 }
   get barStep() { return this.barCount > 0 ? this.chartWidth / this.barCount : 1 }
 
-  barToX(index: number): number { return index * this.barStep + this.barStep * 0.5 }
-  xToBar(x: number): number { return (x - this.barStep * 0.5) / this.barStep }
+  barToX(index: number): number { return index * this.barStep + this.barStep * 0.5 - this.pixelOffset }
+  xToBar(x: number): number { return (x + this.pixelOffset - this.barStep * 0.5) / this.barStep }
   priceToY(price: number): number {
     const ratio = (price - this.minPrice) / (this.maxPrice - this.minPrice)
     return this.pt + this.chartHeight * (1 - ratio)
@@ -83,6 +87,7 @@ export class CoordSystem {
   private toConfig(): CoordConfig {
     return { width: this.width, height: this.height, barCount: this.barCount,
       minPrice: this.minPrice, maxPrice: this.maxPrice,
-      paddingRight: this.pr, paddingTop: this.pt, paddingBottom: this.pb }
+      paddingRight: this.pr, paddingTop: this.pt, paddingBottom: this.pb,
+      pixelOffset: this.pixelOffset }
   }
 }

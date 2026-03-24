@@ -15,10 +15,10 @@ export interface Viewport {
 }
 
 export function useChartViewport(symbol: string, timeframe: Timeframe, width: number, height: number) {
+  // viewStart is a float — fractional part drives sub-pixel pan offset in CoordSystem
   const [viewStart, setViewStart] = useState(0)
   const [viewCount, setViewCount] = useState(200)
   const [priceOverride, setPriceOverride] = useState<{ min: number; max: number } | null>(null)
-  const [cs, setCs] = useState<CoordSystem | null>(null)
   const [autoScrolling, setAutoScrolling] = useState(true)
   const [dataVersion, setDataVersion] = useState(0)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -69,16 +69,17 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     setViewStart(maxStart)
   }, [autoScrolling, dataVersion, viewCount, symbol, timeframe])
 
-  // Recompute CoordSystem
-  useEffect(() => {
+  // CoordSystem is a derived value — useMemo keeps it in the same render cycle as viewStart.
+  // This eliminates the extra render that useState+useEffect caused (halving render cost per pan).
+  const cs = useMemo<CoordSystem | null>(() => {
     const data = getDataStore().getData(symbol, timeframe)
-    if (!data || width === 0 || height === 0) return
+    if (!data || width === 0 || height === 0) return null
 
-    const end = Math.min(viewStart + viewCount, data.length)
-    const dataBars = end - viewStart
-    if (dataBars <= 0) return
-    // Always use viewCount for totalBars so barStep never changes during pan
-    // (only zoom changes viewCount)
+    const iStart = Math.floor(viewStart)
+    const end = Math.min(iStart + viewCount, data.length)
+    const dataBars = end - iStart
+    if (dataBars <= 0) return null
+    // Always use viewCount for totalBars so barStep is constant during pan
     const totalBars = viewCount + RIGHT_MARGIN_BARS
 
     let minP: number, maxP: number
@@ -86,20 +87,26 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
       minP = priceOverride.min
       maxP = priceOverride.max
     } else {
-      const range = data.priceRange(viewStart, end)
+      const range = data.priceRange(iStart, end)
       const pad = (range.max - range.min) * 0.05
       minP = range.min - pad
       maxP = range.max + pad
     }
 
-    setCs(CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP }))
+    // Sub-pixel offset: fractional part of viewStart drives smooth pixel-level scrolling
+    const chartWidth = width - 80 // paddingRight default
+    const barStep = chartWidth / totalBars
+    const pixelOffset = (viewStart - iStart) * barStep
+
+    return CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP, pixelOffset })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewStart, viewCount, width, height, priceOverride, dataVersion, symbol, timeframe])
 
   // Scroll-left pagination: load more history when viewStart hits 0
   const loadingMoreRef = useRef(false)
 
   useEffect(() => {
-    if (viewStart > 5 || loadingMoreRef.current || autoScrolling) return
+    if (Math.floor(viewStart) > 5 || loadingMoreRef.current || autoScrolling) return
     const ds = getDataStore()
     if (!ds.canLoadMore(symbol, timeframe)) return
     loadingMoreRef.current = true
@@ -127,8 +134,9 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   const pan = useCallback((deltaPixels: number) => {
     const data = getDataStore().getData(symbol, timeframe)
     if (!data || !cs) return
-    const barDelta = Math.round(deltaPixels / cs.barStep)
-    if (barDelta === 0) return
+    // Float delta — no rounding. Sub-pixel remainder accumulates in viewStart's fractional part.
+    const barDelta = deltaPixels / cs.barStep
+    if (Math.abs(barDelta) < 0.0001) return
     pauseAutoScroll()
     setViewStart(v => Math.max(0, Math.min(data.length - viewCount + FUTURE_PAN_BARS, v - barDelta)))
   }, [cs, viewCount, pauseAutoScroll, symbol, timeframe])
@@ -163,7 +171,9 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   const resetYZoom = useCallback(() => setPriceOverride(null), [])
 
   const viewport: Viewport = useMemo(() => ({
-    viewStart, viewCount, cs
+    viewStart: Math.floor(viewStart),  // integer for GPU array indexing
+    viewCount,
+    cs
   }), [viewStart, viewCount, cs])
 
   return { viewport, pan, zoomX, zoomY, panY, resetYZoom, autoScrolling, pauseAutoScroll }
