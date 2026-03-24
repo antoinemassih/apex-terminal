@@ -12,8 +12,19 @@ const INFLUX_URL = config.influx.url;
 const INFLUX_TOKEN = config.influx.token;
 const INFLUX_ORG = config.influx.org;
 const BUCKET = 'stocks';
+// Allowlists — prevent Flux injection via user-supplied symbol/interval
+const VALID_SYMBOL = /^[A-Z0-9._\-]{1,20}$/i;
+const VALID_INTERVAL = new Set(['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1wk']);
+const VALID_FLUX_RANGE = /^-?\d+[smhdwMy]$|^now\(\)$/;
+function assertFluxParams(symbol, interval) {
+    if (!VALID_SYMBOL.test(symbol))
+        throw new Error(`Invalid symbol: ${symbol}`);
+    if (!VALID_INTERVAL.has(interval))
+        throw new Error(`Invalid interval: ${interval}`);
+}
 /** Write bars to InfluxDB in line protocol (chunked to avoid timeouts) */
 export async function writeBars(symbol, interval, bars) {
+    assertFluxParams(symbol, interval);
     if (bars.length === 0)
         return;
     const CHUNK_SIZE = 100;
@@ -40,6 +51,7 @@ export async function writeBars(symbol, interval, bars) {
 }
 /** Read bars from InfluxDB */
 export async function readBars(symbol, interval, opts) {
+    assertFluxParams(symbol, interval);
     const start = opts?.start ?? '-1y';
     const stop = opts?.stop ?? 'now()';
     let flux = `from(bucket: "${BUCKET}")
@@ -70,6 +82,7 @@ export async function readBars(symbol, interval, opts) {
 }
 /** Check how many bars exist for a symbol+interval */
 export async function barCount(symbol, interval) {
+    assertFluxParams(symbol, interval);
     const flux = `from(bucket: "${BUCKET}")
   |> range(start: -10y)
   |> filter(fn: (r) => r._measurement == "bars" and r.symbol == "${symbol}" and r.interval == "${interval}" and r._field == "close")

@@ -5,6 +5,8 @@ metadata:
   namespace: dev
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: ococo-api
@@ -48,9 +50,31 @@ spec:
               path: /api/health
               port: 3000
             periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              memory: "1Gi"
           volumeMounts:
             - name: workspace
               mountPath: /workspace
+        - name: yfinance
+          image: 192.168.1.71:5000/yfinance-sidecar:latest
+          ports:
+            - containerPort: 8777
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8777
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "64Mi"
+            limits:
+              memory: "512Mi"
       volumes:
         - name: workspace
           emptyDir: {}

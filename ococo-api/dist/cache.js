@@ -34,6 +34,23 @@ export async function invalidate(symbol) {
         console.warn('Cache invalidate failed:', e);
     }
 }
+/**
+ * Fetch with stampede protection.
+ * Concurrent cache misses for the same symbol coalesce into a single DB fetch.
+ */
+const inflight = new Map();
+export async function cachedFetch(symbol, fetcher) {
+    const cached = await getCached(symbol);
+    if (cached !== null)
+        return cached;
+    if (!inflight.has(symbol)) {
+        const p = fetcher()
+            .then(async (result) => { await setCache(symbol, result); return result; })
+            .finally(() => inflight.delete(symbol));
+        inflight.set(symbol, p);
+    }
+    return inflight.get(symbol);
+}
 /** Invalidate all annotation caches */
 export async function invalidateAll() {
     try {
