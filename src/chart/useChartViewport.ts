@@ -43,10 +43,20 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
   }, [])
 
-  // Subscribe to data changes
+  // Subscribe to data changes — throttle to 4 updates/sec max to avoid React re-render storm
   useEffect(() => {
     const ds = getDataStore()
-    return ds.subscribe(symbol, timeframe, () => setDataVersion(v => v + 1))
+    let throttleTimer: ReturnType<typeof setTimeout> | null = null
+    let pending = false
+    const unsub = ds.subscribe(symbol, timeframe, () => {
+      if (throttleTimer) { pending = true; return }
+      setDataVersion(v => v + 1)
+      throttleTimer = setTimeout(() => {
+        throttleTimer = null
+        if (pending) { pending = false; setDataVersion(v => v + 1) }
+      }, 250) // max 4 React updates per second from tick data
+    })
+    return () => { unsub(); if (throttleTimer) clearTimeout(throttleTimer) }
   }, [symbol, timeframe])
 
   // Auto-scroll

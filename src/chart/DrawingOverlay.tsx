@@ -370,7 +370,13 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     }
   }, [cs, symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, viewStart, selectedId, toPixel, serverAnnotations, annotationFilters])
 
-  useEffect(() => { draw() }, [draw])
+  // Debounce draw to avoid re-rendering 180 times/sec from tick updates
+  const drawTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (drawTimerRef.current) clearTimeout(drawTimerRef.current)
+    drawTimerRef.current = setTimeout(() => draw(), 50) // max 20 draws/sec
+    return () => { if (drawTimerRef.current) clearTimeout(drawTimerRef.current) }
+  }, [draw])
 
   // Expose imperative handle for ChartPane to call
   useImperativeHandle(ref, () => ({

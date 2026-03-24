@@ -71,6 +71,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     }).catch(err => console.error(`Failed to load ${symbol}:${timeframe}:`, err))
 
     // Subscribe to data changes → push to PaneContext
+    // This is the hot path — ticks flow directly to GPU without React re-renders
     const unsub = ds.subscribe(symbol, timeframe, () => {
       const d = ds.getData(symbol, timeframe)
       const indicators = ds.getIndicators(symbol, timeframe)
@@ -91,12 +92,12 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     }
   }, [viewport, cs])
 
-  // Push visibility settings to PaneContext
+  // Push visibility settings to PaneContext — only when toggles change, not on every tick
   useEffect(() => {
     const outputs = getIndicatorEngine().getOutputs(symbol, timeframe)
       .filter(out => visibleIndicators.includes(out.indicatorId))
     paneRef.current?.setVisibility(showVolume, outputs)
-  }, [showVolume, visibleIndicators, symbol, timeframe, data])
+  }, [showVolume, visibleIndicators, symbol, timeframe])
 
   // Push theme to PaneContext
   useEffect(() => {

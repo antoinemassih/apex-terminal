@@ -7,7 +7,7 @@ export function FrameStats() {
   const [line3, setLine3] = useState('')
 
   useEffect(() => {
-    const id = setInterval(() => {
+    const id = setInterval(() => { // 2s poll — minimal impact
       try {
         const rs = getRenderEngine().scheduler.getStats()
         setLine1(`${rs.updatesPerSec} upd/s \u00b7 ${rs.renderTimeMs.toFixed(1)}ms \u00b7 pk ${rs.renderTimePeak.toFixed(1)}ms \u00b7 ${rs.panesRendered}/${rs.panesTotal}`)
@@ -25,7 +25,7 @@ export function FrameStats() {
           setLine3(`cache ${dm.cacheHits}/${dm.cacheHits + dm.cacheMisses} \u00b7 page:${dm.paginationCount}`)
         }
       } catch { /* not ready */ }
-    }, 1000)
+    }, 2000)
     return () => clearInterval(id)
   }, [])
 
