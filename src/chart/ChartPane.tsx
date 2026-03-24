@@ -9,6 +9,7 @@ import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
 import { getTheme } from '../themes'
 import { SymbolPicker } from './SymbolPicker'
+import { ChartContextMenu } from './ChartContextMenu'
 import type { Timeframe } from '../types'
 
 interface Props {
@@ -27,7 +28,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const drawingRef = useRef<DrawingOverlayHandle>(null)
   const axisRef = useRef<AxisCanvasHandle>(null)
   const [engineState, setEngineState] = useState<EngineState>('ready')
-  const { viewport, pan, zoomX, zoomY, resetYZoom, autoScrolling, pauseAutoScroll, viewStartRef, viewCountRef, computeCs } =
+  const { viewport, pan, zoomX, zoomY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, viewStartRef, viewCountRef, computeCs } =
     useChartViewport(symbol, timeframe, width, height)
 
   const paneConfig = useChartStore(s => s.panes[paneIndex])
@@ -37,6 +38,26 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const theme = getTheme(themeName)
 
   const [pickerPos, setPickerPos] = useState<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [dragZoomMode, setDragZoomMode] = useState(false)
+
+  // Drag-zoom overlay — updated imperatively to avoid React re-renders on every mousemove
+  const dragZoomDivRef = useRef<HTMLDivElement>(null)
+  const zoomStartRef   = useRef<{ x: number; y: number } | null>(null)
+
+  // Exit drag zoom on Escape
+  useEffect(() => {
+    if (!dragZoomMode) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDragZoomMode(false)
+        zoomStartRef.current = null
+        if (dragZoomDivRef.current) dragZoomDivRef.current.style.display = 'none'
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [dragZoomMode])
 
   const { cs } = viewport
   const csRef = useRef(cs)
@@ -173,22 +194,43 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     return 'chart'
   }, [cs, width, height])
 
+  const onContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY })
+  }, [])
+
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
+    if (dragZoomMode) {
+      zoomStartRef.current = { x: mx, y: my }
+      return
+    }
     if (drawingRef.current?.handleMouseDown(mx, my)) return
     const zone = getZone(e)
     dragRef.current = { x: e.clientX, y: e.clientY, zone }
-  }, [getZone])
+  }, [dragZoomMode, getZone])
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
+    if (dragZoomMode) {
+      const start = zoomStartRef.current
+      if (start && dragZoomDivRef.current) {
+        const el = dragZoomDivRef.current
+        el.style.display = 'block'
+        el.style.left   = Math.min(start.x, mx) + 'px'
+        el.style.top    = Math.min(start.y, my) + 'px'
+        el.style.width  = Math.abs(mx - start.x) + 'px'
+        el.style.height = Math.abs(my - start.y) + 'px'
+      }
+      return
+    }
     if (cs && data) crosshairRef.current?.update(mx, my)
     drawingRef.current?.handleMouseMove(mx, my)
     if (!dragRef.current) return
@@ -200,18 +242,35 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       case 'yaxis': if (Math.abs(dy) > 1) zoomY(dy > 0 ? 1.05 : 0.95); break
     }
     dragRef.current = { ...dragRef.current, x: e.clientX, y: e.clientY }
-  }, [pan, zoomX, zoomY, cs, data])
+  }, [dragZoomMode, pan, zoomX, zoomY, cs, data])
 
-  const onMouseUp = useCallback(() => {
+  const onMouseUp = useCallback((e: React.MouseEvent) => {
+    if (dragZoomMode) {
+      const start = zoomStartRef.current
+      const rect  = canvasRef.current?.getBoundingClientRect()
+      if (start && rect && cs) {
+        const mx = e.clientX - rect.left
+        const my = e.clientY - rect.top
+        // Only zoom if the rect is at least 10px in each dimension
+        if (Math.abs(mx - start.x) > 10 && Math.abs(my - start.y) > 10) {
+          zoomToRect(start.x, start.y, mx, my, cs)
+        }
+      }
+      zoomStartRef.current = null
+      if (dragZoomDivRef.current) dragZoomDivRef.current.style.display = 'none'
+      setDragZoomMode(false)
+      return
+    }
     dragRef.current = null
     drawingRef.current?.handleMouseUp()
-  }, [])
+  }, [dragZoomMode, cs, zoomToRect])
 
   const onMouseLeave = useCallback(() => {
+    if (dragZoomMode) return  // keep mode active if mouse leaves while dragging
     dragRef.current = null
     drawingRef.current?.handleMouseUp()
     crosshairRef.current?.clear()
-  }, [])
+  }, [dragZoomMode])
 
   // Use a native (non-passive) wheel listener so e.preventDefault() actually works.
   // React attaches onWheel as passive by default, which silently ignores preventDefault.
@@ -250,24 +309,27 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   // Cursor
   const [cursorStyle, setCursorStyle] = useState('default')
   const onMouseMoveForCursor = useCallback((e: React.MouseEvent) => {
-    const zone = getZone(e)
     onMouseMove(e)
+    if (dragZoomMode) return  // cursor handled via style prop
+    const zone = getZone(e)
     const drawCursor = drawingRef.current?.getCursor()
     if (zone === 'chart' && drawCursor) setCursorStyle(drawCursor)
     else if (zone === 'yaxis') setCursorStyle('ns-resize')
     else if (zone === 'xaxis') setCursorStyle('ew-resize')
     else setCursorStyle('default')
-  }, [getZone, onMouseMove])
+  }, [dragZoomMode, getZone, onMouseMove])
 
   return (
     <div ref={wheelDivRef}
-      style={{ position: 'relative', width, height, background: theme.background, cursor: cursorStyle }}
+      style={{ position: 'relative', width, height, background: theme.background,
+        cursor: dragZoomMode ? 'crosshair' : cursorStyle }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMoveForCursor}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseLeave}
       onDoubleClick={onDoubleClick}
       onAuxClick={onAuxClick}
+      onContextMenu={onContextMenu}
     >
       <canvas ref={canvasRef} width={width} height={height}
         style={{ display: 'block', pointerEvents: 'none' }} />
@@ -335,6 +397,22 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
           anchorX={pickerPos.x}
           anchorY={pickerPos.y}
           onClose={() => setPickerPos(null)}
+        />
+      )}
+      {/* Drag-zoom selection rectangle — updated imperatively, never triggers re-renders */}
+      <div ref={dragZoomDivRef} style={{
+        display: 'none', position: 'absolute', pointerEvents: 'none',
+        border: '1px solid rgba(110, 190, 255, 0.75)',
+        background: 'rgba(110, 190, 255, 0.08)',
+        borderRadius: 2,
+      }} />
+      {contextMenu && (
+        <ChartContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onReset={() => { resetView(); resetYZoom() }}
+          onDragZoom={() => setDragZoomMode(true)}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </div>

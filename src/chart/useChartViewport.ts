@@ -206,11 +206,54 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
 
   const resetYZoom = useCallback(() => setPriceOverride(null), [])
 
+  /** Snap view back to latest 200 bars, re-enable auto-scroll, clear price lock. */
+  const resetView = useCallback(() => {
+    const data = getDataStore().getData(symbol, timeframe)
+    const vc = 200
+    const vs = data ? Math.max(0, data.length - vc + RIGHT_MARGIN_BARS) : 0
+    viewStartRef.current = vs
+    viewCountRef.current = vc
+    setViewStart(vs)
+    setViewCount(vc)
+    setPriceOverride(null)
+    setAutoScrolling(true)
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null }
+  }, [symbol, timeframe])
+
+  /**
+   * Zoom so that the given pixel rectangle (in canvas CSS coords) fills the chart.
+   * Pass the current CoordSystem so the conversion happens at the right viewport state.
+   */
+  const zoomToRect = useCallback((
+    x1: number, y1: number, x2: number, y2: number,
+    currentCs: CoordSystem,
+  ) => {
+    const left   = Math.min(x1, x2)
+    const right  = Math.max(x1, x2)
+    const top    = Math.min(y1, y2)
+    const bottom = Math.max(y1, y2)
+
+    const barLeft  = currentCs.xToBar(left)   // view-relative bar index
+    const barRight = currentCs.xToBar(right)
+    const newCount = Math.max(5, Math.ceil(barRight - barLeft))
+    const newStart = Math.max(0, Math.floor(viewStartRef.current) + Math.floor(barLeft))
+
+    const priceHigh = currentCs.yToPrice(top)
+    const priceLow  = currentCs.yToPrice(bottom)
+
+    pauseAutoScroll()
+    viewStartRef.current = newStart
+    viewCountRef.current = newCount
+    setViewStart(newStart)
+    setViewCount(newCount)
+    setPriceOverride({ min: Math.min(priceHigh, priceLow), max: Math.max(priceHigh, priceLow) })
+  }, [pauseAutoScroll])
+
   const viewport: Viewport = useMemo(() => ({
     viewStart: Math.floor(viewStart),  // integer for GPU array indexing
     viewCount,
     cs
   }), [viewStart, viewCount, cs])
 
-  return { viewport, pan, zoomX, zoomY, panY, resetYZoom, autoScrolling, pauseAutoScroll, viewStartRef, viewCountRef, computeCs }
+  return { viewport, pan, zoomX, zoomY, panY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, viewStartRef, viewCountRef, computeCs }
 }

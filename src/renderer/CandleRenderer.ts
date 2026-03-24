@@ -53,7 +53,17 @@ export class CandleRenderer {
     this.pipeline = ctx.device.createRenderPipeline({
       layout: ctx.device.createPipelineLayout({ bindGroupLayouts: [this.bgl] }),
       vertex:   { module, entryPoint: 'vs_main' },
-      fragment: { module, entryPoint: 'fs_main', targets: [{ format: ctx.format }] },
+      fragment: {
+        module, entryPoint: 'fs_main',
+        targets: [{
+          format: ctx.format,
+          // Alpha blend required for anti-aliased rounded-corner SDF edges
+          blend: {
+            color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            alpha: { srcFactor: 'one',       dstFactor: 'one-minus-src-alpha', operation: 'add' },
+          },
+        }],
+      },
       primitive: { topology: 'triangle-list' },
     })
   }
@@ -87,7 +97,7 @@ export class CandleRenderer {
     const barStepClip    = barStep * 2 / cs.width
     const pixelOffsetFrac = cs.pixelOffset / barStep
     const bodyWidthClip  = cs.clipBarWidth() * 0.5
-    const wickWidthClip  = Math.max(bodyWidthClip * 0.15, 1 / cs.width)
+    const wickWidthClip  = Math.max(bodyWidthClip * 0.10, 1 / cs.width)
     const chartBotClip   = cs.priceToClipY(cs.minPrice)
     const chartTopClip   = cs.priceToClipY(cs.maxPrice)
     const priceRange     = cs.maxPrice - cs.minPrice
@@ -104,8 +114,10 @@ export class CandleRenderer {
     u32[0] = viewStart;  u32[1] = safeCount;  u32[2] = 0;  u32[3] = 0
     // offset 16: barStepClip, pixelOffsetFrac, priceA, priceB
     f32[4] = barStepClip;  f32[5] = pixelOffsetFrac;  f32[6] = priceA;  f32[7] = priceB
-    // offset 32: bodyWidthClip, wickWidthClip, _pad, _pad
-    f32[8] = bodyWidthClip;  f32[9] = wickWidthClip;  f32[10] = 0;  f32[11] = 0
+    // offset 32: bodyWidthClip, wickWidthClip, canvasWidth, canvasHeight (physical px)
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+    f32[8] = bodyWidthClip;  f32[9] = wickWidthClip
+    f32[10] = cs.width * dpr;  f32[11] = cs.height * dpr
     // offset 48: upColor
     f32[12] = bc[0];  f32[13] = bc[1];  f32[14] = bc[2];  f32[15] = bc[3]
     // offset 64: downColor
