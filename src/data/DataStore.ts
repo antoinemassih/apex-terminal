@@ -68,6 +68,7 @@ export class DataStore {
         this.snapshots.set(k, indicators)
         this.paginationState.set(k, { loading: false, hasMore: true })
         this.recordLoadMetric(t0)
+        this.lastActions.delete(k)  // force full gpuBars.load()
         this.notify(k)
         // Background refresh
         this.refreshFromProvider(symbol, timeframe as Timeframe, k).catch(() => {})
@@ -84,6 +85,7 @@ export class DataStore {
     this.snapshots.set(k, indicators)
     this.paginationState.set(k, { loading: false, hasMore: resp.hasMore || resp.bars.length > 50 })
     this.recordLoadMetric(t0)
+    this.lastActions.delete(k)  // force full gpuBars.load() — not incremental append
     this.notify(k)
     this.barCache?.set(symbol, timeframe, resp.bars).catch(() => {})
     return { data: store, indicators }
@@ -98,6 +100,7 @@ export class DataStore {
       const indicators = this.indicatorEngine.bootstrap(symbol, timeframe, store)
       this.snapshots.set(k, indicators)
       this.paginationState.set(k, { loading: false, hasMore: resp.hasMore || resp.bars.length > 50 })
+      this.lastActions.delete(k)  // force full gpuBars.load()
       this.notify(k)
       this.barCache?.set(symbol, timeframe as string, resp.bars).catch(() => {})
     } catch (e) {
@@ -108,8 +111,15 @@ export class DataStore {
   applyTick(symbol: string, timeframe: string, tick: TickData): void {
     const t0 = performance.now()
     const k = this.key(symbol, timeframe)
-    const store = this.stores.get(k)
-    if (!store) return
+    let store = this.stores.get(k)
+    if (!store) {
+      // Lazily create an empty store so early ticks (before load completes) are not dropped.
+      // doLoad() will overwrite this store when history arrives.
+      store = ColumnStore.fromBars([])
+      this.stores.set(k, store)
+      const indicators = this.indicatorEngine.bootstrap(symbol, timeframe, store)
+      this.snapshots.set(k, indicators)
+    }
 
     const tf = TF_TO_INTERVAL[timeframe as Timeframe]
     if (!tf) return
@@ -168,6 +178,7 @@ export class DataStore {
         this.snapshots.set(k, indicators)
         this.metrics.paginationCount++
         this.recordLoadMetric(t0)
+        this.lastActions.delete(k)  // prepend shifts all bars — force full gpuBars.load()
         this.notify(k)
       }
 

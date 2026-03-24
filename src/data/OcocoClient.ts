@@ -57,10 +57,17 @@ export class OcocoClient implements DrawingRepository {
   // --- DrawingRepository interface ---
 
   async loadAll(): Promise<Drawing[]> {
-    const res = await fetch(`${this.baseUrl}/api/annotations?source=user`)
-    if (!res.ok) throw new Error(`Load failed: ${res.status}`)
-    const annotations = await res.json()
-    return annotations.map(annotationToDrawing)
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 1500)
+    try {
+      const res = await fetch(`${this.baseUrl}/api/annotations?source=user`, { signal: ctrl.signal })
+      clearTimeout(t)
+      if (!res.ok) throw new Error(`Load failed: ${res.status}`)
+      const annotations = await res.json()
+      return annotations.map(annotationToDrawing)
+    } finally {
+      clearTimeout(t)
+    }
   }
 
   async loadForSymbol(symbol: string): Promise<Drawing[]> {

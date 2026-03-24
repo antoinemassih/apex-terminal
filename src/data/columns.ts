@@ -48,6 +48,18 @@ export class ColumnStore {
   /** Apply a tick to the last candle or start a new one */
   applyTick(price: number, volume: number, time: number, intervalSecs: number): 'updated' | 'created' {
     this.lastEvictCount = 0
+
+    // Empty store — first bar ever; times[-1] is undefined so nextCandleTime would be NaN
+    if (this.length === 0) {
+      if (this.capacity === 0) this.grow()
+      this.times[0] = time
+      this.opens[0] = price; this.highs[0] = price
+      this.lows[0] = price; this.closes[0] = price
+      this.volumes[0] = volume
+      this.length = 1
+      return 'created'
+    }
+
     const last = this.length - 1
     const lastTime = this.times[last]
     const nextCandleTime = lastTime + intervalSecs

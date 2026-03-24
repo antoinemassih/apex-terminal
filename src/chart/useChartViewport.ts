@@ -85,7 +85,11 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   // Stable computeCs function — called by ChartPane's rAF loop using live refs.
   // Reads priceOverrideRef so it doesn't take priceOverride as a closure dep
   // (avoids invalidating the rAF loop on every price drag).
-  const computeCs = useCallback((vs: number, vc: number): CoordSystem | null => {
+  const computeCs = useCallback((
+    vs: number,
+    vc: number,
+    gpuRange?: { min: number; max: number } | null,
+  ): CoordSystem | null => {
     const data = getDataStore().getData(symbol, timeframe)
     if (!data || width === 0 || height === 0) return null
     const iStart = Math.floor(vs)
@@ -95,6 +99,13 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     let minP: number, maxP: number
     if (priceOverrideRef.current) {
       minP = priceOverrideRef.current.min; maxP = priceOverrideRef.current.max
+    } else if (gpuRange) {
+      // GPU-computed range from last frame (1-frame delay) — zero CPU scan
+      // Guard against degenerate range (single price level → 0/0 NaN in priceToY)
+      let gMin = gpuRange.min, gMax = gpuRange.max
+      if (gMin === gMax) { gMin -= 0.5; gMax += 0.5 }
+      const pad = (gMax - gMin) * 0.05
+      minP = gMin - pad; maxP = gMax + pad
     } else {
       const range = data.priceRange(iStart, end)
       const pad = (range.max - range.min) * 0.05

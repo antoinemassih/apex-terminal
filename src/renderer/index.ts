@@ -1,4 +1,7 @@
 export { CandleRenderer } from './CandleRenderer'
 export { GridRenderer } from './GridRenderer'
+export { GpuBarBuffer } from './GpuBarBuffer'
+export { GpuLineBuffer } from './GpuLineBuffer'
 export { LineRenderer } from './LineRenderer'
+export { PriceRangeCompute } from './PriceRangeCompute'
 export { VolumeRenderer } from './VolumeRenderer'

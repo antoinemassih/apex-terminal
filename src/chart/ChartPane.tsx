@@ -39,6 +39,8 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const [pickerPos, setPickerPos] = useState<{ x: number; y: number } | null>(null)
 
   const { cs } = viewport
+  const csRef = useRef(cs)
+  csRef.current = cs
   const data = getDataStore().getData(symbol, timeframe)
 
   // Register/unregister with engine
@@ -64,10 +66,17 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     // Subscribe to real-time ticks
     provider.subscribe(symbol, timeframe)
 
-    // Load historical data, then seed simulation prices
+    // Seed the simulation immediately with a default price so ticks start flowing
+    // before historical data arrives (avoids 1-3s blank screen on cold start).
+    if ('setLastPrice' in provider) {
+      ;(provider as any).setLastPrice(symbol, timeframe, 100, Date.now() / 1000)
+    }
+
+    // Load historical data, then re-seed simulation with the real last price.
     ds.load(symbol, timeframe).then(({ data: store }) => {
-      if (store.length > 0 && 'setLastPrice' in provider) {
-        (provider as any).setLastPrice(symbol, timeframe, store.closes[store.length - 1], store.times[store.length - 1])
+      if ('setLastPrice' in provider && store.length > 0) {
+        ;(provider as any).setLastPrice(symbol, timeframe,
+          store.closes[store.length - 1], store.times[store.length - 1])
       }
     }).catch(err => console.error(`Failed to load ${symbol}:${timeframe}:`, err))
 
@@ -79,6 +88,14 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       const action = ds.getLastAction(symbol, timeframe)
       if (d && indicators) paneRef.current?.setData(d, indicators, action)
     })
+
+    // Seed immediately with cached data — handles StrictMode double-invoke where
+    // ds.load() returns cached data without firing notify(), leaving pane empty.
+    const existingData = ds.getData(symbol, timeframe)
+    const existingIndicators = ds.getIndicators(symbol, timeframe)
+    if (existingData && existingIndicators) {
+      paneRef.current?.setData(existingData, existingIndicators, null)
+    }
 
     return () => {
       unsub()
@@ -105,7 +122,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       const lastClose = (data && dataLen > 0) ? data.closes[dataLen - 1] : 0
       if (vs === lastVs && vc === lastVc && dataLen === lastDataLen && lastClose === lastLastClose) return
 
-      const cs = computeCs(vs, vc)
+      const cs = computeCs(vs, vc, paneRef.current?.gpuPriceRange)
       if (!cs) return
 
       // Secondary check: skip if price range also unchanged (e.g. mid-candle tick same range)
@@ -196,19 +213,29 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     crosshairRef.current?.clear()
   }, [])
 
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    if (!cs) return
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    const factor = e.deltaY > 0 ? 1.1 : 0.9
-    if (x >= width - cs.pr && y < height - cs.pb) {
-      zoomY(factor, cs.yToPrice(y))
-    } else {
-      zoomX(factor)
+  // Use a native (non-passive) wheel listener so e.preventDefault() actually works.
+  // React attaches onWheel as passive by default, which silently ignores preventDefault.
+  const wheelDivRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = wheelDivRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      if (!csRef.current) return
+      const cs = csRef.current
+      const rect = el.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      const factor = e.deltaY > 0 ? 1.1 : 0.9
+      if (x >= width - cs.pr && y < height - cs.pb) {
+        zoomY(factor, cs.yToPrice(y))
+      } else {
+        zoomX(factor)
+      }
     }
-  }, [cs, zoomX, zoomY, width, height])
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [zoomX, zoomY, width, height])
 
   const onAuxClick = useCallback((e: React.MouseEvent) => {
     if (e.button === 1) { e.preventDefault(); useDrawingStore.getState().toggleDrawTool() }
@@ -233,13 +260,12 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   }, [getZone, onMouseMove])
 
   return (
-    <div
+    <div ref={wheelDivRef}
       style={{ position: 'relative', width, height, background: theme.background, cursor: cursorStyle }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMoveForCursor}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseLeave}
-      onWheel={onWheel}
       onDoubleClick={onDoubleClick}
       onAuxClick={onAuxClick}
     >

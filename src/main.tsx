@@ -13,12 +13,16 @@ import { useChartStore } from './store/chartStore'
 import { initDrawingStore } from './store/drawingStore'
 
 async function bootstrap() {
+  console.info('[boot] 1 GPU init...')
   const engine = await RenderEngine.create()
+  console.info('[boot] 2 GPU ready')
   const indicatorEngine = new IndicatorEngine()
 
   // Init persistence layers
   const barCache = new BarCache()
+  console.info('[boot] 3 BarCache init...')
   await barCache.init()
+  console.info('[boot] 4 BarCache ready')
 
   // Drawing persistence: OCOCO API → Tauri IPC → IndexedDB (fallback chain)
   const OCOCO_API = 'http://192.168.1.60:30300'
@@ -26,27 +30,29 @@ async function bootstrap() {
   // Store OCOCO client globally for WS signal subscription from chart panes
   ;(window as any).__ococoClient = null as OcocoClient | null
 
+  console.info('[boot] 5 drawing repo...')
   try {
     const client = new OcocoClient(OCOCO_API)
     await client.loadAll() // test connection
     drawingRepo = client
     ;(window as any).__ococoClient = client
     client.connectWs()
-    console.info('Drawings: using OCOCO API')
+    console.info('[boot] Drawings: using OCOCO API')
   } catch {
     try {
       const tauriRepo = new TauriDrawingRepository()
       await tauriRepo.loadAll()
       drawingRepo = tauriRepo
-      console.info('Drawings: using Tauri → PostgreSQL')
+      console.info('[boot] Drawings: using Tauri → PostgreSQL')
     } catch {
       const localRepo = new LocalDrawingRepository()
       await localRepo.init()
       await localRepo.migrateFromLocalStorage()
       drawingRepo = localRepo
-      console.info('Drawings: using IndexedDB (offline)')
+      console.info('[boot] Drawings: using IndexedDB (offline)')
     }
   }
+  console.info('[boot] 6 drawing store init...')
   await initDrawingStore(drawingRepo)
 
   // Data provider (swap implementation here for different data sources)
@@ -62,8 +68,9 @@ async function bootstrap() {
     provider.subscribe(pane.symbol, pane.timeframe)
   }
 
+  console.info('[boot] 7 provider connect...')
   await provider.connect()
-  console.info(`Data provider: ${provider.name}`)
+  console.info(`[boot] 8 provider ready: ${provider.name}`)
 
   // Feed lifecycle events
   provider.onDisconnect(() => console.warn('Data provider disconnected'))
@@ -89,6 +96,7 @@ async function bootstrap() {
     }
   })
 
+  console.info('[boot] 9 React mounting...')
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>
       <App />

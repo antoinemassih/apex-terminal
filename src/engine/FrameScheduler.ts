@@ -91,21 +91,29 @@ export class FrameScheduler {
     // Measure render time (not gap between frames)
     const t0 = performance.now()
 
-    const commandBuffers: GPUCommandBuffer[] = []
+    const renderBuffers:  GPUCommandBuffer[] = []
+    const computeBuffers: GPUCommandBuffer[] = []
     let dirtyCount = 0
 
     for (const [id, pane] of this.panes) {
       if (!pane.dirty) continue
       dirtyCount++
-      this.renderPane(id, commandBuffers)
+      this.buildPaneBuffers(id, renderBuffers, computeBuffers)
     }
     this.lastRenderPanes = dirtyCount
 
-    if (commandBuffers.length > 0) {
+    // Compute and render are submitted separately — a compute validation error
+    // cannot contaminate the render command buffer and blank the screen.
+    if (computeBuffers.length > 0) {
+      try { this.device.queue.submit(computeBuffers) } catch { /* ignore compute errors */ }
+    }
+
+    if (renderBuffers.length > 0) {
       try {
-        this.device.queue.submit(commandBuffers)
+        this.device.queue.submit(renderBuffers)
+        for (const pane of this.panes.values()) pane.postSubmit()
       } catch (e) {
-        console.error('GPU submit failed:', e)
+        console.error('GPU render submit failed:', e)
       }
     }
 
@@ -134,10 +142,21 @@ export class FrameScheduler {
     }
   }
 
-  private renderPane(id: string, buffers: GPUCommandBuffer[]): void {
+  private buildPaneBuffers(
+    id: string,
+    renderBuffers: GPUCommandBuffer[],
+    computeBuffers: GPUCommandBuffer[],
+  ): void {
     const pane = this.panes.get(id)!
+
+    // Compute is completely isolated — any failure here must never suppress the render
     try {
-      buffers.push(pane.render())
+      const compute = pane.buildComputeCommands()
+      if (compute) computeBuffers.push(compute)
+    } catch { /* compute error — ignored */ }
+
+    try {
+      renderBuffers.push(pane.render())
       pane.dirty = false
     } catch (e) {
       console.warn(`Pane ${id} render failed:`, e)

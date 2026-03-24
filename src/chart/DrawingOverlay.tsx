@@ -77,7 +77,10 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     let cancelled = false
     const load = async () => {
       try {
-        const resp = await fetch(`http://192.168.1.60:30300/api/annotations?symbol=${symbol}&source=auto-trend`)
+        const ctrl = new AbortController()
+        const t = setTimeout(() => ctrl.abort(), 1500)
+        const resp = await fetch(`http://192.168.1.60:30300/api/annotations?symbol=${symbol}&source=auto-trend`, { signal: ctrl.signal })
+        clearTimeout(t)
         if (resp.ok && !cancelled) {
           const anns = await resp.json()
           setServerAnnotations(anns)

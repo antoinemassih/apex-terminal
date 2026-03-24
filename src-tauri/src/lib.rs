@@ -1,5 +1,6 @@
 mod data;
 mod drawings;
+mod ib_ws;
 
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
@@ -16,6 +17,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // PostgreSQL pool for drawings persistence
             let pool = async_runtime::block_on(async {
                 PgPoolOptions::new()
                     .max_connections(5)
@@ -24,6 +26,11 @@ pub fn run() {
                     .expect("Failed to connect to PostgreSQL")
             });
             app.manage(DbPool(pool));
+
+            // IB WebSocket hot path — Rust-native, msgpack binary
+            let ib_handle = ib_ws::spawn(app.handle().clone());
+            app.manage(ib_handle);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -37,6 +44,7 @@ pub fn run() {
             drawings::drawings_update_style,
             drawings::drawings_remove,
             drawings::drawings_clear,
+            ib_ws::ib_ws_send,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

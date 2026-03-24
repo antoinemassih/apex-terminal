@@ -1,132 +1,131 @@
 import type { GPUContext } from '../engine/types'
-import { CoordSystem } from '../engine/types'
-import { ColumnStore } from '../data/columns'
-import shaderSrc from './shaders/candles.wgsl?raw'
+import type { CoordSystem } from '../chart/CoordSystem'
+import type { GpuBarBuffer } from './GpuBarBuffer'
+import shaderSrc from './shaders/candles_gpu.wgsl?raw'
 
-const FLOATS_PER_INSTANCE = 10
 const VERTS_PER_CANDLE = 18
+/** 80 bytes / 4 = 20 f32 slots */
+const VP_FLOATS = 20
+
 const BULL_COLOR = [0.18, 0.78, 0.45, 1.0]
 const BEAR_COLOR = [0.93, 0.27, 0.27, 1.0]
 
+/**
+ * Candle renderer — GPU-resident architecture.
+ *
+ * Raw OHLCV data lives permanently in GpuBarBuffer (STORAGE buffer).
+ * Each render only writes an 80-byte Viewport uniform; all clip-space
+ * math is done in the vertex shader with one FMA per price coord.
+ *
+ * CPU cost per frame: 80-byte writeBuffer + bind-group check.
+ */
 export class CandleRenderer {
-  private pipeline: GPURenderPipeline
-  private uniformBuffer: GPUBuffer
-  private uniformBindGroup: GPUBindGroup
-  private instanceBuffer: GPUBuffer | null = null
-  private instanceBufferSize = 0
-  private instanceCount = 0
+  private readonly pipeline: GPURenderPipeline
+  private readonly bgl: GPUBindGroupLayout
+  private readonly uniformBuf: GPUBuffer
+  private bindGroup: GPUBindGroup | null = null
+  private lastStorageBuf: GPUBuffer | null = null
+  private viewCount = 0
+  /** Shared ArrayBuffer so Uint32 and Float32 views alias the same bytes */
+  private readonly vpData = new Float32Array(VP_FLOATS)
+  private readonly vpU32 = new Uint32Array(this.vpData.buffer)
   private readonly device: GPUDevice
-  // Reusable typed array — avoids allocation per frame
-  private cpuBuffer: Float32Array | null = null
-  // Reusable uniform data
-  private readonly uniformData = new Float32Array(4)
+  private readonly gpuBars: GpuBarBuffer
 
-  constructor(ctx: GPUContext) {
-    this.device = ctx.device
-    this.uniformBuffer = ctx.device.createBuffer({
-      size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  constructor(ctx: GPUContext, gpuBars: GpuBarBuffer) {
+    this.device  = ctx.device
+    this.gpuBars = gpuBars
+
+    this.uniformBuf = ctx.device.createBuffer({
+      size: VP_FLOATS * 4,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
 
     const module = ctx.device.createShaderModule({ code: shaderSrc })
-    const bgl = ctx.device.createBindGroupLayout({
-      entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: {} }],
+
+    this.bgl = ctx.device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+      ],
     })
 
     this.pipeline = ctx.device.createRenderPipeline({
-      layout: ctx.device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
-      vertex: {
-        module, entryPoint: 'vs_main',
-        buffers: [{
-          arrayStride: FLOATS_PER_INSTANCE * 4,
-          stepMode: 'instance',
-          attributes: [
-            { shaderLocation: 0, offset: 0,  format: 'float32' },
-            { shaderLocation: 1, offset: 4,  format: 'float32' },
-            { shaderLocation: 2, offset: 8,  format: 'float32' },
-            { shaderLocation: 3, offset: 12, format: 'float32' },
-            { shaderLocation: 4, offset: 16, format: 'float32' },
-            { shaderLocation: 5, offset: 20, format: 'float32' },
-            { shaderLocation: 6, offset: 24, format: 'float32x4' },
-          ],
-        }],
-      },
+      layout: ctx.device.createPipelineLayout({ bindGroupLayouts: [this.bgl] }),
+      vertex:   { module, entryPoint: 'vs_main' },
       fragment: { module, entryPoint: 'fs_main', targets: [{ format: ctx.format }] },
       primitive: { topology: 'triangle-list' },
     })
-
-    this.uniformBindGroup = ctx.device.createBindGroup({
-      layout: bgl,
-      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
-    })
   }
 
-  upload(data: ColumnStore, cs: CoordSystem, viewStart: number, viewCount: number,
-         bullColor?: readonly number[], bearColor?: readonly number[]) {
-    const end = Math.min(viewStart + viewCount, data.length)
-    const count = end - viewStart
-    if (count <= 0) return
+  /**
+   * Write the 80-byte viewport uniform.  No bar data touched.
+   * Called every frame when the pane is dirty (pan / zoom / tick / full load).
+   */
+  upload(cs: CoordSystem, viewStart: number, viewCount: number,
+         bullColor?: readonly number[], bearColor?: readonly number[]): void {
+    if (!this.gpuBars.valid) return
 
-    const floatsNeeded = count * FLOATS_PER_INSTANCE
-    if (!this.cpuBuffer || this.cpuBuffer.length < floatsNeeded) {
-      this.cpuBuffer = new Float32Array(Math.ceil(floatsNeeded * 1.5))
-    }
-    const arr = this.cpuBuffer
-    const bc = bullColor ?? BULL_COLOR
-    const rc = bearColor ?? BEAR_COLOR
-
-    const bodyW = cs.clipBarWidth() * 0.5
-    const wickW = Math.max(bodyW * 0.15, 0.001)
-
-    for (let i = 0; i < count; i++) {
-      const di = viewStart + i
-      const base = i * FLOATS_PER_INSTANCE
-      const isBull = data.closes[di] >= data.opens[di]
-      const color = isBull ? bc : rc
-
-      arr[base + 0] = cs.barToClipX(i)
-      arr[base + 1] = cs.priceToClipY(data.opens[di])
-      arr[base + 2] = cs.priceToClipY(data.closes[di])
-      arr[base + 3] = cs.priceToClipY(data.lows[di])
-      arr[base + 4] = cs.priceToClipY(data.highs[di])
-      arr[base + 5] = bodyW
-      arr[base + 6] = color[0]
-      arr[base + 7] = color[1]
-      arr[base + 8] = color[2]
-      arr[base + 9] = color[3]
-    }
-
-    const byteLength = floatsNeeded * 4
-    // Reuse GPU buffer if large enough
-    if (this.instanceBuffer && this.instanceBufferSize >= byteLength) {
-      this.device.queue.writeBuffer(this.instanceBuffer, 0, arr, 0, floatsNeeded)
-    } else {
-      if (this.instanceBuffer) this.instanceBuffer.destroy()
-      const allocSize = Math.ceil(byteLength * 1.5)
-      this.instanceBuffer = this.device.createBuffer({
-        size: allocSize, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    // Rebuild bind group only when the storage buffer was reallocated
+    if (this.gpuBars.buffer !== this.lastStorageBuf) {
+      this.bindGroup = this.device.createBindGroup({
+        layout: this.bgl,
+        entries: [
+          { binding: 0, resource: { buffer: this.gpuBars.buffer } },
+          { binding: 1, resource: { buffer: this.uniformBuf } },
+        ],
       })
-      this.instanceBufferSize = allocSize
-      this.device.queue.writeBuffer(this.instanceBuffer, 0, arr, 0, floatsNeeded)
+      this.lastStorageBuf = this.gpuBars.buffer
     }
 
-    this.instanceCount = count
-    this.uniformData[0] = wickW
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformData)
+    const safeCount = Math.max(0,
+      Math.min(viewCount, this.gpuBars.lenBars - viewStart))
+    if (safeCount === 0) { this.viewCount = 0; return }
+
+    // ── Viewport math (all on CPU, once per frame) ────────────────────
+    const barStep        = cs.barStep
+    const barStepClip    = barStep * 2 / cs.width
+    const pixelOffsetFrac = cs.pixelOffset / barStep
+    const bodyWidthClip  = cs.clipBarWidth() * 0.5
+    const wickWidthClip  = Math.max(bodyWidthClip * 0.15, 1 / cs.width)
+    const chartBotClip   = cs.priceToClipY(cs.minPrice)
+    const chartTopClip   = cs.priceToClipY(cs.maxPrice)
+    const priceRange     = cs.maxPrice - cs.minPrice
+    // priceToClipY(p) = priceA + p * priceB  (one FMA in shader)
+    const priceB         = priceRange > 0 ? (chartTopClip - chartBotClip) / priceRange : 0
+    const priceA         = chartBotClip - cs.minPrice * priceB
+
+    const u32 = this.vpU32
+    const f32 = this.vpData
+    const bc  = bullColor ?? BULL_COLOR
+    const rc  = bearColor ?? BEAR_COLOR
+
+    // offset  0: viewStart, viewCount, _pad, _pad
+    u32[0] = viewStart;  u32[1] = safeCount;  u32[2] = 0;  u32[3] = 0
+    // offset 16: barStepClip, pixelOffsetFrac, priceA, priceB
+    f32[4] = barStepClip;  f32[5] = pixelOffsetFrac;  f32[6] = priceA;  f32[7] = priceB
+    // offset 32: bodyWidthClip, wickWidthClip, _pad, _pad
+    f32[8] = bodyWidthClip;  f32[9] = wickWidthClip;  f32[10] = 0;  f32[11] = 0
+    // offset 48: upColor
+    f32[12] = bc[0];  f32[13] = bc[1];  f32[14] = bc[2];  f32[15] = bc[3]
+    // offset 64: downColor
+    f32[16] = rc[0];  f32[17] = rc[1];  f32[18] = rc[2];  f32[19] = rc[3]
+
+    this.device.queue.writeBuffer(this.uniformBuf, 0, this.vpData)
+    this.viewCount = safeCount
   }
 
-  render(pass: GPURenderPassEncoder) {
-    if (!this.instanceBuffer || this.instanceCount === 0) return
+  render(pass: GPURenderPassEncoder): void {
+    if (!this.bindGroup || this.viewCount === 0) return
     pass.setPipeline(this.pipeline)
-    pass.setBindGroup(0, this.uniformBindGroup)
-    pass.setVertexBuffer(0, this.instanceBuffer)
-    pass.draw(VERTS_PER_CANDLE, this.instanceCount)
+    pass.setBindGroup(0, this.bindGroup)
+    pass.draw(VERTS_PER_CANDLE, this.viewCount)
   }
 
-  destroy() {
-    this.instanceBuffer?.destroy()
-    this.instanceBuffer = null
-    this.instanceBufferSize = 0
-    this.uniformBuffer.destroy()
-    this.cpuBuffer = null
+  destroy(): void {
+    this.uniformBuf.destroy()
+    this.bindGroup      = null
+    this.lastStorageBuf = null
+    this.viewCount      = 0
   }
 }
