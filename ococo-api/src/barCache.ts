@@ -27,23 +27,27 @@ function key(symbol: string, interval: string): string {
   return `${PREFIX}${symbol}:${interval}`
 }
 
+const PIPELINE_BATCH = 1_000  // max commands per pipeline to avoid blocking other Redis ops
+
 /** Write bars to Redis sorted set (score = timestamp) */
 export async function writeBarsToRedis(symbol: string, interval: string, bars: Bar[]): Promise<void> {
   if (bars.length === 0) return
   const k = key(symbol, interval)
 
-  // Pipeline for performance
-  const pipeline = redis.pipeline()
-  for (const bar of bars) {
-    pipeline.zadd(k, bar.time, JSON.stringify(bar))
+  // Process in batches to avoid monopolising the Redis connection
+  for (let i = 0; i < bars.length; i += PIPELINE_BATCH) {
+    const chunk = bars.slice(i, i + PIPELINE_BATCH)
+    const pipeline = redis.pipeline()
+    for (const bar of chunk) {
+      pipeline.zadd(k, bar.time, JSON.stringify(bar))
+    }
+    await pipeline.exec()
   }
-  await pipeline.exec()
 
   // Trim to max capacity (remove oldest)
   const count = await redis.zcard(k)
   if (count > MAX_BARS_PER_KEY) {
-    const excess = count - MAX_BARS_PER_KEY
-    await redis.zremrangebyrank(k, 0, excess - 1)
+    await redis.zremrangebyrank(k, 0, count - MAX_BARS_PER_KEY - 1)
   }
 }
 

@@ -3,6 +3,7 @@ domain: ococo
 
 services:
   api:
+    replicas: 2
     dockerfile: ococo-api/Dockerfile
     port: 3000
     env_secret: ococo-api-env

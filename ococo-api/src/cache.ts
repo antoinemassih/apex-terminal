@@ -37,6 +37,28 @@ export async function invalidate(symbol: string): Promise<void> {
   }
 }
 
+/**
+ * Fetch with stampede protection.
+ * Concurrent cache misses for the same symbol coalesce into a single DB fetch.
+ */
+const inflight = new Map<string, Promise<Annotation[]>>()
+
+export async function cachedFetch(
+  symbol: string,
+  fetcher: () => Promise<Annotation[]>,
+): Promise<Annotation[]> {
+  const cached = await getCached(symbol)
+  if (cached !== null) return cached
+
+  if (!inflight.has(symbol)) {
+    const p = fetcher()
+      .then(async (result) => { await setCache(symbol, result); return result })
+      .finally(() => inflight.delete(symbol))
+    inflight.set(symbol, p)
+  }
+  return inflight.get(symbol)!
+}
+
 /** Invalidate all annotation caches */
 export async function invalidateAll(): Promise<void> {
   try {

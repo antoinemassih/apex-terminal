@@ -4,7 +4,7 @@ import App from './App'
 import { RenderEngine } from './engine'
 import { IndicatorEngine } from './indicators'
 import { DataStore, BarCache } from './data'
-import { YFinanceProvider } from './data/DataProvider'
+import { IBKRProvider } from './data/IBKRProvider'
 import { LocalDrawingRepository } from './data/DrawingRepository'
 import { TauriDrawingRepository } from './data/TauriDrawingRepository'
 import { OcocoClient } from './data/OcocoClient'
@@ -50,7 +50,7 @@ async function bootstrap() {
   await initDrawingStore(drawingRepo)
 
   // Data provider (swap implementation here for different data sources)
-  const provider = new YFinanceProvider()
+  const provider = new IBKRProvider()
 
   const dataStore = new DataStore(indicatorEngine, provider, barCache)
 

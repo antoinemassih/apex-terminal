@@ -91,23 +91,36 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   useEffect(() => {
     let rafId: number
     let lastVs = -1, lastVc = -1, lastMinP = 0, lastMaxP = 0
+    let lastDataLen = 0, lastLastClose = 0
 
     const loop = () => {
       rafId = requestAnimationFrame(loop)
       const vs = viewStartRef.current
       const vc = viewCountRef.current
+
+      // Cheap early exit BEFORE computing cs (which does O(n) price scan).
+      // Skip if viewport unchanged AND data unchanged (no new ticks, no new candles).
+      const data = getDataStore().getData(symbol, timeframe)
+      const dataLen = data?.length ?? 0
+      const lastClose = (data && dataLen > 0) ? data.closes[dataLen - 1] : 0
+      if (vs === lastVs && vc === lastVc && dataLen === lastDataLen && lastClose === lastLastClose) return
+
       const cs = computeCs(vs, vc)
       if (!cs) return
 
-      // Skip if nothing changed — avoid redundant draws
-      if (vs === lastVs && vc === lastVc && cs.minPrice === lastMinP && cs.maxPrice === lastMaxP) return
+      // Secondary check: skip if price range also unchanged (e.g. mid-candle tick same range)
+      if (vs === lastVs && vc === lastVc && cs.minPrice === lastMinP && cs.maxPrice === lastMaxP) {
+        lastDataLen = dataLen; lastLastClose = lastClose
+        return
+      }
+
       lastVs = vs; lastVc = vc; lastMinP = cs.minPrice; lastMaxP = cs.maxPrice
+      lastDataLen = dataLen; lastLastClose = lastClose
 
       // 1. GPU candles
       paneRef.current?.setViewport({ viewStart: Math.floor(vs), viewCount: vc, cs })
 
       // 2. Axis 2D canvas
-      const data = getDataStore().getData(symbol, timeframe)
       if (data) axisRef.current?.draw(cs, data, Math.floor(vs))
 
       // 3. Drawing overlay
