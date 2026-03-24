@@ -28,6 +28,7 @@ class SMAIndicator implements IncrementalIndicator {
 
   push(value: number): void { this.sma.push(value) }
   updateLast(value: number): void { this.sma.updateLast(value) }
+  evict(count: number): void { this.sma.evict(count) }
   getLength(): number { return this.sma.getLength() }
 
   getOutputs(): IndicatorOutput[] {
@@ -65,6 +66,7 @@ class EMAIndicator implements IncrementalIndicator {
 
   push(value: number): void { this.ema.push(value) }
   updateLast(value: number): void { this.ema.updateLast(value) }
+  evict(count: number): void { this.ema.evict(count) }
   getLength(): number { return this.ema.getLength() }
 
   getOutputs(): IndicatorOutput[] {
@@ -101,6 +103,7 @@ class BollingerIndicator implements IncrementalIndicator {
 
   push(value: number): void { this.bb.push(value) }
   updateLast(value: number): void { this.bb.updateLast(value) }
+  evict(count: number): void { this.bb.evict(count) }
   getLength(): number { return this.bb.getLength() }
 
   getOutputs(): IndicatorOutput[] {

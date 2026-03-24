@@ -1,3 +1,6 @@
+const MAX_OUTPUT = 50_000
+const EVICT_RATIO = 0.25
+
 export class IncrementalEMA {
   private k: number
   private prevEma: number = 0
@@ -27,6 +30,9 @@ export class IncrementalEMA {
   }
 
   push(value: number): void {
+    if (this.outputLen >= MAX_OUTPUT) {
+      this.evict(Math.ceil(this.outputLen * EVICT_RATIO))
+    }
     this.ensureCapacity(this.outputLen + 1)
     this.prevEma = value * this.k + this.prevEma * (1 - this.k)
     this.output[this.outputLen] = this.count >= this.period - 1 ? this.prevEma : NaN
@@ -41,6 +47,13 @@ export class IncrementalEMA {
     this.prevEma = value * this.k + prevEmaVal * (1 - this.k)
     // Use same threshold as push: count >= period - 1
     this.output[this.outputLen - 1] = this.count >= this.period - 1 ? this.prevEma : NaN
+  }
+
+  evict(count: number): void {
+    if (count <= 0 || count >= this.outputLen) return
+    const keep = this.outputLen - count
+    this.output.copyWithin(0, count, this.outputLen)
+    this.outputLen = keep
   }
 
   getOutput(): Float64Array { return this.output }

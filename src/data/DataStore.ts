@@ -116,6 +116,12 @@ export class DataStore {
 
     const action = store.applyTick(tick.price, tick.volume, tick.time, tf.seconds)
     this.lastActions.set(k, action)
+
+    // If ColumnStore evicted old bars, keep indicators in sync
+    if (store.lastEvictCount > 0) {
+      this.indicatorEngine.evict(symbol, timeframe, store.lastEvictCount)
+    }
+
     try {
       const snapshot = this.indicatorEngine.onTick(symbol, timeframe, tick.price, action)
       this.snapshots.set(k, snapshot)

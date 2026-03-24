@@ -4,6 +4,7 @@ import { getRenderEngine, getDataStore } from '../globals'
 export function FrameStats() {
   const [line1, setLine1] = useState('')
   const [line2, setLine2] = useState('')
+  const [line3, setLine3] = useState('')
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -12,9 +13,19 @@ export function FrameStats() {
         setLine1(`${rs.updatesPerSec} upd/s \u00b7 ${rs.renderTimeMs.toFixed(1)}ms \u00b7 pk ${rs.renderTimePeak.toFixed(1)}ms \u00b7 ${rs.panesRendered}/${rs.panesTotal}`)
 
         const dm = getDataStore().getMetrics()
-        setLine2(`loads:${dm.loadCount} \u00b7 avg ${dm.avgLoadMs}ms \u00b7 pk ${Math.round(dm.loadPeakMs)}ms \u00b7 ticks:${dm.tickCount} \u00b7 ${dm.avgTickMs}ms/t \u00b7 cache ${dm.cacheHits}/${dm.cacheHits + dm.cacheMisses} \u00b7 page:${dm.paginationCount}`)
+        setLine2(`loads:${dm.loadCount} \u00b7 avg ${dm.avgLoadMs}ms \u00b7 pk ${Math.round(dm.loadPeakMs)}ms \u00b7 ticks:${dm.tickCount} \u00b7 ${dm.avgTickMs}ms/t`)
+
+        // Memory info (if available)
+        const perf = (performance as any)
+        if (perf.memory) {
+          const used = Math.round(perf.memory.usedJSHeapSize / 1024 / 1024)
+          const total = Math.round(perf.memory.totalJSHeapSize / 1024 / 1024)
+          setLine3(`mem ${used}/${total}MB \u00b7 cache ${dm.cacheHits}/${dm.cacheHits + dm.cacheMisses}`)
+        } else {
+          setLine3(`cache ${dm.cacheHits}/${dm.cacheHits + dm.cacheMisses} \u00b7 page:${dm.paginationCount}`)
+        }
       } catch { /* not ready */ }
-    }, 500)
+    }, 1000)
     return () => clearInterval(id)
   }, [])
 
@@ -30,6 +41,7 @@ export function FrameStats() {
     }}>
       <div>{line1}</div>
       <div style={{ color: '#0a0' }}>{line2}</div>
+      <div style={{ color: '#080' }}>{line3}</div>
     </div>
   )
 }

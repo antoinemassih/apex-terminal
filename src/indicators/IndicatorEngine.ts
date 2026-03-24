@@ -71,6 +71,14 @@ export class IndicatorEngine {
     return () => { this.subscribers.get(k)?.delete(cb) }
   }
 
+  evict(symbol: string, timeframe: string, count: number): void {
+    const state = this.state.get(this.key(symbol, timeframe))
+    if (!state) return
+    for (const ind of state.indicators.values()) {
+      ind.evict(count)
+    }
+  }
+
   remove(symbol: string, timeframe: string): void {
     const k = this.key(symbol, timeframe)
     this.state.delete(k)

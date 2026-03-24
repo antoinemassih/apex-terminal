@@ -1,3 +1,6 @@
+const MAX_OUTPUT = 50_000
+const EVICT_RATIO = 0.25
+
 export class IncrementalBollinger {
   private buffer: Float64Array
   private pos: number = 0
@@ -29,6 +32,9 @@ export class IncrementalBollinger {
   }
 
   push(value: number): void {
+    if (this.outputLen >= MAX_OUTPUT) {
+      this.evict(Math.ceil(this.outputLen * EVICT_RATIO))
+    }
     this.ensureCapacity(this.outputLen + 1)
     this.pushInternal(value, this.outputLen)
     this.outputLen++
@@ -85,6 +91,14 @@ export class IncrementalBollinger {
     const std = Math.sqrt(Math.max(0, variance))
     this.upperOut[idx] = sma + this.stdDevs * std
     this.lowerOut[idx] = sma - this.stdDevs * std
+  }
+
+  evict(count: number): void {
+    if (count <= 0 || count >= this.outputLen) return
+    const keep = this.outputLen - count
+    this.upperOut.copyWithin(0, count, this.outputLen)
+    this.lowerOut.copyWithin(0, count, this.outputLen)
+    this.outputLen = keep
   }
 
   getUpper(): Float64Array { return this.upperOut }

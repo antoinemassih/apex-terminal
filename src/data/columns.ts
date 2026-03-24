@@ -11,6 +11,7 @@ export class ColumnStore {
   closes: Float64Array
   volumes: Float64Array
   length: number
+  lastEvictCount: number = 0
   private capacity: number
 
   private constructor(
@@ -46,6 +47,7 @@ export class ColumnStore {
 
   /** Apply a tick to the last candle or start a new one */
   applyTick(price: number, volume: number, time: number, intervalSecs: number): 'updated' | 'created' {
+    this.lastEvictCount = 0
     const last = this.length - 1
     const lastTime = this.times[last]
     const nextCandleTime = lastTime + intervalSecs
@@ -102,6 +104,7 @@ export class ColumnStore {
       // This avoids allocating new arrays during eviction
       old.copyWithin(0, drop, drop + keep)
     }
+    this.lastEvictCount = drop
     this.length = keep
     // capacity stays the same — we freed up (capacity - keep) slots
   }

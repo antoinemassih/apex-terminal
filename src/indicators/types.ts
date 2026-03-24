@@ -19,6 +19,7 @@ export interface IncrementalIndicator {
   bootstrap(closes: Float64Array, length: number): void
   push(value: number): void
   updateLast(value: number): void
+  evict(count: number): void
   getOutputs(): IndicatorOutput[]
   getLength(): number
 }

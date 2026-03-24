@@ -1,3 +1,6 @@
+const MAX_OUTPUT = 50_000
+const EVICT_RATIO = 0.25
+
 export class IncrementalSMA {
   private buffer: Float64Array
   private sum: number = 0
@@ -23,6 +26,9 @@ export class IncrementalSMA {
   }
 
   push(value: number): void {
+    if (this.outputLen >= MAX_OUTPUT) {
+      this.evict(Math.ceil(this.outputLen * EVICT_RATIO))
+    }
     this.ensureCapacity(this.outputLen + 1)
     this.pushInternal(value, this.outputLen)
     this.outputLen++
@@ -37,6 +43,13 @@ export class IncrementalSMA {
     this.sum += value
     this.buffer[prevPos] = value
     this.output[idx] = this.count >= this.period ? this.sum / this.period : NaN
+  }
+
+  evict(count: number): void {
+    if (count <= 0 || count >= this.outputLen) return
+    const keep = this.outputLen - count
+    this.output.copyWithin(0, count, this.outputLen)
+    this.outputLen = keep
   }
 
   getOutput(): Float64Array { return this.output }
