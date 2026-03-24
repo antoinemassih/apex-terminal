@@ -27,6 +27,8 @@ export interface DrawingOverlayHandle {
   handleMouseUp: () => void
   /** Returns a cursor string if drawings want to override, or null for default */
   getCursor: () => string | null
+  /** Imperatively update viewport (cs + viewStart) and immediately redraw — bypasses React */
+  setViewport(newCs: CoordSystem, newViewStart: number): void
 }
 
 type DragState = {
@@ -57,6 +59,13 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   const cursorRef = useRef<string | null>(null)
   const prevToolRef = useRef(activeTool)
 
+  // Live refs for viewport — updated imperatively by setViewport() to avoid React re-renders during pan
+  const csRef = useRef(cs)
+  const vsRef = useRef(viewStart)
+  // Keep refs in sync with React props (for React-driven updates: zoom, symbol switch, etc.)
+  useEffect(() => { csRef.current = cs }, [cs])
+  useEffect(() => { vsRef.current = viewStart }, [viewStart])
+
   // Reset inProgress when tool changes
   if (activeTool !== prevToolRef.current) {
     prevToolRef.current = activeTool
@@ -81,32 +90,37 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   }, [symbol])
 
   const toPixel = useCallback((p: Point) => {
-    if (!chartData || chartData.length === 0) return { x: 0, y: cs.priceToY(p.price) }
+    const _cs = csRef.current
+    const _vs = vsRef.current
+    if (!chartData || chartData.length === 0) return { x: 0, y: _cs.priceToY(p.price) }
     // Binary search for the bar at this timestamp
     const barIdx = chartData.indexAtTime(p.time)
     // Interpolate between bars for sub-bar precision
-    let viewIdx = barIdx - viewStart
+    let viewIdx = barIdx - _vs
     if (barIdx < chartData.length - 1) {
       const t0 = chartData.times[barIdx]
       const t1 = chartData.times[barIdx + 1]
       if (t1 > t0) {
         const frac = (p.time - t0) / (t1 - t0)
-        viewIdx = barIdx + frac - viewStart
+        viewIdx = barIdx + frac - _vs
       }
     }
-    return { x: cs.barToX(viewIdx), y: cs.priceToY(p.price) }
-  }, [cs, viewStart, chartData])
+    return { x: _cs.barToX(viewIdx), y: _cs.priceToY(p.price) }
+  }, [chartData])
 
   const toPoint = useCallback((px: number, py: number): Point => {
-    if (!chartData || chartData.length === 0) return { time: 0, price: cs.yToPrice(py) }
+    const _cs = csRef.current
+    const _vs = vsRef.current
+    if (!chartData || chartData.length === 0) return { time: 0, price: _cs.yToPrice(py) }
     // Clamp bar index to valid data range
-    const rawIdx = cs.xToBar(px) + viewStart
+    const rawIdx = _cs.xToBar(px) + _vs
     const barIdx = Math.max(0, Math.min(chartData.length - 1, Math.round(rawIdx)))
-    return { time: chartData.times[barIdx], price: cs.yToPrice(py) }
-  }, [cs, viewStart, chartData])
+    return { time: chartData.times[barIdx], price: _cs.yToPrice(py) }
+  }, [chartData])
 
   const hitTest = useCallback((mx: number, my: number): { id: string; nearEndpoint: number } | null => {
-    if (mx >= width - cs.pr || my >= height - cs.pb) return null
+    const _cs = csRef.current
+    if (mx >= width - _cs.pr || my >= height - _cs.pb) return null
     const drawings = drawingsFor(symbol, timeframe)
     for (const d of drawings) {
       if (d.type === 'trendline' && d.points.length === 2) {
@@ -116,14 +130,14 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
         if (distToSegment(mx, my, p0.x, p0.y, p1.x, p1.y) < HIT_RADIUS) return { id: d.id, nearEndpoint: -1 }
       }
       if (d.type === 'hline' && d.points.length >= 1) {
-        const y = cs.priceToY(d.points[0].price)
-        if (Math.abs(my - y) < HIT_RADIUS && mx < width - cs.pr) return { id: d.id, nearEndpoint: -1 }
+        const y = _cs.priceToY(d.points[0].price)
+        if (Math.abs(my - y) < HIT_RADIUS && mx < width - _cs.pr) return { id: d.id, nearEndpoint: -1 }
       }
       if (d.type === 'hzone' && d.points.length === 2) {
-        const y0 = cs.priceToY(d.points[0].price)
-        const y1 = cs.priceToY(d.points[1].price)
+        const y0 = _cs.priceToY(d.points[0].price)
+        const y1 = _cs.priceToY(d.points[1].price)
         const top = Math.min(y0, y1), bot = Math.max(y0, y1)
-        if (my >= top - 4 && my <= bot + 4 && mx < width - cs.pr) {
+        if (my >= top - 4 && my <= bot + 4 && mx < width - _cs.pr) {
           if (Math.abs(my - y0) < HIT_RADIUS) return { id: d.id, nearEndpoint: 0 }
           if (Math.abs(my - y1) < HIT_RADIUS) return { id: d.id, nearEndpoint: 1 }
           return { id: d.id, nearEndpoint: -1 }
@@ -135,15 +149,16 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       }
     }
     return null
-  }, [drawingsFor, symbol, timeframe, toPixel, cs, width, height])
+  }, [drawingsFor, symbol, timeframe, toPixel, width, height])
 
   // --- Drawing ---
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const _cs = csRef.current
     const ctx = canvas.getContext('2d')!
-    const cw = width - cs.pr
-    const ch = height - cs.pb
+    const cw = width - _cs.pr
+    const ch = height - _cs.pb
     ctx.clearRect(0, 0, cw, ch)
 
     const drawings = drawingsFor(symbol, timeframe)
@@ -181,7 +196,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
         }
       }
       if (d.type === 'hline' && d.points.length >= 1) {
-        const y = cs.priceToY(d.points[0].price)
+        const y = _cs.priceToY(d.points[0].price)
         ctx.beginPath()
         ctx.moveTo(0, y)
         ctx.lineTo(cw, y)
@@ -202,8 +217,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
 
       // Horizontal zone (two hlines with filled area)
       if (d.type === 'hzone' && d.points.length === 2) {
-        const y0 = cs.priceToY(d.points[0].price)
-        const y1 = cs.priceToY(d.points[1].price)
+        const y0 = _cs.priceToY(d.points[0].price)
+        const y1 = _cs.priceToY(d.points[1].price)
         const top = Math.min(y0, y1), bot = Math.max(y0, y1)
 
         // Fill
@@ -354,7 +369,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       ctx.setLineDash([])
     }
     if (inProgress && activeTool === 'hzone') {
-      const y0 = cs.priceToY(inProgress.price)
+      const y0 = _cs.priceToY(inProgress.price)
       const y1 = mouseRef.current.y
       const top = Math.min(y0, y1), bot = Math.max(y0, y1)
       ctx.fillStyle = 'rgba(74,158,255,0.08)'
@@ -368,15 +383,11 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [cs, symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, viewStart, selectedId, toPixel, serverAnnotations, annotationFilters])
+  }, [symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, selectedId, toPixel, serverAnnotations, annotationFilters])
 
-  // Schedule draw via rAF — zero latency, at most one draw per frame
-  const drawRafRef = useRef<number | null>(null)
-  useEffect(() => {
-    if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current)
-    drawRafRef.current = requestAnimationFrame(() => { drawRafRef.current = null; draw() })
-    return () => { if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current) }
-  }, [draw])
+  // Redraw when non-viewport things change (drawings, annotations, active tool, etc.)
+  // Viewport changes during pan are handled imperatively via setViewport — no rAF needed here.
+  useEffect(() => { draw() }, [draw])
 
   // Expose imperative handle for ChartPane to call
   useImperativeHandle(ref, () => ({
@@ -512,6 +523,12 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
 
     getCursor(): string | null {
       return cursorRef.current
+    },
+
+    setViewport(newCs: CoordSystem, newViewStart: number): void {
+      csRef.current = newCs
+      vsRef.current = newViewStart
+      draw()  // immediate — no rAF scheduling needed
     },
   }))
 

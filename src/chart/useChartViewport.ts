@@ -24,6 +24,9 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   const [viewCount, setViewCount] = useState(200)
   const viewCountRef = useRef(200)
   const [priceOverride, setPriceOverride] = useState<{ min: number; max: number } | null>(null)
+  // Live ref for priceOverride — lets computeCs read the latest value without being a dep
+  const priceOverrideRef = useRef<{ min: number; max: number } | null>(null)
+  useEffect(() => { priceOverrideRef.current = priceOverride }, [priceOverride])
   const [autoScrolling, setAutoScrolling] = useState(true)
   const [dataVersion, setDataVersion] = useState(0)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -79,38 +82,37 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     setViewStart(maxStart)
   }, [autoScrolling, dataVersion, viewCount, symbol, timeframe])
 
-  // CoordSystem is a derived value — useMemo keeps it in the same render cycle as viewStart.
-  // This eliminates the extra render that useState+useEffect caused (halving render cost per pan).
-  const cs = useMemo<CoordSystem | null>(() => {
+  // Stable computeCs function — called by ChartPane's rAF loop using live refs.
+  // Reads priceOverrideRef so it doesn't take priceOverride as a closure dep
+  // (avoids invalidating the rAF loop on every price drag).
+  const computeCs = useCallback((vs: number, vc: number): CoordSystem | null => {
     const data = getDataStore().getData(symbol, timeframe)
     if (!data || width === 0 || height === 0) return null
-
-    const iStart = Math.floor(viewStart)
-    const end = Math.min(iStart + viewCount, data.length)
-    const dataBars = end - iStart
-    if (dataBars <= 0) return null
-    // Always use viewCount for totalBars so barStep is constant during pan
-    const totalBars = viewCount + RIGHT_MARGIN_BARS
-
+    const iStart = Math.floor(vs)
+    const end = Math.min(iStart + vc, data.length)
+    if (end - iStart <= 0) return null
+    const totalBars = vc + RIGHT_MARGIN_BARS
     let minP: number, maxP: number
-    if (priceOverride) {
-      minP = priceOverride.min
-      maxP = priceOverride.max
+    if (priceOverrideRef.current) {
+      minP = priceOverrideRef.current.min; maxP = priceOverrideRef.current.max
     } else {
       const range = data.priceRange(iStart, end)
       const pad = (range.max - range.min) * 0.05
-      minP = range.min - pad
-      maxP = range.max + pad
+      minP = range.min - pad; maxP = range.max + pad
     }
-
-    // Sub-pixel offset: fractional part of viewStart drives smooth pixel-level scrolling
-    const chartWidth = width - 80 // paddingRight default
+    const chartWidth = width - 80
     const barStep = chartWidth / totalBars
-    const pixelOffset = (viewStart - iStart) * barStep
-
+    const pixelOffset = (vs - Math.floor(vs)) * barStep
     return CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP, pixelOffset })
+  }, [symbol, timeframe, width, height])
+
+  // CoordSystem is a derived value — useMemo keeps it in the same render cycle as viewStart.
+  // This eliminates the extra render that useState+useEffect caused (halving render cost per pan).
+  // Now delegates to computeCs so computation is not duplicated.
+  const cs = useMemo<CoordSystem | null>(
+    () => computeCs(viewStart, viewCount),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewStart, viewCount, width, height, priceOverride, dataVersion, symbol, timeframe])
+  [viewStart, viewCount, width, height, priceOverride, dataVersion, symbol, timeframe, computeCs])
 
   // Scroll-left pagination: load more history when viewStart hits 0
   const loadingMoreRef = useRef(false)
@@ -199,5 +201,5 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     cs
   }), [viewStart, viewCount, cs])
 
-  return { viewport, pan, zoomX, zoomY, panY, resetYZoom, autoScrolling, pauseAutoScroll }
+  return { viewport, pan, zoomX, zoomY, panY, resetYZoom, autoScrolling, pauseAutoScroll, viewStartRef, viewCountRef, computeCs }
 }

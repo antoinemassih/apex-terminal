@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { getRenderEngine, getDataStore, getIndicatorEngine, getDataProvider } from '../globals'
 import type { PaneContext, EngineState } from '../engine'
 import { useChartViewport } from './useChartViewport'
-import { AxisCanvas } from './AxisCanvas'
+import { AxisCanvas, AxisCanvasHandle } from './AxisCanvas'
 import { CrosshairOverlay, CrosshairHandle } from './CrosshairOverlay'
 import { DrawingOverlay, DrawingOverlayHandle } from './DrawingOverlay'
 import { useDrawingStore } from '../store/drawingStore'
@@ -25,8 +25,9 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const paneRef = useRef<PaneContext | null>(null)
   const crosshairRef = useRef<CrosshairHandle>(null)
   const drawingRef = useRef<DrawingOverlayHandle>(null)
+  const axisRef = useRef<AxisCanvasHandle>(null)
   const [engineState, setEngineState] = useState<EngineState>('ready')
-  const { viewport, pan, zoomX, zoomY, resetYZoom, autoScrolling, pauseAutoScroll } =
+  const { viewport, pan, zoomX, zoomY, resetYZoom, autoScrolling, pauseAutoScroll, viewStartRef, viewCountRef, computeCs } =
     useChartViewport(symbol, timeframe, width, height)
 
   const paneConfig = useChartStore(s => s.panes[paneIndex])
@@ -85,12 +86,37 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     }
   }, [symbol, timeframe])
 
-  // Push viewport to PaneContext when it changes
+  // Single imperative rAF loop — drives GPU candles, axis canvas, and drawing overlay
+  // at up to 60fps during pan without touching React state.
   useEffect(() => {
-    if (cs) {
-      paneRef.current?.setViewport({ viewStart: viewport.viewStart, viewCount: viewport.viewCount, cs })
+    let rafId: number
+    let lastVs = -1, lastVc = -1, lastMinP = 0, lastMaxP = 0
+
+    const loop = () => {
+      rafId = requestAnimationFrame(loop)
+      const vs = viewStartRef.current
+      const vc = viewCountRef.current
+      const cs = computeCs(vs, vc)
+      if (!cs) return
+
+      // Skip if nothing changed — avoid redundant draws
+      if (vs === lastVs && vc === lastVc && cs.minPrice === lastMinP && cs.maxPrice === lastMaxP) return
+      lastVs = vs; lastVc = vc; lastMinP = cs.minPrice; lastMaxP = cs.maxPrice
+
+      // 1. GPU candles
+      paneRef.current?.setViewport({ viewStart: Math.floor(vs), viewCount: vc, cs })
+
+      // 2. Axis 2D canvas
+      const data = getDataStore().getData(symbol, timeframe)
+      if (data) axisRef.current?.draw(cs, data, Math.floor(vs))
+
+      // 3. Drawing overlay
+      drawingRef.current?.setViewport(cs, Math.floor(vs))
     }
-  }, [viewport, cs])
+
+    rafId = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(rafId)
+  }, [computeCs, symbol, timeframe, viewStartRef, viewCountRef])
 
   // Push visibility settings to PaneContext — only when toggles change, not on every tick
   useEffect(() => {
@@ -233,7 +259,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
         <CrosshairOverlay ref={crosshairRef} cs={cs} data={data}
           viewStart={viewport.viewStart} width={width} height={height} />
       )}
-      <AxisCanvas cs={cs} data={data} viewStart={viewport.viewStart} width={width} height={height} />
+      <AxisCanvas ref={axisRef} width={width} height={height} />
       {cs && data && (
         <DrawingOverlay ref={drawingRef} symbol={symbol} timeframe={timeframe} cs={cs}
           data={data} width={width} height={height} viewStart={viewport.viewStart}
