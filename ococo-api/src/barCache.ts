@@ -1,0 +1,115 @@
+/**
+ * Redis-backed bar working set.
+ *
+ * Stores recent OHLCV bars per symbol:interval in Redis sorted sets.
+ * Score = unix timestamp, value = JSON-encoded bar.
+ * Much faster than InfluxDB for pagination reads (~0.1ms vs ~50ms).
+ *
+ * Capacity: ~200K bars per symbol:interval (configurable).
+ * TTL: none (evicted by count, not time).
+ */
+
+import { redis } from './redis.js'
+
+interface Bar {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+const MAX_BARS_PER_KEY = 200_000
+const PREFIX = 'bars:'
+
+function key(symbol: string, interval: string): string {
+  return `${PREFIX}${symbol}:${interval}`
+}
+
+/** Write bars to Redis sorted set (score = timestamp) */
+export async function writeBarsToRedis(symbol: string, interval: string, bars: Bar[]): Promise<void> {
+  if (bars.length === 0) return
+  const k = key(symbol, interval)
+
+  // Pipeline for performance
+  const pipeline = redis.pipeline()
+  for (const bar of bars) {
+    pipeline.zadd(k, bar.time, JSON.stringify(bar))
+  }
+  await pipeline.exec()
+
+  // Trim to max capacity (remove oldest)
+  const count = await redis.zcard(k)
+  if (count > MAX_BARS_PER_KEY) {
+    const excess = count - MAX_BARS_PER_KEY
+    await redis.zremrangebyrank(k, 0, excess - 1)
+  }
+}
+
+/** Read bars from Redis, newest first, with optional pagination */
+export async function readBarsFromRedis(
+  symbol: string,
+  interval: string,
+  opts?: { before?: number; limit?: number; after?: number }
+): Promise<Bar[]> {
+  const k = key(symbol, interval)
+  const limit = opts?.limit ?? 1000
+
+  let results: string[]
+
+  if (opts?.before) {
+    // Get bars BEFORE a timestamp (for backward pagination)
+    results = await redis.zrangebyscore(
+      k,
+      opts.after ?? '-inf',
+      `(${opts.before}`, // exclusive upper bound
+      'LIMIT', 0, limit
+    )
+  } else if (opts?.after) {
+    // Get bars AFTER a timestamp
+    results = await redis.zrangebyscore(
+      k,
+      `(${opts.after}`,
+      '+inf',
+      'LIMIT', 0, limit
+    )
+  } else {
+    // Get the most recent bars
+    results = await redis.zrevrange(k, 0, limit - 1)
+    results.reverse() // chronological order
+  }
+
+  return results.map(s => {
+    try { return JSON.parse(s) }
+    catch { return null }
+  }).filter(Boolean) as Bar[]
+}
+
+/** Get total bar count for a symbol:interval */
+export async function barCountInRedis(symbol: string, interval: string): Promise<number> {
+  return redis.zcard(key(symbol, interval))
+}
+
+/** Get the time range of bars in Redis */
+export async function barTimeRange(symbol: string, interval: string): Promise<{ oldest: number; newest: number } | null> {
+  const k = key(symbol, interval)
+  const oldest = await redis.zrange(k, 0, 0, 'WITHSCORES')
+  const newest = await redis.zrevrange(k, 0, 0, 'WITHSCORES')
+  if (oldest.length < 2 || newest.length < 2) return null
+  return {
+    oldest: parseFloat(oldest[1]),
+    newest: parseFloat(newest[1]),
+  }
+}
+
+/** Check if a specific time range exists in Redis */
+export async function hasBarsInRedis(symbol: string, interval: string, from: number, to: number): Promise<boolean> {
+  const count = await redis.zcount(key(symbol, interval), from, to)
+  return count > 0
+}
+
+/** Delete all bars for a symbol:interval */
+export async function clearBarsInRedis(symbol: string, interval: string): Promise<void> {
+  await redis.del(key(symbol, interval))
+}

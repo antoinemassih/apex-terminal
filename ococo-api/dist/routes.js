@@ -4,6 +4,7 @@ import * as sym from './symbols.js';
 import { runAdvancedDetection, DEFAULT_CONFIG } from './trendlines-v2.js';
 import { runIngestionCycle, ingestSingle } from './ingest.js';
 import { readBars, barCount } from './influx.js';
+import { readBarsFromRedis, barCountInRedis, barTimeRange } from './barCache.js';
 import { healthCheck } from './db.js';
 import { getClientCount, getSubscriptionCount } from './signalBus.js';
 function aggregate4h(bars1h) {
@@ -173,18 +174,42 @@ export async function registerRoutes(app) {
         return { ok: true, symbol, bars: counts };
     });
     // ---- InfluxDB Bar Query (for clients that want server-side data) ----
+    // Bar query: Redis (fast) → InfluxDB (deep) → empty
     app.get('/api/bars', async (req, reply) => {
         const { symbol, interval } = req.query;
         if (!symbol || !interval)
             return reply.code(400).send({ error: 'symbol and interval required' });
-        const bars = await readBars(symbol, interval, { start: req.query.start ?? '-1y' });
-        return bars;
+        const limit = parseInt(req.query.limit ?? '2000');
+        const before = req.query.before ? parseFloat(req.query.before) : undefined;
+        // Layer 1: Redis working set (sub-ms)
+        const redisBars = await readBarsFromRedis(symbol, interval, { before, limit });
+        if (redisBars.length > 0)
+            return redisBars;
+        // Layer 2: InfluxDB (10-50ms)
+        try {
+            const influxBars = await readBars(symbol, interval, { start: req.query.start ?? '-1y' });
+            if (influxBars.length > 0)
+                return influxBars;
+        }
+        catch { /* InfluxDB query failed */ }
+        return [];
     });
     app.get('/api/bars/count', async (req, reply) => {
         const { symbol, interval } = req.query;
         if (!symbol || !interval)
             return reply.code(400).send({ error: 'symbol and interval required' });
-        return { count: await barCount(symbol, interval) };
+        const redisCount = await barCountInRedis(symbol, interval);
+        if (redisCount > 0)
+            return { count: redisCount, source: 'redis' };
+        const influxCount = await barCount(symbol, interval);
+        return { count: influxCount, source: 'influx' };
+    });
+    app.get('/api/bars/range', async (req, reply) => {
+        const { symbol, interval } = req.query;
+        if (!symbol || !interval)
+            return reply.code(400).send({ error: 'symbol and interval required' });
+        const range = await barTimeRange(symbol, interval);
+        return range ?? { oldest: 0, newest: 0 };
     });
     // ---- Recents ----
     app.get('/api/recents', async (req) => {

@@ -7,6 +7,7 @@
  * Also triggers trendline detection after ingestion.
  */
 import { writeBars, readBars } from './influx.js';
+import { writeBarsToRedis } from './barCache.js';
 import { runAdvancedDetection } from './trendlines-v2.js';
 import { query } from './db.js';
 const YFINANCE_URL = process.env.YFINANCE_URL ?? 'http://127.0.0.1:8777';
@@ -115,11 +116,13 @@ export async function ingestSingle(symbol) {
     for (const { interval, period, label } of INTERVALS) {
         const bars = await fetchBars(symbol, interval, period);
         if (bars.length > 0) {
-            // Write to InfluxDB (async, non-blocking for detection)
+            // Write to both Redis (fast reads) and InfluxDB (deep storage)
+            writeBarsToRedis(symbol, label, bars).catch(e => console.warn(`Redis write failed for ${symbol}/${label}:`, e));
             writeBars(symbol, label, bars).catch(e => console.warn(`InfluxDB write failed for ${symbol}/${label}:`, e));
             barsMap[label] = bars;
             if (label === '1h') {
                 const bars4h = aggregate4h(bars);
+                writeBarsToRedis(symbol, '4h', bars4h).catch(e => console.warn(`Redis write failed for ${symbol}/4h:`, e));
                 writeBars(symbol, '4h', bars4h).catch(e => console.warn(`InfluxDB write failed for ${symbol}/4h:`, e));
                 barsMap['4h'] = bars4h;
             }
