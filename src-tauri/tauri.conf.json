@@ -15,7 +15,9 @@
         "title": "Apex Terminal",
         "width": 1920,
         "height": 1080,
-        "backgroundColor": [13, 13, 13, 255]
+        "backgroundColor": [13, 13, 13, 255],
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {

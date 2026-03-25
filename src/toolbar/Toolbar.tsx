@@ -6,6 +6,7 @@ import { THEMES, getTheme } from '../themes'
 import { SymbolPicker } from '../chart/SymbolPicker'
 import { TrendlineFilters } from './TrendlineFilters'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { Timeframe } from '../types'
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1wk']
@@ -19,6 +20,8 @@ const LAYOUTS: { key: Layout; label: string }[] = [
   { key: '6h', label: '6H' },
   { key: '9', label: '9' },
 ]
+
+const appWindow = getCurrentWindow()
 
 export function Toolbar() {
   const { panes, activePane, setTimeframe, resetAutoScroll,
@@ -40,12 +43,39 @@ export function Toolbar() {
     cursor: 'pointer' as const,
   })
 
+  const winBtn = (danger = false): React.CSSProperties => ({
+    background: 'none',
+    border: 'none',
+    color: theme.axisText,
+    cursor: 'pointer',
+    width: 40,
+    height: 36,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
+    fontFamily: 'monospace',
+    flexShrink: 0,
+    transition: 'background 0.1s, color 0.1s',
+    ...(danger ? {} : {}),
+  })
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      height: 36, background: theme.toolbarBackground, borderBottom: `1px solid ${theme.toolbarBorder}`,
-      padding: '0 12px', flexShrink: 0, fontFamily: 'monospace', fontSize: 12,
-    }}>
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        height: 36, background: theme.toolbarBackground, borderBottom: `1px solid ${theme.toolbarBorder}`,
+        padding: '0 0 0 10px', flexShrink: 0, fontFamily: 'monospace', fontSize: 12,
+        userSelect: 'none',
+      }}
+    >
+      {/* Logo mark */}
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink: 0, marginRight: 2 }}>
+        <path d="M7.5 1.5L13.5 13H1.5L7.5 1.5Z" stroke={theme.borderActive} strokeWidth="1.3" fill="none" strokeLinejoin="round" />
+        <line x1="4.8" y1="9" x2="10.2" y2="9" stroke={theme.borderActive} strokeWidth="1.3" strokeLinecap="round" />
+      </svg>
+
+      {/* Symbol picker */}
       <span ref={tickerRef}
         onClick={() => setPickerOpen(!pickerOpen)}
         style={{ color: theme.borderActive, fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px',
@@ -56,6 +86,7 @@ export function Toolbar() {
         const r = tickerRef.current!.getBoundingClientRect()
         return <SymbolPicker paneId={activePane} anchorX={r.left} anchorY={r.bottom + 4} onClose={() => setPickerOpen(false)} />
       })()}
+
       {/* Timeframes */}
       <div style={{ display: 'flex', gap: 2 }}>
         {TIMEFRAMES.map(tf => (
@@ -65,6 +96,7 @@ export function Toolbar() {
           </button>
         ))}
       </div>
+
       {/* Indicator & Volume toggles */}
       <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
         {Object.entries(INDICATOR_CATALOG).map(([id, { name }]) => (
@@ -79,6 +111,7 @@ export function Toolbar() {
           VOL
         </button>
       </div>
+
       {/* Layout */}
       <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
         {LAYOUTS.map(l => (
@@ -88,6 +121,7 @@ export function Toolbar() {
           </button>
         ))}
       </div>
+
       {/* Theme picker */}
       <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
         <select value={themeName} onChange={e => setTheme(e.target.value)}
@@ -101,6 +135,7 @@ export function Toolbar() {
           ))}
         </select>
       </div>
+
       {/* Drawing tools */}
       <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
         {(['cursor', 'trendline', 'hline', 'hzone', 'barmarker'] as const).map(tool => (
@@ -110,23 +145,59 @@ export function Toolbar() {
           </button>
         ))}
       </div>
+
       {/* Trendline filters dropdown */}
       <div style={{ marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
         <TrendlineFilters />
       </div>
-      <div style={{ marginLeft: 'auto', color: theme.axisText, fontSize: 10, letterSpacing: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+
+      {/* Drag region — fills remaining space, window draggable here */}
+      <div data-tauri-drag-region style={{ flex: 1, height: '100%', cursor: 'default' }} />
+
+      {/* Right-side actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}>
         <button onClick={() => resetAutoScroll()}
           style={{ ...btnStyle(false), background: theme.background, color: theme.bull, border: `1px solid ${theme.bull}44` }}>
           LIVE
         </button>
         <button onClick={() => {
           const label = `chart-${Date.now()}`
-          const w = new WebviewWindow(label, { title: 'Apex Terminal', width: 1920, height: 1080, decorations: true })
+          const w = new WebviewWindow(label, { title: 'Apex Terminal', width: 1920, height: 1080, decorations: false })
           w.once('tauri://error', (e) => console.error('Window creation failed:', e))
         }} style={btnStyle(false)}>
           + Window
         </button>
-        APEX
+      </div>
+
+      {/* Window controls */}
+      <div style={{ display: 'flex', borderLeft: `1px solid ${theme.toolbarBorder}`, height: '100%', alignItems: 'stretch' }}>
+        <button
+          style={winBtn()}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.toolbarBorder }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+          onClick={() => appWindow.minimize()}
+          title="Minimize"
+        >
+          <svg width="10" height="2" viewBox="0 0 10 2"><line x1="0" y1="1" x2="10" y2="1" stroke="currentColor" strokeWidth="1.2" /></svg>
+        </button>
+        <button
+          style={winBtn()}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.toolbarBorder }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+          onClick={() => appWindow.toggleMaximize()}
+          title="Maximize"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="0.6" y="0.6" width="8.8" height="8.8" stroke="currentColor" strokeWidth="1.2" /></svg>
+        </button>
+        <button
+          style={winBtn(true)}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#e05560'; (e.currentTarget as HTMLElement).style.color = '#fff' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; (e.currentTarget as HTMLElement).style.color = theme.axisText }}
+          onClick={() => appWindow.close()}
+          title="Close"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" /><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2" /></svg>
+        </button>
       </div>
     </div>
   )
