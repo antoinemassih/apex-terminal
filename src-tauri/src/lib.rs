@@ -6,6 +6,7 @@ use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
 use tauri::Manager;
 use tauri::async_runtime;
+use std::time::Duration;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -17,21 +18,32 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            // PostgreSQL pool for drawings persistence
-            let pool = async_runtime::block_on(async {
-                let p = PgPoolOptions::new()
+            // PostgreSQL pool — optional, app starts without it if DB is unreachable.
+            // acquire_timeout caps the initial connection attempt at 3 s instead of
+            // blocking the setup thread indefinitely (which leaves the window blank).
+            let pool_opt = async_runtime::block_on(async {
+                let connect = PgPoolOptions::new()
                     .max_connections(5)
+                    .acquire_timeout(Duration::from_secs(3))
                     .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
-                    .await
-                    .expect("Failed to connect to PostgreSQL");
-
-                // Idempotent schema migration — creates tables if missing
-                drawings::ensure_schema(&p).await
-                    .expect("Failed to ensure DB schema");
-
-                p
+                    .await;
+                match connect {
+                    Err(e) => {
+                        eprintln!("[apex] PostgreSQL unavailable ({e}) — drawings use fallback");
+                        None
+                    }
+                    Ok(p) => match drawings::ensure_schema(&p).await {
+                        Err(e) => {
+                            eprintln!("[apex] DB schema migration failed ({e}) — drawings use fallback");
+                            None
+                        }
+                        Ok(()) => Some(p),
+                    },
+                }
             });
-            app.manage(DbPool(pool));
+            if let Some(pool) = pool_opt {
+                app.manage(DbPool(pool));
+            }
 
             // IB WebSocket hot path — Rust-native, msgpack binary
             let ib_handle = ib_ws::spawn(app.handle().clone());
