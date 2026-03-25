@@ -18,12 +18,16 @@ interface DrawingStore {
   activeTool: DrawingTool
   lastDrawTool: DrawingTool
   selectedId: string | null
+  hiddenSymbols: string[]
   setActiveTool: (tool: DrawingTool) => void
   toggleDrawTool: () => void
   addDrawing: (d: Drawing) => void
   updateDrawing: (id: string, points: Point[]) => void
   updateDrawingStyle: (id: string, style: Partial<Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>>) => void
   removeDrawing: (id: string) => void
+  removeAllForSymbol: (symbol: string) => void
+  toggleHideDrawings: (symbol: string) => void
+  drawingsHidden: (symbol: string) => boolean
   selectDrawing: (id: string | null) => void
   drawingsFor: (symbol: string, tf: Timeframe) => Drawing[]
   clear: () => void
@@ -34,6 +38,7 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
   activeTool: 'cursor',
   lastDrawTool: 'trendline',
   selectedId: null,
+  hiddenSymbols: [],
 
   setActiveTool: tool => {
     if (tool !== 'cursor') set({ activeTool: tool, lastDrawTool: tool, selectedId: null })
@@ -77,6 +82,22 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
     }))
     _repo?.remove(id).catch(e => console.warn('Failed to persist drawing removal:', e))
   },
+
+  removeAllForSymbol: symbol => {
+    const ids = get().drawings.filter(d => d.symbol === symbol).map(d => d.id)
+    set(s => ({ drawings: s.drawings.filter(d => d.symbol !== symbol), selectedId: null }))
+    ids.forEach(id => _repo?.remove(id).catch(e => console.warn('Failed to remove drawing:', e)))
+  },
+
+  toggleHideDrawings: symbol => {
+    set(s => ({
+      hiddenSymbols: s.hiddenSymbols.includes(symbol)
+        ? s.hiddenSymbols.filter(sym => sym !== symbol)
+        : [...s.hiddenSymbols, symbol],
+    }))
+  },
+
+  drawingsHidden: symbol => get().hiddenSymbols.includes(symbol),
 
   selectDrawing: id => set({ selectedId: id }),
 

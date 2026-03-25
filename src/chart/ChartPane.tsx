@@ -182,13 +182,12 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   }, [themeName])
 
   // --- Drag handling ---
-  const dragRef = useRef<{ x: number; y: number; zone: 'chart' | 'xaxis' | 'yaxis' } | null>(null)
+  const dragRef    = useRef<{ x: number; y: number; zone: 'chart' | 'xaxis' | 'yaxis' } | null>(null)
+  // Cached on mousedown — avoids getBoundingClientRect() on every mousemove
+  const paneRectRef = useRef<DOMRect | null>(null)
 
-  const getZone = useCallback((e: React.MouseEvent): 'chart' | 'xaxis' | 'yaxis' => {
+  const getZone = useCallback((x: number, y: number): 'chart' | 'xaxis' | 'yaxis' => {
     if (!cs) return 'chart'
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
     if (x >= width - cs.pr && y < height - cs.pb) return 'yaxis'
     if (y >= height - cs.pb) return 'xaxis'
     return 'chart'
@@ -201,8 +200,9 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
+    // Cache rect once per drag — reused on every mousemove, no layout reads during pan
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    paneRectRef.current = rect
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
     if (dragZoomMode) {
@@ -210,13 +210,12 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       return
     }
     if (drawingRef.current?.handleMouseDown(mx, my)) return
-    const zone = getZone(e)
+    const zone = getZone(mx, my)
     dragRef.current = { x: e.clientX, y: e.clientY, zone }
   }, [dragZoomMode, getZone])
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
+    const rect = paneRectRef.current ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
     if (dragZoomMode) {
@@ -231,7 +230,8 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       }
       return
     }
-    if (cs && data) crosshairRef.current?.update(mx, my)
+    // Skip crosshair during drag — no point drawing it while panning
+    if (!dragRef.current && cs && data) crosshairRef.current?.update(mx, my)
     drawingRef.current?.handleMouseMove(mx, my)
     if (!dragRef.current) return
     const dx = e.clientX - dragRef.current.x
@@ -247,8 +247,8 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const onMouseUp = useCallback((e: React.MouseEvent) => {
     if (dragZoomMode) {
       const start = zoomStartRef.current
-      const rect  = canvasRef.current?.getBoundingClientRect()
-      if (start && rect && cs) {
+      const rect  = paneRectRef.current ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
+      if (start && cs) {
         const mx = e.clientX - rect.left
         const my = e.clientY - rect.top
         // Only zoom if the rect is at least 10px in each dimension
@@ -257,17 +257,20 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
         }
       }
       zoomStartRef.current = null
+      paneRectRef.current  = null
       if (dragZoomDivRef.current) dragZoomDivRef.current.style.display = 'none'
       setDragZoomMode(false)
       return
     }
-    dragRef.current = null
+    dragRef.current     = null
+    paneRectRef.current = null
     drawingRef.current?.handleMouseUp()
   }, [dragZoomMode, cs, zoomToRect])
 
   const onMouseLeave = useCallback(() => {
     if (dragZoomMode) return  // keep mode active if mouse leaves while dragging
     dragRef.current = null
+    paneRectRef.current = null
     drawingRef.current?.handleMouseUp()
     crosshairRef.current?.clear()
   }, [dragZoomMode])
@@ -311,7 +314,11 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const onMouseMoveForCursor = useCallback((e: React.MouseEvent) => {
     onMouseMove(e)
     if (dragZoomMode) return  // cursor handled via style prop
-    const zone = getZone(e)
+    // Use cached rect — no extra getBoundingClientRect call here
+    const rect = paneRectRef.current ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const mx = e.clientX - rect.left
+    const my = e.clientY - rect.top
+    const zone = getZone(mx, my)
     const drawCursor = drawingRef.current?.getCursor()
     if (zone === 'chart' && drawCursor) setCursorStyle(drawCursor)
     else if (zone === 'yaxis') setCursorStyle('ns-resize')
@@ -410,6 +417,8 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
         <ChartContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          symbol={symbol}
+          paneId={paneConfig?.id ?? ''}
           onReset={() => { resetView(); resetYZoom() }}
           onDragZoom={() => setDragZoomMode(true)}
           onClose={() => setContextMenu(null)}

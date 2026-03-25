@@ -60,6 +60,7 @@ interface ChartStore {
   resetAutoScroll: () => void
   toggleVolume: (paneId: string) => void
   toggleIndicator: (paneId: string, indicatorId: string) => void
+  toggleAllIndicators: (paneId: string) => void
   setLayout: (layout: Layout) => void
   setTheme: (theme: string) => void
   toggleFilter: (key: keyof AnnotationFilters) => void
@@ -97,6 +98,15 @@ export const useChartStore = create<ChartStore>(set => ({
           ? p.visibleIndicators.filter(id => id !== indicatorId)
           : [...p.visibleIndicators, indicatorId]
         return { ...p, visibleIndicators: vis }
+      }),
+    })),
+  toggleAllIndicators: (paneId) =>
+    set(s => ({
+      panes: s.panes.map(p => {
+        if (p.id !== paneId) return p
+        // If any indicators are visible, hide all. Otherwise restore defaults.
+        const noneVisible = p.visibleIndicators.length === 0
+        return { ...p, visibleIndicators: noneVisible ? [...DEFAULT_INDICATORS] : [] }
       }),
     })),
   setLayout: (layout) => set({ layout }),

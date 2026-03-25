@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
+import { useRef, useCallback, useState, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
 import { LineStylePopup } from './LineStylePopup'
@@ -51,6 +51,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   function DrawingOverlay({ symbol, timeframe, cs, data: chartData, width, height, viewStart, onInteraction }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectDrawing, setActiveTool } = useDrawingStore()
+  const drawingsHidden = useDrawingStore(s => s.drawingsHidden(symbol))
   const annotationFilters = useChartStore(s => s.annotationFilters)
   const [serverAnnotations, setServerAnnotations] = useState<any[]>([])
   const [inProgress, setInProgress] = useState<Point | null>(null)
@@ -173,6 +174,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     const cw = width - _cs.pr
     const ch = height - _cs.pb
     ctx.clearRect(0, 0, cw, ch)
+
+    if (drawingsHidden) return
 
     const drawings = drawingsFor(symbol, timeframe)
 
@@ -396,7 +399,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, selectedId, toPixel, serverAnnotations, annotationFilters])
+  }, [symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, selectedId, toPixel, serverAnnotations, annotationFilters, drawingsHidden])
 
   // Redraw when non-viewport things change (drawings, annotations, active tool, etc.)
   // Viewport changes during pan are handled imperatively via setViewport — no rAF needed here.
@@ -560,35 +563,6 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedId, activeTool, setActiveTool])
 
-  // Compute popup position for selected drawing
-  const popupPos = useMemo(() => {
-    if (!selectedId) return null
-    const drawings = drawingsFor(symbol, timeframe)
-    const d = drawings.find(dr => dr.id === selectedId)
-    if (!d) return null
-
-    if (d.type === 'trendline' && d.points.length === 2) {
-      const p0 = toPixel(d.points[0])
-      const p1 = toPixel(d.points[1])
-      let x = (p0.x + p1.x) / 2 + 12
-      let y = (p0.y + p1.y) / 2 - 80
-      if (x + 210 > width) x = width - 220
-      if (x < 4) x = 4
-      if (y < 4) y = 4
-      if (y + 160 > height) y = height - 170
-      return { x, y }
-    }
-    if (d.type === 'hline' && d.points.length >= 1) {
-      const py = cs.priceToY(d.points[0].price)
-      let x = width / 2 - 100
-      let y = py - 170
-      if (x < 4) x = 4
-      if (y < 4) y = py + 12
-      return { x, y }
-    }
-    return null
-  }, [selectedId, drawingsFor, symbol, timeframe, toPixel, cs, width, height])
-
   const handleClosePopup = useCallback(() => {
     selectDrawing(null)
   }, [selectDrawing])
@@ -597,8 +571,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     <>
       <canvas ref={canvasRef} width={width - cs.pr} height={height - cs.pb}
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
-      {selectedId && popupPos && (
-        <LineStylePopup drawingId={selectedId} position={popupPos} onClose={handleClosePopup} />
+      {selectedId && (
+        <LineStylePopup drawingId={selectedId} onClose={handleClosePopup} />
       )}
     </>
   )
