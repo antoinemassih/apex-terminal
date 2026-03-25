@@ -27,22 +27,23 @@ export class ColumnStore {
 
   static fromBars(bars: Bar[]): ColumnStore {
     const capacity = Math.min(bars.length + 512, MAX_CAPACITY)
-    const n = bars.length
     const times = new Float64Array(capacity)
     const opens = new Float64Array(capacity)
     const highs = new Float64Array(capacity)
     const lows = new Float64Array(capacity)
     const closes = new Float64Array(capacity)
     const volumes = new Float64Array(capacity)
-    for (let i = 0; i < n; i++) {
-      times[i] = bars[i].time
-      opens[i] = bars[i].open
-      highs[i] = bars[i].high
-      lows[i] = bars[i].low
-      closes[i] = bars[i].close
-      volumes[i] = bars[i].volume
+    let j = 0
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i]
+      // Drop bars with invalid prices (zero, NaN, or impossible OHLC relationships)
+      if (!(b.open > 0 && b.high > 0 && b.low > 0 && b.close > 0)) continue
+      if (b.high < b.low || b.open > b.high || b.open < b.low) continue
+      times[j] = b.time;  opens[j] = b.open;  highs[j] = b.high
+      lows[j]  = b.low;   closes[j] = b.close; volumes[j] = b.volume
+      j++
     }
-    return new ColumnStore(times, opens, highs, lows, closes, volumes, n)
+    return new ColumnStore(times, opens, highs, lows, closes, volumes, j)
   }
 
   /** Apply a tick to the last candle or start a new one */
@@ -149,9 +150,15 @@ export class ColumnStore {
   /** Prepend older bars at the beginning. Returns count actually prepended. */
   prepend(bars: Bar[]): number {
     if (bars.length === 0) return 0
+    // Filter invalid bars before capacity check
+    const validBars = bars.filter(b =>
+      b.open > 0 && b.high > 0 && b.low > 0 && b.close > 0 &&
+      b.high >= b.low && b.open <= b.high && b.open >= b.low
+    )
+    if (validBars.length === 0) return 0
     // Limit: don't exceed MAX_CAPACITY
     const maxPrepend = Math.max(0, MAX_CAPACITY - this.length)
-    const actualBars = bars.length <= maxPrepend ? bars : bars.slice(-maxPrepend)
+    const actualBars = validBars.length <= maxPrepend ? validBars : validBars.slice(-maxPrepend)
     if (actualBars.length === 0) return 0
 
     const newLen = this.length + actualBars.length

@@ -11,15 +11,17 @@
  *
  * Uniform layout (80 bytes, 16-byte aligned):
  *   [0]  viewStart(u32), viewCount(u32), _pad×2
- *   [16] stepPx(f32), bodyHalfPx(f32), priceA(f32), priceB(f32)
+ *   [16] stepPx(f32), halfStepPx(f32), priceA(f32), priceB(f32)
  *   [32] offsetPx(f32), _pad, canvasWidth(f32), canvasHeight(f32)
  *   [48] upColor   vec4
  *   [64] downColor vec4
  *
  *   stepPx      – bar slot width in physical pixels (integer, ≥ 1)
- *   bodyHalfPx  – half body width in physical pixels (integer, ≥ 1)
+ *   halfStepPx  – half of stepPx (integer) — wick center offset
  *   offsetPx    – scroll offset in physical pixels (integer)
  *   priceA/B    – priceToClipY(p) = priceA + p * priceB  (one FMA, no branch)
+ *
+ *   Body is always [slotLeft+1 .. slotLeft+stepPx-1]: exactly 2px gap between bodies.
  */
 
 struct Bar {
@@ -37,7 +39,7 @@ struct Viewport {
   _pad0:        u32,
   _pad1:        u32,
   stepPx:       f32,   // bar slot width (integer physical pixels)
-  bodyHalfPx:   f32,   // body half-width (integer physical pixels)
+  halfStepPx:   f32,   // half of slot width — wick center offset
   priceA:       f32,
   priceB:       f32,
   offsetPx:     f32,   // scroll offset (integer physical pixels)
@@ -81,26 +83,26 @@ fn vs_main(
 
   let bar = bars[barIdx];
 
-  // ── Integer pixel X geometry ──────────────────────────────────────────────
-  // All values are pre-rounded integers — no sub-pixel variation.
-  let barLeftPx    = f32(inst) * vp.stepPx - vp.offsetPx;   // body left edge (integer px)
-  let barRightPx   = barLeftPx + vp.bodyHalfPx * 2.0;        // body right edge (integer px)
-  let wickCenterPx = barLeftPx + vp.bodyHalfPx;              // wick center (integer px)
+  // ── Integer pixel X geometry — fixed 2px gap ─────────────────────────────
+  // Body occupies [slotLeft+1, slotLeft+stepPx-1]: exactly 1px inset on each side
+  // → gap between adjacent bodies is always exactly 2px regardless of zoom level.
+  let barLeftPx = f32(inst) * vp.stepPx - vp.offsetPx;
+  let bodyLP = pxToClipX(barLeftPx + 1.0);
+  let bodyRP = pxToClipX(barLeftPx + vp.stepPx - 1.0);
 
-  // Wick is exactly 1 physical pixel wide:
-  //   rect [wickCenterPx, wickCenterPx + 1) covers the pixel at wickCenterPx
-  let wickLP = pxToClipX(wickCenterPx);
-  let wickRP = pxToClipX(wickCenterPx + 1.0);
-  let bodyLP = pxToClipX(barLeftPx);
-  let bodyRP = pxToClipX(barRightPx);
+  // Wick is exactly 1 physical pixel wide, centered in slot.
+  let wickLP = pxToClipX(barLeftPx + vp.halfStepPx);
+  let wickRP = pxToClipX(barLeftPx + vp.halfStepPx + 1.0);
 
   // ── Price Y (floating point — smooth price animation) ─────────────────────
   let openY   = priceY(bar.open);
   let closeY  = priceY(bar.close);
   let highY   = priceY(bar.high);
   let lowY    = priceY(bar.low);
-  let bodyTop = max(openY, closeY);
-  let bodyBot = min(openY, closeY);
+  // Enforce 1px minimum body height so doji candles (open==close) remain visible
+  let minBodyH = 2.0 / vp.canvasHeight;
+  let bodyTop = max(openY, closeY) + minBodyH * 0.5;
+  let bodyBot = min(openY, closeY) - minBodyH * 0.5;
 
   let corners = array<vec2<f32>, 6>(
     vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0),
@@ -137,11 +139,13 @@ fn vs_main(
   // X is in integer physical pixels; Y uses float clip→px conversion.
   let bTop = (1.0 - bodyTop) * 0.5 * vp.canvasHeight;
   let bBot = (1.0 - bodyBot) * 0.5 * vp.canvasHeight;
+  let bLeft  = barLeftPx + 1.0;
+  let bRight = barLeftPx + vp.stepPx - 1.0;
 
   var out: VertOut;
   out.pos        = vec4(pos, 0.0, 1.0);
   out.color      = col;
-  out.bodyBounds = vec4(barLeftPx, bTop, barRightPx, bBot);
+  out.bodyBounds = vec4(bLeft, bTop, bRight, bBot);
   out.isBody     = isBodyQuad;
   return out;
 }

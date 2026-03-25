@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
 import { getTheme } from '../themes'
@@ -23,23 +23,31 @@ export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, on
   const toggleHideDrawings = useDrawingStore(s => s.toggleHideDrawings)
   const drawingsHidden = useDrawingStore(s => s.drawingsHidden)
   const removeAllForSymbol = useDrawingStore(s => s.removeAllForSymbol)
+  const removeAllInGroup = useDrawingStore(s => s.removeAllInGroup)
   const groups = useDrawingStore(s => s.groups)
   const toggleHideGroup = useDrawingStore(s => s.toggleHideGroup)
   const groupHidden = useDrawingStore(s => s.groupHidden)
-  // Count drawings per group for this symbol only
-  const groupCounts = useDrawingStore(s =>
-    s.drawings.filter(d => d.symbol === symbol).reduce<Record<string, number>>((acc, d) => {
+  // Stable selector — s.drawings returns the same array reference when unchanged.
+  // The reduce below always produces a new object so it must live in useMemo, not
+  // directly in a Zustand selector (which would cause an infinite re-render loop).
+  const drawings = useDrawingStore(s => s.drawings)
+  const groupCounts = useMemo(
+    () => drawings.filter(d => d.symbol === symbol).reduce<Record<string, number>>((acc, d) => {
       const gid = d.groupId ?? 'default'
       acc[gid] = (acc[gid] ?? 0) + 1
       return acc
-    }, {})
+    }, {}),
+    [drawings, symbol]
   )
   const hidden = drawingsHidden(symbol)
 
   const [groupsPopout, setGroupsPopout] = useState<{ left: number; top: number } | null>(null)
+  const popoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    const handler = () => onClose()
+    // Only close on left-click outside — right-click is handled by ChartPane's onMouseDown
+    // to reposition the menu rather than close-then-reopen (avoids double flash).
+    const handler = (e: MouseEvent) => { if (e.button === 0) onClose() }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
@@ -121,10 +129,13 @@ export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, on
       <div
         style={{ position: 'relative' }}
         onMouseEnter={e => {
+          if (popoutTimer.current) { clearTimeout(popoutTimer.current); popoutTimer.current = null }
           const r = e.currentTarget.getBoundingClientRect()
-          setGroupsPopout({ left: r.right + 2, top: r.top })
+          setGroupsPopout({ left: r.right, top: r.top })
         }}
-        onMouseLeave={() => setGroupsPopout(null)}
+        onMouseLeave={() => {
+          popoutTimer.current = setTimeout(() => setGroupsPopout(null), 150)
+        }}
       >
         <button
           style={{ ...item(textColor), justifyContent: 'space-between' }}
@@ -149,6 +160,10 @@ export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, on
               minWidth: 170,
               fontFamily: 'monospace',
             }}
+            onMouseEnter={() => {
+              if (popoutTimer.current) { clearTimeout(popoutTimer.current); popoutTimer.current = null }
+            }}
+            onMouseLeave={() => setGroupsPopout(null)}
           >
             {groups.map(g => {
               const isHidden = groupHidden(g.id)
@@ -183,6 +198,12 @@ export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, on
         onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = dangerColor }}
         onClick={() => { removeAllForSymbol(symbol); onClose() }}>
         ✕ Delete All Drawings
+      </button>
+      <button style={item(dangerColor)}
+        onMouseEnter={e => { e.currentTarget.style.background = dangerColor + '22'; e.currentTarget.style.color = dangerColor }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = dangerColor }}
+        onClick={() => { removeAllInGroup('default'); onClose() }}>
+        ✕ Delete All Temporary
       </button>
     </div>
   )

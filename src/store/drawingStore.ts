@@ -5,17 +5,21 @@ import { v4 as uuid } from 'uuid'
 
 let _repo: DrawingRepository | null = null
 
-const DEFAULT_GROUP: DrawingGroup = { id: 'default', name: 'Default' }
+const DEFAULT_GROUP: DrawingGroup = { id: 'default', name: 'Temp' }
 
 /** Call once at bootstrap to wire up the persistence backend */
 export function initDrawingStore(repo: DrawingRepository): Promise<void> {
   _repo = repo
   return Promise.all([repo.loadAll(), repo.loadAllGroups()]).then(([drawings, groups]) => {
-    // Ensure default group always exists
+    // Ensure default group always exists and has the current name
     const hasDefault = groups.some(g => g.id === 'default')
-    const finalGroups = hasDefault ? groups : [DEFAULT_GROUP, ...groups]
+    let finalGroups = hasDefault
+      ? groups.map(g => g.id === 'default' && g.name !== DEFAULT_GROUP.name ? DEFAULT_GROUP : g)
+      : [DEFAULT_GROUP, ...groups]
     if (!hasDefault) {
       repo.saveGroup(DEFAULT_GROUP).catch(e => console.warn('Failed to seed default group:', e))
+    } else if (groups.find(g => g.id === 'default')?.name !== DEFAULT_GROUP.name) {
+      repo.saveGroup(DEFAULT_GROUP).catch(e => console.warn('Failed to update default group name:', e))
     }
     useDrawingStore.setState({ drawings, groups: finalGroups })
   })
@@ -37,6 +41,7 @@ interface DrawingStore {
   updateDrawingStyle: (id: string, style: Partial<Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>>) => void
   removeDrawing: (id: string) => void
   removeAllForSymbol: (symbol: string) => void
+  removeAllInGroup: (groupId: string) => void
   toggleHideDrawings: (symbol: string) => void
   drawingsHidden: (symbol: string) => boolean
   toggleHideGroup: (groupId: string) => void
@@ -109,6 +114,15 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
   removeAllForSymbol: symbol => {
     const ids = get().drawings.filter(d => d.symbol === symbol).map(d => d.id)
     set(s => ({ drawings: s.drawings.filter(d => d.symbol !== symbol), selectedId: null }))
+    ids.forEach(id => _repo?.remove(id).catch(e => console.warn('Failed to remove drawing:', e)))
+  },
+
+  removeAllInGroup: groupId => {
+    const ids = get().drawings.filter(d => (d.groupId ?? 'default') === groupId).map(d => d.id)
+    set(s => ({
+      drawings: s.drawings.filter(d => (d.groupId ?? 'default') !== groupId),
+      selectedId: ids.includes(s.selectedId ?? '') ? null : s.selectedId,
+    }))
     ids.forEach(id => _repo?.remove(id).catch(e => console.warn('Failed to remove drawing:', e)))
   },
 

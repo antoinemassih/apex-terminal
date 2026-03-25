@@ -12,6 +12,10 @@ import { setRenderEngine, setDataStore, setIndicatorEngine, setDataProvider } fr
 import { useChartStore } from './store/chartStore'
 import { initDrawingStore } from './store/drawingStore'
 
+// Prevent WebView2/Win32 from processing the contextmenu event at the OS level.
+// This must run before any component registers onContextMenu handlers.
+document.addEventListener('contextmenu', e => e.preventDefault(), { capture: true })
+
 async function bootstrap() {
   console.info('[boot] 1 GPU init...')
   const engine = await RenderEngine.create()

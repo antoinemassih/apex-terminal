@@ -176,10 +176,13 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     paneRef.current?.setVisibility(showVolume, outputs)
   }, [showVolume, visibleIndicators, symbol, timeframe])
 
-  // Push theme to PaneContext
+  // Push theme to PaneContext.
+  // Also fires when contextMenu opens — forces a GPU re-render after the compositor repaint
+  // that happens when a position:fixed element is first added to the DOM (prevents black flash).
   useEffect(() => {
     paneRef.current?.setTheme(themeName)
-  }, [themeName])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeName, contextMenu])
 
   // --- Drag handling ---
   const dragRef    = useRef<{ x: number; y: number; zone: 'chart' | 'xaxis' | 'yaxis' } | null>(null)
@@ -193,12 +196,17 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     return 'chart'
   }, [cs, width, height])
 
-  const onContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY })
-  }, [])
+  // contextmenu is prevented globally in main.tsx; this is a safety-net only.
+  const onContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
+    // Show context menu on right-mousedown — before the OS fires WM_CONTEXTMENU —
+    // so the custom menu is already composited when WebView2 processes contextmenu,
+    // preventing the whole-app black flash caused by Win32 surface exposure.
+    if (e.button === 2) {
+      setContextMenu({ x: e.clientX, y: e.clientY })
+      return
+    }
     if (e.button !== 0) return
     // Cache rect once per drag — reused on every mousemove, no layout reads during pan
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -339,7 +347,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       onContextMenu={onContextMenu}
     >
       <canvas ref={canvasRef} width={width} height={height}
-        style={{ display: 'block', pointerEvents: 'none' }} />
+        style={{ display: 'block', pointerEvents: 'none', willChange: 'transform' }} />
       {/* OHLC label — double-click ticker to open symbol picker */}
       <div style={{
         position: 'absolute', top: 4, left: 8,

@@ -93,15 +93,14 @@ export class CandleRenderer {
       Math.min(viewCount, this.gpuBars.lenBars - viewStart))
     if (safeCount === 0) { this.viewCount = 0; return }
 
-    // ── Integer physical pixel layout — no sub-pixels anywhere ──────────
-    // All X positions are rounded to integer physical pixels so every bar
-    // is the same pixel count wide and every inter-bar gap is identical.
+    // ── Integer physical pixel layout — fixed 2px gap ────────────────────
+    // Body = [slotLeft+1, slotLeft+stepPx-1]: always exactly 2px between bodies.
+    // Wick is 1px wide, centered at slotLeft+halfStepPx.
     const dpr        = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
     const canvasW    = cs.width  * dpr
     const canvasH    = cs.height * dpr
     const stepPx     = Math.max(1, Math.round(cs.barStep * dpr))       // bar slot (integer px)
-    const bodyPx     = Math.max(1, Math.round(stepPx * 0.80))          // body width (integer px)
-    const bodyHalfPx = Math.floor(bodyPx / 2)                          // half-width (integer px)
+    const halfStepPx = Math.round(stepPx / 2)                          // wick center offset
     const offsetPx   = Math.round(cs.pixelOffset * dpr)                // scroll offset (integer px)
 
     // Y axis: price-to-clip linear map (floating point, smooth price animation)
@@ -118,8 +117,8 @@ export class CandleRenderer {
 
     // offset  0: viewStart, viewCount, _pad, _pad
     u32[0] = viewStart;  u32[1] = safeCount;  u32[2] = 0;  u32[3] = 0
-    // offset 16: stepPx, bodyHalfPx, priceA, priceB
-    f32[4] = stepPx;  f32[5] = bodyHalfPx;  f32[6] = priceA;  f32[7] = priceB
+    // offset 16: stepPx, halfStepPx, priceA, priceB
+    f32[4] = stepPx;  f32[5] = halfStepPx;  f32[6] = priceA;  f32[7] = priceB
     // offset 32: offsetPx, _pad, canvasWidth, canvasHeight
     f32[8] = offsetPx;  f32[9] = 0;  f32[10] = canvasW;  f32[11] = canvasH
     // offset 48: upColor
