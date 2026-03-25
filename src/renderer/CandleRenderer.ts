@@ -93,18 +93,23 @@ export class CandleRenderer {
       Math.min(viewCount, this.gpuBars.lenBars - viewStart))
     if (safeCount === 0) { this.viewCount = 0; return }
 
-    // ── Viewport math (all on CPU, once per frame) ────────────────────
-    const barStep        = cs.barStep
-    const barStepClip    = barStep * 2 / cs.width
-    const pixelOffsetFrac = cs.pixelOffset / barStep
-    const bodyWidthClip  = cs.clipBarWidth() * 0.5
-    const wickWidthClip  = Math.max(bodyWidthClip * 0.07, 1 / cs.width)
-    const chartBotClip   = cs.priceToClipY(cs.minPrice)
-    const chartTopClip   = cs.priceToClipY(cs.maxPrice)
-    const priceRange     = cs.maxPrice - cs.minPrice
-    // priceToClipY(p) = priceA + p * priceB  (one FMA in shader)
-    const priceB         = priceRange > 0 ? (chartTopClip - chartBotClip) / priceRange : 0
-    const priceA         = chartBotClip - cs.minPrice * priceB
+    // ── Integer physical pixel layout — no sub-pixels anywhere ──────────
+    // All X positions are rounded to integer physical pixels so every bar
+    // is the same pixel count wide and every inter-bar gap is identical.
+    const dpr        = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+    const canvasW    = cs.width  * dpr
+    const canvasH    = cs.height * dpr
+    const stepPx     = Math.max(1, Math.round(cs.barStep * dpr))       // bar slot (integer px)
+    const bodyPx     = Math.max(1, Math.round(stepPx * 0.80))          // body width (integer px)
+    const bodyHalfPx = Math.floor(bodyPx / 2)                          // half-width (integer px)
+    const offsetPx   = Math.round(cs.pixelOffset * dpr)                // scroll offset (integer px)
+
+    // Y axis: price-to-clip linear map (floating point, smooth price animation)
+    const chartBotClip = cs.priceToClipY(cs.minPrice)
+    const chartTopClip = cs.priceToClipY(cs.maxPrice)
+    const priceRange   = cs.maxPrice - cs.minPrice
+    const priceB       = priceRange > 0 ? (chartTopClip - chartBotClip) / priceRange : 0
+    const priceA       = chartBotClip - cs.minPrice * priceB
 
     const u32 = this.vpU32
     const f32 = this.vpData
@@ -113,12 +118,10 @@ export class CandleRenderer {
 
     // offset  0: viewStart, viewCount, _pad, _pad
     u32[0] = viewStart;  u32[1] = safeCount;  u32[2] = 0;  u32[3] = 0
-    // offset 16: barStepClip, pixelOffsetFrac, priceA, priceB
-    f32[4] = barStepClip;  f32[5] = pixelOffsetFrac;  f32[6] = priceA;  f32[7] = priceB
-    // offset 32: bodyWidthClip, wickWidthClip, canvasWidth, canvasHeight (physical px)
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
-    f32[8] = bodyWidthClip;  f32[9] = wickWidthClip
-    f32[10] = cs.width * dpr;  f32[11] = cs.height * dpr
+    // offset 16: stepPx, bodyHalfPx, priceA, priceB
+    f32[4] = stepPx;  f32[5] = bodyHalfPx;  f32[6] = priceA;  f32[7] = priceB
+    // offset 32: offsetPx, _pad, canvasWidth, canvasHeight
+    f32[8] = offsetPx;  f32[9] = 0;  f32[10] = canvasW;  f32[11] = canvasH
     // offset 48: upColor
     f32[12] = bc[0];  f32[13] = bc[1];  f32[14] = bc[2];  f32[15] = bc[3]
     // offset 64: downColor
