@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
 import { getTheme } from '../themes'
@@ -23,7 +23,20 @@ export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, on
   const toggleHideDrawings = useDrawingStore(s => s.toggleHideDrawings)
   const drawingsHidden = useDrawingStore(s => s.drawingsHidden)
   const removeAllForSymbol = useDrawingStore(s => s.removeAllForSymbol)
+  const groups = useDrawingStore(s => s.groups)
+  const toggleHideGroup = useDrawingStore(s => s.toggleHideGroup)
+  const groupHidden = useDrawingStore(s => s.groupHidden)
+  // Count drawings per group for this symbol only
+  const groupCounts = useDrawingStore(s =>
+    s.drawings.filter(d => d.symbol === symbol).reduce<Record<string, number>>((acc, d) => {
+      const gid = d.groupId ?? 'default'
+      acc[gid] = (acc[gid] ?? 0) + 1
+      return acc
+    }, {})
+  )
   const hidden = drawingsHidden(symbol)
+
+  const [groupsPopout, setGroupsPopout] = useState<{ left: number; top: number } | null>(null)
 
   useEffect(() => {
     const handler = () => onClose()
@@ -101,6 +114,67 @@ export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, on
         onClick={() => { toggleAllIndicators(paneId); onClose() }}>
         {indicatorsVisible ? '◎ Hide All Indicators' : '◉ Show All Indicators'}
       </button>
+
+      <div style={sep} />
+
+      {/* Groups submenu — flyout to the right on hover */}
+      <div
+        style={{ position: 'relative' }}
+        onMouseEnter={e => {
+          const r = e.currentTarget.getBoundingClientRect()
+          setGroupsPopout({ left: r.right + 2, top: r.top })
+        }}
+        onMouseLeave={() => setGroupsPopout(null)}
+      >
+        <button
+          style={{ ...item(textColor), justifyContent: 'space-between' }}
+          onMouseEnter={onHover} onMouseLeave={e => onLeave(e, textColor)}
+        >
+          <span>◫ Groups</span>
+          <span style={{ opacity: 0.5, fontSize: 10 }}>▶</span>
+        </button>
+
+        {groupsPopout && (
+          <div
+            style={{
+              position: 'fixed',
+              left: groupsPopout.left,
+              top: groupsPopout.top,
+              zIndex: 2001,
+              background: menuBg,
+              border: `1px solid ${menuBorder}`,
+              borderRadius: 6,
+              padding: '4px 0',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              minWidth: 170,
+              fontFamily: 'monospace',
+            }}
+          >
+            {groups.map(g => {
+              const isHidden = groupHidden(g.id)
+              const count = groupCounts[g.id] ?? 0
+              return (
+                <button
+                  key={g.id}
+                  style={{
+                    ...item(isHidden ? dimColor : textColor),
+                    justifyContent: 'space-between',
+                  }}
+                  onMouseEnter={onHover}
+                  onMouseLeave={e => onLeave(e, isHidden ? dimColor : textColor)}
+                  onClick={() => toggleHideGroup(g.id)}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {g.color && <span style={{ width: 7, height: 7, borderRadius: '50%', background: g.color, display: 'inline-block', flexShrink: 0 }} />}
+                    {isHidden ? '◎' : '◉'} {g.name}
+                  </span>
+                  <span style={{ opacity: 0.4, fontSize: 10 }}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       <div style={sep} />
 

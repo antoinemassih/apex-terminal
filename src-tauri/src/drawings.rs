@@ -349,3 +349,49 @@ pub async fn groups_update_style(
     q.execute(&pool.0).await.map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// Batch apply style to all drawings in a group + update the group record.
+/// Single operation — avoids N concurrent IPC calls that cause UI freezes.
+#[tauri::command]
+pub async fn drawings_apply_group_style(
+    pool: State<'_, DbPool>,
+    group_id: String,
+    color: Option<String>,
+    opacity: Option<f64>,
+    line_style: Option<String>,
+    thickness: Option<f64>,
+) -> Result<(), String> {
+    // Update all drawings in the group
+    let mut dq = String::from("UPDATE drawings SET updated_at = NOW()");
+    let mut pi = 1usize;
+    if color.is_some()      { pi += 1; dq += &format!(", color = ${pi}"); }
+    if opacity.is_some()    { pi += 1; dq += &format!(", opacity = ${pi}"); }
+    if line_style.is_some() { pi += 1; dq += &format!(", line_style = ${pi}"); }
+    if thickness.is_some()  { pi += 1; dq += &format!(", thickness = ${pi}"); }
+    dq += " WHERE group_id = $1";
+
+    let mut dq2 = sqlx::query(&dq).bind(&group_id);
+    if let Some(ref c) = color       { dq2 = dq2.bind(c); }
+    if let Some(o) = opacity         { dq2 = dq2.bind(o as f32); }
+    if let Some(ref ls) = line_style { dq2 = dq2.bind(ls); }
+    if let Some(t) = thickness       { dq2 = dq2.bind(t as f32); }
+    dq2.execute(&pool.0).await.map_err(|e| e.to_string())?;
+
+    // Update the group style record
+    let mut gq_str = String::from("UPDATE drawing_groups SET updated_at = NOW()");
+    let mut gpi = 1usize;
+    if color.is_some()      { gpi += 1; gq_str += &format!(", color = ${gpi}"); }
+    if opacity.is_some()    { gpi += 1; gq_str += &format!(", opacity = ${gpi}"); }
+    if line_style.is_some() { gpi += 1; gq_str += &format!(", line_style = ${gpi}"); }
+    if thickness.is_some()  { gpi += 1; gq_str += &format!(", thickness = ${gpi}"); }
+    gq_str += " WHERE id = $1";
+
+    let mut gq = sqlx::query(&gq_str).bind(&group_id);
+    if let Some(ref c) = color       { gq = gq.bind(c); }
+    if let Some(o) = opacity         { gq = gq.bind(o as f32); }
+    if let Some(ref ls) = line_style { gq = gq.bind(ls); }
+    if let Some(t) = thickness       { gq = gq.bind(t as f32); }
+    gq.execute(&pool.0).await.map_err(|e| e.to_string())?;
+
+    Ok(())
+}

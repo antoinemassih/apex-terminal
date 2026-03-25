@@ -51,6 +51,9 @@ export interface DrawingRepository {
 
   /** Persist the style stored on a group after "apply to group" */
   updateGroupStyle(id: string, style: Partial<Pick<DrawingGroup, 'color' | 'opacity' | 'lineStyle' | 'thickness'>>): Promise<void>
+
+  /** Batch: apply style to all drawings in a group + save the group style — single operation, no freeze */
+  applyGroupStyle(groupId: string, style: Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +211,23 @@ export class LocalDrawingRepository implements DrawingRepository {
         resolve()
       }
       req.onerror = () => resolve()
+    })
+  }
+
+  async applyGroupStyle(groupId: string, style: Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>): Promise<void> {
+    if (!this.db) return
+    const all = await this.loadAll()
+    const affected = all.filter(d => (d.groupId ?? 'default') === groupId)
+    if (affected.length === 0) return
+    return new Promise((resolve) => {
+      const tx = this.db!.transaction([STORE_NAME, GROUPS_STORE], 'readwrite')
+      const drawStore = tx.objectStore(STORE_NAME)
+      const groupStore = tx.objectStore(GROUPS_STORE)
+      for (const d of affected) drawStore.put({ ...d, ...style })
+      const req = groupStore.get(groupId)
+      req.onsuccess = () => { if (req.result) groupStore.put({ ...req.result, ...style }) }
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => resolve()
     })
   }
 

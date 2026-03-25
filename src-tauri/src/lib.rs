@@ -54,6 +54,7 @@ pub fn run() {
             drawings::groups_save,
             drawings::groups_remove,
             drawings::groups_update_style,
+            drawings::drawings_apply_group_style,
             ib_ws::ib_ws_send,
         ])
         .run(tauri::generate_context!())

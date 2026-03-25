@@ -128,6 +128,20 @@ export class TauriDrawingRepository implements DrawingRepository {
       console.error('Failed to update group style:', e)
     }
   }
+
+  async applyGroupStyle(groupId: string, style: Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>): Promise<void> {
+    try {
+      await invoke('drawings_apply_group_style', {
+        groupId,
+        color: style.color,
+        opacity: style.opacity,
+        lineStyle: style.lineStyle,
+        thickness: style.thickness,
+      })
+    } catch (e) {
+      console.error('Failed to apply group style batch:', e)
+    }
+  }
 }
 
 /** Normalize field names from Rust (snake_case) to TypeScript (camelCase) */

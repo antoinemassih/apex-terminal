@@ -52,6 +52,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectDrawing, setActiveTool } = useDrawingStore()
   const drawingsHidden = useDrawingStore(s => s.drawingsHidden(symbol))
+  const hiddenGroups = useDrawingStore(s => s.hiddenGroups)
   // Only show popup for drawings that belong to this pane's symbol
   const selectedOwnerSymbol = useDrawingStore(s => s.selectedId ? s.drawings.find(d => d.id === s.selectedId)?.symbol : null)
   const annotationFilters = useChartStore(s => s.annotationFilters)
@@ -180,8 +181,10 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     if (drawingsHidden) return
 
     const drawings = drawingsFor(symbol, timeframe)
+    const hiddenGroupSet = new Set(hiddenGroups)
 
     for (const d of drawings) {
+      if (hiddenGroupSet.has(d.groupId ?? 'default')) continue
       const isSelected = d.id === selectedId
       const dOpacity = d.opacity ?? 1
       const dLineStyle = d.lineStyle ?? 'solid'
@@ -401,7 +404,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, selectedId, toPixel, serverAnnotations, annotationFilters, drawingsHidden])
+  }, [symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, selectedId, toPixel, serverAnnotations, annotationFilters, drawingsHidden, hiddenGroups])
 
   // Redraw when non-viewport things change (drawings, annotations, active tool, etc.)
   // Viewport changes during pan are handled imperatively via setViewport — no rAF needed here.

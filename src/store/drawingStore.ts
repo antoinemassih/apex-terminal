@@ -28,6 +28,7 @@ interface DrawingStore {
   lastDrawTool: DrawingTool
   selectedId: string | null
   hiddenSymbols: string[]
+  hiddenGroups: string[]
 
   setActiveTool: (tool: DrawingTool) => void
   toggleDrawTool: () => void
@@ -38,6 +39,8 @@ interface DrawingStore {
   removeAllForSymbol: (symbol: string) => void
   toggleHideDrawings: (symbol: string) => void
   drawingsHidden: (symbol: string) => boolean
+  toggleHideGroup: (groupId: string) => void
+  groupHidden: (groupId: string) => boolean
   selectDrawing: (id: string | null) => void
   drawingsFor: (symbol: string, tf: Timeframe) => Drawing[]
   clear: () => void
@@ -57,6 +60,7 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
   lastDrawTool: 'trendline',
   selectedId: null,
   hiddenSymbols: [],
+  hiddenGroups: [],
 
   setActiveTool: tool => {
     if (tool !== 'cursor') set({ activeTool: tool, lastDrawTool: tool, selectedId: null })
@@ -118,6 +122,16 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
 
   drawingsHidden: symbol => get().hiddenSymbols.includes(symbol),
 
+  toggleHideGroup: (groupId) => {
+    set(s => ({
+      hiddenGroups: s.hiddenGroups.includes(groupId)
+        ? s.hiddenGroups.filter(id => id !== groupId)
+        : [...s.hiddenGroups, groupId],
+    }))
+  },
+
+  groupHidden: (groupId) => get().hiddenGroups.includes(groupId),
+
   selectDrawing: id => set({ selectedId: id }),
 
   drawingsFor: (symbol, _tf) => get().drawings.filter(d => d.symbol === symbol),
@@ -175,10 +189,6 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
   },
 
   applyStyleToGroup: (groupId: string, style: Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>) => {
-    const affectedIds = get().drawings
-      .filter(d => (d.groupId ?? 'default') === groupId)
-      .map(d => d.id)
-
     set(s => ({
       drawings: s.drawings.map(d =>
         (d.groupId ?? 'default') === groupId ? { ...d, ...style } : d
@@ -187,10 +197,7 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
         g.id === groupId ? { ...g, ...style } : g
       ),
     }))
-
-    affectedIds.forEach(id =>
-      _repo?.updateStyle(id, style).catch(e => console.warn('Failed to persist group style to drawing:', e))
-    )
-    _repo?.updateGroupStyle(groupId, style).catch(e => console.warn('Failed to persist group style:', e))
+    // Single batch call — avoids N concurrent IPC/fetch calls that freeze the UI
+    _repo?.applyGroupStyle(groupId, style).catch(e => console.warn('Failed to persist group style batch:', e))
   },
 }))

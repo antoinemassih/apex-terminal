@@ -138,6 +138,17 @@ export class OcocoClient implements DrawingRepository {
     this._lsSaveGroups(groups)
   }
 
+  async applyGroupStyle(groupId: string, style: Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>): Promise<void> {
+    // Update group style in localStorage
+    await this.updateGroupStyle(groupId, style)
+    // OCOCO has no batch endpoint; fire individual drawing updates without awaiting
+    // (fire-and-forget — these are low priority since in-memory state is already correct)
+    this.loadAll().then(all => {
+      all.filter(a => (a.groupId ?? 'default') === groupId)
+        .forEach(a => this.updateStyle(a.id, style).catch(() => {}))
+    }).catch(() => {})
+  }
+
   private _lsLoadGroups(): DrawingGroup[] {
     try { return JSON.parse(localStorage.getItem(LS_GROUPS_KEY) ?? '[]') }
     catch { return [] }
