@@ -405,7 +405,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
             addDrawing({
               id: uuid(), type: 'trendline',
               points: [inProgress, toPoint(mx, my)],
-              color: '#4a9eff', opacity: 1, lineStyle: 'solid', thickness: 1.5,
+              color: '#ff8c00', opacity: 1, lineStyle: 'dashed', thickness: 1,
               symbol, timeframe,
             })
             setInProgress(null)
@@ -416,7 +416,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
           addDrawing({
             id: uuid(), type: 'hline',
             points: [toPoint(mx, my)],
-            color: '#4a9eff', opacity: 1, lineStyle: 'solid', thickness: 1.5,
+            color: '#ff8c00', opacity: 1, lineStyle: 'dashed', thickness: 1,
             symbol, timeframe,
           })
           setActiveTool('cursor')
@@ -428,7 +428,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
             addDrawing({
               id: uuid(), type: 'hzone',
               points: [inProgress, toPoint(mx, my)],
-              color: '#4a9eff', opacity: 0.6, lineStyle: 'solid', thickness: 1,
+              color: '#ff8c00', opacity: 0.5, lineStyle: 'solid', thickness: 1,
               symbol, timeframe,
             })
             setInProgress(null)

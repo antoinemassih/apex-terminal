@@ -7,8 +7,9 @@ const VERTS_PER_CANDLE = 18
 /** 80 bytes / 4 = 20 f32 slots */
 const VP_FLOATS = 20
 
-const BULL_COLOR = [0.18, 0.78, 0.45, 1.0]
-const BEAR_COLOR = [0.93, 0.27, 0.27, 1.0]
+// Muted teal green / warm red — closer to professional chart palettes
+const BULL_COLOR = [0.033, 0.600, 0.506, 1.0]  // #089981
+const BEAR_COLOR = [0.949, 0.212, 0.271, 1.0]  // #f23645
 
 /**
  * Candle renderer — GPU-resident architecture.
@@ -97,7 +98,7 @@ export class CandleRenderer {
     const barStepClip    = barStep * 2 / cs.width
     const pixelOffsetFrac = cs.pixelOffset / barStep
     const bodyWidthClip  = cs.clipBarWidth() * 0.5
-    const wickWidthClip  = Math.max(bodyWidthClip * 0.10, 1 / cs.width)
+    const wickWidthClip  = Math.max(bodyWidthClip * 0.07, 1 / cs.width)
     const chartBotClip   = cs.priceToClipY(cs.minPrice)
     const chartTopClip   = cs.priceToClipY(cs.maxPrice)
     const priceRange     = cs.maxPrice - cs.minPrice

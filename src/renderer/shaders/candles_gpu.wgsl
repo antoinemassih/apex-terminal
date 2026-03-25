@@ -10,12 +10,11 @@
  *   [48] upColor   vec4
  *   [64] downColor vec4
  *
- * priceToClipY(p) = priceA + p * priceB  (one FMA — no branch)
- *
- * Candle bodies have slightly rounded corners rendered via signed-distance-field
- * in the fragment shader.  Body bounding-box pixel coordinates are emitted from
- * the vertex shader as flat-interpolated outputs (constant per primitive) so the
- * fragment shader can compute the SDF without extra per-fragment uniforms.
+ * KEY: body half-width is rounded to the nearest integer physical pixel
+ * before use so every bar is the same pixel count wide.  Without this,
+ * at non-integer barStep sizes bars alternate between N and N+1 px wide,
+ * which is the primary reason GPU-rendered charts feel visually "off"
+ * compared to TradingView.
  */
 
 struct Bar {
@@ -36,7 +35,7 @@ struct Viewport {
   pixelOffsetFrac: f32,
   priceA:          f32,   // chartBottomClip - minPrice * priceB
   priceB:          f32,   // (chartTopClip - chartBottomClip) / (maxPrice - minPrice)
-  bodyWidthClip:   f32,   // half-width of candle body in clip space
+  bodyWidthClip:   f32,   // half-width of candle body in clip space (un-snapped)
   wickWidthClip:   f32,   // half-width of wick in clip space
   canvasWidth:     f32,   // physical canvas width  (CSS px × DPR)
   canvasHeight:    f32,   // physical canvas height (CSS px × DPR)
@@ -71,7 +70,6 @@ fn vs_main(
 ) -> VertOut {
   let barIdx = vp.viewStart + inst;
 
-  // Out-of-bounds guard — sends vertex off-screen rather than rendering garbage
   if (barIdx >= arrayLength(&bars)) {
     var out: VertOut;
     out.pos        = vec4(-2.0, -2.0, 0.0, 1.0);
@@ -91,7 +89,15 @@ fn vs_main(
   let bodyTop = max(openY, closeY);
   let bodyBot = min(openY, closeY);
 
-  // Unit quad corners — reused for all three rectangles
+  // ── Pixel-perfect body width ────────────────────────────────────────────
+  // Convert clip-space half-width → physical pixels → round → back to clip.
+  // This ensures ALL bars are the same integer pixel count wide, eliminating
+  // the N / N+1 alternation that makes charts look "off" at non-integer scales.
+  let rawHalfPx  = vp.bodyWidthClip * (vp.canvasWidth * 0.5);
+  let snapHalfPx = max(1.0, round(rawHalfPx));
+  let snapBodyHW = snapHalfPx / (vp.canvasWidth * 0.5);   // clip-space half-width
+
+  // Unit quad corners — reused for body, upper wick, lower wick
   let corners = array<vec2<f32>, 6>(
     vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0),
     vec2(0.0, 1.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
@@ -103,10 +109,10 @@ fn vs_main(
   var isBodyQuad: u32;
 
   if (vi < 6u) {
-    // Body
+    // Body — pixel-snapped width
     ci          = vi;
-    minPt       = vec2(xc - vp.bodyWidthClip, bodyBot);
-    maxPt       = vec2(xc + vp.bodyWidthClip, bodyTop);
+    minPt       = vec2(xc - snapBodyHW, bodyBot);
+    maxPt       = vec2(xc + snapBodyHW, bodyTop);
     isBodyQuad  = 1u;
   } else if (vi < 12u) {
     // Upper wick
@@ -126,12 +132,11 @@ fn vs_main(
   let pos = minPt + c * (maxPt - minPt);
   let col = select(vp.downColor, vp.upColor, bar.close >= bar.open);
 
-  // Body bounding box in framebuffer pixels (for rounded-corner SDF in fs_main).
-  // Clip → framebuffer: fb_x = (clip_x + 1) * 0.5 * W
-  //                     fb_y = (1 - clip_y) * 0.5 * H   (y-axis is flipped)
-  let bLeft  = (xc - vp.bodyWidthClip + 1.0) * 0.5 * vp.canvasWidth;
-  let bRight = (xc + vp.bodyWidthClip + 1.0) * 0.5 * vp.canvasWidth;
-  let bTop   = (1.0 - bodyTop) * 0.5 * vp.canvasHeight;  // higher clip Y → lower fb Y
+  // Body bounding box in framebuffer pixels — uses snapped width so the SDF
+  // radius is computed against the same geometry that the GPU rasterizes.
+  let bLeft  = (xc - snapBodyHW + 1.0) * 0.5 * vp.canvasWidth;
+  let bRight = (xc + snapBodyHW + 1.0) * 0.5 * vp.canvasWidth;
+  let bTop   = (1.0 - bodyTop) * 0.5 * vp.canvasHeight;
   let bBot   = (1.0 - bodyBot) * 0.5 * vp.canvasHeight;
 
   var out: VertOut;
@@ -149,8 +154,8 @@ fn fs_main(in: VertOut) -> @location(0) vec4<f32> {
     let halfH  = (in.bodyBounds.w - in.bodyBounds.y) * 0.5;
     let center = vec2(in.bodyBounds.x + halfW, in.bodyBounds.y + halfH);
 
-    // Corner radius capped to the smaller half-dimension so it never dominates
-    let r = min(3.0, min(halfW, halfH));
+    // 4.5px corner radius, capped so it never exceeds the smaller half-dimension
+    let r = min(4.5, min(halfW, halfH));
 
     // Signed distance to rounded rectangle
     let d    = abs(in.pos.xy - center) - vec2(halfW, halfH) + vec2(r);
