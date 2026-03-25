@@ -81,8 +81,8 @@ export class IBKRProvider implements DataProvider {
 
   // ── Simulation fallback (used when ibserver is not connected OR idle) ───────
   private simIntervalId: number | null = null
-  private simPrices = new Map<string, number>()       // key → last price
-  private simTimes  = new Map<string, number>()        // key → sim wall-clock seconds
+  private simPrices     = new Map<string, number>()  // key → last price
+  private simTimes      = new Map<string, number>()  // key → sim wall-clock seconds
   private simTickCounts = new Map<string, number>()
   /** Timestamp of last real IB quote — simulation yields to real data when recent */
   private lastRealTickMs = 0
@@ -124,10 +124,10 @@ export class IBKRProvider implements DataProvider {
         const tfSeconds = TF_SECONDS[tf] ?? 300
 
         const change = lastPrice * (Math.random() - 0.495) * 0.003
-        const price = Math.max(0.01, lastPrice + change)
+        const price  = Math.max(0.01, lastPrice + change)
         const volume = Math.random() * 500
 
-        const count = (this.simTickCounts.get(key) ?? 0) + 1
+        const count   = (this.simTickCounts.get(key) ?? 0) + 1
         this.simTickCounts.set(key, count)
         const prevTime = this.simTimes.get(key) ?? (Date.now() / 1000)
         const time = count % 20 === 0 ? prevTime + tfSeconds : prevTime + tfSeconds / 20
@@ -201,6 +201,13 @@ export class IBKRProvider implements DataProvider {
     const tfs = this.subscriptions.get(symbol)
     if (!tfs) return
     tfs.delete(timeframe)
+
+    // Clean up per-timeframe simulation state immediately
+    const key = `${symbol}:${timeframe}`
+    this.simPrices.delete(key)
+    this.simTimes.delete(key)
+    this.simTickCounts.delete(key)
+
     if (tfs.size > 0) return
 
     // Last timeframe unsubscribed — cancel the IB stream

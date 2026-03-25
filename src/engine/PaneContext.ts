@@ -265,8 +265,8 @@ export class PaneContext {
   }
 
   /**
-   * Grows gpuLineBuffers[] and lineRenderers[] together.
-   * Arrays only grow — excess entries render 0 segments and are harmless.
+   * Grows or shrinks gpuLineBuffers[] and lineRenderers[] to exactly `needed`.
+   * Excess GPU resources are destroyed immediately to prevent VRAM accumulation.
    */
   private ensureLineBuffersAndRenderers(needed: number): void {
     const ctx = { device: this.device, format: this.format }
@@ -274,6 +274,10 @@ export class PaneContext {
       const buf = new GpuLineBuffer(this.device)
       this.gpuLineBuffers.push(buf)
       this.lineRenderers.push(new LineRenderer(ctx, buf))
+    }
+    while (this.gpuLineBuffers.length > needed) {
+      try { this.lineRenderers.pop()!.destroy() }   catch { /* */ }
+      try { this.gpuLineBuffers.pop()!.destroy() }  catch { /* */ }
     }
   }
 

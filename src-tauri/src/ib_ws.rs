@@ -12,7 +12,7 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, async_runtime};
 use tokio::{
     sync::{mpsc, Mutex},
     time::sleep,
@@ -44,7 +44,7 @@ pub struct IbWsHandle {
 pub fn spawn(app: AppHandle) -> IbWsHandle {
     let (tx, rx) = mpsc::channel::<Cmd>(512);
     let subscribed: Arc<Mutex<HashSet<i64>>> = Default::default();
-    tokio::spawn(ws_loop(app, rx, subscribed.clone()));
+    async_runtime::spawn(ws_loop(app, rx, subscribed.clone()));
     IbWsHandle { tx, subscribed }
 }
 

@@ -61,10 +61,11 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
 
   // Live refs for viewport — updated imperatively by setViewport() to avoid React re-renders during pan
   const csRef = useRef(cs)
-  const vsRef = useRef(viewStart)
+  const vsRef = useRef(Math.floor(viewStart))
   // Keep refs in sync with React props (for React-driven updates: zoom, symbol switch, etc.)
+  // vsRef must always hold the floored viewStart — pixelOffset in CoordSystem handles the fractional part.
   useEffect(() => { csRef.current = cs }, [cs])
-  useEffect(() => { vsRef.current = viewStart }, [viewStart])
+  useEffect(() => { vsRef.current = Math.floor(viewStart) }, [viewStart])
 
   // Reset inProgress when tool changes
   if (activeTool !== prevToolRef.current) {
@@ -96,28 +97,37 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     const _cs = csRef.current
     const _vs = vsRef.current
     if (!chartData || chartData.length === 0) return { x: 0, y: _cs.priceToY(p.price) }
-    // Binary search for the bar at this timestamp
     const barIdx = chartData.indexAtTime(p.time)
-    // Interpolate between bars for sub-bar precision
-    let viewIdx = barIdx - _vs
+    let frac = 0
     if (barIdx < chartData.length - 1) {
       const t0 = chartData.times[barIdx]
       const t1 = chartData.times[barIdx + 1]
-      if (t1 > t0) {
-        const frac = (p.time - t0) / (t1 - t0)
-        viewIdx = barIdx + frac - _vs
-      }
+      if (t1 > t0) frac = (p.time - t0) / (t1 - t0)
     }
-    return { x: _cs.barToX(viewIdx), y: _cs.priceToY(p.price) }
+    // Mirror the GPU shader's integer-pixel layout exactly:
+    //   barLeftPx = viewIdx * stepPx - offsetPx  (physical px)
+    //   wickCenter = barLeftPx + halfStepPx       (physical px)
+    // Then convert back to CSS px so the 2D canvas overlay aligns with WebGPU candles.
+    const dpr         = window.devicePixelRatio || 1
+    const stepPx      = Math.round(_cs.barStep    * dpr)
+    const halfStepPx  = Math.round(stepPx / 2)
+    const offsetPx    = Math.round(_cs.pixelOffset * dpr)
+    const viewIdx     = (barIdx + frac) - _vs
+    return { x: (viewIdx * stepPx + halfStepPx - offsetPx) / dpr, y: _cs.priceToY(p.price) }
   }, [chartData])
 
   const toPoint = useCallback((px: number, py: number): Point => {
     const _cs = csRef.current
     const _vs = vsRef.current
     if (!chartData || chartData.length === 0) return { time: 0, price: _cs.yToPrice(py) }
-    // Clamp bar index to valid data range
-    const rawIdx = _cs.xToBar(px) + _vs
-    const barIdx = Math.max(0, Math.min(chartData.length - 1, Math.round(rawIdx)))
+    // Invert the GPU formula: px (CSS) → physical → view bar index → absolute bar index
+    const dpr        = window.devicePixelRatio || 1
+    const stepPx     = Math.round(_cs.barStep    * dpr)
+    const halfStepPx = Math.round(stepPx / 2)
+    const offsetPx   = Math.round(_cs.pixelOffset * dpr)
+    const viewIdx    = (px * dpr - halfStepPx + offsetPx) / stepPx
+    const rawIdx     = viewIdx + _vs
+    const barIdx     = Math.max(0, Math.min(chartData.length - 1, Math.round(rawIdx)))
     return { time: chartData.times[barIdx], price: _cs.yToPrice(py) }
   }, [chartData])
 
