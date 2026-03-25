@@ -1,24 +1,34 @@
 import { create } from 'zustand'
-import type { Drawing, DrawingTool, Point, Timeframe } from '../types'
+import type { Drawing, DrawingGroup, DrawingTool, Point, Timeframe } from '../types'
 import type { DrawingRepository } from '../data/DrawingRepository'
+import { v4 as uuid } from 'uuid'
 
 let _repo: DrawingRepository | null = null
+
+const DEFAULT_GROUP: DrawingGroup = { id: 'default', name: 'Default' }
 
 /** Call once at bootstrap to wire up the persistence backend */
 export function initDrawingStore(repo: DrawingRepository): Promise<void> {
   _repo = repo
-  // Load all drawings from the repository into the store
-  return repo.loadAll().then(drawings => {
-    useDrawingStore.setState({ drawings })
+  return Promise.all([repo.loadAll(), repo.loadAllGroups()]).then(([drawings, groups]) => {
+    // Ensure default group always exists
+    const hasDefault = groups.some(g => g.id === 'default')
+    const finalGroups = hasDefault ? groups : [DEFAULT_GROUP, ...groups]
+    if (!hasDefault) {
+      repo.saveGroup(DEFAULT_GROUP).catch(e => console.warn('Failed to seed default group:', e))
+    }
+    useDrawingStore.setState({ drawings, groups: finalGroups })
   })
 }
 
 interface DrawingStore {
   drawings: Drawing[]
+  groups: DrawingGroup[]
   activeTool: DrawingTool
   lastDrawTool: DrawingTool
   selectedId: string | null
   hiddenSymbols: string[]
+
   setActiveTool: (tool: DrawingTool) => void
   toggleDrawTool: () => void
   addDrawing: (d: Drawing) => void
@@ -31,10 +41,18 @@ interface DrawingStore {
   selectDrawing: (id: string | null) => void
   drawingsFor: (symbol: string, tf: Timeframe) => Drawing[]
   clear: () => void
+
+  // Group operations
+  createGroup: (name: string) => DrawingGroup
+  renameGroup: (id: string, name: string) => void
+  deleteGroup: (id: string) => void
+  setDrawingGroup: (drawingId: string, groupId: string) => void
+  applyStyleToGroup: (groupId: string, style: Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>) => void
 }
 
 export const useDrawingStore = create<DrawingStore>()((set, get) => ({
   drawings: [],
+  groups: [DEFAULT_GROUP],
   activeTool: 'cursor',
   lastDrawTool: 'trendline',
   selectedId: null,
@@ -60,6 +78,7 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
       opacity: d.opacity ?? 1,
       lineStyle: d.lineStyle ?? 'solid',
       thickness: d.thickness ?? 1.5,
+      groupId: d.groupId ?? 'default',
     }
     set(s => ({ drawings: [...s.drawings, drawing] }))
     _repo?.save(drawing).catch(e => console.warn('Failed to persist drawing:', e))
@@ -106,5 +125,72 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
   clear: () => {
     set({ drawings: [], selectedId: null })
     _repo?.clear().catch(e => console.warn('Failed to clear drawings:', e))
+  },
+
+  // --- Group operations ---
+
+  createGroup: (name: string): DrawingGroup => {
+    const group: DrawingGroup = { id: uuid(), name }
+    set(s => ({ groups: [...s.groups, group] }))
+    _repo?.saveGroup(group).catch(e => console.warn('Failed to persist group:', e))
+    return group
+  },
+
+  renameGroup: (id: string, name: string) => {
+    const existing = get().groups.find(g => g.id === id)
+    if (!existing || id === 'default') return
+    const updated: DrawingGroup = { ...existing, name }
+    set(s => ({ groups: s.groups.map(g => g.id === id ? updated : g) }))
+    _repo?.saveGroup(updated).catch(e => console.warn('Failed to persist group rename:', e))
+  },
+
+  deleteGroup: (id: string) => {
+    if (id === 'default') return
+    const affectedIds = get().drawings
+      .filter(d => (d.groupId ?? 'default') === id)
+      .map(d => d.id)
+
+    set(s => ({
+      groups: s.groups.filter(g => g.id !== id),
+      drawings: s.drawings.map(d =>
+        affectedIds.includes(d.id) ? { ...d, groupId: 'default' } : d
+      ),
+    }))
+
+    // Persist moved drawings + remove group
+    const currentDrawings = get().drawings
+    affectedIds.forEach(did => {
+      const d = currentDrawings.find(x => x.id === did)
+      if (d) _repo?.save(d).catch(e => console.warn('Failed to persist drawing group reset:', e))
+    })
+    _repo?.removeGroup(id).catch(e => console.warn('Failed to remove group:', e))
+  },
+
+  setDrawingGroup: (drawingId: string, groupId: string) => {
+    set(s => ({
+      drawings: s.drawings.map(d => d.id === drawingId ? { ...d, groupId } : d),
+    }))
+    const updated = get().drawings.find(d => d.id === drawingId)
+    if (updated) _repo?.save(updated).catch(e => console.warn('Failed to persist group assignment:', e))
+  },
+
+  applyStyleToGroup: (groupId: string, style: Pick<Drawing, 'color' | 'opacity' | 'lineStyle' | 'thickness'>) => {
+    const affectedIds = get().drawings
+      .filter(d => (d.groupId ?? 'default') === groupId)
+      .map(d => d.id)
+
+    set(s => ({
+      drawings: s.drawings.map(d =>
+        (d.groupId ?? 'default') === groupId ? { ...d, ...style } : d
+      ),
+      groups: s.groups.map(g =>
+        g.id === groupId ? { ...g, ...style } : g
+      ),
+    }))
+
+    affectedIds.forEach(id =>
+      _repo?.updateStyle(id, style).catch(e => console.warn('Failed to persist group style to drawing:', e))
+    )
+    _repo?.updateGroupStyle(groupId, style).catch(e => console.warn('Failed to persist group style:', e))
   },
 }))

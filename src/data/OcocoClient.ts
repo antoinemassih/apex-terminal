@@ -4,8 +4,10 @@
  * Also provides WebSocket for real-time signal reception.
  */
 
-import type { Drawing, Point } from '../types'
+import type { Drawing, DrawingGroup, Point } from '../types'
 import type { DrawingRepository } from './DrawingRepository'
+
+const LS_GROUPS_KEY = 'apex-groups'
 
 // Map between frontend Drawing type and OCOCO Annotation format
 function drawingToAnnotation(d: Drawing): any {
@@ -23,6 +25,7 @@ function drawingToAnnotation(d: Drawing): any {
     },
     timeframe: d.timeframe,
     visibility: [d.timeframe],
+    metadata: { groupId: d.groupId ?? 'default' },
   }
 }
 
@@ -37,6 +40,7 @@ function annotationToDrawing(a: any): Drawing {
     lineStyle: a.style?.lineStyle ?? 'solid',
     thickness: a.style?.thickness ?? 1.5,
     timeframe: a.timeframe ?? '5m',
+    groupId: a.metadata?.groupId ?? 'default',
   }
 }
 
@@ -107,6 +111,41 @@ export class OcocoClient implements DrawingRepository {
 
   async clear(): Promise<void> {
     await fetch(`${this.baseUrl}/api/annotations?source=user`, { method: 'DELETE' })
+  }
+
+  // --- Group operations (localStorage, OCOCO has no /groups endpoint yet) ---
+
+  async loadAllGroups(): Promise<DrawingGroup[]> {
+    return this._lsLoadGroups()
+  }
+
+  async saveGroup(group: DrawingGroup): Promise<void> {
+    const groups = this._lsLoadGroups()
+    const idx = groups.findIndex(g => g.id === group.id)
+    if (idx >= 0) groups[idx] = group
+    else groups.push(group)
+    this._lsSaveGroups(groups)
+  }
+
+  async removeGroup(id: string): Promise<void> {
+    this._lsSaveGroups(this._lsLoadGroups().filter(g => g.id !== id))
+  }
+
+  async updateGroupStyle(id: string, style: Partial<Pick<DrawingGroup, 'color' | 'opacity' | 'lineStyle' | 'thickness'>>): Promise<void> {
+    const groups = this._lsLoadGroups()
+    const g = groups.find(x => x.id === id)
+    if (g) Object.assign(g, style)
+    this._lsSaveGroups(groups)
+  }
+
+  private _lsLoadGroups(): DrawingGroup[] {
+    try { return JSON.parse(localStorage.getItem(LS_GROUPS_KEY) ?? '[]') }
+    catch { return [] }
+  }
+
+  private _lsSaveGroups(groups: DrawingGroup[]): void {
+    try { localStorage.setItem(LS_GROUPS_KEY, JSON.stringify(groups)) }
+    catch { /* quota */ }
   }
 
   // --- WebSocket for real-time signals ---

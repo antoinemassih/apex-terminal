@@ -19,11 +19,17 @@ pub fn run() {
         .setup(|app| {
             // PostgreSQL pool for drawings persistence
             let pool = async_runtime::block_on(async {
-                PgPoolOptions::new()
+                let p = PgPoolOptions::new()
                     .max_connections(5)
                     .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
                     .await
-                    .expect("Failed to connect to PostgreSQL")
+                    .expect("Failed to connect to PostgreSQL");
+
+                // Idempotent schema migration — creates tables if missing
+                drawings::ensure_schema(&p).await
+                    .expect("Failed to ensure DB schema");
+
+                p
             });
             app.manage(DbPool(pool));
 
@@ -44,6 +50,10 @@ pub fn run() {
             drawings::drawings_update_style,
             drawings::drawings_remove,
             drawings::drawings_clear,
+            drawings::groups_load_all,
+            drawings::groups_save,
+            drawings::groups_remove,
+            drawings::groups_update_style,
             ib_ws::ib_ws_send,
         ])
         .run(tauri::generate_context!())

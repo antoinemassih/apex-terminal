@@ -10,7 +10,7 @@
  * repository in the background.
  */
 
-import type { Drawing, Point } from '../types'
+import type { Drawing, DrawingGroup, Point } from '../types'
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -23,7 +23,7 @@ export interface DrawingRepository {
   /** Load drawings for a specific symbol (any timeframe) */
   loadForSymbol(symbol: string): Promise<Drawing[]>
 
-  /** Save or update a drawing */
+  /** Save or update a drawing (includes groupId) */
   save(drawing: Drawing): Promise<void>
 
   /** Update just the points of a drawing (most frequent operation during drag) */
@@ -37,6 +37,20 @@ export interface DrawingRepository {
 
   /** Delete all drawings */
   clear(): Promise<void>
+
+  // --- Group operations ---
+
+  /** Load all groups */
+  loadAllGroups(): Promise<DrawingGroup[]>
+
+  /** Upsert a group (create or rename) */
+  saveGroup(group: DrawingGroup): Promise<void>
+
+  /** Delete a group (drawings should already be re-assigned before calling) */
+  removeGroup(id: string): Promise<void>
+
+  /** Persist the style stored on a group after "apply to group" */
+  updateGroupStyle(id: string, style: Partial<Pick<DrawingGroup, 'color' | 'opacity' | 'lineStyle' | 'thickness'>>): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -44,8 +58,9 @@ export interface DrawingRepository {
 // ---------------------------------------------------------------------------
 
 const DB_NAME = 'apex-drawings'
-const DB_VERSION = 1
+const DB_VERSION = 2          // bumped from 1 to add drawing_groups store
 const STORE_NAME = 'drawings'
+const GROUPS_STORE = 'drawing_groups'
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -56,6 +71,9 @@ function openDB(): Promise<IDBDatabase> {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' })
         store.createIndex('symbol', 'symbol', { unique: false })
         store.createIndex('symbol_timeframe', ['symbol', 'timeframe'], { unique: false })
+      }
+      if (!db.objectStoreNames.contains(GROUPS_STORE)) {
+        db.createObjectStore(GROUPS_STORE, { keyPath: 'id' })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -140,6 +158,56 @@ export class LocalDrawingRepository implements DrawingRepository {
       tx.objectStore(STORE_NAME).clear()
       tx.oncomplete = () => resolve()
       tx.onerror = () => resolve()
+    })
+  }
+
+  // --- Group operations ---
+
+  async loadAllGroups(): Promise<DrawingGroup[]> {
+    if (!this.db) return []
+    return new Promise((resolve) => {
+      const tx = this.db!.transaction(GROUPS_STORE, 'readonly')
+      const req = tx.objectStore(GROUPS_STORE).getAll()
+      req.onsuccess = () => resolve(req.result ?? [])
+      req.onerror = () => resolve([])
+    })
+  }
+
+  async saveGroup(group: DrawingGroup): Promise<void> {
+    if (!this.db) return
+    return new Promise((resolve) => {
+      const tx = this.db!.transaction(GROUPS_STORE, 'readwrite')
+      tx.objectStore(GROUPS_STORE).put(group)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => resolve()
+    })
+  }
+
+  async removeGroup(id: string): Promise<void> {
+    if (!this.db) return
+    return new Promise((resolve) => {
+      const tx = this.db!.transaction(GROUPS_STORE, 'readwrite')
+      tx.objectStore(GROUPS_STORE).delete(id)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => resolve()
+    })
+  }
+
+  async updateGroupStyle(id: string, style: Partial<Pick<DrawingGroup, 'color' | 'opacity' | 'lineStyle' | 'thickness'>>): Promise<void> {
+    if (!this.db) return
+    return new Promise((resolve) => {
+      const tx = this.db!.transaction(GROUPS_STORE, 'readwrite')
+      const store = tx.objectStore(GROUPS_STORE)
+      const req = store.get(id)
+      req.onsuccess = () => {
+        const group = req.result
+        if (group) {
+          Object.assign(group, style)
+          store.put(group)
+        }
+        resolve()
+      }
+      req.onerror = () => resolve()
     })
   }
 
