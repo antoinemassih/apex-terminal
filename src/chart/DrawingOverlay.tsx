@@ -52,6 +52,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectDrawing, setActiveTool } = useDrawingStore()
   const drawingsHidden = useDrawingStore(s => s.drawingsHidden(symbol))
+  // Only show popup for drawings that belong to this pane's symbol
+  const selectedOwnerSymbol = useDrawingStore(s => s.selectedId ? s.drawings.find(d => d.id === s.selectedId)?.symbol : null)
   const annotationFilters = useChartStore(s => s.annotationFilters)
   const [serverAnnotations, setServerAnnotations] = useState<any[]>([])
   const [inProgress, setInProgress] = useState<Point | null>(null)
@@ -571,7 +573,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     <>
       <canvas ref={canvasRef} width={width - cs.pr} height={height - cs.pb}
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
-      {selectedId && (
+      {selectedId && selectedOwnerSymbol === symbol && (
         <LineStylePopup drawingId={selectedId} onClose={handleClosePopup} />
       )}
     </>
