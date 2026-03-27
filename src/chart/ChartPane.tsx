@@ -233,13 +233,13 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     const zone = getZone(mx, my)
     dragRef.current = { x: e.clientX, y: e.clientY, zone }
 
-    // Pause auto-scroll ONCE at drag start — not on every mousemove
+    // Pause auto-scroll ONCE at drag start
     pauseAutoScroll()
+    // Hide crosshair + set grab cursor immediately
+    crosshairRef.current?.clear()
+    document.body.style.cursor = zone === 'chart' ? 'grabbing' : zone === 'xaxis' ? 'ew-resize' : 'ns-resize'
+    if (wheelDivRef.current) wheelDivRef.current.style.cursor = 'inherit'
 
-    // Attach NATIVE document listeners — bypasses React event system entirely.
-    // The mousemove handler is the absolute minimum path: ref update → GPU submit.
-    // No pan() call (avoids scheduleFlush + pauseAutoScroll overhead),
-    // no React state updates, no function call overhead.
     const chartWidth = width - 80
     const RIGHT_MARGIN = 8
 
@@ -289,10 +289,11 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     const onNativeUp = () => {
       document.removeEventListener('mousemove', onNativeMove)
       document.removeEventListener('mouseup', onNativeUp)
+      document.body.style.cursor = ''
+      if (wheelDivRef.current) wheelDivRef.current.style.cursor = 'default'
       dragRef.current = null
       paneRectRef.current = null
       drawingRef.current?.handleMouseUp()
-      // Sync React state ONCE at drag end (for crosshair, drawings, etc.)
       scheduleFlush()
     }
     document.addEventListener('mousemove', onNativeMove)
