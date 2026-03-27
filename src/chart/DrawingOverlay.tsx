@@ -73,6 +73,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   const prevToolRef = useRef(activeTool)
   // Always-current reference to draw — lets imperative callers (handle, subscriptions) call latest draw
   const drawRef = useRef<() => void>(() => {})
+  // Non-blocking draw scheduling — setViewport schedules a rAF instead of drawing synchronously
+  const drawRafRef = useRef<number | null>(null)
 
   // Live refs for viewport — updated imperatively by setViewport() to avoid React re-renders during pan
   const csRef = useRef(cs)
@@ -569,7 +571,14 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     setViewport(newCs: CoordSystem, newViewStart: number): void {
       csRef.current = newCs
       vsRef.current = newViewStart
-      drawRef.current()  // immediate — no rAF scheduling needed
+      // Non-blocking: schedule draw on next rAF instead of blocking the GPU pipeline.
+      // During fast pan, candle GPU render gets priority; drawings catch up 0-1 frames later.
+      if (!drawRafRef.current) {
+        drawRafRef.current = requestAnimationFrame(() => {
+          drawRafRef.current = null
+          drawRef.current()
+        })
+      }
     },
   }))
 
@@ -586,7 +595,10 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       }
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (drawRafRef.current) cancelAnimationFrame(drawRafRef.current)
+    }
   }, [activeTool, setActiveTool])
 
   const handleClosePopup = useCallback(() => {
