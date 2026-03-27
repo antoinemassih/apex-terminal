@@ -232,7 +232,35 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     }
     const zone = getZone(mx, my)
     dragRef.current = { x: e.clientX, y: e.clientY, zone }
-  }, [dragZoomMode, getZone])
+
+    // Attach NATIVE document listeners for drag — bypasses React's event system entirely.
+    // React synthetic events add 1-3ms overhead per event; at 120Hz that's 120-360ms/sec wasted.
+    const onNativeMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - dragRef.current!.x
+      const dy = ev.clientY - dragRef.current!.y
+      switch (dragRef.current!.zone) {
+        case 'chart': pan(dx); break
+        case 'xaxis': if (Math.abs(dx) > 1) zoomX(dx > 0 ? 1.05 : 0.95); break
+        case 'yaxis': if (Math.abs(dy) > 1) zoomY(dy > 0 ? 1.05 : 0.95); break
+      }
+      dragRef.current = { ...dragRef.current!, x: ev.clientX, y: ev.clientY }
+      // Immediate GPU render
+      const newCs = computeCs(viewStartRef.current, viewCountRef.current, paneRef.current?.gpuPriceRange)
+      if (newCs && paneRef.current) {
+        paneRef.current.setViewport({ viewStart: Math.floor(viewStartRef.current), viewCount: viewCountRef.current, cs: newCs })
+        paneRef.current.forceRender()
+      }
+    }
+    const onNativeUp = () => {
+      document.removeEventListener('mousemove', onNativeMove)
+      document.removeEventListener('mouseup', onNativeUp)
+      dragRef.current = null
+      paneRectRef.current = null
+      drawingRef.current?.handleMouseUp()
+    }
+    document.addEventListener('mousemove', onNativeMove)
+    document.addEventListener('mouseup', onNativeUp)
+  }, [dragZoomMode, getZone, pan, zoomX, zoomY, computeCs])
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     const rect = paneRectRef.current ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -250,28 +278,12 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       }
       return
     }
-    // During chart drag (pan/zoom): skip all overlay work — pure GPU path
-    if (dragRef.current) {
-      const dx = e.clientX - dragRef.current.x
-      const dy = e.clientY - dragRef.current.y
-      switch (dragRef.current.zone) {
-        case 'chart': pan(dx); break
-        case 'xaxis': if (Math.abs(dx) > 1) zoomX(dx > 0 ? 1.05 : 0.95); break
-        case 'yaxis': if (Math.abs(dy) > 1) zoomY(dy > 0 ? 1.05 : 0.95); break
-      }
-      dragRef.current = { ...dragRef.current, x: e.clientX, y: e.clientY }
-      // Immediate GPU render — don't wait for rAF
-      const newCs = computeCs(viewStartRef.current, viewCountRef.current, paneRef.current?.gpuPriceRange)
-      if (newCs && paneRef.current) {
-        paneRef.current.setViewport({ viewStart: Math.floor(viewStartRef.current), viewCount: viewCountRef.current, cs: newCs })
-        paneRef.current.forceRender()
-      }
-      return
+    // Not dragging — update crosshair + drawing overlay (React path is fine for hover)
+    if (!dragRef.current) {
+      if (cs && data) crosshairRef.current?.update(mx, my)
+      drawingRef.current?.handleMouseMove(mx, my)
     }
-    // Not dragging — update crosshair + drawing overlay
-    if (cs && data) crosshairRef.current?.update(mx, my)
-    drawingRef.current?.handleMouseMove(mx, my)
-  }, [dragZoomMode, pan, zoomX, zoomY, cs, data, computeCs])
+  }, [dragZoomMode, cs, data])
 
   const onMouseUp = useCallback((e: React.MouseEvent) => {
     if (dragZoomMode) {
