@@ -514,7 +514,7 @@ impl ApplicationHandler for App {
         ).expect("window"));
         eprintln!("[native-chart] Window created, initializing GPU...");
         let g = Gpu::new(Arc::clone(&w));
-        eprintln!("[native-chart] GPU initialized, {} format", g.config.format);
+        eprintln!("[native-chart] GPU initialized, {:?} format", g.config.format);
         self.win = Some(w);
         self.gpu = Some(g);
     }
