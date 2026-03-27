@@ -15,7 +15,7 @@ use std::time::Duration;
 struct NativeChart(Mutex<Option<chart_renderer::ChartRendererHandle>>);
 
 #[tauri::command]
-fn open_native_chart(symbol: String, timeframe: String) -> Result<(), String> {
+async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, String> {
     eprintln!("[native-chart] Opening for {} {}", symbol, timeframe);
 
     // Everything runs on a detached thread — command returns instantly
@@ -58,7 +58,7 @@ fn open_native_chart(symbol: String, timeframe: String) -> Result<(), String> {
     });
 
     eprintln!("[native-chart] Command returning");
-    Ok(())
+    Ok("spawned".to_string())
 }
 
 async fn fetch_bars_for_native(symbol: &str, interval: &str, period: &str) -> Vec<data::Bar> {
