@@ -15,22 +15,6 @@
     "core:webview:allow-create-webview-window",
     "shell:allow-execute",
     "shell:allow-kill",
-    "allow-open-native-chart",
-    "allow-greet",
-    "allow-get-bars",
-    "allow-get-options-chain",
-    "allow-drawings-load-all",
-    "allow-drawings-load-symbol",
-    "allow-drawings-save",
-    "allow-drawings-update-points",
-    "allow-drawings-update-style",
-    "allow-drawings-remove",
-    "allow-drawings-clear",
-    "allow-groups-load-all",
-    "allow-groups-save",
-    "allow-groups-remove",
-    "allow-groups-update-style",
-    "allow-drawings-apply-group-style",
-    "allow-ib-ws-send"
+    "default"
   ]
 }
