@@ -30,14 +30,16 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   const autoScrollingRef = useRef(true)
   const [dataVersion, setDataVersion] = useState(0)
 
-  // Dirty flags — only flush values that actually changed
-  const dirtyRef = useRef({ vs: false, vc: false, po: false })
+  // Dirty flags — only flush values that actually changed (as = autoScrolling)
+  const dirtyRef = useRef({ vs: false, vc: false, po: false, as: false })
   const flushRafRef = useRef<number | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const autoScrollVersion = useChartStore(s => s.autoScrollVersion)
 
-  // ── Flush: batch dirty ref changes into one React render per frame ──────────
+  // ── Flush: batch ALL dirty ref changes into ONE React render per frame ──────
+  // This is the ONLY place React state is updated during interaction.
+  // Everything else uses refs for zero-latency GPU updates.
   const scheduleFlush = useCallback(() => {
     if (flushRafRef.current) return
     flushRafRef.current = requestAnimationFrame(() => {
@@ -46,26 +48,28 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
       if (d.vs) { setViewStart(viewStartRef.current); d.vs = false }
       if (d.vc) { setViewCount(viewCountRef.current); d.vc = false }
       if (d.po) { setPriceOverride(priceOverrideRef.current); d.po = false }
+      if (d.as) { setAutoScrolling(autoScrollingRef.current); d.as = false }
     })
   }, [])
 
   // ── Pause auto-scroll ───────────────────────────────────────────────────────
-  // Uses ref to avoid React re-render on every mousemove.
-  // React state only updates once (when first paused) and once (when resuming).
+  // ZERO synchronous React state updates — everything deferred to scheduleFlush.
+  // The ref is the source of truth; React state catches up in the same rAF batch.
   const pauseAutoScroll = useCallback(() => {
     if (autoScrollingRef.current) {
       autoScrollingRef.current = false
-      setAutoScrolling(false)
+      dirtyRef.current.as = true
+      scheduleFlush()
     }
-    // Reset idle timer — resume after INTERACTION_IDLE_MS of no activity
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     idleTimerRef.current = setTimeout(() => {
       autoScrollingRef.current = true
-      setAutoScrolling(true)
       priceOverrideRef.current = null
-      setPriceOverride(null)
+      dirtyRef.current.as = true
+      dirtyRef.current.po = true
+      scheduleFlush()
     }, INTERACTION_IDLE_MS)
-  }, [])
+  }, [scheduleFlush])
 
   // Global reset → force auto-scroll
   useEffect(() => {
