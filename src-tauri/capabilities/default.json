@@ -6,7 +6,6 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "__app__:default",
     "core:window:allow-create",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",
