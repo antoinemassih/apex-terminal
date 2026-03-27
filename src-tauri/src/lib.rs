@@ -16,7 +16,9 @@ struct NativeChart(Mutex<Option<chart_renderer::ChartRendererHandle>>);
 
 #[tauri::command]
 async fn open_native_chart(symbol: String, timeframe: String) -> Result<(), String> {
+    eprintln!("[native-chart] Opening native chart for {} {}", symbol, timeframe);
     let handle = chart_renderer::spawn(&format!("{} — {}", symbol, timeframe), 1400, 900);
+    eprintln!("[native-chart] Window thread spawned");
 
     // Fetch real historical data via yfinance sidecar
     let interval_map: std::collections::HashMap<&str, (&str, &str)> = [

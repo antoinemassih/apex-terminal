@@ -505,10 +505,16 @@ struct App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, el: &ActiveEventLoop) {
         if self.win.is_some() { return; }
+        eprintln!("[native-chart] Creating window {}x{}", self.iw, self.ih);
         let w = Arc::new(el.create_window(
-            WindowAttributes::default().with_title(&self.title).with_inner_size(PhysicalSize::new(self.iw, self.ih))
+            WindowAttributes::default()
+                .with_title(&self.title)
+                .with_inner_size(PhysicalSize::new(self.iw, self.ih))
+                .with_active(true)
         ).expect("window"));
+        eprintln!("[native-chart] Window created, initializing GPU...");
         let g = Gpu::new(Arc::clone(&w));
+        eprintln!("[native-chart] GPU initialized, {} format", g.config.format);
         self.win = Some(w);
         self.gpu = Some(g);
     }
