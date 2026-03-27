@@ -88,6 +88,17 @@ export class PaneContext {
     this.markDirtyFn()
   }
 
+  /** Encode + submit GPU render immediately — bypass FrameScheduler for zero-lag interaction. */
+  forceRender(): void {
+    if (this.destroyed || !this.viewport) return
+    try {
+      const buf = this.render()
+      this.device.queue.submit([buf])
+      this.dirty = false
+      this.postSubmit()
+    } catch { /* GPU error — FrameScheduler will retry next frame */ }
+  }
+
   /** Set overlay lines (crosshair, drawings, order levels). Rendered on GPU in same pass. */
   setOverlayLines(lines: OverlayLine[]): void {
     if (this.destroyed) return

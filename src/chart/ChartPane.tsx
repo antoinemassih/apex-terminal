@@ -262,7 +262,14 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       case 'yaxis': if (Math.abs(dy) > 1) zoomY(dy > 0 ? 1.05 : 0.95); break
     }
     dragRef.current = { ...dragRef.current, x: e.clientX, y: e.clientY }
-  }, [dragZoomMode, pan, zoomX, zoomY, cs, data])
+
+    // Immediate GPU render — don't wait for rAF (eliminates 1-frame input lag)
+    const newCs = computeCs(viewStartRef.current, viewCountRef.current, paneRef.current?.gpuPriceRange)
+    if (newCs && paneRef.current) {
+      paneRef.current.setViewport({ viewStart: Math.floor(viewStartRef.current), viewCount: viewCountRef.current, cs: newCs })
+      paneRef.current.forceRender()
+    }
+  }, [dragZoomMode, pan, zoomX, zoomY, cs, data, computeCs])
 
   const onMouseUp = useCallback((e: React.MouseEvent) => {
     if (dragZoomMode) {
@@ -314,10 +321,16 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       } else {
         zoomX(factor)
       }
+      // Immediate GPU render on wheel
+      const newCs = computeCs(viewStartRef.current, viewCountRef.current, paneRef.current?.gpuPriceRange)
+      if (newCs && paneRef.current) {
+        paneRef.current.setViewport({ viewStart: Math.floor(viewStartRef.current), viewCount: viewCountRef.current, cs: newCs })
+        paneRef.current.forceRender()
+      }
     }
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [zoomX, zoomY, width, height])
+  }, [zoomX, zoomY, width, height, computeCs])
 
   const onAuxClick = useCallback((e: React.MouseEvent) => {
     if (e.button === 1) { e.preventDefault(); useDrawingStore.getState().toggleDrawTool() }
