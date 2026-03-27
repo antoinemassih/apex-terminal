@@ -104,10 +104,7 @@ const cancelBtn: React.CSSProperties = {
 export function OrderLevels({ paneId, cs, theme, onPauseScroll }: Props) {
   const allLevels  = useOrderStore(s => (s.panes[paneId] ?? { levels: [] }).levels)
   // Only show active (draft/placed) levels on chart — executed/cancelled go to order book
-  const levels     = allLevels.filter(l => {
-    const st = l.status ?? ((l as any).placed ? 'placed' : 'draft')
-    return st === 'draft' || st === 'placed'
-  })
+  const levels     = allLevels.filter(l => l.status === 'draft' || l.status === 'placed')
   const removeLevel = useOrderStore(s => s.removeLevel)
   const setLevel   = useOrderStore(s => s.setLevel)
   const placeLevel = useOrderStore(s => s.placeLevel)

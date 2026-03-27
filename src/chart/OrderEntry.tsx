@@ -73,22 +73,22 @@ export function OrderEntry({ paneId, symbol, timeframe, cs, theme }: Props) {
 
   const submitOrder = useCallback((side: 'buy' | 'sell') => {
     if (lastPrice == null) return
-    const isLimit = pane.orderType === 'limit' && pane.limitPrice !== null
-    const price = isLimit ? pane.limitPrice! : lastPrice
+    // Read fresh from store to avoid stale closure on qty/price
+    const fresh = useOrderStore.getState().getPane(paneId)
+    const isLimit = fresh.orderType === 'limit' && fresh.limitPrice !== null
+    const price = isLimit ? fresh.limitPrice! : lastPrice
     const type: LevelType = side
-    const qty = pane.qty
+    const qty = fresh.qty
 
     if (isLimit) {
-      // Limit order: create level on chart as "placed"
       setLevel(paneId, { type, price, qty, status: 'placed' })
       console.info(`[ORDER] ${side.toUpperCase()} LIMIT ${qty} ${symbol} @ ${fmtPrice(price)}`)
     } else {
-      // Market order: execute immediately — no chart level, just toast
       console.info(`[ORDER] ${side.toUpperCase()} MKT ${qty} ${symbol} @ ${fmtPrice(price)}`)
       addToast({ paneId, type, action: 'executed', price, qty })
     }
     triggerFlash(side)
-  }, [pane, symbol, lastPrice, paneId, setLevel, addToast, triggerFlash])
+  }, [lastPrice, symbol, paneId, setLevel, addToast, triggerFlash])
 
   const handleBuy  = useCallback(() => submitOrder('buy'),  [submitOrder])
   const handleSell = useCallback(() => submitOrder('sell'), [submitOrder])

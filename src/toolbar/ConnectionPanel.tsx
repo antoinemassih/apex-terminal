@@ -3,8 +3,6 @@ import { getRenderEngine, getDataProvider } from '../globals'
 import { getTheme } from '../themes'
 import { useChartStore } from '../store/chartStore'
 import type { EngineState } from '../engine'
-import type { IBKRProvider } from '../data/IBKRProvider'
-import type { OcocoClient } from '../data/OcocoClient'
 
 interface ServiceStatus {
   name: string
@@ -13,7 +11,7 @@ interface ServiceStatus {
   detail: string
 }
 
-function getOcocoClient(): OcocoClient | null {
+function getOcocoClient(): { connectWs?: () => void; disconnectWs?: () => void; ws?: WebSocket | null } | null {
   return (window as any).__ococoClient ?? null
 }
 
@@ -46,8 +44,7 @@ export function ConnectionPanel() {
       // Data Provider (IBKR)
       try {
         const provider = getDataProvider()
-        const ibkr = provider as IBKRProvider
-        const ready = ibkr.wsReady ?? false
+        const ready = 'wsReady' in provider ? !!(provider as any).wsReady : false
         statuses.push({
           name: 'feed', label: `Market Feed (${provider.name})`,
           status: ready ? 'ok' : 'warn',
@@ -60,9 +57,7 @@ export function ConnectionPanel() {
       // OCOCO API
       const ococo = getOcocoClient()
       if (ococo) {
-        // Check WS readyState
-        const ws = (ococo as any).ws as WebSocket | null
-        const wsOk = ws?.readyState === WebSocket.OPEN
+        const wsOk = 'ws' in ococo && (ococo as any).ws?.readyState === WebSocket.OPEN
         statuses.push({
           name: 'ococo', label: 'OCOCO Signals',
           status: wsOk ? 'ok' : 'warn',
@@ -77,8 +72,8 @@ export function ConnectionPanel() {
 
     poll()
     if (!open) return
-    const id = setInterval(poll, 2000)
-    return () => clearInterval(id)
+    const id = window.setInterval(poll, 2000)
+    return () => window.clearInterval(id)
   }, [open])
 
   // Close on click outside

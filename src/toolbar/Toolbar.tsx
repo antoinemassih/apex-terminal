@@ -25,11 +25,24 @@ const LAYOUTS: { key: Layout; label: string }[] = [
 ]
 
 export function Toolbar() {
-  const { panes, activePane, setTimeframe,
-    toggleVolume, toggleIndicator, layout, setLayout, theme: themeName, setTheme } = useChartStore()
-  const { activeTool, setActiveTool } = useDrawingStore()
-  const { open: watchlistOpen, toggleOpen: toggleWatchlist } = useWatchlistStore()
-  const { enabled: orderEntryEnabled, toggleEnabled: toggleOrderEntry, ordersOpen, toggleOrdersOpen } = useOrderStore()
+  // Granular selectors — only re-render when the specific value changes
+  const panes = useChartStore(s => s.panes)
+  const activePane = useChartStore(s => s.activePane)
+  const setTimeframe = useChartStore(s => s.setTimeframe)
+  const toggleVolume = useChartStore(s => s.toggleVolume)
+  const toggleIndicator = useChartStore(s => s.toggleIndicator)
+  const layout = useChartStore(s => s.layout)
+  const setLayout = useChartStore(s => s.setLayout)
+  const themeName = useChartStore(s => s.theme)
+  const setTheme = useChartStore(s => s.setTheme)
+  const activeTool = useDrawingStore(s => s.activeTool)
+  const setActiveTool = useDrawingStore(s => s.setActiveTool)
+  const watchlistOpen = useWatchlistStore(s => s.open)
+  const toggleWatchlist = useWatchlistStore(s => s.toggleOpen)
+  const orderEntryEnabled = useOrderStore(s => s.enabled)
+  const toggleOrderEntry = useOrderStore(s => s.toggleEnabled)
+  const ordersOpen = useOrderStore(s => s.ordersOpen)
+  const toggleOrdersOpen = useOrderStore(s => s.toggleOrdersOpen)
   const [pickerOpen, setPickerOpen] = useState(false)
   const tickerRef = useRef<HTMLSpanElement>(null)
   const pane = panes.find(p => p.id === activePane)

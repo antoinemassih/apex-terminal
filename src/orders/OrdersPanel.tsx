@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import { useOrderStore, isOCO, isTrigger } from '../store/orderStore'
 import type { LevelType, OrderLevel } from '../store/orderStore'
 import { useChartStore } from '../store/chartStore'
@@ -98,42 +98,55 @@ export function OrdersPanel() {
   const prevPricesRef = useRef<Record<string, number>>({})
   useEffect(() => {
     const id = setInterval(() => {
-      const { panes: latestPanes, triggerBuy: doTrigger } = useOrderStore.getState()
-      const ds = getDataStore()
-      Object.entries(latestPanes).forEach(([paneId, pane]) => {
-        const [sym, tf] = paneId.split(':')
-        const data = ds.getData(sym, tf)
-        if (!data || data.length === 0) return
-        const last = data.closes[data.length - 1]
-        const prev = prevPricesRef.current[paneId] ?? last
-        prevPricesRef.current[paneId] = last
+      try {
+        const { panes: latestPanes, triggerBuy: doTrigger } = useOrderStore.getState()
+        const ds = getDataStore()
+        Object.entries(latestPanes).forEach(([paneId, pane]) => {
+          const parts = paneId.split(':')
+          if (parts.length !== 2) return
+          const [sym, tf] = parts
+          const data = ds.getData(sym, tf)
+          if (!data || data.length === 0 || !data.closes) return
+          const last = data.closes[data.length - 1]
+          const prev = prevPricesRef.current[paneId] ?? last
+          prevPricesRef.current[paneId] = last
 
-        pane.levels.forEach(level => {
-          if (level.type !== 'trigger_buy' || level.status !== 'placed' || level.triggered) return
-          const p = level.price
-          const crossedUp   = prev < p && last >= p
-          const crossedDown = prev > p && last <= p
-          if (crossedUp || crossedDown) {
-            const sell = pane.levels.find(l => l.type === 'trigger_sell')
-            console.info(
-              `[ORDER] TRIGGER FILL — BUY ${level.qty} @ ${fmtPrice(p)} (auto-triggered)` +
-              (sell ? ` — sell active @ ${fmtPrice(sell.price)}` : '')
-            )
-            doTrigger(paneId)
-          }
+          pane.levels.forEach(level => {
+            if (level.type !== 'trigger_buy' || level.status !== 'placed' || level.triggered) return
+            const p = level.price
+            const crossedUp   = prev < p && last >= p
+            const crossedDown = prev > p && last <= p
+            if (crossedUp || crossedDown) {
+              const sell = pane.levels.find(l => l.type === 'trigger_sell')
+              console.info(
+                `[ORDER] TRIGGER FILL — BUY ${level.qty} @ ${fmtPrice(p)} (auto-triggered)` +
+                (sell ? ` — sell active @ ${fmtPrice(sell.price)}` : '')
+              )
+              doTrigger(paneId)
+            }
+          })
         })
-      })
+      } catch (e) {
+        // Globals may not be ready yet during bootstrap
+        if (!(e instanceof Error && e.message.includes('not initialized'))) {
+          console.warn('[OrdersPanel] trigger monitor error:', e)
+        }
+      }
     }, 250)
     return () => clearInterval(id)
   }, []) // intentionally empty — reads from store directly
 
-  // Flatten all levels
-  const flat: FlatOrder[] = Object.entries(panes).flatMap(([paneId, pane]) => {
-    const [symbol, timeframe] = paneId.split(':')
-    return pane.levels.map(level => ({ paneId, symbol, timeframe, level }))
-  })
+  // Flatten all levels — memoized to avoid recomputing on every render
+  const flat: FlatOrder[] = useMemo(() =>
+    Object.entries(panes).flatMap(([paneId, pane]) => {
+      const parts = paneId.split(':')
+      if (parts.length !== 2) return []
+      const [symbol, timeframe] = parts
+      return pane.levels.map(level => ({ paneId, symbol, timeframe, level }))
+    }),
+  [panes])
 
-  const allGroups = groupOrders(flat)
+  const allGroups = useMemo(() => groupOrders(flat), [flat])
 
   // Filter groups based on active filter
   const groups = allGroups.filter(g => {
