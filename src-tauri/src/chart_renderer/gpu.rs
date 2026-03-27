@@ -16,12 +16,13 @@ use glyphon::{
     Shaping, Resolution,
 };
 
-use super::{Bar, CandleUniforms, VolumeUniforms, GridVertex, ChartCommand};
+use super::{Bar, CandleUniforms, VolumeUniforms, LineUniforms, GridVertex, ChartCommand};
 
 const CANDLE_SHADER: &str = include_str!("../../../src/renderer/shaders/candles_gpu.wgsl");
 const VOLUME_SHADER: &str = include_str!("../../../src/renderer/shaders/volume_gpu.wgsl");
 const GRID_SHADER: &str = include_str!("../../../src/renderer/shaders/grid.wgsl");
 const OVERLAY_SHADER: &str = include_str!("../../../src/renderer/shaders/overlay.wgsl");
+const LINE_SHADER: &str = include_str!("../../../src/renderer/shaders/line_gpu.wgsl");
 
 const RIGHT_MARGIN_BARS: u32 = 8;
 const PR: f32 = 80.0;
@@ -30,6 +31,33 @@ const PB: f32 = 40.0;
 const MAX_GRID_VERTS: usize = 512;
 const MAX_OVERLAY_LINES: usize = 128;
 const OVERLAY_FLOATS_PER_LINE: usize = 12; // matches overlay.wgsl Line struct
+
+fn compute_sma(data: &[f32], period: usize) -> Vec<f32> {
+    let mut result = vec![f32::NAN; data.len()];
+    if data.len() < period { return result; }
+    let mut sum: f32 = data[..period].iter().sum();
+    result[period - 1] = sum / period as f32;
+    for i in period..data.len() {
+        sum += data[i] - data[i - period];
+        result[i] = sum / period as f32;
+    }
+    result
+}
+
+fn compute_ema(data: &[f32], period: usize) -> Vec<f32> {
+    let mut result = vec![f32::NAN; data.len()];
+    if data.len() < period { return result; }
+    let k = 2.0 / (period as f32 + 1.0);
+    let sma: f32 = data[..period].iter().sum::<f32>() / period as f32;
+    result[period - 1] = sma;
+    let mut prev = sma;
+    for i in period..data.len() {
+        let val = data[i] * k + prev * (1.0 - k);
+        result[i] = val;
+        prev = val;
+    }
+    result
+}
 
 // ─── Mouse ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +81,16 @@ impl Mouse {
         else if y >= h - PB { DragZone::XAxis }
         else { DragZone::Chart }
     }
+}
+
+struct IndicatorLine {
+    values_buf: wgpu::Buffer,
+    uniform_buf: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    color: [f32; 4],
+    width: f32,
+    values: Vec<f32>,
+    name: String,
 }
 
 // ─── GPU State ────────────────────────────────────────────────────────────────
@@ -94,6 +132,10 @@ struct Gpu {
     overlay_bgl: wgpu::BindGroupLayout,
     overlay_cpu: Vec<f32>,
     overlay_count: u32,
+
+    // Indicator lines
+    line_pl: wgpu::RenderPipeline,
+    indicators: Vec<IndicatorLine>,
 
     // Text rendering (glyphon)
     font_system: FontSystem,
@@ -245,6 +287,9 @@ impl Gpu {
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: overlay_buf.as_entire_binding() }],
         });
 
+        // Indicator line pipeline — same BGL as candles (storage + uniform)
+        let line_pl = make_pl(LINE_SHADER, "line");
+
         // Text rendering
         let font_system = FontSystem::new();
         let swash_cache = SwashCache::new();
@@ -260,6 +305,7 @@ impl Gpu {
             overlay_pl, overlay_buf, overlay_bg, overlay_bgl,
             overlay_cpu: vec![0.0; MAX_OVERLAY_LINES * OVERLAY_FLOATS_PER_LINE],
             overlay_count: 0,
+            line_pl, indicators: Vec::new(),
             font_system, swash_cache, text_atlas, text_renderer, glyphon_viewport,
             bars: Vec::new(), bar_count: 0, bar_cap: cap,
             vs: 0.0, vc: 200, price_lock: None,
@@ -294,6 +340,56 @@ impl Gpu {
         self.queue.write_buffer(&self.bar_buf, 0, bytemuck::cast_slice(&self.bars));
     }
 
+    fn compute_indicators(&mut self) {
+        self.indicators.clear();
+        let n = self.bars.len();
+        if n < 20 { return; }
+
+        let closes: Vec<f32> = self.bars.iter().map(|b| b.close).collect();
+
+        // SMA 20 — cyan
+        let sma20 = compute_sma(&closes, 20);
+        self.add_indicator("SMA20", &sma20, [0.0, 0.75, 0.95, 0.85], 1.5);
+
+        // SMA 50 — orange
+        if n >= 50 {
+            let sma50 = compute_sma(&closes, 50);
+            self.add_indicator("SMA50", &sma50, [0.95, 0.6, 0.1, 0.75], 1.5);
+        }
+
+        // EMA 12 — yellow
+        let ema12 = compute_ema(&closes, 12);
+        self.add_indicator("EMA12", &ema12, [0.95, 0.85, 0.2, 0.7], 1.0);
+
+        // EMA 26 — purple
+        let ema26 = compute_ema(&closes, 26);
+        self.add_indicator("EMA26", &ema26, [0.7, 0.4, 0.9, 0.7], 1.0);
+    }
+
+    fn add_indicator(&mut self, name: &str, values: &[f32], color: [f32; 4], width: f32) {
+        let f32_data: Vec<f32> = values.to_vec();
+        let values_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(name), size: (f32_data.len() * 4).max(64) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        self.queue.write_buffer(&values_buf, 0, bytemuck::cast_slice(&f32_data));
+        let uniform_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None, size: 64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None, layout: &self.bgl,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: values_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: uniform_buf.as_entire_binding() },
+            ],
+        });
+        self.indicators.push(IndicatorLine {
+            values_buf, uniform_buf, bind_group,
+            color, width, values: f32_data, name: name.to_string(),
+        });
+    }
+
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
             ChartCommand::LoadBars { bars, .. } => {
@@ -303,6 +399,7 @@ impl Gpu {
                 self.price_lock = None;
                 self.ensure_bar_buf();
                 self.queue.write_buffer(&self.bar_buf, 0, bytemuck::cast_slice(&self.bars));
+                self.compute_indicators();
                 self.dirty = true;
             }
             ChartCommand::AppendBar { bar, .. } => {
@@ -605,6 +702,26 @@ impl Gpu {
             pass.set_pipeline(&self.candle_pl);
             pass.set_bind_group(0, &self.candle_bg, &[]);
             pass.draw(0..18, 0..dc);
+            // Indicator lines
+            if !self.indicators.is_empty() {
+                let bsc = step_px * 2.0 / w;
+                let pof = offset_px / step_px;
+                pass.set_pipeline(&self.line_pl);
+                for ind in &self.indicators {
+                    let seg_count = dc.saturating_sub(1).min(ind.values.len().saturating_sub(vs as usize + 1) as u32);
+                    if seg_count == 0 { continue; }
+                    let lw_clip = ind.width * 2.0 / w;
+                    let lu = LineUniforms {
+                        view_start: vs, seg_count, _pad0: 0, _pad1: 0,
+                        bar_step_clip: bsc, pixel_offset_frac: pof, price_a: pa, price_b: pb,
+                        line_width_clip: lw_clip, _pad2: 0.0, _pad3: 0.0, _pad4: 0.0,
+                        color: ind.color,
+                    };
+                    self.queue.write_buffer(&ind.uniform_buf, 0, bytemuck::bytes_of(&lu));
+                    pass.set_bind_group(0, &ind.bind_group, &[]);
+                    pass.draw(0..6, 0..seg_count);
+                }
+            }
             // Overlay (crosshair, drawing lines) — on top of everything
             if self.overlay_count > 0 {
                 pass.set_pipeline(&self.overlay_pl);

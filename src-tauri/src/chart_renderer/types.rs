@@ -61,6 +61,28 @@ pub struct VolumeUniforms {
 unsafe impl bytemuck::Pod for VolumeUniforms {}
 unsafe impl bytemuck::Zeroable for VolumeUniforms {}
 
+/// Line indicator uniform — 64 bytes matching line_gpu.wgsl
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct LineUniforms {
+    pub view_start: u32,
+    pub seg_count: u32,
+    pub _pad0: u32,
+    pub _pad1: u32,
+    pub bar_step_clip: f32,
+    pub pixel_offset_frac: f32,
+    pub price_a: f32,
+    pub price_b: f32,
+    pub line_width_clip: f32,
+    pub _pad2: f32,
+    pub _pad3: f32,
+    pub _pad4: f32,
+    pub color: [f32; 4],
+}
+
+unsafe impl bytemuck::Pod for LineUniforms {}
+unsafe impl bytemuck::Zeroable for LineUniforms {}
+
 /// Grid vertex — position + color, 24 bytes
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
