@@ -551,6 +551,11 @@ impl ApplicationHandler for App {
 }
 
 pub fn run_render_loop(title: &str, width: u32, height: u32, rx: mpsc::Receiver<ChartCommand>) {
-    let el = EventLoop::new().expect("event loop");
+    use winit::platform::windows::EventLoopBuilderExtWindows;
+    let el = EventLoop::builder()
+        .with_any_thread(true)
+        .build()
+        .expect("event loop");
+    eprintln!("[native-chart] Event loop created");
     let _ = el.run_app(&mut App { rx, title: title.into(), iw: width, ih: height, win: None, gpu: None });
 }
