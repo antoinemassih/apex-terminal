@@ -22,7 +22,7 @@ interface Props {
 
 export interface DrawingOverlayHandle {
   /** Returns true if the drawing layer handled this mousedown (hit a drawing or in draw mode) */
-  handleMouseDown: (mx: number, my: number) => boolean
+  handleMouseDown: (mx: number, my: number, shiftKey?: boolean) => boolean
   handleMouseMove: (mx: number, my: number) => void
   handleMouseUp: () => void
   /** Returns a cursor string if drawings want to override, or null for default */
@@ -50,7 +50,7 @@ function distToSegment(px: number, py: number, x0: number, y0: number, x1: numbe
 export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   function DrawingOverlay({ symbol, timeframe, cs, data: chartData, width, height, viewStart, onInteraction }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectDrawing, setActiveTool } = useDrawingStore()
+  const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectedIds, selectDrawing, toggleSelectDrawing, setActiveTool } = useDrawingStore()
   const drawingsHidden = useDrawingStore(s => s.drawingsHidden(symbol))
   const hiddenGroups = useDrawingStore(s => s.hiddenGroups)
   // Only show popup for drawings that belong to this pane's symbol
@@ -62,6 +62,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   const dragRef = useRef<DragState | null>(null)
   const cursorRef = useRef<string | null>(null)
   const prevToolRef = useRef(activeTool)
+  // Always-current reference to draw — lets imperative callers (handle, subscriptions) call latest draw
+  const drawRef = useRef<() => void>(() => {})
 
   // Live refs for viewport — updated imperatively by setViewport() to avoid React re-renders during pan
   const csRef = useRef(cs)
@@ -185,7 +187,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
 
     for (const d of drawings) {
       if (hiddenGroupSet.has(d.groupId ?? 'default')) continue
-      const isSelected = d.id === selectedId
+      const _selIds = useDrawingStore.getState().selectedIds
+      const isSelected = _selIds.includes(d.id)
       const dOpacity = d.opacity ?? 1
       const dLineStyle = d.lineStyle ?? 'solid'
       const dThickness = d.thickness ?? 1.5
@@ -404,7 +407,10 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, selectedId, toPixel, serverAnnotations, annotationFilters, drawingsHidden, hiddenGroups])
+  }, [symbol, timeframe, drawingsFor, activeTool, inProgress, width, height, selectedIds, toPixel, serverAnnotations, annotationFilters, drawingsHidden, hiddenGroups])
+
+  // Always-current draw ref — updated synchronously so imperative callers never use a stale closure
+  drawRef.current = draw
 
   // Redraw when non-viewport things change (drawings, annotations, active tool, etc.)
   // Viewport changes during pan are handled imperatively via setViewport — no rAF needed here.
@@ -412,7 +418,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
 
   // Expose imperative handle for ChartPane to call
   useImperativeHandle(ref, () => ({
-    handleMouseDown(mx: number, my: number): boolean {
+    handleMouseDown(mx: number, my: number, shiftKey?: boolean): boolean {
       // In draw mode: always handle
       if (activeTool !== 'cursor') {
         onInteraction?.()
@@ -481,14 +487,19 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       const hit = hitTest(mx, my)
       if (hit) {
         onInteraction?.()
-        selectDrawing(hit.id)
-        const drawing = drawingsFor(symbol, timeframe).find(d => d.id === hit.id)!
-        dragRef.current = {
-          drawingId: hit.id,
-          mode: hit.nearEndpoint >= 0 ? 'endpoint' : 'move',
-          pointIndex: Math.max(0, hit.nearEndpoint),
-          startMouse: { x: mx, y: my },
-          origPoints: drawing.points.map(p => ({ ...p })),
+        toggleSelectDrawing(hit.id, shiftKey ?? false)
+        // Immediately redraw using fresh store state — don't wait for React re-render cycle
+        drawRef.current()
+        // Only set up drag on plain click — shift-click just toggles selection
+        if (!shiftKey) {
+          const drawing = drawingsFor(symbol, timeframe).find(d => d.id === hit.id)!
+          dragRef.current = {
+            drawingId: hit.id,
+            mode: hit.nearEndpoint >= 0 ? 'endpoint' : 'move',
+            pointIndex: Math.max(0, hit.nearEndpoint),
+            startMouse: { x: mx, y: my },
+            origPoints: drawing.points.map(p => ({ ...p })),
+          }
         }
         return true // consumed — don't start chart pan
       }
@@ -517,7 +528,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
           })
           updateDrawing(drawingId, newPoints)
         }
-        draw()
+        drawRef.current()
         return
       }
 
@@ -535,7 +546,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
         cursorRef.current = 'crosshair'
       }
 
-      if (inProgress) draw()
+      if (inProgress) drawRef.current()
     },
 
     handleMouseUp() {
@@ -549,15 +560,16 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     setViewport(newCs: CoordSystem, newViewStart: number): void {
       csRef.current = newCs
       vsRef.current = newViewStart
-      draw()  // immediate — no rAF scheduling needed
+      drawRef.current()  // immediate — no rAF scheduling needed
     },
   }))
 
   // Delete selected drawing with Delete/Backspace
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
-        useDrawingStore.getState().removeDrawing(selectedId)
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const { selectedIds: ids } = useDrawingStore.getState()
+        if (ids.length > 0) ids.forEach(id => useDrawingStore.getState().removeDrawing(id))
       }
       if (e.key === 'Escape') {
         setInProgress(null)
@@ -566,7 +578,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedId, activeTool, setActiveTool])
+  }, [activeTool, setActiveTool])
 
   const handleClosePopup = useCallback(() => {
     selectDrawing(null)
@@ -577,7 +589,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       <canvas ref={canvasRef} width={width - cs.pr} height={height - cs.pb}
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
       {selectedId && selectedOwnerSymbol === symbol && (
-        <LineStylePopup drawingId={selectedId} onClose={handleClosePopup} />
+        <LineStylePopup drawingId={selectedId} selectedIds={selectedIds} onClose={handleClosePopup} />
       )}
     </>
   )

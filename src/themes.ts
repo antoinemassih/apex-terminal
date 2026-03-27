@@ -54,6 +54,8 @@ export interface ChartTheme {
   toolbarBackground: string
   /** Toolbar border (hex) */
   toolbarBorder: string
+  /** Watchlist / gutter background — defaults to toolbarBackground if omitted */
+  watchlistBackground?: string
 
   // ------- Pre-computed GPU-friendly RGBA float arrays -------
 
@@ -155,6 +157,7 @@ const nord = buildTheme({
   borderInactive: '#3b4252',
   toolbarBackground: '#2e3440',
   toolbarBorder: '#3b4252',
+  watchlistBackground: '#242932',
 })
 
 const monokai = buildTheme({
@@ -191,6 +194,7 @@ const solarizedDark = buildTheme({
   borderInactive: '#073642',
   toolbarBackground: '#002b36',
   toolbarBorder: '#073642',
+  watchlistBackground: '#00202b',
 })
 
 const dracula = buildTheme({

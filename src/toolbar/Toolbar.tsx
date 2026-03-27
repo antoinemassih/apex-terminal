@@ -1,13 +1,16 @@
 import { useState, useRef } from 'react'
 import { useChartStore, type Layout } from '../store/chartStore'
 import { useDrawingStore } from '../store/drawingStore'
+import { useWatchlistStore } from '../store/watchlistStore'
+import { useOrderStore } from '../store/orderStore'
 import { INDICATOR_CATALOG } from '../indicators'
 import { THEMES, getTheme } from '../themes'
 import { SymbolPicker } from '../chart/SymbolPicker'
 import { TrendlineFilters } from './TrendlineFilters'
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { ConnectionPanel } from './ConnectionPanel'
 import type { Timeframe } from '../types'
+
+const IS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1wk']
 const LAYOUTS: { key: Layout; label: string }[] = [
@@ -21,12 +24,12 @@ const LAYOUTS: { key: Layout; label: string }[] = [
   { key: '9', label: '9' },
 ]
 
-const appWindow = getCurrentWindow()
-
 export function Toolbar() {
-  const { panes, activePane, setTimeframe, resetAutoScroll,
+  const { panes, activePane, setTimeframe,
     toggleVolume, toggleIndicator, layout, setLayout, theme: themeName, setTheme } = useChartStore()
   const { activeTool, setActiveTool } = useDrawingStore()
+  const { open: watchlistOpen, toggleOpen: toggleWatchlist } = useWatchlistStore()
+  const { enabled: orderEntryEnabled, toggleEnabled: toggleOrderEntry, ordersOpen, toggleOrdersOpen } = useOrderStore()
   const [pickerOpen, setPickerOpen] = useState(false)
   const tickerRef = useRef<HTMLSpanElement>(null)
   const pane = panes.find(p => p.id === activePane)
@@ -151,54 +154,90 @@ export function Toolbar() {
         <TrendlineFilters />
       </div>
 
+      {/* Order entry + orders panel toggles */}
+      <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
+        <button onClick={toggleOrderEntry} style={{
+          ...btnStyle(orderEntryEnabled),
+          ...(orderEntryEnabled ? {
+            background: theme.borderActive + '22',
+            color: theme.borderActive,
+            border: `1px solid ${theme.borderActive}66`,
+          } : {}),
+        }}>
+          orders
+        </button>
+        <button onClick={toggleOrdersOpen} style={{
+          ...btnStyle(ordersOpen),
+          ...(ordersOpen ? {
+            background: theme.borderActive + '22',
+            color: theme.borderActive,
+            border: `1px solid ${theme.borderActive}66`,
+          } : {}),
+        }}
+          title="Order book"
+        >
+          book
+        </button>
+      </div>
+
       {/* Drag region — fills remaining space, window draggable here */}
       <div data-tauri-drag-region style={{ flex: 1, height: '100%', cursor: 'default' }} />
 
       {/* Right-side actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}>
-        <button onClick={() => resetAutoScroll()}
-          style={{ ...btnStyle(false), background: theme.background, color: theme.bull, border: `1px solid ${theme.bull}44` }}>
-          LIVE
-        </button>
-        <button onClick={() => {
-          const label = `chart-${Date.now()}`
-          const w = new WebviewWindow(label, { title: 'Apex Terminal', width: 1920, height: 1080, decorations: false })
-          w.once('tauri://error', (e) => console.error('Window creation failed:', e))
-        }} style={btnStyle(false)}>
-          + Window
+        <ConnectionPanel />
+        {IS_TAURI && (
+          <button onClick={() => {
+            import('@tauri-apps/api/webviewWindow').then(({ WebviewWindow }) => {
+              const label = `chart-${Date.now()}`
+              const w = new WebviewWindow(label, { title: 'Apex Terminal', width: 1920, height: 1080, decorations: false })
+              w.once('tauri://error', (e: unknown) => console.error('Window creation failed:', e))
+            })
+          }} style={btnStyle(false)}>
+            + Window
+          </button>
+        )}
+        <button onClick={toggleWatchlist} style={btnStyle(watchlistOpen)} title="Toggle watchlist">
+          <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+            <line x1="0" y1="1" x2="12" y2="1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <line x1="0" y1="5" x2="12" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <line x1="0" y1="9" x2="12" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          </svg>
         </button>
       </div>
 
-      {/* Window controls */}
-      <div style={{ display: 'flex', borderLeft: `1px solid ${theme.toolbarBorder}`, height: '100%', alignItems: 'stretch' }}>
-        <button
-          style={winBtn()}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.toolbarBorder }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
-          onClick={() => appWindow.minimize()}
-          title="Minimize"
-        >
-          <svg width="10" height="2" viewBox="0 0 10 2"><line x1="0" y1="1" x2="10" y2="1" stroke="currentColor" strokeWidth="1.2" /></svg>
-        </button>
-        <button
-          style={winBtn()}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.toolbarBorder }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
-          onClick={() => appWindow.toggleMaximize()}
-          title="Maximize"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="0.6" y="0.6" width="8.8" height="8.8" stroke="currentColor" strokeWidth="1.2" /></svg>
-        </button>
-        <button
-          style={winBtn(true)}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#e05560'; (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; (e.currentTarget as HTMLElement).style.color = theme.axisText }}
-          onClick={() => appWindow.close()}
-          title="Close"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" /><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2" /></svg>
-        </button>
-      </div>
+      {/* Window controls — Tauri only */}
+      {IS_TAURI && (
+        <div style={{ display: 'flex', borderLeft: `1px solid ${theme.toolbarBorder}`, height: '100%', alignItems: 'stretch' }}>
+          <button
+            style={winBtn()}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.toolbarBorder }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+            onClick={() => import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().minimize())}
+            title="Minimize"
+          >
+            <svg width="10" height="2" viewBox="0 0 10 2"><line x1="0" y1="1" x2="10" y2="1" stroke="currentColor" strokeWidth="1.2" /></svg>
+          </button>
+          <button
+            style={winBtn()}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = theme.toolbarBorder }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+            onClick={() => import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().toggleMaximize())}
+            title="Maximize"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="0.6" y="0.6" width="8.8" height="8.8" stroke="currentColor" strokeWidth="1.2" /></svg>
+          </button>
+          <button
+            style={winBtn(true)}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#e05560'; (e.currentTarget as HTMLElement).style.color = '#fff' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; (e.currentTarget as HTMLElement).style.color = theme.axisText }}
+            onClick={() => import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().close())}
+            title="Close"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.2" /><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.2" /></svg>
+          </button>
+        </div>
+      )}
     </div>
   )
 }

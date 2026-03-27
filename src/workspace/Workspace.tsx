@@ -29,6 +29,7 @@ export function Workspace() {
   const theme = getTheme(themeName)
   const containerRef = useRef<HTMLDivElement>(null)
   const [dims, setDims] = useState({ w: 0, h: 0 })
+  const [viewOffset, setViewOffset] = useState(0)
 
   useEffect(() => {
     const el = containerRef.current
@@ -43,16 +44,20 @@ export function Workspace() {
 
   const config = LAYOUT_CONFIG[layout]
 
+  // Reset viewOffset when layout changes so it stays in bounds
+  useEffect(() => {
+    setViewOffset(prev => Math.min(prev, Math.max(0, panes.length - config.maxPanes)))
+  }, [layout, panes.length, config.maxPanes])
+
   const visiblePanes = useMemo(() => {
     if (panes.length <= config.maxPanes) return panes
-    const activeIndex = panes.findIndex(p => p.id === activePane)
-    const startIndex = activeIndex >= 0 ? activeIndex : 0
+    const start = Math.min(viewOffset, panes.length - config.maxPanes)
     const result = []
     for (let i = 0; i < config.maxPanes; i++) {
-      result.push(panes[(startIndex + i) % panes.length])
+      result.push(panes[(start + i) % panes.length])
     }
     return result
-  }, [panes, activePane, config.maxPanes])
+  }, [panes, viewOffset, config.maxPanes])
 
   // Layout "3": 1 big pane on top (full width), 2 smaller on bottom
   if (config.custom && layout === '3') {

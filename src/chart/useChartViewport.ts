@@ -21,8 +21,8 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   // setViewStart is called via rAF, capping React renders at 60/sec regardless of mouse Hz.
   const viewStartRef = useRef(0)
   const panRafRef = useRef<number | null>(null)
-  const [viewCount, setViewCount] = useState(200)
-  const viewCountRef = useRef(200)
+  const [viewCount, setViewCount] = useState(20)
+  const viewCountRef = useRef(20)
   const [priceOverride, setPriceOverride] = useState<{ min: number; max: number } | null>(null)
   // Live ref for priceOverride — lets computeCs read the latest value without being a dep
   const priceOverrideRef = useRef<{ min: number; max: number } | null>(null)
@@ -37,6 +37,16 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     setAutoScrolling(true)
     setPriceOverride(null)
   }, [autoScrollVersion])
+
+  // Reset viewport when symbol/timeframe changes — inherit stale scroll state causes
+  // live updates to appear off-screen and auto-scroll to stop.
+  useEffect(() => {
+    setAutoScrolling(true)
+    setPriceOverride(null)
+    setViewStart(0)
+    viewStartRef.current = 0
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+  }, [symbol, timeframe])
 
   // Pause auto-scroll on interaction
   const pauseAutoScroll = useCallback(() => {
@@ -77,7 +87,14 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     if (!autoScrolling) return
     const data = getDataStore().getData(symbol, timeframe)
     if (!data) return
-    const maxStart = Math.max(0, data.length - viewCount + RIGHT_MARGIN_BARS)
+    // Grow viewCount as data accumulates (sim startup: starts at 20 so bars are visible;
+    // grows toward 200 as history loads or sim fills in more bars)
+    const targetVc = Math.min(200, Math.max(viewCount, data.length + RIGHT_MARGIN_BARS))
+    if (targetVc !== viewCount) {
+      viewCountRef.current = targetVc
+      setViewCount(targetVc)
+    }
+    const maxStart = Math.max(0, data.length - targetVc + RIGHT_MARGIN_BARS)
     viewStartRef.current = maxStart
     setViewStart(maxStart)
   }, [autoScrolling, dataVersion, viewCount, symbol, timeframe])
@@ -255,5 +272,12 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     cs
   }), [viewStart, viewCount, cs])
 
-  return { viewport, pan, zoomX, zoomY, panY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, viewStartRef, viewCountRef, computeCs }
+  /** Per-pane auto-scroll reset — re-enables live follow + clears price lock */
+  const resetAutoScroll = useCallback(() => {
+    setAutoScrolling(true)
+    setPriceOverride(null)
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null }
+  }, [])
+
+  return { viewport, pan, zoomX, zoomY, panY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, resetAutoScroll, viewStartRef, viewCountRef, computeCs }
 }

@@ -6,6 +6,7 @@ import { GroupManagerModal } from './GroupManagerModal'
 
 interface Props {
   drawingId: string
+  selectedIds?: string[]
   onClose: () => void
 }
 
@@ -33,7 +34,8 @@ function nextGroupName(groups: { name: string }[]): string {
   return `Group ${n}`
 }
 
-export function LineStylePopup({ drawingId, onClose }: Props) {
+export function LineStylePopup({ drawingId, selectedIds, onClose }: Props) {
+  const allIds = selectedIds && selectedIds.length > 0 ? selectedIds : [drawingId]
   const ref = useRef<HTMLDivElement>(null)
   const groupDropRef = useRef<HTMLDivElement>(null)
   const drawing = useDrawingStore(s => s.drawings.find(d => d.id === drawingId))
@@ -121,12 +123,12 @@ export function LineStylePopup({ drawingId, onClose }: Props) {
     setGroupOpen(false)
     if (id === '__new__') {
       const g = createGroup(nextGroupName(groups))
-      setDrawingGroup(drawingId, g.id)
+      allIds.forEach(did => setDrawingGroup(did, g.id))
       setShowManager(true)
     } else if (id === '__manage__') {
       setShowManager(true)
     } else {
-      setDrawingGroup(drawingId, id)
+      allIds.forEach(did => setDrawingGroup(did, id))
     }
   }
 
@@ -169,7 +171,7 @@ export function LineStylePopup({ drawingId, onClose }: Props) {
           {COLORS.map(c => (
             <div
               key={c}
-              onClick={() => updateStyle(drawingId, { color: c })}
+              onClick={() => allIds.forEach(id => updateStyle(id, { color: c }))}
               title={c}
               style={{
                 width: 13, height: 13, borderRadius: '50%', background: c,
@@ -185,7 +187,7 @@ export function LineStylePopup({ drawingId, onClose }: Props) {
 
           {/* Line styles */}
           {LINE_STYLES.map(s => (
-            <button key={s} onClick={() => updateStyle(drawingId, { lineStyle: s })}
+            <button key={s} onClick={() => allIds.forEach(id => updateStyle(id, { lineStyle: s }))}
               style={s === lineStyle ? activeBtn : btnBase} title={s}>
               {styleLabel[s]}
             </button>
@@ -195,7 +197,7 @@ export function LineStylePopup({ drawingId, onClose }: Props) {
 
           {/* Thicknesses */}
           {THICKNESSES.map(tk => (
-            <button key={tk} onClick={() => updateStyle(drawingId, { thickness: tk })}
+            <button key={tk} onClick={() => allIds.forEach(id => updateStyle(id, { thickness: tk }))}
               style={tk === thickness ? activeBtn : btnBase} title={`${tk}px`}>
               {thicknessLabel(tk)}
             </button>
@@ -205,7 +207,7 @@ export function LineStylePopup({ drawingId, onClose }: Props) {
 
           {/* Opacities */}
           {OPACITIES.map(o => (
-            <button key={o} onClick={() => updateStyle(drawingId, { opacity: o })}
+            <button key={o} onClick={() => allIds.forEach(id => updateStyle(id, { opacity: o }))}
               style={o === opacity ? activeBtn : btnBase} title={`${Math.round(o * 100)}%`}>
               {Math.round(o * 100)}%
             </button>
@@ -215,7 +217,7 @@ export function LineStylePopup({ drawingId, onClose }: Props) {
 
           {/* Delete */}
           <button
-            onClick={() => { removeDrawing(drawingId); onClose() }}
+            onClick={() => { allIds.forEach(id => removeDrawing(id)); onClose() }}
             style={{ ...btnBase, color: '#e05560', borderColor: '#e05560' }}
             title="Delete drawing"
           >

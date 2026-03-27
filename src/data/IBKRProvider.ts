@@ -27,7 +27,7 @@ const IS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in windo
 
 const TF_SECONDS: Record<string, number> = {
   '1m': 60, '2m': 120, '5m': 300, '15m': 900, '30m': 1800,
-  '1H': 3600, '4H': 14400, '1D': 86400, '1W': 604800,
+  '1h': 3600, '4h': 14400, '1d': 86400, '1wk': 604800,
 }
 
 /** Map Apex timeframe strings to yfinance interval + period */
@@ -37,10 +37,10 @@ const TF_TO_YFINANCE: Record<string, { interval: string; period: string }> = {
   '5m': { interval: '5m', period: '5d' },
   '15m': { interval: '15m', period: '60d' },
   '30m': { interval: '30m', period: '60d' },
-  '1H': { interval: '60m', period: '60d' },
-  '4H': { interval: '1h', period: '730d' },
-  '1D': { interval: '1d', period: '5y' },
-  '1W': { interval: '1wk', period: '10y' },
+  '1h': { interval: '60m', period: '60d' },
+  '4h': { interval: '1h', period: '730d' },
+  '1d': { interval: '1d', period: '5y' },
+  '1wk': { interval: '1wk', period: '10y' },
 }
 
 interface IBContractInfo {
@@ -65,10 +65,10 @@ export class IBKRProvider implements DataProvider {
   private tauriUnlisten: (() => void) | null = null
 
   // ── Shared state ─────────────────────────────────────────────────────────
-  private wsReady = false
+  wsReady = false
   private connected = false
 
-  private tickCb: ((symbol: string, tf: string, tick: TickData) => void) | null = null
+  private tickCbs = new Set<(symbol: string, tf: string, tick: TickData) => void>()
 
   /** symbol → set of subscribed timeframes */
   private subscriptions = new Map<string, Set<string>>()
@@ -106,21 +106,15 @@ export class IBKRProvider implements DataProvider {
     if (this.simIntervalId !== null) { clearInterval(this.simIntervalId); this.simIntervalId = null }
   }
 
-  private _simLogCount = 0
   private simTick(): void {
-    if (!this.tickCb) return
+    if (this.tickCbs.size === 0) return
     // Yield to real IB data: suppress simulation when live quotes arrived in last 3 seconds
-    if (this.wsReady && this.lastRealTickMs > 0 && Date.now() - this.lastRealTickMs < 3000) {
-      if (this._simLogCount++ < 3) console.info('[IBKRProvider] simTick yielding to live IB data')
-      return
-    }
+    if (this.wsReady && this.lastRealTickMs > 0 && Date.now() - this.lastRealTickMs < 3000) return
     for (const [symbol, tfs] of this.subscriptions) {
       for (const tf of tfs) {
         const key = `${symbol}:${tf}`
         const lastPrice = this.simPrices.get(key)
         if (lastPrice === undefined) continue
-        const tfDef = TF_TO_YFINANCE[tf]
-        if (!tfDef) continue
         const tfSeconds = TF_SECONDS[tf] ?? 300
 
         const change = lastPrice * (Math.random() - 0.495) * 0.003
@@ -133,7 +127,7 @@ export class IBKRProvider implements DataProvider {
         const time = count % 20 === 0 ? prevTime + tfSeconds : prevTime + tfSeconds / 20
         this.simTimes.set(key, time)
         this.simPrices.set(key, price)
-        this.tickCb(symbol, tf, { price, volume, time })
+        for (const cb of this.tickCbs) cb(symbol, tf, { price, volume, time })
       }
     }
   }
@@ -221,8 +215,8 @@ export class IBKRProvider implements DataProvider {
   }
 
   onTick(cb: (symbol: string, tf: string, tick: TickData) => void): () => void {
-    this.tickCb = cb
-    return () => { this.tickCb = null }
+    this.tickCbs.add(cb)
+    return () => { this.tickCbs.delete(cb) }
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -338,7 +332,7 @@ export class IBKRProvider implements DataProvider {
   // ── Shared message handling ───────────────────────────────────────────────
 
   private onWsMsg(msg: Record<string, unknown>): void {
-    if (!this.tickCb) return
+    if (this.tickCbs.size === 0) return
     if (msg.type === 'quote_batch') {
       const now = msg.t ? Math.floor(Number(msg.t) / 1000) : Math.floor(Date.now() / 1000)
       for (const q of (msg.quotes as Record<string, unknown>[])) this.dispatchQuote(q, now)
@@ -348,9 +342,9 @@ export class IBKRProvider implements DataProvider {
   }
 
   private dispatchQuote(q: Record<string, unknown>, batchTime: number): void {
-    this.lastRealTickMs = Date.now()  // real IB data flowing — simulation will yield
     const symbol = this.conIdToSymbol.get(q.conId as number)
     if (!symbol) return
+    this.lastRealTickMs = Date.now()  // real IB data flowing — simulation will yield
 
     const tfs = this.subscriptions.get(symbol)
     if (!tfs?.size) return
@@ -366,7 +360,7 @@ export class IBKRProvider implements DataProvider {
       volume: Number(q.volume) || 0,
       time: batchTime,
     }
-    for (const tf of tfs) this.tickCb!(symbol, tf, tick)
+    for (const tf of tfs) for (const cb of this.tickCbs) cb(symbol, tf, tick)
   }
 
   private async resolveAndSubscribe(symbol: string): Promise<void> {

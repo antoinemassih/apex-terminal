@@ -30,7 +30,8 @@ interface DrawingStore {
   groups: DrawingGroup[]
   activeTool: DrawingTool
   lastDrawTool: DrawingTool
-  selectedId: string | null
+  selectedId: string | null        // last-selected (drives style popup)
+  selectedIds: string[]            // full multi-selection
   hiddenSymbols: string[]
   hiddenGroups: string[]
 
@@ -47,6 +48,7 @@ interface DrawingStore {
   toggleHideGroup: (groupId: string) => void
   groupHidden: (groupId: string) => boolean
   selectDrawing: (id: string | null) => void
+  toggleSelectDrawing: (id: string, addToSelection: boolean) => void
   drawingsFor: (symbol: string, tf: Timeframe) => Drawing[]
   clear: () => void
 
@@ -64,6 +66,7 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
   activeTool: 'cursor',
   lastDrawTool: 'trendline',
   selectedId: null,
+  selectedIds: [],
   hiddenSymbols: [],
   hiddenGroups: [],
 
@@ -107,6 +110,7 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
     set(s => ({
       drawings: s.drawings.filter(d => d.id !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
+      selectedIds: s.selectedIds.filter(x => x !== id),
     }))
     _repo?.remove(id).catch(e => console.warn('Failed to persist drawing removal:', e))
   },
@@ -146,7 +150,21 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
 
   groupHidden: (groupId) => get().hiddenGroups.includes(groupId),
 
-  selectDrawing: id => set({ selectedId: id }),
+  selectDrawing: id => set({ selectedId: id, selectedIds: id ? [id] : [] }),
+
+  toggleSelectDrawing: (id, addToSelection) => {
+    if (!addToSelection) {
+      set({ selectedId: id, selectedIds: [id] })
+    } else {
+      set(s => {
+        const already = s.selectedIds.includes(id)
+        const selectedIds = already
+          ? s.selectedIds.filter(x => x !== id)
+          : [...s.selectedIds, id]
+        return { selectedIds, selectedId: selectedIds[selectedIds.length - 1] ?? null }
+      })
+    }
+  },
 
   drawingsFor: (symbol, _tf) => get().drawings.filter(d => d.symbol === symbol),
 

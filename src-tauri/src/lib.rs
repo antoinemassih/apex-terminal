@@ -6,6 +6,9 @@ use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
 use tauri::Manager;
 use tauri::async_runtime;
+use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandChild;
+use std::sync::Mutex;
 use std::time::Duration;
 
 #[tauri::command]
@@ -13,10 +16,13 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+struct OcocoProcess(Mutex<Option<CommandChild>>);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             // PostgreSQL pool — optional, app starts without it if DB is unreachable.
             // acquire_timeout caps the initial connection attempt at 3 s instead of
@@ -49,6 +55,43 @@ pub fn run() {
             let ib_handle = ib_ws::spawn(app.handle().clone());
             app.manage(ib_handle);
 
+            // Spawn ococo-api sidecar — bundled Node.js server
+            match app.shell().sidecar("ococo-api") {
+                Err(e) => eprintln!("[apex] ococo-api sidecar not found: {e}"),
+                Ok(cmd) => match cmd.spawn() {
+                    Err(e) => eprintln!("[apex] Failed to spawn ococo-api: {e}"),
+                    Ok((mut rx, child)) => {
+                        // Drain sidecar stdout/stderr so the channel doesn't block.
+                        tauri::async_runtime::spawn(async move {
+                            use tauri_plugin_shell::process::CommandEvent;
+                            while let Some(event) = rx.recv().await {
+                                match event {
+                                    CommandEvent::Stdout(line) => {
+                                        if let Ok(s) = String::from_utf8(line) {
+                                            print!("[ococo] {s}");
+                                        }
+                                    }
+                                    CommandEvent::Stderr(line) => {
+                                        if let Ok(s) = String::from_utf8(line) {
+                                            eprint!("[ococo] {s}");
+                                        }
+                                    }
+                                    CommandEvent::Error(e) => {
+                                        eprintln!("[ococo] error: {e}");
+                                    }
+                                    CommandEvent::Terminated(status) => {
+                                        eprintln!("[ococo] exited: {:?}", status);
+                                        break;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        });
+                        app.manage(OcocoProcess(Mutex::new(Some(child))));
+                    }
+                },
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -69,6 +112,18 @@ pub fn run() {
             drawings::drawings_apply_group_style,
             ib_ws::ib_ws_send,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // Kill ococo-api cleanly when the app exits
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<OcocoProcess>() {
+                    if let Ok(mut guard) = state.0.lock() {
+                        if let Some(child) = guard.take() {
+                            let _ = child.kill();
+                        }
+                    }
+                }
+            }
+        });
 }

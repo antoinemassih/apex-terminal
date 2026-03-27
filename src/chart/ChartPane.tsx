@@ -7,9 +7,12 @@ import { CrosshairOverlay, CrosshairHandle } from './CrosshairOverlay'
 import { DrawingOverlay, DrawingOverlayHandle } from './DrawingOverlay'
 import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
+import { useOrderStore } from '../store/orderStore'
 import { getTheme } from '../themes'
 import { SymbolPicker } from './SymbolPicker'
 import { ChartContextMenu } from './ChartContextMenu'
+import { OrderEntry } from './OrderEntry'
+import { OrderLevels } from './OrderLevels'
 import type { Timeframe } from '../types'
 
 interface Props {
@@ -28,7 +31,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const drawingRef = useRef<DrawingOverlayHandle>(null)
   const axisRef = useRef<AxisCanvasHandle>(null)
   const [engineState, setEngineState] = useState<EngineState>('ready')
-  const { viewport, pan, zoomX, zoomY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, viewStartRef, viewCountRef, computeCs } =
+  const { viewport, pan, zoomX, zoomY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, resetAutoScroll, viewStartRef, viewCountRef, computeCs } =
     useChartViewport(symbol, timeframe, width, height)
 
   const paneConfig = useChartStore(s => s.panes[paneIndex])
@@ -36,10 +39,12 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const visibleIndicators = paneConfig?.visibleIndicators ?? []
   const themeName = useChartStore(s => s.theme)
   const theme = getTheme(themeName)
+  const orderEntryEnabled = useOrderStore(s => s.enabled)
 
   const [pickerPos, setPickerPos] = useState<{ x: number; y: number } | null>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clickPrice: number | null } | null>(null)
   const [dragZoomMode, setDragZoomMode] = useState(false)
+  const [hovered, setHovered] = useState(false)
 
   // Drag-zoom overlay — updated imperatively to avoid React re-renders on every mousemove
   const dragZoomDivRef = useRef<HTMLDivElement>(null)
@@ -182,7 +187,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   useEffect(() => {
     paneRef.current?.setTheme(themeName)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeName, contextMenu])
+  }, [themeName, contextMenu, paneId])
 
   // --- Drag handling ---
   const dragRef    = useRef<{ x: number; y: number; zone: 'chart' | 'xaxis' | 'yaxis' } | null>(null)
@@ -204,7 +209,10 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     // so the custom menu is already composited when WebView2 processes contextmenu,
     // preventing the whole-app black flash caused by Win32 surface exposure.
     if (e.button === 2) {
-      setContextMenu({ x: e.clientX, y: e.clientY })
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const my = e.clientY - rect.top
+      const clickPrice = cs ? cs.yToPrice(my) : null
+      setContextMenu({ x: e.clientX, y: e.clientY, clickPrice })
       return
     }
     if (e.button !== 0) return
@@ -217,7 +225,11 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       zoomStartRef.current = { x: mx, y: my }
       return
     }
-    if (drawingRef.current?.handleMouseDown(mx, my)) return
+    if (drawingRef.current?.handleMouseDown(mx, my, e.shiftKey)) {
+      setContextMenu(null)  // close any open context menu
+      e.stopPropagation()   // prevent LineStylePopup's window mousedown handler from resetting selection
+      return
+    }
     const zone = getZone(mx, my)
     dragRef.current = { x: e.clientX, y: e.clientY, zone }
   }, [dragZoomMode, getZone])
@@ -341,13 +353,14 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMoveForCursor}
       onMouseUp={onMouseUp}
-      onMouseLeave={onMouseLeave}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { onMouseLeave(); setHovered(false) }}
       onDoubleClick={onDoubleClick}
       onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}
     >
       <canvas ref={canvasRef} width={width} height={height}
-        style={{ display: 'block', pointerEvents: 'none', willChange: 'transform' }} />
+        style={{ display: 'block', pointerEvents: 'none' }} />
       {/* OHLC label — double-click ticker to open symbol picker */}
       <div style={{
         position: 'absolute', top: 4, left: 8,
@@ -381,13 +394,59 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
           data={data} width={width} height={height} viewStart={viewport.viewStart}
           onInteraction={pauseAutoScroll} />
       )}
-      {!autoScrolling && (
+      {/* Play / Pause controls — bottom-right at axis intersection */}
+      {(hovered || !autoScrolling) && cs && (
         <div style={{
-          position: 'absolute', bottom: cs ? cs.pb + 4 : 44, right: cs ? cs.pr + 4 : 84,
-          color: '#555', fontSize: 9, fontFamily: 'monospace', pointerEvents: 'none',
-          background: '#1a1a1a', padding: '1px 4px', borderRadius: 2,
+          position: 'absolute',
+          bottom: cs.pb + 3,
+          right: cs.pr + 3,
+          display: 'flex',
+          gap: 3,
+          pointerEvents: 'all',
+          zIndex: 5,
         }}>
-          SCROLL PAUSED
+          {!autoScrolling && (
+            <div
+              style={{
+                background: theme.toolbarBackground,
+                border: `1px solid ${theme.toolbarBorder}`,
+                borderRadius: 3,
+                padding: '2px 6px',
+                fontSize: 9,
+                fontFamily: 'monospace',
+                color: '#f59e0b',
+                fontWeight: 'bold',
+                letterSpacing: 0.5,
+                cursor: 'default',
+                userSelect: 'none',
+              }}
+            >
+              PAUSED
+            </div>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); resetAutoScroll() }}
+            onMouseDown={e => e.stopPropagation()}
+            style={{
+              background: autoScrolling ? (theme.bull ?? '#26a69a') + '22' : theme.toolbarBackground,
+              border: `1px solid ${autoScrolling ? (theme.bull ?? '#26a69a') + '66' : theme.toolbarBorder}`,
+              borderRadius: 3,
+              padding: '2px 6px',
+              fontSize: 11,
+              fontFamily: 'monospace',
+              color: autoScrolling ? (theme.bull ?? '#26a69a') : theme.axisText,
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              lineHeight: 1,
+            }}
+            title={autoScrolling ? 'Auto-scroll active' : 'Resume auto-scroll'}
+          >
+            {autoScrolling ? '▶' : '▶'}
+            <span style={{ fontSize: 9, fontWeight: 'normal', letterSpacing: 0.3 }}>LIVE</span>
+          </button>
         </div>
       )}
       {engineState === 'recovering' && (
@@ -426,11 +485,26 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
           x={contextMenu.x}
           y={contextMenu.y}
           symbol={symbol}
-          paneId={paneConfig?.id ?? ''}
+          paneId={paneConfig?.id ?? paneId}
+          orderPaneId={paneId}
+          clickPrice={contextMenu.clickPrice}
+          orderEntryEnabled={orderEntryEnabled}
           onReset={() => { resetView(); resetYZoom() }}
           onDragZoom={() => setDragZoomMode(true)}
           onClose={() => setContextMenu(null)}
         />
+      )}
+      {orderEntryEnabled && cs && (
+        <OrderEntry
+          paneId={paneId}
+          symbol={symbol}
+          timeframe={timeframe}
+          cs={cs}
+          theme={theme}
+        />
+      )}
+      {orderEntryEnabled && cs && (
+        <OrderLevels paneId={paneId} cs={cs} theme={theme} onPauseScroll={pauseAutoScroll} />
       )}
     </div>
   )

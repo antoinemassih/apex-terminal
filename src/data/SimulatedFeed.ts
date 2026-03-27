@@ -5,7 +5,7 @@ import { TF_TO_INTERVAL } from './timeframes'
 export class SimulatedFeed implements Feed {
   private intervalId: number | null = null
   private subscriptions = new Map<string, { symbol: string; timeframe: string; simTime: number; tickCount: number }>()
-  private tickCb: ((symbol: string, tf: string, tick: TickData) => void) | null = null
+  private tickCbs = new Set<(symbol: string, tf: string, tick: TickData) => void>()
   private disconnectListeners = new Set<() => void>()
   private reconnectListeners = new Set<() => void>()
   private lastPrices = new Map<string, number>()
@@ -43,8 +43,8 @@ export class SimulatedFeed implements Feed {
   }
 
   onTick(cb: (symbol: string, tf: string, tick: TickData) => void): () => void {
-    this.tickCb = cb
-    return () => { this.tickCb = null }
+    this.tickCbs.add(cb)
+    return () => { this.tickCbs.delete(cb) }
   }
 
   onDisconnect(cb: () => void): () => void {
@@ -87,7 +87,7 @@ export class SimulatedFeed implements Feed {
       }
 
       this.lastPrices.set(key, price)
-      this.tickCb?.(sub.symbol, sub.timeframe, { price, volume, time: sub.simTime })
+      for (const cb of this.tickCbs) cb(sub.symbol, sub.timeframe, { price, volume, time: sub.simTime })
     }
   }
 }

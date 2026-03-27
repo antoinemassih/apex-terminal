@@ -1,24 +1,30 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
+import { useOrderStore } from '../store/orderStore'
 import { getTheme } from '../themes'
 
 interface Props {
   x: number
   y: number
   symbol: string
-  paneId: string
+  paneId: string       // chartStore pane id (pane-0 etc) — for indicator toggles
+  orderPaneId: string  // orderStore pane id (symbol:timeframe) — for order levels
+  clickPrice: number | null
+  orderEntryEnabled: boolean
   onReset: () => void
   onDragZoom: () => void
   onClose: () => void
 }
 
-export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, onClose }: Props) {
+export function ChartContextMenu({ x, y, symbol, paneId, orderPaneId, clickPrice, orderEntryEnabled, onReset, onDragZoom, onClose }: Props) {
   const themeName = useChartStore(s => s.theme)
   const t = getTheme(themeName)
   const toggleAllIndicators = useChartStore(s => s.toggleAllIndicators)
   const paneConfig = useChartStore(s => s.panes.find(p => p.id === paneId))
   const indicatorsVisible = (paneConfig?.visibleIndicators.length ?? 0) > 0
+
+  const { setLevel } = useOrderStore()
 
   const toggleHideDrawings = useDrawingStore(s => s.toggleHideDrawings)
   const drawingsHidden = useDrawingStore(s => s.drawingsHidden)
@@ -57,6 +63,8 @@ export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, on
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
+
+  const fmtClickPrice = (p: number) => p >= 10 ? p.toFixed(2) : p.toFixed(4)
 
   const menuBg = t.toolbarBackground
   const menuBorder = t.toolbarBorder
@@ -205,6 +213,54 @@ export function ChartContextMenu({ x, y, symbol, paneId, onReset, onDragZoom, on
         onClick={() => { removeAllInGroup('default'); onClose() }}>
         ✕ Delete All Temporary
       </button>
+
+      {orderEntryEnabled && clickPrice !== null && (
+        <>
+          <div style={sep} />
+          <div style={{
+            padding: '3px 14px 2px',
+            fontSize: 9, fontFamily: 'monospace',
+            color: accentColor, opacity: 0.7, letterSpacing: 0.8,
+          }}>
+            ORDERS @ {fmtClickPrice(clickPrice)}
+          </div>
+          <button style={item(t.bull ?? '#26a69a')}
+            onMouseEnter={onHover} onMouseLeave={e => onLeave(e, t.bull ?? '#26a69a')}
+            onClick={() => { setLevel(orderPaneId, { type: 'buy', price: clickPrice }); onClose() }}>
+            ▲ Set Buy Order
+          </button>
+          <button style={item(t.bear ?? '#ef5350')}
+            onMouseEnter={onHover} onMouseLeave={e => onLeave(e, t.bear ?? '#ef5350')}
+            onClick={() => { setLevel(orderPaneId, { type: 'sell', price: clickPrice }); onClose() }}>
+            ▼ Set Sell Order
+          </button>
+          <button style={item(textColor)}
+            onMouseEnter={onHover} onMouseLeave={e => onLeave(e, textColor)}
+            onClick={() => { setLevel(orderPaneId, { type: 'stop', price: clickPrice }); onClose() }}>
+            ⊗ Set Stop Loss
+          </button>
+          <button style={item('#a78bfa')}
+            onMouseEnter={onHover} onMouseLeave={e => onLeave(e, '#a78bfa')}
+            onClick={() => {
+              const offset = Math.max(0.01, clickPrice * 0.01)
+              setLevel(orderPaneId, { type: 'oco_target', price: Math.round((clickPrice + offset) * 100) / 100 })
+              setLevel(orderPaneId, { type: 'oco_stop',   price: Math.round((clickPrice - offset) * 100) / 100 })
+              onClose()
+            }}>
+            ⇅ Set OCO Bracket
+          </button>
+          <button style={item(t.bull ?? '#26a69a')}
+            onMouseEnter={onHover} onMouseLeave={e => onLeave(e, t.bull ?? '#26a69a')}
+            onClick={() => {
+              const target = Math.round(clickPrice * 1.02 * 100) / 100
+              setLevel(orderPaneId, { type: 'trigger_buy',  price: clickPrice })
+              setLevel(orderPaneId, { type: 'trigger_sell', price: target })
+              onClose()
+            }}>
+            ⟲ Set Trigger Order
+          </button>
+        </>
+      )}
     </div>
   )
 }
