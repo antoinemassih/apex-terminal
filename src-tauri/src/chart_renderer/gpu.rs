@@ -9,6 +9,13 @@ use winit::{
     dpi::PhysicalSize,
 };
 
+use glyphon::{
+    FontSystem, SwashCache, TextAtlas, TextRenderer as GlyphonRenderer,
+    Cache as GlyphonCache, Viewport as GlyphonViewport,
+    TextArea, TextBounds, Buffer as TextBuffer, Metrics, Attrs, Family, Color as GColor,
+    Shaping, Resolution,
+};
+
 use super::{Bar, CandleUniforms, VolumeUniforms, GridVertex, ChartCommand};
 
 const CANDLE_SHADER: &str = include_str!("../../../src/renderer/shaders/candles_gpu.wgsl");
@@ -87,6 +94,13 @@ struct Gpu {
     overlay_bgl: wgpu::BindGroupLayout,
     overlay_cpu: Vec<f32>,
     overlay_count: u32,
+
+    // Text rendering (glyphon)
+    font_system: FontSystem,
+    swash_cache: SwashCache,
+    text_atlas: TextAtlas,
+    text_renderer: GlyphonRenderer,
+    glyphon_viewport: GlyphonViewport,
 
     mouse: Mouse,
     dirty: bool,
@@ -231,6 +245,14 @@ impl Gpu {
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: overlay_buf.as_entire_binding() }],
         });
 
+        // Text rendering
+        let font_system = FontSystem::new();
+        let swash_cache = SwashCache::new();
+        let glyphon_cache = GlyphonCache::new(&device);
+        let mut text_atlas = TextAtlas::new(&device, &queue, &glyphon_cache, fmt);
+        let text_renderer = GlyphonRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
+        let glyphon_viewport = GlyphonViewport::new(&device, &glyphon_cache);
+
         Self {
             device, queue, surface, config,
             candle_pl, candle_ubuf, volume_pl, volume_ubuf, grid_pl, grid_vbuf,
@@ -238,6 +260,7 @@ impl Gpu {
             overlay_pl, overlay_buf, overlay_bg, overlay_bgl,
             overlay_cpu: vec![0.0; MAX_OVERLAY_LINES * OVERLAY_FLOATS_PER_LINE],
             overlay_count: 0,
+            font_system, swash_cache, text_atlas, text_renderer, glyphon_viewport,
             bars: Vec::new(), bar_count: 0, bar_cap: cap,
             vs: 0.0, vc: 200, price_lock: None,
             bg_color: [0.05, 0.05, 0.11, 1.0],
@@ -589,6 +612,92 @@ impl Gpu {
                 pass.draw(0..6, 0..self.overlay_count);
             }
         }
+
+        // ── Text rendering (price labels, OHLC, crosshair price) ──────────────
+        self.glyphon_viewport.update(&self.queue, Resolution { width: w as u32, height: h as u32 });
+
+        let mono = Attrs::new().family(Family::Monospace);
+        let dim_color = GColor::rgba(160, 160, 170, 200);
+        let bright_color = GColor::rgba(255, 255, 255, 255);
+
+        // Build text buffers for all labels
+        let mut text_buffers: Vec<(TextBuffer, f32, f32, GColor)> = Vec::new();
+
+        // Price labels on right axis
+        let range = max_p - min_p;
+        let raw_step = range / 8.0;
+        let mag_val = 10.0_f32.powf(raw_step.log10().floor());
+        let nice = [1.0, 2.0, 2.5, 5.0, 10.0];
+        let price_step = nice.iter().map(|&s| s * mag_val).find(|&s| s >= raw_step).unwrap_or(raw_step);
+        let mut p = (min_p / price_step).ceil() * price_step;
+        while p <= max_p {
+            let py = PT + (max_p - p) / (max_p - min_p) * ch;
+            if py >= PT && py <= h - PB {
+                let dec = if p >= 10.0 { 2usize } else { 4 };
+                let txt = format!("{:.1$}", p, dec);
+                let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
+                buf.set_size(&mut self.font_system, Some(PR - 8.0), Some(14.0));
+                buf.set_text(&mut self.font_system, &txt, mono.color(dim_color), Shaping::Basic);
+                buf.shape_until_scroll(&mut self.font_system, false);
+                text_buffers.push((buf, w - PR + 4.0, py - 6.0, dim_color));
+            }
+            p += price_step;
+        }
+
+        // Crosshair price label
+        let mx = self.mouse.cx as f32;
+        let my = self.mouse.cy as f32;
+        if !self.mouse.dragging && mx >= 0.0 && mx < w - PR && my >= PT && my < h - PB {
+            let ch_price = min_p + (max_p - min_p) * (1.0 - (my - PT) / ch);
+            let dec = if ch_price >= 10.0 { 2usize } else { 4 };
+            let txt = format!("{:.1$}", ch_price, dec);
+            let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
+            buf.set_size(&mut self.font_system, Some(PR - 8.0), Some(14.0));
+            buf.set_text(&mut self.font_system, &txt, mono.color(bright_color), Shaping::Basic);
+            buf.shape_until_scroll(&mut self.font_system, false);
+            text_buffers.push((buf, w - PR + 4.0, my - 6.0, bright_color));
+        }
+
+        // OHLC label (top-left)
+        if dc > 0 {
+            if let Some(bar) = self.bars.get((end - 1) as usize) {
+                let c = if bar.close >= bar.open { GColor::rgba(46, 204, 113, 220) } else { GColor::rgba(231, 76, 60, 220) };
+                let txt = format!("O {:.2}  H {:.2}  L {:.2}  C {:.2}", bar.open, bar.high, bar.low, bar.close);
+                let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
+                buf.set_size(&mut self.font_system, Some(500.0), Some(14.0));
+                buf.set_text(&mut self.font_system, &txt, mono.color(c), Shaping::Basic);
+                buf.shape_until_scroll(&mut self.font_system, false);
+                text_buffers.push((buf, 8.0, 4.0, c));
+            }
+        }
+
+        // Build TextArea references
+        let text_areas: Vec<TextArea> = text_buffers.iter().map(|(buf, left, top, color)| {
+            TextArea {
+                buffer: buf, left: *left, top: *top, scale: 1.0,
+                bounds: TextBounds { left: 0, top: 0, right: w as i32, bottom: h as i32 },
+                default_color: *color,
+                custom_glyphs: &[],
+            }
+        }).collect();
+
+        let _ = self.text_renderer.prepare(
+            &self.device, &self.queue, &mut self.font_system, &mut self.text_atlas,
+            &self.glyphon_viewport, text_areas, &mut self.swash_cache,
+        );
+
+        {
+            let mut text_pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("text"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view, resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+            });
+            let _ = self.text_renderer.render(&self.text_atlas, &self.glyphon_viewport, &mut text_pass);
+        }
+
         self.queue.submit(std::iter::once(enc.finish()));
         output.present();
     }
