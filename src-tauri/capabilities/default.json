@@ -14,7 +14,6 @@
     "core:window:default",
     "core:webview:allow-create-webview-window",
     "shell:allow-execute",
-    "shell:allow-kill",
-    "ipc:default"
+    "shell:allow-kill"
   ]
 }
