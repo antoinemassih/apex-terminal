@@ -18,6 +18,23 @@ pub use types::*;
 use std::sync::mpsc;
 use std::thread;
 
+/// Drawing on the chart
+#[derive(Debug, Clone)]
+pub struct Drawing {
+    pub id: String,
+    pub kind: DrawingKind,
+    pub color: [f32; 4],
+    pub width: f32,
+    pub dashed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum DrawingKind {
+    HLine { price: f32 },
+    TrendLine { price0: f32, bar0: f32, price1: f32, bar1: f32 },
+    HZone { price0: f32, price1: f32 },
+}
+
 /// Commands sent from Tauri/WebView to the native chart renderer
 #[derive(Debug, Clone)]
 pub enum ChartCommand {
@@ -28,11 +45,12 @@ pub enum ChartCommand {
         bars: Vec<Bar>,
         timestamps: Vec<i64>,
     },
-    /// Append a single new bar
+    /// Append a single new bar + timestamp
     AppendBar {
         symbol: String,
         timeframe: String,
         bar: Bar,
+        timestamp: i64,
     },
     /// Update the last bar (tick)
     UpdateLastBar {
@@ -53,6 +71,12 @@ pub enum ChartCommand {
         bull_color: [f32; 4],
         bear_color: [f32; 4],
     },
+    /// Add/update a drawing
+    SetDrawing(Drawing),
+    /// Remove a drawing
+    RemoveDrawing { id: String },
+    /// Clear all drawings
+    ClearDrawings,
     /// Resize the window
     Resize { width: u32, height: u32 },
     /// Close the renderer

@@ -16,7 +16,7 @@ use glyphon::{
     Shaping, Resolution,
 };
 
-use super::{Bar, CandleUniforms, VolumeUniforms, LineUniforms, GridVertex, ChartCommand};
+use super::{Bar, CandleUniforms, VolumeUniforms, LineUniforms, GridVertex, ChartCommand, Drawing, DrawingKind};
 
 const CANDLE_SHADER: &str = include_str!("../../../src/renderer/shaders/candles_gpu.wgsl");
 const VOLUME_SHADER: &str = include_str!("../../../src/renderer/shaders/volume_gpu.wgsl");
@@ -71,10 +71,11 @@ struct Mouse {
     last_y: f64,
     cx: f64,
     cy: f64,
+    right_click: Option<(f32, f32)>, // right-click position for context menu
 }
 
 impl Mouse {
-    fn new() -> Self { Self { dragging: false, zone: DragZone::Chart, last_x: 0.0, last_y: 0.0, cx: 0.0, cy: 0.0 } }
+    fn new() -> Self { Self { dragging: false, zone: DragZone::Chart, last_x: 0.0, last_y: 0.0, cx: 0.0, cy: 0.0, right_click: None } }
     fn detect_zone(&self, w: f32, h: f32) -> DragZone {
         let (x, y) = (self.cx as f32, self.cy as f32);
         if x >= w - PR && y < h - PB { DragZone::YAxis }
@@ -144,6 +145,13 @@ struct Gpu {
     text_atlas: TextAtlas,
     text_renderer: GlyphonRenderer,
     glyphon_viewport: GlyphonViewport,
+
+    // Drawings
+    drawings: Vec<Drawing>,
+
+    // Auto-scroll
+    auto_scroll: bool,
+    interaction_time: std::time::Instant,
 
     mouse: Mouse,
     dirty: bool,
@@ -312,6 +320,9 @@ impl Gpu {
             vs: 0.0, vc: 200, price_lock: None,
             bg_color: [0.05, 0.05, 0.11, 1.0],
             bull: [0.15, 0.65, 0.6, 1.0], bear: [0.94, 0.33, 0.31, 1.0],
+            drawings: Vec::new(),
+            auto_scroll: true,
+            interaction_time: std::time::Instant::now(),
             mouse: Mouse::new(), dirty: true,
             grid_vert_count: 0, grid_cpu: vec![GridVertex { pos: [0.0; 2], color: [0.0; 4] }; MAX_GRID_VERTS],
         }
@@ -404,20 +415,28 @@ impl Gpu {
                 self.compute_indicators();
                 self.dirty = true;
             }
-            ChartCommand::AppendBar { bar, .. } => {
+            ChartCommand::AppendBar { bar, timestamp, .. } => {
                 self.bars.push(bar);
+                self.timestamps.push(timestamp);
                 self.bar_count = self.bars.len() as u32;
                 self.ensure_bar_buf();
                 self.queue.write_buffer(&self.bar_buf, (self.bar_count as u64 - 1) * 24, bytemuck::bytes_of(&bar));
-                // Auto-scroll if near end
-                let max_vs = self.bar_count as f32 - self.vc as f32 + RIGHT_MARGIN_BARS as f32;
-                if self.vs >= max_vs - 2.0 { self.vs = max_vs.max(0.0); }
+                // Auto-scroll if enabled and near end
+                if self.auto_scroll {
+                    let max_vs = self.bar_count as f32 - self.vc as f32 + RIGHT_MARGIN_BARS as f32;
+                    self.vs = max_vs.max(0.0);
+                }
                 self.dirty = true;
             }
             ChartCommand::UpdateLastBar { bar, .. } => {
                 if let Some(last) = self.bars.last_mut() {
                     *last = bar;
                     self.queue.write_buffer(&self.bar_buf, (self.bar_count as u64 - 1) * 24, bytemuck::bytes_of(&bar));
+                    // Auto-scroll keeps viewport at end
+                    if self.auto_scroll {
+                        let max_vs = self.bar_count as f32 - self.vc as f32 + RIGHT_MARGIN_BARS as f32;
+                        self.vs = max_vs.max(0.0);
+                    }
                     self.dirty = true;
                 }
             }
@@ -426,6 +445,19 @@ impl Gpu {
             }
             ChartCommand::SetTheme { background, bull_color, bear_color } => {
                 self.bg_color = background; self.bull = bull_color; self.bear = bear_color; self.dirty = true;
+            }
+            ChartCommand::SetDrawing(d) => {
+                self.drawings.retain(|x| x.id != d.id);
+                self.drawings.push(d);
+                self.dirty = true;
+            }
+            ChartCommand::RemoveDrawing { id } => {
+                self.drawings.retain(|x| x.id != id);
+                self.dirty = true;
+            }
+            ChartCommand::ClearDrawings => {
+                self.drawings.clear();
+                self.dirty = true;
             }
             ChartCommand::Resize { width, height } => self.resize(width, height),
             ChartCommand::Shutdown => {}
@@ -441,6 +473,9 @@ impl Gpu {
         self.mouse.zone = self.mouse.detect_zone(w, h);
         self.mouse.last_x = self.mouse.cx;
         self.mouse.last_y = self.mouse.cy;
+        // Pause auto-scroll on any interaction
+        self.auto_scroll = false;
+        self.interaction_time = std::time::Instant::now();
     }
 
     fn mouse_up(&mut self) { self.mouse.dragging = false; }
@@ -609,6 +644,78 @@ impl Gpu {
                 self.overlay_cpu[o+8] = dash_v; self.overlay_cpu[o+9] = gap_v;
                 self.overlay_cpu[o+10] = lw_v; self.overlay_cpu[o+11] = 0.0;
                 n += OVERLAY_FLOATS_PER_LINE;
+            }
+        }
+
+        // Drawings (hlines, trendlines, hzones)
+        let cw = w - PR;
+        let ch = h - PT - PB;
+        let (min_p, max_p) = self.price_range();
+        let price_to_clip_y = |p: f32| -> f32 {
+            1.0 - 2.0 * (PT + (max_p - p) / (max_p - min_p) * ch) / h
+        };
+        let bar_to_clip_x = |bar_idx: f32| -> f32 {
+            let step = cw / (self.vc + RIGHT_MARGIN_BARS) as f32;
+            let view_idx = bar_idx - self.vs;
+            let px = view_idx * step + step * 0.5;
+            (px / w) * 2.0 - 1.0
+        };
+        let clip_left = -1.0_f32;
+        let clip_right = (cw / w) * 2.0 - 1.0;
+        let lw_draw_h = 1.5 / h * 2.0;
+        let lw_draw_v = 1.5 / w * 2.0;
+
+        for d in &self.drawings {
+            if n + OVERLAY_FLOATS_PER_LINE * 2 > self.overlay_cpu.len() { break; }
+            let dash = if d.dashed { 8.0 / w * 2.0 } else { 0.0 };
+            let gap = if d.dashed { 4.0 / w * 2.0 } else { 0.0 };
+
+            match &d.kind {
+                DrawingKind::HLine { price } => {
+                    let cy = price_to_clip_y(*price);
+                    if cy > -1.0 && cy < 1.0 {
+                        let o = n;
+                        self.overlay_cpu[o] = clip_left; self.overlay_cpu[o+1] = cy;
+                        self.overlay_cpu[o+2] = clip_right; self.overlay_cpu[o+3] = cy;
+                        self.overlay_cpu[o+4] = d.color[0]; self.overlay_cpu[o+5] = d.color[1];
+                        self.overlay_cpu[o+6] = d.color[2]; self.overlay_cpu[o+7] = d.color[3];
+                        self.overlay_cpu[o+8] = dash; self.overlay_cpu[o+9] = gap;
+                        self.overlay_cpu[o+10] = lw_draw_h * d.width; self.overlay_cpu[o+11] = 0.0;
+                        n += OVERLAY_FLOATS_PER_LINE;
+                    }
+                }
+                DrawingKind::TrendLine { price0, bar0, price1, bar1 } => {
+                    let x0 = bar_to_clip_x(*bar0);
+                    let y0 = price_to_clip_y(*price0);
+                    let x1 = bar_to_clip_x(*bar1);
+                    let y1 = price_to_clip_y(*price1);
+                    let o = n;
+                    // Use average of h and v width for diagonal lines
+                    let lw = (lw_draw_h + lw_draw_v) / 2.0 * d.width;
+                    self.overlay_cpu[o] = x0; self.overlay_cpu[o+1] = y0;
+                    self.overlay_cpu[o+2] = x1; self.overlay_cpu[o+3] = y1;
+                    self.overlay_cpu[o+4] = d.color[0]; self.overlay_cpu[o+5] = d.color[1];
+                    self.overlay_cpu[o+6] = d.color[2]; self.overlay_cpu[o+7] = d.color[3];
+                    self.overlay_cpu[o+8] = dash; self.overlay_cpu[o+9] = gap;
+                    self.overlay_cpu[o+10] = lw; self.overlay_cpu[o+11] = 0.0;
+                    n += OVERLAY_FLOATS_PER_LINE;
+                }
+                DrawingKind::HZone { price0, price1 } => {
+                    let cy0 = price_to_clip_y(*price0);
+                    let cy1 = price_to_clip_y(*price1);
+                    // Two border lines
+                    for cy in [cy0, cy1] {
+                        if n + OVERLAY_FLOATS_PER_LINE > self.overlay_cpu.len() { break; }
+                        let o = n;
+                        self.overlay_cpu[o] = clip_left; self.overlay_cpu[o+1] = cy;
+                        self.overlay_cpu[o+2] = clip_right; self.overlay_cpu[o+3] = cy;
+                        self.overlay_cpu[o+4] = d.color[0]; self.overlay_cpu[o+5] = d.color[1];
+                        self.overlay_cpu[o+6] = d.color[2]; self.overlay_cpu[o+7] = d.color[3] * 0.5;
+                        self.overlay_cpu[o+8] = dash; self.overlay_cpu[o+9] = gap;
+                        self.overlay_cpu[o+10] = lw_draw_h * d.width; self.overlay_cpu[o+11] = 0.0;
+                        n += OVERLAY_FLOATS_PER_LINE;
+                    }
+                }
             }
         }
 
@@ -845,6 +952,22 @@ impl Gpu {
             }
         }
 
+        // Context menu (right-click)
+        if let Some((cmx, cmy)) = self.mouse.right_click {
+            let menu_items = ["Set HLine", "Reset View", "Clear Drawings"];
+            let menu_w = 140.0_f32;
+            let item_h = 20.0_f32;
+            let menu_color = GColor::rgba(220, 220, 230, 255);
+
+            for (i, label) in menu_items.iter().enumerate() {
+                let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(12.0, 14.0));
+                buf.set_size(&mut self.font_system, Some(menu_w), Some(item_h));
+                buf.set_text(&mut self.font_system, label, mono.color(menu_color), Shaping::Basic);
+                buf.shape_until_scroll(&mut self.font_system, false);
+                text_buffers.push((buf, cmx + 8.0, cmy + i as f32 * item_h + 4.0, menu_color));
+            }
+        }
+
         // Build TextArea references
         let text_areas: Vec<TextArea> = text_buffers.iter().map(|(buf, left, top, color)| {
             TextArea {
@@ -911,6 +1034,47 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => gpu.resize(s.width, s.height),
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+                // Check if clicking a context menu item
+                if let Some((cmx, cmy)) = gpu.mouse.right_click {
+                    let mx = gpu.mouse.cx as f32;
+                    let my = gpu.mouse.cy as f32;
+                    let menu_w = 140.0_f32;
+                    let item_h = 20.0_f32;
+                    let items = 3;
+                    if mx >= cmx && mx < cmx + menu_w && my >= cmy && my < cmy + items as f32 * item_h {
+                        let idx = ((my - cmy) / item_h) as usize;
+                        match idx {
+                            0 => {
+                                // Set HLine at right-click price
+                                let (min_p, max_p) = gpu.price_range();
+                                let w = gpu.config.width as f32;
+                                let h = gpu.config.height as f32;
+                                let ch = h - PT - PB;
+                                let price = min_p + (max_p - min_p) * (1.0 - (cmy - PT) / ch);
+                                gpu.drawings.push(Drawing {
+                                    id: format!("hline-{}", gpu.drawings.len()),
+                                    kind: DrawingKind::HLine { price },
+                                    color: [0.4, 0.7, 1.0, 0.8],
+                                    width: 1.0,
+                                    dashed: true,
+                                });
+                            }
+                            1 => {
+                                // Reset view
+                                gpu.vs = (gpu.bar_count as f32 - gpu.vc as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
+                                gpu.price_lock = None;
+                                gpu.auto_scroll = true;
+                            }
+                            2 => gpu.drawings.clear(), // Clear drawings
+                            _ => {}
+                        }
+                        gpu.mouse.right_click = None;
+                        gpu.dirty = true;
+                    } else {
+                        gpu.mouse.right_click = None;
+                        gpu.dirty = true;
+                    }
+                }
                 gpu.mouse_down();
                 // Set grab cursor during drag
                 if let Some(win) = &self.win {
@@ -924,7 +1088,24 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => {
                 gpu.mouse_up();
+                // Close context menu on left click
+                gpu.mouse.right_click = None;
                 if let Some(win) = &self.win { win.set_cursor(winit::window::CursorIcon::Crosshair); }
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Right, .. } => {
+                let mx = gpu.mouse.cx as f32;
+                let my = gpu.mouse.cy as f32;
+                let w = gpu.config.width as f32;
+                let h = gpu.config.height as f32;
+                if mx >= 0.0 && mx < w - PR && my >= PT && my < h - PB {
+                    // Right-click in chart area — toggle context menu
+                    if gpu.mouse.right_click.is_some() {
+                        gpu.mouse.right_click = None;
+                    } else {
+                        gpu.mouse.right_click = Some((mx, my));
+                    }
+                    gpu.dirty = true;
+                }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 gpu.mouse_move(position.x, position.y);
@@ -973,6 +1154,17 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        // Resume auto-scroll after 5 seconds of no interaction
+        if let Some(gpu) = &mut self.gpu {
+            if !gpu.auto_scroll && gpu.interaction_time.elapsed().as_secs() >= 5 {
+                gpu.auto_scroll = true;
+                gpu.price_lock = None;
+                // Snap to end
+                let max_vs = gpu.bar_count as f32 - gpu.vc as f32 + RIGHT_MARGIN_BARS as f32;
+                gpu.vs = max_vs.max(0.0);
+                gpu.dirty = true;
+            }
+        }
         if let Some(w) = &self.win { w.request_redraw(); }
     }
 }
