@@ -30,20 +30,22 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   const autoScrollingRef = useRef(true)
   const [dataVersion, setDataVersion] = useState(0)
 
-  // Single rAF handle for ALL interaction flushes (pan + zoom combined)
+  // Dirty flags — only flush values that actually changed
+  const dirtyRef = useRef({ vs: false, vc: false, po: false })
   const flushRafRef = useRef<number | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const autoScrollVersion = useChartStore(s => s.autoScrollVersion)
 
-  // ── Flush: batch all ref changes into one React render per frame ────────────
+  // ── Flush: batch dirty ref changes into one React render per frame ──────────
   const scheduleFlush = useCallback(() => {
-    if (flushRafRef.current) return // already scheduled
+    if (flushRafRef.current) return
     flushRafRef.current = requestAnimationFrame(() => {
       flushRafRef.current = null
-      setViewStart(viewStartRef.current)
-      setViewCount(viewCountRef.current)
-      setPriceOverride(priceOverrideRef.current)
+      const d = dirtyRef.current
+      if (d.vs) { setViewStart(viewStartRef.current); d.vs = false }
+      if (d.vc) { setViewCount(viewCountRef.current); d.vc = false }
+      if (d.po) { setPriceOverride(priceOverrideRef.current); d.po = false }
     })
   }, [])
 
@@ -210,6 +212,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     pauseAutoScroll()
     const maxVS = data.length - viewCountRef.current + FUTURE_PAN_BARS
     viewStartRef.current = Math.max(0, Math.min(maxVS, viewStartRef.current - barDelta))
+    dirtyRef.current.vs = true
     scheduleFlush()
   }, [pauseAutoScroll, scheduleFlush, symbol, timeframe, width])
 
@@ -220,24 +223,25 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     const oldVc = viewCountRef.current
     const newVc = Math.max(20, Math.min(data.length, Math.round(oldVc * factor)))
     if (newVc === oldVc) return
-    // Center the zoom around current viewport midpoint
     const delta = Math.round((oldVc - newVc) / 2)
     viewCountRef.current = newVc
     viewStartRef.current = Math.max(0, Math.min(
       data.length - newVc + RIGHT_MARGIN_BARS,
       viewStartRef.current + delta
     ))
+    dirtyRef.current.vs = true
+    dirtyRef.current.vc = true
     scheduleFlush()
   }, [pauseAutoScroll, scheduleFlush, symbol, timeframe])
 
   const zoomY = useCallback((factor: number, anchorPrice?: number) => {
-    // Use cached cs ref — no recomputation needed, just read current price range
     const cur = lastCsRef.current
     if (!cur) return
     pauseAutoScroll()
     const center = anchorPrice ?? (cur.minPrice + cur.maxPrice) / 2
     const halfRange = ((cur.maxPrice - cur.minPrice) / 2) * factor
     priceOverrideRef.current = { min: center - halfRange, max: center + halfRange }
+    dirtyRef.current.po = true
     scheduleFlush()
   }, [pauseAutoScroll, scheduleFlush])
 
@@ -251,8 +255,9 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
       min: cur.minPrice + priceDelta,
       max: cur.maxPrice + priceDelta,
     }
+    dirtyRef.current.po = true
     scheduleFlush()
-  }, [pauseAutoScroll, scheduleFlush, computeCs])
+  }, [pauseAutoScroll, scheduleFlush])
 
   const resetYZoom = useCallback(() => {
     priceOverrideRef.current = null
@@ -295,6 +300,9 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     viewStartRef.current = newStart
     viewCountRef.current = newCount
     priceOverrideRef.current = { min: Math.min(priceHigh, priceLow), max: Math.max(priceHigh, priceLow) }
+    dirtyRef.current.vs = true
+    dirtyRef.current.vc = true
+    dirtyRef.current.po = true
     scheduleFlush()
   }, [pauseAutoScroll, scheduleFlush])
 

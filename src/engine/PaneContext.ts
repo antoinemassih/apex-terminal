@@ -2,6 +2,8 @@ import { CandleRenderer, LineRenderer, VolumeRenderer } from '../renderer'
 import { GpuBarBuffer } from '../renderer/GpuBarBuffer'
 import { GpuLineBuffer } from '../renderer/GpuLineBuffer'
 import { PriceRangeCompute } from '../renderer/PriceRangeCompute'
+import { OverlayRenderer } from '../renderer/OverlayRenderer'
+import type { OverlayLine } from '../renderer/OverlayRenderer'
 import type { GPUContext } from './types'
 import { CoordSystem } from './types'
 import type { ColumnStore } from '../data/columns'
@@ -45,6 +47,8 @@ export class PaneContext {
   private indicatorOutputs: IndicatorOutput[] = []
 
   private priceRangeCompute: PriceRangeCompute
+  private overlay: OverlayRenderer
+  private overlayLines: OverlayLine[] = []
   private showVolume = true
   private theme: ChartTheme = getTheme('midnight')
   private resizeTimer: number | null = null
@@ -69,6 +73,7 @@ export class PaneContext {
     this.candle            = new CandleRenderer(ctx, this.gpuBars)
     this.volume            = new VolumeRenderer(ctx, this.gpuBars)
     this.priceRangeCompute = new PriceRangeCompute(ctx)
+    this.overlay           = new OverlayRenderer(ctx)
   }
 
   /** GPU-computed price range from last frame (1-frame delay). Null until first result. */
@@ -79,6 +84,14 @@ export class PaneContext {
   setViewport(v: { viewStart: number; viewCount: number; cs: CoordSystem }): void {
     if (this.destroyed) return
     this.viewport = v
+    this.dirty = true
+    this.markDirtyFn()
+  }
+
+  /** Set overlay lines (crosshair, drawings, order levels). Rendered on GPU in same pass. */
+  setOverlayLines(lines: OverlayLine[]): void {
+    if (this.destroyed) return
+    this.overlayLines = lines
     this.dirty = true
     this.markDirtyFn()
   }
@@ -212,6 +225,12 @@ export class PaneContext {
         this.lineRenderers[i].upload(cs, viewStart, viewCount, out.color, out.width, this.data.length)
         this.lineRenderers[i].render(pass)
       }
+    }
+
+    // Overlay lines (crosshair, drawings) — rendered last (on top of everything)
+    if (this.overlayLines.length > 0) {
+      this.overlay.upload(this.overlayLines)
+      this.overlay.render(pass)
     }
 
     pass.end()
