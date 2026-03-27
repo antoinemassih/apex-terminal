@@ -15,57 +15,49 @@ use std::time::Duration;
 struct NativeChart(Mutex<Option<chart_renderer::ChartRendererHandle>>);
 
 #[tauri::command]
-async fn open_native_chart(symbol: String, timeframe: String) -> Result<(), String> {
+fn open_native_chart(symbol: String, timeframe: String) -> Result<(), String> {
     eprintln!("[native-chart] Opening for {} {}", symbol, timeframe);
-    let handle = chart_renderer::spawn(&format!("{} — {}", symbol, timeframe), 1400, 900);
 
-    // Generate test data immediately so the window shows something right away
-    let mut test_bars = Vec::new();
-    let mut price = 180.0_f32;
-    let mut seed: u64 = 12345;
-    for _ in 0..1000 {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let r1 = (seed >> 33) as f32 / (u32::MAX as f32);
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let r2 = (seed >> 33) as f32 / (u32::MAX as f32);
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let r3 = (seed >> 33) as f32 / (u32::MAX as f32);
-        let change = (r1 - 0.48) * 3.0;
-        let open = price;
-        let close = price + change;
-        let high = open.max(close) + r2 * 1.5;
-        let low = open.min(close) - r3 * 1.5;
-        let volume = (r1 * 500.0 + 200.0) * 1000.0;
-        test_bars.push(chart_renderer::Bar { open, high, low, close, volume, _pad: 0.0 });
-        price = close.max(50.0);
-    }
-    handle.send(chart_renderer::ChartCommand::LoadBars {
-        symbol: symbol.clone(), timeframe: timeframe.clone(), bars: test_bars,
-    });
+    // Everything runs on a detached thread — command returns instantly
+    std::thread::spawn(move || {
+        eprintln!("[native-chart] Thread started");
 
-    // Try to load real data in background — replaces test data if successful
-    let handle_clone_sym = symbol.clone();
-    let handle_clone_tf = timeframe.clone();
-    tauri::async_runtime::spawn(async move {
-        let interval_map: std::collections::HashMap<&str, (&str, &str)> = [
-            ("1m", ("1m", "1d")), ("2m", ("2m", "5d")), ("5m", ("5m", "5d")),
-            ("15m", ("15m", "1mo")), ("30m", ("30m", "1mo")), ("1h", ("60m", "3mo")),
-            ("4h", ("60m", "6mo")), ("1d", ("1d", "1y")), ("1wk", ("1wk", "5y")),
-        ].into_iter().collect();
-        let (interval, period) = interval_map.get(handle_clone_tf.as_str()).copied().unwrap_or(("5m", "5d"));
-        let bars = fetch_bars_for_native(&handle_clone_sym, interval, period).await;
-        if !bars.is_empty() {
-            let gpu_bars: Vec<chart_renderer::Bar> = bars.iter().map(|b| chart_renderer::Bar {
-                open: b.open as f32, high: b.high as f32, low: b.low as f32,
-                close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
-            }).collect();
-            eprintln!("[native-chart] Loaded {} real bars", gpu_bars.len());
-            // handle is forgotten — can't send here. In production, store handle in state.
+        // Generate test data
+        let mut bars = Vec::new();
+        let mut price = 180.0_f32;
+        let mut seed: u64 = 12345;
+        for _ in 0..1000 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let r1 = (seed >> 33) as f32 / (u32::MAX as f32);
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let r2 = (seed >> 33) as f32 / (u32::MAX as f32);
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let r3 = (seed >> 33) as f32 / (u32::MAX as f32);
+            let open = price;
+            let close = price + (r1 - 0.48) * 3.0;
+            let high = open.max(close) + r2 * 1.5;
+            let low = open.min(close) - r3 * 1.5;
+            let volume = (r1 * 500.0 + 200.0) * 1000.0;
+            bars.push(chart_renderer::Bar { open, high, low, close, volume, _pad: 0.0 });
+            price = close.max(50.0);
         }
+
+        // Create channel and send data before starting the event loop
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = tx.send(chart_renderer::ChartCommand::LoadBars {
+            symbol, timeframe, bars,
+        });
+
+        eprintln!("[native-chart] Starting render loop");
+        // This blocks the thread (winit event loop) — that's intentional
+        chart_renderer::gpu::run_render_loop(
+            &format!("Apex Chart — Native GPU"),
+            1400, 900, rx,
+        );
+        eprintln!("[native-chart] Render loop exited");
     });
 
-    std::mem::forget(handle);
-    eprintln!("[native-chart] Window ready");
+    eprintln!("[native-chart] Command returning");
     Ok(())
 }
 

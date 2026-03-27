@@ -10,7 +10,7 @@
 //! - ChartCommand enum sent via crossbeam channel from Tauri commands
 //! - Render thread processes commands between frames (non-blocking)
 
-mod gpu;
+pub mod gpu;
 mod types;
 
 pub use types::*;
