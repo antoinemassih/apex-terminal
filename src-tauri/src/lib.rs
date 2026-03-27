@@ -20,29 +20,74 @@ async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, 
 
     // Everything runs on a detached thread — command returns instantly
     std::thread::spawn(move || {
-        eprintln!("[native-chart] Thread started");
+        eprintln!("[native-chart] Thread started, fetching data...");
 
-        // Generate test data
-        let mut bars = Vec::new();
-        let mut price = 180.0_f32;
-        let mut seed: u64 = 12345;
-        for _ in 0..1000 {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            let r1 = (seed >> 33) as f32 / (u32::MAX as f32);
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            let r2 = (seed >> 33) as f32 / (u32::MAX as f32);
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            let r3 = (seed >> 33) as f32 / (u32::MAX as f32);
-            let open = price;
-            let close = price + (r1 - 0.48) * 3.0;
-            let high = open.max(close) + r2 * 1.5;
-            let low = open.min(close) - r3 * 1.5;
-            let volume = (r1 * 500.0 + 200.0) * 1000.0;
-            bars.push(chart_renderer::Bar { open, high, low, close, volume, _pad: 0.0 });
-            price = close.max(50.0);
-        }
+        // Map timeframe to yfinance interval/period
+        let (interval, period) = match timeframe.as_str() {
+            "1m" => ("1m", "1d"), "2m" => ("2m", "5d"), "5m" => ("5m", "5d"),
+            "15m" => ("15m", "1mo"), "30m" => ("30m", "1mo"), "1h" => ("60m", "3mo"),
+            "4h" => ("60m", "6mo"), "1d" => ("1d", "1y"), "1wk" => ("1wk", "5y"),
+            _ => ("5m", "5d"),
+        };
 
-        // Create channel and send data before starting the event loop
+        // Blocking HTTP fetch — try OCOCO then yfinance
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build().unwrap();
+
+        let bars: Vec<chart_renderer::Bar> = (|| -> Option<Vec<chart_renderer::Bar>> {
+            // Try OCOCO/InfluxDB
+            let ococo_url = format!(
+                "http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-365d",
+                symbol, interval
+            );
+            if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(3)).send() {
+                if let Ok(raw) = resp.json::<Vec<data::Bar>>() {
+                    if raw.len() > 10 {
+                        eprintln!("[native-chart] Loaded {} bars from OCOCO", raw.len());
+                        return Some(raw.iter().map(|b| chart_renderer::Bar {
+                            open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                        }).collect());
+                    }
+                }
+            }
+
+            // Try yfinance
+            let yf_url = format!(
+                "http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}",
+                symbol, interval, period
+            );
+            if let Ok(resp) = client.get(&yf_url).send() {
+                if let Ok(raw) = resp.json::<Vec<data::Bar>>() {
+                    if !raw.is_empty() {
+                        eprintln!("[native-chart] Loaded {} bars from yfinance", raw.len());
+                        return Some(raw.iter().map(|b| chart_renderer::Bar {
+                            open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                        }).collect());
+                    }
+                }
+            }
+
+            eprintln!("[native-chart] No data sources available, using test data");
+            None
+        })().unwrap_or_else(|| {
+            // Fallback test data
+            let mut v = Vec::new();
+            let mut p = 180.0_f32;
+            let mut s: u64 = 12345;
+            for _ in 0..500 {
+                s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                let r = (s >> 33) as f32 / (u32::MAX as f32);
+                let o = p; let c = p + (r - 0.48) * 3.0;
+                let h = o.max(c) + r * 1.5; let l = o.min(c) - r * 1.0;
+                v.push(chart_renderer::Bar { open: o, high: h, low: l, close: c, volume: r * 500000.0, _pad: 0.0 });
+                p = c.max(50.0);
+            }
+            v
+        });
+
         let (tx, rx) = std::sync::mpsc::channel();
         let _ = tx.send(chart_renderer::ChartCommand::LoadBars {
             symbol, timeframe, bars,
