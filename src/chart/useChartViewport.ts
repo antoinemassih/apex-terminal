@@ -6,7 +6,7 @@ import type { Timeframe } from '../types'
 
 const RIGHT_MARGIN_BARS = 8
 const FUTURE_PAN_BARS = 200
-const AUTO_SCROLL_TIMEOUT = 10_000
+const INTERACTION_IDLE_MS = 1_000 // resume auto-scroll 1s after last interaction
 
 export interface Viewport {
   viewStart: number
@@ -15,55 +15,82 @@ export interface Viewport {
 }
 
 export function useChartViewport(symbol: string, timeframe: Timeframe, width: number, height: number) {
-  // viewStart is a float — fractional part drives sub-pixel pan offset in CoordSystem
+  // ── Core viewport state ─────────────────────────────────────────────────────
+  // Live refs are the single source of truth during interaction.
+  // React state is flushed at most once per rAF frame for rendering.
   const [viewStart, setViewStart] = useState(0)
-  // Live ref updated synchronously during pan — avoids React re-render on every mouse event.
-  // setViewStart is called via rAF, capping React renders at 60/sec regardless of mouse Hz.
   const viewStartRef = useRef(0)
-  const panRafRef = useRef<number | null>(null)
   const [viewCount, setViewCount] = useState(20)
   const viewCountRef = useRef(20)
   const [priceOverride, setPriceOverride] = useState<{ min: number; max: number } | null>(null)
-  // Live ref for priceOverride — lets computeCs read the latest value without being a dep
   const priceOverrideRef = useRef<{ min: number; max: number } | null>(null)
   useEffect(() => { priceOverrideRef.current = priceOverride }, [priceOverride])
+
   const [autoScrolling, setAutoScrolling] = useState(true)
+  const autoScrollingRef = useRef(true)
   const [dataVersion, setDataVersion] = useState(0)
+
+  // Single rAF handle for ALL interaction flushes (pan + zoom combined)
+  const flushRafRef = useRef<number | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const autoScrollVersion = useChartStore(s => s.autoScrollVersion)
+
+  // ── Flush: batch all ref changes into one React render per frame ────────────
+  const scheduleFlush = useCallback(() => {
+    if (flushRafRef.current) return // already scheduled
+    flushRafRef.current = requestAnimationFrame(() => {
+      flushRafRef.current = null
+      setViewStart(viewStartRef.current)
+      setViewCount(viewCountRef.current)
+      setPriceOverride(priceOverrideRef.current)
+    })
+  }, [])
+
+  // ── Pause auto-scroll ───────────────────────────────────────────────────────
+  // Uses ref to avoid React re-render on every mousemove.
+  // React state only updates once (when first paused) and once (when resuming).
+  const pauseAutoScroll = useCallback(() => {
+    if (autoScrollingRef.current) {
+      autoScrollingRef.current = false
+      setAutoScrolling(false)
+    }
+    // Reset idle timer — resume after INTERACTION_IDLE_MS of no activity
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    idleTimerRef.current = setTimeout(() => {
+      autoScrollingRef.current = true
+      setAutoScrolling(true)
+      priceOverrideRef.current = null
+      setPriceOverride(null)
+    }, INTERACTION_IDLE_MS)
+  }, [])
 
   // Global reset → force auto-scroll
   useEffect(() => {
+    autoScrollingRef.current = true
     setAutoScrolling(true)
+    priceOverrideRef.current = null
     setPriceOverride(null)
   }, [autoScrollVersion])
 
-  // Reset viewport when symbol/timeframe changes — inherit stale scroll state causes
-  // live updates to appear off-screen and auto-scroll to stop.
+  // Reset viewport when symbol/timeframe changes
   useEffect(() => {
+    autoScrollingRef.current = true
     setAutoScrolling(true)
+    priceOverrideRef.current = null
     setPriceOverride(null)
-    setViewStart(0)
     viewStartRef.current = 0
+    setViewStart(0)
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
   }, [symbol, timeframe])
 
-  // Pause auto-scroll on interaction
-  const pauseAutoScroll = useCallback(() => {
-    setAutoScrolling(false)
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-    idleTimerRef.current = setTimeout(() => {
-      setAutoScrolling(true)
-      setPriceOverride(null)
-    }, AUTO_SCROLL_TIMEOUT)
-  }, [])
-
+  // Cleanup
   useEffect(() => () => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-    if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
+    if (flushRafRef.current) cancelAnimationFrame(flushRafRef.current)
   }, [])
 
-  // Subscribe to data changes — throttle to 4 updates/sec max to avoid React re-render storm
+  // Subscribe to data changes — throttle to 4 updates/sec max
   useEffect(() => {
     const ds = getDataStore()
     let throttleTimer: ReturnType<typeof setTimeout> | null = null
@@ -74,21 +101,19 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
       throttleTimer = setTimeout(() => {
         throttleTimer = null
         if (pending) { pending = false; setDataVersion(v => v + 1) }
-      }, 250) // max 4 React updates per second from tick data
+      }, 250)
     })
     return () => { unsub(); if (throttleTimer) clearTimeout(throttleTimer) }
   }, [symbol, timeframe])
 
-  // Keep viewCountRef in sync
+  // Keep viewCountRef in sync when React state changes (e.g., from auto-scroll)
   useEffect(() => { viewCountRef.current = viewCount }, [viewCount])
 
-  // Auto-scroll
+  // ── Auto-scroll ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!autoScrolling) return
     const data = getDataStore().getData(symbol, timeframe)
     if (!data) return
-    // Grow viewCount as data accumulates (sim startup: starts at 20 so bars are visible;
-    // grows toward 200 as history loads or sim fills in more bars)
     const targetVc = Math.min(200, Math.max(viewCount, data.length + RIGHT_MARGIN_BARS))
     if (targetVc !== viewCount) {
       viewCountRef.current = targetVc
@@ -99,9 +124,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     setViewStart(maxStart)
   }, [autoScrolling, dataVersion, viewCount, symbol, timeframe])
 
-  // Stable computeCs function — called by ChartPane's rAF loop using live refs.
-  // Reads priceOverrideRef so it doesn't take priceOverride as a closure dep
-  // (avoids invalidating the rAF loop on every price drag).
+  // ── computeCs — called by ChartPane's rAF loop ─────────────────────────────
   const computeCs = useCallback((
     vs: number,
     vc: number,
@@ -117,8 +140,6 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     if (priceOverrideRef.current) {
       minP = priceOverrideRef.current.min; maxP = priceOverrideRef.current.max
     } else if (gpuRange) {
-      // GPU-computed range from last frame (1-frame delay) — zero CPU scan
-      // Guard against degenerate range (single price level → 0/0 NaN in priceToY)
       let gMin = gpuRange.min, gMax = gpuRange.max
       if (gMin === gMax) { gMin -= 0.5; gMax += 0.5 }
       const pad = (gMax - gMin) * 0.05
@@ -134,17 +155,14 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     return CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP, pixelOffset })
   }, [symbol, timeframe, width, height])
 
-  // CoordSystem is a derived value — useMemo keeps it in the same render cycle as viewStart.
-  // This eliminates the extra render that useState+useEffect caused (halving render cost per pan).
-  // Now delegates to computeCs so computation is not duplicated.
+  // CoordSystem derived from React state (for non-imperative consumers)
   const cs = useMemo<CoordSystem | null>(
     () => computeCs(viewStart, viewCount),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [viewStart, viewCount, width, height, priceOverride, dataVersion, symbol, timeframe, computeCs])
 
-  // Scroll-left pagination: load more history when viewStart hits 0
+  // ── Scroll-left pagination ──────────────────────────────────────────────────
   const loadingMoreRef = useRef(false)
-
   useEffect(() => {
     if (Math.floor(viewStart) > 5 || loadingMoreRef.current || autoScrolling) return
     const ds = getDataStore()
@@ -159,7 +177,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     }).catch(() => { loadingMoreRef.current = false })
   }, [viewStart, symbol, timeframe, autoScrolling])
 
-  // Reset on symbol/timeframe change
+  // Reset on symbol/timeframe change (data-aware)
   useEffect(() => {
     const data = getDataStore().getData(symbol, timeframe)
     if (data) {
@@ -170,60 +188,73 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
       setViewStart(vs)
       setViewCount(vc)
     }
+    priceOverrideRef.current = null
     setPriceOverride(null)
+    autoScrollingRef.current = true
     setAutoScrolling(true)
     loadingMoreRef.current = false
   }, [symbol, timeframe])
 
+  // ── Interaction handlers (all ref-driven, flushed via rAF) ──────────────────
+
   const pan = useCallback((deltaPixels: number) => {
     const data = getDataStore().getData(symbol, timeframe)
     if (!data) return
-    // Compute barStep directly from geometry — no cs dependency, stays stable during pan.
     const barStep = (width - 80) / (viewCountRef.current + RIGHT_MARGIN_BARS)
     const barDelta = deltaPixels / barStep
     if (Math.abs(barDelta) < 0.0001) return
     pauseAutoScroll()
     const maxVS = data.length - viewCountRef.current + FUTURE_PAN_BARS
     viewStartRef.current = Math.max(0, Math.min(maxVS, viewStartRef.current - barDelta))
-    // Flush to React state at most once per animation frame (caps renders at 60/sec)
-    if (!panRafRef.current) {
-      panRafRef.current = requestAnimationFrame(() => {
-        panRafRef.current = null
-        setViewStart(viewStartRef.current)
-      })
-    }
-  }, [pauseAutoScroll, symbol, timeframe, width])
+    scheduleFlush()
+  }, [pauseAutoScroll, scheduleFlush, symbol, timeframe, width])
 
   const zoomX = useCallback((factor: number) => {
     const data = getDataStore().getData(symbol, timeframe)
     if (!data) return
     pauseAutoScroll()
-    setViewCount(v => {
-      const newCount = Math.max(20, Math.min(data.length, Math.round(v * factor)))
-      setViewStart(s => Math.max(0, Math.min(data.length - newCount + RIGHT_MARGIN_BARS, s + Math.round((v - newCount) / 2))))
-      return newCount
-    })
-  }, [pauseAutoScroll, symbol, timeframe])
+    const oldVc = viewCountRef.current
+    const newVc = Math.max(20, Math.min(data.length, Math.round(oldVc * factor)))
+    if (newVc === oldVc) return
+    // Center the zoom around current viewport midpoint
+    const delta = Math.round((oldVc - newVc) / 2)
+    viewCountRef.current = newVc
+    viewStartRef.current = Math.max(0, Math.min(
+      data.length - newVc + RIGHT_MARGIN_BARS,
+      viewStartRef.current + delta
+    ))
+    scheduleFlush()
+  }, [pauseAutoScroll, scheduleFlush, symbol, timeframe])
 
   const zoomY = useCallback((factor: number, anchorPrice?: number) => {
-    if (!cs) return
+    // Read from ref for latest price range (no cs dependency = stable callback)
+    const currentCs = computeCs(viewStartRef.current, viewCountRef.current)
+    if (!currentCs) return
     pauseAutoScroll()
-    const center = anchorPrice ?? (cs.minPrice + cs.maxPrice) / 2
-    const halfRange = ((cs.maxPrice - cs.minPrice) / 2) * factor
-    setPriceOverride({ min: center - halfRange, max: center + halfRange })
-  }, [cs, pauseAutoScroll])
+    const center = anchorPrice ?? (currentCs.minPrice + currentCs.maxPrice) / 2
+    const halfRange = ((currentCs.maxPrice - currentCs.minPrice) / 2) * factor
+    priceOverrideRef.current = { min: center - halfRange, max: center + halfRange }
+    scheduleFlush()
+  }, [pauseAutoScroll, scheduleFlush, computeCs])
 
   const panY = useCallback((deltaPixels: number) => {
-    if (!cs) return
+    const currentCs = computeCs(viewStartRef.current, viewCountRef.current)
+    if (!currentCs) return
     pauseAutoScroll()
-    const pricePerPixel = (cs.maxPrice - cs.minPrice) / cs.chartHeight
+    const pricePerPixel = (currentCs.maxPrice - currentCs.minPrice) / currentCs.chartHeight
     const priceDelta = deltaPixels * pricePerPixel
-    setPriceOverride({ min: cs.minPrice + priceDelta, max: cs.maxPrice + priceDelta })
-  }, [cs, pauseAutoScroll])
+    priceOverrideRef.current = {
+      min: currentCs.minPrice + priceDelta,
+      max: currentCs.maxPrice + priceDelta,
+    }
+    scheduleFlush()
+  }, [pauseAutoScroll, scheduleFlush, computeCs])
 
-  const resetYZoom = useCallback(() => setPriceOverride(null), [])
+  const resetYZoom = useCallback(() => {
+    priceOverrideRef.current = null
+    setPriceOverride(null)
+  }, [])
 
-  /** Snap view back to latest 200 bars, re-enable auto-scroll, clear price lock. */
   const resetView = useCallback(() => {
     const data = getDataStore().getData(symbol, timeframe)
     const vc = 200
@@ -232,15 +263,13 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     viewCountRef.current = vc
     setViewStart(vs)
     setViewCount(vc)
+    priceOverrideRef.current = null
     setPriceOverride(null)
+    autoScrollingRef.current = true
     setAutoScrolling(true)
     if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null }
   }, [symbol, timeframe])
 
-  /**
-   * Zoom so that the given pixel rectangle (in canvas CSS coords) fills the chart.
-   * Pass the current CoordSystem so the conversion happens at the right viewport state.
-   */
   const zoomToRect = useCallback((
     x1: number, y1: number, x2: number, y2: number,
     currentCs: CoordSystem,
@@ -250,7 +279,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     const top    = Math.min(y1, y2)
     const bottom = Math.max(y1, y2)
 
-    const barLeft  = currentCs.xToBar(left)   // view-relative bar index
+    const barLeft  = currentCs.xToBar(left)
     const barRight = currentCs.xToBar(right)
     const newCount = Math.max(5, Math.ceil(barRight - barLeft))
     const newStart = Math.max(0, Math.floor(viewStartRef.current) + Math.floor(barLeft))
@@ -261,23 +290,24 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     pauseAutoScroll()
     viewStartRef.current = newStart
     viewCountRef.current = newCount
-    setViewStart(newStart)
-    setViewCount(newCount)
-    setPriceOverride({ min: Math.min(priceHigh, priceLow), max: Math.max(priceHigh, priceLow) })
-  }, [pauseAutoScroll])
+    priceOverrideRef.current = { min: Math.min(priceHigh, priceLow), max: Math.max(priceHigh, priceLow) }
+    scheduleFlush()
+  }, [pauseAutoScroll, scheduleFlush])
 
-  const viewport: Viewport = useMemo(() => ({
-    viewStart: Math.floor(viewStart),  // integer for GPU array indexing
-    viewCount,
-    cs
-  }), [viewStart, viewCount, cs])
-
-  /** Per-pane auto-scroll reset — re-enables live follow + clears price lock */
+  /** Per-pane auto-scroll reset */
   const resetAutoScroll = useCallback(() => {
+    autoScrollingRef.current = true
     setAutoScrolling(true)
+    priceOverrideRef.current = null
     setPriceOverride(null)
     if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null }
   }, [])
+
+  const viewport: Viewport = useMemo(() => ({
+    viewStart: Math.floor(viewStart),
+    viewCount,
+    cs
+  }), [viewStart, viewCount, cs])
 
   return { viewport, pan, zoomX, zoomY, panY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, resetAutoScroll, viewStartRef, viewCountRef, computeCs }
 }
