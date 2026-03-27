@@ -460,18 +460,20 @@ impl Gpu {
             let clip_right = ((w - PR) / w) * 2.0 - 1.0;
             let clip_top = 1.0 - (PT / h) * 2.0;
             let clip_bottom = 1.0 - ((h - PB) / h) * 2.0;
-            let lw = 1.5 / w * 2.0;
-            let dash = 8.0 / w * 2.0;
-            let gap = 4.0 / w * 2.0;
+            // Line widths: billboard extends perpendicular, so horizontal lines need height-based width
+            let lw_h = 1.5 / h * 2.0;  // horizontal line — billboard extends vertically
+            let lw_v = 1.5 / w * 2.0;  // vertical line — billboard extends horizontally
 
             // Horizontal crosshair
             if n + OVERLAY_FLOATS_PER_LINE <= self.overlay_cpu.len() {
                 let o = n;
-                self.overlay_cpu[o] = clip_left; self.overlay_cpu[o+1] = clip_y;     // x0, y0
-                self.overlay_cpu[o+2] = clip_right; self.overlay_cpu[o+3] = clip_y;  // x1, y1
-                self.overlay_cpu[o+4] = 1.0; self.overlay_cpu[o+5] = 1.0; self.overlay_cpu[o+6] = 1.0; self.overlay_cpu[o+7] = 0.2; // rgba
-                self.overlay_cpu[o+8] = dash; self.overlay_cpu[o+9] = gap;            // dash, gap
-                self.overlay_cpu[o+10] = lw; self.overlay_cpu[o+11] = 0.0;            // width, pad
+                let dash = 8.0 / w * 2.0;
+                let gap = 4.0 / w * 2.0;
+                self.overlay_cpu[o] = clip_left; self.overlay_cpu[o+1] = clip_y;
+                self.overlay_cpu[o+2] = clip_right; self.overlay_cpu[o+3] = clip_y;
+                self.overlay_cpu[o+4] = 1.0; self.overlay_cpu[o+5] = 1.0; self.overlay_cpu[o+6] = 1.0; self.overlay_cpu[o+7] = 0.25;
+                self.overlay_cpu[o+8] = dash; self.overlay_cpu[o+9] = gap;
+                self.overlay_cpu[o+10] = lw_h; self.overlay_cpu[o+11] = 0.0;
                 n += OVERLAY_FLOATS_PER_LINE;
             }
             // Vertical crosshair
@@ -481,9 +483,9 @@ impl Gpu {
                 let gap_v = 4.0 / h * 2.0;
                 self.overlay_cpu[o] = clip_x; self.overlay_cpu[o+1] = clip_top;
                 self.overlay_cpu[o+2] = clip_x; self.overlay_cpu[o+3] = clip_bottom;
-                self.overlay_cpu[o+4] = 1.0; self.overlay_cpu[o+5] = 1.0; self.overlay_cpu[o+6] = 1.0; self.overlay_cpu[o+7] = 0.2;
+                self.overlay_cpu[o+4] = 1.0; self.overlay_cpu[o+5] = 1.0; self.overlay_cpu[o+6] = 1.0; self.overlay_cpu[o+7] = 0.25;
                 self.overlay_cpu[o+8] = dash_v; self.overlay_cpu[o+9] = gap_v;
-                self.overlay_cpu[o+10] = lw; self.overlay_cpu[o+11] = 0.0;
+                self.overlay_cpu[o+10] = lw_v; self.overlay_cpu[o+11] = 0.0;
                 n += OVERLAY_FLOATS_PER_LINE;
             }
         }
@@ -615,6 +617,7 @@ impl ApplicationHandler for App {
         eprintln!("[native-chart] Window created, initializing GPU...");
         let g = Gpu::new(Arc::clone(&w));
         eprintln!("[native-chart] GPU initialized, {:?} format", g.config.format);
+        w.set_cursor(winit::window::CursorIcon::Crosshair);
         self.win = Some(w);
         self.gpu = Some(g);
     }
@@ -624,13 +627,26 @@ impl ApplicationHandler for App {
         match ev {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => gpu.resize(s.width, s.height),
-            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => gpu.mouse_down(),
-            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => gpu.mouse_up(),
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+                gpu.mouse_down();
+                // Set grab cursor during drag
+                if let Some(win) = &self.win {
+                    let cursor = match gpu.mouse.zone {
+                        DragZone::Chart => winit::window::CursorIcon::Grabbing,
+                        DragZone::XAxis => winit::window::CursorIcon::EwResize,
+                        DragZone::YAxis => winit::window::CursorIcon::NsResize,
+                    };
+                    win.set_cursor(cursor);
+                }
+            }
+            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => {
+                gpu.mouse_up();
+                if let Some(win) = &self.win { win.set_cursor(winit::window::CursorIcon::Crosshair); }
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 gpu.mouse_move(position.x, position.y);
-                // Always render on mouse move — crosshair follows cursor, drag updates viewport
                 gpu.dirty = true;
-                if gpu.mouse.dragging || true { gpu.render(); }
+                gpu.render(); // Immediate render — crosshair follows cursor, drag updates viewport
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let dy = match delta { MouseScrollDelta::LineDelta(_, y) => y, MouseScrollDelta::PixelDelta(p) => p.y as f32 / 50.0 };
