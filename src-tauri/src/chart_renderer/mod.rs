@@ -26,6 +26,7 @@ pub enum ChartCommand {
         symbol: String,
         timeframe: String,
         bars: Vec<Bar>,
+        timestamps: Vec<i64>,
     },
     /// Append a single new bar
     AppendBar {

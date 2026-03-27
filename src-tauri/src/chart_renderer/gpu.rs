@@ -114,6 +114,7 @@ struct Gpu {
     volume_bg: wgpu::BindGroup,
 
     bars: Vec<Bar>,
+    timestamps: Vec<i64>,  // unix timestamps for time axis labels
     bar_count: u32,
     bar_cap: u32,
 
@@ -307,7 +308,7 @@ impl Gpu {
             overlay_count: 0,
             line_pl, indicators: Vec::new(),
             font_system, swash_cache, text_atlas, text_renderer, glyphon_viewport,
-            bars: Vec::new(), bar_count: 0, bar_cap: cap,
+            bars: Vec::new(), timestamps: Vec::new(), bar_count: 0, bar_cap: cap,
             vs: 0.0, vc: 200, price_lock: None,
             bg_color: [0.05, 0.05, 0.11, 1.0],
             bull: [0.15, 0.65, 0.6, 1.0], bear: [0.94, 0.33, 0.31, 1.0],
@@ -392,8 +393,9 @@ impl Gpu {
 
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
-            ChartCommand::LoadBars { bars, .. } => {
+            ChartCommand::LoadBars { bars, timestamps, .. } => {
                 self.bars = bars;
+                self.timestamps = timestamps;
                 self.bar_count = self.bars.len() as u32;
                 self.vs = (self.bar_count as f32 - self.vc as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
                 self.price_lock = None;
@@ -775,16 +777,70 @@ impl Gpu {
             text_buffers.push((buf, w - PR + 4.0, my - 6.0, bright_color));
         }
 
-        // OHLC label (top-left)
+        // OHLC label (top-left) — show last visible bar
         if dc > 0 {
-            if let Some(bar) = self.bars.get((end - 1) as usize) {
+            let last_vis = (end - 1) as usize;
+            if let Some(bar) = self.bars.get(last_vis) {
                 let c = if bar.close >= bar.open { GColor::rgba(46, 204, 113, 220) } else { GColor::rgba(231, 76, 60, 220) };
-                let txt = format!("O {:.2}  H {:.2}  L {:.2}  C {:.2}", bar.open, bar.high, bar.low, bar.close);
+                let txt = format!("O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}", bar.open, bar.high, bar.low, bar.close, bar.volume);
                 let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
                 buf.set_size(&mut self.font_system, Some(500.0), Some(14.0));
                 buf.set_text(&mut self.font_system, &txt, mono.color(c), Shaping::Basic);
                 buf.shape_until_scroll(&mut self.font_system, false);
                 text_buffers.push((buf, 8.0, 4.0, c));
+            }
+        }
+
+        // Time labels on bottom axis
+        if !self.timestamps.is_empty() && dc > 0 {
+            // Estimate candle interval from first two timestamps
+            let candle_sec = if self.timestamps.len() > 1 {
+                (self.timestamps[1] - self.timestamps[0]).max(60)
+            } else { 86400 };
+
+            // Pick nice time interval
+            let nice_intervals: &[i64] = &[60, 300, 900, 1800, 3600, 7200, 14400, 28800, 86400, 172800, 604800, 2592000];
+            let min_label_px = 80.0;
+            let bars_per_label = (min_label_px / step_px).ceil() as i64;
+            let min_interval = bars_per_label * candle_sec;
+            let time_interval = nice_intervals.iter().copied().find(|&i| i >= min_interval).unwrap_or(86400);
+
+            // Find first label time
+            if let Some(&first_ts) = self.timestamps.get(vs as usize) {
+                let first_label = ((first_ts / time_interval) + 1) * time_interval;
+                let mut t = first_label;
+                let last_ts = self.timestamps.get((end - 1) as usize).copied().unwrap_or(first_ts);
+                while t <= last_ts {
+                    // Find bar index for this time
+                    let bar_idx = self.timestamps.partition_point(|&ts| ts < t);
+                    if bar_idx >= vs as usize && bar_idx < end as usize {
+                        let view_idx = bar_idx as f32 - self.vs;
+                        let x = view_idx * step_px + step_px * 0.5 - offset_px;
+                        if x > 20.0 && x < cw - 40.0 {
+                            // Format: MM/DD for daily, HH:MM for intraday
+                            let secs = t;
+                            let txt = if time_interval >= 86400 {
+                                // MM/DD
+                                let days = (secs / 86400) as i32;
+                                // Approximate month/day
+                                let y2k_days = days - 10957; // days since 2000-01-01
+                                let month = ((y2k_days % 365) / 30 + 1).min(12).max(1);
+                                let day = ((y2k_days % 365) % 30 + 1).min(31).max(1);
+                                format!("{:02}/{:02}", month, day)
+                            } else {
+                                let h = ((secs % 86400) / 3600) as u32;
+                                let m = ((secs % 3600) / 60) as u32;
+                                format!("{:02}:{:02}", h, m)
+                            };
+                            let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(10.0, 12.0));
+                            buf.set_size(&mut self.font_system, Some(60.0), Some(12.0));
+                            buf.set_text(&mut self.font_system, &txt, mono.color(dim_color), Shaping::Basic);
+                            buf.shape_until_scroll(&mut self.font_system, false);
+                            text_buffers.push((buf, x - 15.0, h - PB + 4.0, dim_color));
+                        }
+                    }
+                    t += time_interval;
+                }
             }
         }
 

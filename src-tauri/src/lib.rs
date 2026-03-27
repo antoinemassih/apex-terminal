@@ -35,65 +35,62 @@ async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, 
             .timeout(std::time::Duration::from_secs(5))
             .build().unwrap();
 
-        let bars: Vec<chart_renderer::Bar> = (|| -> Option<Vec<chart_renderer::Bar>> {
-            // Try OCOCO/InfluxDB with requested interval first, then 1d fallback
+        // Fetch data — returns (bars, timestamps)
+        let convert = |raw: &[data::Bar]| -> (Vec<chart_renderer::Bar>, Vec<i64>) {
+            let bars = raw.iter().map(|b| chart_renderer::Bar {
+                open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+            }).collect();
+            let ts = raw.iter().map(|b| b.time).collect();
+            (bars, ts)
+        };
+
+        let (bars, timestamps) = (|| -> Option<(Vec<chart_renderer::Bar>, Vec<i64>)> {
             let intervals_to_try = [interval, "1d"];
             for try_interval in &intervals_to_try {
-                let ococo_url = format!(
-                    "http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-730d",
-                    symbol, try_interval
-                );
-                if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(3)).send() {
+                let url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-730d", symbol, try_interval);
+                if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
                     if let Ok(raw) = resp.json::<Vec<data::Bar>>() {
                         if raw.len() > 10 {
                             eprintln!("[native-chart] Loaded {} bars ({}) from OCOCO", raw.len(), try_interval);
-                            return Some(raw.iter().map(|b| chart_renderer::Bar {
-                                open: b.open as f32, high: b.high as f32, low: b.low as f32,
-                                close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
-                            }).collect());
+                            return Some(convert(&raw));
                         }
                     }
                 }
             }
-
-            // Try yfinance
-            let yf_url = format!(
-                "http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}",
-                symbol, interval, period
-            );
-            if let Ok(resp) = client.get(&yf_url).send() {
+            let url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", symbol, interval, period);
+            if let Ok(resp) = client.get(&url).send() {
                 if let Ok(raw) = resp.json::<Vec<data::Bar>>() {
                     if !raw.is_empty() {
                         eprintln!("[native-chart] Loaded {} bars from yfinance", raw.len());
-                        return Some(raw.iter().map(|b| chart_renderer::Bar {
-                            open: b.open as f32, high: b.high as f32, low: b.low as f32,
-                            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
-                        }).collect());
+                        return Some(convert(&raw));
                     }
                 }
             }
-
-            eprintln!("[native-chart] No data sources available, using test data");
+            eprintln!("[native-chart] No data sources, using test data");
             None
         })().unwrap_or_else(|| {
-            // Fallback test data
             let mut v = Vec::new();
+            let mut ts = Vec::new();
             let mut p = 180.0_f32;
             let mut s: u64 = 12345;
+            let mut t = 1700000000_i64;
             for _ in 0..500 {
                 s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
                 let r = (s >> 33) as f32 / (u32::MAX as f32);
                 let o = p; let c = p + (r - 0.48) * 3.0;
                 let h = o.max(c) + r * 1.5; let l = o.min(c) - r * 1.0;
                 v.push(chart_renderer::Bar { open: o, high: h, low: l, close: c, volume: r * 500000.0, _pad: 0.0 });
+                ts.push(t);
                 p = c.max(50.0);
+                t += 86400;
             }
-            v
+            (v, ts)
         });
 
         let (tx, rx) = std::sync::mpsc::channel();
         let _ = tx.send(chart_renderer::ChartCommand::LoadBars {
-            symbol, timeframe, bars,
+            symbol, timeframe, bars, timestamps,
         });
 
         eprintln!("[native-chart] Starting render loop");
