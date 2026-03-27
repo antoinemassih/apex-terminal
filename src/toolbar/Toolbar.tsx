@@ -199,6 +199,7 @@ export function Toolbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}>
         <ConnectionPanel />
         {IS_TAURI && (
+          <>
           <button onClick={() => {
             import('@tauri-apps/api/webviewWindow').then(({ WebviewWindow }) => {
               const label = `chart-${Date.now()}`
@@ -208,6 +209,14 @@ export function Toolbar() {
           }} style={btnStyle(false)}>
             + Window
           </button>
+          <button onClick={() => {
+            import('@tauri-apps/api/core').then(({ invoke }) => {
+              invoke('open_native_chart').catch((e: unknown) => console.error('Native chart failed:', e))
+            })
+          }} style={{ ...btnStyle(false), color: theme.bull, border: `1px solid ${theme.bull}44` }}>
+            GPU
+          </button>
+          </>
         )}
         <button onClick={toggleWatchlist} style={btnStyle(watchlistOpen)} title="Toggle watchlist">
           <svg width="12" height="10" viewBox="0 0 12 10" fill="none">

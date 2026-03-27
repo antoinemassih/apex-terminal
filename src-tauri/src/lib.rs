@@ -21,20 +21,29 @@ fn open_native_chart() -> Result<(), String> {
     // and bar data would be forwarded from the IB tick stream
     let handle = chart_renderer::spawn("Apex Chart", 1200, 800);
 
-    // Send test data (in production, this would come from the data provider)
+    // Generate realistic test data (in production, this comes from IB data provider)
     let mut bars = Vec::new();
-    let mut price = 100.0_f32;
-    for _ in 0..500 {
-        let change = (rand_f32() - 0.48) * 2.0;
+    let mut price = 450.0_f32; // SPY-like price
+    let mut seed: u64 = 42;
+    for _ in 0..2000 {
+        // LCG random
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let r1 = (seed >> 33) as f32 / (u32::MAX as f32);
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let r2 = (seed >> 33) as f32 / (u32::MAX as f32);
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let r3 = (seed >> 33) as f32 / (u32::MAX as f32);
+
+        let change = (r1 - 0.48) * 3.0;
         let open = price;
         let close = price + change;
-        let high = open.max(close) + rand_f32() * 1.0;
-        let low = open.min(close) - rand_f32() * 1.0;
-        let volume = rand_f32() * 1000.0;
+        let high = open.max(close) + r2 * 2.0;
+        let low = open.min(close) - r3 * 2.0;
+        let volume = (r1 * 500.0 + 100.0) * 1000.0;
         bars.push(chart_renderer::Bar {
             open, high, low, close, volume, _pad: 0.0,
         });
-        price = close;
+        price = close.max(100.0);
     }
 
     handle.send(chart_renderer::ChartCommand::LoadBars {
@@ -48,13 +57,6 @@ fn open_native_chart() -> Result<(), String> {
     Ok(())
 }
 
-fn rand_f32() -> f32 {
-    // Simple pseudo-random for test data
-    use std::time::SystemTime;
-    let t = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    let seed = t.subsec_nanos();
-    ((seed ^ (seed >> 16)) as f32 / u32::MAX as f32).abs()
-}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
