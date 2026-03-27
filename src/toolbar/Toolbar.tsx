@@ -210,12 +210,15 @@ export function Toolbar() {
             + Window
           </button>
           <button onClick={() => {
+            console.info('[GPU] clicked')
             import('@tauri-apps/api/core').then(({ invoke }) => {
               const s = pane?.symbol ?? 'SPY'
               const t = pane?.timeframe ?? '5m'
+              console.info('[GPU] invoking', s, t)
               invoke('open_native_chart', { symbol: s, timeframe: t })
-                .catch((e: unknown) => console.error('Native chart failed:', e))
-            })
+                .then(() => console.info('[GPU] ok'))
+                .catch((e: unknown) => { console.error('[GPU] fail:', e); alert(String(e)) })
+            }).catch(e => { console.error('[GPU] no tauri:', e); alert('No Tauri API: ' + e) })
           }} style={{ ...btnStyle(false), color: theme.bull, border: `1px solid ${theme.bull}44` }}>
             GPU
           </button>
