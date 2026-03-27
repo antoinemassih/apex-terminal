@@ -30,25 +30,28 @@ async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, 
             _ => ("5m", "5d"),
         };
 
-        // Blocking HTTP fetch — try OCOCO then yfinance
+        // Blocking HTTP fetch — try OCOCO (with multiple intervals) then yfinance
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build().unwrap();
 
         let bars: Vec<chart_renderer::Bar> = (|| -> Option<Vec<chart_renderer::Bar>> {
-            // Try OCOCO/InfluxDB
-            let ococo_url = format!(
-                "http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-365d",
-                symbol, interval
-            );
-            if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(3)).send() {
-                if let Ok(raw) = resp.json::<Vec<data::Bar>>() {
-                    if raw.len() > 10 {
-                        eprintln!("[native-chart] Loaded {} bars from OCOCO", raw.len());
-                        return Some(raw.iter().map(|b| chart_renderer::Bar {
-                            open: b.open as f32, high: b.high as f32, low: b.low as f32,
-                            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
-                        }).collect());
+            // Try OCOCO/InfluxDB with requested interval first, then 1d fallback
+            let intervals_to_try = [interval, "1d"];
+            for try_interval in &intervals_to_try {
+                let ococo_url = format!(
+                    "http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-730d",
+                    symbol, try_interval
+                );
+                if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(3)).send() {
+                    if let Ok(raw) = resp.json::<Vec<data::Bar>>() {
+                        if raw.len() > 10 {
+                            eprintln!("[native-chart] Loaded {} bars ({}) from OCOCO", raw.len(), try_interval);
+                            return Some(raw.iter().map(|b| chart_renderer::Bar {
+                                open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                                close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                            }).collect());
+                        }
                     }
                 }
             }
