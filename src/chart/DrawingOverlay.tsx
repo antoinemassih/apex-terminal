@@ -520,6 +520,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       mouseRef.current = { x: mx, y: my }
 
       if (dragRef.current) {
+        onInteraction?.()
         const { drawingId, mode, pointIndex, origPoints } = dragRef.current
         const drawing = drawingsFor(symbol, timeframe).find(d => d.id === drawingId)
         if (!drawing) return

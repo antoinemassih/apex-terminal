@@ -503,7 +503,7 @@ export function OrderLevels({ paneId, cs, theme, onPauseScroll }: Props) {
       {levels.map(level => {
         const y = cs.priceToY(level.price)
         if (y < cs.pt - 2 || y > chartBottom + 2) return null
-        const { color, label, icon, dashOn, dashOff } = getMeta(level.type, theme)
+        const { color, label, icon } = getMeta(level.type, theme)
         const lineY = Math.round(y)
         const isFilled = level.type === 'trigger_buy' && level.triggered
         const opacity  = (level.status === 'placed' && !isTrigger(level.type)) ? 0.55
@@ -513,18 +513,17 @@ export function OrderLevels({ paneId, cs, theme, onPauseScroll }: Props) {
         return (
           <div key={level.type} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
 
-            {/* Dashed line */}
+            {/* Horizontal order line */}
             <div style={{
               position: 'absolute',
-              top: lineY - 0.5,
+              top: lineY,
               left: 0,
               right: cs.pr,
-              height: 1,
+              height: 0,
               opacity,
-              backgroundImage: isFilled
-                ? `none`
-                : `repeating-linear-gradient(to right, ${color}cc 0, ${color}cc ${dashOn}, transparent ${dashOn}, transparent calc(${dashOn} + ${dashOff}))`,
-              background: isFilled ? color + '44' : undefined,
+              borderTop: isFilled
+                ? `1px solid ${color}44`
+                : `1px dashed ${color}cc`,
               pointerEvents: 'none',
             }} />
 

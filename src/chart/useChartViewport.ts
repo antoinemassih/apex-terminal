@@ -6,7 +6,7 @@ import type { Timeframe } from '../types'
 
 const RIGHT_MARGIN_BARS = 8
 const FUTURE_PAN_BARS = 200
-const INTERACTION_IDLE_MS = 1_000 // resume auto-scroll 1s after last interaction
+const INTERACTION_IDLE_MS = 5_000 // resume auto-scroll 5s after last interaction
 
 export interface Viewport {
   viewStart: number
