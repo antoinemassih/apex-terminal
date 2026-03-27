@@ -15,46 +15,56 @@ use std::time::Duration;
 struct NativeChart(Mutex<Option<chart_renderer::ChartRendererHandle>>);
 
 #[tauri::command]
-fn open_native_chart() -> Result<(), String> {
-    // This is called from WebView to open the native chart window
-    // In a full implementation, the handle would be stored in Tauri state
-    // and bar data would be forwarded from the IB tick stream
-    let handle = chart_renderer::spawn("Apex Chart", 1200, 800);
+async fn open_native_chart(symbol: String, timeframe: String) -> Result<(), String> {
+    let handle = chart_renderer::spawn(&format!("{} — {}", symbol, timeframe), 1400, 900);
 
-    // Generate realistic test data (in production, this comes from IB data provider)
-    let mut bars = Vec::new();
-    let mut price = 450.0_f32; // SPY-like price
-    let mut seed: u64 = 42;
-    for _ in 0..2000 {
-        // LCG random
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let r1 = (seed >> 33) as f32 / (u32::MAX as f32);
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let r2 = (seed >> 33) as f32 / (u32::MAX as f32);
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let r3 = (seed >> 33) as f32 / (u32::MAX as f32);
+    // Fetch real historical data via yfinance sidecar
+    let interval_map: std::collections::HashMap<&str, (&str, &str)> = [
+        ("1m", ("1m", "1d")), ("2m", ("2m", "5d")), ("5m", ("5m", "5d")),
+        ("15m", ("15m", "1mo")), ("30m", ("30m", "1mo")), ("1h", ("60m", "3mo")),
+        ("4h", ("60m", "6mo")), ("1d", ("1d", "1y")), ("1wk", ("1wk", "5y")),
+    ].into_iter().collect();
 
-        let change = (r1 - 0.48) * 3.0;
-        let open = price;
-        let close = price + change;
-        let high = open.max(close) + r2 * 2.0;
-        let low = open.min(close) - r3 * 2.0;
-        let volume = (r1 * 500.0 + 100.0) * 1000.0;
-        bars.push(chart_renderer::Bar {
-            open, high, low, close, volume, _pad: 0.0,
-        });
-        price = close.max(100.0);
-    }
+    let (interval, period) = interval_map.get(timeframe.as_str()).copied().unwrap_or(("5m", "5d"));
+
+    // Try OCOCO InfluxDB first, fallback to yfinance
+    let bars = fetch_bars_for_native(&symbol, interval, period).await;
+
+    let gpu_bars: Vec<chart_renderer::Bar> = bars.iter().map(|b| chart_renderer::Bar {
+        open: b.open as f32, high: b.high as f32, low: b.low as f32,
+        close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+    }).collect();
 
     handle.send(chart_renderer::ChartCommand::LoadBars {
-        symbol: "TEST".into(),
-        timeframe: "5m".into(),
-        bars,
+        symbol: symbol.clone(),
+        timeframe: timeframe.clone(),
+        bars: gpu_bars,
     });
 
-    // Store handle (leak for now — proper lifecycle management needed)
+    // Store handle for tick forwarding
+    // In production: forward IB ticks to handle.send(UpdateLastBar)
     std::mem::forget(handle);
     Ok(())
+}
+
+async fn fetch_bars_for_native(symbol: &str, interval: &str, period: &str) -> Vec<data::Bar> {
+    // Try OCOCO/InfluxDB first (fast, deep history)
+    let ococo_url = format!(
+        "http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-365d",
+        symbol, interval
+    );
+    if let Ok(resp) = reqwest::Client::new().get(&ococo_url).timeout(std::time::Duration::from_secs(3)).send().await {
+        if let Ok(bars) = resp.json::<Vec<data::Bar>>().await {
+            if bars.len() > 10 { return bars; }
+        }
+    }
+
+    // Fallback: yfinance sidecar
+    let url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", symbol, interval, period);
+    match reqwest::get(&url).await {
+        Ok(resp) => resp.json::<Vec<data::Bar>>().await.unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
 }
 
 

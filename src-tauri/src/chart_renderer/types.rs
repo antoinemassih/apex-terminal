@@ -12,34 +12,62 @@ pub struct Bar {
     pub _pad: f32,
 }
 
-// Safety: Bar is repr(C) with only f32 fields
 unsafe impl bytemuck::Pod for Bar {}
 unsafe impl bytemuck::Zeroable for Bar {}
 
-/// Viewport uniform — matches candle shader layout (80 bytes)
+/// Candle uniform — 80 bytes matching candles_gpu.wgsl
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct CandleUniforms {
-    // [0..3] u32: viewStart, viewCount, pad, pad
     pub view_start: u32,
     pub view_count: u32,
     pub _pad0: u32,
     pub _pad1: u32,
-    // [16..31] f32: stepPx, halfStepPx, priceA, priceB
     pub step_px: f32,
     pub half_step_px: f32,
     pub price_a: f32,
     pub price_b: f32,
-    // [32..47] f32: offsetPx, pad, canvasWidth, canvasHeight
     pub offset_px: f32,
     pub _pad2: f32,
     pub canvas_width: f32,
     pub canvas_height: f32,
-    // [48..63] f32: upColor rgba
     pub up_color: [f32; 4],
-    // [64..79] f32: downColor rgba
     pub down_color: [f32; 4],
 }
 
 unsafe impl bytemuck::Pod for CandleUniforms {}
 unsafe impl bytemuck::Zeroable for CandleUniforms {}
+
+/// Volume uniform — 80 bytes matching volume_gpu.wgsl
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct VolumeUniforms {
+    pub view_start: u32,
+    pub view_count: u32,
+    pub _pad0: u32,
+    pub _pad1: u32,
+    pub bar_step_clip: f32,
+    pub pixel_offset_frac: f32,
+    pub body_width_clip: f32,
+    pub max_volume: f32,
+    pub vol_bottom_clip: f32,
+    pub vol_height_clip: f32,
+    pub _pad2: f32,
+    pub _pad3: f32,
+    pub up_color: [f32; 4],
+    pub down_color: [f32; 4],
+}
+
+unsafe impl bytemuck::Pod for VolumeUniforms {}
+unsafe impl bytemuck::Zeroable for VolumeUniforms {}
+
+/// Grid vertex — position + color, 24 bytes
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct GridVertex {
+    pub pos: [f32; 2],
+    pub color: [f32; 4],
+}
+
+unsafe impl bytemuck::Pod for GridVertex {}
+unsafe impl bytemuck::Zeroable for GridVertex {}

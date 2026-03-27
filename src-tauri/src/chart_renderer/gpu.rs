@@ -1,7 +1,4 @@
-//! Native wgpu render loop — winit window + GPU candlestick + volume rendering.
-//!
-//! Runs on a dedicated thread, receives commands via mpsc channel.
-//! Handles mouse input directly (zero-latency pan/zoom).
+//! Native wgpu render loop — winit + GPU candles + volume + grid.
 
 use std::sync::{mpsc, Arc};
 use winit::{
@@ -12,115 +9,84 @@ use winit::{
     dpi::PhysicalSize,
 };
 
-use super::{Bar, CandleUniforms, ChartCommand};
+use super::{Bar, CandleUniforms, VolumeUniforms, GridVertex, ChartCommand};
 
 const CANDLE_SHADER: &str = include_str!("../../../src/renderer/shaders/candles_gpu.wgsl");
 const VOLUME_SHADER: &str = include_str!("../../../src/renderer/shaders/volume_gpu.wgsl");
+const GRID_SHADER: &str = include_str!("../../../src/renderer/shaders/grid.wgsl");
 
 const RIGHT_MARGIN_BARS: u32 = 8;
-const PADDING_RIGHT: f32 = 80.0;
-const PADDING_TOP: f32 = 20.0;
-const PADDING_BOTTOM: f32 = 40.0;
+const PR: f32 = 80.0;  // padding right
+const PT: f32 = 20.0;  // padding top
+const PB: f32 = 40.0;  // padding bottom
+const MAX_GRID_VERTS: usize = 512;
 
-/// Volume uniform — 80 bytes matching volume_gpu.wgsl
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-struct VolumeUniforms {
-    view_start: u32,
-    view_count: u32,
-    _pad0: u32,
-    _pad1: u32,
-    bar_step_clip: f32,
-    pixel_offset_frac: f32,
-    body_width_clip: f32,
-    max_volume: f32,
-    vol_bottom_clip: f32,
-    vol_height_clip: f32,
-    _pad2: f32,
-    _pad3: f32,
-    up_color: [f32; 4],
-    down_color: [f32; 4],
-}
-unsafe impl bytemuck::Pod for VolumeUniforms {}
-unsafe impl bytemuck::Zeroable for VolumeUniforms {}
-
-// ─── Mouse state ──────────────────────────────────────────────────────────────
-
-struct MouseState {
-    dragging: bool,
-    drag_zone: DragZone,
-    last_x: f64,
-    last_y: f64,
-    cursor_x: f64,
-    cursor_y: f64,
-}
+// ─── Mouse ────────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq)]
 enum DragZone { Chart, XAxis, YAxis }
 
-impl MouseState {
-    fn new() -> Self {
-        Self { dragging: false, drag_zone: DragZone::Chart, last_x: 0.0, last_y: 0.0, cursor_x: 0.0, cursor_y: 0.0 }
-    }
+struct Mouse {
+    dragging: bool,
+    zone: DragZone,
+    last_x: f64,
+    last_y: f64,
+    cx: f64,
+    cy: f64,
+}
 
-    fn zone(&self, w: f32, h: f32) -> DragZone {
-        let x = self.cursor_x as f32;
-        let y = self.cursor_y as f32;
-        if x >= w - PADDING_RIGHT && y < h - PADDING_BOTTOM { DragZone::YAxis }
-        else if y >= h - PADDING_BOTTOM { DragZone::XAxis }
+impl Mouse {
+    fn new() -> Self { Self { dragging: false, zone: DragZone::Chart, last_x: 0.0, last_y: 0.0, cx: 0.0, cy: 0.0 } }
+    fn detect_zone(&self, w: f32, h: f32) -> DragZone {
+        let (x, y) = (self.cx as f32, self.cy as f32);
+        if x >= w - PR && y < h - PB { DragZone::YAxis }
+        else if y >= h - PB { DragZone::XAxis }
         else { DragZone::Chart }
     }
 }
 
 // ─── GPU State ────────────────────────────────────────────────────────────────
 
-struct GpuState {
+struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
-    surface_config: wgpu::SurfaceConfiguration,
+    config: wgpu::SurfaceConfiguration,
 
-    // Candle renderer
-    candle_pipeline: wgpu::RenderPipeline,
-    candle_uniform_buf: wgpu::Buffer,
+    candle_pl: wgpu::RenderPipeline,
+    candle_ubuf: wgpu::Buffer,
+    volume_pl: wgpu::RenderPipeline,
+    volume_ubuf: wgpu::Buffer,
+    grid_pl: wgpu::RenderPipeline,
+    grid_vbuf: wgpu::Buffer,
 
-    // Volume renderer
-    volume_pipeline: wgpu::RenderPipeline,
-    volume_uniform_buf: wgpu::Buffer,
-
-    // Shared bar storage
-    bar_buffer: wgpu::Buffer,
+    bar_buf: wgpu::Buffer,
     bgl: wgpu::BindGroupLayout,
-    candle_bind_group: wgpu::BindGroup,
-    volume_bind_group: wgpu::BindGroup,
+    candle_bg: wgpu::BindGroup,
+    volume_bg: wgpu::BindGroup,
 
-    // Data
     bars: Vec<Bar>,
     bar_count: u32,
-    bar_capacity: u32,
+    bar_cap: u32,
 
-    // Viewport — modified directly by mouse input
-    view_start: f32, // float for sub-bar panning
-    view_count: u32,
-    price_override: Option<(f32, f32)>, // (min, max)
+    vs: f32,        // view start (float for sub-bar pan)
+    vc: u32,        // view count
+    price_lock: Option<(f32, f32)>,
 
-    // Theme
-    background: [f32; 4],
-    bull_color: [f32; 4],
-    bear_color: [f32; 4],
+    bg_color: [f32; 4],
+    bull: [f32; 4],
+    bear: [f32; 4],
 
-    // Mouse
-    mouse: MouseState,
-    needs_render: bool,
+    mouse: Mouse,
+    dirty: bool,
+    grid_vert_count: u32,
+    grid_cpu: Vec<GridVertex>,
 }
 
-impl GpuState {
+impl Gpu {
     fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
+        let instance = wgpu::Instance::new(&Default::default());
         let surface = instance.create_surface(window).expect("surface");
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
@@ -130,42 +96,31 @@ impl GpuState {
 
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
-                label: Some("chart"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
+                label: Some("chart"), memory_hints: wgpu::MemoryHints::Performance,
+                ..Default::default()
             },
             None,
         )).expect("device");
 
         let caps = surface.get_capabilities(&adapter);
-        let format = caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(caps.formats[0]);
-        let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: size.width.max(1),
-            height: size.height.max(1),
+        let fmt = caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(caps.formats[0]);
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT, format: fmt,
+            width: size.width.max(1), height: size.height.max(1),
             present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![],
+            alpha_mode: caps.alpha_modes[0], view_formats: vec![],
             desired_maximum_frame_latency: 1,
         };
-        surface.configure(&device, &surface_config);
+        surface.configure(&device, &config);
 
-        // Shared bind group layout (storage + uniform)
+        // Shared BGL for candle + volume (storage + uniform)
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
             entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0, visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1, visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
-                    count: None,
-                },
+                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
             ],
         });
 
@@ -175,295 +130,341 @@ impl GpuState {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bgl], push_constant_ranges: &[] });
 
-        let make_pipeline = |shader_src: &str, label: &str| {
-            let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some(label), source: wgpu::ShaderSource::Wgsl(shader_src.into()) });
+        let make_pl = |src: &str, lbl: &str| {
+            let m = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some(lbl), source: wgpu::ShaderSource::Wgsl(src.into()) });
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(label), layout: Some(&layout),
-                vertex: wgpu::VertexState { module: &module, entry_point: Some("vs_main"), buffers: &[], compilation_options: Default::default() },
-                fragment: Some(wgpu::FragmentState { module: &module, entry_point: Some("fs_main"), targets: &[Some(wgpu::ColorTargetState { format, blend, write_mask: wgpu::ColorWrites::ALL })], compilation_options: Default::default() }),
+                label: Some(lbl), layout: Some(&layout),
+                vertex: wgpu::VertexState { module: &m, entry_point: Some("vs_main"), buffers: &[], compilation_options: Default::default() },
+                fragment: Some(wgpu::FragmentState { module: &m, entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState { format: fmt, blend, write_mask: wgpu::ColorWrites::ALL })], compilation_options: Default::default() }),
                 primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
                 depth_stencil: None, multisample: Default::default(), multiview: None, cache: None,
             })
         };
-        let candle_pipeline = make_pipeline(CANDLE_SHADER, "candle");
-        let volume_pipeline = make_pipeline(VOLUME_SHADER, "volume");
+        let candle_pl = make_pl(CANDLE_SHADER, "candle");
+        let volume_pl = make_pl(VOLUME_SHADER, "volume");
+
+        // Grid pipeline — line-list with vertex buffer
+        let grid_module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("grid"), source: wgpu::ShaderSource::Wgsl(GRID_SHADER.into()) });
+        let grid_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &[] });
+        let grid_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&grid_bgl], push_constant_ranges: &[] });
+        let grid_pl = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("grid"), layout: Some(&grid_layout),
+            vertex: wgpu::VertexState {
+                module: &grid_module, entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<GridVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 0, shader_location: 0 },
+                        wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x4, offset: 8, shader_location: 1 },
+                    ],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState { module: &grid_module, entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState { format: fmt, blend, write_mask: wgpu::ColorWrites::ALL })], compilation_options: Default::default() }),
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::LineList, ..Default::default() },
+            depth_stencil: None, multisample: Default::default(), multiview: None, cache: None,
+        });
 
         let cap: u32 = 4096;
-        let bar_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("bars"), size: (cap as u64) * std::mem::size_of::<Bar>() as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
-        });
-        let candle_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("candle-u"), size: std::mem::size_of::<CandleUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
-        });
-        let volume_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("volume-u"), size: std::mem::size_of::<VolumeUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
-        });
+        let bar_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bars"), size: (cap as u64) * 24, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        let candle_ubuf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None, size: 80, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        let volume_ubuf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None, size: 80, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        let grid_vbuf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("grid-verts"), size: (MAX_GRID_VERTS * std::mem::size_of::<GridVertex>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
 
-        let candle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None, layout: &bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: bar_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: candle_uniform_buf.as_entire_binding() },
-            ],
-        });
-        let volume_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None, layout: &bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: bar_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: volume_uniform_buf.as_entire_binding() },
-            ],
-        });
+        let candle_bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &bgl, entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: bar_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: candle_ubuf.as_entire_binding() },
+        ]});
+        let volume_bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &bgl, entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: bar_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: volume_ubuf.as_entire_binding() },
+        ]});
 
         Self {
-            device, queue, surface, surface_config,
-            candle_pipeline, candle_uniform_buf,
-            volume_pipeline, volume_uniform_buf,
-            bar_buffer, bgl, candle_bind_group, volume_bind_group,
-            bars: Vec::new(), bar_count: 0, bar_capacity: cap,
-            view_start: 0.0, view_count: 200, price_override: None,
-            background: [0.05, 0.05, 0.11, 1.0],
-            bull_color: [0.033, 0.600, 0.506, 1.0],
-            bear_color: [0.949, 0.212, 0.271, 1.0],
-            mouse: MouseState::new(),
-            needs_render: true,
+            device, queue, surface, config,
+            candle_pl, candle_ubuf, volume_pl, volume_ubuf, grid_pl, grid_vbuf,
+            bar_buf, bgl, candle_bg, volume_bg,
+            bars: Vec::new(), bar_count: 0, bar_cap: cap,
+            vs: 0.0, vc: 200, price_lock: None,
+            bg_color: [0.05, 0.05, 0.11, 1.0],
+            bull: [0.15, 0.65, 0.6, 1.0], bear: [0.94, 0.33, 0.31, 1.0],
+            mouse: Mouse::new(), dirty: true,
+            grid_vert_count: 0, grid_cpu: vec![GridVertex { pos: [0.0; 2], color: [0.0; 4] }; MAX_GRID_VERTS],
         }
     }
 
     fn resize(&mut self, w: u32, h: u32) {
         if w == 0 || h == 0 { return; }
-        self.surface_config.width = w;
-        self.surface_config.height = h;
-        self.surface.configure(&self.device, &self.surface_config);
-        self.needs_render = true;
+        self.config.width = w; self.config.height = h;
+        self.surface.configure(&self.device, &self.config);
+        self.dirty = true;
     }
 
-    fn ensure_bar_buffer(&mut self) {
-        if self.bar_count <= self.bar_capacity { return; }
-        let new_cap = (self.bar_count * 2).max(4096);
-        self.bar_capacity = new_cap;
-        self.bar_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("bars"), size: (new_cap as u64) * std::mem::size_of::<Bar>() as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
-        });
-        self.candle_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None, layout: &self.bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.bar_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: self.candle_uniform_buf.as_entire_binding() },
-            ],
-        });
-        self.volume_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None, layout: &self.bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.bar_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: self.volume_uniform_buf.as_entire_binding() },
-            ],
-        });
-        self.queue.write_buffer(&self.bar_buffer, 0, bytemuck::cast_slice(&self.bars));
+    fn ensure_bar_buf(&mut self) {
+        if self.bar_count <= self.bar_cap { return; }
+        let new = (self.bar_count * 2).max(4096);
+        self.bar_cap = new;
+        self.bar_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bars"), size: (new as u64) * 24, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        self.candle_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &self.bgl, entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: self.bar_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: self.candle_ubuf.as_entire_binding() },
+        ]});
+        self.volume_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &self.bgl, entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: self.bar_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: self.volume_ubuf.as_entire_binding() },
+        ]});
+        self.queue.write_buffer(&self.bar_buf, 0, bytemuck::cast_slice(&self.bars));
     }
 
-    fn process_command(&mut self, cmd: ChartCommand) {
+    fn process(&mut self, cmd: ChartCommand) {
         match cmd {
             ChartCommand::LoadBars { bars, .. } => {
                 self.bars = bars;
                 self.bar_count = self.bars.len() as u32;
-                // Auto-scroll to end
-                self.view_start = (self.bar_count as f32 - self.view_count as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
-                self.ensure_bar_buffer();
-                self.queue.write_buffer(&self.bar_buffer, 0, bytemuck::cast_slice(&self.bars));
-                self.needs_render = true;
+                self.vs = (self.bar_count as f32 - self.vc as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
+                self.price_lock = None;
+                self.ensure_bar_buf();
+                self.queue.write_buffer(&self.bar_buf, 0, bytemuck::cast_slice(&self.bars));
+                self.dirty = true;
             }
             ChartCommand::AppendBar { bar, .. } => {
                 self.bars.push(bar);
                 self.bar_count = self.bars.len() as u32;
-                self.ensure_bar_buffer();
-                let off = (self.bar_count as u64 - 1) * std::mem::size_of::<Bar>() as u64;
-                self.queue.write_buffer(&self.bar_buffer, off, bytemuck::bytes_of(&bar));
-                self.needs_render = true;
+                self.ensure_bar_buf();
+                self.queue.write_buffer(&self.bar_buf, (self.bar_count as u64 - 1) * 24, bytemuck::bytes_of(&bar));
+                // Auto-scroll if near end
+                let max_vs = self.bar_count as f32 - self.vc as f32 + RIGHT_MARGIN_BARS as f32;
+                if self.vs >= max_vs - 2.0 { self.vs = max_vs.max(0.0); }
+                self.dirty = true;
             }
             ChartCommand::UpdateLastBar { bar, .. } => {
                 if let Some(last) = self.bars.last_mut() {
                     *last = bar;
-                    let off = (self.bar_count as u64 - 1) * std::mem::size_of::<Bar>() as u64;
-                    self.queue.write_buffer(&self.bar_buffer, off, bytemuck::bytes_of(&bar));
-                    self.needs_render = true;
+                    self.queue.write_buffer(&self.bar_buf, (self.bar_count as u64 - 1) * 24, bytemuck::bytes_of(&bar));
+                    self.dirty = true;
                 }
             }
             ChartCommand::SetViewport { view_start, view_count, .. } => {
-                self.view_start = view_start as f32;
-                self.view_count = view_count;
-                self.needs_render = true;
+                self.vs = view_start as f32; self.vc = view_count; self.dirty = true;
             }
             ChartCommand::SetTheme { background, bull_color, bear_color } => {
-                self.background = background;
-                self.bull_color = bull_color;
-                self.bear_color = bear_color;
-                self.needs_render = true;
+                self.bg_color = background; self.bull = bull_color; self.bear = bear_color; self.dirty = true;
             }
             ChartCommand::Resize { width, height } => self.resize(width, height),
             ChartCommand::Shutdown => {}
         }
     }
 
-    // ── Mouse interaction (immediate, zero-latency) ───────────────────────────
+    // ── Mouse ─────────────────────────────────────────────────────────────────
 
-    fn handle_mouse_down(&mut self, w: f32, h: f32) {
+    fn mouse_down(&mut self) {
+        let w = self.config.width as f32;
+        let h = self.config.height as f32;
         self.mouse.dragging = true;
-        self.mouse.drag_zone = self.mouse.zone(w, h);
-        self.mouse.last_x = self.mouse.cursor_x;
-        self.mouse.last_y = self.mouse.cursor_y;
+        self.mouse.zone = self.mouse.detect_zone(w, h);
+        self.mouse.last_x = self.mouse.cx;
+        self.mouse.last_y = self.mouse.cy;
     }
 
-    fn handle_mouse_up(&mut self) {
-        self.mouse.dragging = false;
-    }
+    fn mouse_up(&mut self) { self.mouse.dragging = false; }
 
-    fn handle_mouse_move(&mut self, x: f64, y: f64) {
-        self.mouse.cursor_x = x;
-        self.mouse.cursor_y = y;
-
+    fn mouse_move(&mut self, x: f64, y: f64) {
+        self.mouse.cx = x; self.mouse.cy = y;
         if !self.mouse.dragging { return; }
-
         let dx = x - self.mouse.last_x;
         let dy = y - self.mouse.last_y;
-        self.mouse.last_x = x;
-        self.mouse.last_y = y;
+        self.mouse.last_x = x; self.mouse.last_y = y;
 
-        let w = self.surface_config.width as f32;
-        let chart_width = w - PADDING_RIGHT;
-        let total_bars = self.view_count + RIGHT_MARGIN_BARS;
-        let bar_step = chart_width / total_bars as f32;
+        let w = self.config.width as f32;
+        let cw = w - PR;
+        let total = self.vc + RIGHT_MARGIN_BARS;
+        let step = cw / total as f32;
 
-        match self.mouse.drag_zone {
+        match self.mouse.zone {
             DragZone::Chart => {
-                let bar_delta = dx as f32 / bar_step;
-                if bar_delta.abs() < 0.0001 { return; }
-                let max_vs = self.bar_count as f32 - self.view_count as f32 + 200.0;
-                self.view_start = (self.view_start - bar_delta).max(0.0).min(max_vs);
-                self.needs_render = true;
+                let d = dx as f32 / step;
+                if d.abs() < 0.0001 { return; }
+                let max = self.bar_count as f32 - self.vc as f32 + 200.0;
+                self.vs = (self.vs - d).max(0.0).min(max);
+                self.dirty = true;
             }
             DragZone::XAxis => {
                 if dx.abs() <= 1.0 { return; }
-                let factor = if dx > 0.0 { 1.05 } else { 0.95 };
-                let old_vc = self.view_count;
-                let new_vc = ((old_vc as f32 * factor).round() as u32).max(20).min(self.bar_count);
-                if new_vc == old_vc { return; }
-                let delta = (old_vc as i32 - new_vc as i32) / 2;
-                self.view_count = new_vc;
-                self.view_start = (self.view_start + delta as f32).max(0.0);
-                self.needs_render = true;
+                let f = if dx > 0.0 { 1.05_f32 } else { 0.95 };
+                let old = self.vc;
+                let new = ((old as f32 * f).round() as u32).max(20).min(self.bar_count);
+                if new == old { return; }
+                let delta = (old as i32 - new as i32) / 2;
+                self.vc = new;
+                self.vs = (self.vs + delta as f32).max(0.0);
+                self.price_lock = None;
+                self.dirty = true;
             }
             DragZone::YAxis => {
                 if dy.abs() <= 1.0 { return; }
-                let factor = if dy > 0.0 { 1.05 } else { 0.95 };
-                let (min_p, max_p) = self.price_range();
-                let center = (min_p + max_p) / 2.0;
-                let half = ((max_p - min_p) / 2.0) * factor;
-                self.price_override = Some((center - half, center + half));
-                self.needs_render = true;
+                let f = if dy > 0.0 { 1.05_f32 } else { 0.95 };
+                let (lo, hi) = self.price_range();
+                let c = (lo + hi) / 2.0;
+                let half = ((hi - lo) / 2.0) * f;
+                self.price_lock = Some((c - half, c + half));
+                self.dirty = true;
             }
         }
     }
 
-    fn handle_scroll(&mut self, delta: f32) {
-        let factor = if delta > 0.0 { 1.1 } else { 0.9 };
-        let old_vc = self.view_count;
-        let new_vc = ((old_vc as f32 * factor).round() as u32).max(20).min(self.bar_count);
-        if new_vc == old_vc { return; }
-        let d = (old_vc as i32 - new_vc as i32) / 2;
-        self.view_count = new_vc;
-        self.view_start = (self.view_start + d as f32).max(0.0);
-        self.price_override = None;
-        self.needs_render = true;
+    fn scroll(&mut self, dy: f32) {
+        let f = if dy > 0.0 { 1.1_f32 } else { 0.9 };
+        let old = self.vc;
+        let new = ((old as f32 * f).round() as u32).max(20).min(self.bar_count);
+        if new == old { return; }
+        let d = (old as i32 - new as i32) / 2;
+        self.vc = new;
+        self.vs = (self.vs + d as f32).max(0.0);
+        self.price_lock = None;
+        self.dirty = true;
     }
 
-    // ── Price range ───────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn price_range(&self) -> (f32, f32) {
-        if let Some((min, max)) = self.price_override { return (min, max); }
-        let start = self.view_start as u32;
-        let end = (start + self.view_count).min(self.bar_count);
+        if let Some(r) = self.price_lock { return r; }
+        let s = self.vs as u32;
+        let e = (s + self.vc).min(self.bar_count);
         let (mut lo, mut hi) = (f32::MAX, f32::MIN);
-        for i in start..end {
-            if let Some(b) = self.bars.get(i as usize) {
-                if b.low < lo { lo = b.low; }
-                if b.high > hi { hi = b.high; }
-            }
-        }
+        for i in s..e { if let Some(b) = self.bars.get(i as usize) { lo = lo.min(b.low); hi = hi.max(b.high); } }
         if lo >= hi { lo -= 0.5; hi += 0.5; }
-        let pad = (hi - lo) * 0.05;
-        (lo - pad, hi + pad)
+        let p = (hi - lo) * 0.05;
+        (lo - p, hi + p)
+    }
+
+    fn build_grid(&mut self, w: f32, h: f32, min_p: f32, max_p: f32) {
+        let mut n = 0usize;
+        let cw = w - PR;
+        let ch = h - PT - PB;
+        let axis_color = [0.35, 0.35, 0.4, 0.15];
+        let border_color = [0.35, 0.35, 0.4, 0.4];
+
+        // price→clip helper
+        let py = |price: f32| -> f32 { 1.0 - 2.0 * (PT + (max_p - price) / (max_p - min_p) * ch) / h };
+
+        // Horizontal price grid
+        let range = max_p - min_p;
+        let raw_step = range / 8.0;
+        let mag = 10.0_f32.powf(raw_step.log10().floor());
+        let nice = [1.0, 2.0, 2.5, 5.0, 10.0];
+        let step = nice.iter().map(|&s| s * mag).find(|&s| s >= raw_step).unwrap_or(raw_step);
+        let first = (min_p / step).ceil() * step;
+        let mut p = first;
+        while p <= max_p && n + 2 <= MAX_GRID_VERTS {
+            let cy = py(p);
+            let lx = -1.0;
+            let rx = (cw / w) * 2.0 - 1.0;
+            self.grid_cpu[n] = GridVertex { pos: [lx, cy], color: axis_color };
+            self.grid_cpu[n + 1] = GridVertex { pos: [rx, cy], color: axis_color };
+            n += 2;
+            p += step;
+        }
+
+        // Chart border box
+        let l = -1.0_f32;
+        let r = (cw / w) * 2.0 - 1.0;
+        let t = 1.0 - 2.0 * PT / h;
+        let b = 1.0 - 2.0 * (h - PB) / h;
+        if n + 8 <= MAX_GRID_VERTS {
+            // Right border (y-axis)
+            self.grid_cpu[n] = GridVertex { pos: [r, t], color: border_color };
+            self.grid_cpu[n + 1] = GridVertex { pos: [r, b], color: border_color };
+            // Bottom border (x-axis)
+            self.grid_cpu[n + 2] = GridVertex { pos: [l, b], color: border_color };
+            self.grid_cpu[n + 3] = GridVertex { pos: [r, b], color: border_color };
+            // Top border
+            self.grid_cpu[n + 4] = GridVertex { pos: [l, t], color: border_color };
+            self.grid_cpu[n + 5] = GridVertex { pos: [r, t], color: border_color };
+            // Left border
+            self.grid_cpu[n + 6] = GridVertex { pos: [l, t], color: border_color };
+            self.grid_cpu[n + 7] = GridVertex { pos: [l, b], color: border_color };
+            n += 8;
+        }
+
+        self.grid_vert_count = n as u32;
+        if n > 0 {
+            self.queue.write_buffer(&self.grid_vbuf, 0, bytemuck::cast_slice(&self.grid_cpu[..n]));
+        }
     }
 
     // ── Render ────────────────────────────────────────────────────────────────
 
     fn render(&mut self) {
-        self.needs_render = false;
+        self.dirty = false;
         let output = match self.surface.get_current_texture() {
             Ok(t) => t,
-            Err(_) => { self.surface.configure(&self.device, &self.surface_config); return; }
+            Err(_) => { self.surface.configure(&self.device, &self.config); return; }
         };
         let view = output.texture.create_view(&Default::default());
-        let w = self.surface_config.width as f32;
-        let h = self.surface_config.height as f32;
+        let w = self.config.width as f32;
+        let h = self.config.height as f32;
+        let cw = w - PR;
+        let ch = h - PT - PB;
+        let total = self.vc + RIGHT_MARGIN_BARS;
+        let step_px = (cw / total as f32).floor().max(1.0);
+        let half_step = (step_px / 2.0).floor();
+        let frac = self.vs - self.vs.floor();
+        let offset_px = (frac * step_px).round();
 
-        let chart_width = w - PADDING_RIGHT;
-        let chart_height = h - PADDING_TOP - PADDING_BOTTOM;
-        let total_bars = self.view_count + RIGHT_MARGIN_BARS;
-        let step_px = (chart_width / total_bars as f32).floor().max(1.0);
-        let half_step_px = (step_px / 2.0).floor();
-        let offset_frac = self.view_start - self.view_start.floor();
-        let offset_px = (offset_frac * step_px).round();
-
-        let vs = self.view_start as u32;
-        let end = (vs + self.view_count).min(self.bar_count);
-        let draw_count = end.saturating_sub(vs);
-        if draw_count == 0 { output.present(); return; }
+        let vs = self.vs as u32;
+        let end = (vs + self.vc).min(self.bar_count);
+        let dc = end.saturating_sub(vs);
+        if dc == 0 { output.present(); return; }
 
         let (min_p, max_p) = self.price_range();
-        let price_a = 1.0 - 2.0 * PADDING_TOP / h - (max_p / (max_p - min_p)) * (2.0 * chart_height / h);
-        let price_b = (2.0 * chart_height / h) / (max_p - min_p);
+        let pa = 1.0 - 2.0 * PT / h - (max_p / (max_p - min_p)) * (2.0 * ch / h);
+        let pb = (2.0 * ch / h) / (max_p - min_p);
 
-        // Candle uniforms
-        let cu = CandleUniforms {
-            view_start: vs, view_count: draw_count, _pad0: 0, _pad1: 0,
-            step_px, half_step_px, price_a, price_b,
+        // Candle uniform
+        self.queue.write_buffer(&self.candle_ubuf, 0, bytemuck::bytes_of(&CandleUniforms {
+            view_start: vs, view_count: dc, _pad0: 0, _pad1: 0,
+            step_px, half_step_px: half_step, price_a: pa, price_b: pb,
             offset_px, _pad2: 0.0, canvas_width: w, canvas_height: h,
-            up_color: self.bull_color, down_color: self.bear_color,
-        };
-        self.queue.write_buffer(&self.candle_uniform_buf, 0, bytemuck::bytes_of(&cu));
+            up_color: self.bull, down_color: self.bear,
+        }));
 
-        // Volume uniforms
-        let bar_step_clip = step_px * 2.0 / w;
-        let pixel_offset_frac = offset_px / step_px;
-        let body_width_clip = (step_px * 0.4) * 2.0 / w; // 40% of bar width
-        let mut max_vol: f32 = 0.0;
-        for i in vs..end { if let Some(b) = self.bars.get(i as usize) { if b.volume > max_vol { max_vol = b.volume; } } }
-        if max_vol == 0.0 { max_vol = 1.0; }
-
-        let vu = VolumeUniforms {
-            view_start: vs, view_count: draw_count, _pad0: 0, _pad1: 0,
-            bar_step_clip, pixel_offset_frac, body_width_clip, max_volume: max_vol,
+        // Volume uniform
+        let bsc = step_px * 2.0 / w;
+        let pof = offset_px / step_px;
+        let bwc = (step_px * 0.4) * 2.0 / w;
+        let mut mv: f32 = 0.0;
+        for i in vs..end { if let Some(b) = self.bars.get(i as usize) { mv = mv.max(b.volume); } }
+        if mv == 0.0 { mv = 1.0; }
+        self.queue.write_buffer(&self.volume_ubuf, 0, bytemuck::bytes_of(&VolumeUniforms {
+            view_start: vs, view_count: dc, _pad0: 0, _pad1: 0,
+            bar_step_clip: bsc, pixel_offset_frac: pof, body_width_clip: bwc, max_volume: mv,
             vol_bottom_clip: -1.0, vol_height_clip: 0.3, _pad2: 0.0, _pad3: 0.0,
-            up_color: [0.18, 0.78, 0.45, 0.25],
-            down_color: [0.93, 0.27, 0.27, 0.25],
-        };
-        self.queue.write_buffer(&self.volume_uniform_buf, 0, bytemuck::bytes_of(&vu));
+            up_color: [0.18, 0.78, 0.45, 0.25], down_color: [0.93, 0.27, 0.27, 0.25],
+        }));
 
-        // Encode + submit
-        let mut encoder = self.device.create_command_encoder(&Default::default());
+        // Grid
+        self.build_grid(w, h, min_p, max_p);
+
+        // Encode
+        let mut enc = self.device.create_command_encoder(&Default::default());
         {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view, resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: self.background[0] as f64, g: self.background[1] as f64,
-                            b: self.background[2] as f64, a: self.background[3] as f64,
+                            r: self.bg_color[0] as f64, g: self.bg_color[1] as f64,
+                            b: self.bg_color[2] as f64, a: self.bg_color[3] as f64,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -471,96 +472,79 @@ impl GpuState {
                 depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
             });
 
-            // Volume (behind candles)
-            pass.set_pipeline(&self.volume_pipeline);
-            pass.set_bind_group(0, &self.volume_bind_group, &[]);
-            pass.draw(0..6, 0..draw_count);
-
+            // Grid (behind everything)
+            if self.grid_vert_count > 0 {
+                pass.set_pipeline(&self.grid_pl);
+                pass.set_vertex_buffer(0, self.grid_vbuf.slice(..));
+                pass.draw(0..self.grid_vert_count, 0..1);
+            }
+            // Volume
+            pass.set_pipeline(&self.volume_pl);
+            pass.set_bind_group(0, &self.volume_bg, &[]);
+            pass.draw(0..6, 0..dc);
             // Candles
-            pass.set_pipeline(&self.candle_pipeline);
-            pass.set_bind_group(0, &self.candle_bind_group, &[]);
-            pass.draw(0..18, 0..draw_count);
+            pass.set_pipeline(&self.candle_pl);
+            pass.set_bind_group(0, &self.candle_bg, &[]);
+            pass.draw(0..18, 0..dc);
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.queue.submit(std::iter::once(enc.finish()));
         output.present();
     }
 }
 
-// ─── winit Application ────────────────────────────────────────────────────────
+// ─── winit App ────────────────────────────────────────────────────────────────
 
-struct ChartApp {
+struct App {
     rx: mpsc::Receiver<ChartCommand>,
     title: String,
-    initial_width: u32,
-    initial_height: u32,
-    window: Option<Arc<Window>>,
-    gpu: Option<GpuState>,
+    iw: u32, ih: u32,
+    win: Option<Arc<Window>>,
+    gpu: Option<Gpu>,
 }
 
-impl ApplicationHandler for ChartApp {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() { return; }
-        let attrs = WindowAttributes::default()
-            .with_title(&self.title)
-            .with_inner_size(PhysicalSize::new(self.initial_width, self.initial_height));
-        let window = Arc::new(event_loop.create_window(attrs).expect("window"));
-        let gpu = GpuState::new(Arc::clone(&window));
-        self.window = Some(window);
-        self.gpu = Some(gpu);
+impl ApplicationHandler for App {
+    fn resumed(&mut self, el: &ActiveEventLoop) {
+        if self.win.is_some() { return; }
+        let w = Arc::new(el.create_window(
+            WindowAttributes::default().with_title(&self.title).with_inner_size(PhysicalSize::new(self.iw, self.ih))
+        ).expect("window"));
+        let g = Gpu::new(Arc::clone(&w));
+        self.win = Some(w);
+        self.gpu = Some(g);
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, ev: WindowEvent) {
         let gpu = match &mut self.gpu { Some(g) => g, None => return };
-        let w = gpu.surface_config.width as f32;
-        let h = gpu.surface_config.height as f32;
-
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => gpu.resize(size.width, size.height),
-            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
-                gpu.handle_mouse_down(w, h);
-            }
-            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => {
-                gpu.handle_mouse_up();
-            }
+        match ev {
+            WindowEvent::CloseRequested => el.exit(),
+            WindowEvent::Resized(s) => gpu.resize(s.width, s.height),
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => gpu.mouse_down(),
+            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => gpu.mouse_up(),
             WindowEvent::CursorMoved { position, .. } => {
-                gpu.handle_mouse_move(position.x, position.y);
-                // Render immediately on mouse move during drag — zero latency
-                if gpu.mouse.dragging && gpu.needs_render {
-                    gpu.render();
-                }
+                gpu.mouse_move(position.x, position.y);
+                if gpu.mouse.dragging && gpu.dirty { gpu.render(); }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let dy = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 50.0,
-                };
-                gpu.handle_scroll(dy);
+                let dy = match delta { MouseScrollDelta::LineDelta(_, y) => y, MouseScrollDelta::PixelDelta(p) => p.y as f32 / 50.0 };
+                gpu.scroll(dy);
             }
             WindowEvent::RedrawRequested => {
-                // Process IPC commands
                 while let Ok(cmd) = self.rx.try_recv() {
-                    if matches!(cmd, ChartCommand::Shutdown) { event_loop.exit(); return; }
-                    gpu.process_command(cmd);
+                    if matches!(cmd, ChartCommand::Shutdown) { el.exit(); return; }
+                    gpu.process(cmd);
                 }
-                if gpu.needs_render { gpu.render(); }
+                if gpu.dirty { gpu.render(); }
             }
             _ => {}
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(window) = &self.window {
-            window.request_redraw();
-        }
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        if let Some(w) = &self.win { w.request_redraw(); }
     }
 }
 
 pub fn run_render_loop(title: &str, width: u32, height: u32, rx: mpsc::Receiver<ChartCommand>) {
-    let event_loop = EventLoop::new().expect("event loop");
-    let mut app = ChartApp {
-        rx, title: title.to_string(), initial_width: width, initial_height: height,
-        window: None, gpu: None,
-    };
-    let _ = event_loop.run_app(&mut app);
+    let el = EventLoop::new().expect("event loop");
+    let _ = el.run_app(&mut App { rx, title: title.into(), iw: width, ih: height, win: None, gpu: None });
 }

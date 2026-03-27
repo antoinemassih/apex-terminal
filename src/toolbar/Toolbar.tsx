@@ -211,7 +211,10 @@ export function Toolbar() {
           </button>
           <button onClick={() => {
             import('@tauri-apps/api/core').then(({ invoke }) => {
-              invoke('open_native_chart').catch((e: unknown) => console.error('Native chart failed:', e))
+              const s = pane?.symbol ?? 'SPY'
+              const t = pane?.timeframe ?? '5m'
+              invoke('open_native_chart', { symbol: s, timeframe: t })
+                .catch((e: unknown) => console.error('Native chart failed:', e))
             })
           }} style={{ ...btnStyle(false), color: theme.bull, border: `1px solid ${theme.bull}44` }}>
             GPU
