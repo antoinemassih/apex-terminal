@@ -1,6 +1,7 @@
 mod data;
 mod drawings;
 mod ib_ws;
+mod chart_renderer;
 
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
@@ -10,6 +11,50 @@ use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
 use std::time::Duration;
+
+struct NativeChart(Mutex<Option<chart_renderer::ChartRendererHandle>>);
+
+#[tauri::command]
+fn open_native_chart() -> Result<(), String> {
+    // This is called from WebView to open the native chart window
+    // In a full implementation, the handle would be stored in Tauri state
+    // and bar data would be forwarded from the IB tick stream
+    let handle = chart_renderer::spawn("Apex Chart", 1200, 800);
+
+    // Send test data (in production, this would come from the data provider)
+    let mut bars = Vec::new();
+    let mut price = 100.0_f32;
+    for _ in 0..500 {
+        let change = (rand_f32() - 0.48) * 2.0;
+        let open = price;
+        let close = price + change;
+        let high = open.max(close) + rand_f32() * 1.0;
+        let low = open.min(close) - rand_f32() * 1.0;
+        let volume = rand_f32() * 1000.0;
+        bars.push(chart_renderer::Bar {
+            open, high, low, close, volume, _pad: 0.0,
+        });
+        price = close;
+    }
+
+    handle.send(chart_renderer::ChartCommand::LoadBars {
+        symbol: "TEST".into(),
+        timeframe: "5m".into(),
+        bars,
+    });
+
+    // Store handle (leak for now — proper lifecycle management needed)
+    std::mem::forget(handle);
+    Ok(())
+}
+
+fn rand_f32() -> f32 {
+    // Simple pseudo-random for test data
+    use std::time::SystemTime;
+    let t = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+    let seed = t.subsec_nanos();
+    ((seed ^ (seed >> 16)) as f32 / u32::MAX as f32).abs()
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -96,6 +141,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             greet,
+            open_native_chart,
             data::get_bars,
             data::get_options_chain,
             drawings::drawings_load_all,
