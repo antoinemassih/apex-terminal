@@ -59,6 +59,43 @@ fn compute_ema(data: &[f32], period: usize) -> Vec<f32> {
     result
 }
 
+// ─── Drawing tool state ───────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq)]
+enum DrawTool { None, HLine, TrendLine }
+
+struct DrawState {
+    tool: DrawTool,
+    // For trendline: first point placed, waiting for second
+    pending_point: Option<(f32, f32)>, // (bar_idx, price)
+    // Drag-move a drawing
+    dragging_id: Option<String>,
+    drag_start_price: f32,
+    drag_start_bar: f32,
+}
+
+impl DrawState {
+    fn new() -> Self {
+        Self { tool: DrawTool::None, pending_point: None, dragging_id: None, drag_start_price: 0.0, drag_start_bar: 0.0 }
+    }
+}
+
+// ─── Theme presets ────────────────────────────────────────────────────────────
+
+struct ThemePreset {
+    name: &'static str,
+    bg: [f32; 4],
+    bull: [f32; 4],
+    bear: [f32; 4],
+}
+
+const THEMES: &[ThemePreset] = &[
+    ThemePreset { name: "Midnight", bg: [0.05, 0.05, 0.11, 1.0], bull: [0.15, 0.65, 0.6, 1.0], bear: [0.94, 0.33, 0.31, 1.0] },
+    ThemePreset { name: "Dark", bg: [0.1, 0.1, 0.1, 1.0], bull: [0.18, 0.78, 0.45, 1.0], bear: [0.93, 0.27, 0.27, 1.0] },
+    ThemePreset { name: "Charcoal", bg: [0.12, 0.13, 0.15, 1.0], bull: [0.0, 0.75, 0.95, 1.0], bear: [0.95, 0.45, 0.25, 1.0] },
+    ThemePreset { name: "Light", bg: [0.95, 0.95, 0.95, 1.0], bull: [0.0, 0.6, 0.4, 1.0], bear: [0.85, 0.2, 0.2, 1.0] },
+];
+
 // ─── Mouse ────────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq)]
@@ -71,7 +108,7 @@ struct Mouse {
     last_y: f64,
     cx: f64,
     cy: f64,
-    right_click: Option<(f32, f32)>, // right-click position for context menu
+    right_click: Option<(f32, f32)>,
 }
 
 impl Mouse {
@@ -146,8 +183,10 @@ struct Gpu {
     text_renderer: GlyphonRenderer,
     glyphon_viewport: GlyphonViewport,
 
-    // Drawings
+    // Drawings + tools
     drawings: Vec<Drawing>,
+    draw_state: DrawState,
+    theme_idx: usize,
 
     // Auto-scroll
     auto_scroll: bool,
@@ -321,6 +360,8 @@ impl Gpu {
             bg_color: [0.05, 0.05, 0.11, 1.0],
             bull: [0.15, 0.65, 0.6, 1.0], bear: [0.94, 0.33, 0.31, 1.0],
             drawings: Vec::new(),
+            draw_state: DrawState::new(),
+            theme_idx: 0,
             auto_scroll: true,
             interaction_time: std::time::Instant::now(),
             mouse: Mouse::new(), dirty: true,
@@ -478,10 +519,38 @@ impl Gpu {
         self.interaction_time = std::time::Instant::now();
     }
 
-    fn mouse_up(&mut self) { self.mouse.dragging = false; }
+    fn mouse_up(&mut self) {
+        self.mouse.dragging = false;
+        self.draw_state.dragging_id = None;
+    }
 
     fn mouse_move(&mut self, x: f64, y: f64) {
         self.mouse.cx = x; self.mouse.cy = y;
+
+        // Handle drawing drag
+        if let Some(ref id) = self.draw_state.dragging_id.clone() {
+            let new_price = self.y_to_price(y as f32);
+            let new_bar = self.x_to_bar(x as f32);
+            let dp = new_price - self.draw_state.drag_start_price;
+            let db = new_bar - self.draw_state.drag_start_bar;
+            if let Some(d) = self.drawings.iter_mut().find(|d| d.id == *id) {
+                match &mut d.kind {
+                    DrawingKind::HLine { price } => *price += dp,
+                    DrawingKind::TrendLine { price0, bar0, price1, bar1 } => {
+                        *price0 += dp; *price1 += dp;
+                        *bar0 += db; *bar1 += db;
+                    }
+                    DrawingKind::HZone { price0, price1 } => {
+                        *price0 += dp; *price1 += dp;
+                    }
+                }
+            }
+            self.draw_state.drag_start_price = new_price;
+            self.draw_state.drag_start_bar = new_bar;
+            self.dirty = true;
+            return;
+        }
+
         if !self.mouse.dragging { return; }
         let dx = x - self.mouse.last_x;
         let dy = y - self.mouse.last_y;
@@ -547,6 +616,72 @@ impl Gpu {
         if lo >= hi { lo -= 0.5; hi += 0.5; }
         let p = (hi - lo) * 0.05;
         (lo - p, hi + p)
+    }
+
+    /// Convert pixel Y to price
+    fn y_to_price(&self, py: f32) -> f32 {
+        let h = self.config.height as f32;
+        let ch = h - PT - PB;
+        let (min_p, max_p) = self.price_range();
+        min_p + (max_p - min_p) * (1.0 - (py - PT) / ch)
+    }
+
+    /// Convert pixel X to bar index (float)
+    fn x_to_bar(&self, px: f32) -> f32 {
+        let w = self.config.width as f32;
+        let cw = w - PR;
+        let total = self.vc + RIGHT_MARGIN_BARS;
+        let step = cw / total as f32;
+        let frac = self.vs - self.vs.floor();
+        let offset = (frac * step).round();
+        (px + offset - step * 0.5) / step + self.vs
+    }
+
+    /// Hit-test drawings — returns drawing id if mouse is near one
+    fn hit_test_drawing(&self, px: f32, py: f32) -> Option<String> {
+        let w = self.config.width as f32;
+        let h = self.config.height as f32;
+        let cw = w - PR;
+        let ch = h - PT - PB;
+        let (min_p, max_p) = self.price_range();
+
+        let price_to_y = |p: f32| -> f32 { PT + (max_p - p) / (max_p - min_p) * ch };
+        let bar_to_x = |bar: f32| -> f32 {
+            let total = self.vc + RIGHT_MARGIN_BARS;
+            let step = cw / total as f32;
+            let frac = self.vs - self.vs.floor();
+            let offset = (frac * step).round();
+            (bar - self.vs) * step + step * 0.5 - offset
+        };
+
+        for d in self.drawings.iter().rev() {
+            match &d.kind {
+                DrawingKind::HLine { price } => {
+                    let y = price_to_y(*price);
+                    if (py - y).abs() < 5.0 && px < cw { return Some(d.id.clone()); }
+                }
+                DrawingKind::TrendLine { price0, bar0, price1, bar1 } => {
+                    let x0 = bar_to_x(*bar0); let y0 = price_to_y(*price0);
+                    let x1 = bar_to_x(*bar1); let y1 = price_to_y(*price1);
+                    // Point-to-segment distance
+                    let dx = x1 - x0; let dy = y1 - y0;
+                    let len2 = dx * dx + dy * dy;
+                    if len2 > 0.0 {
+                        let t = ((px - x0) * dx + (py - y0) * dy) / len2;
+                        let t = t.max(0.0).min(1.0);
+                        let nx = x0 + t * dx; let ny = y0 + t * dy;
+                        let dist = ((px - nx).powi(2) + (py - ny).powi(2)).sqrt();
+                        if dist < 6.0 { return Some(d.id.clone()); }
+                    }
+                }
+                DrawingKind::HZone { price0, price1 } => {
+                    let y0 = price_to_y(*price0); let y1 = price_to_y(*price1);
+                    let top = y0.min(y1); let bot = y0.max(y1);
+                    if py >= top - 4.0 && py <= bot + 4.0 && px < cw { return Some(d.id.clone()); }
+                }
+            }
+        }
+        None
     }
 
     fn build_grid(&mut self, w: f32, h: f32, min_p: f32, max_p: f32) {
@@ -715,6 +850,28 @@ impl Gpu {
                         self.overlay_cpu[o+10] = lw_draw_h * d.width; self.overlay_cpu[o+11] = 0.0;
                         n += OVERLAY_FLOATS_PER_LINE;
                     }
+                }
+            }
+        }
+
+        // Trendline preview (pending point to mouse)
+        if self.draw_state.tool == DrawTool::TrendLine {
+            if let Some((b0, p0)) = self.draw_state.pending_point {
+                let mx = self.mouse.cx as f32;
+                let my = self.mouse.cy as f32;
+                if mx >= 0.0 && mx < w - PR && my >= PT && my < h - PB && n + OVERLAY_FLOATS_PER_LINE <= self.overlay_cpu.len() {
+                    let x0 = bar_to_clip_x(b0);
+                    let y0 = price_to_clip_y(p0);
+                    let x1 = (mx / w) * 2.0 - 1.0;
+                    let y1 = 1.0 - (my / h) * 2.0;
+                    let lw = (lw_draw_h + lw_draw_v) / 2.0;
+                    let o = n;
+                    self.overlay_cpu[o] = x0; self.overlay_cpu[o+1] = y0;
+                    self.overlay_cpu[o+2] = x1; self.overlay_cpu[o+3] = y1;
+                    self.overlay_cpu[o+4] = 0.3; self.overlay_cpu[o+5] = 0.6; self.overlay_cpu[o+6] = 1.0; self.overlay_cpu[o+7] = 0.5;
+                    self.overlay_cpu[o+8] = 6.0 / w * 2.0; self.overlay_cpu[o+9] = 4.0 / w * 2.0;
+                    self.overlay_cpu[o+10] = lw; self.overlay_cpu[o+11] = 0.0;
+                    n += OVERLAY_FLOATS_PER_LINE;
                 }
             }
         }
@@ -954,8 +1111,16 @@ impl Gpu {
 
         // Context menu (right-click)
         if let Some((cmx, cmy)) = self.mouse.right_click {
-            let menu_items = ["Set HLine", "Reset View", "Clear Drawings"];
-            let menu_w = 140.0_f32;
+            let theme_name = THEMES[self.theme_idx].name;
+            let menu_items = [
+                "Set HLine",
+                "Draw Trendline",
+                "Reset View",
+                "Clear Drawings",
+                &format!("Theme: {}", theme_name),
+                "Delete Drawing",
+            ];
+            let menu_w = 160.0_f32;
             let item_h = 20.0_f32;
             let menu_color = GColor::rgba(220, 220, 230, 255);
 
@@ -965,6 +1130,23 @@ impl Gpu {
                 buf.set_text(&mut self.font_system, label, mono.color(menu_color), Shaping::Basic);
                 buf.shape_until_scroll(&mut self.font_system, false);
                 text_buffers.push((buf, cmx + 8.0, cmy + i as f32 * item_h + 4.0, menu_color));
+            }
+        }
+
+        // Drawing tool hint
+        if self.draw_state.tool != DrawTool::None {
+            let hint = match self.draw_state.tool {
+                DrawTool::HLine => "Click to place HLine (Esc to cancel)",
+                DrawTool::TrendLine if self.draw_state.pending_point.is_some() => "Click second point (Esc to cancel)",
+                DrawTool::TrendLine => "Click first point (Esc to cancel)",
+                DrawTool::None => "",
+            };
+            if !hint.is_empty() {
+                let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
+                buf.set_size(&mut self.font_system, Some(300.0), Some(14.0));
+                buf.set_text(&mut self.font_system, hint, mono.color(GColor::rgba(255, 200, 50, 220)), Shaping::Basic);
+                buf.shape_until_scroll(&mut self.font_system, false);
+                text_buffers.push((buf, 8.0, h - PB + 20.0, GColor::rgba(255, 200, 50, 220)));
             }
         }
 
@@ -1034,43 +1216,91 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => gpu.resize(s.width, s.height),
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
-                // Check if clicking a context menu item
-                if let Some((cmx, cmy)) = gpu.mouse.right_click {
+                // Handle drawing tool placement
+                if gpu.draw_state.tool != DrawTool::None && gpu.mouse.right_click.is_none() {
                     let mx = gpu.mouse.cx as f32;
                     let my = gpu.mouse.cy as f32;
-                    let menu_w = 140.0_f32;
-                    let item_h = 20.0_f32;
-                    let items = 3;
-                    if mx >= cmx && mx < cmx + menu_w && my >= cmy && my < cmy + items as f32 * item_h {
-                        let idx = ((my - cmy) / item_h) as usize;
-                        match idx {
-                            0 => {
-                                // Set HLine at right-click price
-                                let (min_p, max_p) = gpu.price_range();
-                                let w = gpu.config.width as f32;
-                                let h = gpu.config.height as f32;
-                                let ch = h - PT - PB;
-                                let price = min_p + (max_p - min_p) * (1.0 - (cmy - PT) / ch);
+                    let w = gpu.config.width as f32;
+                    if mx < w - PR && my >= PT && my < gpu.config.height as f32 - PB {
+                        let price = gpu.y_to_price(my);
+                        let bar = gpu.x_to_bar(mx);
+                        match gpu.draw_state.tool {
+                            DrawTool::HLine => {
                                 gpu.drawings.push(Drawing {
                                     id: format!("hline-{}", gpu.drawings.len()),
                                     kind: DrawingKind::HLine { price },
-                                    color: [0.4, 0.7, 1.0, 0.8],
-                                    width: 1.0,
-                                    dashed: true,
+                                    color: [0.4, 0.7, 1.0, 0.8], width: 1.0, dashed: true,
+                                });
+                                gpu.draw_state.tool = DrawTool::None;
+                            }
+                            DrawTool::TrendLine => {
+                                if let Some((b0, p0)) = gpu.draw_state.pending_point {
+                                    gpu.drawings.push(Drawing {
+                                        id: format!("trend-{}", gpu.drawings.len()),
+                                        kind: DrawingKind::TrendLine { price0: p0, bar0: b0, price1: price, bar1: bar },
+                                        color: [0.3, 0.6, 1.0, 0.9], width: 1.0, dashed: false,
+                                    });
+                                    gpu.draw_state.pending_point = None;
+                                    gpu.draw_state.tool = DrawTool::None;
+                                } else {
+                                    gpu.draw_state.pending_point = Some((bar, price));
+                                }
+                            }
+                            DrawTool::None => {}
+                        }
+                        gpu.dirty = true;
+                    }
+                }
+                // Check context menu item click
+                else if let Some((cmx, cmy)) = gpu.mouse.right_click {
+                    let mx = gpu.mouse.cx as f32;
+                    let my = gpu.mouse.cy as f32;
+                    let menu_w = 160.0_f32;
+                    let item_h = 20.0_f32;
+                    let items = 6;
+                    if mx >= cmx && mx < cmx + menu_w && my >= cmy && my < cmy + items as f32 * item_h {
+                        let idx = ((my - cmy) / item_h) as usize;
+                        let click_price = gpu.y_to_price(cmy);
+                        match idx {
+                            0 => { // Set HLine
+                                gpu.drawings.push(Drawing {
+                                    id: format!("hline-{}", gpu.drawings.len()),
+                                    kind: DrawingKind::HLine { price: click_price },
+                                    color: [0.4, 0.7, 1.0, 0.8], width: 1.0, dashed: true,
                                 });
                             }
-                            1 => {
-                                // Reset view
+                            1 => { // Draw Trendline
+                                gpu.draw_state.tool = DrawTool::TrendLine;
+                                gpu.draw_state.pending_point = None;
+                            }
+                            2 => { // Reset View
                                 gpu.vs = (gpu.bar_count as f32 - gpu.vc as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
                                 gpu.price_lock = None;
                                 gpu.auto_scroll = true;
                             }
-                            2 => gpu.drawings.clear(), // Clear drawings
+                            3 => gpu.drawings.clear(), // Clear Drawings
+                            4 => { // Next Theme
+                                gpu.theme_idx = (gpu.theme_idx + 1) % THEMES.len();
+                                let t = &THEMES[gpu.theme_idx];
+                                gpu.bg_color = t.bg; gpu.bull = t.bull; gpu.bear = t.bear;
+                            }
+                            5 => { // Delete drawing under cursor (if any)
+                                if let Some(id) = gpu.hit_test_drawing(cmx, cmy) {
+                                    gpu.drawings.retain(|d| d.id != id);
+                                }
+                            }
                             _ => {}
                         }
                         gpu.mouse.right_click = None;
                         gpu.dirty = true;
                     } else {
+                        // Check if clicking on a drawing to start drag
+                        let hit = gpu.hit_test_drawing(mx, my);
+                        if let Some(id) = hit {
+                            gpu.draw_state.dragging_id = Some(id);
+                            gpu.draw_state.drag_start_price = gpu.y_to_price(my);
+                            gpu.draw_state.drag_start_bar = gpu.x_to_bar(mx);
+                        }
                         gpu.mouse.right_click = None;
                         gpu.dirty = true;
                     }
@@ -1125,7 +1355,18 @@ impl ApplicationHandler for App {
                 use winit::keyboard::{Key, NamedKey};
                 if event.state == ElementState::Pressed {
                     match &event.logical_key {
-                        Key::Named(NamedKey::Escape) => el.exit(),
+                        Key::Named(NamedKey::Escape) => {
+                            if gpu.draw_state.tool != DrawTool::None {
+                                gpu.draw_state.tool = DrawTool::None;
+                                gpu.draw_state.pending_point = None;
+                                gpu.dirty = true;
+                            } else if gpu.mouse.right_click.is_some() {
+                                gpu.mouse.right_click = None;
+                                gpu.dirty = true;
+                            } else {
+                                el.exit();
+                            }
+                        }
                         Key::Named(NamedKey::Home) => {
                             gpu.vs = (gpu.bar_count as f32 - gpu.vc as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
                             gpu.price_lock = None;
@@ -1138,6 +1379,32 @@ impl ApplicationHandler for App {
                         }
                         Key::Character(c) if c.as_str() == "+" || c.as_str() == "=" => gpu.scroll(-1.0),
                         Key::Character(c) if c.as_str() == "-" => gpu.scroll(1.0),
+                        Key::Character(c) if c.as_str() == "h" => {
+                            gpu.draw_state.tool = DrawTool::HLine;
+                            gpu.draw_state.pending_point = None;
+                            gpu.dirty = true;
+                        }
+                        Key::Character(c) if c.as_str() == "t" => {
+                            gpu.draw_state.tool = DrawTool::TrendLine;
+                            gpu.draw_state.pending_point = None;
+                            gpu.dirty = true;
+                        }
+                        Key::Character(c) if c.as_str() == "d" => {
+                            // Delete drawing under cursor
+                            let mx = gpu.mouse.cx as f32;
+                            let my = gpu.mouse.cy as f32;
+                            if let Some(id) = gpu.hit_test_drawing(mx, my) {
+                                gpu.drawings.retain(|d| d.id != id);
+                                gpu.dirty = true;
+                            }
+                        }
+                        Key::Named(NamedKey::Delete) | Key::Named(NamedKey::Backspace) => {
+                            // Delete last drawing
+                            if !gpu.drawings.is_empty() {
+                                gpu.drawings.pop();
+                                gpu.dirty = true;
+                            }
+                        }
                         _ => {}
                     }
                 }

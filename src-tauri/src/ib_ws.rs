@@ -93,6 +93,23 @@ async fn ws_loop(
                             // ── Hot path: binary msgpack tick data ──────────
                             Some(Ok(Message::Binary(bytes))) => {
                                 if let Ok(val) = rmp_serde::from_slice::<Value>(&bytes) {
+                                    // Forward to native chart renderer if active
+                                    if let Value::Object(ref map) = val {
+                                        if let (Some(price), Some(volume)) = (
+                                            map.get("price").and_then(|v| v.as_f64()),
+                                            map.get("volume").and_then(|v| v.as_f64()),
+                                        ) {
+                                            let p = price as f32;
+                                            let v = volume as f32;
+                                            crate::send_to_native_chart(crate::chart_renderer::ChartCommand::UpdateLastBar {
+                                                symbol: map.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                                timeframe: "5m".to_string(),
+                                                bar: crate::chart_renderer::Bar {
+                                                    open: p, high: p, low: p, close: p, volume: v, _pad: 0.0,
+                                                },
+                                            });
+                                        }
+                                    }
                                     let _ = app.emit("ib-tick", val);
                                 }
                             }

@@ -12,7 +12,18 @@ use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
 use std::time::Duration;
 
-struct NativeChartSender(Mutex<Option<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>);
+/// Global sender for forwarding ticks to native chart renderer
+static NATIVE_CHART_TX: std::sync::OnceLock<Mutex<Option<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
+
+pub fn send_to_native_chart(cmd: chart_renderer::ChartCommand) {
+    if let Some(lock) = NATIVE_CHART_TX.get() {
+        if let Ok(guard) = lock.lock() {
+            if let Some(tx) = guard.as_ref() {
+                let _ = tx.send(cmd);
+            }
+        }
+    }
+}
 
 #[tauri::command]
 async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, String> {
@@ -95,8 +106,7 @@ async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, 
 
         // Store sender globally for tick forwarding
         {
-            static NATIVE_TX: std::sync::OnceLock<Mutex<Option<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
-            let global = NATIVE_TX.get_or_init(|| Mutex::new(None));
+            let global = NATIVE_CHART_TX.get_or_init(|| Mutex::new(None));
             *global.lock().unwrap() = Some(tx);
         }
 
