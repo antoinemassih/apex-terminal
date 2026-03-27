@@ -12,7 +12,7 @@ use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
 use std::time::Duration;
 
-struct NativeChart(Mutex<Option<chart_renderer::ChartRendererHandle>>);
+struct NativeChartSender(Mutex<Option<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>);
 
 #[tauri::command]
 async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, String> {
@@ -93,8 +93,14 @@ async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, 
             symbol, timeframe, bars, timestamps,
         });
 
+        // Store sender globally for tick forwarding
+        {
+            static NATIVE_TX: std::sync::OnceLock<Mutex<Option<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
+            let global = NATIVE_TX.get_or_init(|| Mutex::new(None));
+            *global.lock().unwrap() = Some(tx);
+        }
+
         eprintln!("[native-chart] Starting render loop");
-        // This blocks the thread (winit event loop) — that's intentional
         chart_renderer::gpu::run_render_loop(
             &format!("Apex Chart — Native GPU"),
             1400, 900, rx,

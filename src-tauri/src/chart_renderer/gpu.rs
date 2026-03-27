@@ -930,9 +930,35 @@ impl ApplicationHandler for App {
                 gpu.dirty = true;
                 gpu.render(); // Immediate render — crosshair follows cursor, drag updates viewport
             }
+            WindowEvent::CursorLeft { .. } => {
+                gpu.mouse.cx = -1.0;
+                gpu.mouse.cy = -1.0;
+                gpu.dirty = true;
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let dy = match delta { MouseScrollDelta::LineDelta(_, y) => y, MouseScrollDelta::PixelDelta(p) => p.y as f32 / 50.0 };
                 gpu.scroll(dy);
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                use winit::keyboard::{Key, NamedKey};
+                if event.state == ElementState::Pressed {
+                    match &event.logical_key {
+                        Key::Named(NamedKey::Escape) => el.exit(),
+                        Key::Named(NamedKey::Home) => {
+                            gpu.vs = (gpu.bar_count as f32 - gpu.vc as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
+                            gpu.price_lock = None;
+                            gpu.dirty = true;
+                        }
+                        Key::Character(c) if c.as_str() == "r" => {
+                            gpu.vs = (gpu.bar_count as f32 - gpu.vc as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
+                            gpu.price_lock = None;
+                            gpu.dirty = true;
+                        }
+                        Key::Character(c) if c.as_str() == "+" || c.as_str() == "=" => gpu.scroll(-1.0),
+                        Key::Character(c) if c.as_str() == "-" => gpu.scroll(1.0),
+                        _ => {}
+                    }
+                }
             }
             WindowEvent::RedrawRequested => {
                 while let Ok(cmd) = self.rx.try_recv() {
