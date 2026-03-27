@@ -161,6 +161,10 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [viewStart, viewCount, width, height, priceOverride, dataVersion, symbol, timeframe, computeCs])
 
+  // Live ref to the latest cs — lets zoomY/panY read current price range without recomputing
+  const lastCsRef = useRef<CoordSystem | null>(null)
+  if (cs) lastCsRef.current = cs
+
   // ── Scroll-left pagination ──────────────────────────────────────────────────
   const loadingMoreRef = useRef(false)
   useEffect(() => {
@@ -227,25 +231,25 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   }, [pauseAutoScroll, scheduleFlush, symbol, timeframe])
 
   const zoomY = useCallback((factor: number, anchorPrice?: number) => {
-    // Read from ref for latest price range (no cs dependency = stable callback)
-    const currentCs = computeCs(viewStartRef.current, viewCountRef.current)
-    if (!currentCs) return
+    // Use cached cs ref — no recomputation needed, just read current price range
+    const cur = lastCsRef.current
+    if (!cur) return
     pauseAutoScroll()
-    const center = anchorPrice ?? (currentCs.minPrice + currentCs.maxPrice) / 2
-    const halfRange = ((currentCs.maxPrice - currentCs.minPrice) / 2) * factor
+    const center = anchorPrice ?? (cur.minPrice + cur.maxPrice) / 2
+    const halfRange = ((cur.maxPrice - cur.minPrice) / 2) * factor
     priceOverrideRef.current = { min: center - halfRange, max: center + halfRange }
     scheduleFlush()
-  }, [pauseAutoScroll, scheduleFlush, computeCs])
+  }, [pauseAutoScroll, scheduleFlush])
 
   const panY = useCallback((deltaPixels: number) => {
-    const currentCs = computeCs(viewStartRef.current, viewCountRef.current)
-    if (!currentCs) return
+    const cur = lastCsRef.current
+    if (!cur) return
     pauseAutoScroll()
-    const pricePerPixel = (currentCs.maxPrice - currentCs.minPrice) / currentCs.chartHeight
+    const pricePerPixel = (cur.maxPrice - cur.minPrice) / cur.chartHeight
     const priceDelta = deltaPixels * pricePerPixel
     priceOverrideRef.current = {
-      min: currentCs.minPrice + priceDelta,
-      max: currentCs.maxPrice + priceDelta,
+      min: cur.minPrice + priceDelta,
+      max: cur.maxPrice + priceDelta,
     }
     scheduleFlush()
   }, [pauseAutoScroll, scheduleFlush, computeCs])

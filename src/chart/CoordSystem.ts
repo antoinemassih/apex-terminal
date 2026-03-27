@@ -10,15 +10,17 @@ export interface CoordConfig {
   pixelOffset?: number  // sub-bar scroll offset in pixels (for smooth panning)
 }
 
-const MAX_CACHE = 256
 const cache = new Map<string, CoordSystem>()
+const MAX_CACHE = 16 // small — only caches static viewports (symbol/tf switch, resize)
 
 function cacheKey(c: CoordConfig): string {
   const pr = c.paddingRight ?? 80
   const pt = c.paddingTop ?? 20
   const pb = c.paddingBottom ?? 40
-  const po = (c.pixelOffset ?? 0).toFixed(1) // 0.1px precision — smooth enough, 10x fewer cache entries
-  return `${c.width}|${c.height}|${c.barCount}|${c.minPrice.toFixed(6)}|${c.maxPrice.toFixed(6)}|${pr}|${pt}|${pb}|${po}`
+  // pixelOffset changes every sub-pixel pan frame — skip cache for dynamic viewports.
+  // CoordSystem is a tiny object (~200 bytes), creating one per frame is cheaper than a cache miss path.
+  if (c.pixelOffset && c.pixelOffset % 1 !== 0) return ''
+  return `${c.width}|${c.height}|${c.barCount}|${c.minPrice.toFixed(6)}|${c.maxPrice.toFixed(6)}|${pr}|${pt}|${pb}`
 }
 
 export class CoordSystem {
@@ -43,16 +45,18 @@ export class CoordSystem {
 
   static create(config: CoordConfig): CoordSystem {
     const key = cacheKey(config)
-    const cached = cache.get(key)
-    if (cached) return cached
-
-    const cs = new CoordSystem(config)
-    if (cache.size >= MAX_CACHE) {
-      // Evict oldest entry (first inserted)
-      const first = cache.keys().next().value!
-      cache.delete(first)
+    if (key) {
+      const cached = cache.get(key)
+      if (cached) return cached
     }
-    cache.set(key, cs)
+    const cs = new CoordSystem(config)
+    if (key) {
+      if (cache.size >= MAX_CACHE) {
+        const first = cache.keys().next().value!
+        cache.delete(first)
+      }
+      cache.set(key, cs)
+    }
     return cs
   }
 
