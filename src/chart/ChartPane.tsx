@@ -250,25 +250,27 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       }
       return
     }
-    // Skip crosshair during drag — no point drawing it while panning
-    if (!dragRef.current && cs && data) crosshairRef.current?.update(mx, my)
+    // During chart drag (pan/zoom): skip all overlay work — pure GPU path
+    if (dragRef.current) {
+      const dx = e.clientX - dragRef.current.x
+      const dy = e.clientY - dragRef.current.y
+      switch (dragRef.current.zone) {
+        case 'chart': pan(dx); break
+        case 'xaxis': if (Math.abs(dx) > 1) zoomX(dx > 0 ? 1.05 : 0.95); break
+        case 'yaxis': if (Math.abs(dy) > 1) zoomY(dy > 0 ? 1.05 : 0.95); break
+      }
+      dragRef.current = { ...dragRef.current, x: e.clientX, y: e.clientY }
+      // Immediate GPU render — don't wait for rAF
+      const newCs = computeCs(viewStartRef.current, viewCountRef.current, paneRef.current?.gpuPriceRange)
+      if (newCs && paneRef.current) {
+        paneRef.current.setViewport({ viewStart: Math.floor(viewStartRef.current), viewCount: viewCountRef.current, cs: newCs })
+        paneRef.current.forceRender()
+      }
+      return
+    }
+    // Not dragging — update crosshair + drawing overlay
+    if (cs && data) crosshairRef.current?.update(mx, my)
     drawingRef.current?.handleMouseMove(mx, my)
-    if (!dragRef.current) return
-    const dx = e.clientX - dragRef.current.x
-    const dy = e.clientY - dragRef.current.y
-    switch (dragRef.current.zone) {
-      case 'chart': pan(dx); break
-      case 'xaxis': if (Math.abs(dx) > 1) zoomX(dx > 0 ? 1.05 : 0.95); break
-      case 'yaxis': if (Math.abs(dy) > 1) zoomY(dy > 0 ? 1.05 : 0.95); break
-    }
-    dragRef.current = { ...dragRef.current, x: e.clientX, y: e.clientY }
-
-    // Immediate GPU render — don't wait for rAF (eliminates 1-frame input lag)
-    const newCs = computeCs(viewStartRef.current, viewCountRef.current, paneRef.current?.gpuPriceRange)
-    if (newCs && paneRef.current) {
-      paneRef.current.setViewport({ viewStart: Math.floor(viewStartRef.current), viewCount: viewCountRef.current, cs: newCs })
-      paneRef.current.forceRender()
-    }
   }, [dragZoomMode, pan, zoomX, zoomY, cs, data, computeCs])
 
   const onMouseUp = useCallback((e: React.MouseEvent) => {
