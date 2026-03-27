@@ -93,7 +93,27 @@ interface OrderStore {
 
 const DEFAULT_PANE: PaneOrderState = { qty: 100, limitPrice: null, orderType: 'market', levels: [] }
 
+const MAX_TOASTS = 50
+const TOAST_TTL = 60_000
+const ORDER_HISTORY_TTL = 3_600_000 // 1 hour
+
 let _toastId = 0
+
+/** Remove executed/cancelled orders older than ORDER_HISTORY_TTL */
+function _purgeStaleHistory(panes: Record<string, PaneOrderState>, now: number): Record<string, PaneOrderState> {
+  const result: Record<string, PaneOrderState> = {}
+  for (const [id, pane] of Object.entries(panes)) {
+    const filtered = pane.levels.filter(l => {
+      if (l.status === 'executed' && l.executedAt && now - l.executedAt > ORDER_HISTORY_TTL) return false
+      if (l.status === 'cancelled' && l.cancelledAt && now - l.cancelledAt > ORDER_HISTORY_TTL) return false
+      return true
+    })
+    if (filtered.length !== pane.levels.length) {
+      result[id] = { ...pane, levels: filtered }
+    }
+  }
+  return result
+}
 
 export const useOrderStore = create<OrderStore>((set, get) => ({
   enabled:    false,
@@ -105,23 +125,30 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
   setFilter: (filter) => set({ filter }),
 
   toasts: [],
-  addToast: (toast) => set(s => ({
-    toasts: [...s.toasts, { ...toast, id: `toast-${++_toastId}`, timestamp: Date.now() }],
-  })),
+  addToast: (toast) => set(s => {
+    const now = Date.now()
+    // Auto-expire old toasts + cap at MAX_TOASTS
+    const fresh = s.toasts.filter(t => now - t.timestamp < TOAST_TTL)
+    const capped = fresh.length >= MAX_TOASTS ? fresh.slice(-MAX_TOASTS + 1) : fresh
+    return { toasts: [...capped, { ...toast, id: `toast-${++_toastId}`, timestamp: now }] }
+  }),
   removeToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
 
   panes: {},
   getPane: (paneId) => get().panes[paneId] ?? DEFAULT_PANE,
 
-  setQty: (paneId, qty) => set(s => ({
-    panes: { ...s.panes, [paneId]: { ...DEFAULT_PANE, ...s.panes[paneId], qty: Math.max(1, qty) } },
-  })),
-  setLimitPrice: (paneId, price) => set(s => ({
-    panes: { ...s.panes, [paneId]: { ...DEFAULT_PANE, ...s.panes[paneId], limitPrice: price } },
-  })),
-  setOrderType: (paneId, orderType) => set(s => ({
-    panes: { ...s.panes, [paneId]: { ...DEFAULT_PANE, ...s.panes[paneId], orderType } },
-  })),
+  setQty: (paneId, qty) => set(s => {
+    const prev = s.panes[paneId] ?? DEFAULT_PANE
+    return { panes: { ...s.panes, [paneId]: { ...prev, qty: Math.max(1, qty) } } }
+  }),
+  setLimitPrice: (paneId, price) => set(s => {
+    const prev = s.panes[paneId] ?? DEFAULT_PANE
+    return { panes: { ...s.panes, [paneId]: { ...prev, limitPrice: price } } }
+  }),
+  setOrderType: (paneId, orderType) => set(s => {
+    const prev = s.panes[paneId] ?? DEFAULT_PANE
+    return { panes: { ...s.panes, [paneId]: { ...prev, orderType } } }
+  }),
 
   setLevel: (paneId, level) => set(s => {
     const prev = s.panes[paneId] ?? DEFAULT_PANE
@@ -153,13 +180,16 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
     const levels = prev.levels.map(l =>
       l.type === type || l.type === pair ? { ...l, status: 'executed' as OrderStatus, executedAt: now } : l
     )
-    // Auto-add toast for executed level
     const level = prev.levels.find(l => l.type === type)
-    const newToasts = level ? [...s.toasts, {
+    const freshToasts = s.toasts.filter(t => now - t.timestamp < TOAST_TTL)
+    const newToasts = level ? [...freshToasts, {
       id: `toast-${++_toastId}`, paneId, type, action: 'executed' as const,
       price: level.price, qty: level.qty, timestamp: now,
-    }] : s.toasts
-    return { panes: { ...s.panes, [paneId]: { ...prev, levels } }, toasts: newToasts }
+    }] : freshToasts
+    // Auto-purge stale history across all panes
+    const panes = _purgeStaleHistory(s.panes, now)
+    panes[paneId] = { ...prev, levels }
+    return { panes: { ...s.panes, ...panes }, toasts: newToasts }
   }),
 
   cancelLevel: (paneId, type) => set(s => {
@@ -170,11 +200,14 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
     const levels = prev.levels.map(l =>
       l.type === type || l.type === pair ? { ...l, status: 'cancelled' as OrderStatus, cancelledAt: now } : l
     )
-    const newToasts = level ? [...s.toasts, {
+    const freshToasts = s.toasts.filter(t => now - t.timestamp < TOAST_TTL)
+    const newToasts = level ? [...freshToasts, {
       id: `toast-${++_toastId}`, paneId, type, action: 'cancelled' as const,
       price: level.price, qty: level.qty, timestamp: now,
-    }] : s.toasts
-    return { panes: { ...s.panes, [paneId]: { ...prev, levels } }, toasts: newToasts }
+    }] : freshToasts
+    const panes = _purgeStaleHistory(s.panes, now)
+    panes[paneId] = { ...prev, levels }
+    return { panes: { ...s.panes, ...panes }, toasts: newToasts }
   }),
 
   removeLevel: (paneId, type) => set(s => {

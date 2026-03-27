@@ -19,11 +19,22 @@ function pct(price: number, prevClose: number | null): string | null {
 }
 
 export function Watchlist() {
-  const {
-    symbols, open, prices, addSymbol, removeSymbol, setPrice, setPrevClose,
-    mode, setMode, chainSymbol, setChainSymbol, savedOptions,
-  } = useWatchlistStore()
-  const { theme: themeName, panes, activePane } = useChartStore()
+  // Granular selectors — avoid re-render on every price tick for unrelated properties
+  const symbols = useWatchlistStore(s => s.symbols)
+  const open = useWatchlistStore(s => s.open)
+  const prices = useWatchlistStore(s => s.prices)
+  const addSymbol = useWatchlistStore(s => s.addSymbol)
+  const removeSymbol = useWatchlistStore(s => s.removeSymbol)
+  const setPrice = useWatchlistStore(s => s.setPrice)
+  const setPrevClose = useWatchlistStore(s => s.setPrevClose)
+  const mode = useWatchlistStore(s => s.mode)
+  const setMode = useWatchlistStore(s => s.setMode)
+  const chainSymbol = useWatchlistStore(s => s.chainSymbol)
+  const setChainSymbol = useWatchlistStore(s => s.setChainSymbol)
+  const savedOptions = useWatchlistStore(s => s.savedOptions)
+  const themeName = useChartStore(s => s.theme)
+  const activePane = useChartStore(s => s.activePane)
+  const panes = useChartStore(s => s.panes)
   const setChartSymbol = useChartStore(s => s.setSymbol)
   const theme = getTheme(themeName)
 

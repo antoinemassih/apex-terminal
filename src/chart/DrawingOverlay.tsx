@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useRef, useCallback, useState, useEffect, forwardRef, useImperativeHandle, useMemo } from 'react'
 import { useDrawingStore } from '../store/drawingStore'
 import { useChartStore } from '../store/chartStore'
 import { LineStylePopup } from './LineStylePopup'
@@ -50,9 +50,18 @@ function distToSegment(px: number, py: number, x0: number, y0: number, x1: numbe
 export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
   function DrawingOverlay({ symbol, timeframe, cs, data: chartData, width, height, viewStart, onInteraction }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { activeTool, drawingsFor, addDrawing, updateDrawing, selectedId, selectedIds, selectDrawing, toggleSelectDrawing, setActiveTool } = useDrawingStore()
+  const activeTool = useDrawingStore(s => s.activeTool)
+  const drawingsFor = useDrawingStore(s => s.drawingsFor)
+  const addDrawing = useDrawingStore(s => s.addDrawing)
+  const updateDrawing = useDrawingStore(s => s.updateDrawing)
+  const selectedId = useDrawingStore(s => s.selectedId)
+  const selectedIds = useDrawingStore(s => s.selectedIds)
+  const selectDrawing = useDrawingStore(s => s.selectDrawing)
+  const toggleSelectDrawing = useDrawingStore(s => s.toggleSelectDrawing)
+  const setActiveTool = useDrawingStore(s => s.setActiveTool)
   const drawingsHidden = useDrawingStore(s => s.drawingsHidden(symbol))
   const hiddenGroups = useDrawingStore(s => s.hiddenGroups)
+  const hiddenGroupSet = useMemo(() => new Set(hiddenGroups), [hiddenGroups])
   // Only show popup for drawings that belong to this pane's symbol
   const selectedOwnerSymbol = useDrawingStore(s => s.selectedId ? s.drawings.find(d => d.id === s.selectedId)?.symbol : null)
   const annotationFilters = useChartStore(s => s.annotationFilters)
@@ -183,7 +192,6 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     if (drawingsHidden) return
 
     const drawings = drawingsFor(symbol, timeframe)
-    const hiddenGroupSet = new Set(hiddenGroups)
 
     for (const d of drawings) {
       if (hiddenGroupSet.has(d.groupId ?? 'default')) continue

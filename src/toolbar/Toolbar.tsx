@@ -26,8 +26,8 @@ const LAYOUTS: { key: Layout; label: string }[] = [
 
 export function Toolbar() {
   // Granular selectors — only re-render when the specific value changes
-  const panes = useChartStore(s => s.panes)
   const activePane = useChartStore(s => s.activePane)
+  const pane = useChartStore(s => s.panes.find(p => p.id === s.activePane))
   const setTimeframe = useChartStore(s => s.setTimeframe)
   const toggleVolume = useChartStore(s => s.toggleVolume)
   const toggleIndicator = useChartStore(s => s.toggleIndicator)
@@ -45,7 +45,6 @@ export function Toolbar() {
   const toggleOrdersOpen = useOrderStore(s => s.toggleOrdersOpen)
   const [pickerOpen, setPickerOpen] = useState(false)
   const tickerRef = useRef<HTMLSpanElement>(null)
-  const pane = panes.find(p => p.id === activePane)
   const theme = getTheme(themeName)
 
   const btnStyle = (active: boolean) => ({

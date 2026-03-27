@@ -50,6 +50,9 @@ interface DrawingStore {
   selectDrawing: (id: string | null) => void
   toggleSelectDrawing: (id: string, addToSelection: boolean) => void
   drawingsFor: (symbol: string, tf: Timeframe) => Drawing[]
+  // Internal caches — not accessed directly by consumers
+  _symbolIndex?: Map<string, Drawing[]>
+  _symbolIndexVersion?: Drawing[]
   clear: () => void
 
   // Group operations
@@ -166,7 +169,22 @@ export const useDrawingStore = create<DrawingStore>()((set, get) => ({
     }
   },
 
-  drawingsFor: (symbol, _tf) => get().drawings.filter(d => d.symbol === symbol),
+  drawingsFor: (symbol, _tf) => {
+    // Use cached index for O(1) lookup instead of O(n) filter
+    const state = get()
+    if (!state._symbolIndex || state._symbolIndexVersion !== state.drawings) {
+      // Rebuild index when drawings array changes (reference equality)
+      const idx = new Map<string, Drawing[]>()
+      for (const d of state.drawings) {
+        const arr = idx.get(d.symbol)
+        if (arr) arr.push(d)
+        else idx.set(d.symbol, [d])
+      }
+      ;(state as any)._symbolIndex = idx
+      ;(state as any)._symbolIndexVersion = state.drawings
+    }
+    return (state as any)._symbolIndex.get(symbol) ?? []
+  },
 
   clear: () => {
     set({ drawings: [], selectedId: null })
