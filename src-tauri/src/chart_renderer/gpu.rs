@@ -86,7 +86,11 @@ struct Gpu {
 impl Gpu {
     fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
-        let instance = wgpu::Instance::new(&Default::default());
+        // Force DX12 on Windows — Vulkan conflicts with WebView2's GPU context
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::DX12,
+            ..Default::default()
+        });
         let surface = instance.create_surface(window).expect("surface");
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
