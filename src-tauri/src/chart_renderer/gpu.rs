@@ -14,12 +14,15 @@ use super::{Bar, CandleUniforms, VolumeUniforms, GridVertex, ChartCommand};
 const CANDLE_SHADER: &str = include_str!("../../../src/renderer/shaders/candles_gpu.wgsl");
 const VOLUME_SHADER: &str = include_str!("../../../src/renderer/shaders/volume_gpu.wgsl");
 const GRID_SHADER: &str = include_str!("../../../src/renderer/shaders/grid.wgsl");
+const OVERLAY_SHADER: &str = include_str!("../../../src/renderer/shaders/overlay.wgsl");
 
 const RIGHT_MARGIN_BARS: u32 = 8;
-const PR: f32 = 80.0;  // padding right
-const PT: f32 = 20.0;  // padding top
-const PB: f32 = 40.0;  // padding bottom
+const PR: f32 = 80.0;
+const PT: f32 = 20.0;
+const PB: f32 = 40.0;
 const MAX_GRID_VERTS: usize = 512;
+const MAX_OVERLAY_LINES: usize = 128;
+const OVERLAY_FLOATS_PER_LINE: usize = 12; // matches overlay.wgsl Line struct
 
 // ─── Mouse ────────────────────────────────────────────────────────────────────
 
@@ -76,6 +79,14 @@ struct Gpu {
     bg_color: [f32; 4],
     bull: [f32; 4],
     bear: [f32; 4],
+
+    // Overlay (crosshair, drawing lines)
+    overlay_pl: wgpu::RenderPipeline,
+    overlay_buf: wgpu::Buffer,
+    overlay_bg: wgpu::BindGroup,
+    overlay_bgl: wgpu::BindGroupLayout,
+    overlay_cpu: Vec<f32>,
+    overlay_count: u32,
 
     mouse: Mouse,
     dirty: bool,
@@ -191,10 +202,42 @@ impl Gpu {
             wgpu::BindGroupEntry { binding: 1, resource: volume_ubuf.as_entire_binding() },
         ]});
 
+        // Overlay pipeline (crosshair, drawing lines) — storage buffer of Line structs
+        let overlay_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("overlay-bgl"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0, visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+                count: None,
+            }],
+        });
+        let overlay_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&overlay_bgl], push_constant_ranges: &[] });
+        let overlay_module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("overlay"), source: wgpu::ShaderSource::Wgsl(OVERLAY_SHADER.into()) });
+        let overlay_pl = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("overlay"), layout: Some(&overlay_layout),
+            vertex: wgpu::VertexState { module: &overlay_module, entry_point: Some("vs_main"), buffers: &[], compilation_options: Default::default() },
+            fragment: Some(wgpu::FragmentState { module: &overlay_module, entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState { format: fmt, blend, write_mask: wgpu::ColorWrites::ALL })], compilation_options: Default::default() }),
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
+            depth_stencil: None, multisample: Default::default(), multiview: None, cache: None,
+        });
+        let overlay_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("overlay-lines"),
+            size: (MAX_OVERLAY_LINES * OVERLAY_FLOATS_PER_LINE * 4) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+        });
+        let overlay_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None, layout: &overlay_bgl,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: overlay_buf.as_entire_binding() }],
+        });
+
         Self {
             device, queue, surface, config,
             candle_pl, candle_ubuf, volume_pl, volume_ubuf, grid_pl, grid_vbuf,
             bar_buf, bgl, candle_bg, volume_bg,
+            overlay_pl, overlay_buf, overlay_bg, overlay_bgl,
+            overlay_cpu: vec![0.0; MAX_OVERLAY_LINES * OVERLAY_FLOATS_PER_LINE],
+            overlay_count: 0,
             bars: Vec::new(), bar_count: 0, bar_cap: cap,
             vs: 0.0, vc: 200, price_lock: None,
             bg_color: [0.05, 0.05, 0.11, 1.0],
@@ -404,6 +447,53 @@ impl Gpu {
         }
     }
 
+    fn build_overlay(&mut self, w: f32, h: f32) {
+        let mut n = 0usize;
+        let mx = self.mouse.cx as f32;
+        let my = self.mouse.cy as f32;
+
+        // Only draw crosshair if mouse is in chart area and not dragging
+        if !self.mouse.dragging && mx >= 0.0 && mx < w - PR && my >= PT && my < h - PB {
+            let clip_x = (mx / w) * 2.0 - 1.0;
+            let clip_y = 1.0 - (my / h) * 2.0;
+            let clip_left = -1.0;
+            let clip_right = ((w - PR) / w) * 2.0 - 1.0;
+            let clip_top = 1.0 - (PT / h) * 2.0;
+            let clip_bottom = 1.0 - ((h - PB) / h) * 2.0;
+            let lw = 1.5 / w * 2.0;
+            let dash = 8.0 / w * 2.0;
+            let gap = 4.0 / w * 2.0;
+
+            // Horizontal crosshair
+            if n + OVERLAY_FLOATS_PER_LINE <= self.overlay_cpu.len() {
+                let o = n;
+                self.overlay_cpu[o] = clip_left; self.overlay_cpu[o+1] = clip_y;     // x0, y0
+                self.overlay_cpu[o+2] = clip_right; self.overlay_cpu[o+3] = clip_y;  // x1, y1
+                self.overlay_cpu[o+4] = 1.0; self.overlay_cpu[o+5] = 1.0; self.overlay_cpu[o+6] = 1.0; self.overlay_cpu[o+7] = 0.2; // rgba
+                self.overlay_cpu[o+8] = dash; self.overlay_cpu[o+9] = gap;            // dash, gap
+                self.overlay_cpu[o+10] = lw; self.overlay_cpu[o+11] = 0.0;            // width, pad
+                n += OVERLAY_FLOATS_PER_LINE;
+            }
+            // Vertical crosshair
+            if n + OVERLAY_FLOATS_PER_LINE <= self.overlay_cpu.len() {
+                let o = n;
+                let dash_v = 8.0 / h * 2.0;
+                let gap_v = 4.0 / h * 2.0;
+                self.overlay_cpu[o] = clip_x; self.overlay_cpu[o+1] = clip_top;
+                self.overlay_cpu[o+2] = clip_x; self.overlay_cpu[o+3] = clip_bottom;
+                self.overlay_cpu[o+4] = 1.0; self.overlay_cpu[o+5] = 1.0; self.overlay_cpu[o+6] = 1.0; self.overlay_cpu[o+7] = 0.2;
+                self.overlay_cpu[o+8] = dash_v; self.overlay_cpu[o+9] = gap_v;
+                self.overlay_cpu[o+10] = lw; self.overlay_cpu[o+11] = 0.0;
+                n += OVERLAY_FLOATS_PER_LINE;
+            }
+        }
+
+        self.overlay_count = (n / OVERLAY_FLOATS_PER_LINE) as u32;
+        if self.overlay_count > 0 {
+            self.queue.write_buffer(&self.overlay_buf, 0, bytemuck::cast_slice(&self.overlay_cpu[..n]));
+        }
+    }
+
     // ── Render ────────────────────────────────────────────────────────────────
 
     fn render(&mut self) {
@@ -454,8 +544,9 @@ impl Gpu {
             up_color: [0.18, 0.78, 0.45, 0.25], down_color: [0.93, 0.27, 0.27, 0.25],
         }));
 
-        // Grid
+        // Grid + overlay
         self.build_grid(w, h, min_p, max_p);
+        self.build_overlay(w, h);
 
         // Encode
         let mut enc = self.device.create_command_encoder(&Default::default());
@@ -489,6 +580,12 @@ impl Gpu {
             pass.set_pipeline(&self.candle_pl);
             pass.set_bind_group(0, &self.candle_bg, &[]);
             pass.draw(0..18, 0..dc);
+            // Overlay (crosshair, drawing lines) — on top of everything
+            if self.overlay_count > 0 {
+                pass.set_pipeline(&self.overlay_pl);
+                pass.set_bind_group(0, &self.overlay_bg, &[]);
+                pass.draw(0..6, 0..self.overlay_count);
+            }
         }
         self.queue.submit(std::iter::once(enc.finish()));
         output.present();
@@ -531,7 +628,9 @@ impl ApplicationHandler for App {
             WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => gpu.mouse_up(),
             WindowEvent::CursorMoved { position, .. } => {
                 gpu.mouse_move(position.x, position.y);
-                if gpu.mouse.dragging && gpu.dirty { gpu.render(); }
+                // Always render on mouse move — crosshair follows cursor, drag updates viewport
+                gpu.dirty = true;
+                if gpu.mouse.dragging || true { gpu.render(); }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let dy = match delta { MouseScrollDelta::LineDelta(_, y) => y, MouseScrollDelta::PixelDelta(p) => p.y as f32 / 50.0 };
