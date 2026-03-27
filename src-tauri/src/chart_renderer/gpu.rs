@@ -375,7 +375,7 @@ impl Gpu {
         });
         self.queue.write_buffer(&values_buf, 0, bytemuck::cast_slice(&f32_data));
         let uniform_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None, size: 64,
+            label: None, size: 80, // padded to match shared bind group layout
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
         });
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -718,6 +718,7 @@ impl Gpu {
                         bar_step_clip: bsc, pixel_offset_frac: pof, price_a: pa, price_b: pb,
                         line_width_clip: lw_clip, _pad2: 0.0, _pad3: 0.0, _pad4: 0.0,
                         color: ind.color,
+                        _extra_pad: [0.0; 4],
                     };
                     self.queue.write_buffer(&ind.uniform_buf, 0, bytemuck::bytes_of(&lu));
                     pass.set_bind_group(0, &ind.bind_group, &[]);

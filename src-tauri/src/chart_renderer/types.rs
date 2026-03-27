@@ -61,7 +61,7 @@ pub struct VolumeUniforms {
 unsafe impl bytemuck::Pod for VolumeUniforms {}
 unsafe impl bytemuck::Zeroable for VolumeUniforms {}
 
-/// Line indicator uniform — 64 bytes matching line_gpu.wgsl
+/// Line indicator uniform — padded to 80 bytes to share bind group layout with candles
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct LineUniforms {
@@ -78,6 +78,8 @@ pub struct LineUniforms {
     pub _pad3: f32,
     pub _pad4: f32,
     pub color: [f32; 4],
+    // Padding to match 80-byte candle uniform size (shared bind group layout)
+    pub _extra_pad: [f32; 4],
 }
 
 unsafe impl bytemuck::Pod for LineUniforms {}
