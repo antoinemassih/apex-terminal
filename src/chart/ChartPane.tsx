@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { getRenderEngine, getDataStore, getIndicatorEngine, getDataProvider } from '../globals'
-import type { PaneContext, EngineState, OverlayLine } from '../engine'
+import type { PaneContext, EngineState } from '../engine'
 import { useChartViewport } from './useChartViewport'
 import { AxisCanvas, AxisCanvasHandle } from './AxisCanvas'
 import { CrosshairOverlay, CrosshairHandle } from './CrosshairOverlay'
@@ -45,8 +45,6 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clickPrice: number | null } | null>(null)
   const [dragZoomMode, setDragZoomMode] = useState(false)
   const [hovered, setHovered] = useState(false)
-  // Mouse position for GPU crosshair (updated imperatively, read by rAF loop)
-  const mouseRef = useRef<{ x: number; y: number } | null>(null)
 
   // Drag-zoom overlay — updated imperatively to avoid React re-renders on every mousemove
   const dragZoomDivRef = useRef<HTMLDivElement>(null)
@@ -137,7 +135,6 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     let rafId: number
     let lastVs = -1, lastVc = -1, lastMinP = 0, lastMaxP = 0
     let lastDataLen = 0, lastLastClose = 0
-    let lastMouseX = -1, lastMouseY = -1
 
     const loop = () => {
       rafId = requestAnimationFrame(loop)
@@ -147,59 +144,30 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
       const data = getDataStore().getData(symbol, timeframe)
       const dataLen = data?.length ?? 0
       const lastClose = (data && dataLen > 0) ? data.closes[dataLen - 1] : 0
-      const mx = mouseRef.current?.x ?? -1
-      const my = mouseRef.current?.y ?? -1
-      const mouseChanged = mx !== lastMouseX || my !== lastMouseY
-      lastMouseX = mx; lastMouseY = my
 
-      // Cheap early exit — skip if viewport, data, AND mouse are all unchanged
-      const viewportChanged = vs !== lastVs || vc !== lastVc || dataLen !== lastDataLen || lastClose !== lastLastClose
-      if (!viewportChanged && !mouseChanged) return
+      // Cheap early exit — skip if viewport AND data unchanged
+      if (vs === lastVs && vc === lastVc && dataLen === lastDataLen && lastClose === lastLastClose) return
 
       const cs = computeCs(vs, vc, paneRef.current?.gpuPriceRange)
       if (!cs) return
 
-      // Only update candles/axis/drawings if the viewport actually changed (not just mouse)
-      const priceChanged = cs.minPrice !== lastMinP || cs.maxPrice !== lastMaxP
-      if (viewportChanged && (vs !== lastVs || vc !== lastVc || priceChanged)) {
-        lastVs = vs; lastVc = vc; lastMinP = cs.minPrice; lastMaxP = cs.maxPrice
+      // Secondary check: skip if price range also unchanged
+      if (vs === lastVs && vc === lastVc && cs.minPrice === lastMinP && cs.maxPrice === lastMaxP) {
         lastDataLen = dataLen; lastLastClose = lastClose
-
-        // 1. GPU candles + indicators
-        paneRef.current?.setViewport({ viewStart: Math.floor(vs), viewCount: vc, cs })
-
-        // Axis 2D canvas (text labels)
-        if (data) axisRef.current?.draw(cs, data, Math.floor(vs))
-
-        // Drawing overlay (Canvas2D — hit-testing + text + selection handles)
-        drawingRef.current?.setViewport(cs, Math.floor(vs))
+        return
       }
 
-      // GPU crosshair overlay — runs on mouse OR viewport change
-      const overlayLines: OverlayLine[] = []
-      const m = mouseRef.current
-      if (m && m.x >= 0 && m.x < cs.width - cs.pr && m.y >= cs.pt && m.y < cs.height - cs.pb) {
-        const cw = cs.width, ch = cs.height
-        const clipX = (m.x / cw) * 2 - 1
-        const clipY = 1 - (m.y / ch) * 2
-        const clipLeft = -1
-        const clipRight = ((cw - cs.pr) / cw) * 2 - 1
-        const clipTop = 1 - (cs.pt / ch) * 2
-        const clipBottom = 1 - ((ch - cs.pb) / ch) * 2
-        const lw = 1.5 / cw * 2
+      lastVs = vs; lastVc = vc; lastMinP = cs.minPrice; lastMaxP = cs.maxPrice
+      lastDataLen = dataLen; lastLastClose = lastClose
 
-        overlayLines.push({
-          x0: clipLeft, y0: clipY, x1: clipRight, y1: clipY,
-          r: 1, g: 1, b: 1, a: 0.2,
-          dashLen: 8 / cw * 2, gapLen: 4 / cw * 2, width: lw,
-        })
-        overlayLines.push({
-          x0: clipX, y0: clipTop, x1: clipX, y1: clipBottom,
-          r: 1, g: 1, b: 1, a: 0.2,
-          dashLen: 8 / ch * 2, gapLen: 4 / ch * 2, width: lw,
-        })
-      }
-      paneRef.current?.setOverlayLines(overlayLines)
+      // 1. GPU candles + indicators
+      paneRef.current?.setViewport({ viewStart: Math.floor(vs), viewCount: vc, cs })
+
+      // 2. Axis 2D canvas (text labels)
+      if (data) axisRef.current?.draw(cs, data, Math.floor(vs))
+
+      // 3. Drawing overlay
+      drawingRef.current?.setViewport(cs, Math.floor(vs))
     }
 
     rafId = requestAnimationFrame(loop)
@@ -270,7 +238,6 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     const rect = paneRectRef.current ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
-    mouseRef.current = { x: mx, y: my }
     if (dragZoomMode) {
       const start = zoomStartRef.current
       if (start && dragZoomDivRef.current) {
@@ -324,10 +291,8 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     if (dragZoomMode) return
     dragRef.current = null
     paneRectRef.current = null
-    mouseRef.current = null
     drawingRef.current?.handleMouseUp()
     crosshairRef.current?.clear()
-    paneRef.current?.setOverlayLines([])  // clear GPU crosshair
   }, [dragZoomMode])
 
   // Use a native (non-passive) wheel listener so e.preventDefault() actually works.
