@@ -10,14 +10,14 @@ export interface CoordConfig {
   pixelOffset?: number  // sub-bar scroll offset in pixels (for smooth panning)
 }
 
-const MAX_CACHE = 64
+const MAX_CACHE = 256
 const cache = new Map<string, CoordSystem>()
 
 function cacheKey(c: CoordConfig): string {
   const pr = c.paddingRight ?? 80
   const pt = c.paddingTop ?? 20
   const pb = c.paddingBottom ?? 40
-  const po = (c.pixelOffset ?? 0).toFixed(3)
+  const po = (c.pixelOffset ?? 0).toFixed(1) // 0.1px precision — smooth enough, 10x fewer cache entries
   return `${c.width}|${c.height}|${c.barCount}|${c.minPrice.toFixed(6)}|${c.maxPrice.toFixed(6)}|${pr}|${pt}|${pb}|${po}`
 }
 

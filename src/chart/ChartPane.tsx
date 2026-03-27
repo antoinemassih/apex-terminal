@@ -329,27 +329,31 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     if (e.clientX - rect.left >= width - cs.pr) resetYZoom()
   }, [cs, width, resetYZoom])
 
-  // Cursor
-  const [cursorStyle, setCursorStyle] = useState('default')
+  // Cursor — imperative DOM update, zero React re-renders on mousemove
+  const cursorRef = useRef('default')
   const onMouseMoveForCursor = useCallback((e: React.MouseEvent) => {
     onMouseMove(e)
-    if (dragZoomMode) return  // cursor handled via style prop
-    // Use cached rect — no extra getBoundingClientRect call here
+    if (dragZoomMode) return
     const rect = paneRectRef.current ?? (e.currentTarget as HTMLElement).getBoundingClientRect()
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
     const zone = getZone(mx, my)
     const drawCursor = drawingRef.current?.getCursor()
-    if (zone === 'chart' && drawCursor) setCursorStyle(drawCursor)
-    else if (zone === 'yaxis') setCursorStyle('ns-resize')
-    else if (zone === 'xaxis') setCursorStyle('ew-resize')
-    else setCursorStyle('default')
+    let next: string
+    if (zone === 'chart' && drawCursor) next = drawCursor
+    else if (zone === 'yaxis') next = 'ns-resize'
+    else if (zone === 'xaxis') next = 'ew-resize'
+    else next = 'default'
+    if (next !== cursorRef.current) {
+      cursorRef.current = next
+      if (wheelDivRef.current) wheelDivRef.current.style.cursor = next
+    }
   }, [dragZoomMode, getZone, onMouseMove])
 
   return (
     <div ref={wheelDivRef}
       style={{ position: 'relative', width, height, background: theme.background,
-        cursor: dragZoomMode ? 'crosshair' : cursorStyle }}
+        cursor: dragZoomMode ? 'crosshair' : 'default' }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMoveForCursor}
       onMouseUp={onMouseUp}

@@ -28,6 +28,11 @@ export class VolumeRenderer {
   private readonly vpData = new Float32Array(VP_FLOATS)
   private readonly vpU32 = new Uint32Array(this.vpData.buffer)
   private readonly device: GPUDevice
+  // Max-volume cache — avoids O(viewCount) scan when only pixelOffset/price range changed
+  private cachedMaxVol = 0
+  private cachedMaxVolStart = -1
+  private cachedMaxVolEnd = -1
+  private cachedMaxVolDataLen = -1
   private readonly gpuBars: GpuBarBuffer
 
   constructor(ctx: GPUContext, gpuBars: GpuBarBuffer) {
@@ -85,12 +90,21 @@ export class VolumeRenderer {
     const safeCount = Math.max(0, end - viewStart)
     if (safeCount === 0) { this.viewCount = 0; return }
 
-    // O(viewCount) max-volume scan — needed for normalisation
-    let maxVol = 0
-    for (let i = viewStart; i < end; i++) {
-      if (data.volumes[i] > maxVol) maxVol = data.volumes[i]
+    // Max-volume scan — cached; only rescan when visible bar range or data changes
+    let maxVol: number
+    if (viewStart === this.cachedMaxVolStart && end === this.cachedMaxVolEnd && data.length === this.cachedMaxVolDataLen) {
+      maxVol = this.cachedMaxVol
+    } else {
+      maxVol = 0
+      for (let i = viewStart; i < end; i++) {
+        if (data.volumes[i] > maxVol) maxVol = data.volumes[i]
+      }
+      if (maxVol === 0) maxVol = 1
+      this.cachedMaxVol = maxVol
+      this.cachedMaxVolStart = viewStart
+      this.cachedMaxVolEnd = end
+      this.cachedMaxVolDataLen = data.length
     }
-    if (maxVol === 0) maxVol = 1
 
     const barStep        = cs.barStep
     const barStepClip    = barStep * 2 / cs.width
