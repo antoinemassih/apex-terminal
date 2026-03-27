@@ -150,8 +150,7 @@ impl Gpu {
 
         // Grid pipeline — line-list with vertex buffer
         let grid_module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("grid"), source: wgpu::ShaderSource::Wgsl(GRID_SHADER.into()) });
-        let grid_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: None, entries: &[] });
-        let grid_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&grid_bgl], push_constant_ranges: &[] });
+        let grid_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[], push_constant_ranges: &[] });
         let grid_pl = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("grid"), layout: Some(&grid_layout),
             vertex: wgpu::VertexState {
