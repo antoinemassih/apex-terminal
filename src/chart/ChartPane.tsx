@@ -31,7 +31,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
   const drawingRef = useRef<DrawingOverlayHandle>(null)
   const axisRef = useRef<AxisCanvasHandle>(null)
   const [engineState, setEngineState] = useState<EngineState>('ready')
-  const { viewport, pan, zoomX, zoomY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, resetAutoScroll, viewStartRef, viewCountRef, computeCs } =
+  const { viewport, zoomX, zoomY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, resetAutoScroll, scheduleFlush, viewStartRef, viewCountRef, priceOverrideRef, computeCs } =
     useChartViewport(symbol, timeframe, width, height)
 
   const paneConfig = useChartStore(s => s.panes[paneIndex])
@@ -233,34 +233,71 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     const zone = getZone(mx, my)
     dragRef.current = { x: e.clientX, y: e.clientY, zone }
 
-    // Attach NATIVE document listeners for drag — bypasses React's event system entirely.
-    // React synthetic events add 1-3ms overhead per event; at 120Hz that's 120-360ms/sec wasted.
+    // Pause auto-scroll ONCE at drag start — not on every mousemove
+    pauseAutoScroll()
+
+    // Attach NATIVE document listeners — bypasses React event system entirely.
+    // The mousemove handler is the absolute minimum path: ref update → GPU submit.
+    // No pan() call (avoids scheduleFlush + pauseAutoScroll overhead),
+    // no React state updates, no function call overhead.
+    const chartWidth = width - 80
+    const RIGHT_MARGIN = 8
+
     const onNativeMove = (ev: MouseEvent) => {
       const dx = ev.clientX - dragRef.current!.x
       const dy = ev.clientY - dragRef.current!.y
-      switch (dragRef.current!.zone) {
-        case 'chart': pan(dx); break
-        case 'xaxis': if (Math.abs(dx) > 1) zoomX(dx > 0 ? 1.05 : 0.95); break
-        case 'yaxis': if (Math.abs(dy) > 1) zoomY(dy > 0 ? 1.05 : 0.95); break
-      }
       dragRef.current = { ...dragRef.current!, x: ev.clientX, y: ev.clientY }
-      // Immediate GPU render
+
+      if (dragRef.current!.zone === 'chart') {
+        // Inline pan: ref update only, no function calls
+        const barStep = chartWidth / (viewCountRef.current + RIGHT_MARGIN)
+        const barDelta = dx / barStep
+        if (Math.abs(barDelta) < 0.0001) return
+        const data = getDataStore().getData(symbol, timeframe)
+        if (!data) return
+        const maxVS = data.length - viewCountRef.current + 200
+        viewStartRef.current = Math.max(0, Math.min(maxVS, viewStartRef.current - barDelta))
+      } else if (dragRef.current!.zone === 'xaxis') {
+        if (Math.abs(dx) <= 1) return
+        const factor = dx > 0 ? 1.05 : 0.95
+        const data = getDataStore().getData(symbol, timeframe)
+        if (!data) return
+        const oldVc = viewCountRef.current
+        const newVc = Math.max(20, Math.min(data.length, Math.round(oldVc * factor)))
+        if (newVc === oldVc) return
+        const delta = Math.round((oldVc - newVc) / 2)
+        viewCountRef.current = newVc
+        viewStartRef.current = Math.max(0, Math.min(data.length - newVc + RIGHT_MARGIN, viewStartRef.current + delta))
+      } else if (dragRef.current!.zone === 'yaxis') {
+        if (Math.abs(dy) <= 1) return
+        const cur = computeCs(viewStartRef.current, viewCountRef.current, paneRef.current?.gpuPriceRange)
+        if (!cur) return
+        const factor = dy > 0 ? 1.05 : 0.95
+        const center = (cur.minPrice + cur.maxPrice) / 2
+        const halfRange = ((cur.maxPrice - cur.minPrice) / 2) * factor
+        priceOverrideRef.current = { min: center - halfRange, max: center + halfRange }
+      }
+
+      // Single GPU render — no React, no rAF, no FrameScheduler
       const newCs = computeCs(viewStartRef.current, viewCountRef.current, paneRef.current?.gpuPriceRange)
       if (newCs && paneRef.current) {
         paneRef.current.setViewport({ viewStart: Math.floor(viewStartRef.current), viewCount: viewCountRef.current, cs: newCs })
         paneRef.current.forceRender()
       }
     }
+
     const onNativeUp = () => {
       document.removeEventListener('mousemove', onNativeMove)
       document.removeEventListener('mouseup', onNativeUp)
       dragRef.current = null
       paneRectRef.current = null
       drawingRef.current?.handleMouseUp()
+      // Sync React state ONCE at drag end (for crosshair, drawings, etc.)
+      scheduleFlush()
     }
     document.addEventListener('mousemove', onNativeMove)
     document.addEventListener('mouseup', onNativeUp)
-  }, [dragZoomMode, getZone, pan, zoomX, zoomY, computeCs])
+  }, [dragZoomMode, getZone, pauseAutoScroll, scheduleFlush, computeCs, symbol, timeframe, width])
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     const rect = paneRectRef.current ?? (e.currentTarget as HTMLElement).getBoundingClientRect()

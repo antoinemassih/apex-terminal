@@ -325,5 +325,5 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
     cs
   }), [viewStart, viewCount, cs])
 
-  return { viewport, pan, zoomX, zoomY, panY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, resetAutoScroll, viewStartRef, viewCountRef, computeCs }
+  return { viewport, pan, zoomX, zoomY, panY, resetYZoom, resetView, zoomToRect, autoScrolling, pauseAutoScroll, resetAutoScroll, scheduleFlush, viewStartRef, viewCountRef, priceOverrideRef, computeCs }
 }
