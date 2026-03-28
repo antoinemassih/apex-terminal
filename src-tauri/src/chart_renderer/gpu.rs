@@ -1304,13 +1304,19 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, ev: WindowEvent) {
         let gpu = match &mut self.gpu { Some(g) => g, None => return };
 
-        // Feed to egui — if it consumes the event (clicked a UI widget), skip chart handling
+        // Always feed events to egui for input tracking
         if let Some(win) = &self.win {
             let resp = gpu.egui_state.on_window_event(win, &ev);
+            // Only skip chart handling if egui actually consumed this specific event
+            // (e.g., mouse click on an egui widget)
             if resp.consumed {
                 gpu.dirty = true;
                 if let Some(w) = &self.win { w.request_redraw(); }
-                return;
+                // Don't return — let chart also handle resize/close/redraw events
+                match &ev {
+                    WindowEvent::CloseRequested | WindowEvent::Resized(_) | WindowEvent::RedrawRequested => {}
+                    _ => return,
+                }
             }
         }
 
