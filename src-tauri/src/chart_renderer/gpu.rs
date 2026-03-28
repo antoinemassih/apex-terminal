@@ -125,6 +125,22 @@ impl Chart {
 
 fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartCommand>) {
     while let Ok(cmd) = rx.try_recv() { chart.process(cmd); }
+
+    // Simulate live ticks — update last bar with random walk (when IB not connected)
+    if !chart.bars.is_empty() {
+        let elapsed = chart.last_input.elapsed().as_millis(); // use as seed
+        if let Some(last) = chart.bars.last_mut() {
+            let seed = (elapsed as f64 * 0.001).sin() as f32 * 0.3;
+            last.close += seed;
+            last.high = last.high.max(last.close);
+            last.low = last.low.min(last.close);
+        }
+        // Auto-scroll follows live data
+        if chart.auto_scroll {
+            chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + 8.0).max(0.0);
+        }
+    }
+
     if !chart.auto_scroll && chart.last_input.elapsed().as_secs() >= 5 {
         chart.auto_scroll = true; chart.price_lock = None;
         chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + 8.0).max(0.0);
@@ -176,60 +192,57 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
     // Style popup when drawing(s) selected
     if !chart.selected_ids.is_empty() {
         egui::TopBottomPanel::bottom("style_popup").frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(30,30,35)).inner_margin(6.0)).show(ctx, |ui| {
+            // Collect style changes, apply after UI pass to avoid borrow issues
+            let mut new_color: Option<String> = None;
+            let mut new_ls: Option<LineStyle> = None;
+            let mut new_th: Option<f32> = None;
+            let mut new_op: Option<f32> = None;
+            let mut do_delete = false;
+
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Style:").small().color(t.dim));
                 // Color buttons
                 for &c in PRESET_COLORS {
                     let color = hex_to_color(c, 1.0);
-                    let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
-                    ui.painter().circle_filled(r.center(), 6.0, color);
-                    if resp.clicked() { for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.color = c.to_string(); } } }
+                    let cur = chart.drawings.iter().find(|d| chart.selected_ids.contains(&d.id)).map(|d| d.color.as_str() == c).unwrap_or(false);
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+                    ui.painter().circle_filled(r.center(), if cur { 7.0 } else { 6.0 }, color);
+                    if cur { ui.painter().circle_stroke(r.center(), 8.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
+                    if resp.clicked() { new_color = Some(c.to_string()); }
                 }
                 ui.separator();
                 // Line style
-                for (ls, label) in [(LineStyle::Solid,"━"),(LineStyle::Dashed,"╌"),(LineStyle::Dotted,"···")] {
-                    if ui.selectable_label(false, label).clicked() {
-                        for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.line_style = ls; } }
-                    }
-                }
+                if ui.button("━").clicked() { new_ls = Some(LineStyle::Solid); }
+                if ui.button("╌").clicked() { new_ls = Some(LineStyle::Dashed); }
+                if ui.button("···").clicked() { new_ls = Some(LineStyle::Dotted); }
                 ui.separator();
                 // Thickness
                 for &th in &[0.5_f32, 1.0, 1.5, 2.5] {
-                    let label = format!("{:.0}", th * 2.0);
-                    if ui.selectable_label(false, egui::RichText::new(&label).small()).clicked() {
-                        for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.thickness = th; } }
-                    }
+                    if ui.button(format!("{:.1}", th)).clicked() { new_th = Some(th); }
                 }
                 ui.separator();
                 // Opacity
                 for &op in &[1.0_f32, 0.75, 0.5, 0.25] {
-                    let label = format!("{}%", (op*100.0) as u32);
-                    if ui.selectable_label(false, egui::RichText::new(&label).small()).clicked() {
-                        for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.opacity = op; } }
-                    }
+                    if ui.button(format!("{}%", (op*100.0) as u32)).clicked() { new_op = Some(op); }
                 }
                 ui.separator();
-                // Group assignment
-                egui::ComboBox::from_id_salt("grp").selected_text("Group").width(80.0).show_ui(ui, |ui| {
-                    for g in &chart.groups {
-                        if ui.button(&g.name).clicked() {
-                            for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.group_id = g.id.clone(); } }
-                        }
-                    }
-                    if ui.button("+ New Group").clicked() {
-                        let gid = format!("g{}", chart.groups.len());
-                        chart.groups.push(DrawingGroup { id: gid.clone(), name: format!("Group {}", chart.groups.len()), color: None });
-                        for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.group_id = gid.clone(); } }
-                    }
-                });
-                ui.separator();
-                // Delete
-                if ui.button(egui::RichText::new("✕ Delete").color(egui::Color32::from_rgb(224,85,96))).clicked() {
-                    let ids = chart.selected_ids.clone();
-                    chart.drawings.retain(|d| !ids.contains(&d.id));
-                    chart.selected_ids.clear(); chart.selected_id = None;
-                }
+                if ui.button(egui::RichText::new("✕").color(egui::Color32::from_rgb(224,85,96))).clicked() { do_delete = true; }
             });
+
+            // Apply collected changes
+            let ids = chart.selected_ids.clone();
+            for d in chart.drawings.iter_mut() {
+                if ids.contains(&d.id) {
+                    if let Some(ref c) = new_color { d.color = c.clone(); }
+                    if let Some(ls) = new_ls { d.line_style = ls; }
+                    if let Some(th) = new_th { d.thickness = th; }
+                    if let Some(op) = new_op { d.opacity = op; }
+                }
+            }
+            if do_delete {
+                chart.drawings.retain(|d| !ids.contains(&d.id));
+                chart.selected_ids.clear(); chart.selected_id = None;
+            }
         });
     }
 
