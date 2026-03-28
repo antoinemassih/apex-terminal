@@ -209,16 +209,23 @@ export function Toolbar() {
           }} style={btnStyle(false)}>
             + Window
           </button>
-          <button onClick={() => {
-            console.info('[GPU] clicked')
-            import('@tauri-apps/api/core').then(({ invoke }) => {
+          <button onClick={async () => {
+            try {
+              const { invoke } = await import('@tauri-apps/api/core')
+              const { getDataStore } = await import('../globals')
               const s = pane?.symbol ?? 'SPY'
               const t = pane?.timeframe ?? '5m'
-              console.info('[GPU] invoking', s, t)
-              invoke('open_native_chart', { symbol: s, timeframe: t })
-                .then(() => console.info('[GPU] ok'))
-                .catch((e: unknown) => { console.error('[GPU] fail:', e); alert(String(e)) })
-            }).catch(e => { console.error('[GPU] no tauri:', e); alert('No Tauri API: ' + e) })
+              const ds = getDataStore()
+              const data = ds.getData(s, t)
+              const bars: {open:number,high:number,low:number,close:number,volume:number,time:number}[] = []
+              if (data && data.length > 0) {
+                for (let i = 0; i < data.length; i++) {
+                  bars.push({ open: data.opens[i], high: data.highs[i], low: data.lows[i], close: data.closes[i], volume: data.volumes[i], time: Math.floor(data.times[i]) })
+                }
+              }
+              await invoke('open_native_chart', { symbol: s, timeframe: t, bars })
+              console.info('[GPU] ok with', bars.length, 'bars')
+            } catch(e) { console.error('[GPU] fail:', e); alert(String(e)) }
           }} style={{ ...btnStyle(false), color: theme.bull, border: `1px solid ${theme.bull}44` }}>
             GPU
           </button>

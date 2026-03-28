@@ -25,79 +25,39 @@ pub fn send_to_native_chart(cmd: chart_renderer::ChartCommand) {
     }
 }
 
+/// Bar data passed from WebView
+#[derive(serde::Deserialize, Debug)]
+struct JsBar {
+    open: f64, high: f64, low: f64, close: f64, volume: f64, time: i64,
+}
+
 #[tauri::command]
-async fn open_native_chart(symbol: String, timeframe: String) -> Result<String, String> {
-    eprintln!("[native-chart] Opening for {} {}", symbol, timeframe);
+async fn open_native_chart(symbol: String, timeframe: String, bars: Option<Vec<JsBar>>) -> Result<String, String> {
+    eprintln!("[native-chart] Opening for {} {} (bars from WebView: {})", symbol, timeframe, bars.as_ref().map_or(0, |b| b.len()));
 
     // Everything runs on a detached thread — command returns instantly
     std::thread::spawn(move || {
-        eprintln!("[native-chart] Thread started, fetching data...");
+        eprintln!("[native-chart] Thread started");
 
-        // Map timeframe to yfinance interval/period
-        let (interval, period) = match timeframe.as_str() {
-            "1m" => ("1m", "1d"), "2m" => ("2m", "5d"), "5m" => ("5m", "5d"),
-            "15m" => ("15m", "1mo"), "30m" => ("30m", "1mo"), "1h" => ("60m", "3mo"),
-            "4h" => ("60m", "6mo"), "1d" => ("1d", "1y"), "1wk" => ("1wk", "5y"),
-            _ => ("5m", "5d"),
+        // Convert WebView bars to native format
+        let (gpu_bars, timestamps) = if let Some(ref js_bars) = bars {
+            if !js_bars.is_empty() {
+                eprintln!("[native-chart] Using {} bars from WebView", js_bars.len());
+                let b: Vec<chart_renderer::Bar> = js_bars.iter().map(|b| chart_renderer::Bar {
+                    open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                    close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                }).collect();
+                let t: Vec<i64> = js_bars.iter().map(|b| b.time).collect();
+                (b, t)
+            } else {
+                eprintln!("[native-chart] WebView sent empty bars");
+                (vec![], vec![])
+            }
+        } else {
+            eprintln!("[native-chart] No bars from WebView");
+            (vec![], vec![])
         };
-
-        // Blocking HTTP fetch — try OCOCO (with multiple intervals) then yfinance
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build().unwrap();
-
-        // Fetch data — returns (bars, timestamps)
-        let convert = |raw: &[data::Bar]| -> (Vec<chart_renderer::Bar>, Vec<i64>) {
-            let bars = raw.iter().map(|b| chart_renderer::Bar {
-                open: b.open as f32, high: b.high as f32, low: b.low as f32,
-                close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
-            }).collect();
-            let ts = raw.iter().map(|b| b.time).collect();
-            (bars, ts)
-        };
-
-        let (bars, timestamps) = (|| -> Option<(Vec<chart_renderer::Bar>, Vec<i64>)> {
-            let intervals_to_try = [interval, "1d"];
-            for try_interval in &intervals_to_try {
-                let url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-730d", symbol, try_interval);
-                if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
-                    if let Ok(raw) = resp.json::<Vec<data::Bar>>() {
-                        if raw.len() > 10 {
-                            eprintln!("[native-chart] Loaded {} bars ({}) from OCOCO", raw.len(), try_interval);
-                            return Some(convert(&raw));
-                        }
-                    }
-                }
-            }
-            let url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", symbol, interval, period);
-            if let Ok(resp) = client.get(&url).send() {
-                if let Ok(raw) = resp.json::<Vec<data::Bar>>() {
-                    if !raw.is_empty() {
-                        eprintln!("[native-chart] Loaded {} bars from yfinance", raw.len());
-                        return Some(convert(&raw));
-                    }
-                }
-            }
-            eprintln!("[native-chart] No data sources, using test data");
-            None
-        })().unwrap_or_else(|| {
-            let mut v = Vec::new();
-            let mut ts = Vec::new();
-            let mut p = 180.0_f32;
-            let mut s: u64 = 12345;
-            let mut t = 1700000000_i64;
-            for _ in 0..500 {
-                s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                let r = (s >> 33) as f32 / (u32::MAX as f32);
-                let o = p; let c = p + (r - 0.48) * 3.0;
-                let h = o.max(c) + r * 1.5; let l = o.min(c) - r * 1.0;
-                v.push(chart_renderer::Bar { open: o, high: h, low: l, close: c, volume: r * 500000.0, _pad: 0.0 });
-                ts.push(t);
-                p = c.max(50.0);
-                t += 86400;
-            }
-            (v, ts)
-        });
+        let bars = gpu_bars;
 
         let (tx, rx) = std::sync::mpsc::channel();
         let _ = tx.send(chart_renderer::ChartCommand::LoadBars {
