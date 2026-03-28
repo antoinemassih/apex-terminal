@@ -66,17 +66,24 @@ enum DrawTool { None, HLine, TrendLine }
 
 struct DrawState {
     tool: DrawTool,
-    // For trendline: first point placed, waiting for second
     pending_point: Option<(f32, f32)>, // (bar_idx, price)
-    // Drag-move a drawing
+    // Drag-move or endpoint-edit
     dragging_id: Option<String>,
+    drag_endpoint: i32, // -1 = whole drawing, 0 = first point, 1 = second point
     drag_start_price: f32,
     drag_start_bar: f32,
+    // Zoom selection box
+    zoom_selecting: bool,
+    zoom_start: (f32, f32),
 }
 
 impl DrawState {
     fn new() -> Self {
-        Self { tool: DrawTool::None, pending_point: None, dragging_id: None, drag_start_price: 0.0, drag_start_bar: 0.0 }
+        Self {
+            tool: DrawTool::None, pending_point: None,
+            dragging_id: None, drag_endpoint: -1, drag_start_price: 0.0, drag_start_bar: 0.0,
+            zoom_selecting: false, zoom_start: (0.0, 0.0),
+        }
     }
 }
 
@@ -85,15 +92,28 @@ impl DrawState {
 struct ThemePreset {
     name: &'static str,
     bg: [f32; 4],
+    toolbar_bg: [f32; 4],
+    toolbar_border: [f32; 4],
     bull: [f32; 4],
     bear: [f32; 4],
+    grid: [f32; 4],
+    axis_text: [f32; 4],
+    ohlc_label: [f32; 4],
+    accent: [f32; 4],
 }
 
+const fn hex(r: u8, g: u8, b: u8) -> [f32; 4] { [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0] }
+const fn hexa(r: u8, g: u8, b: u8, a: f32) -> [f32; 4] { [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a] }
+
 const THEMES: &[ThemePreset] = &[
-    ThemePreset { name: "Midnight", bg: [0.05, 0.05, 0.11, 1.0], bull: [0.15, 0.65, 0.6, 1.0], bear: [0.94, 0.33, 0.31, 1.0] },
-    ThemePreset { name: "Dark", bg: [0.1, 0.1, 0.1, 1.0], bull: [0.18, 0.78, 0.45, 1.0], bear: [0.93, 0.27, 0.27, 1.0] },
-    ThemePreset { name: "Charcoal", bg: [0.12, 0.13, 0.15, 1.0], bull: [0.0, 0.75, 0.95, 1.0], bear: [0.95, 0.45, 0.25, 1.0] },
-    ThemePreset { name: "Light", bg: [0.95, 0.95, 0.95, 1.0], bull: [0.0, 0.6, 0.4, 1.0], bear: [0.85, 0.2, 0.2, 1.0] },
+    ThemePreset { name: "Midnight",       bg: hex(13,13,13),   toolbar_bg: hex(17,17,17), toolbar_border: hex(34,34,34), bull: hex(46,204,113), bear: hex(231,76,60),  grid: hexa(38,38,38,0.4), axis_text: hexa(102,102,102,1.0), ohlc_label: hexa(204,204,204,1.0), accent: hex(42,100,150) },
+    ThemePreset { name: "Nord",           bg: hex(46,52,64),   toolbar_bg: hex(46,52,64), toolbar_border: hex(59,66,82), bull: hex(163,190,140), bear: hex(191,97,106), grid: hexa(59,66,82,0.4), axis_text: hexa(129,161,193,1.0), ohlc_label: hexa(216,222,233,1.0), accent: hex(136,192,208) },
+    ThemePreset { name: "Monokai",        bg: hex(39,40,34),   toolbar_bg: hex(30,31,28), toolbar_border: hex(62,61,50), bull: hex(166,226,46), bear: hex(249,38,114),  grid: hexa(62,61,50,0.4), axis_text: hexa(165,159,133,1.0), ohlc_label: hexa(248,248,242,1.0), accent: hex(230,219,116) },
+    ThemePreset { name: "Solarized Dark", bg: hex(0,43,54),    toolbar_bg: hex(0,43,54),  toolbar_border: hex(7,54,66),  bull: hex(133,153,0), bear: hex(220,50,47),    grid: hexa(7,54,66,0.4),  axis_text: hexa(131,148,150,1.0), ohlc_label: hexa(147,161,161,1.0), accent: hex(42,161,152) },
+    ThemePreset { name: "Dracula",        bg: hex(40,42,54),   toolbar_bg: hex(33,34,44), toolbar_border: hex(52,55,70), bull: hex(80,250,123), bear: hex(255,85,85),   grid: hexa(52,55,70,0.4), axis_text: hexa(189,147,249,1.0), ohlc_label: hexa(248,248,242,1.0), accent: hex(255,121,198) },
+    ThemePreset { name: "Gruvbox",        bg: hex(40,40,40),   toolbar_bg: hex(29,32,33), toolbar_border: hex(60,56,54), bull: hex(184,187,38), bear: hex(251,73,52),   grid: hexa(60,56,54,0.4), axis_text: hexa(213,196,161,1.0), ohlc_label: hexa(235,219,178,1.0), accent: hex(254,128,25) },
+    ThemePreset { name: "Catppuccin",     bg: hex(30,30,46),   toolbar_bg: hex(24,24,37), toolbar_border: hex(49,50,68), bull: hex(166,227,161), bear: hex(243,139,168), grid: hexa(49,50,68,0.4), axis_text: hexa(180,190,254,1.0), ohlc_label: hexa(205,214,244,1.0), accent: hex(203,166,247) },
+    ThemePreset { name: "Tokyo Night",    bg: hex(26,27,38),   toolbar_bg: hex(22,22,30), toolbar_border: hex(36,40,59), bull: hex(158,206,106), bear: hex(247,118,142), grid: hexa(36,40,59,0.4), axis_text: hexa(122,162,247,1.0), ohlc_label: hexa(192,202,245,1.0), accent: hex(125,207,255) },
 ];
 
 // ─── Mouse ────────────────────────────────────────────────────────────────────
@@ -527,21 +547,29 @@ impl Gpu {
     fn mouse_move(&mut self, x: f64, y: f64) {
         self.mouse.cx = x; self.mouse.cy = y;
 
-        // Handle drawing drag
+        // Handle drawing drag (whole or endpoint)
         if let Some(ref id) = self.draw_state.dragging_id.clone() {
             let new_price = self.y_to_price(y as f32);
             let new_bar = self.x_to_bar(x as f32);
             let dp = new_price - self.draw_state.drag_start_price;
             let db = new_bar - self.draw_state.drag_start_bar;
+            let ep = self.draw_state.drag_endpoint;
             if let Some(d) = self.drawings.iter_mut().find(|d| d.id == *id) {
                 match &mut d.kind {
                     DrawingKind::HLine { price } => *price += dp,
                     DrawingKind::TrendLine { price0, bar0, price1, bar1 } => {
-                        *price0 += dp; *price1 += dp;
-                        *bar0 += db; *bar1 += db;
+                        match ep {
+                            0 => { *price0 = new_price; *bar0 = new_bar; } // edit first endpoint
+                            1 => { *price1 = new_price; *bar1 = new_bar; } // edit second endpoint
+                            _ => { *price0 += dp; *price1 += dp; *bar0 += db; *bar1 += db; } // move whole
+                        }
                     }
                     DrawingKind::HZone { price0, price1 } => {
-                        *price0 += dp; *price1 += dp;
+                        match ep {
+                            0 => *price0 = new_price,
+                            1 => *price1 = new_price,
+                            _ => { *price0 += dp; *price1 += dp; }
+                        }
                     }
                 }
             }
@@ -618,6 +646,13 @@ impl Gpu {
         (lo - p, hi + p)
     }
 
+    fn apply_theme(&mut self) {
+        let t = &THEMES[self.theme_idx];
+        self.bg_color = t.bg;
+        self.bull = t.bull;
+        self.bear = t.bear;
+    }
+
     /// Convert pixel Y to price
     fn y_to_price(&self, py: f32) -> f32 {
         let h = self.config.height as f32;
@@ -637,8 +672,8 @@ impl Gpu {
         (px + offset - step * 0.5) / step + self.vs
     }
 
-    /// Hit-test drawings — returns drawing id if mouse is near one
-    fn hit_test_drawing(&self, px: f32, py: f32) -> Option<String> {
+    /// Hit-test drawings — returns (drawing id, endpoint index: -1=whole, 0=first, 1=second)
+    fn hit_test_drawing(&self, px: f32, py: f32) -> Option<(String, i32)> {
         let w = self.config.width as f32;
         let h = self.config.height as f32;
         let cw = w - PR;
@@ -658,12 +693,15 @@ impl Gpu {
             match &d.kind {
                 DrawingKind::HLine { price } => {
                     let y = price_to_y(*price);
-                    if (py - y).abs() < 5.0 && px < cw { return Some(d.id.clone()); }
+                    if (py - y).abs() < 5.0 && px < cw { return Some((d.id.clone(), -1)); }
                 }
                 DrawingKind::TrendLine { price0, bar0, price1, bar1 } => {
                     let x0 = bar_to_x(*bar0); let y0 = price_to_y(*price0);
                     let x1 = bar_to_x(*bar1); let y1 = price_to_y(*price1);
-                    // Point-to-segment distance
+                    // Check endpoints first (for editing)
+                    if ((px - x0).powi(2) + (py - y0).powi(2)).sqrt() < 8.0 { return Some((d.id.clone(), 0)); }
+                    if ((px - x1).powi(2) + (py - y1).powi(2)).sqrt() < 8.0 { return Some((d.id.clone(), 1)); }
+                    // Then check line segment
                     let dx = x1 - x0; let dy = y1 - y0;
                     let len2 = dx * dx + dy * dy;
                     if len2 > 0.0 {
@@ -671,13 +709,16 @@ impl Gpu {
                         let t = t.max(0.0).min(1.0);
                         let nx = x0 + t * dx; let ny = y0 + t * dy;
                         let dist = ((px - nx).powi(2) + (py - ny).powi(2)).sqrt();
-                        if dist < 6.0 { return Some(d.id.clone()); }
+                        if dist < 6.0 { return Some((d.id.clone(), -1)); }
                     }
                 }
                 DrawingKind::HZone { price0, price1 } => {
                     let y0 = price_to_y(*price0); let y1 = price_to_y(*price1);
+                    // Check edges for endpoint editing
+                    if (py - y0).abs() < 5.0 && px < cw { return Some((d.id.clone(), 0)); }
+                    if (py - y1).abs() < 5.0 && px < cw { return Some((d.id.clone(), 1)); }
                     let top = y0.min(y1); let bot = y0.max(y1);
-                    if py >= top - 4.0 && py <= bot + 4.0 && px < cw { return Some(d.id.clone()); }
+                    if py >= top - 4.0 && py <= bot + 4.0 && px < cw { return Some((d.id.clone(), -1)); }
                 }
             }
         }
@@ -824,16 +865,24 @@ impl Gpu {
                     let y0 = price_to_clip_y(*price0);
                     let x1 = bar_to_clip_x(*bar1);
                     let y1 = price_to_clip_y(*price1);
-                    let o = n;
-                    // Use average of h and v width for diagonal lines
                     let lw = (lw_draw_h + lw_draw_v) / 2.0 * d.width;
-                    self.overlay_cpu[o] = x0; self.overlay_cpu[o+1] = y0;
-                    self.overlay_cpu[o+2] = x1; self.overlay_cpu[o+3] = y1;
-                    self.overlay_cpu[o+4] = d.color[0]; self.overlay_cpu[o+5] = d.color[1];
-                    self.overlay_cpu[o+6] = d.color[2]; self.overlay_cpu[o+7] = d.color[3];
-                    self.overlay_cpu[o+8] = dash; self.overlay_cpu[o+9] = gap;
-                    self.overlay_cpu[o+10] = lw; self.overlay_cpu[o+11] = 0.0;
+                    // Main line
+                    let o = n;
+                    self.overlay_cpu[o]=x0; self.overlay_cpu[o+1]=y0; self.overlay_cpu[o+2]=x1; self.overlay_cpu[o+3]=y1;
+                    self.overlay_cpu[o+4]=d.color[0]; self.overlay_cpu[o+5]=d.color[1]; self.overlay_cpu[o+6]=d.color[2]; self.overlay_cpu[o+7]=d.color[3];
+                    self.overlay_cpu[o+8]=dash; self.overlay_cpu[o+9]=gap; self.overlay_cpu[o+10]=lw; self.overlay_cpu[o+11]=0.0;
                     n += OVERLAY_FLOATS_PER_LINE;
+                    // Endpoint handles (small horizontal marks)
+                    let handle_size = 5.0 / w * 2.0;
+                    let handle_h = 5.0 / h * 2.0;
+                    for (ex, ey) in [(x0, y0), (x1, y1)] {
+                        if n + OVERLAY_FLOATS_PER_LINE > self.overlay_cpu.len() { break; }
+                        let o = n;
+                        self.overlay_cpu[o]=ex-handle_size; self.overlay_cpu[o+1]=ey; self.overlay_cpu[o+2]=ex+handle_size; self.overlay_cpu[o+3]=ey;
+                        self.overlay_cpu[o+4]=1.0; self.overlay_cpu[o+5]=1.0; self.overlay_cpu[o+6]=1.0; self.overlay_cpu[o+7]=0.7;
+                        self.overlay_cpu[o+8]=0.0; self.overlay_cpu[o+9]=0.0; self.overlay_cpu[o+10]=handle_h; self.overlay_cpu[o+11]=0.0;
+                        n += OVERLAY_FLOATS_PER_LINE;
+                    }
                 }
                 DrawingKind::HZone { price0, price1 } => {
                     let cy0 = price_to_clip_y(*price0);
@@ -851,6 +900,48 @@ impl Gpu {
                         n += OVERLAY_FLOATS_PER_LINE;
                     }
                 }
+            }
+        }
+
+        // Zoom selection rectangle
+        if self.draw_state.zoom_selecting {
+            let (sx, sy) = self.draw_state.zoom_start;
+            let mx = self.mouse.cx as f32;
+            let my = self.mouse.cy as f32;
+            if n + OVERLAY_FLOATS_PER_LINE * 4 <= self.overlay_cpu.len() {
+                let x0 = (sx.min(mx) / w) * 2.0 - 1.0;
+                let x1 = (sx.max(mx) / w) * 2.0 - 1.0;
+                let y0 = 1.0 - (sy.min(my) / h) * 2.0;
+                let y1 = 1.0 - (sy.max(my) / h) * 2.0;
+                let dash = 4.0 / w * 2.0;
+                let gap = 3.0 / w * 2.0;
+                let lw_sel_h = 1.0 / h * 2.0;
+                let lw_sel_v = 1.0 / w * 2.0;
+                let sc = [0.5, 0.7, 1.0, 0.7_f32]; // selection color
+                // Top
+                let o = n;
+                self.overlay_cpu[o]=x0; self.overlay_cpu[o+1]=y0; self.overlay_cpu[o+2]=x1; self.overlay_cpu[o+3]=y0;
+                self.overlay_cpu[o+4]=sc[0]; self.overlay_cpu[o+5]=sc[1]; self.overlay_cpu[o+6]=sc[2]; self.overlay_cpu[o+7]=sc[3];
+                self.overlay_cpu[o+8]=dash; self.overlay_cpu[o+9]=gap; self.overlay_cpu[o+10]=lw_sel_h; self.overlay_cpu[o+11]=0.0;
+                n += OVERLAY_FLOATS_PER_LINE;
+                // Bottom
+                let o = n;
+                self.overlay_cpu[o]=x0; self.overlay_cpu[o+1]=y1; self.overlay_cpu[o+2]=x1; self.overlay_cpu[o+3]=y1;
+                self.overlay_cpu[o+4]=sc[0]; self.overlay_cpu[o+5]=sc[1]; self.overlay_cpu[o+6]=sc[2]; self.overlay_cpu[o+7]=sc[3];
+                self.overlay_cpu[o+8]=dash; self.overlay_cpu[o+9]=gap; self.overlay_cpu[o+10]=lw_sel_h; self.overlay_cpu[o+11]=0.0;
+                n += OVERLAY_FLOATS_PER_LINE;
+                // Left
+                let o = n;
+                self.overlay_cpu[o]=x0; self.overlay_cpu[o+1]=y0; self.overlay_cpu[o+2]=x0; self.overlay_cpu[o+3]=y1;
+                self.overlay_cpu[o+4]=sc[0]; self.overlay_cpu[o+5]=sc[1]; self.overlay_cpu[o+6]=sc[2]; self.overlay_cpu[o+7]=sc[3];
+                self.overlay_cpu[o+8]=dash; self.overlay_cpu[o+9]=gap; self.overlay_cpu[o+10]=lw_sel_v; self.overlay_cpu[o+11]=0.0;
+                n += OVERLAY_FLOATS_PER_LINE;
+                // Right
+                let o = n;
+                self.overlay_cpu[o]=x1; self.overlay_cpu[o+1]=y0; self.overlay_cpu[o+2]=x1; self.overlay_cpu[o+3]=y1;
+                self.overlay_cpu[o+4]=sc[0]; self.overlay_cpu[o+5]=sc[1]; self.overlay_cpu[o+6]=sc[2]; self.overlay_cpu[o+7]=sc[3];
+                self.overlay_cpu[o+8]=dash; self.overlay_cpu[o+9]=gap; self.overlay_cpu[o+10]=lw_sel_v; self.overlay_cpu[o+11]=0.0;
+                n += OVERLAY_FLOATS_PER_LINE;
             }
         }
 
@@ -1119,9 +1210,10 @@ impl Gpu {
                 "Clear Drawings",
                 &format!("Theme: {}", theme_name),
                 "Delete Drawing",
+                "Zoom Selection",
             ];
-            let menu_w = 160.0_f32;
-            let item_h = 20.0_f32;
+            let menu_w = 170.0_f32;
+            let item_h = 22.0_f32;
             let menu_color = GColor::rgba(220, 220, 230, 255);
 
             for (i, label) in menu_items.iter().enumerate() {
@@ -1255,9 +1347,9 @@ impl ApplicationHandler for App {
                 else if let Some((cmx, cmy)) = gpu.mouse.right_click {
                     let mx = gpu.mouse.cx as f32;
                     let my = gpu.mouse.cy as f32;
-                    let menu_w = 160.0_f32;
-                    let item_h = 20.0_f32;
-                    let items = 6;
+                    let menu_w = 170.0_f32;
+                    let item_h = 22.0_f32;
+                    let items = 7;
                     if mx >= cmx && mx < cmx + menu_w && my >= cmy && my < cmy + items as f32 * item_h {
                         let idx = ((my - cmy) / item_h) as usize;
                         let click_price = gpu.y_to_price(cmy);
@@ -1281,23 +1373,27 @@ impl ApplicationHandler for App {
                             3 => gpu.drawings.clear(), // Clear Drawings
                             4 => { // Next Theme
                                 gpu.theme_idx = (gpu.theme_idx + 1) % THEMES.len();
-                                let t = &THEMES[gpu.theme_idx];
-                                gpu.bg_color = t.bg; gpu.bull = t.bull; gpu.bear = t.bear;
+                                gpu.apply_theme();
                             }
-                            5 => { // Delete drawing under cursor (if any)
-                                if let Some(id) = gpu.hit_test_drawing(cmx, cmy) {
+                            5 => { // Delete drawing under cursor
+                                if let Some((id, _)) = gpu.hit_test_drawing(cmx, cmy) {
                                     gpu.drawings.retain(|d| d.id != id);
                                 }
+                            }
+                            6 => { // Zoom Selection
+                                gpu.draw_state.zoom_selecting = true;
+                                gpu.draw_state.zoom_start = (cmx, cmy);
                             }
                             _ => {}
                         }
                         gpu.mouse.right_click = None;
                         gpu.dirty = true;
                     } else {
-                        // Check if clicking on a drawing to start drag
+                        // Check if clicking on a drawing to start drag/edit
                         let hit = gpu.hit_test_drawing(mx, my);
-                        if let Some(id) = hit {
+                        if let Some((id, endpoint)) = hit {
                             gpu.draw_state.dragging_id = Some(id);
+                            gpu.draw_state.drag_endpoint = endpoint;
                             gpu.draw_state.drag_start_price = gpu.y_to_price(my);
                             gpu.draw_state.drag_start_bar = gpu.x_to_bar(mx);
                         }
@@ -1317,10 +1413,45 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => {
+                // Complete zoom selection
+                if gpu.draw_state.zoom_selecting {
+                    let (sx, sy) = gpu.draw_state.zoom_start;
+                    let ex = gpu.mouse.cx as f32;
+                    let ey = gpu.mouse.cy as f32;
+                    let w = gpu.config.width as f32;
+                    if (ex - sx).abs() > 10.0 && (ey - sy).abs() > 10.0 {
+                        let bar_left = gpu.x_to_bar(sx.min(ex));
+                        let bar_right = gpu.x_to_bar(sx.max(ex));
+                        let price_top = gpu.y_to_price(sy.min(ey));
+                        let price_bot = gpu.y_to_price(sy.max(ey));
+                        gpu.vs = bar_left.max(0.0);
+                        gpu.vc = ((bar_right - bar_left).ceil() as u32).max(5);
+                        gpu.price_lock = Some((price_bot.min(price_top), price_bot.max(price_top)));
+                        gpu.auto_scroll = false;
+                        gpu.interaction_time = std::time::Instant::now();
+                    }
+                    gpu.draw_state.zoom_selecting = false;
+                    gpu.dirty = true;
+                }
                 gpu.mouse_up();
-                // Close context menu on left click
                 gpu.mouse.right_click = None;
                 if let Some(win) = &self.win { win.set_cursor(winit::window::CursorIcon::Crosshair); }
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Middle, .. } => {
+                // Middle-click: place HLine at cursor price
+                let mx = gpu.mouse.cx as f32;
+                let my = gpu.mouse.cy as f32;
+                let w = gpu.config.width as f32;
+                let h = gpu.config.height as f32;
+                if mx >= 0.0 && mx < w - PR && my >= PT && my < h - PB {
+                    let price = gpu.y_to_price(my);
+                    gpu.drawings.push(Drawing {
+                        id: format!("hline-{}", gpu.drawings.len()),
+                        kind: DrawingKind::HLine { price },
+                        color: [0.4, 0.7, 1.0, 0.8], width: 1.0, dashed: true,
+                    });
+                    gpu.dirty = true;
+                }
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Right, .. } => {
                 let mx = gpu.mouse.cx as f32;
@@ -1390,10 +1521,9 @@ impl ApplicationHandler for App {
                             gpu.dirty = true;
                         }
                         Key::Character(c) if c.as_str() == "d" => {
-                            // Delete drawing under cursor
                             let mx = gpu.mouse.cx as f32;
                             let my = gpu.mouse.cy as f32;
-                            if let Some(id) = gpu.hit_test_drawing(mx, my) {
+                            if let Some((id, _)) = gpu.hit_test_drawing(mx, my) {
                                 gpu.drawings.retain(|d| d.id != id);
                                 gpu.dirty = true;
                             }
