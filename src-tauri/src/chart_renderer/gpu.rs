@@ -1304,29 +1304,23 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, ev: WindowEvent) {
         let gpu = match &mut self.gpu { Some(g) => g, None => return };
 
-        // Always feed events to egui for input tracking
+        // Always feed ALL events to egui
         if let Some(win) = &self.win {
             let _ = gpu.egui_state.on_window_event(win, &ev);
         }
-        // If pointer is over an egui widget, skip chart mouse handling
-        let egui_wants_input = gpu.egui_ctx.is_pointer_over_area() || gpu.egui_ctx.wants_keyboard_input();
-        if egui_wants_input {
-            match &ev {
-                WindowEvent::MouseInput { .. } | WindowEvent::CursorMoved { .. } | WindowEvent::MouseWheel { .. } => {
-                    gpu.dirty = true;
-                    if let Some(w) = &self.win { w.request_redraw(); }
-                    return;
-                }
-                _ => {} // let other events (resize, close, redraw, keyboard) pass through
-            }
-        }
+        // Check if egui wants the pointer (widget under cursor, or menu/dropdown open)
+        let egui_has_pointer = gpu.egui_ctx.is_pointer_over_area()
+            || gpu.egui_ctx.is_using_pointer()
+            || gpu.show_context_menu;
 
         match ev {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => gpu.resize(s.width, s.height),
-            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } if !egui_has_pointer => {
+                // Close context menu on chart area click
+                if gpu.show_context_menu { gpu.show_context_menu = false; gpu.dirty = true; }
                 // Handle drawing tool placement
-                if gpu.draw_state.tool != DrawTool::None && gpu.mouse.right_click.is_none() {
+                if gpu.draw_state.tool != DrawTool::None {
                     let mx = gpu.mouse.cx as f32;
                     let my = gpu.mouse.cy as f32;
                     let w = gpu.config.width as f32;
