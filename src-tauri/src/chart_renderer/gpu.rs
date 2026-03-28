@@ -1180,6 +1180,50 @@ impl Gpu {
                         }
                     });
             });
+
+            // Context menu (right-click)
+            if self.show_context_menu {
+                let menu_pos = self.context_menu_pos;
+                let mut close_menu = false;
+                egui::Area::new(egui::Id::new("context_menu"))
+                    .fixed_pos(menu_pos)
+                    .order(egui::Order::Foreground)
+                    .show(ctx, |ui| {
+                        egui::Frame::popup(ui.style()).show(ui, |ui| {
+                            ui.set_min_width(180.0);
+                            if ui.button("Set HLine").clicked() {
+                                let price = min_p + (max_p - min_p) * (1.0 - (menu_pos.y - PT) / ch);
+                                self.drawings.push(Drawing {
+                                    id: format!("hline-{}", self.drawings.len()),
+                                    kind: DrawingKind::HLine { price },
+                                    color: [0.4, 0.7, 1.0, 0.8], width: 1.0, dashed: true,
+                                });
+                                close_menu = true;
+                            }
+                            if ui.button("Draw Trendline").clicked() {
+                                self.draw_state.tool = DrawTool::TrendLine;
+                                self.draw_state.pending_point = None;
+                                close_menu = true;
+                            }
+                            ui.separator();
+                            if ui.button("Zoom Selection").clicked() {
+                                self.draw_state.zoom_selecting = true;
+                                self.draw_state.zoom_start = (menu_pos.x, menu_pos.y);
+                                close_menu = true;
+                            }
+                            if ui.button("Reset View").clicked() {
+                                resume_scroll = true;
+                                close_menu = true;
+                            }
+                            ui.separator();
+                            if ui.button("Clear Drawings").clicked() {
+                                self.drawings.clear();
+                                close_menu = true;
+                            }
+                        });
+                    });
+                if close_menu { self.show_context_menu = false; }
+            }
         });
 
         // Apply deferred actions from egui
@@ -1425,12 +1469,8 @@ impl ApplicationHandler for App {
                 let w = gpu.config.width as f32;
                 let h = gpu.config.height as f32;
                 if mx >= 0.0 && mx < w - PR && my >= PT && my < h - PB {
-                    // Right-click in chart area — toggle context menu
-                    if gpu.mouse.right_click.is_some() {
-                        gpu.mouse.right_click = None;
-                    } else {
-                        gpu.mouse.right_click = Some((mx, my));
-                    }
+                    gpu.show_context_menu = !gpu.show_context_menu;
+                    gpu.context_menu_pos = egui::pos2(mx, my);
                     gpu.dirty = true;
                 }
             }
