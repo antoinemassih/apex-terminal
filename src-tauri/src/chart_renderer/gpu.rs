@@ -53,6 +53,9 @@ struct Chart {
     vs: f32, vc: u32, price_lock: Option<(f32,f32)>,
     auto_scroll: bool, last_input: std::time::Instant,
     theme_idx: usize, draw_tool: String, pending_pt: Option<(f32,f32)>,
+    selected_id: Option<String>,
+    dragging_drawing: Option<(String, i32)>, // (id, endpoint: -1=whole, 0=first, 1=second)
+    drag_start_price: f32, drag_start_bar: f32,
 }
 
 impl Chart {
@@ -60,7 +63,8 @@ impl Chart {
         Self { bars: vec![], timestamps: vec![], drawings: vec![], indicators: vec![],
             vs: 0.0, vc: 200, price_lock: None, auto_scroll: true,
             last_input: std::time::Instant::now(), theme_idx: 0,
-            draw_tool: String::new(), pending_pt: None }
+            draw_tool: String::new(), pending_pt: None,
+            selected_id: None, dragging_drawing: None, drag_start_price: 0.0, drag_start_bar: 0.0 }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -192,62 +196,242 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             if pts.len()>1 { painter.add(egui::Shape::line(pts,egui::Stroke::new(1.2,*color))); }
         }
 
-        // Drawings
+        // Drawings (with selection highlight + endpoint handles)
         for d in &chart.drawings {
-            let sc=egui::Stroke::new(d.width,egui::Color32::from_rgba_unmultiplied((d.color[0]*255.0)as u8,(d.color[1]*255.0)as u8,(d.color[2]*255.0)as u8,(d.color[3]*255.0)as u8));
+            let is_sel = chart.selected_id.as_deref() == Some(&d.id);
+            let dc = egui::Color32::from_rgba_unmultiplied((d.color[0]*255.0)as u8,(d.color[1]*255.0)as u8,(d.color[2]*255.0)as u8,(d.color[3]*255.0)as u8);
+            let sc = egui::Stroke::new(if is_sel { d.width + 1.0 } else { d.width }, if is_sel { egui::Color32::WHITE } else { dc });
             match &d.kind {
-                DrawingKind::HLine{price}=>{let y=py(*price);painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)],sc);}
-                DrawingKind::TrendLine{price0,bar0,price1,bar1}=>{painter.line_segment([egui::pos2(bx(*bar0),py(*price0)),egui::pos2(bx(*bar1),py(*price1))],sc);}
-                DrawingKind::HZone{price0,price1}=>{let(y0,y1)=(py(*price0),py(*price1));painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(),y0.min(y1)),egui::pos2(rect.left()+cw,y0.max(y1))),0.0,egui::Color32::from_rgba_unmultiplied((d.color[0]*255.0)as u8,(d.color[1]*255.0)as u8,(d.color[2]*255.0)as u8,30));}
-            }
-        }
-
-        // Crosshair
-        if let Some(pos)=ui.input(|i|i.pointer.hover_pos()) {
-            if pos.x>=rect.left()&&pos.x<rect.left()+cw&&pos.y>=rect.top()+pt&&pos.y<rect.top()+pt+ch {
-                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)],egui::Stroke::new(0.5,egui::Color32::from_white_alpha(50)));
-                painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(0.5,egui::Color32::from_white_alpha(50)));
-                let hp=min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
-                let d=if hp>=10.0{2}else{4};
-                painter.text(egui::pos2(rect.left()+cw+4.0,pos.y),egui::Align2::LEFT_CENTER,format!("{:.1$}",hp,d),egui::FontId::monospace(10.0),egui::Color32::WHITE);
-            }
-        }
-
-        // Interaction
-        let resp=ui.allocate_rect(egui::Rect::from_min_size(rect.min,egui::vec2(cw,h)),egui::Sense::click_and_drag());
-        if resp.dragged_by(egui::PointerButton::Primary)&&chart.draw_tool.is_empty() {
-            let d=resp.drag_delta(); chart.vs=(chart.vs-d.x/bs).max(0.0).min(n as f32+200.0);
-            chart.auto_scroll=false; chart.last_input=std::time::Instant::now();
-        }
-        let scroll=ui.input(|i|i.raw_scroll_delta.y);
-        if scroll!=0.0&&resp.hovered() {
-            let f=if scroll>0.0{0.9}else{1.1}; let old=chart.vc;
-            let nw=((old as f32*f).round()as u32).max(20).min(n as u32);
-            let d=(old as i32-nw as i32)/2; chart.vc=nw; chart.vs=(chart.vs+d as f32).max(0.0);
-            chart.auto_scroll=false; chart.last_input=std::time::Instant::now();
-        }
-        if resp.clicked()&&!chart.draw_tool.is_empty() {
-            if let Some(pos)=resp.interact_pointer_pos() {
-                let bar=(pos.x-rect.left()+off-bs*0.5)/bs+vs;
-                let price=min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
-                match chart.draw_tool.as_str() {
-                    "hline"=>{chart.drawings.push(Drawing{id:format!("h{}",chart.drawings.len()),kind:DrawingKind::HLine{price},color:[0.4,0.7,1.0,0.8],width:1.0,dashed:true});chart.draw_tool.clear();}
-                    "trendline"=>{if let Some((b0,p0))=chart.pending_pt{chart.drawings.push(Drawing{id:format!("t{}",chart.drawings.len()),kind:DrawingKind::TrendLine{price0:p0,bar0:b0,price1:price,bar1:bar},color:[0.3,0.6,1.0,0.9],width:1.0,dashed:false});chart.pending_pt=None;chart.draw_tool.clear();}else{chart.pending_pt=Some((bar,price));}}
-                    _=>{}
+                DrawingKind::HLine{price}=>{
+                    let y=py(*price);
+                    painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)],sc);
+                    if is_sel {
+                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), 4.0, egui::Color32::from_rgb(74,158,255));
+                    }
+                }
+                DrawingKind::TrendLine{price0,bar0,price1,bar1}=>{
+                    let p0=egui::pos2(bx(*bar0),py(*price0)); let p1=egui::pos2(bx(*bar1),py(*price1));
+                    painter.line_segment([p0,p1],sc);
+                    if is_sel {
+                        painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
+                        painter.circle_stroke(p0, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                        painter.circle_filled(p1, 5.0, egui::Color32::from_rgb(74,158,255));
+                        painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                    }
+                }
+                DrawingKind::HZone{price0,price1}=>{
+                    let(y0,y1)=(py(*price0),py(*price1));
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(),y0.min(y1)),egui::pos2(rect.left()+cw,y0.max(y1))),0.0,
+                        egui::Color32::from_rgba_unmultiplied((d.color[0]*255.0)as u8,(d.color[1]*255.0)as u8,(d.color[2]*255.0)as u8,30));
+                    painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)],sc);
+                    painter.line_segment([egui::pos2(rect.left(),y1),egui::pos2(rect.left()+cw,y1)],sc);
                 }
             }
         }
-        resp.context_menu(|ui|{
-            if let Some(pos)=ui.input(|i|i.pointer.latest_pos()) {
-                let price=min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
-                if ui.button("Set HLine").clicked(){chart.drawings.push(Drawing{id:format!("h{}",chart.drawings.len()),kind:DrawingKind::HLine{price},color:[0.4,0.7,1.0,0.8],width:1.0,dashed:true});ui.close_menu();}
+
+        // Trendline preview while drawing
+        if chart.draw_tool == "trendline" {
+            if let Some((b0, p0)) = chart.pending_pt {
+                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    painter.line_segment(
+                        [egui::pos2(bx(b0), py(p0)), pos],
+                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,140)),
+                    );
+                }
             }
-            if ui.button("Draw Trendline").clicked(){chart.draw_tool="trendline".into();chart.pending_pt=None;ui.close_menu();}
-            ui.separator();
-            if ui.button("Reset View").clicked(){chart.auto_scroll=true;chart.price_lock=None;chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0);ui.close_menu();}
-            if ui.button("Clear Drawings").clicked(){chart.drawings.clear();ui.close_menu();}
+        }
+
+        // Crosshair (only when not drawing)
+        if chart.draw_tool.is_empty() {
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                if pos.x >= rect.left() && pos.x < rect.left()+cw && pos.y >= rect.top()+pt && pos.y < rect.top()+pt+ch {
+                    painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)],egui::Stroke::new(0.5,egui::Color32::from_white_alpha(50)));
+                    painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(0.5,egui::Color32::from_white_alpha(50)));
+                    let hp = min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
+                    let d = if hp>=10.0{2}else{4};
+                    painter.text(egui::pos2(rect.left()+cw+4.0,pos.y),egui::Align2::LEFT_CENTER,format!("{:.1$}",hp,d),egui::FontId::monospace(10.0),egui::Color32::WHITE);
+                }
+            }
+        }
+
+        // ── Interaction ───────────────────────────────────────────────────────
+        let resp = ui.allocate_rect(egui::Rect::from_min_size(rect.min,egui::vec2(cw,h)), egui::Sense::click_and_drag());
+
+        let pos_to_bar = |pos: egui::Pos2| -> f32 { (pos.x - rect.left() + off - bs*0.5) / bs + vs };
+        let pos_to_price = |pos: egui::Pos2| -> f32 { min_p + (max_p-min_p) * (1.0 - (pos.y - rect.top() - pt) / ch) };
+
+        // Pre-compute hit test result for current pointer position
+        let hover_hit: Option<(String, i32)> = ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
+            for d in chart.drawings.iter().rev() {
+                match &d.kind {
+                    DrawingKind::HLine{price} => { if (pos.y - py(*price)).abs() < 5.0 && pos.x < rect.left()+cw { return Some((d.id.clone(), -1)); } }
+                    DrawingKind::TrendLine{price0,bar0,price1,bar1} => {
+                        let p0 = egui::pos2(bx(*bar0), py(*price0)); let p1 = egui::pos2(bx(*bar1), py(*price1));
+                        if p0.distance(pos) < 8.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(pos) < 8.0 { return Some((d.id.clone(), 1)); }
+                        let dx=p1.x-p0.x; let dy=p1.y-p0.y; let len2=dx*dx+dy*dy;
+                        if len2>0.0 { let t=((pos.x-p0.x)*dx+(pos.y-p0.y)*dy)/len2; let t=t.max(0.0).min(1.0);
+                            if egui::pos2(p0.x+t*dx,p0.y+t*dy).distance(pos)<6.0 { return Some((d.id.clone(),-1)); }
+                        }
+                    }
+                    DrawingKind::HZone{price0,price1} => {
+                        if (pos.y-py(*price0)).abs()<5.0 { return Some((d.id.clone(),0)); }
+                        if (pos.y-py(*price1)).abs()<5.0 { return Some((d.id.clone(),1)); }
+                    }
+                }
+            }
+            None
         });
-        if ui.input(|i|i.key_pressed(egui::Key::Escape)){chart.draw_tool.clear();chart.pending_pt=None;}
+
+        let hit_at = |px: f32, py_pos: f32, drawings: &[Drawing]| -> Option<(String, i32)> {
+            for d in drawings.iter().rev() {
+                match &d.kind {
+                    DrawingKind::HLine{price} => { if (py_pos - py(*price)).abs() < 5.0 { return Some((d.id.clone(), -1)); } }
+                    DrawingKind::TrendLine{price0,bar0,price1,bar1} => {
+                        let p0 = egui::pos2(bx(*bar0), py(*price0));
+                        let p1 = egui::pos2(bx(*bar1), py(*price1));
+                        if p0.distance(egui::pos2(px, py_pos)) < 8.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(egui::pos2(px, py_pos)) < 8.0 { return Some((d.id.clone(), 1)); }
+                        let dx = p1.x-p0.x; let dy = p1.y-p0.y; let len2 = dx*dx+dy*dy;
+                        if len2 > 0.0 { let t = ((px-p0.x)*dx+(py_pos-p0.y)*dy)/len2;
+                            let t = t.max(0.0).min(1.0);
+                            let dist = egui::pos2(p0.x+t*dx, p0.y+t*dy).distance(egui::pos2(px, py_pos));
+                            if dist < 6.0 { return Some((d.id.clone(), -1)); }
+                        }
+                    }
+                    DrawingKind::HZone{price0,price1} => {
+                        if (py_pos - py(*price0)).abs() < 5.0 { return Some((d.id.clone(), 0)); }
+                        if (py_pos - py(*price1)).abs() < 5.0 { return Some((d.id.clone(), 1)); }
+                    }
+                }
+            }
+            None
+        };
+
+        // Drawing tool: click to place
+        if !chart.draw_tool.is_empty() && resp.clicked() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                let bar = pos_to_bar(pos);
+                let price = pos_to_price(pos);
+                match chart.draw_tool.as_str() {
+                    "hline" => {
+                        chart.drawings.push(Drawing{id:format!("h{}",chart.drawings.len()),kind:DrawingKind::HLine{price},color:[0.4,0.7,1.0,0.8],width:1.0,dashed:true});
+                        chart.draw_tool.clear();
+                    }
+                    "trendline" => {
+                        if let Some((b0,p0)) = chart.pending_pt {
+                            chart.drawings.push(Drawing{id:format!("t{}",chart.drawings.len()),kind:DrawingKind::TrendLine{price0:p0,bar0:b0,price1:price,bar1:bar},color:[0.3,0.6,1.0,0.9],width:1.0,dashed:false});
+                            chart.pending_pt = None;
+                            chart.draw_tool.clear();
+                        } else {
+                            chart.pending_pt = Some((bar, price));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // No tool: click selects drawing, or deselects
+        else if chart.draw_tool.is_empty() && resp.clicked() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                if let Some((id, _)) = hit_at(pos.x, pos.y, &chart.drawings) {
+                    chart.selected_id = Some(id);
+                } else {
+                    chart.selected_id = None;
+                }
+            }
+        }
+
+        // Drag: pan chart OR move drawing
+        if chart.draw_tool.is_empty() && resp.drag_started_by(egui::PointerButton::Primary) {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                if let Some((id, ep)) = hit_at(pos.x, pos.y, &chart.drawings) {
+                    chart.dragging_drawing = Some((id, ep));
+                    chart.drag_start_price = pos_to_price(pos);
+                    chart.drag_start_bar = pos_to_bar(pos);
+                }
+            }
+        }
+        if let Some((ref id, ep)) = chart.dragging_drawing.clone() {
+            if resp.dragged_by(egui::PointerButton::Primary) {
+                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    let new_p = pos_to_price(pos);
+                    let new_b = pos_to_bar(pos);
+                    let dp = new_p - chart.drag_start_price;
+                    let db = new_b - chart.drag_start_bar;
+                    if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
+                        match &mut d.kind {
+                            DrawingKind::HLine{price} => *price += dp,
+                            DrawingKind::TrendLine{price0,bar0,price1,bar1} => match ep {
+                                0 => { *price0 = new_p; *bar0 = new_b; }
+                                1 => { *price1 = new_p; *bar1 = new_b; }
+                                _ => { *price0 += dp; *price1 += dp; *bar0 += db; *bar1 += db; }
+                            },
+                            DrawingKind::HZone{price0,price1} => match ep {
+                                0 => *price0 = new_p,
+                                1 => *price1 = new_p,
+                                _ => { *price0 += dp; *price1 += dp; }
+                            },
+                        }
+                    }
+                    chart.drag_start_price = new_p;
+                    chart.drag_start_bar = new_b;
+                }
+            }
+            if resp.drag_stopped() { chart.dragging_drawing = None; }
+        }
+        // Pan chart (only when not dragging a drawing and no tool active)
+        else if chart.draw_tool.is_empty() && resp.dragged_by(egui::PointerButton::Primary) {
+            let d = resp.drag_delta();
+            chart.vs = (chart.vs - d.x/bs).max(0.0).min(n as f32 + 200.0);
+            chart.auto_scroll = false;
+            chart.last_input = std::time::Instant::now();
+        }
+
+        // Scroll zoom
+        let scroll = ui.input(|i| i.raw_scroll_delta.y);
+        if scroll != 0.0 && resp.hovered() {
+            let f = if scroll > 0.0 { 0.9 } else { 1.1 };
+            let old = chart.vc;
+            let nw = ((old as f32*f).round() as u32).max(20).min(n as u32);
+            let d = (old as i32 - nw as i32) / 2;
+            chart.vc = nw;
+            chart.vs = (chart.vs + d as f32).max(0.0);
+            chart.auto_scroll = false;
+            chart.last_input = std::time::Instant::now();
+        }
+
+        // Delete selected drawing
+        if chart.selected_id.is_some() && ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
+            let id = chart.selected_id.take().unwrap();
+            chart.drawings.retain(|d| d.id != id);
+        }
+
+        // Context menu
+        resp.context_menu(|ui| {
+            if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
+                let price = pos_to_price(pos);
+                if ui.button("Set HLine").clicked() {
+                    chart.drawings.push(Drawing{id:format!("h{}",chart.drawings.len()),kind:DrawingKind::HLine{price},color:[0.4,0.7,1.0,0.8],width:1.0,dashed:true});
+                    ui.close_menu();
+                }
+            }
+            if ui.button("Draw Trendline").clicked() { chart.draw_tool = "trendline".into(); chart.pending_pt = None; ui.close_menu(); }
+            ui.separator();
+            if ui.button("Reset View").clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); ui.close_menu(); }
+            if chart.selected_id.is_some() {
+                if ui.button("Delete Selected").clicked() {
+                    let id = chart.selected_id.take().unwrap();
+                    chart.drawings.retain(|d| d.id != id);
+                    ui.close_menu();
+                }
+            }
+            if !chart.drawings.is_empty() {
+                if ui.button("Clear All Drawings").clicked() { chart.drawings.clear(); ui.close_menu(); }
+            }
+        });
+
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.selected_id = None; }
     });
     ctx.request_repaint();
 }
