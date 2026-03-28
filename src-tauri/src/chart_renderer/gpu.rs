@@ -10,7 +10,7 @@ use winit::{
     dpi::PhysicalSize,
 };
 
-use super::{Bar, ChartCommand, Drawing, DrawingKind};
+use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, LineStyle};
 
 // ─── Themes ───────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,16 @@ const THEMES: &[Theme] = &[
     Theme { name: "Catppuccin", bg: rgb(30,30,46),  bull: rgb(166,227,161), bear: rgb(243,139,168),dim: rgb(180,190,254) },
     Theme { name: "Tokyo Night",bg: rgb(26,27,38),  bull: rgb(158,206,106), bear: rgb(247,118,142),dim: rgb(122,162,247) },
 ];
+
+const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#ffffff","#e67e22"];
+
+fn hex_to_color(hex: &str, opacity: f32) -> egui::Color32 {
+    let h = hex.trim_start_matches('#');
+    let r = u8::from_str_radix(&h[0..2], 16).unwrap_or(128);
+    let g = u8::from_str_radix(&h[2..4], 16).unwrap_or(128);
+    let b = u8::from_str_radix(&h[4..6], 16).unwrap_or(128);
+    egui::Color32::from_rgba_unmultiplied(r, g, b, (opacity * 255.0) as u8)
+}
 
 fn compute_sma(data: &[f32], period: usize) -> Vec<f32> {
     let mut r = vec![f32::NAN; data.len()];
@@ -52,10 +62,18 @@ struct Chart {
     indicators: Vec<(Vec<f32>, egui::Color32, String)>,
     vs: f32, vc: u32, price_lock: Option<(f32,f32)>,
     auto_scroll: bool, last_input: std::time::Instant,
-    theme_idx: usize, draw_tool: String, pending_pt: Option<(f32,f32)>,
+    theme_idx: usize,
+    draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker"
+    pending_pt: Option<(f32,f32)>,
     selected_id: Option<String>,
-    dragging_drawing: Option<(String, i32)>, // (id, endpoint: -1=whole, 0=first, 1=second)
+    selected_ids: Vec<String>, // multi-select with shift
+    dragging_drawing: Option<(String, i32)>,
     drag_start_price: f32, drag_start_bar: f32,
+    groups: Vec<DrawingGroup>,
+    hidden_groups: Vec<String>,
+    draw_color: String, // current drawing color
+    next_draw_id: u32,
+    zoom_selecting: bool, zoom_start: egui::Pos2,
 }
 
 impl Chart {
@@ -64,7 +82,11 @@ impl Chart {
             vs: 0.0, vc: 200, price_lock: None, auto_scroll: true,
             last_input: std::time::Instant::now(), theme_idx: 0,
             draw_tool: String::new(), pending_pt: None,
-            selected_id: None, dragging_drawing: None, drag_start_price: 0.0, drag_start_bar: 0.0 }
+            selected_id: None, selected_ids: vec![], dragging_drawing: None,
+            drag_start_price: 0.0, drag_start_bar: 0.0,
+            groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
+            hidden_groups: vec![], draw_color: "#4a9eff".into(), next_draw_id: 0,
+            zoom_selecting: false, zoom_start: egui::Pos2::ZERO }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -122,11 +144,22 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                 egui::ComboBox::from_id_salt("thm").selected_text(t.name).width(100.0).show_ui(ui, |ui| {
                     for (i,th) in THEMES.iter().enumerate() { ui.selectable_value(&mut chart.theme_idx, i, th.name); }
                 });
-                if ui.selectable_label(chart.draw_tool=="hline","HLine").clicked() {
-                    chart.draw_tool = if chart.draw_tool=="hline" { String::new() } else { "hline".into() }; chart.pending_pt=None;
+                // Drawing tools
+                for (tool, label) in [("hline","HLine"),("trendline","Trend"),("hzone","Zone"),("barmarker","Mark")] {
+                    if ui.selectable_label(chart.draw_tool==tool, label).clicked() {
+                        chart.draw_tool = if chart.draw_tool==tool { String::new() } else { tool.into() };
+                        chart.pending_pt = None;
+                    }
                 }
-                if ui.selectable_label(chart.draw_tool=="trendline","Trend").clicked() {
-                    chart.draw_tool = if chart.draw_tool=="trendline" { String::new() } else { "trendline".into() }; chart.pending_pt=None;
+                ui.separator();
+                // Color picker (small circles)
+                for &c in PRESET_COLORS {
+                    let color = hex_to_color(c, 1.0);
+                    let is_cur = chart.draw_color == c;
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
+                    ui.painter().circle_filled(r.center(), if is_cur { 6.0 } else { 5.0 }, color);
+                    if is_cur { ui.painter().circle_stroke(r.center(), 7.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
+                    if resp.clicked() { chart.draw_color = c.to_string(); }
                 }
                 if !chart.auto_scroll { if ui.button("▶ LIVE").clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); } }
                 else { ui.label(egui::RichText::new("● LIVE").color(t.bull).small()); }
@@ -137,6 +170,66 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
         egui::TopBottomPanel::bottom("st").show(ctx, |ui| {
             let h = match chart.draw_tool.as_str() { "hline"=>"Click to place HLine (Esc cancel)", "trendline" if chart.pending_pt.is_some()=>"Click 2nd point (Esc cancel)", "trendline"=>"Click 1st point (Esc cancel)", _=>"" };
             ui.label(egui::RichText::new(h).color(egui::Color32::from_rgb(255,200,50)));
+        });
+    }
+
+    // Style popup when drawing(s) selected
+    if !chart.selected_ids.is_empty() {
+        egui::TopBottomPanel::bottom("style_popup").frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(30,30,35)).inner_margin(6.0)).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Style:").small().color(t.dim));
+                // Color buttons
+                for &c in PRESET_COLORS {
+                    let color = hex_to_color(c, 1.0);
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+                    ui.painter().circle_filled(r.center(), 6.0, color);
+                    if resp.clicked() { for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.color = c.to_string(); } } }
+                }
+                ui.separator();
+                // Line style
+                for (ls, label) in [(LineStyle::Solid,"━"),(LineStyle::Dashed,"╌"),(LineStyle::Dotted,"···")] {
+                    if ui.selectable_label(false, label).clicked() {
+                        for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.line_style = ls; } }
+                    }
+                }
+                ui.separator();
+                // Thickness
+                for &th in &[0.5_f32, 1.0, 1.5, 2.5] {
+                    let label = format!("{:.0}", th * 2.0);
+                    if ui.selectable_label(false, egui::RichText::new(&label).small()).clicked() {
+                        for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.thickness = th; } }
+                    }
+                }
+                ui.separator();
+                // Opacity
+                for &op in &[1.0_f32, 0.75, 0.5, 0.25] {
+                    let label = format!("{}%", (op*100.0) as u32);
+                    if ui.selectable_label(false, egui::RichText::new(&label).small()).clicked() {
+                        for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.opacity = op; } }
+                    }
+                }
+                ui.separator();
+                // Group assignment
+                egui::ComboBox::from_id_salt("grp").selected_text("Group").width(80.0).show_ui(ui, |ui| {
+                    for g in &chart.groups {
+                        if ui.button(&g.name).clicked() {
+                            for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.group_id = g.id.clone(); } }
+                        }
+                    }
+                    if ui.button("+ New Group").clicked() {
+                        let gid = format!("g{}", chart.groups.len());
+                        chart.groups.push(DrawingGroup { id: gid.clone(), name: format!("Group {}", chart.groups.len()), color: None });
+                        for id in &chart.selected_ids { if let Some(d) = chart.drawings.iter_mut().find(|d| d.id==*id) { d.group_id = gid.clone(); } }
+                    }
+                });
+                ui.separator();
+                // Delete
+                if ui.button(egui::RichText::new("✕ Delete").color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                    let ids = chart.selected_ids.clone();
+                    chart.drawings.retain(|d| !ids.contains(&d.id));
+                    chart.selected_ids.clear(); chart.selected_id = None;
+                }
+            });
         });
     }
 
@@ -198,9 +291,11 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
 
         // Drawings (with selection highlight + endpoint handles)
         for d in &chart.drawings {
-            let is_sel = chart.selected_id.as_deref() == Some(&d.id);
-            let dc = egui::Color32::from_rgba_unmultiplied((d.color[0]*255.0)as u8,(d.color[1]*255.0)as u8,(d.color[2]*255.0)as u8,(d.color[3]*255.0)as u8);
-            let sc = egui::Stroke::new(if is_sel { d.width + 1.0 } else { d.width }, if is_sel { egui::Color32::WHITE } else { dc });
+            if chart.hidden_groups.contains(&d.group_id) { continue; }
+            let is_sel = chart.selected_ids.contains(&d.id);
+            let dc = hex_to_color(&d.color, d.opacity);
+            let dash = match d.line_style { LineStyle::Dashed => true, _ => false };
+            let sc = egui::Stroke::new(if is_sel { d.thickness + 1.0 } else { d.thickness }, if is_sel { egui::Color32::WHITE } else { dc });
             match &d.kind {
                 DrawingKind::HLine{price}=>{
                     let y=py(*price);
@@ -221,17 +316,55 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                 }
                 DrawingKind::HZone{price0,price1}=>{
                     let(y0,y1)=(py(*price0),py(*price1));
-                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(),y0.min(y1)),egui::pos2(rect.left()+cw,y0.max(y1))),0.0,
-                        egui::Color32::from_rgba_unmultiplied((d.color[0]*255.0)as u8,(d.color[1]*255.0)as u8,(d.color[2]*255.0)as u8,30));
+                    let fill = hex_to_color(&d.color, d.opacity * 0.1);
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(),y0.min(y1)),egui::pos2(rect.left()+cw,y0.max(y1))),0.0,fill);
                     painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)],sc);
                     painter.line_segment([egui::pos2(rect.left(),y1),egui::pos2(rect.left()+cw,y1)],sc);
+                    if is_sel {
+                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y0), 4.0, egui::Color32::from_rgb(74,158,255));
+                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y1), 4.0, egui::Color32::from_rgb(74,158,255));
+                    }
+                }
+                DrawingKind::BarMarker{bar,price,up}=>{
+                    let x=bx(*bar); let y=py(*price);
+                    let dir = if *up { -1.0 } else { 1.0 };
+                    let sz = 6.0;
+                    let pts = vec![
+                        egui::pos2(x, y + dir*2.0),
+                        egui::pos2(x - sz, y + dir*(sz+4.0)),
+                        egui::pos2(x + sz, y + dir*(sz+4.0)),
+                    ];
+                    painter.add(egui::Shape::convex_polygon(pts, dc, egui::Stroke::NONE));
+                    if is_sel {
+                        painter.circle_stroke(egui::pos2(x, y), 8.0, egui::Stroke::new(1.5, egui::Color32::WHITE));
+                    }
                 }
             }
         }
 
+        // Middle-click cycles through drawing tools
+        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) {
+            let tools = ["", "hline", "trendline", "hzone", "barmarker"];
+            let cur = tools.iter().position(|&t| t == chart.draw_tool).unwrap_or(0);
+            chart.draw_tool = tools[(cur + 1) % tools.len()].to_string();
+            chart.pending_pt = None;
+        }
+
         // Drawing preview
         if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-            if chart.draw_tool == "trendline" {
+            if chart.draw_tool == "hzone" && chart.pending_pt.is_some() {
+                let (_b0, p0) = chart.pending_pt.unwrap();
+                let y0 = py(p0);
+                // Zone preview fill
+                painter.rect_filled(
+                    egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(pos.y)), egui::pos2(rect.left()+cw, y0.max(pos.y))),
+                    0.0, egui::Color32::from_rgba_unmultiplied(100,160,255,25));
+                // Border lines
+                painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,120)));
+                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,120)));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
+            else if chart.draw_tool == "trendline" {
                 if let Some((b0, p0)) = chart.pending_pt {
                     // Dashed preview line
                     let start = egui::pos2(bx(b0), py(p0));
@@ -304,6 +437,9 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                         if (pos.y-py(*price0)).abs()<10.0 { return Some((d.id.clone(),0)); }
                         if (pos.y-py(*price1)).abs()<10.0 { return Some((d.id.clone(),1)); }
                     }
+                    DrawingKind::BarMarker{bar,price,..} => {
+                        if egui::pos2(bx(*bar),py(*price)).distance(pos) < 12.0 { return Some((d.id.clone(), -1)); }
+                    }
                 }
             }
             None
@@ -336,6 +472,9 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                         if (py_pos - py(*price0)).abs() < 10.0 { return Some((d.id.clone(), 0)); }
                         if (py_pos - py(*price1)).abs() < 10.0 { return Some((d.id.clone(), 1)); }
                     }
+                    DrawingKind::BarMarker{bar,price,..} => {
+                        if egui::pos2(bx(*bar),py(*price)).distance(egui::pos2(px,py_pos)) < 12.0 { return Some((d.id.clone(), -1)); }
+                    }
                 }
             }
             None
@@ -348,29 +487,59 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                 let price = pos_to_price(pos);
                 match chart.draw_tool.as_str() {
                     "hline" => {
-                        chart.drawings.push(Drawing{id:format!("h{}",chart.drawings.len()),kind:DrawingKind::HLine{price},color:[0.4,0.7,1.0,0.8],width:1.0,dashed:true});
-                        chart.draw_tool.clear();
+                        chart.next_draw_id+=1;
+                        let mut d=Drawing::new(format!("d{}",chart.next_draw_id),DrawingKind::HLine{price});
+                        d.color=chart.draw_color.clone(); d.line_style=LineStyle::Dashed;
+                        chart.drawings.push(d); chart.draw_tool.clear();
                     }
                     "trendline" => {
                         if let Some((b0,p0)) = chart.pending_pt {
-                            chart.drawings.push(Drawing{id:format!("t{}",chart.drawings.len()),kind:DrawingKind::TrendLine{price0:p0,bar0:b0,price1:price,bar1:bar},color:[0.3,0.6,1.0,0.9],width:1.0,dashed:false});
-                            chart.pending_pt = None;
-                            chart.draw_tool.clear();
-                        } else {
-                            chart.pending_pt = Some((bar, price));
+                            chart.next_draw_id+=1;
+                            let mut d=Drawing::new(format!("d{}",chart.next_draw_id),DrawingKind::TrendLine{price0:p0,bar0:b0,price1:price,bar1:bar});
+                            d.color=chart.draw_color.clone();
+                            chart.drawings.push(d); chart.pending_pt=None; chart.draw_tool.clear();
+                        } else { chart.pending_pt = Some((bar, price)); }
+                    }
+                    "hzone" => {
+                        if let Some((_b0,p0)) = chart.pending_pt {
+                            chart.next_draw_id+=1;
+                            let mut d=Drawing::new(format!("d{}",chart.next_draw_id),DrawingKind::HZone{price0:p0,price1:price});
+                            d.color=chart.draw_color.clone();
+                            chart.drawings.push(d); chart.pending_pt=None; chart.draw_tool.clear();
+                        } else { chart.pending_pt = Some((bar, price)); }
+                    }
+                    "barmarker" => {
+                        // Snap to nearest bar, determine up/down based on click vs bar midpoint
+                        let bar_idx = bar.round() as usize;
+                        if let Some(b) = chart.bars.get(bar_idx) {
+                            let mid = (b.open + b.close) / 2.0;
+                            let up = price > mid;
+                            let snap_price = if up { b.high } else { b.low };
+                            chart.next_draw_id+=1;
+                            let mut d=Drawing::new(format!("d{}",chart.next_draw_id),DrawingKind::BarMarker{bar:bar_idx as f32,price:snap_price,up});
+                            d.color=chart.draw_color.clone();
+                            chart.drawings.push(d); chart.draw_tool.clear();
                         }
                     }
                     _ => {}
                 }
             }
         }
-        // No tool: click selects drawing, or deselects
+        // No tool: click selects drawing (shift for multi-select), or deselects
         else if chart.draw_tool.is_empty() && resp.clicked() {
             if let Some(pos) = resp.interact_pointer_pos() {
+                let shift = ui.input(|i| i.modifiers.shift);
                 if let Some((id, _)) = hit_at(pos.x, pos.y, &chart.drawings) {
+                    if shift {
+                        if chart.selected_ids.contains(&id) { chart.selected_ids.retain(|x| x != &id); }
+                        else { chart.selected_ids.push(id.clone()); }
+                    } else {
+                        chart.selected_ids = vec![id.clone()];
+                    }
                     chart.selected_id = Some(id);
                 } else {
                     chart.selected_id = None;
+                    chart.selected_ids.clear();
                 }
             }
         }
@@ -405,6 +574,7 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                                 1 => *price1 = new_p,
                                 _ => { *price0 += dp; *price1 += dp; }
                             },
+                            DrawingKind::BarMarker{bar,price,..} => { *bar += db; *price += dp; },
                         }
                     }
                     chart.drag_start_price = new_p;
@@ -434,6 +604,32 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             chart.last_input = std::time::Instant::now();
         }
 
+        // Zoom selection rendering + completion
+        if chart.zoom_selecting {
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                let zr = egui::Rect::from_two_pos(chart.zoom_start, pos);
+                painter.rect_filled(zr, 0.0, egui::Color32::from_rgba_unmultiplied(110,190,255,20));
+                painter.rect_stroke(zr, 0.0, egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(110,190,255,180)), egui::StrokeKind::Outside);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
+            if resp.drag_stopped() || (resp.clicked() && chart.zoom_start != egui::Pos2::ZERO) {
+                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    let sx = chart.zoom_start.x; let sy = chart.zoom_start.y;
+                    if (pos.x-sx).abs() > 10.0 && (pos.y-sy).abs() > 10.0 {
+                        let b_left = pos_to_bar(egui::pos2(sx.min(pos.x), 0.0));
+                        let b_right = pos_to_bar(egui::pos2(sx.max(pos.x), 0.0));
+                        let p_top = pos_to_price(egui::pos2(0.0, sy.min(pos.y)));
+                        let p_bot = pos_to_price(egui::pos2(0.0, sy.max(pos.y)));
+                        chart.vs = b_left.max(0.0);
+                        chart.vc = ((b_right-b_left).ceil() as u32).max(5);
+                        chart.price_lock = Some((p_bot.min(p_top), p_bot.max(p_top)));
+                        chart.auto_scroll = false; chart.last_input = std::time::Instant::now();
+                    }
+                }
+                chart.zoom_selecting = false;
+            }
+        }
+
         // Delete selected drawing
         if chart.selected_id.is_some() && ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             let id = chart.selected_id.take().unwrap();
@@ -442,21 +638,41 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
 
         // Context menu
         resp.context_menu(|ui| {
-            if ui.button("Draw HLine").clicked() {
-                chart.draw_tool = "hline".into(); chart.pending_pt = None; ui.close_menu();
-            }
-            if ui.button("Draw Trendline").clicked() { chart.draw_tool = "trendline".into(); chart.pending_pt = None; ui.close_menu(); }
+            ui.label(egui::RichText::new("DRAWING TOOLS").small().color(t.dim));
+            if ui.button("Draw HLine").clicked() { chart.draw_tool="hline".into(); chart.pending_pt=None; ui.close_menu(); }
+            if ui.button("Draw Trendline").clicked() { chart.draw_tool="trendline".into(); chart.pending_pt=None; ui.close_menu(); }
+            if ui.button("Draw Zone").clicked() { chart.draw_tool="hzone".into(); chart.pending_pt=None; ui.close_menu(); }
+            if ui.button("Place Marker").clicked() { chart.draw_tool="barmarker".into(); chart.pending_pt=None; ui.close_menu(); }
             ui.separator();
-            if ui.button("Reset View").clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); ui.close_menu(); }
-            if chart.selected_id.is_some() {
-                if ui.button("Delete Selected").clicked() {
-                    let id = chart.selected_id.take().unwrap();
-                    chart.drawings.retain(|d| d.id != id);
-                    ui.close_menu();
+            if ui.button("⊡ Drag Zoom").clicked() { chart.zoom_selecting=true; if let Some(p)=ui.input(|i|i.pointer.latest_pos()){chart.zoom_start=p;} ui.close_menu(); }
+            if ui.button("↺ Reset View").clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); ui.close_menu(); }
+            ui.separator();
+            // Groups
+            if !chart.groups.is_empty() {
+                ui.label(egui::RichText::new("GROUPS").small().color(t.dim));
+                for g in &chart.groups {
+                    let hidden = chart.hidden_groups.contains(&g.id);
+                    let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
+                    let label = format!("{} {} ({})", if hidden {"◎"} else {"◉"}, g.name, count);
+                    if ui.button(&label).clicked() {
+                        if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
+                        else { chart.hidden_groups.push(g.id.clone()); }
+                    }
+                }
+                ui.separator();
+            }
+            // Delete
+            if !chart.selected_ids.is_empty() {
+                if ui.button(egui::RichText::new("✕ Delete Selected").color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                    let ids = chart.selected_ids.clone();
+                    chart.drawings.retain(|d| !ids.contains(&d.id));
+                    chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
                 }
             }
             if !chart.drawings.is_empty() {
-                if ui.button("Clear All Drawings").clicked() { chart.drawings.clear(); ui.close_menu(); }
+                if ui.button(egui::RichText::new("✕ Clear All Drawings").color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                    chart.drawings.clear(); chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
+                }
             }
         });
 

@@ -18,14 +18,34 @@ pub use types::*;
 use std::sync::mpsc;
 use std::thread;
 
+/// Line style
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LineStyle { Solid, Dashed, Dotted }
+
 /// Drawing on the chart
 #[derive(Debug, Clone)]
 pub struct Drawing {
     pub id: String,
     pub kind: DrawingKind,
-    pub color: [f32; 4],
-    pub width: f32,
-    pub dashed: bool,
+    pub color: String,      // hex color like "#4a9eff"
+    pub opacity: f32,       // 0.0-1.0
+    pub line_style: LineStyle,
+    pub thickness: f32,     // pixels
+    pub group_id: String,   // "default" or group UUID
+}
+
+impl Drawing {
+    pub fn new(id: String, kind: DrawingKind) -> Self {
+        Self { id, kind, color: "#4a9eff".into(), opacity: 1.0, line_style: LineStyle::Solid, thickness: 1.5, group_id: "default".into() }
+    }
+}
+
+/// Drawing group
+#[derive(Debug, Clone)]
+pub struct DrawingGroup {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +53,7 @@ pub enum DrawingKind {
     HLine { price: f32 },
     TrendLine { price0: f32, bar0: f32, price1: f32, bar1: f32 },
     HZone { price0: f32, price1: f32 },
+    BarMarker { bar: f32, price: f32, up: bool },
 }
 
 /// Commands sent from Tauri/WebView to the native chart renderer
