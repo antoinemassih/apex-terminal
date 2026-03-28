@@ -229,19 +229,43 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             }
         }
 
-        // Trendline preview while drawing
-        if chart.draw_tool == "trendline" {
-            if let Some((b0, p0)) = chart.pending_pt {
-                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+        // Drawing preview
+        if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if chart.draw_tool == "trendline" {
+                if let Some((b0, p0)) = chart.pending_pt {
+                    // Dashed preview line
+                    let start = egui::pos2(bx(b0), py(p0));
+                    let dir = pos - start;
+                    let len = dir.length();
+                    if len > 2.0 {
+                        let dash_len = 6.0;
+                        let gap_len = 4.0;
+                        let step = dash_len + gap_len;
+                        let norm = dir / len;
+                        let mut d = 0.0;
+                        while d < len {
+                            let a = start + norm * d;
+                            let b = start + norm * (d + dash_len).min(len);
+                            painter.line_segment([a, b], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,180)));
+                            d += step;
+                        }
+                    }
+                }
+                // Crosshair cursor for drawing mode
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            } else if chart.draw_tool == "hline" {
+                // Show horizontal preview line at cursor price
+                if pos.y >= rect.top()+pt && pos.y < rect.top()+pt+ch {
                     painter.line_segment(
-                        [egui::pos2(bx(b0), py(p0)), pos],
-                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,140)),
+                        [egui::pos2(rect.left(), pos.y), egui::pos2(rect.left()+cw, pos.y)],
+                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,180,255,120)),
                     );
                 }
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             }
         }
 
-        // Crosshair (only when not drawing)
+        // Crosshair (only when not in drawing mode)
         if chart.draw_tool.is_empty() {
             if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                 if pos.x >= rect.left() && pos.x < rect.left()+cw && pos.y >= rect.top()+pt && pos.y < rect.top()+pt+ch {
@@ -260,48 +284,57 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
         let pos_to_bar = |pos: egui::Pos2| -> f32 { (pos.x - rect.left() + off - bs*0.5) / bs + vs };
         let pos_to_price = |pos: egui::Pos2| -> f32 { min_p + (max_p-min_p) * (1.0 - (pos.y - rect.top() - pt) / ch) };
 
-        // Pre-compute hit test result for current pointer position
+        // Pre-compute hit test (generous radii for easy interaction)
         let hover_hit: Option<(String, i32)> = ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
             for d in chart.drawings.iter().rev() {
                 match &d.kind {
-                    DrawingKind::HLine{price} => { if (pos.y - py(*price)).abs() < 5.0 && pos.x < rect.left()+cw { return Some((d.id.clone(), -1)); } }
+                    DrawingKind::HLine{price} => {
+                        if (pos.y - py(*price)).abs() < 12.0 && pos.x < rect.left()+cw { return Some((d.id.clone(), -1)); }
+                    }
                     DrawingKind::TrendLine{price0,bar0,price1,bar1} => {
                         let p0 = egui::pos2(bx(*bar0), py(*price0)); let p1 = egui::pos2(bx(*bar1), py(*price1));
-                        if p0.distance(pos) < 8.0 { return Some((d.id.clone(), 0)); }
-                        if p1.distance(pos) < 8.0 { return Some((d.id.clone(), 1)); }
+                        if p0.distance(pos) < 14.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(pos) < 14.0 { return Some((d.id.clone(), 1)); }
                         let dx=p1.x-p0.x; let dy=p1.y-p0.y; let len2=dx*dx+dy*dy;
                         if len2>0.0 { let t=((pos.x-p0.x)*dx+(pos.y-p0.y)*dy)/len2; let t=t.max(0.0).min(1.0);
-                            if egui::pos2(p0.x+t*dx,p0.y+t*dy).distance(pos)<6.0 { return Some((d.id.clone(),-1)); }
+                            if egui::pos2(p0.x+t*dx,p0.y+t*dy).distance(pos)<10.0 { return Some((d.id.clone(),-1)); }
                         }
                     }
                     DrawingKind::HZone{price0,price1} => {
-                        if (pos.y-py(*price0)).abs()<5.0 { return Some((d.id.clone(),0)); }
-                        if (pos.y-py(*price1)).abs()<5.0 { return Some((d.id.clone(),1)); }
+                        if (pos.y-py(*price0)).abs()<10.0 { return Some((d.id.clone(),0)); }
+                        if (pos.y-py(*price1)).abs()<10.0 { return Some((d.id.clone(),1)); }
                     }
                 }
             }
             None
         });
+        // Show move/grab cursor when hovering over a drawing
+        if chart.draw_tool.is_empty() {
+            if let Some((_, ep)) = &hover_hit {
+                ui.ctx().set_cursor_icon(if *ep >= 0 { egui::CursorIcon::Grab } else { egui::CursorIcon::Move });
+            }
+        }
 
         let hit_at = |px: f32, py_pos: f32, drawings: &[Drawing]| -> Option<(String, i32)> {
             for d in drawings.iter().rev() {
                 match &d.kind {
-                    DrawingKind::HLine{price} => { if (py_pos - py(*price)).abs() < 5.0 { return Some((d.id.clone(), -1)); } }
+                    DrawingKind::HLine{price} => {
+                        if (py_pos - py(*price)).abs() < 12.0 { return Some((d.id.clone(), -1)); }
+                    }
                     DrawingKind::TrendLine{price0,bar0,price1,bar1} => {
                         let p0 = egui::pos2(bx(*bar0), py(*price0));
                         let p1 = egui::pos2(bx(*bar1), py(*price1));
-                        if p0.distance(egui::pos2(px, py_pos)) < 8.0 { return Some((d.id.clone(), 0)); }
-                        if p1.distance(egui::pos2(px, py_pos)) < 8.0 { return Some((d.id.clone(), 1)); }
+                        if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 1)); }
                         let dx = p1.x-p0.x; let dy = p1.y-p0.y; let len2 = dx*dx+dy*dy;
                         if len2 > 0.0 { let t = ((px-p0.x)*dx+(py_pos-p0.y)*dy)/len2;
                             let t = t.max(0.0).min(1.0);
-                            let dist = egui::pos2(p0.x+t*dx, p0.y+t*dy).distance(egui::pos2(px, py_pos));
-                            if dist < 6.0 { return Some((d.id.clone(), -1)); }
+                            if egui::pos2(p0.x+t*dx, p0.y+t*dy).distance(egui::pos2(px, py_pos)) < 10.0 { return Some((d.id.clone(), -1)); }
                         }
                     }
                     DrawingKind::HZone{price0,price1} => {
-                        if (py_pos - py(*price0)).abs() < 5.0 { return Some((d.id.clone(), 0)); }
-                        if (py_pos - py(*price1)).abs() < 5.0 { return Some((d.id.clone(), 1)); }
+                        if (py_pos - py(*price0)).abs() < 10.0 { return Some((d.id.clone(), 0)); }
+                        if (py_pos - py(*price1)).abs() < 10.0 { return Some((d.id.clone(), 1)); }
                     }
                 }
             }
@@ -409,12 +442,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
 
         // Context menu
         resp.context_menu(|ui| {
-            if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
-                let price = pos_to_price(pos);
-                if ui.button("Set HLine").clicked() {
-                    chart.drawings.push(Drawing{id:format!("h{}",chart.drawings.len()),kind:DrawingKind::HLine{price},color:[0.4,0.7,1.0,0.8],width:1.0,dashed:true});
-                    ui.close_menu();
-                }
+            if ui.button("Draw HLine").clicked() {
+                chart.draw_tool = "hline".into(); chart.pending_pt = None; ui.close_menu();
             }
             if ui.button("Draw Trendline").clicked() { chart.draw_tool = "trendline".into(); chart.pending_pt = None; ui.close_menu(); }
             ui.separator();
