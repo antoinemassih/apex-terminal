@@ -9,13 +9,6 @@ use winit::{
     dpi::PhysicalSize,
 };
 
-use glyphon::{
-    FontSystem, SwashCache, TextAtlas, TextRenderer as GlyphonRenderer,
-    Cache as GlyphonCache, Viewport as GlyphonViewport,
-    TextArea, TextBounds, Buffer as TextBuffer, Metrics, Attrs, Family, Color as GColor,
-    Shaping, Resolution,
-};
-
 use super::{Bar, CandleUniforms, VolumeUniforms, LineUniforms, GridVertex, ChartCommand, Drawing, DrawingKind};
 
 const CANDLE_SHADER: &str = include_str!("../../../src/renderer/shaders/candles_gpu.wgsl");
@@ -154,6 +147,7 @@ struct IndicatorLine {
 // ─── GPU State ────────────────────────────────────────────────────────────────
 
 struct Gpu {
+    window: Arc<Window>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
@@ -196,12 +190,12 @@ struct Gpu {
     line_pl: wgpu::RenderPipeline,
     indicators: Vec<IndicatorLine>,
 
-    // Text rendering (glyphon)
-    font_system: FontSystem,
-    swash_cache: SwashCache,
-    text_atlas: TextAtlas,
-    text_renderer: GlyphonRenderer,
-    glyphon_viewport: GlyphonViewport,
+    // egui UI
+    egui_ctx: egui::Context,
+    egui_state: egui_winit::State,
+    egui_renderer: egui_wgpu::Renderer,
+    show_context_menu: bool,
+    context_menu_pos: egui::Pos2,
 
     // Drawings + tools
     drawings: Vec<Drawing>,
@@ -220,6 +214,7 @@ struct Gpu {
 
 impl Gpu {
     fn new(window: Arc<Window>) -> Self {
+        let win_clone = window.clone();
         let size = window.inner_size();
         // Force DX12 on Windows — Vulkan conflicts with WebView2's GPU context
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -358,15 +353,14 @@ impl Gpu {
         // Indicator line pipeline — same BGL as candles (storage + uniform)
         let line_pl = make_pl(LINE_SHADER, "line");
 
-        // Text rendering
-        let font_system = FontSystem::new();
-        let swash_cache = SwashCache::new();
-        let glyphon_cache = GlyphonCache::new(&device);
-        let mut text_atlas = TextAtlas::new(&device, &queue, &glyphon_cache, fmt);
-        let text_renderer = GlyphonRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
-        let glyphon_viewport = GlyphonViewport::new(&device, &glyphon_cache);
+        // egui UI
+        let egui_ctx = egui::Context::default();
+        egui_ctx.set_visuals(egui::Visuals::dark());
+        let egui_state = egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, &*win_clone, Some(win_clone.scale_factor() as f32), None, None);
+        let egui_renderer = egui_wgpu::Renderer::new(&device, fmt, None, 1, false);
 
         Self {
+            window: win_clone,
             device, queue, surface, config,
             candle_pl, candle_ubuf, volume_pl, volume_ubuf, grid_pl, grid_vbuf,
             bar_buf, bgl, candle_bg, volume_bg,
@@ -374,7 +368,8 @@ impl Gpu {
             overlay_cpu: vec![0.0; MAX_OVERLAY_LINES * OVERLAY_FLOATS_PER_LINE],
             overlay_count: 0,
             line_pl, indicators: Vec::new(),
-            font_system, swash_cache, text_atlas, text_renderer, glyphon_viewport,
+            egui_ctx, egui_state, egui_renderer,
+            show_context_menu: false, context_menu_pos: egui::Pos2::ZERO,
             bars: Vec::new(), timestamps: Vec::new(), bar_count: 0, bar_cap: cap,
             vs: 0.0, vc: 200, price_lock: None,
             bg_color: [0.05, 0.05, 0.11, 1.0],
@@ -1088,188 +1083,148 @@ impl Gpu {
             }
         }
 
-        // ── Text rendering (price labels, OHLC, crosshair price) ──────────────
-        self.glyphon_viewport.update(&self.queue, Resolution { width: w as u32, height: h as u32 });
+        self.queue.submit(std::iter::once(enc.finish()));
 
-        let mono = Attrs::new().family(Family::Monospace);
-        let dim_color = GColor::rgba(160, 160, 170, 200);
-        let bright_color = GColor::rgba(255, 255, 255, 255);
+        // ── egui UI pass ──────────────────────────────────────────────────────
+        let raw_input = self.egui_state.take_egui_input(&*self.window);
 
-        // Build text buffers for all labels
-        let mut text_buffers: Vec<(TextBuffer, f32, f32, GColor)> = Vec::new();
+        // Extract values needed by the egui closure to avoid borrowing self
+        let theme_idx = self.theme_idx;
+        let bar_count = self.bar_count;
+        let auto_scroll = self.auto_scroll;
+        let mouse_cx = self.mouse.cx as f32;
+        let mouse_cy = self.mouse.cy as f32;
+        let mouse_dragging = self.mouse.dragging;
+        let draw_tool = self.draw_state.tool;
+        let pending_pt = self.draw_state.pending_point;
+        let last_bar = if dc > 0 { self.bars.get((end - 1) as usize).copied() } else { None };
+        let mut new_theme_idx: Option<usize> = None;
+        let mut resume_scroll = false;
 
-        // Price labels on right axis
-        let range = max_p - min_p;
-        let raw_step = range / 8.0;
-        let mag_val = 10.0_f32.powf(raw_step.log10().floor());
-        let nice = [1.0, 2.0, 2.5, 5.0, 10.0];
-        let price_step = nice.iter().map(|&s| s * mag_val).find(|&s| s >= raw_step).unwrap_or(raw_step);
-        let mut p = (min_p / price_step).ceil() * price_step;
-        while p <= max_p {
-            let py = PT + (max_p - p) / (max_p - min_p) * ch;
-            if py >= PT && py <= h - PB {
-                let dec = if p >= 10.0 { 2usize } else { 4 };
-                let txt = format!("{:.1$}", p, dec);
-                let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
-                buf.set_size(&mut self.font_system, Some(PR - 8.0), Some(14.0));
-                buf.set_text(&mut self.font_system, &txt, mono.color(dim_color), Shaping::Basic);
-                buf.shape_until_scroll(&mut self.font_system, false);
-                text_buffers.push((buf, w - PR + 4.0, py - 6.0, dim_color));
-            }
-            p += price_step;
-        }
+        let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            let t = &THEMES[theme_idx];
+            let bull_color = egui::Color32::from_rgba_unmultiplied((t.bull[0]*255.0) as u8, (t.bull[1]*255.0) as u8, (t.bull[2]*255.0) as u8, 220);
+            let bear_color = egui::Color32::from_rgba_unmultiplied((t.bear[0]*255.0) as u8, (t.bear[1]*255.0) as u8, (t.bear[2]*255.0) as u8, 220);
+            let dim = egui::Color32::from_rgba_unmultiplied(140, 140, 150, 200);
 
-        // Crosshair price label
-        let mx = self.mouse.cx as f32;
-        let my = self.mouse.cy as f32;
-        if !self.mouse.dragging && mx >= 0.0 && mx < w - PR && my >= PT && my < h - PB {
-            let ch_price = min_p + (max_p - min_p) * (1.0 - (my - PT) / ch);
-            let dec = if ch_price >= 10.0 { 2usize } else { 4 };
-            let txt = format!("{:.1$}", ch_price, dec);
-            let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
-            buf.set_size(&mut self.font_system, Some(PR - 8.0), Some(14.0));
-            buf.set_text(&mut self.font_system, &txt, mono.color(bright_color), Shaping::Basic);
-            buf.shape_until_scroll(&mut self.font_system, false);
-            text_buffers.push((buf, w - PR + 4.0, my - 6.0, bright_color));
-        }
-
-        // OHLC label (top-left) — show last visible bar
-        if dc > 0 {
-            let last_vis = (end - 1) as usize;
-            if let Some(bar) = self.bars.get(last_vis) {
-                let c = if bar.close >= bar.open { GColor::rgba(46, 204, 113, 220) } else { GColor::rgba(231, 76, 60, 220) };
-                let txt = format!("O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}", bar.open, bar.high, bar.low, bar.close, bar.volume);
-                let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
-                buf.set_size(&mut self.font_system, Some(500.0), Some(14.0));
-                buf.set_text(&mut self.font_system, &txt, mono.color(c), Shaping::Basic);
-                buf.shape_until_scroll(&mut self.font_system, false);
-                text_buffers.push((buf, 8.0, 4.0, c));
-            }
-        }
-
-        // Time labels on bottom axis
-        if !self.timestamps.is_empty() && dc > 0 {
-            // Estimate candle interval from first two timestamps
-            let candle_sec = if self.timestamps.len() > 1 {
-                (self.timestamps[1] - self.timestamps[0]).max(60)
-            } else { 86400 };
-
-            // Pick nice time interval
-            let nice_intervals: &[i64] = &[60, 300, 900, 1800, 3600, 7200, 14400, 28800, 86400, 172800, 604800, 2592000];
-            let min_label_px = 80.0;
-            let bars_per_label = (min_label_px / step_px).ceil() as i64;
-            let min_interval = bars_per_label * candle_sec;
-            let time_interval = nice_intervals.iter().copied().find(|&i| i >= min_interval).unwrap_or(86400);
-
-            // Find first label time
-            if let Some(&first_ts) = self.timestamps.get(vs as usize) {
-                let first_label = ((first_ts / time_interval) + 1) * time_interval;
-                let mut t = first_label;
-                let last_ts = self.timestamps.get((end - 1) as usize).copied().unwrap_or(first_ts);
-                while t <= last_ts {
-                    // Find bar index for this time
-                    let bar_idx = self.timestamps.partition_point(|&ts| ts < t);
-                    if bar_idx >= vs as usize && bar_idx < end as usize {
-                        let view_idx = bar_idx as f32 - self.vs;
-                        let x = view_idx * step_px + step_px * 0.5 - offset_px;
-                        if x > 20.0 && x < cw - 40.0 {
-                            // Format: MM/DD for daily, HH:MM for intraday
-                            let secs = t;
-                            let txt = if time_interval >= 86400 {
-                                // MM/DD
-                                let days = (secs / 86400) as i32;
-                                // Approximate month/day
-                                let y2k_days = days - 10957; // days since 2000-01-01
-                                let month = ((y2k_days % 365) / 30 + 1).min(12).max(1);
-                                let day = ((y2k_days % 365) % 30 + 1).min(31).max(1);
-                                format!("{:02}/{:02}", month, day)
-                            } else {
-                                let h = ((secs % 86400) / 3600) as u32;
-                                let m = ((secs % 3600) / 60) as u32;
-                                format!("{:02}:{:02}", h, m)
-                            };
-                            let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(10.0, 12.0));
-                            buf.set_size(&mut self.font_system, Some(60.0), Some(12.0));
-                            buf.set_text(&mut self.font_system, &txt, mono.color(dim_color), Shaping::Basic);
-                            buf.shape_until_scroll(&mut self.font_system, false);
-                            text_buffers.push((buf, x - 15.0, h - PB + 4.0, dim_color));
-                        }
+            // Price labels on right axis
+            let area = egui::Area::new(egui::Id::new("price_axis")).fixed_pos(egui::pos2(w - PR + 4.0, 0.0));
+            area.show(ctx, |ui| {
+                let range = max_p - min_p;
+                let raw_step = range / 8.0;
+                let mag_val = 10.0_f32.powf(raw_step.log10().floor());
+                let nice = [1.0, 2.0, 2.5, 5.0, 10.0];
+                let price_step = nice.iter().map(|&s| s * mag_val).find(|&s| s >= raw_step).unwrap_or(raw_step);
+                let mut p = (min_p / price_step).ceil() * price_step;
+                while p <= max_p {
+                    let py = PT + (max_p - p) / (max_p - min_p) * ch;
+                    if py >= PT && py <= h - PB {
+                        let dec = if p >= 10.0 { 2usize } else { 4 };
+                        ui.put(egui::Rect::from_min_size(egui::pos2(0.0, py - 6.0), egui::vec2(70.0, 14.0)),
+                            egui::Label::new(egui::RichText::new(format!("{:.1$}", p, dec)).monospace().size(10.0).color(dim)));
                     }
-                    t += time_interval;
+                    p += price_step;
+                }
+                // Crosshair price
+                if !mouse_dragging && mouse_cx >= 0.0 && mouse_cx < w - PR && mouse_cy >= PT && mouse_cy < h - PB {
+                    let ch_price = min_p + (max_p - min_p) * (1.0 - (mouse_cy - PT) / ch);
+                    let dec = if ch_price >= 10.0 { 2usize } else { 4 };
+                    ui.put(egui::Rect::from_min_size(egui::pos2(0.0, mouse_cy - 6.0), egui::vec2(70.0, 14.0)),
+                        egui::Label::new(egui::RichText::new(format!("{:.1$}", ch_price, dec)).monospace().size(10.0).color(egui::Color32::WHITE)));
+                }
+            });
+
+            // OHLC label (top-left)
+            if let Some(bar) = last_bar {
+                let c = if bar.close >= bar.open { bull_color } else { bear_color };
+                egui::Area::new(egui::Id::new("ohlc")).fixed_pos(egui::pos2(8.0, 4.0)).show(ctx, |ui| {
+                    ui.label(egui::RichText::new(format!("O {:.2}  H {:.2}  L {:.2}  C {:.2}  V {:.0}", bar.open, bar.high, bar.low, bar.close, bar.volume))
+                        .monospace().size(11.0).color(c));
+                });
+            }
+
+            // Drawing tool hint
+            if draw_tool != DrawTool::None {
+                let hint = match draw_tool {
+                    DrawTool::HLine => "Click to place HLine (Esc to cancel)",
+                    DrawTool::TrendLine if pending_pt.is_some() => "Click second point (Esc to cancel)",
+                    DrawTool::TrendLine => "Click first point (Esc to cancel)",
+                    DrawTool::None => "",
+                };
+                if !hint.is_empty() {
+                    egui::Area::new(egui::Id::new("tool_hint")).fixed_pos(egui::pos2(8.0, h - PB + 6.0)).show(ctx, |ui| {
+                        ui.label(egui::RichText::new(hint).monospace().size(11.0).color(egui::Color32::from_rgb(255, 200, 50)));
+                    });
                 }
             }
-        }
 
-        // Context menu (right-click)
-        if let Some((cmx, cmy)) = self.mouse.right_click {
-            let theme_name = THEMES[self.theme_idx].name;
-            let menu_items = [
-                "Set HLine",
-                "Draw Trendline",
-                "Reset View",
-                "Clear Drawings",
-                &format!("Theme: {}", theme_name),
-                "Delete Drawing",
-                "Zoom Selection",
-            ];
-            let menu_w = 170.0_f32;
-            let item_h = 22.0_f32;
-            let menu_color = GColor::rgba(220, 220, 230, 255);
-
-            for (i, label) in menu_items.iter().enumerate() {
-                let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(12.0, 14.0));
-                buf.set_size(&mut self.font_system, Some(menu_w), Some(item_h));
-                buf.set_text(&mut self.font_system, label, mono.color(menu_color), Shaping::Basic);
-                buf.shape_until_scroll(&mut self.font_system, false);
-                text_buffers.push((buf, cmx + 8.0, cmy + i as f32 * item_h + 4.0, menu_color));
+            // Auto-scroll indicator
+            if !auto_scroll {
+                egui::Area::new(egui::Id::new("scroll_paused")).fixed_pos(egui::pos2(w - PR - 80.0, h - PB + 4.0)).show(ctx, |ui| {
+                    if ui.button(egui::RichText::new("▶ LIVE").monospace().size(10.0)).clicked() {
+                        resume_scroll = true;
+                    }
+                });
             }
-        }
 
-        // Drawing tool hint
-        if self.draw_state.tool != DrawTool::None {
-            let hint = match self.draw_state.tool {
-                DrawTool::HLine => "Click to place HLine (Esc to cancel)",
-                DrawTool::TrendLine if self.draw_state.pending_point.is_some() => "Click second point (Esc to cancel)",
-                DrawTool::TrendLine => "Click first point (Esc to cancel)",
-                DrawTool::None => "",
-            };
-            if !hint.is_empty() {
-                let mut buf = TextBuffer::new(&mut self.font_system, Metrics::new(11.0, 13.0));
-                buf.set_size(&mut self.font_system, Some(300.0), Some(14.0));
-                buf.set_text(&mut self.font_system, hint, mono.color(GColor::rgba(255, 200, 50, 220)), Shaping::Basic);
-                buf.shape_until_scroll(&mut self.font_system, false);
-                text_buffers.push((buf, 8.0, h - PB + 20.0, GColor::rgba(255, 200, 50, 220)));
-            }
-        }
-
-        // Build TextArea references
-        let text_areas: Vec<TextArea> = text_buffers.iter().map(|(buf, left, top, color)| {
-            TextArea {
-                buffer: buf, left: *left, top: *top, scale: 1.0,
-                bounds: TextBounds { left: 0, top: 0, right: w as i32, bottom: h as i32 },
-                default_color: *color,
-                custom_glyphs: &[],
-            }
-        }).collect();
-
-        let _ = self.text_renderer.prepare(
-            &self.device, &self.queue, &mut self.font_system, &mut self.text_atlas,
-            &self.glyphon_viewport, text_areas, &mut self.swash_cache,
-        );
-
-        {
-            let mut text_pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("text"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view, resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-                })],
-                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+            // Theme dropdown (top-right)
+            egui::Area::new(egui::Id::new("theme_picker")).fixed_pos(egui::pos2(w - PR - 120.0, 2.0)).show(ctx, |ui| {
+                egui::ComboBox::from_id_salt("theme")
+                    .selected_text(THEMES[self.theme_idx].name)
+                    .width(100.0)
+                    .show_ui(ui, |ui| {
+                        for (i, theme) in THEMES.iter().enumerate() {
+                            if ui.selectable_label(i == theme_idx, theme.name).clicked() {
+                                new_theme_idx = Some(i);
+                            }
+                        }
+                    });
             });
-            let _ = self.text_renderer.render(&self.text_atlas, &self.glyphon_viewport, &mut text_pass);
-        }
+        });
 
-        self.queue.submit(std::iter::once(enc.finish()));
+        // Apply deferred actions from egui
+        if let Some(idx) = new_theme_idx {
+            self.theme_idx = idx;
+            self.apply_theme();
+        }
+        if resume_scroll {
+            self.auto_scroll = true;
+            self.price_lock = None;
+            self.vs = (self.bar_count as f32 - self.vc as f32 + RIGHT_MARGIN_BARS as f32).max(0.0);
+        }
+        self.egui_state.handle_platform_output(&*self.window, full_output.platform_output);
+
+        // Render egui
+        let screen_descriptor = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point: 1.0,
+        };
+        let paint_jobs = self.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+        for (id, delta) in &full_output.textures_delta.set {
+            self.egui_renderer.update_texture(&self.device, &self.queue, *id, delta);
+        }
+        // Render egui using egui_wgpu's built-in renderer which handles encoder internally
+        let mut upload_enc = self.device.create_command_encoder(&Default::default());
+        self.egui_renderer.update_buffers(&self.device, &self.queue, &mut upload_enc, &paint_jobs, &screen_descriptor);
+        // Submit upload, then do render in a new submission
+        self.queue.submit(std::iter::once(upload_enc.finish()));
+
+        // Render egui pass — use forget_lifetime for wgpu 24 owned pass compatibility
+        let mut render_enc = self.device.create_command_encoder(&Default::default());
+        let mut egui_pass = render_enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("egui"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view, resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+            })],
+            depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+        }).forget_lifetime();
+        self.egui_renderer.render(&mut egui_pass, &paint_jobs, &screen_descriptor);
+        std::mem::drop(egui_pass);
+        self.queue.submit(std::iter::once(render_enc.finish()));
+        for id in &full_output.textures_delta.free {
+            self.egui_renderer.free_texture(id);
+        }
         output.present();
     }
 }
@@ -1304,6 +1259,17 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, ev: WindowEvent) {
         let gpu = match &mut self.gpu { Some(g) => g, None => return };
+
+        // Feed to egui — if it consumes the event (clicked a UI widget), skip chart handling
+        if let Some(win) = &self.win {
+            let resp = gpu.egui_state.on_window_event(win, &ev);
+            if resp.consumed {
+                gpu.dirty = true;
+                if let Some(w) = &self.win { w.request_redraw(); }
+                return;
+            }
+        }
+
         match ev {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => gpu.resize(s.width, s.height),
