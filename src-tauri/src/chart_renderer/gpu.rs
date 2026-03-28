@@ -1307,6 +1307,8 @@ impl ApplicationHandler for App {
         // Always feed ALL events to egui
         if let Some(win) = &self.win {
             let _ = gpu.egui_state.on_window_event(win, &ev);
+            // Always request redraw so egui processes accumulated events
+            win.request_redraw();
         }
         // Check if egui wants the pointer (widget under cursor, or menu/dropdown open)
         let egui_has_pointer = gpu.egui_ctx.is_pointer_over_area()
@@ -1551,7 +1553,8 @@ impl ApplicationHandler for App {
                     if matches!(cmd, ChartCommand::Shutdown) { el.exit(); return; }
                     gpu.process(cmd);
                 }
-                if gpu.dirty { gpu.render(); }
+                // Always render — egui needs to process accumulated events every frame
+                gpu.render();
             }
             _ => {}
         }
