@@ -33,13 +33,5 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # Native GPU chart renderer
-wgpu = "24"
-winit = "0.30"
-raw-window-handle = "0.6"
-pollster = "0.4"
-bytemuck = { version = "1", features = ["derive"] }
-glyphon = "0.8"
-egui = "0.31"
-egui-wgpu = "0.31"
-egui-winit = "0.31"
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "default_fonts"] }
 
