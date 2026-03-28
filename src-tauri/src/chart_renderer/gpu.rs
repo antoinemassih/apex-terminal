@@ -1306,17 +1306,18 @@ impl ApplicationHandler for App {
 
         // Always feed events to egui for input tracking
         if let Some(win) = &self.win {
-            let resp = gpu.egui_state.on_window_event(win, &ev);
-            // Only skip chart handling if egui actually consumed this specific event
-            // (e.g., mouse click on an egui widget)
-            if resp.consumed {
-                gpu.dirty = true;
-                if let Some(w) = &self.win { w.request_redraw(); }
-                // Don't return — let chart also handle resize/close/redraw events
-                match &ev {
-                    WindowEvent::CloseRequested | WindowEvent::Resized(_) | WindowEvent::RedrawRequested => {}
-                    _ => return,
+            let _ = gpu.egui_state.on_window_event(win, &ev);
+        }
+        // If pointer is over an egui widget, skip chart mouse handling
+        let egui_wants_input = gpu.egui_ctx.is_pointer_over_area() || gpu.egui_ctx.wants_keyboard_input();
+        if egui_wants_input {
+            match &ev {
+                WindowEvent::MouseInput { .. } | WindowEvent::CursorMoved { .. } | WindowEvent::MouseWheel { .. } => {
+                    gpu.dirty = true;
+                    if let Some(w) = &self.win { w.request_redraw(); }
+                    return;
                 }
+                _ => {} // let other events (resize, close, redraw, keyboard) pass through
             }
         }
 
