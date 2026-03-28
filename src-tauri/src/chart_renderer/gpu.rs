@@ -236,7 +236,7 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.bg)).show(ctx, |ui| {
         let rect = ui.available_rect_before_wrap();
         let (w,h) = (rect.width(), rect.height());
-        let (pr,pt,pb) = (80.0_f32, 4.0_f32, 24.0_f32);
+        let (pr,pt,pb) = (80.0_f32, 4.0_f32, 30.0_f32);
         let (cw,ch) = (w-pr, h-pt-pb);
         if n==0 || cw<=0.0 || ch<=0.0 { return; }
 
@@ -260,6 +260,45 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
             let d=if p>=10.0{2}else{4}; painter.text(egui::pos2(rect.left()+cw+4.0,y),egui::Align2::LEFT_CENTER,format!("{:.1$}",p,d),egui::FontId::monospace(10.0),t.dim);
             p+=step;
+        }
+
+        // Time labels on bottom axis
+        if !chart.timestamps.is_empty() && end > vs as u32 {
+            let candle_sec = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]).max(60) } else { 86400 };
+            let nice_int: &[i64] = &[60,300,900,1800,3600,7200,14400,28800,86400,172800,604800,2592000];
+            let min_label_px = 70.0;
+            let bars_per_label = (min_label_px / bs).ceil() as i64;
+            let min_interval = bars_per_label * candle_sec;
+            let time_interval = nice_int.iter().copied().find(|&i| i >= min_interval).unwrap_or(86400);
+
+            if let Some(&first_ts) = chart.timestamps.get(vs as usize) {
+                let first_label = ((first_ts / time_interval) + 1) * time_interval;
+                let mut ti = first_label;
+                let last_ts = chart.timestamps.get((end-1) as usize).copied().unwrap_or(first_ts);
+                while ti <= last_ts {
+                    let bar_idx = chart.timestamps.partition_point(|&ts| ts < ti);
+                    if bar_idx >= vs as usize && bar_idx < end as usize {
+                        let x = bx(bar_idx as f32);
+                        if x > rect.left()+20.0 && x < rect.left()+cw-40.0 {
+                            // Vertical grid line
+                            painter.line_segment([egui::pos2(x,rect.top()+pt),egui::pos2(x,rect.top()+pt+ch)],egui::Stroke::new(0.3,t.dim.gamma_multiply(0.2)));
+                            // Time label
+                            let txt = if time_interval >= 86400 {
+                                let days = (ti / 86400) as i32; let y2k = days - 10957;
+                                let month = ((y2k % 365) / 30 + 1).min(12).max(1);
+                                let day = ((y2k % 365) % 30 + 1).min(31).max(1);
+                                format!("{:02}/{:02}", month, day)
+                            } else {
+                                let h = ((ti % 86400) / 3600) as u32;
+                                let m = ((ti % 3600) / 60) as u32;
+                                format!("{:02}:{:02}", h, m)
+                            };
+                            painter.text(egui::pos2(x,rect.top()+pt+ch+8.0),egui::Align2::CENTER_TOP,txt,egui::FontId::monospace(9.0),t.dim);
+                        }
+                    }
+                    ti += time_interval;
+                }
+            }
         }
 
         // Volume
