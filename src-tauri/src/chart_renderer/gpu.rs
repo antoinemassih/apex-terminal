@@ -434,7 +434,9 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
         }
 
         // ── Interaction ───────────────────────────────────────────────────────
-        let resp = ui.allocate_rect(egui::Rect::from_min_size(rect.min,egui::vec2(cw,h)), egui::Sense::click_and_drag());
+        // Chart interaction area — only the chart body, not the axis strips
+        let chart_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top()+pt), egui::vec2(cw, ch));
+        let resp = ui.allocate_rect(chart_rect, egui::Sense::click_and_drag());
 
         let pos_to_bar = |pos: egui::Pos2| -> f32 { (pos.x - rect.left() + off - bs*0.5) / bs + vs };
         let pos_to_price = |pos: egui::Pos2| -> f32 { min_p + (max_p-min_p) * (1.0 - (pos.y - rect.top() - pt) / ch) };
