@@ -61,7 +61,8 @@ struct Chart {
     bars: Vec<Bar>, timestamps: Vec<i64>, drawings: Vec<Drawing>,
     indicators: Vec<(Vec<f32>, egui::Color32, String)>,
     vs: f32, vc: u32, price_lock: Option<(f32,f32)>,
-    auto_scroll: bool, last_input: std::time::Instant, tick_counter: u64,
+    auto_scroll: bool, last_input: std::time::Instant,
+    tick_counter: u64, last_candle_time: std::time::Instant, sim_price: f32, sim_seed: u64,
     theme_idx: usize,
     draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker"
     pending_pt: Option<(f32,f32)>,
@@ -80,7 +81,9 @@ impl Chart {
     fn new() -> Self {
         Self { bars: vec![], timestamps: vec![], drawings: vec![], indicators: vec![],
             vs: 0.0, vc: 200, price_lock: None, auto_scroll: true,
-            last_input: std::time::Instant::now(), tick_counter: 0, theme_idx: 0,
+            last_input: std::time::Instant::now(), tick_counter: 0,
+            last_candle_time: std::time::Instant::now(), sim_price: 0.0, sim_seed: 42,
+            theme_idx: 0,
             draw_tool: String::new(), pending_pt: None,
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
@@ -126,21 +129,54 @@ impl Chart {
 fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartCommand>) {
     while let Ok(cmd) = rx.try_recv() { chart.process(cmd); }
 
-    // Simulate live ticks — update last bar with random walk every 10 frames (~6x/sec at 60fps)
-    chart.tick_counter += 1;
-    if !chart.bars.is_empty() && chart.tick_counter % 10 == 0 {
-        if let Some(last) = chart.bars.last_mut() {
-            // LCG pseudo-random
-            let seed = chart.tick_counter.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            let r = ((seed >> 33) as f32 / u32::MAX as f32 - 0.5) * 0.4;
-            last.close += r;
-            last.high = last.high.max(last.close);
-            last.low = last.low.min(last.close);
+    // ── Live simulation ─────────────────────────────────────────────────────
+    if !chart.bars.is_empty() {
+        // Init sim_price from last bar's close
+        if chart.sim_price == 0.0 {
+            chart.sim_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
         }
-    }
-    // Auto-scroll follows live data
-    if chart.auto_scroll && !chart.bars.is_empty() {
-        chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + 8.0).max(0.0);
+
+        chart.tick_counter += 1;
+
+        // Generate random number (LCG)
+        chart.sim_seed = chart.sim_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let r = (chart.sim_seed >> 33) as f32 / u32::MAX as f32; // 0.0 - 1.0
+
+        // Tick every ~5 frames (~12x/sec) — update last bar
+        if chart.tick_counter % 5 == 0 {
+            let change = (r - 0.498) * chart.sim_price * 0.002; // slight upward bias like real markets
+            chart.sim_price += change;
+            let volume_tick = r * 5000.0 + 500.0;
+
+            if let Some(last) = chart.bars.last_mut() {
+                last.close = chart.sim_price;
+                last.high = last.high.max(chart.sim_price);
+                last.low = last.low.min(chart.sim_price);
+                last.volume += volume_tick;
+            }
+        }
+
+        // New candle every ~2 seconds (120 frames at 60fps)
+        if chart.last_candle_time.elapsed().as_millis() >= 2000 {
+            chart.last_candle_time = std::time::Instant::now();
+
+            // Create new bar starting at current price
+            let new_bar = Bar {
+                open: chart.sim_price, high: chart.sim_price, low: chart.sim_price,
+                close: chart.sim_price, volume: 0.0, _pad: 0.0,
+            };
+            chart.bars.push(new_bar);
+
+            // Generate timestamp for new bar
+            let last_ts = chart.timestamps.last().copied().unwrap_or(0);
+            let interval = if chart.timestamps.len() > 1 { chart.timestamps[chart.timestamps.len()-1] - chart.timestamps[chart.timestamps.len()-2] } else { 300 };
+            chart.timestamps.push(last_ts + interval);
+        }
+
+        // Auto-scroll follows live data
+        if chart.auto_scroll {
+            chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + 8.0).max(0.0);
+        }
     }
 
     if !chart.auto_scroll && chart.last_input.elapsed().as_secs() >= 5 {
