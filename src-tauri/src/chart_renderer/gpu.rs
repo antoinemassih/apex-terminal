@@ -290,23 +290,45 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
         }
 
         // Drawings (with selection highlight + endpoint handles)
+        // Helper: draw a line with optional dash pattern
+        let draw_line = |painter: &egui::Painter, a: egui::Pos2, b: egui::Pos2, stroke: egui::Stroke, style: LineStyle| {
+            match style {
+                LineStyle::Solid => { painter.line_segment([a, b], stroke); }
+                LineStyle::Dashed | LineStyle::Dotted => {
+                    let (dash_l, gap_l) = if style == LineStyle::Dashed { (8.0, 4.0) } else { (2.0, 3.0) };
+                    let dir = b - a;
+                    let len = dir.length();
+                    if len < 1.0 { return; }
+                    let norm = dir / len;
+                    let step = dash_l + gap_l;
+                    let mut d = 0.0;
+                    while d < len {
+                        let p0 = a + norm * d;
+                        let p1 = a + norm * (d + dash_l).min(len);
+                        painter.line_segment([p0, p1], stroke);
+                        d += step;
+                    }
+                }
+            }
+        };
+
         for d in &chart.drawings {
             if chart.hidden_groups.contains(&d.group_id) { continue; }
             let is_sel = chart.selected_ids.contains(&d.id);
             let dc = hex_to_color(&d.color, d.opacity);
-            let dash = match d.line_style { LineStyle::Dashed => true, _ => false };
             let sc = egui::Stroke::new(if is_sel { d.thickness + 1.0 } else { d.thickness }, if is_sel { egui::Color32::WHITE } else { dc });
+            let ls = d.line_style;
             match &d.kind {
                 DrawingKind::HLine{price}=>{
                     let y=py(*price);
-                    painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)],sc);
+                    draw_line(&painter, egui::pos2(rect.left(),y), egui::pos2(rect.left()+cw,y), sc, ls);
                     if is_sel {
                         painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), 4.0, egui::Color32::from_rgb(74,158,255));
                     }
                 }
                 DrawingKind::TrendLine{price0,bar0,price1,bar1}=>{
                     let p0=egui::pos2(bx(*bar0),py(*price0)); let p1=egui::pos2(bx(*bar1),py(*price1));
-                    painter.line_segment([p0,p1],sc);
+                    draw_line(&painter, p0, p1, sc, ls);
                     if is_sel {
                         painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
                         painter.circle_stroke(p0, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
@@ -318,8 +340,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                     let(y0,y1)=(py(*price0),py(*price1));
                     let fill = hex_to_color(&d.color, d.opacity * 0.1);
                     painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(),y0.min(y1)),egui::pos2(rect.left()+cw,y0.max(y1))),0.0,fill);
-                    painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)],sc);
-                    painter.line_segment([egui::pos2(rect.left(),y1),egui::pos2(rect.left()+cw,y1)],sc);
+                    draw_line(&painter, egui::pos2(rect.left(),y0), egui::pos2(rect.left()+cw,y0), sc, ls);
+                    draw_line(&painter, egui::pos2(rect.left(),y1), egui::pos2(rect.left()+cw,y1), sc, ls);
                     if is_sel {
                         painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y0), 4.0, egui::Color32::from_rgb(74,158,255));
                         painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y1), 4.0, egui::Color32::from_rgb(74,158,255));
@@ -603,6 +625,44 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             chart.auto_scroll = false;
             chart.last_input = std::time::Instant::now();
         }
+
+        // X-axis drag (bottom strip) — horizontal zoom
+        let xaxis_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top()+pt+ch), egui::vec2(cw, pb));
+        let xaxis_resp = ui.allocate_rect(xaxis_rect, egui::Sense::click_and_drag());
+        if xaxis_resp.dragged_by(egui::PointerButton::Primary) {
+            let dx = xaxis_resp.drag_delta().x;
+            if dx.abs() > 1.0 {
+                let f = if dx > 0.0 { 1.05_f32 } else { 0.95 };
+                let old = chart.vc;
+                let nw = ((old as f32*f).round() as u32).max(20).min(n as u32);
+                let d = (old as i32 - nw as i32) / 2;
+                chart.vc = nw; chart.vs = (chart.vs + d as f32).max(0.0);
+                chart.auto_scroll = false; chart.last_input = std::time::Instant::now();
+            }
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        } else if xaxis_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+
+        // Y-axis drag (right strip) — vertical zoom
+        let yaxis_rect = egui::Rect::from_min_size(egui::pos2(rect.left()+cw, rect.top()+pt), egui::vec2(pr, ch));
+        let yaxis_resp = ui.allocate_rect(yaxis_rect, egui::Sense::click_and_drag());
+        if yaxis_resp.dragged_by(egui::PointerButton::Primary) {
+            let dy = yaxis_resp.drag_delta().y;
+            if dy.abs() > 1.0 {
+                let f = if dy > 0.0 { 1.05_f32 } else { 0.95 };
+                let (lo, hi) = chart.price_range();
+                let center = (lo + hi) / 2.0;
+                let half = ((hi - lo) / 2.0) * f;
+                chart.price_lock = Some((center - half, center + half));
+                chart.auto_scroll = false; chart.last_input = std::time::Instant::now();
+            }
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+        } else if yaxis_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+        }
+        // Double-click Y-axis to reset price zoom
+        if yaxis_resp.double_clicked() { chart.price_lock = None; }
 
         // Zoom selection rendering + completion
         if chart.zoom_selecting {
