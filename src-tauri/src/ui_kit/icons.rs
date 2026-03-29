@@ -3,6 +3,7 @@
 //! Usage: `ui.label(Icon::PENCIL);` or `Icon::button(ui, Icon::TRASH, "Delete")`
 
 use egui_phosphor::regular as ph;
+use egui_phosphor::bold as ph_bold;
 
 /// Icon constants — all from Phosphor Regular set.
 /// Add new icons here as needed; they render via the embedded Phosphor font.
@@ -41,16 +42,33 @@ impl Icon {
     pub const CHART_BAR: &'static str = ph::CHART_BAR;
     pub const MAGNIFYING_GLASS_PLUS: &'static str = ph::MAGNIFYING_GLASS_PLUS;
 
-    /// Render an icon button (icon + optional tooltip)
+    // Bold variants for toolbar (more visible at small sizes)
+    pub const PENCIL_LINE_BOLD: &'static str = ph_bold::PENCIL_LINE;
+    pub const LINE_SEGMENT_BOLD: &'static str = ph_bold::LINE_SEGMENT;
+    pub const MINUS_BOLD: &'static str = ph_bold::MINUS;
+    pub const RECTANGLE_BOLD: &'static str = ph_bold::RECTANGLE;
+    pub const MAP_PIN_BOLD: &'static str = ph_bold::MAP_PIN;
+    pub const TRASH_BOLD: &'static str = ph_bold::TRASH;
+    pub const PLAY_BOLD: &'static str = ph_bold::PLAY;
+    pub const X_BOLD: &'static str = ph_bold::X;
+
+    /// Render an icon button at standard size (16px)
     pub fn button(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {
-        let btn = ui.add(egui::Button::new(icon).frame(false));
+        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(16.0)).frame(false));
         if !tooltip.is_empty() { btn.clone().on_hover_text(tooltip); }
         btn
     }
 
-    /// Render an icon button with color
+    /// Render an icon button with color at standard size
     pub fn button_colored(ui: &mut egui::Ui, icon: &str, color: egui::Color32, tooltip: &str) -> egui::Response {
-        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).color(color)).frame(false));
+        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(16.0).color(color)).frame(false));
+        if !tooltip.is_empty() { btn.clone().on_hover_text(tooltip); }
+        btn
+    }
+
+    /// Render a large icon button (20px) for prominent actions
+    pub fn button_large(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {
+        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(20.0)).frame(false));
         if !tooltip.is_empty() { btn.clone().on_hover_text(tooltip); }
         btn
     }

@@ -210,10 +210,10 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                 });
                 // Drawing tools with icons
                 for (tool, icon, label) in [
-                    ("trendline", Icon::LINE_SEGMENT, "Trend"),
-                    ("hline", Icon::MINUS, "HLine"),
-                    ("hzone", Icon::RECTANGLE, "Zone"),
-                    ("barmarker", Icon::MAP_PIN, "Mark"),
+                    ("trendline", Icon::LINE_SEGMENT_BOLD, "Trend"),
+                    ("hline", Icon::MINUS_BOLD, "HLine"),
+                    ("hzone", Icon::RECTANGLE_BOLD, "Zone"),
+                    ("barmarker", Icon::MAP_PIN_BOLD, "Mark"),
                 ] {
                     let _ = label; // used below
                     if ui.selectable_label(chart.draw_tool==tool, format!("{} {}", icon, label)).clicked() {
