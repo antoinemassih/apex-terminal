@@ -138,15 +138,24 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
 
         chart.tick_counter += 1;
 
-        // Generate random number (LCG)
-        chart.sim_seed = chart.sim_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let r = (chart.sim_seed >> 33) as f32 / u32::MAX as f32; // 0.0 - 1.0
+        // Generate two random numbers (LCG) for better distribution
+        let rng = |seed: &mut u64| -> f32 {
+            *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (*seed >> 33) as f32 / u32::MAX as f32
+        };
+        let r1 = rng(&mut chart.sim_seed);
+        let r2 = rng(&mut chart.sim_seed);
 
         // Tick every ~5 frames (~12x/sec) — update last bar
         if chart.tick_counter % 5 == 0 {
-            let change = (r - 0.498) * chart.sim_price * 0.002; // slight upward bias like real markets
+            // Box-Muller for normal distribution (mean=0, std=1)
+            let normal = (-2.0 * r1.max(0.0001).ln()).sqrt() * (2.0 * std::f32::consts::PI * r2).cos();
+            // Scale: ~0.05% per tick, mean-reverting slightly toward open price
+            let base_open = chart.bars.last().map(|b| b.open).unwrap_or(chart.sim_price);
+            let reversion = (base_open - chart.sim_price) * 0.003; // gentle pull toward candle open
+            let change = normal * chart.sim_price * 0.0005 + reversion;
             chart.sim_price += change;
-            let volume_tick = r * 5000.0 + 500.0;
+            let volume_tick = (r1 * 8000.0 + 1000.0) * (1.0 + normal.abs()); // higher volume on bigger moves
 
             if let Some(last) = chart.bars.last_mut() {
                 last.close = chart.sim_price;
@@ -156,8 +165,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             }
         }
 
-        // New candle every ~2 seconds (120 frames at 60fps)
-        if chart.last_candle_time.elapsed().as_millis() >= 2000 {
+        // New candle every ~3 seconds
+        if chart.last_candle_time.elapsed().as_millis() >= 3000 {
             chart.last_candle_time = std::time::Instant::now();
 
             // Create new bar starting at current price
