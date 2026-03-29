@@ -59,6 +59,7 @@ fn compute_ema(data: &[f32], period: usize) -> Vec<f32> {
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
 struct Chart {
+    symbol: String, timeframe: String,
     bars: Vec<Bar>, timestamps: Vec<i64>, drawings: Vec<Drawing>,
     indicators: Vec<(Vec<f32>, egui::Color32, String)>,
     vs: f32, vc: u32, price_lock: Option<(f32,f32)>,
@@ -76,11 +77,14 @@ struct Chart {
     draw_color: String, // current drawing color
     next_draw_id: u32,
     zoom_selecting: bool, zoom_start: egui::Pos2,
+    // Symbol picker
+    picker_open: bool, picker_query: String, picker_results: Vec<(&'static str, &'static str)>,
 }
 
 impl Chart {
     fn new() -> Self {
-        Self { bars: vec![], timestamps: vec![], drawings: vec![], indicators: vec![],
+        Self { symbol: "AAPL".into(), timeframe: "5m".into(),
+            bars: vec![], timestamps: vec![], drawings: vec![], indicators: vec![],
             vs: 0.0, vc: 200, price_lock: None, auto_scroll: true,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0, sim_seed: 42,
@@ -90,11 +94,13 @@ impl Chart {
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], draw_color: "#4a9eff".into(), next_draw_id: 0,
-            zoom_selecting: false, zoom_start: egui::Pos2::ZERO }
+            zoom_selecting: false, zoom_start: egui::Pos2::ZERO,
+            picker_open: false, picker_query: String::new(), picker_results: vec![] }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
-            ChartCommand::LoadBars { bars, timestamps, .. } => {
+            ChartCommand::LoadBars { bars, timestamps, symbol, timeframe, .. } => {
+                self.symbol = symbol; self.timeframe = timeframe;
                 self.bars = bars; self.timestamps = timestamps;
                 self.vs = (self.bars.len() as f32 - self.vc as f32 + 8.0).max(0.0);
                 let closes: Vec<f32> = self.bars.iter().map(|b| b.close).collect();
@@ -198,7 +204,14 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
 
     egui::TopBottomPanel::top("tb").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Apex Chart").strong().color(t.bull));
+            // Symbol ticker — click to open picker
+            let sym_text = egui::RichText::new(&chart.symbol).strong().size(14.0).color(t.bull);
+            if ui.add(egui::Button::new(sym_text).frame(false)).clicked() {
+                chart.picker_open = !chart.picker_open;
+                chart.picker_query.clear();
+                chart.picker_results = ui_kit::symbols::search_symbols("", 20).iter().map(|s| (s.symbol, s.name)).collect();
+            }
+            ui.label(egui::RichText::new(&chart.timeframe).small().color(t.dim));
             ui.separator();
             if let Some(b) = chart.bars.last() {
                 let c = if b.close>=b.open { t.bull } else { t.bear };
@@ -236,6 +249,80 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             });
         });
     });
+    // Symbol picker popup
+    if chart.picker_open {
+        let mut close_picker = false;
+        let mut new_symbol: Option<String> = None;
+
+        egui::Window::new("symbol_picker")
+            .fixed_pos(egui::pos2(10.0, 32.0))
+            .fixed_size(egui::vec2(260.0, 350.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28,28,32)))
+            .show(ctx, |ui| {
+                // Search input
+                let input = ui.add(
+                    egui::TextEdit::singleline(&mut chart.picker_query)
+                        .hint_text("Search symbol...")
+                        .desired_width(240.0)
+                );
+                if input.changed() {
+                    chart.picker_results = ui_kit::symbols::search_symbols(&chart.picker_query, 20)
+                        .iter().map(|s| (s.symbol, s.name)).collect();
+                }
+                // Auto-focus the input
+                if input.gained_focus() || chart.picker_query.is_empty() {
+                    input.request_focus();
+                }
+
+                ui.separator();
+
+                // Results list
+                egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                    for &(sym, name) in &chart.picker_results {
+                        let is_current = sym == chart.symbol;
+                        ui.horizontal(|ui| {
+                            let sym_text = egui::RichText::new(sym).strong().monospace()
+                                .color(if is_current { t.bull } else { egui::Color32::from_rgb(200,200,210) });
+                            let name_text = egui::RichText::new(name).small()
+                                .color(t.dim);
+
+                            if ui.add(egui::Button::new(sym_text).frame(false).min_size(egui::vec2(55.0, 20.0))).clicked() {
+                                new_symbol = Some(sym.to_string());
+                                close_picker = true;
+                            }
+                            ui.label(name_text);
+                        });
+                    }
+                });
+
+                // Escape closes
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close_picker = true; }
+
+                // Enter selects first result
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    if let Some(&(sym, _)) = chart.picker_results.first() {
+                        new_symbol = Some(sym.to_string());
+                        close_picker = true;
+                    }
+                }
+            });
+
+        if close_picker { chart.picker_open = false; }
+
+        // If a new symbol was selected, we need to signal the WebView to send new data
+        // For now, just update the symbol name (data reload requires IPC back to WebView)
+        if let Some(sym) = new_symbol {
+            chart.symbol = sym;
+            // TODO: Send IPC to WebView to reload data for new symbol
+            // For now, clear bars so it's obvious the symbol changed
+            chart.bars.clear();
+            chart.timestamps.clear();
+            chart.indicators.clear();
+            chart.sim_price = 0.0;
+        }
+    }
+
     if !chart.draw_tool.is_empty() {
         egui::TopBottomPanel::bottom("st").show(ctx, |ui| {
             let h = match chart.draw_tool.as_str() { "hline"=>"Click to place HLine (Esc cancel)", "trendline" if chart.pending_pt.is_some()=>"Click 2nd point (Esc cancel)", "trendline"=>"Click 1st point (Esc cancel)", _=>"" };

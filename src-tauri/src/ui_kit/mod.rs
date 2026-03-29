@@ -4,6 +4,7 @@
 pub mod theme;
 pub mod icons;
 pub mod widgets;
+pub mod symbols;
 
 pub use theme::ChartTheme;
 pub use icons::Icon;
