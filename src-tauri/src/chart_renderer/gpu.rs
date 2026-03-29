@@ -236,50 +236,67 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
         });
     }
 
-    // Style popup when drawing(s) selected
+    // Style toolbar — compact, centered at top of chart
     if !chart.selected_ids.is_empty() {
         let screen = ctx.screen_rect();
-        egui::Window::new("Style")
-            .fixed_pos(egui::pos2(10.0, screen.bottom() - 90.0))
-            .fixed_size(egui::vec2(screen.width() - 20.0, 70.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28,28,32)))
-            .show(ctx, |ui| {
-                let ids = chart.selected_ids.clone();
+        let ids = chart.selected_ids.clone();
+        // Extract current style values (avoids borrow conflict with mutable drawing access)
+        let (cur_color, cur_ls, cur_th, cur_op) = chart.drawings.iter().find(|d| ids.contains(&d.id))
+            .map(|d| (d.color.clone(), d.line_style, d.thickness, d.opacity))
+            .unwrap_or(("#4a9eff".into(), LineStyle::Solid, 1.5, 1.0));
 
-                // Row 1: Colors
+        egui::Window::new("style_bar")
+            .fixed_pos(egui::pos2(screen.center().x - 230.0, 32.0))
+            .fixed_size(egui::vec2(460.0, 24.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(35,35,40)).inner_margin(4.0))
+            .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Color:");
+                    ui.spacing_mut().item_spacing.x = 3.0;
+
+                    // Color circles
                     for &c in PRESET_COLORS {
                         let col = hex_to_color(c, 1.0);
-                        let btn = egui::Button::new("  ").fill(col);
-                        if ui.add(btn).clicked() {
-                            for d in &mut chart.drawings { if ids.contains(&d.id) { d.color = c.to_string(); } }
+                        let is_cur = cur_color.as_str() == c;
+                        let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+                        ui.painter().circle_filled(r.center(), if is_cur { 7.0 } else { 5.5 }, col);
+                        if is_cur { ui.painter().circle_stroke(r.center(), 8.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
+                        if resp.clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.color = c.to_string(); } } }
+                    }
+
+                    ui.add_space(4.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+
+                    // Line style dropdown with visual previews
+                    let ls_label = match cur_ls { LineStyle::Solid => "━━━", LineStyle::Dashed => "╌ ╌ ╌", LineStyle::Dotted => "··· ···" };
+                    egui::ComboBox::from_id_salt("ls").selected_text(ls_label).width(65.0).show_ui(ui, |ui| {
+                        if ui.selectable_label(cur_ls == LineStyle::Solid, "━━━━━ Solid").clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.line_style = LineStyle::Solid; } } }
+                        if ui.selectable_label(cur_ls == LineStyle::Dashed, "╌ ╌ ╌ ╌  Dash").clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.line_style = LineStyle::Dashed; } } }
+                        if ui.selectable_label(cur_ls == LineStyle::Dotted, "··· ··· ···  Dot").clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.line_style = LineStyle::Dotted; } } }
+                    });
+
+                    // Width dropdown
+                    egui::ComboBox::from_id_salt("th").selected_text(format!("{:.1}px", cur_th)).width(52.0).show_ui(ui, |ui| {
+                        for &th in &[0.5_f32, 1.0, 1.5, 2.5] {
+                            if ui.selectable_label((cur_th - th).abs() < 0.1, format!("{:.1}px", th)).clicked() {
+                                for d in &mut chart.drawings { if ids.contains(&d.id) { d.thickness = th; } }
+                            }
                         }
-                    }
-                });
+                    });
 
-                // Row 2: Line style, thickness, opacity, delete
-                ui.horizontal(|ui| {
-                    ui.label("Line:");
-                    if ui.button("Solid").clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.line_style = LineStyle::Solid; } } }
-                    if ui.button("Dash").clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.line_style = LineStyle::Dashed; } } }
-                    if ui.button("Dot").clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.line_style = LineStyle::Dotted; } } }
+                    // Opacity dropdown
+                    egui::ComboBox::from_id_salt("op").selected_text(format!("{}%", (cur_op * 100.0) as u32)).width(48.0).show_ui(ui, |ui| {
+                        for &op in &[1.0_f32, 0.75, 0.5, 0.25] {
+                            if ui.selectable_label((cur_op - op).abs() < 0.01, format!("{}%", (op * 100.0) as u32)).clicked() {
+                                for d in &mut chart.drawings { if ids.contains(&d.id) { d.opacity = op; } }
+                            }
+                        }
+                    });
 
-                    ui.add_space(10.0);
-                    ui.label("Width:");
-                    for &th in &[0.5_f32, 1.0, 1.5, 2.5] {
-                        if ui.button(format!("{:.1}", th)).clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.thickness = th; } } }
-                    }
-
-                    ui.add_space(10.0);
-                    ui.label("Opacity:");
-                    for &op in &[1.0_f32, 0.75, 0.5, 0.25] {
-                        if ui.button(format!("{}%", (op*100.0) as u32)).clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.opacity = op; } } }
-                    }
-
-                    ui.add_space(10.0);
-                    if ui.button(egui::RichText::new("✕ Delete").color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                    ui.add_space(4.0);
+                    // Delete X icon
+                    if ui.add(egui::Button::new(egui::RichText::new("✕").color(egui::Color32::from_rgb(224,85,96)).size(14.0)).frame(false)).clicked() {
                         chart.drawings.retain(|d| !ids.contains(&d.id));
                         chart.selected_ids.clear(); chart.selected_id = None;
                     }
