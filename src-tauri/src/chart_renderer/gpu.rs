@@ -78,7 +78,11 @@ struct Chart {
     next_draw_id: u32,
     zoom_selecting: bool, zoom_start: egui::Pos2,
     // Symbol picker
-    picker_open: bool, picker_query: String, picker_results: Vec<(&'static str, &'static str)>,
+    picker_open: bool, picker_query: String,
+    picker_results: Vec<(String, String)>, // (symbol, name) — owned strings for API results
+    picker_last_query: String, // debounce: only search when query changes
+    // Symbol change request — signals the App to reload data
+    pending_symbol_change: Option<String>,
 }
 
 impl Chart {
@@ -95,7 +99,8 @@ impl Chart {
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], draw_color: "#4a9eff".into(), next_draw_id: 0,
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO,
-            picker_open: false, picker_query: String::new(), picker_results: vec![] }
+            picker_open: false, picker_query: String::new(), picker_results: vec![],
+            picker_last_query: String::new(), pending_symbol_change: None }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -209,7 +214,7 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             if ui.add(egui::Button::new(sym_text).frame(false)).clicked() {
                 chart.picker_open = !chart.picker_open;
                 chart.picker_query.clear();
-                chart.picker_results = ui_kit::symbols::search_symbols("", 20).iter().map(|s| (s.symbol, s.name)).collect();
+                chart.picker_results = ui_kit::symbols::search_symbols("", 20).iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
             }
             ui.label(egui::RichText::new(&chart.timeframe).small().color(t.dim));
             ui.separator();
@@ -254,55 +259,72 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
         let mut close_picker = false;
         let mut new_symbol: Option<String> = None;
 
+        // Search when query changes (debounce)
+        if chart.picker_query != chart.picker_last_query {
+            chart.picker_last_query = chart.picker_query.clone();
+            // Try API first, fallback to static list
+            let q = chart.picker_query.clone();
+            let api_results: Vec<(String,String)> = (|| {
+                if q.is_empty() {
+                    // Show popular symbols from static list
+                    return ui_kit::symbols::search_symbols("", 30).iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
+                }
+                // Try OCOCO API
+                let url = format!("http://192.168.1.60:30300/api/symbols?q={}", q);
+                if let Ok(resp) = reqwest::blocking::Client::new().get(&url).timeout(std::time::Duration::from_millis(500)).send() {
+                    if let Ok(items) = resp.json::<Vec<serde_json::Value>>() {
+                        let r: Vec<(String,String)> = items.iter().filter_map(|v| {
+                            let sym = v.get("symbol")?.as_str()?.to_string();
+                            let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                            Some((sym, name))
+                        }).take(20).collect();
+                        if !r.is_empty() { return r; }
+                    }
+                }
+                // Fallback to static list
+                ui_kit::symbols::search_symbols(&q, 20).iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect()
+            })();
+            chart.picker_results = api_results;
+        }
+
         egui::Window::new("symbol_picker")
             .fixed_pos(egui::pos2(10.0, 32.0))
-            .fixed_size(egui::vec2(260.0, 350.0))
+            .fixed_size(egui::vec2(280.0, 380.0))
             .title_bar(false)
             .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28,28,32)))
             .show(ctx, |ui| {
-                // Search input
                 let input = ui.add(
                     egui::TextEdit::singleline(&mut chart.picker_query)
-                        .hint_text("Search symbol...")
-                        .desired_width(240.0)
+                        .hint_text("Search symbol or name...")
+                        .desired_width(260.0)
+                        .font(egui::FontId::monospace(13.0))
                 );
-                if input.changed() {
-                    chart.picker_results = ui_kit::symbols::search_symbols(&chart.picker_query, 20)
-                        .iter().map(|s| (s.symbol, s.name)).collect();
-                }
-                // Auto-focus the input
-                if input.gained_focus() || chart.picker_query.is_empty() {
-                    input.request_focus();
-                }
+                input.request_focus();
 
                 ui.separator();
 
-                // Results list
-                egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
-                    for &(sym, name) in &chart.picker_results {
-                        let is_current = sym == chart.symbol;
-                        ui.horizontal(|ui| {
+                egui::ScrollArea::vertical().max_height(330.0).show(ui, |ui| {
+                    for (sym, name) in &chart.picker_results {
+                        let is_current = sym == &chart.symbol;
+                        let resp = ui.horizontal(|ui| {
                             let sym_text = egui::RichText::new(sym).strong().monospace()
                                 .color(if is_current { t.bull } else { egui::Color32::from_rgb(200,200,210) });
-                            let name_text = egui::RichText::new(name).small()
-                                .color(t.dim);
-
-                            if ui.add(egui::Button::new(sym_text).frame(false).min_size(egui::vec2(55.0, 20.0))).clicked() {
-                                new_symbol = Some(sym.to_string());
-                                close_picker = true;
-                            }
+                            let name_text = egui::RichText::new(name).small().color(t.dim);
+                            let r = ui.add(egui::Button::new(sym_text).frame(false).min_size(egui::vec2(60.0, 22.0)));
                             ui.label(name_text);
-                        });
+                            r
+                        }).inner;
+                        if resp.clicked() {
+                            new_symbol = Some(sym.clone());
+                            close_picker = true;
+                        }
                     }
                 });
 
-                // Escape closes
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close_picker = true; }
-
-                // Enter selects first result
                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    if let Some(&(sym, _)) = chart.picker_results.first() {
-                        new_symbol = Some(sym.to_string());
+                    if let Some((sym, _)) = chart.picker_results.first() {
+                        new_symbol = Some(sym.clone());
                         close_picker = true;
                     }
                 }
@@ -310,16 +332,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
 
         if close_picker { chart.picker_open = false; }
 
-        // If a new symbol was selected, we need to signal the WebView to send new data
-        // For now, just update the symbol name (data reload requires IPC back to WebView)
         if let Some(sym) = new_symbol {
-            chart.symbol = sym;
-            // TODO: Send IPC to WebView to reload data for new symbol
-            // For now, clear bars so it's obvious the symbol changed
-            chart.bars.clear();
-            chart.timestamps.clear();
-            chart.indicators.clear();
-            chart.sim_price = 0.0;
+            chart.pending_symbol_change = Some(sym);
         }
     }
 
@@ -1059,7 +1073,50 @@ impl ApplicationHandler for App {
         }
         if let Some(win) = &self.win { win.request_redraw(); }
     }
-    fn about_to_wait(&mut self, _: &ActiveEventLoop) { if let Some(w) = &self.win { w.request_redraw(); } }
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        // Handle symbol change — fetch new data
+        if let Some(sym) = self.chart.pending_symbol_change.take() {
+            eprintln!("[native-chart] Loading data for {}", sym);
+            self.chart.symbol = sym.clone();
+            self.chart.bars.clear();
+            self.chart.timestamps.clear();
+            self.chart.indicators.clear();
+            self.chart.sim_price = 0.0;
+
+            // Fetch bars in blocking thread (brief freeze, but simple)
+            let tf = self.chart.timeframe.clone();
+            let (interval, period) = match tf.as_str() {
+                "1m"=>(".1m","1d"),"5m"=>("5m","5d"),"15m"=>("15m","1mo"),"1h"=>("60m","3mo"),"1d"=>("1d","1y"),_=>("5m","5d"),
+            };
+            let client = reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(3)).build().unwrap();
+
+            // Try OCOCO
+            for try_int in [interval, "1d"] {
+                let url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-730d", sym, try_int);
+                if let Ok(resp) = client.get(&url).send() {
+                    if let Ok(raw) = resp.json::<Vec<serde_json::Value>>() {
+                        if raw.len() > 10 {
+                            let bars: Vec<Bar> = raw.iter().filter_map(|v| Some(Bar {
+                                open: v.get("open")?.as_f64()? as f32,
+                                high: v.get("high")?.as_f64()? as f32,
+                                low: v.get("low")?.as_f64()? as f32,
+                                close: v.get("close")?.as_f64()? as f32,
+                                volume: v.get("volume")?.as_f64()? as f32,
+                                _pad: 0.0,
+                            })).collect();
+                            let ts: Vec<i64> = raw.iter().filter_map(|v| v.get("time")?.as_i64()).collect();
+                            eprintln!("[native-chart] Loaded {} bars for {}", bars.len(), sym);
+                            self.chart.process(ChartCommand::LoadBars { symbol: sym, timeframe: tf, bars, timestamps: ts });
+                            if let Some(w) = &self.win { w.request_redraw(); }
+                            return;
+                        }
+                    }
+                }
+            }
+            eprintln!("[native-chart] No data found for {}", sym);
+        }
+        if let Some(w) = &self.win { w.request_redraw(); }
+    }
 }
 
 pub fn run_render_loop(title: &str, width: u32, height: u32, rx: mpsc::Receiver<ChartCommand>) {
