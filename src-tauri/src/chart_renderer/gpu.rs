@@ -1113,6 +1113,28 @@ impl ApplicationHandler for App {
                     }
                 }
             }
+            // Try yfinance sidecar
+            let yf_url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", sym, interval, period);
+            if let Ok(resp) = client.get(&yf_url).send() {
+                if let Ok(raw) = resp.json::<Vec<serde_json::Value>>() {
+                    if raw.len() > 5 {
+                        let bars: Vec<Bar> = raw.iter().filter_map(|v| Some(Bar {
+                            open: v.get("open")?.as_f64()? as f32,
+                            high: v.get("high")?.as_f64()? as f32,
+                            low: v.get("low")?.as_f64()? as f32,
+                            close: v.get("close")?.as_f64()? as f32,
+                            volume: v.get("volume")?.as_f64()? as f32,
+                            _pad: 0.0,
+                        })).collect();
+                        let ts: Vec<i64> = raw.iter().filter_map(|v| v.get("time")?.as_i64()).collect();
+                        eprintln!("[native-chart] Loaded {} bars for {} from yfinance", bars.len(), sym);
+                        self.chart.process(ChartCommand::LoadBars { symbol: sym, timeframe: tf, bars, timestamps: ts });
+                        if let Some(w) = &self.win { w.request_redraw(); }
+                        return;
+                    }
+                }
+            }
+
             // No real data — generate simulated bars at a reasonable price
             eprintln!("[native-chart] No real data for {}, generating simulated bars", sym);
             let base_price = match sym.as_str() {
