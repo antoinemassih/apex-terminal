@@ -2,6 +2,7 @@ mod data;
 mod drawings;
 mod ib_ws;
 mod chart_renderer;
+mod ui_kit;
 
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;

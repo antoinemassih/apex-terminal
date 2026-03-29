@@ -11,6 +11,7 @@ use winit::{
 };
 
 use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, LineStyle};
+use crate::ui_kit::{self, icons::Icon, widgets};
 
 // ─── Themes ───────────────────────────────────────────────────────────────────
 
@@ -207,9 +208,15 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                 egui::ComboBox::from_id_salt("thm").selected_text(t.name).width(100.0).show_ui(ui, |ui| {
                     for (i,th) in THEMES.iter().enumerate() { ui.selectable_value(&mut chart.theme_idx, i, th.name); }
                 });
-                // Drawing tools
-                for (tool, label) in [("hline","HLine"),("trendline","Trend"),("hzone","Zone"),("barmarker","Mark")] {
-                    if ui.selectable_label(chart.draw_tool==tool, label).clicked() {
+                // Drawing tools with icons
+                for (tool, icon, label) in [
+                    ("trendline", Icon::LINE_SEGMENT, "Trend"),
+                    ("hline", Icon::MINUS, "HLine"),
+                    ("hzone", Icon::RECTANGLE, "Zone"),
+                    ("barmarker", Icon::MAP_PIN, "Mark"),
+                ] {
+                    let _ = label; // used below
+                    if ui.selectable_label(chart.draw_tool==tool, format!("{} {}", icon, label)).clicked() {
                         chart.draw_tool = if chart.draw_tool==tool { String::new() } else { tool.into() };
                         chart.pending_pt = None;
                     }
@@ -224,8 +231,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                     if is_cur { ui.painter().circle_stroke(r.center(), 7.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
                     if resp.clicked() { chart.draw_color = c.to_string(); }
                 }
-                if !chart.auto_scroll { if ui.button("> LIVE").clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); } }
-                else { ui.label(egui::RichText::new("* LIVE").color(t.bull).small()); }
+                if !chart.auto_scroll { if ui.button(format!("{} LIVE", Icon::PLAY)).clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); } }
+                else { ui.label(egui::RichText::new(format!("{} LIVE", Icon::CHART_LINE)).color(t.bull).small()); }
             });
         });
     });
@@ -295,8 +302,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                     });
 
                     ui.add_space(4.0);
-                    // Delete X icon
-                    if ui.add(egui::Button::new(egui::RichText::new("X").color(egui::Color32::from_rgb(224,85,96)).size(14.0)).frame(false)).clicked() {
+                    // Delete icon
+                    if Icon::button_colored(ui, Icon::TRASH, egui::Color32::from_rgb(224,85,96), "Delete").clicked() {
                         chart.drawings.retain(|d| !ids.contains(&d.id));
                         chart.selected_ids.clear(); chart.selected_id = None;
                     }
@@ -817,8 +824,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             if ui.button("Draw Zone").clicked() { chart.draw_tool="hzone".into(); chart.pending_pt=None; ui.close_menu(); }
             if ui.button("Place Marker").clicked() { chart.draw_tool="barmarker".into(); chart.pending_pt=None; ui.close_menu(); }
             ui.separator();
-            if ui.button("[] Drag Zoom").clicked() { chart.zoom_selecting=true; if let Some(p)=ui.input(|i|i.pointer.latest_pos()){chart.zoom_start=p;} ui.close_menu(); }
-            if ui.button("< Reset View").clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); ui.close_menu(); }
+            if ui.button(format!("{} Drag Zoom", Icon::MAGNIFYING_GLASS_PLUS)).clicked() { chart.zoom_selecting=true; if let Some(p)=ui.input(|i|i.pointer.latest_pos()){chart.zoom_start=p;} ui.close_menu(); }
+            if ui.button(format!("{} Reset View", Icon::ARROW_COUNTER_CLOCKWISE)).clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); ui.close_menu(); }
             ui.separator();
             // Groups
             if !chart.groups.is_empty() {
@@ -826,7 +833,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                 for g in &chart.groups {
                     let hidden = chart.hidden_groups.contains(&g.id);
                     let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
-                    let label = format!("{} {} ({})", if hidden {"o"} else {"O"}, g.name, count);
+                    let vis_icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
+                    let label = format!("{} {} ({})", vis_icon, g.name, count);
                     if ui.button(&label).clicked() {
                         if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
                         else { chart.hidden_groups.push(g.id.clone()); }
@@ -836,14 +844,14 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             }
             // Delete
             if !chart.selected_ids.is_empty() {
-                if ui.button(egui::RichText::new("X Delete Selected").color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                if ui.button(egui::RichText::new(format!("{} Delete Selected", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                     let ids = chart.selected_ids.clone();
                     chart.drawings.retain(|d| !ids.contains(&d.id));
                     chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
                 }
             }
             if !chart.drawings.is_empty() {
-                if ui.button(egui::RichText::new("X Clear All Drawings").color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                if ui.button(egui::RichText::new(format!("{} Clear All", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                     chart.drawings.clear(); chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
                 }
             }
@@ -895,6 +903,7 @@ impl GpuCtx {
 
         let egui_ctx = egui::Context::default();
         egui_ctx.set_visuals(egui::Visuals::dark());
+        ui_kit::icons::init_icons(&egui_ctx);
         let egui_state = egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, &*window, Some(window.scale_factor() as f32), None, None);
         let egui_renderer = egui_wgpu::Renderer::new(&device, fmt, None, 1, false);
 
