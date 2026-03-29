@@ -501,18 +501,17 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                 // Border lines
                 painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,120)));
                 painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,120)));
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                painter.text(pos + egui::vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM,
+                    Icon::RECTANGLE_BOLD, egui::FontId::proportional(18.0), egui::Color32::from_rgba_unmultiplied(100,180,255,220));
             }
             else if chart.draw_tool == "trendline" {
                 if let Some((b0, p0)) = chart.pending_pt {
-                    // Dashed preview line
                     let start = egui::pos2(bx(b0), py(p0));
                     let dir = pos - start;
                     let len = dir.length();
                     if len > 2.0 {
-                        let dash_len = 6.0;
-                        let gap_len = 4.0;
-                        let step = dash_len + gap_len;
+                        let dash_len = 6.0; let gap_len = 4.0; let step = dash_len + gap_len;
                         let norm = dir / len;
                         let mut d = 0.0;
                         while d < len {
@@ -523,17 +522,23 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                         }
                     }
                 }
-                // Crosshair cursor for drawing mode
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                painter.text(pos + egui::vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM,
+                    Icon::PENCIL_LINE_BOLD, egui::FontId::proportional(18.0), egui::Color32::from_rgba_unmultiplied(100,180,255,220));
             } else if chart.draw_tool == "hline" {
-                // Show horizontal preview line at cursor price
                 if pos.y >= rect.top()+pt && pos.y < rect.top()+pt+ch {
                     painter.line_segment(
                         [egui::pos2(rect.left(), pos.y), egui::pos2(rect.left()+cw, pos.y)],
                         egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,180,255,120)),
                     );
                 }
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                painter.text(pos + egui::vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM,
+                    Icon::MINUS_BOLD, egui::FontId::proportional(18.0), egui::Color32::from_rgba_unmultiplied(100,180,255,220));
+            } else if chart.draw_tool == "barmarker" {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                painter.text(pos + egui::vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM,
+                    Icon::MAP_PIN_BOLD, egui::FontId::proportional(18.0), egui::Color32::from_rgba_unmultiplied(100,180,255,220));
             }
         }
 
@@ -790,7 +795,9 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
                 let zr = egui::Rect::from_two_pos(chart.zoom_start, pos);
                 painter.rect_filled(zr, 0.0, egui::Color32::from_rgba_unmultiplied(110,190,255,20));
                 painter.rect_stroke(zr, 0.0, egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(110,190,255,180)), egui::StrokeKind::Outside);
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                painter.text(pos + egui::vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM,
+                    Icon::MAGNIFYING_GLASS_PLUS, egui::FontId::proportional(18.0), egui::Color32::from_rgba_unmultiplied(110,190,255,220));
             }
             if resp.drag_stopped() || (resp.clicked() && chart.zoom_start != egui::Pos2::ZERO) {
                 if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
