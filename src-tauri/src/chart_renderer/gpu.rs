@@ -83,7 +83,7 @@ impl Chart {
             vs: 0.0, vc: 200, price_lock: None, auto_scroll: true,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0, sim_seed: 42,
-            theme_idx: 0,
+            theme_idx: 5, // Gruvbox
             draw_tool: String::new(), pending_pt: None,
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
@@ -448,7 +448,7 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
 
         // Middle-click cycles through drawing tools
         if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) {
-            let tools = ["", "hline", "trendline", "hzone", "barmarker"];
+            let tools = ["", "trendline", "hline", "hzone", "barmarker"];
             let cur = tools.iter().position(|&t| t == chart.draw_tool).unwrap_or(0);
             chart.draw_tool = tools[(cur + 1) % tools.len()].to_string();
             chart.pending_pt = None;
@@ -632,7 +632,8 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
             }
         }
         // No tool: click selects drawing (shift for multi-select), or deselects
-        else if chart.draw_tool.is_empty() && resp.clicked() {
+        // Skip if egui is using pointer (style popup, dropdown, etc.)
+        else if chart.draw_tool.is_empty() && resp.clicked() && !ctx.is_using_pointer() && !ctx.is_pointer_over_area() {
             if let Some(pos) = resp.interact_pointer_pos() {
                 let shift = ui.input(|i| i.modifiers.shift);
                 if let Some((id, _)) = hit_at(pos.x, pos.y, &chart.drawings) {
@@ -651,7 +652,7 @@ fn draw_chart(ctx: &egui::Context, chart: &mut Chart, rx: &mpsc::Receiver<ChartC
         }
 
         // Drag: pan chart OR move drawing
-        if chart.draw_tool.is_empty() && resp.drag_started_by(egui::PointerButton::Primary) {
+        if chart.draw_tool.is_empty() && resp.drag_started_by(egui::PointerButton::Primary) && !ctx.is_pointer_over_area() {
             if let Some(pos) = resp.interact_pointer_pos() {
                 if let Some((id, ep)) = hit_at(pos.x, pos.y, &chart.drawings) {
                     chart.dragging_drawing = Some((id, ep));
