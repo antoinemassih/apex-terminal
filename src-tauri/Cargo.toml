@@ -41,3 +41,10 @@ egui-wgpu = "0.31"
 egui-winit = "0.31"
 egui-phosphor = { version = "0.9", features = ["regular", "bold"] }
 
+# Bar data caching
+redis = { version = "0.27", features = ["tokio-comp"] }
+dirs = "6"
+
+# System monitoring (NVML FFI)
+libloading = "0.8"
+

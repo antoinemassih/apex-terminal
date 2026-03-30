@@ -83,6 +83,16 @@ identifier = "allow-ib-ws-send"
 description = "Send IB WebSocket message"
 commands.allow = ["ib_ws_send"]
 
+[[permission]]
+identifier = "allow-native-chart-data"
+description = "Send bar data to native chart"
+commands.allow = ["native_chart_data"]
+
+[[permission]]
+identifier = "allow-native-chart-tick"
+description = "Forward tick to native chart"
+commands.allow = ["native_chart_tick"]
+
 [default]
 description = "All app commands allowed"
 permissions = [
@@ -103,4 +113,6 @@ permissions = [
   "allow-groups-update-style",
   "allow-drawings-apply-group-style",
   "allow-ib-ws-send",
+  "allow-native-chart-data",
+  "allow-native-chart-tick",
 ]

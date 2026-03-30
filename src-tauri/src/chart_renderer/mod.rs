@@ -15,9 +15,6 @@ mod types;
 
 pub use types::*;
 
-use std::sync::mpsc;
-use std::thread;
-
 /// Line style
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LineStyle { Solid, Dashed, Dotted }
@@ -42,6 +39,7 @@ impl Drawing {
 
 /// Drawing group
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DrawingGroup {
     pub id: String,
     pub name: String,
@@ -102,41 +100,7 @@ pub enum ChartCommand {
     Resize { width: u32, height: u32 },
     /// Close the renderer
     Shutdown,
+    /// Show/reactivate the window (sent when GPU button clicked again)
+    Show,
 }
 
-/// Handle to the native chart renderer thread
-pub struct ChartRendererHandle {
-    tx: mpsc::Sender<ChartCommand>,
-    thread: Option<thread::JoinHandle<()>>,
-}
-
-impl ChartRendererHandle {
-    /// Send a command to the renderer (non-blocking)
-    pub fn send(&self, cmd: ChartCommand) {
-        let _ = self.tx.send(cmd);
-    }
-
-    /// Shut down the renderer and wait for the thread to exit
-    pub fn shutdown(mut self) {
-        let _ = self.tx.send(ChartCommand::Shutdown);
-        if let Some(handle) = self.thread.take() {
-            let _ = handle.join();
-        }
-    }
-}
-
-/// Spawn the native chart renderer on a dedicated thread.
-/// Returns a handle for sending commands from the Tauri main thread.
-pub fn spawn(title: &str, width: u32, height: u32) -> ChartRendererHandle {
-    let (tx, rx) = mpsc::channel::<ChartCommand>();
-    let title = title.to_string();
-
-    let thread = thread::spawn(move || {
-        gpu::run_render_loop(&title, width, height, rx);
-    });
-
-    ChartRendererHandle {
-        tx,
-        thread: Some(thread),
-    }
-}

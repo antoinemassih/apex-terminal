@@ -38,18 +38,87 @@ pub struct OptionsChain {
 
 #[tauri::command]
 pub async fn get_bars(symbol: String, interval: String, period: String) -> Result<Vec<Bar>, String> {
-    let url = format!(
-        "http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}",
-        symbol, interval, period
+    // 0. Redis cache
+    if let Some(cached) = crate::bar_cache::get(&symbol, &interval) {
+        if !cached.is_empty() {
+            eprintln!("[get_bars] Cache hit for {}:{} ({} bars)", symbol, interval, cached.len());
+            return Ok(cached);
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0")
+        .build().map_err(|e| e.to_string())?;
+
+    // 1. OCOCO
+    let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", symbol, interval);
+    if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(2)).send().await {
+        if let Ok(bars) = resp.json::<Vec<Bar>>().await {
+            if !bars.is_empty() {
+                crate::bar_cache::set(&symbol, &interval, &bars);
+                return Ok(bars);
+            }
+        }
+    }
+
+    // 2. yfinance sidecar
+    let yf_url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", symbol, interval, period);
+    if let Ok(resp) = client.get(&yf_url).timeout(std::time::Duration::from_secs(3)).send().await {
+        if let Ok(bars) = resp.json::<Vec<Bar>>().await {
+            if !bars.is_empty() {
+                crate::bar_cache::set(&symbol, &interval, &bars);
+                return Ok(bars);
+            }
+        }
+    }
+
+    // 3. Direct Yahoo Finance v8 API
+    let (yf_interval, yf_range) = match interval.as_str() {
+        "1m" => ("1m","5d"), "2m" => ("2m","5d"), "5m" => ("5m","5d"),
+        "15m" => ("15m","60d"), "30m" => ("30m","60d"),
+        "1h" | "60m" => ("60m","60d"), "4h" => ("1h","730d"),
+        "1d" => ("1d","5y"), "1wk" => ("1wk","10y"),
+        _ => (interval.as_str(), &*period),
+    };
+    let yahoo_url = format!(
+        "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}",
+        symbol, yf_interval, yf_range
     );
-    let resp = reqwest::get(&url)
-        .await
-        .map_err(|e| format!("Failed to reach yfinance server: {}", e))?;
-    let bars: Vec<Bar> = resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse bars: {}", e))?;
-    Ok(bars)
+    if let Ok(resp) = client.get(&yahoo_url).timeout(std::time::Duration::from_secs(5)).send().await {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(bars) = parse_yahoo_v8(&json) {
+                crate::bar_cache::set(&symbol, &interval, &bars);
+                return Ok(bars);
+            }
+        }
+    }
+
+    Ok(vec![])
+}
+
+/// Parse Yahoo Finance v8 chart JSON response into a Bar vec.
+pub fn parse_yahoo_v8(json: &serde_json::Value) -> Option<Vec<Bar>> {
+    let result = json.get("chart")?.get("result")?.get(0)?;
+    let timestamps = result.get("timestamp")?.as_array()?;
+    let quote = result.get("indicators")?.get("quote")?.get(0)?;
+    let opens = quote.get("open")?.as_array()?;
+    let highs = quote.get("high")?.as_array()?;
+    let lows = quote.get("low")?.as_array()?;
+    let closes = quote.get("close")?.as_array()?;
+    let volumes = quote.get("volume")?.as_array()?;
+    let mut bars = Vec::with_capacity(timestamps.len());
+    for i in 0..timestamps.len() {
+        let o = opens.get(i).and_then(|v| v.as_f64());
+        let h = highs.get(i).and_then(|v| v.as_f64());
+        let l = lows.get(i).and_then(|v| v.as_f64());
+        let c = closes.get(i).and_then(|v| v.as_f64());
+        let v = volumes.get(i).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let t = timestamps.get(i).and_then(|v| v.as_i64()).unwrap_or(0);
+        if let (Some(o), Some(h), Some(l), Some(c)) = (o, h, l, c) {
+            bars.push(Bar { time: t, open: o, high: h, low: l, close: c, volume: v });
+        }
+    }
+    if bars.is_empty() { None } else { Some(bars) }
 }
 
 #[tauri::command]

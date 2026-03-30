@@ -1,6 +1,6 @@
 //! Reusable widgets for the chart UI.
 
-use egui::{Color32, Ui, Response, Sense, RichText};
+use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};
 use super::icons::Icon;
 use crate::chart_renderer::LineStyle;

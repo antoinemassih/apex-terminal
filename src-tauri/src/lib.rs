@@ -3,6 +3,8 @@ mod drawings;
 mod ib_ws;
 mod chart_renderer;
 mod ui_kit;
+mod bar_cache;
+pub mod monitoring;
 
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
@@ -13,15 +15,42 @@ use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
 use std::time::Duration;
 
-/// Global sender for forwarding ticks to native chart renderer
-static NATIVE_CHART_TX: std::sync::OnceLock<Mutex<Option<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
+/// Global senders for forwarding ticks/data to ALL native chart windows
+static NATIVE_CHART_TXS: std::sync::OnceLock<Mutex<Vec<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
+
+/// Send bar data from WebView to native chart (called when WebView loads data for requested symbol)
+#[tauri::command]
+fn native_chart_data(symbol: String, timeframe: String, bars: Vec<JsBar>) {
+    // Cache in Redis for future use
+    let cache_bars: Vec<data::Bar> = bars.iter().map(|b| data::Bar {
+        time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+    }).collect();
+    bar_cache::set(&symbol, &timeframe, &cache_bars);
+
+    let (gpu_bars, timestamps) = convert_js_bars(&bars);
+    eprintln!("[native-chart] Received {} bars for {} from WebView", gpu_bars.len(), symbol);
+    send_to_native_chart(chart_renderer::ChartCommand::LoadBars {
+        symbol, timeframe, bars: gpu_bars, timestamps,
+    });
+}
+
+/// Forward a single tick to the native chart
+#[tauri::command]
+fn native_chart_tick(symbol: String, price: f64, volume: f64) {
+    send_to_native_chart(chart_renderer::ChartCommand::UpdateLastBar {
+        symbol: symbol.clone(), timeframe: String::new(),
+        bar: chart_renderer::Bar {
+            open: price as f32, high: price as f32, low: price as f32,
+            close: price as f32, volume: volume as f32, _pad: 0.0,
+        },
+    });
+}
 
 pub fn send_to_native_chart(cmd: chart_renderer::ChartCommand) {
-    if let Some(lock) = NATIVE_CHART_TX.get() {
-        if let Ok(guard) = lock.lock() {
-            if let Some(tx) = guard.as_ref() {
-                let _ = tx.send(cmd);
-            }
+    if let Some(lock) = NATIVE_CHART_TXS.get() {
+        if let Ok(mut guard) = lock.lock() {
+            // Broadcast to all windows, remove dead senders
+            guard.retain(|tx| tx.send(cmd.clone()).is_ok());
         }
     }
 }
@@ -32,76 +61,42 @@ struct JsBar {
     open: f64, high: f64, low: f64, close: f64, volume: f64, time: i64,
 }
 
+/// Convert WebView JsBars into (gpu bars, timestamps) for the native chart renderer.
+fn convert_js_bars(bars: &[JsBar]) -> (Vec<chart_renderer::Bar>, Vec<i64>) {
+    let gpu: Vec<chart_renderer::Bar> = bars.iter().map(|b| chart_renderer::Bar {
+        open: b.open as f32, high: b.high as f32, low: b.low as f32,
+        close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+    }).collect();
+    let ts: Vec<i64> = bars.iter().map(|b| b.time).collect();
+    (gpu, ts)
+}
+
 #[tauri::command]
-async fn open_native_chart(symbol: String, timeframe: String, bars: Option<Vec<JsBar>>) -> Result<String, String> {
+async fn open_native_chart(app: tauri::AppHandle, symbol: String, timeframe: String, bars: Option<Vec<JsBar>>) -> Result<String, String> {
     eprintln!("[native-chart] Opening for {} {} (bars from WebView: {})", symbol, timeframe, bars.as_ref().map_or(0, |b| b.len()));
 
-    // Everything runs on a detached thread — command returns instantly
-    std::thread::spawn(move || {
-        eprintln!("[native-chart] Thread started");
+    let (gpu_bars, timestamps) = bars.as_ref()
+        .filter(|b| !b.is_empty())
+        .map(|b| convert_js_bars(b))
+        .unwrap_or_default();
 
-        // Convert WebView bars to native format
-        let (gpu_bars, timestamps) = if let Some(ref js_bars) = bars {
-            if !js_bars.is_empty() {
-                eprintln!("[native-chart] Using {} bars from WebView", js_bars.len());
-                let b: Vec<chart_renderer::Bar> = js_bars.iter().map(|b| chart_renderer::Bar {
-                    open: b.open as f32, high: b.high as f32, low: b.low as f32,
-                    close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
-                }).collect();
-                let t: Vec<i64> = js_bars.iter().map(|b| b.time).collect();
-                (b, t)
-            } else {
-                eprintln!("[native-chart] WebView sent empty bars");
-                (vec![], vec![])
-            }
-        } else {
-            eprintln!("[native-chart] No bars from WebView");
-            (vec![], vec![])
-        };
-        let bars = gpu_bars;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let initial = chart_renderer::ChartCommand::LoadBars {
+        symbol, timeframe, bars: gpu_bars, timestamps,
+    };
 
-        let (tx, rx) = std::sync::mpsc::channel();
-        let _ = tx.send(chart_renderer::ChartCommand::LoadBars {
-            symbol, timeframe, bars, timestamps,
-        });
+    // Register sender for tick broadcasting
+    {
+        let global = NATIVE_CHART_TXS.get_or_init(|| Mutex::new(Vec::new()));
+        global.lock().unwrap().push(tx);
+    }
 
-        // Store sender globally for tick forwarding
-        {
-            let global = NATIVE_CHART_TX.get_or_init(|| Mutex::new(None));
-            *global.lock().unwrap() = Some(tx);
-        }
+    // Opens a new window (starts render thread on first call)
+    chart_renderer::gpu::open_window(rx, initial, Some(app));
 
-        eprintln!("[native-chart] Starting render loop");
-        chart_renderer::gpu::run_render_loop(
-            &format!("Apex Chart — Native GPU"),
-            1400, 900, rx,
-        );
-        eprintln!("[native-chart] Render loop exited");
-    });
-
-    eprintln!("[native-chart] Command returning");
     Ok("spawned".to_string())
 }
 
-async fn fetch_bars_for_native(symbol: &str, interval: &str, period: &str) -> Vec<data::Bar> {
-    // Try OCOCO/InfluxDB first (fast, deep history)
-    let ococo_url = format!(
-        "http://192.168.1.60:30300/api/bars?symbol={}&interval={}&start=-365d",
-        symbol, interval
-    );
-    if let Ok(resp) = reqwest::Client::new().get(&ococo_url).timeout(std::time::Duration::from_secs(3)).send().await {
-        if let Ok(bars) = resp.json::<Vec<data::Bar>>().await {
-            if bars.len() > 10 { return bars; }
-        }
-    }
-
-    // Fallback: yfinance sidecar
-    let url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", symbol, interval, period);
-    match reqwest::get(&url).await {
-        Ok(resp) => resp.json::<Vec<data::Bar>>().await.unwrap_or_default(),
-        Err(_) => Vec::new(),
-    }
-}
 
 
 #[tauri::command]
@@ -143,6 +138,12 @@ pub fn run() {
             if let Some(pool) = pool_opt {
                 app.manage(DbPool(pool));
             }
+
+            // Redis bar cache — optional, app works without it
+            bar_cache::init();
+
+            // System monitoring — GPU, CPU, memory, frame timing → :9091/metrics
+            monitoring::start();
 
             // IB WebSocket hot path — Rust-native, msgpack binary
             let ib_handle = ib_ws::spawn(app.handle().clone());
@@ -190,6 +191,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             open_native_chart,
+            native_chart_data,
+            native_chart_tick,
             data::get_bars,
             data::get_options_chain,
             drawings::drawings_load_all,
