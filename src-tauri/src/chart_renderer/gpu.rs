@@ -309,6 +309,9 @@ struct Chart {
     picker_rx: Option<mpsc::Receiver<Vec<(String, String, String)>>>, // receives search results from bg thread
     picker_pos: egui::Pos2, // anchor position for the popup
     recent_symbols: Vec<(String, String)>, // (symbol, name) — most recent first, max 20
+    // Group management
+    group_manager_open: bool,
+    new_group_name: String,
     // Orders
     orders: Vec<OrderLevel>,
     next_order_id: u32,
@@ -355,7 +358,7 @@ impl Chart {
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false,
-            draw_color: "#4a9eff".into(),
+            draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
@@ -1293,116 +1296,293 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
     }
 
+    // ── Group manager popup ────────────────────────────────────────────────────
+    if panes[ap].group_manager_open {
+        let mut close_gm = false;
+        egui::Window::new("group_manager")
+            .fixed_pos(egui::pos2(200.0, 100.0))
+            .fixed_size(egui::vec2(240.0, 0.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(30, 30, 36)).inner_margin(10.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("NEW GROUP").monospace().size(10.0).strong().color(t.accent));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
+                            close_gm = true;
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+                let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].new_group_name)
+                    .hint_text("Group name...").desired_width(220.0).font(egui::FontId::monospace(11.0)));
+                resp.request_focus();
+                ui.add_space(6.0);
+                let can_create = !panes[ap].new_group_name.trim().is_empty();
+                if ui.add_enabled(can_create, egui::Button::new(
+                    egui::RichText::new(format!("{} Create", Icon::PLUS)).monospace().size(11.0)
+                ).min_size(egui::vec2(220.0, 24.0))).clicked() || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && can_create) {
+                    let name = panes[ap].new_group_name.trim().to_string();
+                    let id = new_uuid();
+                    crate::drawing_db::save_group(&id, &name, None);
+                    panes[ap].groups.push(super::DrawingGroup { id, name, color: None });
+                    panes[ap].new_group_name.clear();
+                    close_gm = true;
+                }
+            });
+        if close_gm { panes[ap].group_manager_open = false; }
+    }
+
     // ── Watchlist side panel ───────────────────────────────────────────────────
+    // Check for chain data arriving
+    if let Some(rx) = &watchlist.chain_rx {
+        if let Ok(data) = rx.try_recv() {
+            watchlist.chain = data;
+            watchlist.chain_rx = None;
+        }
+    }
+
     if watchlist.open {
         egui::SidePanel::right("watchlist")
-            .default_width(180.0)
-            .min_width(140.0)
-            .max_width(280.0)
+            .default_width(200.0)
+            .min_width(160.0)
+            .max_width(360.0)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
             .show(ctx, |ui| {
-                // Header
+                // Header with tabs
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("WATCHLIST").monospace().size(10.0).strong().color(t.dim));
+                    for (tab, label) in [(WatchlistTab::Stocks, "STOCKS"), (WatchlistTab::Chain, "CHAIN"), (WatchlistTab::Saved, "SAVED")] {
+                        let active = watchlist.tab == tab;
+                        let color = if active { t.accent } else { t.dim };
+                        if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).strong().color(color)).frame(false)).clicked() {
+                            watchlist.tab = tab;
+                        }
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
                             watchlist.open = false;
                         }
                     });
                 });
-
-                // Search input
-                ui.add_space(4.0);
-                let search_resp = ui.add(
-                    egui::TextEdit::singleline(&mut watchlist.search_query)
-                        .hint_text("Add symbol...")
-                        .desired_width(ui.available_width())
-                        .font(egui::FontId::monospace(11.0))
-                );
-                if search_resp.changed() && !watchlist.search_query.is_empty() {
-                    watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.search_query, 5)
-                        .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
-                }
-                // Search results dropdown
-                if !watchlist.search_query.is_empty() && !watchlist.search_results.is_empty() {
-                    egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(30, 30, 36)).show(ui, |ui| {
-                        for (sym, name) in watchlist.search_results.clone() {
-                            if ui.add(egui::Button::new(
-                                egui::RichText::new(format!("{} {}", sym, name)).monospace().size(10.0).color(t.dim)
-                            ).frame(false).min_size(egui::vec2(ui.available_width(), 18.0))).clicked() {
-                                watchlist.add_symbol(&sym);
-                                watchlist.search_query.clear();
-                                watchlist.search_results.clear();
-                                // Fetch price for new symbol
-                                fetch_watchlist_prices(vec![sym]);
-                            }
-                        }
-                    });
-                }
-                // Enter to add
-                if search_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.search_query.is_empty() {
-                    let sym = watchlist.search_query.trim().to_uppercase();
-                    watchlist.add_symbol(&sym);
-                    fetch_watchlist_prices(vec![sym]);
-                    watchlist.search_query.clear();
-                    watchlist.search_results.clear();
-                }
-
-                ui.add_space(4.0);
+                ui.add_space(2.0);
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
                     egui::Stroke::new(1.0, t.toolbar_border),
                 );
                 ui.add_space(4.0);
 
-                // Symbol list
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let mut remove_sym: Option<String> = None;
-                    let mut click_sym: Option<String> = None;
-                    let full_w = ui.available_width();
-
-                    for item in &watchlist.items {
-                        let change_pct = if item.prev_close > 0.0 {
-                            ((item.price - item.prev_close) / item.prev_close) * 100.0
-                        } else { 0.0 };
-                        let color = if change_pct >= 0.0 { t.bull } else { t.bear };
-                        let price_str = if item.price > 0.0 { format!("{:.2}", item.price) } else { "---".into() };
-                        let change_str = if item.loaded { format!("{:+.2}%", change_pct) } else { "".into() };
-
-                        let resp = ui.horizontal(|ui| {
-                            ui.set_min_width(full_w);
-                            // Symbol
-                            let sym_resp = ui.add(egui::Button::new(
-                                egui::RichText::new(&item.symbol).monospace().size(11.0).strong().color(egui::Color32::from_rgb(220,220,230))
-                            ).frame(false));
-                            if sym_resp.clicked() { click_sym = Some(item.symbol.clone()); }
-
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                // Remove button
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5))).frame(false)).clicked() {
-                                    remove_sym = Some(item.symbol.clone());
-                                }
-                                // Change %
-                                ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
-                                // Price
-                                ui.label(egui::RichText::new(&price_str).monospace().size(11.0).color(color));
-                            });
-                        });
-                        // Hover highlight
-                        let row_rect = resp.response.rect;
-                        if resp.response.hovered() {
-                            ui.painter().rect_filled(row_rect, 0.0, t.toolbar_border.gamma_multiply(0.3));
+                match watchlist.tab {
+                    // ── STOCKS TAB ──────────────────────────────────────────
+                    WatchlistTab::Stocks => {
+                        // Search input
+                        let search_resp = ui.add(
+                            egui::TextEdit::singleline(&mut watchlist.search_query)
+                                .hint_text("Add symbol...").desired_width(ui.available_width()).font(egui::FontId::monospace(11.0))
+                        );
+                        if search_resp.changed() && !watchlist.search_query.is_empty() {
+                            watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.search_query, 5)
+                                .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
                         }
+                        if !watchlist.search_query.is_empty() && !watchlist.search_results.is_empty() {
+                            egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(30, 30, 36)).show(ui, |ui| {
+                                for (sym, name) in watchlist.search_results.clone() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(10.0).color(t.dim))
+                                        .frame(false).min_size(egui::vec2(ui.available_width(), 18.0))).clicked() {
+                                        watchlist.add_symbol(&sym);
+                                        watchlist.search_query.clear(); watchlist.search_results.clear();
+                                        fetch_watchlist_prices(vec![sym]);
+                                    }
+                                }
+                            });
+                        }
+                        if search_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.search_query.is_empty() {
+                            let sym = watchlist.search_query.trim().to_uppercase();
+                            watchlist.add_symbol(&sym); fetch_watchlist_prices(vec![sym.clone()]);
+                            watchlist.search_query.clear(); watchlist.search_results.clear();
+                        }
+                        ui.add_space(4.0);
+
+                        // Symbol list
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let mut remove_sym: Option<String> = None;
+                            let mut click_sym: Option<String> = None;
+                            let full_w = ui.available_width();
+                            for item in &watchlist.items {
+                                let change_pct = if item.prev_close > 0.0 { ((item.price - item.prev_close) / item.prev_close) * 100.0 } else { 0.0 };
+                                let color = if change_pct >= 0.0 { t.bull } else { t.bear };
+                                let price_str = if item.price > 0.0 { format!("{:.2}", item.price) } else { "---".into() };
+                                let change_str = if item.loaded { format!("{:+.2}%", change_pct) } else { "".into() };
+                                let resp = ui.horizontal(|ui| {
+                                    ui.set_min_width(full_w);
+                                    let sym_resp = ui.add(egui::Button::new(egui::RichText::new(&item.symbol).monospace().size(11.0).strong().color(egui::Color32::from_rgb(220,220,230))).frame(false));
+                                    if sym_resp.clicked() { click_sym = Some(item.symbol.clone()); }
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5))).frame(false)).clicked() { remove_sym = Some(item.symbol.clone()); }
+                                        ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
+                                        ui.label(egui::RichText::new(&price_str).monospace().size(11.0).color(color));
+                                    });
+                                });
+                                if resp.response.hovered() { ui.painter().rect_filled(resp.response.rect, 0.0, t.toolbar_border.gamma_multiply(0.3)); }
+                            }
+                            if let Some(sym) = click_sym { panes[ap].pending_symbol_change = Some(sym); }
+                            if let Some(sym) = remove_sym { watchlist.remove_symbol(&sym); }
+                        });
                     }
 
-                    // Handle symbol click — load in active pane
-                    if let Some(sym) = click_sym {
-                        panes[ap].pending_symbol_change = Some(sym);
+                    // ── CHAIN TAB ───────────────────────────────────────────
+                    WatchlistTab::Chain => {
+                        // Symbol + load button
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(&watchlist.chain.symbol).monospace().size(11.0).strong().color(t.accent));
+                            if ui.add(egui::Button::new(egui::RichText::new("Load").monospace().size(10.0)).min_size(egui::vec2(40.0, 18.0))).clicked() {
+                                watchlist.chain.symbol = panes[ap].symbol.clone();
+                                watchlist.chain.loading = true;
+                                let (tx, rx) = mpsc::channel();
+                                watchlist.chain_rx = Some(rx);
+                                fetch_options_chain(watchlist.chain.symbol.clone(), None, tx);
+                            }
+                            // Strikes count
+                            ui.label(egui::RichText::new("Strikes:").monospace().size(9.0).color(t.dim));
+                            let mut ns = watchlist.chain.num_strikes as i32;
+                            if ui.add(egui::DragValue::new(&mut ns).range(1..=50).speed(0.5)).changed() {
+                                watchlist.chain.num_strikes = ns.max(1) as usize;
+                            }
+                        });
+
+                        if watchlist.chain.loading {
+                            ui.horizontal(|ui| { ui.spinner(); ui.label(egui::RichText::new("Loading...").monospace().size(9.0).color(t.dim)); });
+                        }
+
+                        // Expiration selector
+                        if !watchlist.chain.expirations.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Exp:").monospace().size(9.0).color(t.dim));
+                                egui::ComboBox::from_id_salt("chain_exp")
+                                    .selected_text(watchlist.chain.expirations.get(watchlist.chain.selected_exp).cloned().unwrap_or_default())
+                                    .width(90.0)
+                                    .show_ui(ui, |ui| {
+                                        for (i, exp) in watchlist.chain.expirations.iter().enumerate() {
+                                            if ui.selectable_value(&mut watchlist.chain.selected_exp, i, exp).changed() {
+                                                let (tx, rx) = mpsc::channel();
+                                                watchlist.chain_rx = Some(rx);
+                                                fetch_options_chain(watchlist.chain.symbol.clone(), Some(exp.clone()), tx);
+                                            }
+                                        }
+                                    });
+                            });
+                        }
+
+                        ui.add_space(4.0);
+
+                        // Calls and Puts tables
+                        let ns = watchlist.chain.num_strikes;
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            if !watchlist.chain.calls.is_empty() {
+                                ui.label(egui::RichText::new("CALLS").monospace().size(9.0).strong().color(t.bull));
+                                // Header
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("Strike").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("Last").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("Bid").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("Ask").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("Vol").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("IV").monospace().size(8.0).color(t.dim));
+                                });
+                                for call in watchlist.chain.calls.iter().take(ns) {
+                                    let bg = if call.itm { t.bull.gamma_multiply(0.08) } else { egui::Color32::TRANSPARENT };
+                                    let resp = ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(format!("{:.1}", call.strike)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
+                                        ui.label(egui::RichText::new(format!("{:.2}", call.last)).monospace().size(9.0).color(t.bull));
+                                        ui.label(egui::RichText::new(format!("{:.2}", call.bid)).monospace().size(9.0).color(t.dim));
+                                        ui.label(egui::RichText::new(format!("{:.2}", call.ask)).monospace().size(9.0).color(t.dim));
+                                        ui.label(egui::RichText::new(format!("{}", call.volume)).monospace().size(9.0).color(t.dim));
+                                        ui.label(egui::RichText::new(format!("{:.0}%", call.iv * 100.0)).monospace().size(9.0).color(t.dim));
+                                    });
+                                    ui.painter().rect_filled(resp.response.rect, 0.0, bg);
+                                    // Click to save
+                                    if resp.response.interact(egui::Sense::click()).clicked() {
+                                        watchlist.saved_options.push(SavedOption {
+                                            contract: call.contract.clone(), symbol: watchlist.chain.symbol.clone(),
+                                            strike: call.strike, is_call: true,
+                                            expiry: watchlist.chain.expirations.get(watchlist.chain.selected_exp).cloned().unwrap_or_default(),
+                                            last: call.last,
+                                        });
+                                    }
+                                }
+                            }
+
+                            ui.add_space(8.0);
+
+                            if !watchlist.chain.puts.is_empty() {
+                                ui.label(egui::RichText::new("PUTS").monospace().size(9.0).strong().color(t.bear));
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("Strike").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("Last").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("Bid").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("Ask").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("Vol").monospace().size(8.0).color(t.dim));
+                                    ui.label(egui::RichText::new("IV").monospace().size(8.0).color(t.dim));
+                                });
+                                for put in watchlist.chain.puts.iter().take(ns) {
+                                    let bg = if put.itm { t.bear.gamma_multiply(0.08) } else { egui::Color32::TRANSPARENT };
+                                    let resp = ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(format!("{:.1}", put.strike)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
+                                        ui.label(egui::RichText::new(format!("{:.2}", put.last)).monospace().size(9.0).color(t.bear));
+                                        ui.label(egui::RichText::new(format!("{:.2}", put.bid)).monospace().size(9.0).color(t.dim));
+                                        ui.label(egui::RichText::new(format!("{:.2}", put.ask)).monospace().size(9.0).color(t.dim));
+                                        ui.label(egui::RichText::new(format!("{}", put.volume)).monospace().size(9.0).color(t.dim));
+                                        ui.label(egui::RichText::new(format!("{:.0}%", put.iv * 100.0)).monospace().size(9.0).color(t.dim));
+                                    });
+                                    ui.painter().rect_filled(resp.response.rect, 0.0, bg);
+                                    if resp.response.interact(egui::Sense::click()).clicked() {
+                                        watchlist.saved_options.push(SavedOption {
+                                            contract: put.contract.clone(), symbol: watchlist.chain.symbol.clone(),
+                                            strike: put.strike, is_call: false,
+                                            expiry: watchlist.chain.expirations.get(watchlist.chain.selected_exp).cloned().unwrap_or_default(),
+                                            last: put.last,
+                                        });
+                                    }
+                                }
+                            }
+                        });
                     }
-                    if let Some(sym) = remove_sym {
-                        watchlist.remove_symbol(&sym);
+
+                    // ── SAVED TAB ───────────────────────────────────────────
+                    WatchlistTab::Saved => {
+                        // DTE filter
+                        ui.horizontal(|ui| {
+                            for (f, label) in [(-1, "All"), (0, "0DTE"), (1, "1+DTE")] {
+                                let active = watchlist.dte_filter == f;
+                                let color = if active { t.accent } else { t.dim };
+                                if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(color)).frame(false)).clicked() {
+                                    watchlist.dte_filter = f;
+                                }
+                            }
+                        });
+                        ui.add_space(4.0);
+
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let mut remove_idx: Option<usize> = None;
+                            for (i, opt) in watchlist.saved_options.iter().enumerate() {
+                                let type_label = if opt.is_call { "C" } else { "P" };
+                                let color = if opt.is_call { t.bull } else { t.bear };
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(&opt.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
+                                    ui.label(egui::RichText::new(format!("{:.0}{}", opt.strike, type_label)).monospace().size(10.0).color(color));
+                                    ui.label(egui::RichText::new(format!("{:.2}", opt.last)).monospace().size(10.0).color(color));
+                                    ui.label(egui::RichText::new(&opt.expiry).monospace().size(8.0).color(t.dim));
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false)).clicked() {
+                                        remove_idx = Some(i);
+                                    }
+                                });
+                            }
+                            if let Some(i) = remove_idx { watchlist.saved_options.remove(i); }
+                            if watchlist.saved_options.is_empty() {
+                                ui.label(egui::RichText::new("Click a contract in\nthe CHAIN tab to save it").monospace().size(9.0).color(t.dim));
+                            }
+                        });
                     }
-                });
+                }
             });
     }
 
@@ -2537,20 +2717,57 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             ui.separator();
             // Groups
-            if !chart.groups.is_empty() {
-                ui.label(egui::RichText::new("GROUPS").small().color(t.dim));
-                for g in &chart.groups {
-                    let hidden = chart.hidden_groups.contains(&g.id);
-                    let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
-                    let vis_icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
-                    let label = format!("{} {} ({})", vis_icon, g.name, count);
-                    if ui.button(&label).clicked() {
+            ui.label(egui::RichText::new("GROUPS").small().color(t.dim));
+            for g in chart.groups.clone() {
+                let hidden = chart.hidden_groups.contains(&g.id);
+                let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
+                let vis_icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
+                ui.horizontal(|ui| {
+                    // Toggle visibility
+                    if ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(10.0).color(t.dim)).frame(false)).clicked() {
                         if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
                         else { chart.hidden_groups.push(g.id.clone()); }
                     }
+                    // Group name + count
+                    ui.label(egui::RichText::new(format!("{} ({})", g.name, count)).monospace().size(10.0).color(if hidden { t.dim } else { egui::Color32::from_rgb(200,200,210) }));
+                });
+                // Assign selected drawings to this group
+                if !chart.selected_ids.is_empty() {
+                    let assign_label = format!("  {} Assign {} to {}", Icon::ARROW_FAT_DOWN, chart.selected_ids.len(), g.name);
+                    if ui.button(egui::RichText::new(&assign_label).monospace().size(9.0).color(t.accent)).clicked() {
+                        let ids = chart.selected_ids.clone();
+                        let gid = g.id.clone();
+                        let sym = chart.symbol.clone();
+                        let tf = chart.timeframe.clone();
+                        for d in &mut chart.drawings {
+                            if ids.contains(&d.id) {
+                                d.group_id = gid.clone();
+                                crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                            }
+                        }
+                        ui.close_menu();
+                    }
                 }
-                ui.separator();
             }
+            // Create new group
+            if ui.button(format!("{} New Group...", Icon::PLUS)).clicked() {
+                chart.group_manager_open = true;
+                ui.close_menu();
+            }
+            // Delete non-default groups
+            for g in chart.groups.clone() {
+                if g.id != "default" {
+                    let del_label = format!("  {} Delete '{}'", Icon::TRASH, g.name);
+                    if ui.button(egui::RichText::new(&del_label).monospace().size(9.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                        // Move drawings to default, remove group
+                        for d in &mut chart.drawings { if d.group_id == g.id { d.group_id = "default".into(); } }
+                        chart.groups.retain(|gg| gg.id != g.id);
+                        crate::drawing_db::remove_group(&g.id);
+                        ui.close_menu();
+                    }
+                }
+            }
+            ui.separator();
             // Delete
             if !chart.selected_ids.is_empty() {
                 if ui.button(egui::RichText::new(format!("{} Delete Selected", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
@@ -2611,11 +2828,54 @@ struct WatchlistItem {
     loaded: bool,
 }
 
+// ─── Options chain ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct OptionRow {
+    strike: f32,
+    last: f32,
+    bid: f32,
+    ask: f32,
+    volume: i32,
+    oi: i32,
+    iv: f32,
+    itm: bool,
+    contract: String,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct OptionsChainData {
+    symbol: String,
+    expirations: Vec<String>,
+    selected_exp: usize,
+    calls: Vec<OptionRow>,
+    puts: Vec<OptionRow>,
+    loading: bool,
+    num_strikes: usize,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct SavedOption {
+    contract: String,
+    symbol: String,
+    strike: f32,
+    is_call: bool,
+    expiry: String,
+    last: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum WatchlistTab { Stocks, Chain, Saved }
+
 struct Watchlist {
     open: bool,
+    tab: WatchlistTab,
     items: Vec<WatchlistItem>,
     search_query: String,
-    search_results: Vec<(String, String)>, // (symbol, name)
+    search_results: Vec<(String, String)>,
     // Orders book panel
     orders_panel_open: bool,
     // Positions
@@ -2624,7 +2884,13 @@ struct Watchlist {
     alerts: Vec<Alert>,
     next_alert_id: u32,
     #[allow(dead_code)]
-    alert_query: String, // for adding new alerts
+    alert_query: String,
+    // Options chain
+    chain: OptionsChainData,
+    chain_rx: Option<mpsc::Receiver<OptionsChainData>>,
+    // Saved options
+    saved_options: Vec<SavedOption>,
+    dte_filter: i32, // 0 = 0DTE, 1 = 1+DTE, -1 = all
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -2634,8 +2900,10 @@ impl Watchlist {
         let items = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
             symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
-        Self { open: true, items, search_query: String::new(), search_results: vec![],
-               orders_panel_open: false, positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new() }
+        Self { open: true, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
+               orders_panel_open: false, positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
+               chain: OptionsChainData { symbol: "SPY".into(), expirations: vec![], selected_exp: 0, calls: vec![], puts: vec![], loading: false, num_strikes: 10 },
+               chain_rx: None, saved_options: vec![], dte_filter: -1 }
     }
 
     fn add_symbol(&mut self, sym: &str) {
@@ -2661,6 +2929,54 @@ impl Watchlist {
             item.loaded = true;
         }
     }
+}
+
+/// Fetch options chain from Yahoo Finance (background thread).
+fn fetch_options_chain(symbol: String, date: Option<String>, tx: mpsc::Sender<OptionsChainData>) {
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder().user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+        let mut url = format!("https://query1.finance.yahoo.com/v7/finance/options/{}", symbol);
+        if let Some(d) = &date { url = format!("{}?date={}", url, d); }
+
+        let mut data = OptionsChainData { symbol: symbol.clone(), expirations: vec![], selected_exp: 0, calls: vec![], puts: vec![], loading: false, num_strikes: 10 };
+
+        if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(5)).send() {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                if let Some(result) = json.get("optionChain").and_then(|o| o.get("result")).and_then(|r| r.get(0)) {
+                    // Expirations
+                    if let Some(exps) = result.get("expirationDates").and_then(|e| e.as_array()) {
+                        data.expirations = exps.iter().filter_map(|e| e.as_i64().map(|ts| {
+                            format!("{}", ts) // store as timestamp string for re-fetch
+                        })).collect();
+                    }
+
+                    // Options data
+                    if let Some(options) = result.get("options").and_then(|o| o.get(0)) {
+                        let parse_row = |v: &serde_json::Value| -> Option<OptionRow> {
+                            Some(OptionRow {
+                                strike: v.get("strike")?.as_f64()? as f32,
+                                last: v.get("lastPrice")?.as_f64().unwrap_or(0.0) as f32,
+                                bid: v.get("bid")?.as_f64().unwrap_or(0.0) as f32,
+                                ask: v.get("ask")?.as_f64().unwrap_or(0.0) as f32,
+                                volume: v.get("volume").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                                oi: v.get("openInterest").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                                iv: v.get("impliedVolatility").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                                itm: v.get("inTheMoney").and_then(|v| v.as_bool()).unwrap_or(false),
+                                contract: v.get("contractSymbol").and_then(|v| v.as_str()).unwrap_or("").into(),
+                            })
+                        };
+                        if let Some(calls) = options.get("calls").and_then(|c| c.as_array()) {
+                            data.calls = calls.iter().filter_map(parse_row).collect();
+                        }
+                        if let Some(puts) = options.get("puts").and_then(|p| p.as_array()) {
+                            data.puts = puts.iter().filter_map(parse_row).collect();
+                        }
+                    }
+                }
+            }
+        }
+        let _ = tx.send(data);
+    });
 }
 
 /// Fetch daily previous close for all watchlist symbols (background thread).
