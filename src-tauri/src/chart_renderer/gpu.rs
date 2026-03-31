@@ -784,6 +784,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if ti != panes[ap].theme_idx { for p in panes.iter_mut() { p.theme_idx = ti; } }
             }
 
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // Placeholder buttons for future features
+            tb_btn(ui, "triangulator", false, t);
+            tb_btn(ui, "auto target", false, t);
+
             // ── Right side: LIVE + separator + window controls ──
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -1423,20 +1429,40 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── CHAIN TAB ───────────────────────────────────────────
                     WatchlistTab::Chain => {
-                        // ── Symbol input (type to search, auto-loads chain) ──
+                        // ── Symbol input ──
                         let sym_resp = ui.add(egui::TextEdit::singleline(&mut watchlist.chain_sym_input)
                             .hint_text(&watchlist.chain_symbol)
                             .desired_width(ui.available_width())
                             .font(egui::FontId::monospace(13.0)));
+                        // Search suggestions
+                        if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
+                            watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.chain_sym_input, 5)
+                                .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
+                        }
+                        if !watchlist.chain_sym_input.is_empty() && !watchlist.search_results.is_empty() && sym_resp.has_focus() {
+                            egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(30, 30, 36)).show(ui, |ui| {
+                                for (sym, name) in watchlist.search_results.clone() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(10.0).color(t.dim))
+                                        .frame(false).min_size(egui::vec2(ui.available_width(), 18.0))).clicked() {
+                                        watchlist.chain_symbol = sym;
+                                        watchlist.chain_sym_input.clear();
+                                        watchlist.search_results.clear();
+                                        watchlist.chain_0dte = (vec![], vec![]); // force rebuild
+                                    }
+                                }
+                            });
+                        }
                         if sym_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain_sym_input.is_empty() {
                             watchlist.chain_symbol = watchlist.chain_sym_input.trim().to_uppercase();
                             watchlist.chain_sym_input.clear();
+                            watchlist.search_results.clear();
+                            watchlist.chain_0dte = (vec![], vec![]); // force rebuild
                         }
-                        // Auto-rebuild chain when symbol changes or price updates
+                        // Rebuild chain from current price
                         let chain_price = watchlist.items.iter().find(|i| i.symbol == watchlist.chain_symbol).map(|i| i.price)
                             .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
                             .unwrap_or(100.0);
-                        if chain_price > 0.0 && (watchlist.chain_0dte.0.is_empty() || watchlist.chain_0dte.0.first().map(|r| (atm_strike(chain_price) - atm_strike(r.strike)).abs() > 0.01).unwrap_or(true)) {
+                        if chain_price > 0.0 && watchlist.chain_0dte.0.is_empty() {
                             let ns = watchlist.chain_num_strikes;
                             watchlist.chain_0dte = build_chain(chain_price, ns, 0);
                             watchlist.chain_far = build_chain(chain_price, ns, watchlist.chain_far_dte);
@@ -1482,75 +1508,72 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         });
 
                         // ── Column headers ──
+                        let full_w = ui.available_width();
                         ui.horizontal(|ui| {
-                            ui.add_space(8.0);
-                            ui.label(egui::RichText::new("STK").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.set_min_width(full_w);
                             ui.add_space(12.0);
-                            ui.label(egui::RichText::new("BID").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new("ASK").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new("OI").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new("STK").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.label(egui::RichText::new("OI").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                                ui.label(egui::RichText::new("ASK").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                                ui.label(egui::RichText::new("BID").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                            });
                         });
 
-                        // ── Helper to render one expiry block ──
-                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool| {
-                            // Expiry header
-                            let exp_label = format!("{}DTE", dte);
-                            ui.label(egui::RichText::new(&exp_label).monospace().size(10.0).color(t.accent));
-                            ui.add_space(2.0);
-
-                            // CALLS
-                            ui.label(egui::RichText::new("CALLS").monospace().size(8.0).strong().color(t.bull));
-                            for row in calls {
-                                let is_saved = saved.iter().any(|s| s.contract == row.contract);
-                                let bg = if is_saved { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),48) }
-                                    else if row.itm { t.bull.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
-                                let resp = ui.horizontal(|ui| {
-                                    ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
-                                    if is_saved { ui.label(egui::RichText::new("\u{2713}").size(8.0).color(t.accent)); }
-                                    else { ui.add_space(10.0); }
-                                    ui.label(egui::RichText::new(format!("{:.0}", row.strike)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
-                                    ui.add_space(4.0);
-                                    ui.label(egui::RichText::new(format!("{:.2}", row.bid)).monospace().size(9.0).color(t.dim));
-                                    ui.label(egui::RichText::new(format!("{:.2}", row.ask)).monospace().size(9.0).color(t.dim));
-                                    ui.label(egui::RichText::new(format!("{}", row.oi)).monospace().size(8.0).color(t.dim.gamma_multiply(0.6)));
+                        // ── Helper to render one option row ──
+                        let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
+                            let is_saved = saved.iter().any(|s| s.contract == row.contract);
+                            let color = if is_call { t.bull } else { t.bear };
+                            let bg = if is_saved { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),40) }
+                                else if row.itm { color.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
+                            let resp = ui.horizontal(|ui| {
+                                ui.set_min_width(w);
+                                ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
+                                if is_saved { ui.label(egui::RichText::new("\u{2713}").size(10.0).color(t.accent)); }
+                                else { ui.add_space(14.0); }
+                                ui.label(egui::RichText::new(format!("{:.0}", row.strike)).monospace().size(11.0).strong().color(egui::Color32::from_rgb(210,210,220)));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(egui::RichText::new(format!("{}", row.oi)).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                                    ui.label(egui::RichText::new(format!("{:.2}", row.ask)).monospace().size(10.0).color(t.dim));
+                                    ui.label(egui::RichText::new(format!("{:.2}", row.bid)).monospace().size(10.0).color(color));
                                 });
-                                if (select_mode || ui.input(|i| i.modifiers.shift)) && resp.response.interact(egui::Sense::click()).clicked() {
-                                    if is_saved { saved.retain(|s| s.contract != row.contract); }
-                                    else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call: true, expiry: exp_label.clone(), last: row.last }); }
-                                }
+                            });
+                            if (select_mode || ui.input(|i| i.modifiers.shift)) && resp.response.interact(egui::Sense::click()).clicked() {
+                                if is_saved { saved.retain(|s| s.contract != row.contract); }
+                                else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call, expiry: exp_label.into(), last: row.last }); }
                             }
+                        };
+
+                        // ── Helper to render one expiry block ──
+                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
+                            let exp_label = format!("{}DTE", dte);
+                            // Expiry header bar
+                            ui.horizontal(|ui| {
+                                ui.set_min_width(w);
+                                ui.label(egui::RichText::new(&exp_label).monospace().size(11.0).strong().color(t.accent));
+                            });
+                            ui.add_space(1.0);
+
+                            ui.label(egui::RichText::new("CALLS").monospace().size(9.0).strong().color(t.bull));
+                            for row in calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
 
                             // Underlying divider
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(format!("{}  ${:.2}", sym, price)).monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                                ui.set_min_width(w);
+                                let divider_rect = ui.max_rect();
+                                ui.painter().rect_filled(divider_rect, 0.0, t.toolbar_border.gamma_multiply(0.15));
+                                ui.label(egui::RichText::new(format!("{}  ${:.2}", sym, price)).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
                             });
 
-                            // PUTS
-                            ui.label(egui::RichText::new("PUTS").monospace().size(8.0).strong().color(t.bear));
-                            for row in puts {
-                                let is_saved = saved.iter().any(|s| s.contract == row.contract);
-                                let bg = if is_saved { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),48) }
-                                    else if row.itm { t.bear.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
-                                let resp = ui.horizontal(|ui| {
-                                    ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
-                                    if is_saved { ui.label(egui::RichText::new("\u{2713}").size(8.0).color(t.accent)); }
-                                    else { ui.add_space(10.0); }
-                                    ui.label(egui::RichText::new(format!("{:.0}", row.strike)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
-                                    ui.add_space(4.0);
-                                    ui.label(egui::RichText::new(format!("{:.2}", row.bid)).monospace().size(9.0).color(t.dim));
-                                    ui.label(egui::RichText::new(format!("{:.2}", row.ask)).monospace().size(9.0).color(t.dim));
-                                    ui.label(egui::RichText::new(format!("{}", row.oi)).monospace().size(8.0).color(t.dim.gamma_multiply(0.6)));
-                                });
-                                if (select_mode || ui.input(|i| i.modifiers.shift)) && resp.response.interact(egui::Sense::click()).clicked() {
-                                    if is_saved { saved.retain(|s| s.contract != row.contract); }
-                                    else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call: false, expiry: exp_label.clone(), last: row.last }); }
-                                }
-                            }
+                            ui.label(egui::RichText::new("PUTS").monospace().size(9.0).strong().color(t.bear));
+                            for row in puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }
                             ui.add_space(6.0);
                         };
 
                         // ── Scroll area with two expiry blocks ──
-                        egui::ScrollArea::vertical().show(ui, |ui| {
+                        let scroll_w = ui.available_width();
+                        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                            ui.set_min_width(scroll_w);
                             let sym = watchlist.chain_symbol.clone();
                             let sel = watchlist.chain_select_mode;
                             let calls_0 = watchlist.chain_0dte.0.clone();
@@ -1559,8 +1582,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let puts_f = watchlist.chain_far.1.clone();
                             let far_dte = watchlist.chain_far_dte;
 
-                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel);
-                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel);
+                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
+                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
                         });
                     }
 
