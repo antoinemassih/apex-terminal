@@ -1334,14 +1334,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // ── Watchlist side panel ───────────────────────────────────────────────────
-    // Check for chain data arriving
-    if let Some(rx) = &watchlist.chain_rx {
-        if let Ok(data) = rx.try_recv() {
-            watchlist.chain = data;
-            watchlist.chain_rx = None;
-        }
-    }
-
     if watchlist.open {
         egui::SidePanel::right("watchlist")
             .default_width(200.0)
@@ -1431,126 +1423,144 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── CHAIN TAB ───────────────────────────────────────────
                     WatchlistTab::Chain => {
-                        // Symbol + load button
+                        // ── Symbol input (type to search, auto-loads chain) ──
+                        let sym_resp = ui.add(egui::TextEdit::singleline(&mut watchlist.chain_sym_input)
+                            .hint_text(&watchlist.chain_symbol)
+                            .desired_width(ui.available_width())
+                            .font(egui::FontId::monospace(13.0)));
+                        if sym_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain_sym_input.is_empty() {
+                            watchlist.chain_symbol = watchlist.chain_sym_input.trim().to_uppercase();
+                            watchlist.chain_sym_input.clear();
+                        }
+                        // Auto-rebuild chain when symbol changes or price updates
+                        let chain_price = watchlist.items.iter().find(|i| i.symbol == watchlist.chain_symbol).map(|i| i.price)
+                            .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
+                            .unwrap_or(100.0);
+                        if chain_price > 0.0 && (watchlist.chain_0dte.0.is_empty() || watchlist.chain_0dte.0.first().map(|r| (atm_strike(chain_price) - atm_strike(r.strike)).abs() > 0.01).unwrap_or(true)) {
+                            let ns = watchlist.chain_num_strikes;
+                            watchlist.chain_0dte = build_chain(chain_price, ns, 0);
+                            watchlist.chain_far = build_chain(chain_price, ns, watchlist.chain_far_dte);
+                        }
+
+                        // ── Controls: strikes ± | DTE selector | sel toggle ──
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&watchlist.chain.symbol).monospace().size(11.0).strong().color(t.accent));
-                            if ui.add(egui::Button::new(egui::RichText::new("Load").monospace().size(10.0)).min_size(egui::vec2(40.0, 18.0))).clicked() {
-                                watchlist.chain.symbol = panes[ap].symbol.clone();
-                                watchlist.chain.symbol = panes[ap].symbol.clone();
-                                let price = panes[ap].bars.last().map(|b| b.close).unwrap_or(100.0);
-                                let ns = watchlist.chain.num_strikes;
-                                let sym = watchlist.chain.symbol.clone();
-                                let (tx, rx) = mpsc::channel();
-                                watchlist.chain_rx = Some(rx);
-                                fetch_options_chain(price, ns, sym, tx);
+                            ui.label(egui::RichText::new("strikes").monospace().size(9.0).color(t.dim));
+                            if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                watchlist.chain_num_strikes = watchlist.chain_num_strikes.saturating_sub(1).max(1);
+                                watchlist.chain_0dte = build_chain(chain_price, watchlist.chain_num_strikes, 0);
+                                watchlist.chain_far = build_chain(chain_price, watchlist.chain_num_strikes, watchlist.chain_far_dte);
                             }
-                            // Strikes count
-                            ui.label(egui::RichText::new("Strikes:").monospace().size(9.0).color(t.dim));
-                            let mut ns = watchlist.chain.num_strikes as i32;
-                            if ui.add(egui::DragValue::new(&mut ns).range(1..=50).speed(0.5)).changed() {
-                                watchlist.chain.num_strikes = ns.max(1) as usize;
+                            ui.label(egui::RichText::new(format!("{}", watchlist.chain_num_strikes)).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
+                            if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0)).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                watchlist.chain_num_strikes += 1;
+                                watchlist.chain_0dte = build_chain(chain_price, watchlist.chain_num_strikes, 0);
+                                watchlist.chain_far = build_chain(chain_price, watchlist.chain_num_strikes, watchlist.chain_far_dte);
+                            }
+
+                            // DTE dropdown
+                            let dte_labels = [(1,"1DTE"),(2,"2DTE"),(3,"3DTE"),(5,"5DTE"),(7,"7DTE"),(10,"10DTE")];
+                            let cur_label = dte_labels.iter().find(|(d,_)| *d == watchlist.chain_far_dte).map(|(_,l)| *l).unwrap_or("1DTE");
+                            egui::ComboBox::from_id_salt("far_dte").selected_text(egui::RichText::new(cur_label).monospace().size(9.0).color(t.dim)).width(60.0)
+                                .show_ui(ui, |ui| {
+                                    for (d, label) in &dte_labels {
+                                        if ui.selectable_value(&mut watchlist.chain_far_dte, *d, *label).changed() {
+                                            watchlist.chain_far = build_chain(chain_price, watchlist.chain_num_strikes, *d);
+                                        }
+                                    }
+                                });
+
+                            // Select mode toggle
+                            let sel_label = if watchlist.chain_select_mode { "\u{2713} sel" } else { "sel" };
+                            let sel_active = watchlist.chain_select_mode;
+                            if ui.add(egui::Button::new(egui::RichText::new(sel_label).monospace().size(9.0)
+                                .color(if sel_active { t.accent } else { t.dim }))
+                                .fill(if sel_active { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),51) } else { t.toolbar_bg })
+                                .stroke(egui::Stroke::new(1.0, if sel_active { t.accent } else { t.toolbar_border }))
+                                .corner_radius(2.0)).clicked() {
+                                watchlist.chain_select_mode = !watchlist.chain_select_mode;
                             }
                         });
 
-                        if watchlist.chain.loading {
-                            ui.horizontal(|ui| { ui.spinner(); ui.label(egui::RichText::new("Loading...").monospace().size(9.0).color(t.dim)); });
-                        }
-
-                        // Expiration selector
-                        if !watchlist.chain.expirations.is_empty() {
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("Exp:").monospace().size(9.0).color(t.dim));
-                                egui::ComboBox::from_id_salt("chain_exp")
-                                    .selected_text(watchlist.chain.expirations.get(watchlist.chain.selected_exp).cloned().unwrap_or_default())
-                                    .width(90.0)
-                                    .show_ui(ui, |ui| {
-                                        for (i, exp) in watchlist.chain.expirations.iter().enumerate() {
-                                            if ui.selectable_value(&mut watchlist.chain.selected_exp, i, exp).changed() {
-                                                // Parse DTE from expiration label (e.g. "0DTE" -> 0)
-                                                let dte: i32 = exp.replace("DTE", "").parse().unwrap_or(0);
-                                                let price = panes[ap].bars.last().map(|b| b.close).unwrap_or(100.0);
-                                                let ns = watchlist.chain.num_strikes;
-                                                let (calls, puts) = build_chain(price, ns, dte);
-                                                watchlist.chain.calls = calls;
-                                                watchlist.chain.puts = puts;
-                                            }
-                                        }
-                                    });
-                            });
-                        }
-
-                        ui.add_space(4.0);
-
-                        // Calls and Puts tables
-                        let ns = watchlist.chain.num_strikes;
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            if !watchlist.chain.calls.is_empty() {
-                                ui.label(egui::RichText::new("CALLS").monospace().size(9.0).strong().color(t.bull));
-                                // Header
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new("Strike").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("Last").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("Bid").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("Ask").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("Vol").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("IV").monospace().size(8.0).color(t.dim));
-                                });
-                                for call in watchlist.chain.calls.iter().take(ns) {
-                                    let bg = if call.itm { t.bull.gamma_multiply(0.08) } else { egui::Color32::TRANSPARENT };
-                                    let resp = ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new(format!("{:.1}", call.strike)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
-                                        ui.label(egui::RichText::new(format!("{:.2}", call.last)).monospace().size(9.0).color(t.bull));
-                                        ui.label(egui::RichText::new(format!("{:.2}", call.bid)).monospace().size(9.0).color(t.dim));
-                                        ui.label(egui::RichText::new(format!("{:.2}", call.ask)).monospace().size(9.0).color(t.dim));
-                                        ui.label(egui::RichText::new(format!("{}", call.volume)).monospace().size(9.0).color(t.dim));
-                                        ui.label(egui::RichText::new(format!("{:.0}%", call.iv * 100.0)).monospace().size(9.0).color(t.dim));
-                                    });
-                                    ui.painter().rect_filled(resp.response.rect, 0.0, bg);
-                                    // Click to save
-                                    if resp.response.interact(egui::Sense::click()).clicked() {
-                                        watchlist.saved_options.push(SavedOption {
-                                            contract: call.contract.clone(), symbol: watchlist.chain.symbol.clone(),
-                                            strike: call.strike, is_call: true,
-                                            expiry: watchlist.chain.expirations.get(watchlist.chain.selected_exp).cloned().unwrap_or_default(),
-                                            last: call.last,
-                                        });
-                                    }
-                                }
-                            }
-
+                        // ── Column headers ──
+                        ui.horizontal(|ui| {
                             ui.add_space(8.0);
+                            ui.label(egui::RichText::new("STK").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.add_space(12.0);
+                            ui.label(egui::RichText::new("BID").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new("ASK").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new("OI").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                        });
 
-                            if !watchlist.chain.puts.is_empty() {
-                                ui.label(egui::RichText::new("PUTS").monospace().size(9.0).strong().color(t.bear));
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new("Strike").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("Last").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("Bid").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("Ask").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("Vol").monospace().size(8.0).color(t.dim));
-                                    ui.label(egui::RichText::new("IV").monospace().size(8.0).color(t.dim));
+                        // ── Helper to render one expiry block ──
+                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool| {
+                            // Expiry header
+                            let exp_label = format!("{}DTE", dte);
+                            ui.label(egui::RichText::new(&exp_label).monospace().size(10.0).color(t.accent));
+                            ui.add_space(2.0);
+
+                            // CALLS
+                            ui.label(egui::RichText::new("CALLS").monospace().size(8.0).strong().color(t.bull));
+                            for row in calls {
+                                let is_saved = saved.iter().any(|s| s.contract == row.contract);
+                                let bg = if is_saved { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),48) }
+                                    else if row.itm { t.bull.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
+                                let resp = ui.horizontal(|ui| {
+                                    ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
+                                    if is_saved { ui.label(egui::RichText::new("\u{2713}").size(8.0).color(t.accent)); }
+                                    else { ui.add_space(10.0); }
+                                    ui.label(egui::RichText::new(format!("{:.0}", row.strike)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
+                                    ui.add_space(4.0);
+                                    ui.label(egui::RichText::new(format!("{:.2}", row.bid)).monospace().size(9.0).color(t.dim));
+                                    ui.label(egui::RichText::new(format!("{:.2}", row.ask)).monospace().size(9.0).color(t.dim));
+                                    ui.label(egui::RichText::new(format!("{}", row.oi)).monospace().size(8.0).color(t.dim.gamma_multiply(0.6)));
                                 });
-                                for put in watchlist.chain.puts.iter().take(ns) {
-                                    let bg = if put.itm { t.bear.gamma_multiply(0.08) } else { egui::Color32::TRANSPARENT };
-                                    let resp = ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new(format!("{:.1}", put.strike)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
-                                        ui.label(egui::RichText::new(format!("{:.2}", put.last)).monospace().size(9.0).color(t.bear));
-                                        ui.label(egui::RichText::new(format!("{:.2}", put.bid)).monospace().size(9.0).color(t.dim));
-                                        ui.label(egui::RichText::new(format!("{:.2}", put.ask)).monospace().size(9.0).color(t.dim));
-                                        ui.label(egui::RichText::new(format!("{}", put.volume)).monospace().size(9.0).color(t.dim));
-                                        ui.label(egui::RichText::new(format!("{:.0}%", put.iv * 100.0)).monospace().size(9.0).color(t.dim));
-                                    });
-                                    ui.painter().rect_filled(resp.response.rect, 0.0, bg);
-                                    if resp.response.interact(egui::Sense::click()).clicked() {
-                                        watchlist.saved_options.push(SavedOption {
-                                            contract: put.contract.clone(), symbol: watchlist.chain.symbol.clone(),
-                                            strike: put.strike, is_call: false,
-                                            expiry: watchlist.chain.expirations.get(watchlist.chain.selected_exp).cloned().unwrap_or_default(),
-                                            last: put.last,
-                                        });
-                                    }
+                                if (select_mode || ui.input(|i| i.modifiers.shift)) && resp.response.interact(egui::Sense::click()).clicked() {
+                                    if is_saved { saved.retain(|s| s.contract != row.contract); }
+                                    else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call: true, expiry: exp_label.clone(), last: row.last }); }
                                 }
                             }
+
+                            // Underlying divider
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(format!("{}  ${:.2}", sym, price)).monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                            });
+
+                            // PUTS
+                            ui.label(egui::RichText::new("PUTS").monospace().size(8.0).strong().color(t.bear));
+                            for row in puts {
+                                let is_saved = saved.iter().any(|s| s.contract == row.contract);
+                                let bg = if is_saved { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),48) }
+                                    else if row.itm { t.bear.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
+                                let resp = ui.horizontal(|ui| {
+                                    ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
+                                    if is_saved { ui.label(egui::RichText::new("\u{2713}").size(8.0).color(t.accent)); }
+                                    else { ui.add_space(10.0); }
+                                    ui.label(egui::RichText::new(format!("{:.0}", row.strike)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
+                                    ui.add_space(4.0);
+                                    ui.label(egui::RichText::new(format!("{:.2}", row.bid)).monospace().size(9.0).color(t.dim));
+                                    ui.label(egui::RichText::new(format!("{:.2}", row.ask)).monospace().size(9.0).color(t.dim));
+                                    ui.label(egui::RichText::new(format!("{}", row.oi)).monospace().size(8.0).color(t.dim.gamma_multiply(0.6)));
+                                });
+                                if (select_mode || ui.input(|i| i.modifiers.shift)) && resp.response.interact(egui::Sense::click()).clicked() {
+                                    if is_saved { saved.retain(|s| s.contract != row.contract); }
+                                    else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call: false, expiry: exp_label.clone(), last: row.last }); }
+                                }
+                            }
+                            ui.add_space(6.0);
+                        };
+
+                        // ── Scroll area with two expiry blocks ──
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let sym = watchlist.chain_symbol.clone();
+                            let sel = watchlist.chain_select_mode;
+                            let calls_0 = watchlist.chain_0dte.0.clone();
+                            let puts_0 = watchlist.chain_0dte.1.clone();
+                            let calls_f = watchlist.chain_far.0.clone();
+                            let puts_f = watchlist.chain_far.1.clone();
+                            let far_dte = watchlist.chain_far_dte;
+
+                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel);
+                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel);
                         });
                     }
 
@@ -2853,18 +2863,6 @@ struct OptionRow {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-struct OptionsChainData {
-    symbol: String,
-    expirations: Vec<String>,
-    selected_exp: usize,
-    calls: Vec<OptionRow>,
-    puts: Vec<OptionRow>,
-    loading: bool,
-    num_strikes: usize,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct SavedOption {
     contract: String,
     symbol: String,
@@ -2893,11 +2891,16 @@ struct Watchlist {
     #[allow(dead_code)]
     alert_query: String,
     // Options chain
-    chain: OptionsChainData,
-    chain_rx: Option<mpsc::Receiver<OptionsChainData>>,
+    chain_symbol: String,
+    chain_sym_input: String,
+    chain_num_strikes: usize,
+    chain_far_dte: i32,
+    chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
+    chain_far: (Vec<OptionRow>, Vec<OptionRow>),   // (calls, puts) for far DTE
+    chain_select_mode: bool,
     // Saved options
     saved_options: Vec<SavedOption>,
-    dte_filter: i32, // 0 = 0DTE, 1 = 1+DTE, -1 = all
+    dte_filter: i32,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -2909,8 +2912,9 @@ impl Watchlist {
         }).collect();
         Self { open: true, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
                orders_panel_open: false, positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
-               chain: OptionsChainData { symbol: "SPY".into(), expirations: vec![], selected_exp: 0, calls: vec![], puts: vec![], loading: false, num_strikes: 10 },
-               chain_rx: None, saved_options: vec![], dte_filter: -1 }
+               chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
+               chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
+               chain_select_mode: false, saved_options: vec![], dte_filter: -1 }
     }
 
     fn add_symbol(&mut self, sym: &str) {
@@ -3021,19 +3025,6 @@ fn build_chain(underlying: f32, num_strikes: usize, dte: i32) -> (Vec<OptionRow>
     for i in 1..=num_strikes { puts.push(make_row(atm - i as f32 * interval, false, false)); }
 
     (calls, puts)
-}
-
-/// Build options chain synchronously (no network needed — pure Black-Scholes simulation).
-fn fetch_options_chain(underlying: f32, num_strikes: usize, symbol: String, tx: mpsc::Sender<OptionsChainData>) {
-    // Generate chains for multiple expirations: 0DTE, 1DTE, 2, 5, 10, 20, 45 days
-    let dtes = [0, 1, 2, 5, 10, 20, 45];
-    let expirations: Vec<String> = dtes.iter().map(|d| format!("{}DTE", d)).collect();
-    let (calls, puts) = build_chain(underlying, num_strikes, 0);
-
-    let _ = tx.send(OptionsChainData {
-        symbol, expirations, selected_exp: 0,
-        calls, puts, loading: false, num_strikes,
-    });
 }
 
 /// Fetch daily previous close for all watchlist symbols (background thread).
