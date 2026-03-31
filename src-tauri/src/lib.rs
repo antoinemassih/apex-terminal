@@ -4,6 +4,7 @@ mod ib_ws;
 mod chart_renderer;
 mod ui_kit;
 mod bar_cache;
+pub mod drawing_db;
 pub mod monitoring;
 
 use drawings::DbPool;
@@ -136,6 +137,7 @@ pub fn run() {
                 }
             });
             if let Some(pool) = pool_opt {
+                drawing_db::init(pool.clone());
                 app.manage(DbPool(pool));
             }
 

@@ -26,6 +26,7 @@ impl Icon {
     pub const ARROW_FAT_UP: &'static str = ph::ARROW_FAT_UP;
     pub const ARROW_FAT_DOWN: &'static str = ph::ARROW_FAT_DOWN;
     pub const SHIELD_WARNING: &'static str = ph::SHIELD_WARNING;
+    pub const RULER: &'static str = ph::RULER;
     pub const ARROWS_OUT: &'static str = ph::ARROWS_OUT;
     pub const ARROW_COUNTER_CLOCKWISE: &'static str = ph::ARROW_COUNTER_CLOCKWISE;
     pub const PLAY: &'static str = ph::PLAY;

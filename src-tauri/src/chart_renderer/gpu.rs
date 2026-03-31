@@ -300,7 +300,6 @@ struct Chart {
     hide_all_drawings: bool,
     hide_all_indicators: bool,
     draw_color: String, // current drawing color
-    next_draw_id: u32,
     zoom_selecting: bool, zoom_start: egui::Pos2,
     // Symbol picker
     picker_open: bool, picker_query: String,
@@ -318,6 +317,10 @@ struct Chart {
     order_limit_price: String, // limit price as editable text
     order_entry_open: bool,
     dragging_order: Option<u32>, // order id being dragged
+    // Measure tool (shift+drag)
+    measuring: bool,
+    measure_start: Option<(f32, f32)>, // (bar, price) start point
+    measure_active: bool, // context menu activated measure mode
     // Symbol/timeframe change request — signals the App to reload data
     pending_symbol_change: Option<String>,
     pending_timeframe_change: Option<String>,
@@ -352,13 +355,14 @@ impl Chart {
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false,
-            draw_color: "#4a9eff".into(), next_draw_id: 0,
+            draw_color: "#4a9eff".into(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
             orders: vec![], next_order_id: 1, order_qty: 100, order_market: true, order_limit_price: String::new(),
             order_entry_open: false, dragging_order: None,
+            measuring: false, measure_start: None, measure_active: false,
             pending_symbol_change: None, pending_timeframe_change: None,
             indicator_pts_buf: Vec::with_capacity(512) }
     }
@@ -371,6 +375,19 @@ impl Chart {
                 self.sim_price = 0.0;
                 self.last_candle_time = std::time::Instant::now();
                 self.indicator_bar_count = 0; // force recompute
+                // Load persisted drawings for this symbol
+                self.drawings.clear();
+                let db_drawings = crate::drawing_db::load_symbol(&self.symbol);
+                for dd in &db_drawings {
+                    if let Some(d) = db_to_drawing(dd) { self.drawings.push(d); }
+                }
+                // Load groups from DB
+                let db_groups = crate::drawing_db::load_groups();
+                self.groups.clear();
+                for (id, name, color) in db_groups {
+                    self.groups.push(super::DrawingGroup { id, name, color });
+                }
+
                 // Reload cross-timeframe indicator sources for new symbol
                 for ind in &mut self.indicators {
                     if !ind.source_tf.is_empty() {
@@ -508,6 +525,47 @@ impl Chart {
 // ─── egui rendering ──────────────────────────────────────────────────────────
 
 /// Run one tick of price simulation for a single pane.
+fn new_uuid() -> String { uuid::Uuid::new_v4().to_string() }
+
+/// Convert a native Drawing to DbDrawing for persistence.
+fn drawing_to_db(d: &Drawing, symbol: &str, timeframe: &str) -> crate::drawing_db::DbDrawing {
+    let (drawing_type, points) = match &d.kind {
+        DrawingKind::HLine { price } => ("hline".into(), vec![(0.0, *price as f64)]),
+        DrawingKind::TrendLine { price0, bar0, price1, bar1 } => ("trendline".into(), vec![(*bar0 as f64, *price0 as f64), (*bar1 as f64, *price1 as f64)]),
+        DrawingKind::HZone { price0, price1 } => ("hzone".into(), vec![(0.0, *price0 as f64), (0.0, *price1 as f64)]),
+        DrawingKind::BarMarker { bar, price, up } => ("barmarker".into(), vec![(*bar as f64, *price as f64), (if *up { 1.0 } else { 0.0 }, 0.0)]),
+    };
+    let ls = match d.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" };
+    crate::drawing_db::DbDrawing {
+        id: d.id.clone(), symbol: symbol.into(), timeframe: timeframe.into(),
+        drawing_type, points, color: d.color.clone(), opacity: d.opacity,
+        line_style: ls.into(), thickness: d.thickness, group_id: d.group_id.clone(),
+    }
+}
+
+/// Convert a DbDrawing to native Drawing.
+fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing> {
+    let kind = match d.drawing_type.as_str() {
+        "hline" => DrawingKind::HLine { price: d.points.first()?.1 as f32 },
+        "trendline" => {
+            let p0 = d.points.get(0)?;
+            let p1 = d.points.get(1)?;
+            DrawingKind::TrendLine { bar0: p0.0 as f32, price0: p0.1 as f32, bar1: p1.0 as f32, price1: p1.1 as f32 }
+        }
+        "hzone" => DrawingKind::HZone { price0: d.points.get(0)?.1 as f32, price1: d.points.get(1)?.1 as f32 },
+        "barmarker" => DrawingKind::BarMarker { bar: d.points.get(0)?.0 as f32, price: d.points.get(0)?.1 as f32, up: d.points.get(1).map(|p| p.0 > 0.5).unwrap_or(true) },
+        _ => return None,
+    };
+    let ls = match d.line_style.as_str() { "dashed" => LineStyle::Dashed, "dotted" => LineStyle::Dotted, _ => LineStyle::Solid };
+    let mut drawing = Drawing::new(d.id.clone(), kind);
+    drawing.color = d.color.clone();
+    drawing.opacity = d.opacity;
+    drawing.line_style = ls;
+    drawing.thickness = d.thickness;
+    drawing.group_id = d.group_id.clone();
+    Some(drawing)
+}
+
 fn tick_simulation(chart: &mut Chart) {
     if !chart.bars.is_empty() {
         // Init sim_price from last bar's close — and immediately create a new
@@ -2020,6 +2078,70 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let pos_to_bar = |pos: egui::Pos2| -> f32 { (pos.x - rect.left() + off - bs*0.5) / bs + vs };
         let pos_to_price = |pos: egui::Pos2| -> f32 { min_p + (max_p-min_p) * (1.0 - (pos.y - rect.top() - pt) / ch) };
 
+        // ── Measure tool (shift+drag or context menu) ────────────────────────
+        let shift_held = ui.input(|i| i.modifiers.shift);
+        if (shift_held || chart.measure_active) && pointer_in_pane && chart.draw_tool.is_empty() {
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                let bar_f = pos_to_bar(pos);
+                let price_f = pos_to_price(pos);
+
+                if ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
+                    chart.measure_start = Some((bar_f, price_f));
+                    chart.measuring = true;
+                }
+
+                if chart.measuring {
+                    if let Some((sb, sp)) = chart.measure_start {
+                        let start_pos = egui::pos2(bx(sb), py(sp));
+
+                        // Dashed line
+                        let dir = pos - start_pos;
+                        let len = dir.length();
+                        if len > 2.0 {
+                            let norm = dir / len;
+                            let mut dd = 0.0;
+                            while dd < len {
+                                let a = start_pos + norm * dd;
+                                let b_pt = start_pos + norm * (dd + 4.0).min(len);
+                                painter.line_segment([a, b_pt], egui::Stroke::new(1.0, t.accent));
+                                dd += 7.0;
+                            }
+                        }
+
+                        painter.circle_filled(start_pos, 3.0, t.accent);
+                        painter.circle_filled(pos, 3.0, t.accent);
+
+                        // Measurement label
+                        let price_diff = price_f - sp;
+                        let bar_diff = (bar_f - sb).abs();
+                        let pct = if sp != 0.0 { (price_diff / sp) * 100.0 } else { 0.0 };
+                        let candle_sec = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]).max(60) } else { 300 };
+                        let time_secs = (bar_diff * candle_sec as f32) as i64;
+                        let time_str = if time_secs >= 86400 { format!("{}d {}h", time_secs / 86400, (time_secs % 86400) / 3600) }
+                            else if time_secs >= 3600 { format!("{}h {}m", time_secs / 3600, (time_secs % 3600) / 60) }
+                            else { format!("{}m", time_secs / 60) };
+
+                        let label = format!("{:+.2} ({:+.2}%)  {} bars  {}", price_diff, pct, bar_diff.round() as i32, time_str);
+                        let label_pos = egui::pos2((start_pos.x + pos.x) / 2.0, (start_pos.y + pos.y) / 2.0 - 14.0);
+                        let label_color = if price_diff >= 0.0 { t.bull } else { t.bear };
+
+                        let galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(10.0), label_color);
+                        let label_rect = egui::Rect::from_center_size(label_pos, galley.size() + egui::vec2(8.0, 4.0));
+                        painter.rect_filled(label_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                        painter.text(label_pos, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(10.0), label_color);
+                    }
+
+                    if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+                        chart.measuring = false;
+                        chart.measure_start = None;
+                        chart.measure_active = false;
+                    }
+                }
+
+                if pointer_in_pane { ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair); }
+            }
+        }
+
         // Pre-compute hit test (generous radii for easy interaction)
         let hover_hit: Option<(String, i32)> = ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
             for d in chart.drawings.iter().rev() {
@@ -2097,39 +2219,40 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if let Some(pos) = resp.interact_pointer_pos() {
                 let bar = pos_to_bar(pos);
                 let price = pos_to_price(pos);
+                let sym = chart.symbol.clone();
+                let tf = chart.timeframe.clone();
                 match chart.draw_tool.as_str() {
                     "hline" => {
-                        chart.next_draw_id+=1;
-                        let mut d=Drawing::new(format!("d{}",chart.next_draw_id),DrawingKind::HLine{price});
-                        d.color=chart.draw_color.clone(); d.line_style=LineStyle::Dashed;
+                        let mut d = Drawing::new(new_uuid(), DrawingKind::HLine { price });
+                        d.color = chart.draw_color.clone(); d.line_style = LineStyle::Dashed;
+                        crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
                         chart.drawings.push(d); chart.draw_tool.clear();
                     }
                     "trendline" => {
-                        if let Some((b0,p0)) = chart.pending_pt {
-                            chart.next_draw_id+=1;
-                            let mut d=Drawing::new(format!("d{}",chart.next_draw_id),DrawingKind::TrendLine{price0:p0,bar0:b0,price1:price,bar1:bar});
-                            d.color=chart.draw_color.clone();
-                            chart.drawings.push(d); chart.pending_pt=None; chart.draw_tool.clear();
+                        if let Some((b0, p0)) = chart.pending_pt {
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::TrendLine { price0: p0, bar0: b0, price1: price, bar1: bar });
+                            d.color = chart.draw_color.clone();
+                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
                         } else { chart.pending_pt = Some((bar, price)); }
                     }
                     "hzone" => {
-                        if let Some((_b0,p0)) = chart.pending_pt {
-                            chart.next_draw_id+=1;
-                            let mut d=Drawing::new(format!("d{}",chart.next_draw_id),DrawingKind::HZone{price0:p0,price1:price});
-                            d.color=chart.draw_color.clone();
-                            chart.drawings.push(d); chart.pending_pt=None; chart.draw_tool.clear();
+                        if let Some((_b0, p0)) = chart.pending_pt {
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::HZone { price0: p0, price1: price });
+                            d.color = chart.draw_color.clone();
+                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
                         } else { chart.pending_pt = Some((bar, price)); }
                     }
                     "barmarker" => {
-                        // Snap to nearest bar, determine up/down based on click vs bar midpoint
                         let bar_idx = bar.round() as usize;
                         if let Some(b) = chart.bars.get(bar_idx) {
                             let mid = (b.open + b.close) / 2.0;
                             let up = price > mid;
                             let snap_price = if up { b.high } else { b.low };
-                            chart.next_draw_id+=1;
-                            let mut d=Drawing::new(format!("d{}",chart.next_draw_id),DrawingKind::BarMarker{bar:bar_idx as f32,price:snap_price,up});
-                            d.color=chart.draw_color.clone();
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::BarMarker { bar: bar_idx as f32, price: snap_price, up });
+                            d.color = chart.draw_color.clone();
+                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
                             chart.drawings.push(d); chart.draw_tool.clear();
                         }
                     }
@@ -2219,7 +2342,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     chart.drag_start_bar = new_b;
                 }
             }
-            if resp.drag_stopped() { chart.dragging_drawing = None; }
+            if resp.drag_stopped() {
+                // Save the dragged drawing to DB
+                if let Some((ref did, _)) = chart.dragging_drawing {
+                    if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
+                        crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                    }
+                }
+                chart.dragging_drawing = None;
+            }
         }
         // Pan chart (only when not dragging a drawing and no tool active)
         else if chart.draw_tool.is_empty() && resp.dragged_by(egui::PointerButton::Primary) {
@@ -2378,6 +2509,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if ui.button("Place Marker").clicked() { chart.draw_tool="barmarker".into(); chart.pending_pt=None; ui.close_menu(); }
             ui.separator();
             if ui.button(format!("{} Drag Zoom", Icon::MAGNIFYING_GLASS_PLUS)).clicked() { chart.zoom_selecting=true; chart.zoom_start=egui::Pos2::ZERO; ui.close_menu(); }
+            if ui.button(format!("{} Measure (Shift+Drag)", Icon::RULER)).clicked() { chart.measure_active=true; chart.measure_start=None; ui.close_menu(); }
             if ui.button(format!("{} Reset View", Icon::ARROW_COUNTER_CLOCKWISE)).clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); ui.close_menu(); }
             ui.separator();
             // Visibility toggles
@@ -2423,12 +2555,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if !chart.selected_ids.is_empty() {
                 if ui.button(egui::RichText::new(format!("{} Delete Selected", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                     let ids = chart.selected_ids.clone();
+                    for id in &ids { crate::drawing_db::remove(id); }
                     chart.drawings.retain(|d| !ids.contains(&d.id));
                     chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
                 }
             }
             if !chart.drawings.is_empty() {
                 if ui.button(egui::RichText::new(format!("{} Delete All Drawings", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                    for d in &chart.drawings { crate::drawing_db::remove(&d.id); }
                     chart.drawings.clear(); chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
                 }
             }
