@@ -155,7 +155,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
       const pad = (range.max - range.min) * 0.05
       minP = range.min - pad; maxP = range.max + pad
     }
-    const chartWidth = width - 80
+    const chartWidth = width - 42
     const barStep = chartWidth / totalBars
     const pixelOffset = (vs - Math.floor(vs)) * barStep
     return CoordSystem.create({ width, height, barCount: totalBars, minPrice: minP, maxPrice: maxP, pixelOffset })
@@ -210,7 +210,7 @@ export function useChartViewport(symbol: string, timeframe: Timeframe, width: nu
   const pan = useCallback((deltaPixels: number) => {
     const data = getDataStore().getData(symbol, timeframe)
     if (!data) return
-    const barStep = (width - 80) / (viewCountRef.current + RIGHT_MARGIN_BARS)
+    const barStep = (width - 42) / (viewCountRef.current + RIGHT_MARGIN_BARS)
     const barDelta = deltaPixels / barStep
     if (Math.abs(barDelta) < 0.0001) return
     pauseAutoScroll()

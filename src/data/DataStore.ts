@@ -6,6 +6,9 @@ import type { Timeframe } from '../types'
 import type { BarCache } from './BarCache'
 import type { DataProvider } from './DataProvider'
 
+/** Max number of symbol:timeframe pairs to keep in memory. Oldest unused are evicted. */
+const MAX_CACHED_PAIRS = 10
+
 export class DataStore {
   private stores = new Map<string, ColumnStore>()
   private snapshots = new Map<string, IndicatorSnapshot>()
@@ -13,6 +16,8 @@ export class DataStore {
   private loadPromises = new Map<string, Promise<{ data: ColumnStore; indicators: IndicatorSnapshot }>>()
   private lastActions = new Map<string, 'updated' | 'created'>()
   private paginationState = new Map<string, { loading: boolean; hasMore: boolean }>()
+  /** Track last access time for LRU eviction */
+  private lastAccess = new Map<string, number>()
 
   // Performance metrics
   private metrics = {
@@ -69,7 +74,9 @@ export class DataStore {
         this.paginationState.set(k, { loading: false, hasMore: true })
         this.recordLoadMetric(t0)
         this.lastActions.delete(k)  // force full gpuBars.load()
+        this.lastAccess.set(k, Date.now())
         this.notify(k)
+        this.evictOldEntries()
         // Background refresh
         this.refreshFromProvider(symbol, timeframe as Timeframe, k).catch(() => {})
         return { data: store, indicators }
@@ -86,7 +93,9 @@ export class DataStore {
     this.paginationState.set(k, { loading: false, hasMore: resp.hasMore || resp.bars.length > 50 })
     this.recordLoadMetric(t0)
     this.lastActions.delete(k)  // force full gpuBars.load() — not incremental append
+    this.lastAccess.set(k, Date.now())
     this.notify(k)
+    this.evictOldEntries()
     this.barCache?.set(symbol, timeframe, resp.bars).catch(() => {})
     return { data: store, indicators }
   }
@@ -203,7 +212,9 @@ export class DataStore {
   }
 
   getData(symbol: string, timeframe: string): ColumnStore | null {
-    return this.stores.get(this.key(symbol, timeframe)) ?? null
+    const k = this.key(symbol, timeframe)
+    if (this.stores.has(k)) this.lastAccess.set(k, Date.now())
+    return this.stores.get(k) ?? null
   }
 
   getIndicators(symbol: string, timeframe: string): IndicatorSnapshot | null {
@@ -237,7 +248,45 @@ export class DataStore {
     this.loadPromises.delete(k)
     this.lastActions.delete(k)
     this.paginationState.delete(k)
+    this.lastAccess.delete(k)
     this.indicatorEngine.remove(symbol, timeframe)
+  }
+
+  /** Evict least-recently-used entries when cache exceeds MAX_CACHED_PAIRS.
+   *  Entries with active subscribers are never evicted. */
+  private evictOldEntries(): void {
+    if (this.stores.size <= MAX_CACHED_PAIRS) return
+    // Sort keys by last access time, oldest first
+    const entries = [...this.lastAccess.entries()]
+      .filter(([k]) => {
+        // Don't evict entries with active subscribers
+        const subs = this.subscribers.get(k)
+        return !subs || subs.size === 0
+      })
+      .sort((a, b) => a[1] - b[1])
+    // Evict oldest until we're at the limit
+    let toEvict = this.stores.size - MAX_CACHED_PAIRS
+    for (const [k] of entries) {
+      if (toEvict <= 0) break
+      const [sym, tf] = k.split(':')
+      this.unload(sym, tf)
+      toEvict--
+    }
+  }
+
+  /** Aggressively evict ALL entries without active subscribers. Called under memory pressure. */
+  evictAll(): void {
+    const keys = [...this.stores.keys()]
+    let evicted = 0
+    for (const k of keys) {
+      const subs = this.subscribers.get(k)
+      if (!subs || subs.size === 0) {
+        const [sym, tf] = k.split(':')
+        this.unload(sym, tf)
+        evicted++
+      }
+    }
+    if (evicted > 0) console.info(`[DataStore] Memory pressure: evicted ${evicted} inactive entries (${this.stores.size} remaining)`)
   }
 
   private notify(k: string): void {

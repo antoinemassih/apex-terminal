@@ -21,6 +21,8 @@ impl Icon {
     // Actions
     pub const TRASH: &'static str = ph::TRASH;
     pub const X: &'static str = ph::X;
+    pub const SQUARE: &'static str = ph::SQUARE;
+    pub const LIST: &'static str = ph::LIST;
     pub const ARROWS_OUT: &'static str = ph::ARROWS_OUT;
     pub const ARROW_COUNTER_CLOCKWISE: &'static str = ph::ARROW_COUNTER_CLOCKWISE;
     pub const PLAY: &'static str = ph::PLAY;

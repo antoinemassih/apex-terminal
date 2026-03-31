@@ -240,7 +240,7 @@ export function ChartPane({ paneIndex, symbol, timeframe, width, height }: Props
     document.body.style.cursor = zone === 'chart' ? 'grabbing' : zone === 'xaxis' ? 'ew-resize' : 'ns-resize'
     if (wheelDivRef.current) wheelDivRef.current.style.cursor = 'inherit'
 
-    const chartWidth = width - 80
+    const chartWidth = width - 42
     const RIGHT_MARGIN = 8
 
     const onNativeMove = (ev: MouseEvent) => {

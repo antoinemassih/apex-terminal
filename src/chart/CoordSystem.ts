@@ -14,9 +14,9 @@ const cache = new Map<string, CoordSystem>()
 const MAX_CACHE = 16 // small — only caches static viewports (symbol/tf switch, resize)
 
 function cacheKey(c: CoordConfig): string {
-  const pr = c.paddingRight ?? 80
+  const pr = c.paddingRight ?? 42
   const pt = c.paddingTop ?? 20
-  const pb = c.paddingBottom ?? 40
+  const pb = c.paddingBottom ?? 0
   // pixelOffset changes every sub-pixel pan frame — skip cache for dynamic viewports.
   // CoordSystem is a tiny object (~200 bytes), creating one per frame is cheaper than a cache miss path.
   if (c.pixelOffset && c.pixelOffset % 1 !== 0) return ''
@@ -37,9 +37,9 @@ export class CoordSystem {
     this.width = c.width; this.height = c.height
     this.barCount = c.barCount
     this.minPrice = c.minPrice; this.maxPrice = c.maxPrice
-    this.pr = c.paddingRight ?? 80
+    this.pr = c.paddingRight ?? 42
     this.pt = c.paddingTop ?? 20
-    this.pb = c.paddingBottom ?? 40
+    this.pb = c.paddingBottom ?? 0
     this.pixelOffset = c.pixelOffset ?? 0
   }
 

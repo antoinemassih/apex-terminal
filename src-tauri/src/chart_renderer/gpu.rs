@@ -11,21 +11,31 @@ use winit::{
 };
 
 use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, LineStyle};
+
+// Thread-local to pass window ref into draw_chart (which doesn't have access to ChartWindow)
+std::thread_local! {
+    static CURRENT_WINDOW: std::cell::RefCell<Option<Arc<Window>>> = const { std::cell::RefCell::new(None) };
+    static CLOSE_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
 use crate::ui_kit::{self, icons::Icon};
 
 // ─── Themes ───────────────────────────────────────────────────────────────────
 
-struct Theme { name: &'static str, bg: egui::Color32, bull: egui::Color32, bear: egui::Color32, dim: egui::Color32 }
+struct Theme {
+    name: &'static str,
+    bg: egui::Color32, bull: egui::Color32, bear: egui::Color32, dim: egui::Color32,
+    toolbar_bg: egui::Color32, toolbar_border: egui::Color32, accent: egui::Color32,
+}
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 const THEMES: &[Theme] = &[
-    Theme { name: "Midnight",   bg: rgb(13,13,13),  bull: rgb(46,204,113),  bear: rgb(231,76,60),  dim: rgb(102,102,102) },
-    Theme { name: "Nord",       bg: rgb(46,52,64),  bull: rgb(163,190,140), bear: rgb(191,97,106), dim: rgb(129,161,193) },
-    Theme { name: "Monokai",    bg: rgb(39,40,34),  bull: rgb(166,226,46),  bear: rgb(249,38,114), dim: rgb(165,159,133) },
-    Theme { name: "Solarized",  bg: rgb(0,43,54),   bull: rgb(133,153,0),   bear: rgb(220,50,47),  dim: rgb(131,148,150) },
-    Theme { name: "Dracula",    bg: rgb(40,42,54),  bull: rgb(80,250,123),  bear: rgb(255,85,85),  dim: rgb(189,147,249) },
-    Theme { name: "Gruvbox",    bg: rgb(40,40,40),  bull: rgb(184,187,38),  bear: rgb(251,73,52),  dim: rgb(213,196,161) },
-    Theme { name: "Catppuccin", bg: rgb(30,30,46),  bull: rgb(166,227,161), bear: rgb(243,139,168),dim: rgb(180,190,254) },
-    Theme { name: "Tokyo Night",bg: rgb(26,27,38),  bull: rgb(158,206,106), bear: rgb(247,118,142),dim: rgb(122,162,247) },
+    Theme { name: "Midnight",    bg: rgb(13,13,13),   bull: rgb(46,204,113),  bear: rgb(231,76,60),   dim: rgb(102,102,102), toolbar_bg: rgb(17,17,17),  toolbar_border: rgb(34,34,34),  accent: rgb(42,100,150) },
+    Theme { name: "Nord",        bg: rgb(46,52,64),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(46,52,64),  toolbar_border: rgb(59,66,82),  accent: rgb(136,192,208) },
+    Theme { name: "Monokai",     bg: rgb(39,40,34),   bull: rgb(166,226,46),  bear: rgb(249,38,114),  dim: rgb(165,159,133), toolbar_bg: rgb(30,31,28),  toolbar_border: rgb(62,61,50),  accent: rgb(230,219,116) },
+    Theme { name: "Solarized",   bg: rgb(0,43,54),    bull: rgb(133,153,0),   bear: rgb(220,50,47),   dim: rgb(131,148,150), toolbar_bg: rgb(0,43,54),   toolbar_border: rgb(7,54,66),   accent: rgb(42,161,152) },
+    Theme { name: "Dracula",     bg: rgb(40,42,54),   bull: rgb(80,250,123),  bear: rgb(255,85,85),   dim: rgb(189,147,249), toolbar_bg: rgb(33,34,44),  toolbar_border: rgb(52,55,70),  accent: rgb(255,121,198) },
+    Theme { name: "Gruvbox",     bg: rgb(40,40,40),   bull: rgb(184,187,38),  bear: rgb(251,73,52),   dim: rgb(213,196,161), toolbar_bg: rgb(29,32,33),  toolbar_border: rgb(60,56,54),  accent: rgb(254,128,25) },
+    Theme { name: "Catppuccin",  bg: rgb(30,30,46),   bull: rgb(166,227,161), bear: rgb(243,139,168), dim: rgb(180,190,254), toolbar_bg: rgb(24,24,37),  toolbar_border: rgb(49,50,68),  accent: rgb(203,166,247) },
+    Theme { name: "Tokyo Night", bg: rgb(26,27,38),   bull: rgb(158,206,106), bear: rgb(247,118,142), dim: rgb(122,162,247), toolbar_bg: rgb(22,22,30),  toolbar_border: rgb(36,40,59),  accent: rgb(125,207,255) },
 ];
 
 const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#ffffff","#e67e22"];
@@ -128,13 +138,95 @@ impl Layout {
 
 const ALL_LAYOUTS: &[Layout] = &[Layout::One, Layout::Two, Layout::TwoH, Layout::Three, Layout::Four, Layout::Six, Layout::SixH, Layout::Nine];
 
+// ─── Indicators ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA }
+
+impl IndicatorType {
+    fn label(self) -> &'static str {
+        match self { Self::SMA => "SMA", Self::EMA => "EMA", Self::WMA => "WMA", Self::DEMA => "DEMA", Self::TEMA => "TEMA" }
+    }
+    fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA] }
+
+    fn compute(self, closes: &[f32], period: usize) -> Vec<f32> {
+        match self {
+            Self::SMA => compute_sma(closes, period),
+            Self::EMA => compute_ema(closes, period),
+            Self::WMA => {
+                let mut r = vec![f32::NAN; closes.len()];
+                if closes.len() < period { return r; }
+                let denom = (period * (period + 1)) / 2;
+                for i in (period - 1)..closes.len() {
+                    let mut s = 0.0;
+                    for j in 0..period { s += closes[i + 1 - period + j] * (j + 1) as f32; }
+                    r[i] = s / denom as f32;
+                }
+                r
+            }
+            Self::DEMA => {
+                let ema1 = compute_ema(closes, period);
+                let ema2 = compute_ema(&ema1, period);
+                ema1.iter().zip(&ema2).map(|(&a, &b)| if a.is_nan() || b.is_nan() { f32::NAN } else { 2.0 * a - b }).collect()
+            }
+            Self::TEMA => {
+                let ema1 = compute_ema(closes, period);
+                let ema2 = compute_ema(&ema1, period);
+                let ema3 = compute_ema(&ema2, period);
+                ema1.iter().zip(ema2.iter().zip(&ema3))
+                    .map(|(&a, (&b, &c))| if a.is_nan() || b.is_nan() || c.is_nan() { f32::NAN } else { 3.0 * a - 3.0 * b + c })
+                    .collect()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Indicator {
+    id: u32,
+    kind: IndicatorType,
+    period: usize,
+    source_tf: String,   // "" = chart's timeframe, or "1m","5m","1h","1d" etc.
+    color: String,       // hex
+    thickness: f32,
+    line_style: LineStyle,
+    visible: bool,
+    values: Vec<f32>,    // computed values (same length as chart bars)
+    // Cross-timeframe state
+    source_bars: Vec<Bar>,        // bars fetched for source_tf (empty when same as chart)
+    source_timestamps: Vec<i64>,  // timestamps for source_bars
+    source_loaded: bool,          // true once source_bars have been fetched
+}
+
+const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1wk"];
+
+#[allow(dead_code)]
+impl Indicator {
+    fn new(id: u32, kind: IndicatorType, period: usize, color: &str) -> Self {
+        Self { id, kind, period, source_tf: String::new(), color: color.into(), thickness: 1.2,
+               line_style: LineStyle::Solid, visible: true, values: vec![],
+               source_bars: vec![], source_timestamps: vec![], source_loaded: false }
+    }
+    fn display_name(&self) -> String {
+        let tf = if self.source_tf.is_empty() { "Chart" } else { &self.source_tf };
+        format!("{} {} ({})", self.kind.label(), self.period, tf)
+    }
+    fn source_label(&self) -> &str {
+        if self.source_tf.is_empty() { "Chart" } else { &self.source_tf }
+    }
+}
+
+static INDICATOR_COLORS: &[&str] = &["#00bef0", "#f0961a", "#f0d732", "#b266e6", "#1abc9c", "#e74c3c", "#3498db", "#e67e22"];
+
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
 struct Chart {
     symbol: String, timeframe: String,
     bars: Vec<Bar>, timestamps: Vec<i64>, drawings: Vec<Drawing>,
-    indicators: Vec<(Vec<f32>, egui::Color32, String)>,
+    indicators: Vec<Indicator>,
     indicator_bar_count: usize, // bar count when indicators were last computed
+    next_indicator_id: u32,
+    editing_indicator: Option<u32>, // id of indicator being edited
     vs: f32, vc: u32, price_lock: Option<(f32,f32)>,
     auto_scroll: bool, last_input: std::time::Instant,
     tick_counter: u64, last_candle_time: std::time::Instant, sim_price: f32, sim_seed: u64,
@@ -176,7 +268,14 @@ impl Chart {
     }
     fn new() -> Self {
         Self { symbol: "AAPL".into(), timeframe: "5m".into(),
-            bars: vec![], timestamps: vec![], drawings: vec![], indicators: vec![], indicator_bar_count: 0,
+            bars: vec![], timestamps: vec![], drawings: vec![], indicator_bar_count: 0,
+            next_indicator_id: 5, editing_indicator: None,
+            indicators: vec![
+                Indicator::new(1, IndicatorType::SMA, 20, "#00bef0"),
+                Indicator::new(2, IndicatorType::SMA, 50, "#f0961a"),
+                Indicator::new(3, IndicatorType::EMA, 12, "#f0d732"),
+                Indicator::new(4, IndicatorType::EMA, 26, "#b266e6"),
+            ],
             vs: 0.0, vc: 200, price_lock: None, auto_scroll: true,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
@@ -204,6 +303,15 @@ impl Chart {
                 self.sim_price = 0.0;
                 self.last_candle_time = std::time::Instant::now();
                 self.indicator_bar_count = 0; // force recompute
+                // Reload cross-timeframe indicator sources for new symbol
+                for ind in &mut self.indicators {
+                    if !ind.source_tf.is_empty() {
+                        ind.source_loaded = false;
+                        ind.source_bars.clear();
+                        ind.source_timestamps.clear();
+                        fetch_indicator_source(self.symbol.clone(), ind.source_tf.clone(), ind.id);
+                    }
+                }
             }
             ChartCommand::AppendBar { bar, timestamp, .. } => {
                 self.bars.push(bar); self.timestamps.push(timestamp);
@@ -226,24 +334,58 @@ impl Chart {
             ChartCommand::SetDrawing(d) => { self.drawings.retain(|x| x.id != d.id); self.drawings.push(d); }
             ChartCommand::RemoveDrawing { id } => { self.drawings.retain(|x| x.id != id); }
             ChartCommand::ClearDrawings => { self.drawings.clear(); }
+            ChartCommand::IndicatorSourceBars { indicator_id, timeframe, bars, timestamps } => {
+                if let Some(ind) = self.indicators.iter_mut().find(|i| i.id == indicator_id && i.source_tf == timeframe) {
+                    ind.source_bars = bars;
+                    ind.source_timestamps = timestamps;
+                    ind.source_loaded = true;
+                    self.indicator_bar_count = 0; // force recompute
+                }
+            }
             _ => {}
         }
     }
-    /// Update indicators. Full recompute when indicator_bar_count == 0 (data reload),
-    /// incremental append when a single bar was added (simulation tick).
+    /// Recompute all indicator values from bar data.
+    fn recompute_indicators(&mut self) {
+        let chart_closes: Vec<f32> = self.bars.iter().map(|b| b.close).collect();
+        for ind in &mut self.indicators {
+            if ind.source_tf.is_empty() {
+                // Same timeframe as chart — compute directly
+                ind.values = ind.kind.compute(&chart_closes, ind.period);
+            } else if ind.source_loaded && !ind.source_bars.is_empty() {
+                // Cross-timeframe: compute on source bars, then map to chart's x-axis
+                let src_closes: Vec<f32> = ind.source_bars.iter().map(|b| b.close).collect();
+                let src_values = ind.kind.compute(&src_closes, ind.period);
+                // Map: for each chart bar, find the source bar whose timestamp is <= chart bar's timestamp
+                ind.values = Vec::with_capacity(self.bars.len());
+                let mut si = 0;
+                for ci in 0..self.bars.len() {
+                    let ct = if ci < self.timestamps.len() { self.timestamps[ci] } else { 0 };
+                    // Advance source index to the latest source bar at or before this chart bar
+                    while si + 1 < ind.source_timestamps.len() && ind.source_timestamps[si + 1] <= ct { si += 1; }
+                    if si < src_values.len() && ind.source_timestamps.get(si).map_or(false, |&st| st <= ct) {
+                        ind.values.push(src_values[si]);
+                    } else {
+                        ind.values.push(f32::NAN);
+                    }
+                }
+            } else {
+                // Source not loaded yet — fill with NaN
+                ind.values = vec![f32::NAN; self.bars.len()];
+            }
+        }
+        self.indicator_bar_count = self.bars.len();
+    }
+
+    /// Update indicators — full recompute on data load or config change,
+    /// incremental for single-bar appends (simulation).
     fn update_indicators(&mut self) {
         let n = self.bars.len();
         if n == self.indicator_bar_count { return; }
 
-        // Full recompute on data load (indicator_bar_count reset to 0)
-        if self.indicator_bar_count == 0 || n < self.indicator_bar_count {
-            self.indicator_bar_count = n;
-            let closes: Vec<f32> = self.bars.iter().map(|b| b.close).collect();
-            self.indicators.clear();
-            if closes.len() >= 20 { self.indicators.push((compute_sma(&closes, 20), egui::Color32::from_rgba_unmultiplied(0,190,240,200), "SMA20".into())); }
-            if closes.len() >= 50 { self.indicators.push((compute_sma(&closes, 50), egui::Color32::from_rgba_unmultiplied(240,150,25,180), "SMA50".into())); }
-            self.indicators.push((compute_ema(&closes, 12), egui::Color32::from_rgba_unmultiplied(240,215,50,170), "EMA12".into()));
-            self.indicators.push((compute_ema(&closes, 26), egui::Color32::from_rgba_unmultiplied(178,102,230,170), "EMA26".into()));
+        // Full recompute needed
+        if self.indicator_bar_count == 0 || n < self.indicator_bar_count || (n - self.indicator_bar_count) > 5 {
+            self.recompute_indicators();
             return;
         }
 
@@ -252,25 +394,35 @@ impl Chart {
         self.indicator_bar_count = n;
         for idx in old..n {
             let close = self.bars[idx].close;
-            for (vals, _, name) in &mut self.indicators {
-                let period = match name.as_str() { "SMA20" => 20, "SMA50" => 50, "EMA12" => 12, "EMA26" => 26, _ => continue };
-                if name.starts_with("SMA") {
-                    if idx >= period {
-                        let sum: f32 = self.bars[idx+1-period..=idx].iter().map(|b| b.close).sum();
-                        vals.push(sum / period as f32);
-                    } else { vals.push(f32::NAN); }
-                } else {
-                    // EMA: use previous EMA value
-                    let k = 2.0 / (period as f32 + 1.0);
-                    let prev = if vals.is_empty() { close } else { *vals.last().unwrap() };
-                    let v = if prev.is_nan() {
-                        if idx >= period - 1 {
-                            self.bars[idx+1-period..=idx].iter().map(|b| b.close).sum::<f32>() / period as f32
-                        } else { f32::NAN }
-                    } else {
-                        close * k + prev * (1.0 - k)
-                    };
-                    vals.push(v);
+            for ind in &mut self.indicators {
+                match ind.kind {
+                    IndicatorType::SMA | IndicatorType::WMA => {
+                        if idx >= ind.period {
+                            if ind.kind == IndicatorType::SMA {
+                                let sum: f32 = self.bars[idx+1-ind.period..=idx].iter().map(|b| b.close).sum();
+                                ind.values.push(sum / ind.period as f32);
+                            } else {
+                                let denom = (ind.period * (ind.period + 1)) / 2;
+                                let mut s = 0.0;
+                                for j in 0..ind.period { s += self.bars[idx + 1 - ind.period + j].close * (j + 1) as f32; }
+                                ind.values.push(s / denom as f32);
+                            }
+                        } else { ind.values.push(f32::NAN); }
+                    }
+                    IndicatorType::EMA => {
+                        let k = 2.0 / (ind.period as f32 + 1.0);
+                        let prev = ind.values.last().copied().unwrap_or(f32::NAN);
+                        let v = if prev.is_nan() {
+                            if idx >= ind.period - 1 {
+                                self.bars[idx+1-ind.period..=idx].iter().map(|b| b.close).sum::<f32>() / ind.period as f32
+                            } else { f32::NAN }
+                        } else { close * k + prev * (1.0 - k) };
+                        ind.values.push(v);
+                    }
+                    IndicatorType::DEMA | IndicatorType::TEMA => {
+                        // These need full recompute — can't easily do incremental
+                        ind.values.push(f32::NAN); // placeholder, will be fixed on next full recompute
+                    }
                 }
             }
         }
@@ -358,7 +510,7 @@ fn tick_simulation(chart: &mut Chart) {
     }
 }
 
-fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, rx: &mpsc::Receiver<ChartCommand>) {
+fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, rx: &mpsc::Receiver<ChartCommand>) {
     use crate::monitoring::{span_begin, span_end};
 
     // Route incoming commands to the matching pane (by symbol), or active pane as fallback
@@ -388,12 +540,57 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     let n = panes[*active_pane].bars.len();
 
     let ap = *active_pane;
+    // Store window ref for drag/minimize/maximize/close
+    let win_ref: Option<Arc<Window>> = {
+        // Find the window that's currently rendering (first visible window)
+        // We pass it through a thread-local since draw_chart doesn't have access to ChartWindow
+        CURRENT_WINDOW.with(|w| w.borrow().clone())
+    };
+
     span_begin("top_panel");
-    egui::TopBottomPanel::top("tb").show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            // Symbol ticker — click to open picker
-            let sym_text = egui::RichText::new(&panes[ap].symbol).strong().size(14.0).color(t.bull);
-            let sym_btn = ui.add(egui::Button::new(sym_text).frame(false));
+
+    // Toolbar button helper — matches WebView's btnStyle: 11px monospace, 3px radius, 2px 8px padding
+    let tb_btn = |ui: &mut egui::Ui, label: &str, active: bool, t: &Theme| -> egui::Response {
+        let bg = if active { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 51) } else { t.toolbar_bg };
+        let fg = if active { t.accent } else { t.dim };
+        let border = if active { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 136) } else { t.toolbar_border };
+        let btn = egui::Button::new(egui::RichText::new(label).monospace().size(11.0).color(fg))
+            .fill(bg).stroke(egui::Stroke::new(1.0, border)).corner_radius(3.0)
+            .min_size(egui::vec2(0.0, 22.0));
+        ui.add(btn)
+    };
+
+    egui::TopBottomPanel::top("tb")
+        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 10, right: 0, top: 0, bottom: 0 }))
+        .exact_height(36.0)
+        .show(ctx, |ui| {
+        let tb_rect = ui.max_rect();
+        // Bottom border line
+        ui.painter().line_segment(
+            [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
+            egui::Stroke::new(1.0, t.toolbar_border),
+        );
+
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+
+            // ── Logo ──
+            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(15.0, 15.0), egui::Sense::hover());
+            let lp = ui.painter_at(logo_rect);
+            let lc = logo_rect.center();
+            lp.add(egui::Shape::line(vec![
+                egui::pos2(lc.x, lc.y - 6.0), egui::pos2(lc.x + 6.0, lc.y + 5.0),
+                egui::pos2(lc.x - 6.0, lc.y + 5.0), egui::pos2(lc.x, lc.y - 6.0),
+            ], egui::Stroke::new(1.3, t.accent)));
+            lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(1.3, t.accent));
+
+            ui.add_space(2.0);
+
+            // ── Symbol ticker ──
+            let sym_label = format!("{} \u{25BE}", panes[ap].symbol); // ▾ dropdown arrow
+            let sym_btn = ui.add(egui::Button::new(
+                egui::RichText::new(&sym_label).monospace().size(12.0).strong().color(t.accent)
+            ).frame(false));
             if sym_btn.clicked() {
                 panes[ap].picker_open = !panes[ap].picker_open;
                 panes[ap].picker_query.clear();
@@ -401,81 +598,139 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 panes[ap].picker_last_query.clear();
                 panes[ap].picker_pos = egui::pos2(sym_btn.rect.left(), sym_btn.rect.bottom());
             }
-            ui.separator();
+
+            // ── Separator ──
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // ── Timeframes ──
             for &tf in &["1m","5m","15m","30m","1h","4h","1d","1wk"] {
                 let is_active_tf = panes[ap].timeframe == tf;
-                let text = egui::RichText::new(tf).small()
-                    .color(if is_active_tf { t.bull } else { t.dim });
-                if ui.add(egui::Button::new(text).frame(false).min_size(egui::vec2(24.0, 18.0)))
-                    .clicked() && !is_active_tf
-                {
+                if tb_btn(ui, tf, is_active_tf, t).clicked() && !is_active_tf {
                     panes[ap].pending_timeframe_change = Some(tf.to_string());
                 }
             }
-            ui.separator();
-            if let Some(b) = panes[ap].bars.last() {
-                let c = if b.close>=b.open { t.bull } else { t.bear };
-                ui.label(egui::RichText::new(format!("O{:.2} H{:.2} L{:.2} C{:.2} V{:.0}",b.open,b.high,b.low,b.close,b.volume)).monospace().size(11.0).color(c));
+
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // ── Drawing tools ──
+            for (tool, label) in [("trendline", "trend"), ("hline", "hline"), ("hzone", "zone"), ("barmarker", "mark")] {
+                let active = panes[ap].draw_tool == tool;
+                if tb_btn(ui, label, active, t).clicked() {
+                    panes[ap].draw_tool = if active { String::new() } else { tool.into() };
+                    panes[ap].pending_pt = None;
+                }
             }
+
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // ── Layouts ──
+            for &ly in ALL_LAYOUTS {
+                let is_cur = *layout == ly;
+                if tb_btn(ui, ly.label(), is_cur, t).clicked() && !is_cur {
+                    let max = ly.max_panes();
+                    while panes.len() < max {
+                        let syms = ["SPY","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOG","AMD"];
+                        let sym = syms.get(panes.len()).unwrap_or(&"SPY");
+                        let mut p = Chart::new_with(sym, &panes[0].timeframe);
+                        p.theme_idx = panes[0].theme_idx;
+                        p.recent_symbols = panes[0].recent_symbols.clone();
+                        p.pending_symbol_change = Some(sym.to_string());
+                        panes.push(p);
+                    }
+                    *layout = ly;
+                    if *active_pane >= max { *active_pane = 0; }
+                }
+            }
+
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // ── Theme dropdown ──
+            {
+                let mut ti = panes[ap].theme_idx;
+                egui::ComboBox::from_id_salt("thm").selected_text(
+                    egui::RichText::new(THEMES[ti].name).monospace().size(11.0).color(t.dim)
+                ).width(90.0).show_ui(ui, |ui| {
+                    for (i, th) in THEMES.iter().enumerate() { ui.selectable_value(&mut ti, i, th.name); }
+                });
+                if ti != panes[ap].theme_idx { for p in panes.iter_mut() { p.theme_idx = ti; } }
+            }
+
+            // ── Right side: LIVE + separator + window controls ──
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Layout selector
-                for &ly in ALL_LAYOUTS {
-                    let is_cur = *layout == ly;
-                    let txt = egui::RichText::new(ly.label()).small()
-                        .color(if is_cur { t.bull } else { t.dim });
-                    if ui.add(egui::Button::new(txt).frame(false).min_size(egui::vec2(20.0, 18.0))).clicked() && !is_cur {
-                        let max = ly.max_panes();
-                        while panes.len() < max {
-                            let syms = ["SPY","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOG","AMD"];
-                            let sym = syms.get(panes.len()).unwrap_or(&"SPY");
-                            let mut p = Chart::new_with(sym, &panes[0].timeframe);
-                            p.theme_idx = panes[0].theme_idx;
-                            p.recent_symbols = panes[0].recent_symbols.clone();
-                            p.pending_symbol_change = Some(sym.to_string());
-                            panes.push(p);
-                        }
-                        *layout = ly;
-                        if *active_pane >= max { *active_pane = 0; }
+                ui.spacing_mut().item_spacing.x = 0.0;
+
+                // Window control button helper using Phosphor icons
+                let win_ctrl = |ui: &mut egui::Ui, icon: &str, danger: bool| -> bool {
+                    let fg = t.dim;
+                    let resp = ui.add(
+                        egui::Button::new(egui::RichText::new(icon).size(12.0).color(fg))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE)
+                            .min_size(egui::vec2(34.0, 28.0))
+                            .corner_radius(0.0)
+                    );
+                    if resp.hovered() {
+                        let bg = if danger { rgb(224, 85, 96) } else { t.toolbar_border };
+                        let hover_fg = if danger { egui::Color32::WHITE } else { egui::Color32::from_rgb(200, 200, 210) };
+                        ui.painter().rect_filled(resp.rect, 0.0, bg);
+                        ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(12.0), hover_fg);
                     }
+                    resp.clicked()
+                };
+
+                // Close
+                if win_ctrl(ui, Icon::X, true) {
+                    save_state(panes, *layout);
+                    CLOSE_REQUESTED.with(|f| f.set(true));
                 }
-                ui.separator();
-                // Theme dropdown
-                {
-                    let mut ti = panes[ap].theme_idx;
-                    egui::ComboBox::from_id_salt("thm").selected_text(THEMES[ti].name).width(100.0).show_ui(ui, |ui| {
-                        for (i,th) in THEMES.iter().enumerate() { ui.selectable_value(&mut ti, i, th.name); }
-                    });
-                    if ti != panes[ap].theme_idx {
-                        for p in panes.iter_mut() { p.theme_idx = ti; }
+                // Maximize
+                if win_ctrl(ui, Icon::SQUARE, false) {
+                    if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+                }
+                // Minimize
+                if win_ctrl(ui, Icon::MINUS, false) {
+                    if let Some(w) = &win_ref { w.set_minimized(true); }
+                }
+
+                ui.add(egui::Separator::default().spacing(6.0));
+                ui.spacing_mut().item_spacing.x = 6.0;
+
+                // Watchlist toggle
+                if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() {
+                    watchlist.open = !watchlist.open;
+                }
+
+                // LIVE indicator
+                if !panes[ap].auto_scroll {
+                    if tb_btn(ui, "LIVE", false, t).clicked() {
+                        panes[ap].auto_scroll=true; panes[ap].price_lock=None;
+                        panes[ap].vs=(n as f32-panes[ap].vc as f32+8.0).max(0.0);
                     }
+                } else {
+                    ui.label(egui::RichText::new("LIVE").monospace().size(11.0).color(t.accent));
                 }
-                // Drawing tools with icons
-                for (tool, icon, label) in [
-                    ("trendline", Icon::LINE_SEGMENT_BOLD, "Trend"),
-                    ("hline", Icon::MINUS_BOLD, "HLine"),
-                    ("hzone", Icon::RECTANGLE_BOLD, "Zone"),
-                    ("barmarker", Icon::MAP_PIN_BOLD, "Mark"),
-                ] {
-                    let _ = label;
-                    if ui.selectable_label(panes[ap].draw_tool==tool, format!("{} {}", icon, label)).clicked() {
-                        panes[ap].draw_tool = if panes[ap].draw_tool==tool { String::new() } else { tool.into() };
-                        panes[ap].pending_pt = None;
-                    }
-                }
-                ui.separator();
-                for &c in PRESET_COLORS {
-                    let color = hex_to_color(c, 1.0);
-                    let is_cur = panes[ap].draw_color == c;
-                    let (r, resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
-                    ui.painter().circle_filled(r.center(), if is_cur { 6.0 } else { 5.0 }, color);
-                    if is_cur { ui.painter().circle_stroke(r.center(), 7.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
-                    if resp.clicked() { panes[ap].draw_color = c.to_string(); }
-                }
-                if !panes[ap].auto_scroll { if ui.button(format!("{} LIVE", Icon::PLAY)).clicked() { panes[ap].auto_scroll=true; panes[ap].price_lock=None; panes[ap].vs=(n as f32-panes[ap].vc as f32+8.0).max(0.0); } }
-                else { ui.label(egui::RichText::new(format!("{} LIVE", Icon::CHART_LINE)).color(t.bull).small()); }
             });
         });
     });
+
+    // ── Drag to move window ──
+    // If a click/drag starts in the toolbar zone (y < 36) and egui didn't use the pointer
+    // (no button was clicked), initiate window drag.
+    if let Some(pos) = ctx.input(|i| i.pointer.hover_pos()) {
+        if pos.y < 36.0 {
+            let pointer_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
+            let egui_using = ctx.is_using_pointer();
+            if pointer_pressed && !egui_using {
+                if let Some(w) = &win_ref { let _ = w.drag_window(); }
+            }
+            // Double-click to maximize
+            let double_clicked = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+            if double_clicked && !egui_using {
+                if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+            }
+        }
+    }
+
     // Symbol picker popup — render for any pane that has it open
     span_begin("symbol_picker");
     for picker_pane_idx in 0..panes.len() {
@@ -742,7 +997,272 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             });
     }
 
+    // ── Indicator editor popup ─────────────────────────────────────────────────
     let t = &THEMES[panes[ap].theme_idx];
+    if let Some(edit_id) = panes[ap].editing_indicator {
+        let mut close_editor = false;
+        let mut delete_id: Option<u32> = None;
+        let mut needs_recompute = false;
+        let mut needs_source_fetch: Option<(String, String, u32)> = None;
+        let pane_symbol = panes[ap].symbol.clone(); // clone to avoid borrow conflict
+
+        egui::Window::new(format!("ind_editor_{}", edit_id))
+            .fixed_pos(egui::pos2(200.0, 80.0))
+            .fixed_size(egui::vec2(280.0, 0.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(30, 30, 36)).inner_margin(10.0))
+            .show(ctx, |ui| {
+                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("EDIT INDICATOR").strong().color(t.bull));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("X").clicked() { close_editor = true; }
+                        });
+                    });
+                    ui.add_space(4.0);
+
+                    // Type selector
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Type").small().color(t.dim));
+                        for &kind in IndicatorType::all() {
+                            let selected = ind.kind == kind;
+                            let text = egui::RichText::new(kind.label()).small()
+                                .color(if selected { t.bull } else { egui::Color32::from_rgb(180,180,190) });
+                            if ui.add(egui::Button::new(text).frame(false).min_size(egui::vec2(32.0, 18.0))).clicked() && !selected {
+                                ind.kind = kind;
+                                needs_recompute = true;
+                            }
+                        }
+                    });
+
+                    // Period
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Period").small().color(t.dim));
+                        let mut period = ind.period as i32;
+                        if ui.add(egui::DragValue::new(&mut period).range(1..=500).speed(0.5)).changed() {
+                            ind.period = (period as usize).max(1);
+                            needs_recompute = true;
+                        }
+                        // Quick presets
+                        for &p in &[9, 12, 20, 26, 50, 100, 200] {
+                            let sel = ind.period == p;
+                            let txt = egui::RichText::new(format!("{}", p)).small()
+                                .color(if sel { t.bull } else { t.dim });
+                            if ui.add(egui::Button::new(txt).frame(false).min_size(egui::vec2(22.0, 16.0))).clicked() && !sel {
+                                ind.period = p;
+                                needs_recompute = true;
+                            }
+                        }
+                    });
+
+                    // Source interval
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Interval").small().color(t.dim));
+                        for &tf in INDICATOR_TIMEFRAMES {
+                            let label = if tf.is_empty() { "Chart" } else { tf };
+                            let sel = ind.source_tf == tf;
+                            let txt = egui::RichText::new(label).small()
+                                .color(if sel { t.bull } else { t.dim });
+                            if ui.add(egui::Button::new(txt).frame(false).min_size(egui::vec2(28.0, 16.0))).clicked() && !sel {
+                                ind.source_tf = tf.to_string();
+                                ind.source_loaded = tf.is_empty(); // chart TF is always loaded
+                                ind.source_bars.clear();
+                                ind.source_timestamps.clear();
+                                needs_recompute = true;
+                                // Fetch cross-timeframe data if needed
+                                if !tf.is_empty() {
+                                    let sym = pane_symbol.clone();
+                                    let ind_id = ind.id;
+                                    let ind_tf = tf.to_string();
+                                    // Defer fetch to after the borrow ends
+                                    needs_source_fetch = Some((sym, ind_tf, ind_id));
+                                }
+                            }
+                        }
+                    });
+
+                    ui.add_space(4.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+
+                    // Color
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Color").small().color(t.dim));
+                        for &c in INDICATOR_COLORS {
+                            let color = hex_to_color(c, 1.0);
+                            let is_cur = ind.color == c;
+                            let (r, resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
+                            ui.painter().circle_filled(r.center(), if is_cur { 6.0 } else { 5.0 }, color);
+                            if is_cur { ui.painter().circle_stroke(r.center(), 7.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
+                            if resp.clicked() { ind.color = c.to_string(); }
+                        }
+                    });
+
+                    // Thickness
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Width").small().color(t.dim));
+                        for &th in &[0.5, 1.0, 1.5, 2.0, 3.0] {
+                            let sel = (ind.thickness - th).abs() < 0.1;
+                            let txt = egui::RichText::new(format!("{:.1}", th)).small()
+                                .color(if sel { t.bull } else { t.dim });
+                            if ui.add(egui::Button::new(txt).frame(false)).clicked() { ind.thickness = th; }
+                        }
+                    });
+
+                    // Line style
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Style").small().color(t.dim));
+                        for (ls, label) in [(LineStyle::Solid, "Solid"), (LineStyle::Dashed, "Dash"), (LineStyle::Dotted, "Dot")] {
+                            let sel = ind.line_style == ls;
+                            let txt = egui::RichText::new(label).small()
+                                .color(if sel { t.bull } else { t.dim });
+                            if ui.add(egui::Button::new(txt).frame(false)).clicked() { ind.line_style = ls; }
+                        }
+                    });
+
+                    // Visibility toggle
+                    ui.horizontal(|ui| {
+                        let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
+                        if ui.button(format!("{} {}", vis_icon, if ind.visible { "Visible" } else { "Hidden" })).clicked() {
+                            ind.visible = !ind.visible;
+                        }
+                    });
+
+                    ui.add_space(4.0);
+                    ui.separator();
+                    ui.add_space(2.0);
+
+                    // Delete
+                    if ui.button(egui::RichText::new(format!("{} Delete", Icon::TRASH)).color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                        delete_id = Some(edit_id);
+                        close_editor = true;
+                    }
+                } else {
+                    close_editor = true; // indicator was deleted
+                }
+            });
+
+        if close_editor { panes[ap].editing_indicator = None; }
+        if let Some(id) = delete_id { panes[ap].indicators.retain(|i| i.id != id); }
+        if needs_recompute { panes[ap].indicator_bar_count = 0; }
+        if let Some((sym, tf, ind_id)) = needs_source_fetch {
+            fetch_indicator_source(sym, tf, ind_id);
+        }
+    }
+
+    // ── Watchlist side panel ───────────────────────────────────────────────────
+    if watchlist.open {
+        egui::SidePanel::right("watchlist")
+            .default_width(180.0)
+            .min_width(140.0)
+            .max_width(280.0)
+            .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
+            .show(ctx, |ui| {
+                // Header
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("WATCHLIST").monospace().size(10.0).strong().color(t.dim));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
+                            watchlist.open = false;
+                        }
+                    });
+                });
+
+                // Search input
+                ui.add_space(4.0);
+                let search_resp = ui.add(
+                    egui::TextEdit::singleline(&mut watchlist.search_query)
+                        .hint_text("Add symbol...")
+                        .desired_width(ui.available_width())
+                        .font(egui::FontId::monospace(11.0))
+                );
+                if search_resp.changed() && !watchlist.search_query.is_empty() {
+                    watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.search_query, 5)
+                        .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
+                }
+                // Search results dropdown
+                if !watchlist.search_query.is_empty() && !watchlist.search_results.is_empty() {
+                    egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(30, 30, 36)).show(ui, |ui| {
+                        for (sym, name) in watchlist.search_results.clone() {
+                            if ui.add(egui::Button::new(
+                                egui::RichText::new(format!("{} {}", sym, name)).monospace().size(10.0).color(t.dim)
+                            ).frame(false).min_size(egui::vec2(ui.available_width(), 18.0))).clicked() {
+                                watchlist.add_symbol(&sym);
+                                watchlist.search_query.clear();
+                                watchlist.search_results.clear();
+                                // Fetch price for new symbol
+                                fetch_watchlist_prices(vec![sym]);
+                            }
+                        }
+                    });
+                }
+                // Enter to add
+                if search_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.search_query.is_empty() {
+                    let sym = watchlist.search_query.trim().to_uppercase();
+                    watchlist.add_symbol(&sym);
+                    fetch_watchlist_prices(vec![sym]);
+                    watchlist.search_query.clear();
+                    watchlist.search_results.clear();
+                }
+
+                ui.add_space(4.0);
+                ui.painter().line_segment(
+                    [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
+                    egui::Stroke::new(1.0, t.toolbar_border),
+                );
+                ui.add_space(4.0);
+
+                // Symbol list
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    let mut remove_sym: Option<String> = None;
+                    let mut click_sym: Option<String> = None;
+                    let full_w = ui.available_width();
+
+                    for item in &watchlist.items {
+                        let change_pct = if item.prev_close > 0.0 {
+                            ((item.price - item.prev_close) / item.prev_close) * 100.0
+                        } else { 0.0 };
+                        let color = if change_pct >= 0.0 { t.bull } else { t.bear };
+                        let price_str = if item.price > 0.0 { format!("{:.2}", item.price) } else { "---".into() };
+                        let change_str = if item.loaded { format!("{:+.2}%", change_pct) } else { "".into() };
+
+                        let resp = ui.horizontal(|ui| {
+                            ui.set_min_width(full_w);
+                            // Symbol
+                            let sym_resp = ui.add(egui::Button::new(
+                                egui::RichText::new(&item.symbol).monospace().size(11.0).strong().color(egui::Color32::from_rgb(220,220,230))
+                            ).frame(false));
+                            if sym_resp.clicked() { click_sym = Some(item.symbol.clone()); }
+
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                // Remove button
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5))).frame(false)).clicked() {
+                                    remove_sym = Some(item.symbol.clone());
+                                }
+                                // Change %
+                                ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
+                                // Price
+                                ui.label(egui::RichText::new(&price_str).monospace().size(11.0).color(color));
+                            });
+                        });
+                        // Hover highlight
+                        let row_rect = resp.response.rect;
+                        if resp.response.hovered() {
+                            ui.painter().rect_filled(row_rect, 0.0, t.toolbar_border.gamma_multiply(0.3));
+                        }
+                    }
+
+                    // Handle symbol click — load in active pane
+                    if let Some(sym) = click_sym {
+                        panes[ap].pending_symbol_change = Some(sym);
+                    }
+                    if let Some(sym) = remove_sym {
+                        watchlist.remove_symbol(&sym);
+                    }
+                });
+            });
+    }
+
     span_begin("chart_panes");
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.bg)).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
@@ -808,7 +1328,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             egui::vec2(pane_rect.width(), pane_rect.height() - pane_top_offset),
         );
         let (w,h) = (rect.width(), rect.height());
-        let (pr,pt,pb) = (80.0_f32, 4.0_f32, 30.0_f32);
+        let (pr,pt,pb) = (42.0_f32, 4.0_f32, 0.0_f32); // pb=0: time axis overlays volume
         let (cw,ch) = (w-pr, h-pt-pb);
         if n==0 || cw<=0.0 || ch<=0.0 { continue; }
 
@@ -833,7 +1353,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let mut p=(min_p/step).ceil()*step;
         while p<=max_p { let y=py(p);
             painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
-            let d=if p>=10.0{2}else{4}; painter.text(egui::pos2(rect.left()+cw+4.0,y),egui::Align2::LEFT_CENTER,format!("{:.1$}",p,d),egui::FontId::monospace(10.0),t.dim);
+            let d=if p>=10.0{2}else{4}; painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,format!("{:.1$}",p,d),egui::FontId::monospace(8.5),t.dim);
             p+=step;
         }
 
@@ -855,9 +1375,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if bar_idx >= vs as usize && bar_idx < end as usize {
                         let x = bx(bar_idx as f32);
                         if x > rect.left()+20.0 && x < rect.left()+cw-40.0 {
-                            // Vertical grid line
-                            painter.line_segment([egui::pos2(x,rect.top()+pt),egui::pos2(x,rect.top()+pt+ch)],egui::Stroke::new(0.3,t.dim.gamma_multiply(0.2)));
-                            // Time label
                             let txt = if time_interval >= 86400 {
                                 let days = (ti / 86400) as i32; let y2k = days - 10957;
                                 let month = ((y2k % 365) / 30 + 1).min(12).max(1);
@@ -868,7 +1385,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let m = ((ti % 3600) / 60) as u32;
                                 format!("{:02}:{:02}", h, m)
                             };
-                            painter.text(egui::pos2(x,rect.top()+pt+ch+8.0),egui::Align2::CENTER_TOP,txt,egui::FontId::monospace(9.0),t.dim);
+                            // Overlay on volume area (bottom of chart)
+                            let y = rect.top() + pt + ch - 10.0;
+                            painter.text(egui::pos2(x, y), egui::Align2::CENTER_BOTTOM, txt, egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.6));
                         }
                     }
                     ti += time_interval;
@@ -897,12 +1416,41 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),1.0,c);
         }}
 
-        // Indicators (reuse buffer to avoid per-frame Vec allocations)
-        if !chart.hide_all_indicators { for (vals,color,_) in &chart.indicators {
-            chart.indicator_pts_buf.clear();
-            for i in (vs as u32)..end { if let Some(&v)=vals.get(i as usize) { if !v.is_nan() { chart.indicator_pts_buf.push(egui::pos2(bx(i as f32),py(v))); }}}
-            if chart.indicator_pts_buf.len()>1 { painter.add(egui::Shape::line(chart.indicator_pts_buf.clone(),egui::Stroke::new(1.2,*color))); }
-        } }
+        // Indicators
+        if !chart.hide_all_indicators {
+            for ind in &chart.indicators {
+                if !ind.visible { continue; }
+                chart.indicator_pts_buf.clear();
+                for i in (vs as u32)..end {
+                    if let Some(&v) = ind.values.get(i as usize) {
+                        if !v.is_nan() { chart.indicator_pts_buf.push(egui::pos2(bx(i as f32), py(v))); }
+                    }
+                }
+                if chart.indicator_pts_buf.len() > 1 {
+                    let color = hex_to_color(&ind.color, 1.0);
+                    let stroke = egui::Stroke::new(ind.thickness, color);
+                    match ind.line_style {
+                        LineStyle::Solid => { painter.add(egui::Shape::line(chart.indicator_pts_buf.clone(), stroke)); }
+                        LineStyle::Dashed | LineStyle::Dotted => {
+                            let (dash, gap) = if ind.line_style == LineStyle::Dashed { (6.0, 3.0) } else { (2.0, 2.0) };
+                            for w in chart.indicator_pts_buf.windows(2) {
+                                let a = w[0]; let b = w[1];
+                                let dir = b - a; let len = dir.length();
+                                if len < 1.0 { continue; }
+                                let norm = dir / len;
+                                let mut d = 0.0;
+                                while d < len {
+                                    let p0 = a + norm * d;
+                                    let p1 = a + norm * (d + dash).min(len);
+                                    painter.line_segment([p0, p1], stroke);
+                                    d += dash + gap;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Drawings (with selection highlight + endpoint handles)
         // Helper: draw a line with optional dash pattern
@@ -1040,7 +1588,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(0.5,egui::Color32::from_white_alpha(50)));
                     let hp = min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
                     let d = if hp>=10.0{2}else{4};
-                    painter.text(egui::pos2(rect.left()+cw+4.0,pos.y),egui::Align2::LEFT_CENTER,format!("{:.1$}",hp,d),egui::FontId::monospace(10.0),egui::Color32::WHITE);
+                    painter.text(egui::pos2(rect.left()+cw+3.0,pos.y),egui::Align2::LEFT_CENTER,format!("{:.1$}",hp,d),egui::FontId::monospace(8.5),egui::Color32::WHITE);
                 }
             }
         }
@@ -1249,8 +1797,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             chart.last_input = std::time::Instant::now();
         }
 
-        // X-axis drag (bottom strip) — horizontal zoom
-        let xaxis_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top()+pt+ch), egui::vec2(cw, pb));
+        // X-axis drag (bottom 18px overlay strip) — horizontal zoom
+        let xaxis_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top()+pt+ch-18.0), egui::vec2(cw, 18.0));
         let xaxis_resp = ui.allocate_rect(xaxis_rect, egui::Sense::click_and_drag());
         if xaxis_resp.dragged_by(egui::PointerButton::Primary) {
             let dx = xaxis_resp.drag_delta().x;
@@ -1363,6 +1911,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     chart.hide_all_indicators = !chart.hide_all_indicators;
                     ui.close_menu();
                 }
+                if ui.button(format!("{} Add Indicator", Icon::PLUS)).clicked() {
+                    let id = chart.next_indicator_id; chart.next_indicator_id += 1;
+                    let color = INDICATOR_COLORS[(chart.indicators.len()) % INDICATOR_COLORS.len()];
+                    chart.indicators.push(Indicator::new(id, IndicatorType::SMA, 20, color));
+                    chart.indicator_bar_count = 0; // force recompute
+                    chart.editing_indicator = Some(id);
+                    ui.close_menu();
+                }
             }
             ui.separator();
             // Groups
@@ -1395,7 +1951,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         });
 
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.selected_id = None; }
+        // Double-click on indicator line to edit it
+        if resp.double_clicked() && chart.draw_tool.is_empty() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                for ind in &chart.indicators {
+                    if !ind.visible { continue; }
+                    // Check proximity to indicator line
+                    let bar_i = ((pos.x - rect.left() + off - bs * 0.5) / bs + vs) as usize;
+                    for di in 0..3 {
+                        let idx = if di == 0 { bar_i } else if di == 1 { bar_i.saturating_sub(1) } else { bar_i + 1 };
+                        if let Some(&v) = ind.values.get(idx) {
+                            if !v.is_nan() && (pos.y - py(v)).abs() < 8.0 {
+                                chart.editing_indicator = Some(ind.id);
+                                break;
+                            }
+                        }
+                    }
+                    if chart.editing_indicator.is_some() { break; }
+                }
+            }
+        }
+
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.selected_id = None; chart.editing_indicator = None; }
 
         span_end(); // interaction
         } // end for pane_idx
@@ -1407,6 +1984,93 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 // ─── winit + egui integration ─────────────────────────────────────────────────
 
 /// A single native chart window with its own GPU context, panes, and layout.
+// ─── Watchlist ───────────────────────────────────────────────────────────────
+
+#[derive(Clone)]
+struct WatchlistItem {
+    symbol: String,
+    price: f32,
+    prev_close: f32,
+    loaded: bool,
+}
+
+struct Watchlist {
+    open: bool,
+    items: Vec<WatchlistItem>,
+    search_query: String,
+    search_results: Vec<(String, String)>, // (symbol, name)
+}
+
+const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
+
+impl Watchlist {
+    fn new() -> Self {
+        let items = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
+            symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
+        }).collect();
+        Self { open: true, items, search_query: String::new(), search_results: vec![] }
+    }
+
+    fn add_symbol(&mut self, sym: &str) {
+        let s = sym.to_uppercase();
+        if !self.items.iter().any(|i| i.symbol == s) {
+            self.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false });
+        }
+    }
+
+    fn remove_symbol(&mut self, sym: &str) {
+        self.items.retain(|i| i.symbol != sym);
+    }
+
+    fn set_price(&mut self, sym: &str, price: f32) {
+        if let Some(item) = self.items.iter_mut().find(|i| i.symbol == sym) {
+            item.price = price;
+        }
+    }
+
+    fn set_prev_close(&mut self, sym: &str, prev_close: f32) {
+        if let Some(item) = self.items.iter_mut().find(|i| i.symbol == sym) {
+            item.prev_close = prev_close;
+            item.loaded = true;
+        }
+    }
+}
+
+/// Fetch daily previous close for all watchlist symbols (background thread).
+fn fetch_watchlist_prices(symbols: Vec<String>) {
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+        for sym in &symbols {
+            // Try Redis cache first, then Yahoo
+            if let Some(bars) = crate::bar_cache::get(sym, "1d") {
+                if bars.len() >= 2 {
+                    let price = bars.last().map(|b| b.close as f32).unwrap_or(0.0);
+                    let prev = bars[bars.len()-2].close as f32;
+                    // Send via broadcast channel
+                    let cmd = ChartCommand::WatchlistPrice { symbol: sym.clone(), price, prev_close: prev };
+                    crate::send_to_native_chart(cmd);
+                    continue;
+                }
+            }
+            let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=5d", sym);
+            if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(5)).send() {
+                if let Ok(json) = resp.json::<serde_json::Value>() {
+                    if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
+                        crate::bar_cache::set(sym, "1d", &bars);
+                        if bars.len() >= 2 {
+                            let price = bars.last().map(|b| b.close as f32).unwrap_or(0.0);
+                            let prev = bars[bars.len()-2].close as f32;
+                            let cmd = ChartCommand::WatchlistPrice { symbol: sym.clone(), price, prev_close: prev };
+                            crate::send_to_native_chart(cmd);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 struct ChartWindow {
     id: winit::window::WindowId,
     win: Arc<Window>,
@@ -1415,7 +2079,8 @@ struct ChartWindow {
     panes: Vec<Chart>,
     active_pane: usize,
     layout: Layout,
-    last_redraw: std::time::Instant,
+    close_requested: bool,
+    watchlist: Watchlist,
 }
 
 /// Request to spawn a new window (sent from Tauri command thread).
@@ -1453,20 +2118,20 @@ impl GpuCtx {
         }, None)).ok()?;
         let caps = surface.get_capabilities(&adapter);
         let fmt = caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(caps.formats[0]);
-        // Prefer Mailbox (non-blocking, drops stale frames) over Fifo (vsync-blocking).
-        // Fifo was causing 5.9ms avg acquire stalls (65% of frame time).
-        let present_mode = if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
-            eprintln!("[native-chart] PresentMode::Mailbox (non-blocking)");
-            wgpu::PresentMode::Mailbox
-        } else {
-            eprintln!("[native-chart] PresentMode::Fifo (Mailbox unavailable)");
+        // Fifo (vsync) + frame latency 2 = smooth consistent frame pacing.
+        // Latency 2 lets us pipeline: CPU prepares frame N+1 while GPU presents frame N.
+        // This eliminates the 10ms acquire stalls we had with latency 1.
+        let present_mode = if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
             wgpu::PresentMode::Fifo
+        } else {
+            wgpu::PresentMode::AutoVsync
         };
+        eprintln!("[native-chart] PresentMode::{:?}, frame latency 2", present_mode);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT, format: fmt,
             width: size.width.max(1), height: size.height.max(1),
             present_mode, alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![], desired_maximum_frame_latency: 1,
+            view_formats: vec![], desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
 
@@ -1479,7 +2144,7 @@ impl GpuCtx {
         Some(Self { device, queue, surface, config, egui_ctx, egui_state, egui_renderer })
     }
 
-    fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, rx: &mpsc::Receiver<ChartCommand>) {
+    fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, rx: &mpsc::Receiver<ChartCommand>) {
         crate::monitoring::frame_begin();
 
         // Phase 1: Acquire surface texture
@@ -1493,7 +2158,7 @@ impl GpuCtx {
         // Phase 2: egui layout + draw_chart logic
         let t1 = std::time::Instant::now();
         let raw_input = self.egui_state.take_egui_input(window);
-        let full_output = self.egui_ctx.run(raw_input, |ctx| { draw_chart(ctx, panes, active_pane, layout, rx); });
+        let full_output = self.egui_ctx.run(raw_input, |ctx| { draw_chart(ctx, panes, active_pane, layout, watchlist, rx); });
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
 
@@ -1559,11 +2224,34 @@ impl GpuCtx {
 impl App {
     fn spawn_window(&mut self, el: &ActiveEventLoop, rx: mpsc::Receiver<ChartCommand>, initial_cmd: Option<ChartCommand>) {
         let w = match el.create_window(WindowAttributes::default()
-            .with_title("Apex Chart — Native GPU")
+            .with_title("Apex Terminal")
             .with_inner_size(PhysicalSize::new(self.iw, self.ih))
+            .with_min_inner_size(PhysicalSize::new(960, 540))
+            .with_decorations(false)
             .with_active(true))
         {
-            Ok(w) => Arc::new(w),
+            Ok(w) => {
+                // Enable rounded corners on Windows 11 (DWM)
+                #[cfg(target_os = "windows")]
+                {
+                    use winit::raw_window_handle::HasWindowHandle;
+                    if let Ok(handle) = w.window_handle() {
+                        if let winit::raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
+                            unsafe {
+                                // DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2
+                                let preference: u32 = 2;
+                                let _ = windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute(
+                                    h.hwnd.get() as _,
+                                    33,
+                                    &preference as *const u32 as *const _,
+                                    std::mem::size_of::<u32>() as u32,
+                                );
+                            }
+                        }
+                    }
+                }
+                Arc::new(w)
+            }
             Err(e) => { eprintln!("[native-chart] Window creation failed: {e}"); return; }
         };
         let gpu = match GpuCtx::new(Arc::clone(&w)) {
@@ -1572,7 +2260,11 @@ impl App {
         };
         let id = w.id();
         let (panes, layout) = load_state();
-        let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, last_redraw: std::time::Instant::now() };
+        let wl = Watchlist::new();
+        let wl_syms: Vec<String> = wl.items.iter().map(|i| i.symbol.clone()).collect();
+        let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, close_requested: false, watchlist: wl };
+        // Fetch prices for default watchlist symbols
+        fetch_watchlist_prices(wl_syms);
         if let Some(cmd) = initial_cmd {
             // Route initial LoadBars to first pane
             if let Some(p) = cw.panes.first_mut() { p.process(cmd); }
@@ -1597,11 +2289,63 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 save_state(&cw.panes, cw.layout);
                 self.windows.retain(|w| w.id != wid);
-                // Don't exit the event loop — other windows may be open
             }
-            WindowEvent::Resized(s) => { if s.width>0&&s.height>0 { cw.gpu.config.width=s.width; cw.gpu.config.height=s.height; cw.gpu.surface.configure(&cw.gpu.device, &cw.gpu.config); } }
-            WindowEvent::RedrawRequested => { cw.gpu.render(&cw.win, &mut cw.panes, &mut cw.active_pane, &mut cw.layout, &cw.rx); }
-            _ => { cw.win.request_redraw(); }
+            WindowEvent::Resized(s) => {
+                if s.width>0&&s.height>0 {
+                    cw.gpu.config.width=s.width; cw.gpu.config.height=s.height;
+                    cw.gpu.surface.configure(&cw.gpu.device, &cw.gpu.config);
+                    cw.win.request_redraw(); // immediate redraw on resize
+                }
+            }
+            WindowEvent::RedrawRequested => {
+                // Drain watchlist price updates before render
+                // (these come via the broadcast channel from fetch_watchlist_prices)
+                let mut cmds_to_requeue = Vec::new();
+                while let Ok(cmd) = cw.rx.try_recv() {
+                    match cmd {
+                        ChartCommand::WatchlistPrice { ref symbol, price, prev_close } => {
+                            cw.watchlist.set_price(symbol, price);
+                            cw.watchlist.set_prev_close(symbol, prev_close);
+                        }
+                        other => cmds_to_requeue.push(other),
+                    }
+                }
+                // Re-inject non-watchlist commands (they'll be picked up by draw_chart)
+                // Can't re-send to rx since we own the receiver. Use a temp buffer approach:
+                // Actually, draw_chart also drains rx. So we need to pass these through.
+                // Simpler: just process ALL commands here and pass pane commands to the right pane.
+                for cmd in cmds_to_requeue {
+                    let sym = match &cmd {
+                        ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } => Some(symbol.clone()),
+                        ChartCommand::IndicatorSourceBars { .. } => None,
+                        _ => None,
+                    };
+                    if let Some(s) = sym {
+                        if let Some(p) = cw.panes.iter_mut().find(|p| p.symbol == s) { p.process(cmd); }
+                        else if let Some(p) = cw.panes.get_mut(cw.active_pane) { p.process(cmd); }
+                    } else if let Some(p) = cw.panes.get_mut(cw.active_pane) { p.process(cmd); }
+                }
+
+                // Also update watchlist from tick data (UpdateLastBar contains current price)
+                for item in &mut cw.watchlist.items {
+                    // Check if any pane has this symbol and get its latest price
+                    if let Some(pane) = cw.panes.iter().find(|p| p.symbol == item.symbol) {
+                        if let Some(bar) = pane.bars.last() {
+                            item.price = bar.close;
+                        }
+                    }
+                }
+
+                CURRENT_WINDOW.with(|w| *w.borrow_mut() = Some(Arc::clone(&cw.win)));
+                CLOSE_REQUESTED.with(|f| f.set(false));
+                cw.gpu.render(&cw.win, &mut cw.panes, &mut cw.active_pane, &mut cw.layout, &mut cw.watchlist, &cw.rx);
+                CURRENT_WINDOW.with(|w| *w.borrow_mut() = None);
+                if CLOSE_REQUESTED.with(|f| f.get()) {
+                    cw.close_requested = true;
+                }
+            }
+            // Don't request_redraw on every input — about_to_wait drives the frame loop
+            _ => {}
         }
     }
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
@@ -1609,6 +2353,9 @@ impl ApplicationHandler for App {
         while let Ok(req) = self.spawn_rx.try_recv() {
             self.spawn_window(el, req.rx, Some(req.initial_cmd));
         }
+
+        // Remove windows that requested close
+        self.windows.retain(|w| !w.close_requested);
 
         // Handle symbol/timeframe changes + frame rate for ALL windows
         for cw in &mut self.windows {
@@ -1640,19 +2387,59 @@ impl ApplicationHandler for App {
                 }
             }
 
-            // Cap at ~60fps per window
-            let now = std::time::Instant::now();
-            let target = cw.last_redraw + std::time::Duration::from_millis(16);
-            if now >= target {
-                cw.win.request_redraw();
-                cw.last_redraw = now;
-            }
+            // Request redraw — Fifo vsync naturally caps at display refresh rate
+            cw.win.request_redraw();
         }
 
-        el.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(
-            std::time::Instant::now() + std::time::Duration::from_millis(16)
-        ));
+        // Poll mode so about_to_wait fires again immediately after each frame.
+        // Fifo present mode blocks in get_current_texture() until vsync,
+        // so this won't spin — it gives us: about_to_wait → redraw → vsync wait → repeat.
+        el.set_control_flow(winit::event_loop::ControlFlow::Poll);
     }
+}
+
+/// Fetch source bars for a cross-timeframe indicator on a background thread.
+fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32) {
+    let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
+    std::thread::spawn(move || {
+        // Try Redis cache first
+        if let Some(bars) = crate::bar_cache::get(&sym, &tf) {
+            if !bars.is_empty() {
+                let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
+                let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
+                    open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                    close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                }).collect();
+                let cmd = ChartCommand::IndicatorSourceBars { indicator_id, timeframe: tf.clone(), bars: gpu_bars, timestamps };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                return;
+            }
+        }
+        // Fetch from Yahoo Finance
+        let (yf_interval, yf_range) = match tf.as_str() {
+            "1m" => ("1m","5d"), "5m" => ("5m","5d"), "15m" => ("15m","60d"),
+            "30m" => ("30m","60d"), "1h" => ("60m","60d"), "4h" => ("1h","730d"),
+            "1d" => ("1d","5y"), "1wk" => ("1wk","10y"), _ => ("5m","5d"),
+        };
+        let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}", sym, yf_interval, yf_range);
+        let client = reqwest::blocking::Client::builder().user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+        if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(5)).send() {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
+                    crate::bar_cache::set(&sym, &tf, &bars);
+                    let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
+                    let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
+                        open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                        close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                    }).collect();
+                    let cmd = ChartCommand::IndicatorSourceBars { indicator_id, timeframe: tf, bars: gpu_bars, timestamps };
+                    for tx in &txs { let _ = tx.send(cmd.clone()); }
+                }
+            }
+        }
+    });
 }
 
 /// Fetch bars from Redis cache → OCOCO → yfinance sidecar → Yahoo Finance v8 on a background thread.
@@ -1824,7 +2611,7 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
         use winit::platform::windows::EventLoopBuilderExtWindows;
         let el = EventLoop::builder().with_any_thread(true).build().unwrap();
         let mut app = App {
-            app_handle: handle, iw: 1400, ih: 900,
+            app_handle: handle, iw: 1920, ih: 1080,
             windows: Vec::new(), spawn_rx,
         };
         let _ = el.run_app(&mut app);

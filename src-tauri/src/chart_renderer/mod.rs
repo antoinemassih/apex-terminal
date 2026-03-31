@@ -102,5 +102,18 @@ pub enum ChartCommand {
     Shutdown,
     /// Show/reactivate the window (sent when GPU button clicked again)
     Show,
+    /// Watchlist price update
+    WatchlistPrice {
+        symbol: String,
+        price: f32,
+        prev_close: f32,
+    },
+    /// Deliver source bars for a cross-timeframe indicator
+    IndicatorSourceBars {
+        indicator_id: u32,
+        timeframe: String,
+        bars: Vec<Bar>,
+        timestamps: Vec<i64>,
+    },
 }
 

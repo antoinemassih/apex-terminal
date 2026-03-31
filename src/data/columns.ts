@@ -1,6 +1,6 @@
 import type { Bar } from '../types'
 
-const MAX_CAPACITY = 50_000
+const MAX_CAPACITY = 20_000
 const EVICT_KEEP_RATIO = 0.75
 
 export class ColumnStore {

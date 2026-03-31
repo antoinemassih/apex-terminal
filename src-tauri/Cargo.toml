@@ -45,6 +45,9 @@ egui-phosphor = { version = "0.9", features = ["regular", "bold"] }
 redis = { version = "0.27", features = ["tokio-comp"] }
 dirs = "6"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm"] }
+
 # System monitoring (NVML FFI)
 libloading = "0.8"
 

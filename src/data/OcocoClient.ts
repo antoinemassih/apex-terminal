@@ -162,7 +162,9 @@ export class OcocoClient implements DrawingRepository {
   // --- WebSocket for real-time signals ---
 
   connectWs(): void {
-    if (this.ws) return
+    // Clean up any pending reconnect timer or existing socket
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null as any }
+    if (this.ws) { try { this.ws.close() } catch {} this.ws = null }
     this.ws = new WebSocket(this.wsUrl)
 
     this.ws.onopen = () => {
@@ -233,7 +235,10 @@ export class OcocoClient implements DrawingRepository {
   onSignal(symbol: string, cb: (msg: any) => void): () => void {
     if (!this.signalListeners.has(symbol)) this.signalListeners.set(symbol, new Set())
     this.signalListeners.get(symbol)!.add(cb)
-    return () => { this.signalListeners.get(symbol)?.delete(cb) }
+    return () => {
+      const set = this.signalListeners.get(symbol)
+      if (set) { set.delete(cb); if (set.size === 0) this.signalListeners.delete(symbol) }
+    }
   }
 
   onAlert(cb: (alert: any) => void): () => void {

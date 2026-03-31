@@ -11,6 +11,7 @@ import { OcocoClient } from './data/OcocoClient'
 import { setRenderEngine, setDataStore, setIndicatorEngine, setDataProvider } from './globals'
 import { useChartStore } from './store/chartStore'
 import { initDrawingStore } from './store/drawingStore'
+import { startMemoryManager } from './memoryManager'
 
 // Prevent WebView2/Win32 from processing the contextmenu event at the OS level.
 // This must run before any component registers onContextMenu handlers.
@@ -32,6 +33,10 @@ async function bootstrap() {
   const OCOCO_API = 'http://192.168.1.60:30300'
   let drawingRepo: OcocoClient | TauriDrawingRepository | LocalDrawingRepository
   // Store OCOCO client globally for WS signal subscription from chart panes
+  // Clean up previous client on re-bootstrap (hot reload / StrictMode)
+  if ((window as any).__ococoClient) {
+    try { (window as any).__ococoClient.disconnectWs() } catch {}
+  }
   ;(window as any).__ococoClient = null as OcocoClient | null
 
   console.info('[boot] 5 drawing repo...')
@@ -97,6 +102,9 @@ async function bootstrap() {
   setDataProvider(provider)
 
   engine.scheduler.start()
+
+  // Memory management — periodic GC + pressure monitoring
+  startMemoryManager(() => dataStore.evictAll())
 
   // Native GPU chart ↔ WebView bridge: when native chart switches symbol,
   // load data via DataStore and send it back to Rust.

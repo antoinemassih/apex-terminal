@@ -74,7 +74,7 @@ export const AxisCanvas = forwardRef<AxisCanvasHandle, Props>(
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
         ctx.clearRect(0, 0, width, height)
         ctx.fillStyle = theme.axisText
-        ctx.font = '10px monospace'
+        ctx.font = '8.5px monospace'
         ctx.textAlign = 'left'
 
         // Price axis (right side) — anchored to round price values
@@ -92,7 +92,7 @@ export const AxisCanvas = forwardRef<AxisCanvasHandle, Props>(
         for (let price = firstPrice; price <= cs.maxPrice; price += priceStep) {
           const y = cs.priceToY(price)
           if (y < cs.pt || y > height - cs.pb) continue
-          ctx.fillText(price.toFixed(priceStep < 1 ? 2 : priceStep < 10 ? 1 : 0), width - cs.pr + 4, y + 4)
+          ctx.fillText(price.toFixed(priceStep < 1 ? 2 : priceStep < 10 ? 1 : 0), width - cs.pr + 3, y + 3)
         }
 
         // ── Time-dependent data — recompute only when visible bar set changes ──
@@ -147,7 +147,9 @@ export const AxisCanvas = forwardRef<AxisCanvasHandle, Props>(
 
         const lastVisibleTime = data.times[Math.min(viewStart + cs.barCount, data.length) - 1] ?? firstVisibleTime
         ctx.textAlign = 'center'
-        ctx.fillStyle = theme.axisText
+        ctx.font = '8px monospace'
+        // Semi-transparent overlay on volume area
+        ctx.fillStyle = theme.axisText + '99' // ~60% opacity via hex alpha
         for (let t = firstLabel; t <= lastVisibleTime + interval; t += interval) {
           const barIdx = data.indexAtTime(t)
           const viewIdx = barIdx - viewStart
@@ -157,7 +159,7 @@ export const AxisCanvas = forwardRef<AxisCanvasHandle, Props>(
           const x = cs.barToX(viewIdx)
           if (x < 0 || x > width - cs.pr) continue
 
-          ctx.fillText(formatTime(t, interval), x, height - cs.pb + 14)
+          ctx.fillText(formatTime(t, interval), x, height - 10)
         }
       }
     }), [width, height, themeName])
