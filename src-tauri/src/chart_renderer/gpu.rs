@@ -1436,10 +1436,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.label(egui::RichText::new(&watchlist.chain.symbol).monospace().size(11.0).strong().color(t.accent));
                             if ui.add(egui::Button::new(egui::RichText::new("Load").monospace().size(10.0)).min_size(egui::vec2(40.0, 18.0))).clicked() {
                                 watchlist.chain.symbol = panes[ap].symbol.clone();
-                                watchlist.chain.loading = true;
+                                watchlist.chain.symbol = panes[ap].symbol.clone();
+                                let price = panes[ap].bars.last().map(|b| b.close).unwrap_or(100.0);
+                                let ns = watchlist.chain.num_strikes;
+                                let sym = watchlist.chain.symbol.clone();
                                 let (tx, rx) = mpsc::channel();
                                 watchlist.chain_rx = Some(rx);
-                                fetch_options_chain(watchlist.chain.symbol.clone(), None, tx);
+                                fetch_options_chain(price, ns, sym, tx);
                             }
                             // Strikes count
                             ui.label(egui::RichText::new("Strikes:").monospace().size(9.0).color(t.dim));
@@ -1463,9 +1466,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     .show_ui(ui, |ui| {
                                         for (i, exp) in watchlist.chain.expirations.iter().enumerate() {
                                             if ui.selectable_value(&mut watchlist.chain.selected_exp, i, exp).changed() {
-                                                let (tx, rx) = mpsc::channel();
-                                                watchlist.chain_rx = Some(rx);
-                                                fetch_options_chain(watchlist.chain.symbol.clone(), Some(exp.clone()), tx);
+                                                // Parse DTE from expiration label (e.g. "0DTE" -> 0)
+                                                let dte: i32 = exp.replace("DTE", "").parse().unwrap_or(0);
+                                                let price = panes[ap].bars.last().map(|b| b.close).unwrap_or(100.0);
+                                                let ns = watchlist.chain.num_strikes;
+                                                let (calls, puts) = build_chain(price, ns, dte);
+                                                watchlist.chain.calls = calls;
+                                                watchlist.chain.puts = puts;
                                             }
                                         }
                                     });
@@ -2931,51 +2938,101 @@ impl Watchlist {
     }
 }
 
-/// Fetch options chain from Yahoo Finance (background thread).
-fn fetch_options_chain(symbol: String, date: Option<String>, tx: mpsc::Sender<OptionsChainData>) {
-    std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::builder().user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-        let mut url = format!("https://query1.finance.yahoo.com/v7/finance/options/{}", symbol);
-        if let Some(d) = &date { url = format!("{}?date={}", url, d); }
+// ─── Black-Scholes options pricing (matches WebView's optionsSim.ts) ────────
 
-        let mut data = OptionsChainData { symbol: symbol.clone(), expirations: vec![], selected_exp: 0, calls: vec![], puts: vec![], loading: false, num_strikes: 10 };
+fn normal_cdf(x: f32) -> f32 {
+    let t = 1.0 / (1.0 + 0.2316419 * x.abs());
+    let poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+    let phi = (-0.5 * x * x).exp() / (2.0 * std::f32::consts::PI).sqrt();
+    let cdf = 1.0 - phi * poly;
+    if x >= 0.0 { cdf } else { 1.0 - cdf }
+}
 
-        if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(5)).send() {
-            if let Ok(json) = resp.json::<serde_json::Value>() {
-                if let Some(result) = json.get("optionChain").and_then(|o| o.get("result")).and_then(|r| r.get(0)) {
-                    // Expirations
-                    if let Some(exps) = result.get("expirationDates").and_then(|e| e.as_array()) {
-                        data.expirations = exps.iter().filter_map(|e| e.as_i64().map(|ts| {
-                            format!("{}", ts) // store as timestamp string for re-fetch
-                        })).collect();
-                    }
+fn bs_price(s: f32, k: f32, t: f32, r: f32, iv: f32, is_call: bool) -> f32 {
+    if t <= 0.0 { return if is_call { (s - k).max(0.0) } else { (k - s).max(0.0) }; }
+    let d1 = ((s / k).ln() + (r + 0.5 * iv * iv) * t) / (iv * t.sqrt());
+    let d2 = d1 - iv * t.sqrt();
+    if is_call { s * normal_cdf(d1) - k * (-r * t).exp() * normal_cdf(d2) }
+    else { k * (-r * t).exp() * normal_cdf(-d2) - s * normal_cdf(-d1) }
+}
 
-                    // Options data
-                    if let Some(options) = result.get("options").and_then(|o| o.get(0)) {
-                        let parse_row = |v: &serde_json::Value| -> Option<OptionRow> {
-                            Some(OptionRow {
-                                strike: v.get("strike")?.as_f64()? as f32,
-                                last: v.get("lastPrice")?.as_f64().unwrap_or(0.0) as f32,
-                                bid: v.get("bid")?.as_f64().unwrap_or(0.0) as f32,
-                                ask: v.get("ask")?.as_f64().unwrap_or(0.0) as f32,
-                                volume: v.get("volume").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                                oi: v.get("openInterest").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                                iv: v.get("impliedVolatility").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
-                                itm: v.get("inTheMoney").and_then(|v| v.as_bool()).unwrap_or(false),
-                                contract: v.get("contractSymbol").and_then(|v| v.as_str()).unwrap_or("").into(),
-                            })
-                        };
-                        if let Some(calls) = options.get("calls").and_then(|c| c.as_array()) {
-                            data.calls = calls.iter().filter_map(parse_row).collect();
-                        }
-                        if let Some(puts) = options.get("puts").and_then(|p| p.as_array()) {
-                            data.puts = puts.iter().filter_map(parse_row).collect();
-                        }
-                    }
-                }
-            }
+#[allow(dead_code)]
+fn bs_delta(s: f32, k: f32, t: f32, r: f32, iv: f32, is_call: bool) -> f32 {
+    if t <= 0.0 { return if is_call { if s > k { 1.0 } else { 0.0 } } else { if s < k { -1.0 } else { 0.0 } }; }
+    let d1 = ((s / k).ln() + (r + 0.5 * iv * iv) * t) / (iv * t.sqrt());
+    if is_call { normal_cdf(d1) } else { normal_cdf(d1) - 1.0 }
+}
+
+fn strike_interval(price: f32) -> f32 {
+    if price < 20.0 { 0.5 } else if price < 50.0 { 1.0 } else if price < 100.0 { 2.5 }
+    else if price < 200.0 { 5.0 } else if price < 500.0 { 10.0 } else { 25.0 }
+}
+
+fn atm_strike(price: f32) -> f32 {
+    let interval = strike_interval(price);
+    (price / interval).round() * interval
+}
+
+fn get_iv(s: f32, k: f32, dte: i32) -> f32 {
+    let base = 0.28;
+    let moneyness = (k / s).ln();
+    let smile = 0.06 * moneyness * moneyness;
+    let skew = -0.05 * moneyness;
+    let term = if dte <= 0 { 1.25 } else if dte == 1 { 1.10 } else { 1.0 };
+    (base + smile + skew) * term
+}
+
+fn sim_oi(underlying: f32, strike: f32, dte: i32) -> i32 {
+    let interval = strike_interval(underlying);
+    let atm = atm_strike(underlying);
+    let strikes_away = ((strike - atm).abs() / interval) as f32;
+    let base = if dte <= 0 { 18000.0 } else if dte == 1 { 35000.0 } else { 50000.0 };
+    let raw = base * (-0.35 * strikes_away * strikes_away).exp();
+    let noise = 1.0 + 0.3 * (strike * 17.3 + dte as f32 * 5.7).sin();
+    (raw * noise).max(100.0) as i32
+}
+
+fn build_chain(underlying: f32, num_strikes: usize, dte: i32) -> (Vec<OptionRow>, Vec<OptionRow>) {
+    let r = 0.05_f32;
+    let t = if dte == 0 { 0.5 / 252.0 } else { dte as f32 / 252.0 };
+    let interval = strike_interval(underlying);
+    let atm = atm_strike(underlying);
+
+    let make_row = |k: f32, is_call: bool, _is_atm: bool| -> OptionRow {
+        let iv = get_iv(underlying, k, dte);
+        let raw = bs_price(underlying, k, t, r, iv, is_call);
+        let spread = (raw * 0.04 + 0.005).max(0.01);
+        let mid = raw.max(0.0);
+        let contract = format!("{}{}{}{}",
+            if is_call { "C" } else { "P" }, k as i32, if dte == 0 { "0D" } else { "1D+" }, dte);
+        OptionRow {
+            strike: k, last: mid, bid: (raw - spread / 2.0).max(0.0), ask: raw + spread / 2.0,
+            volume: sim_oi(underlying, k, dte) / 10, oi: sim_oi(underlying, k, dte),
+            iv, itm: if is_call { underlying > k } else { underlying < k }, contract,
         }
-        let _ = tx.send(data);
+    };
+
+    let mut calls = Vec::new();
+    for i in (1..=num_strikes).rev() { calls.push(make_row(atm + i as f32 * interval, true, false)); }
+    calls.push(make_row(atm, true, true));
+
+    let mut puts = Vec::new();
+    puts.push(make_row(atm, false, true));
+    for i in 1..=num_strikes { puts.push(make_row(atm - i as f32 * interval, false, false)); }
+
+    (calls, puts)
+}
+
+/// Build options chain synchronously (no network needed — pure Black-Scholes simulation).
+fn fetch_options_chain(underlying: f32, num_strikes: usize, symbol: String, tx: mpsc::Sender<OptionsChainData>) {
+    // Generate chains for multiple expirations: 0DTE, 1DTE, 2, 5, 10, 20, 45 days
+    let dtes = [0, 1, 2, 5, 10, 20, 45];
+    let expirations: Vec<String> = dtes.iter().map(|d| format!("{}DTE", d)).collect();
+    let (calls, puts) = build_chain(underlying, num_strikes, 0);
+
+    let _ = tx.send(OptionsChainData {
+        symbol, expirations, selected_exp: 0,
+        calls, puts, loading: false, num_strikes,
     });
 }
 
