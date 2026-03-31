@@ -16,6 +16,7 @@ use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, LineStyle};
 std::thread_local! {
     static CURRENT_WINDOW: std::cell::RefCell<Option<Arc<Window>>> = const { std::cell::RefCell::new(None) };
     static CLOSE_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static PENDING_ALERT: std::cell::RefCell<Option<(String, f32, bool)>> = const { std::cell::RefCell::new(None) };
 }
 use crate::ui_kit::{self, icons::Icon};
 
@@ -218,6 +219,63 @@ impl Indicator {
 
 static INDICATOR_COLORS: &[&str] = &["#00bef0", "#f0961a", "#f0d732", "#b266e6", "#1abc9c", "#e74c3c", "#3498db", "#e67e22"];
 
+// ─── Orders ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum OrderSide { Buy, Sell, Stop }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum OrderStatus { Draft, Placed, Executed, Cancelled }
+
+#[derive(Debug, Clone)]
+struct OrderLevel {
+    id: u32,
+    side: OrderSide,
+    price: f32,
+    qty: u32,
+    status: OrderStatus,
+}
+
+impl OrderLevel {
+    fn color(&self, t: &Theme) -> egui::Color32 {
+        match self.side {
+            OrderSide::Buy => t.bull,
+            OrderSide::Sell | OrderSide::Stop => t.bear,
+        }
+    }
+    fn label(&self) -> &'static str {
+        match self.side { OrderSide::Buy => "BUY", OrderSide::Sell => "SELL", OrderSide::Stop => "STOP" }
+    }
+}
+
+// ─── Positions & Alerts ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+struct Position {
+    symbol: String,
+    qty: i32,         // positive=long, negative=short
+    avg_price: f32,
+    current_price: f32,
+}
+
+impl Position {
+    fn pnl(&self) -> f32 { (self.current_price - self.avg_price) * self.qty as f32 }
+    fn pnl_pct(&self) -> f32 {
+        if self.avg_price == 0.0 { return 0.0; }
+        ((self.current_price - self.avg_price) / self.avg_price) * 100.0
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Alert {
+    id: u32,
+    symbol: String,
+    price: f32,
+    above: bool, // true = alert when price goes above, false = below
+    triggered: bool,
+    message: String,
+}
+
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
 struct Chart {
@@ -252,6 +310,14 @@ struct Chart {
     picker_rx: Option<mpsc::Receiver<Vec<(String, String, String)>>>, // receives search results from bg thread
     picker_pos: egui::Pos2, // anchor position for the popup
     recent_symbols: Vec<(String, String)>, // (symbol, name) — most recent first, max 20
+    // Orders
+    orders: Vec<OrderLevel>,
+    next_order_id: u32,
+    order_qty: u32,
+    order_market: bool, // true=market, false=limit
+    order_limit_price: String, // limit price as editable text
+    order_entry_open: bool,
+    dragging_order: Option<u32>, // order id being dragged
     // Symbol/timeframe change request — signals the App to reload data
     pending_symbol_change: Option<String>,
     pending_timeframe_change: Option<String>,
@@ -291,6 +357,8 @@ impl Chart {
             picker_open: false, picker_query: String::new(), picker_results: vec![],
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
+            orders: vec![], next_order_id: 1, order_qty: 100, order_market: true, order_limit_price: String::new(),
+            order_entry_open: false, dragging_order: None,
             pending_symbol_change: None, pending_timeframe_change: None,
             indicator_pts_buf: Vec::with_capacity(512) }
     }
@@ -698,6 +766,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // Watchlist toggle
                 if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() {
                     watchlist.open = !watchlist.open;
+                }
+
+                // Order entry toggle
+                if tb_btn(ui, "orders", panes[ap].order_entry_open, t).clicked() {
+                    panes[ap].order_entry_open = !panes[ap].order_entry_open;
+                }
+                // Orders book panel toggle
+                if tb_btn(ui, "book", watchlist.orders_panel_open, t).clicked() {
+                    watchlist.orders_panel_open = !watchlist.orders_panel_open;
+                }
+
+                // Connection status dot
+                {
+                    let redis_ok = crate::bar_cache::get("__ping", "").is_none(); // cheap check — always returns None but tests connection
+                    let dot_color = if redis_ok { rgb(46, 204, 113) } else { rgb(231, 76, 60) };
+                    let (dot_rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot_rect.center(), 3.5, dot_color);
                 }
 
                 // LIVE indicator
@@ -1263,6 +1348,204 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             });
     }
 
+    // ── Orders / Positions / Alerts side panel (left of watchlist) ─────────────
+    if watchlist.orders_panel_open {
+        egui::SidePanel::right("orders_panel")
+            .default_width(220.0)
+            .min_width(180.0)
+            .max_width(320.0)
+            .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
+            .show(ctx, |ui| {
+                // Header
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("ORDERS").monospace().size(10.0).strong().color(t.accent));
+
+                    // Count active orders across all panes
+                    let total_orders: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
+                    if total_orders > 0 {
+                        ui.label(egui::RichText::new(format!("({})", total_orders)).monospace().size(9.0).color(t.dim));
+                    }
+
+                    ui.separator();
+                    ui.label(egui::RichText::new("POSITIONS").monospace().size(10.0).color(t.dim));
+                    ui.separator();
+                    ui.label(egui::RichText::new("ALERTS").monospace().size(10.0).color(t.dim));
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
+                            watchlist.orders_panel_open = false;
+                        }
+                    });
+                });
+
+                ui.add_space(4.0);
+                ui.painter().line_segment(
+                    [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
+                    egui::Stroke::new(1.0, t.toolbar_border),
+                );
+                ui.add_space(4.0);
+
+                // Orders list — compact card style for narrow panel
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    let mut cancel_order: Option<(usize, u32)> = None;
+                    let full_w = ui.available_width();
+
+                    for (pi, pane) in panes.iter().enumerate() {
+                        for order in &pane.orders {
+                            let color = order.color(t);
+                            let status_text = match order.status {
+                                OrderStatus::Draft => "DRAFT", OrderStatus::Placed => "PLACED",
+                                OrderStatus::Executed => "EXEC", OrderStatus::Cancelled => "CXL",
+                            };
+                            let status_color = match order.status {
+                                OrderStatus::Draft => t.dim, OrderStatus::Placed => t.accent,
+                                OrderStatus::Executed => t.bull, OrderStatus::Cancelled => t.bear,
+                            };
+
+                            // Compact card
+                            ui.horizontal(|ui| {
+                                ui.set_min_width(full_w);
+                                ui.label(egui::RichText::new(order.label()).monospace().size(10.0).strong().color(color));
+                                ui.label(egui::RichText::new(&pane.symbol).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if order.status == OrderStatus::Draft || order.status == OrderStatus::Placed {
+                                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false)).clicked() {
+                                            cancel_order = Some((pi, order.id));
+                                        }
+                                    }
+                                    ui.label(egui::RichText::new(status_text).monospace().size(9.0).color(status_color));
+                                });
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(format!("{:.2}", order.price)).monospace().size(10.0).color(color));
+                                ui.label(egui::RichText::new(format!("x{}", order.qty)).monospace().size(9.0).color(t.dim));
+                            });
+                            ui.add_space(2.0);
+                        }
+                    }
+
+                    if let Some((pi, oid)) = cancel_order {
+                        if let Some(o) = panes[pi].orders.iter_mut().find(|o| o.id == oid) {
+                            o.status = OrderStatus::Cancelled;
+                        }
+                    }
+
+                    // Positions section
+                    if !watchlist.positions.is_empty() {
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new("POSITIONS").monospace().size(9.0).strong().color(t.dim));
+                        ui.add_space(2.0);
+                        let total_pnl: f32 = watchlist.positions.iter().map(|p| p.pnl()).sum();
+                        for pos in &watchlist.positions {
+                            let pnl = pos.pnl();
+                            let pnl_pct = pos.pnl_pct();
+                            let color = if pnl >= 0.0 { t.bull } else { t.bear };
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
+                                ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price)).monospace().size(10.0).color(t.dim));
+                                ui.label(egui::RichText::new(format!("{:+.2}", pnl)).monospace().size(10.0).color(color));
+                                ui.label(egui::RichText::new(format!("({:+.1}%)", pnl_pct)).monospace().size(9.0).color(color));
+                            });
+                        }
+                        ui.add_space(2.0);
+                        let total_color = if total_pnl >= 0.0 { t.bull } else { t.bear };
+                        ui.label(egui::RichText::new(format!("Total P&L: {:+.2}", total_pnl)).monospace().size(10.0).strong().color(total_color));
+                    }
+
+                    // Alerts section
+                    if !watchlist.alerts.is_empty() {
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new("ALERTS").monospace().size(9.0).strong().color(t.dim));
+                        ui.add_space(2.0);
+                        let mut remove_alert: Option<u32> = None;
+                        for alert in &watchlist.alerts {
+                            let dir = if alert.above { "\u{2191}" } else { "\u{2193}" }; // ↑ ↓
+                            let color = if alert.triggered { t.accent } else { t.dim };
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).color(egui::Color32::from_rgb(220,220,230)));
+                                ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price)).monospace().size(10.0).color(color));
+                                if alert.triggered {
+                                    ui.label(egui::RichText::new("TRIGGERED").monospace().size(9.0).color(t.accent));
+                                }
+                                if !alert.message.is_empty() {
+                                    ui.label(egui::RichText::new(&alert.message).monospace().size(9.0).color(t.dim));
+                                }
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false)).clicked() {
+                                    remove_alert = Some(alert.id);
+                                }
+                            });
+                        }
+                        if let Some(id) = remove_alert { watchlist.alerts.retain(|a| a.id != id); }
+                    }
+                });
+            });
+    }
+
+    // ── Order execution simulation — check if placed orders should fill ──
+    for pane in panes.iter_mut() {
+        let current_price = pane.bars.last().map(|b| b.close).unwrap_or(0.0);
+        if current_price == 0.0 { continue; }
+        let mut new_positions: Vec<(String, i32, f32)> = Vec::new();
+        for order in &mut pane.orders {
+            if order.status != OrderStatus::Placed { continue; }
+            let should_fill = match order.side {
+                OrderSide::Buy => current_price <= order.price,
+                OrderSide::Sell => current_price >= order.price,
+                OrderSide::Stop => current_price <= order.price,
+            };
+            if should_fill {
+                order.status = OrderStatus::Executed;
+                let qty = match order.side {
+                    OrderSide::Buy => order.qty as i32,
+                    OrderSide::Sell | OrderSide::Stop => -(order.qty as i32),
+                };
+                new_positions.push((pane.symbol.clone(), qty, order.price));
+            }
+        }
+        // Create or update positions
+        for (sym, qty, price) in new_positions {
+            if let Some(pos) = watchlist.positions.iter_mut().find(|p| p.symbol == sym) {
+                // Average in
+                let old_notional = pos.avg_price * pos.qty.abs() as f32;
+                let new_notional = price * qty.abs() as f32;
+                pos.qty += qty;
+                if pos.qty != 0 {
+                    pos.avg_price = (old_notional + new_notional) / pos.qty.abs() as f32;
+                }
+                // Remove flat positions
+                if pos.qty == 0 {
+                    watchlist.positions.retain(|p| p.symbol != sym || p.qty != 0);
+                }
+            } else {
+                watchlist.positions.push(Position { symbol: sym, qty, avg_price: price, current_price: price });
+            }
+        }
+    }
+
+    // Update position current prices
+    for pos in &mut watchlist.positions {
+        if let Some(pane) = panes.iter().find(|p| p.symbol == pos.symbol) {
+            if let Some(bar) = pane.bars.last() {
+                pos.current_price = bar.close;
+            }
+        }
+    }
+
+    // ── Alert checking — run every frame, check if any alert prices were crossed ──
+    {
+        let active_prices: Vec<(String, f32)> = panes.iter()
+            .filter_map(|p| p.bars.last().map(|b| (p.symbol.clone(), b.close)))
+            .collect();
+        for alert in &mut watchlist.alerts {
+            if alert.triggered { continue; }
+            if let Some((_, price)) = active_prices.iter().find(|(s, _)| *s == alert.symbol) {
+                if (alert.above && *price >= alert.price) || (!alert.above && *price <= alert.price) {
+                    alert.triggered = true;
+                }
+            }
+        }
+    }
+
     span_begin("chart_panes");
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.bg)).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
@@ -1528,6 +1811,134 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
+        // ── Order lines on chart ──────────────────────────────────────────────
+        for order in &chart.orders {
+            if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
+            let y = py(order.price);
+            if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+            let color = order.color(t);
+            let dash_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200);
+            // Dashed line
+            let mut dx = rect.left();
+            while dx < rect.left() + cw {
+                let end = (dx + 6.0).min(rect.left() + cw);
+                painter.line_segment([egui::pos2(dx, y), egui::pos2(end, y)], egui::Stroke::new(1.0, dash_color));
+                dx += 10.0;
+            }
+            // Label badge on right edge
+            let label = format!("{} {} @ {:.2}", order.label(), order.qty, order.price);
+            let badge_w = label.len() as f32 * 6.0 + 12.0;
+            let badge_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.left() + cw - badge_w - 4.0, y - 9.0),
+                egui::vec2(badge_w, 18.0),
+            );
+            painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 40));
+            painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(1.0, dash_color), egui::StrokeKind::Outside);
+            painter.text(badge_rect.center(), egui::Align2::CENTER_CENTER, &label,
+                egui::FontId::monospace(9.0), color);
+            // Price label on y-axis
+            painter.rect_filled(
+                egui::Rect::from_min_size(egui::pos2(rect.left() + cw + 1.0, y - 7.0), egui::vec2(pr - 2.0, 14.0)),
+                2.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 50),
+            );
+            let d = if order.price >= 10.0 { 2 } else { 4 };
+            painter.text(egui::pos2(rect.left() + cw + 3.0, y), egui::Align2::LEFT_CENTER,
+                format!("{:.1$}", order.price, d), egui::FontId::monospace(8.5), color);
+        }
+
+        // ── Order entry panel (bottom-left of pane) ─────────────────────────
+        if chart.order_entry_open && is_active {
+            let panel_w = 180.0;
+            let panel_h = 120.0;
+            let panel_pos = egui::pos2(rect.left() + 8.0, rect.top() + pt + ch - panel_h - 8.0);
+
+            egui::Window::new(format!("order_entry_{}", pane_idx))
+                .fixed_pos(panel_pos)
+                .fixed_size(egui::vec2(panel_w, panel_h))
+                .title_bar(false)
+                .frame(egui::Frame::popup(&ctx.style())
+                    .fill(egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230))
+                    .inner_margin(8.0))
+                .show(ctx, |ui| {
+                    let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                    let spread = (last_price * 0.0001).max(0.01);
+
+                    // Row 1: MKT/LMT toggle + limit price
+                    ui.horizontal(|ui| {
+                        let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
+                        let mkt_color = if chart.order_market { t.accent } else { t.dim };
+                        if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(10.0).strong().color(mkt_color))
+                            .fill(if chart.order_market { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 40) } else { t.toolbar_bg })
+                            .stroke(egui::Stroke::new(1.0, t.toolbar_border))
+                            .corner_radius(3.0)
+                            .min_size(egui::vec2(36.0, 20.0))
+                        ).clicked() {
+                            chart.order_market = !chart.order_market;
+                            if !chart.order_market && chart.order_limit_price.is_empty() {
+                                chart.order_limit_price = format!("{:.2}", last_price);
+                            }
+                        }
+
+                        if chart.order_market {
+                            ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(10.0).color(t.dim));
+                        } else {
+                            ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
+                                .desired_width(70.0)
+                                .font(egui::FontId::monospace(11.0))
+                                .hint_text("Price"));
+                        }
+                    });
+
+                    ui.add_space(2.0);
+
+                    // Row 2: Qty stepper
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("QTY").monospace().size(9.0).color(t.dim));
+                        let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
+                        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0)).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                            chart.order_qty = chart.order_qty.saturating_sub(step).max(1);
+                        }
+                        ui.label(egui::RichText::new(format!("{}", chart.order_qty)).monospace().size(11.0).strong().color(egui::Color32::from_rgb(220,220,230)));
+                        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0)).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                            chart.order_qty += step;
+                        }
+                    });
+
+                    ui.add_space(4.0);
+
+                    // Row 3: Buy / Sell buttons
+                    let buy_price = if chart.order_market { last_price + spread } else {
+                        chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
+                    };
+                    let sell_price = if chart.order_market { last_price - spread } else {
+                        chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
+                    };
+                    let status = if chart.order_market { OrderStatus::Placed } else { OrderStatus::Draft };
+
+                    ui.horizontal(|ui| {
+                        let buy_label = format!("BUY {:.2}", buy_price);
+                        if ui.add(egui::Button::new(egui::RichText::new(&buy_label).monospace().size(10.0).strong().color(egui::Color32::WHITE))
+                            .fill(egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 180))
+                            .min_size(egui::vec2(82.0, 22.0)).corner_radius(3.0)).clicked() {
+                            let id = chart.next_order_id; chart.next_order_id += 1;
+                            chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status });
+                        }
+
+                        let sell_label = format!("SELL {:.2}", sell_price);
+                        if ui.add(egui::Button::new(egui::RichText::new(&sell_label).monospace().size(10.0).strong().color(egui::Color32::WHITE))
+                            .fill(egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 180))
+                            .min_size(egui::vec2(82.0, 22.0)).corner_radius(3.0)).clicked() {
+                            let id = chart.next_order_id; chart.next_order_id += 1;
+                            chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status });
+                        }
+                    });
+
+                    // Row 4: Info
+                    ui.add_space(2.0);
+                    ui.label(egui::RichText::new(format!("Spread: {:.4}  Last: {:.2}", spread * 2.0, last_price)).monospace().size(8.0).color(t.dim));
+                });
+        }
+
         // Middle-click cycles through drawing tools
         if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) {
             let tools = ["", "trendline", "hline", "hzone", "barmarker"];
@@ -1636,10 +2047,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             None
         });
-        // Show move/grab cursor when hovering over a drawing (only in this pane)
+        // Show move/grab cursor when hovering over a drawing or order line (only in this pane)
         if pointer_in_pane && chart.draw_tool.is_empty() {
             if let Some((_, ep)) = &hover_hit {
                 ui.ctx().set_cursor_icon(if *ep >= 0 { egui::CursorIcon::Grab } else { egui::CursorIcon::Move });
+            } else if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                // Check if hovering over an order line
+                for order in &chart.orders {
+                    if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
+                    if (pos.y - py(order.price)).abs() < 10.0 && pos.x < rect.left() + cw {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                        break;
+                    }
+                }
             }
         }
 
@@ -1737,15 +2157,40 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // Drag: pan chart OR move drawing
+        // Drag: pan chart OR move drawing OR move order
         if chart.draw_tool.is_empty() && resp.drag_started_by(egui::PointerButton::Primary) && !ctx.is_pointer_over_area() {
             if let Some(pos) = resp.interact_pointer_pos() {
-                if let Some((id, ep)) = hit_at(pos.x, pos.y, &chart.drawings) {
-                    chart.dragging_drawing = Some((id, ep));
-                    chart.drag_start_price = pos_to_price(pos);
-                    chart.drag_start_bar = pos_to_bar(pos);
+                // Check order lines first
+                let mut hit_order = false;
+                for order in &chart.orders {
+                    if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
+                    if (pos.y - py(order.price)).abs() < 10.0 && pos.x < rect.left() + cw {
+                        chart.dragging_order = Some(order.id);
+                        hit_order = true;
+                        break;
+                    }
+                }
+                if !hit_order {
+                    if let Some((id, ep)) = hit_at(pos.x, pos.y, &chart.drawings) {
+                        chart.dragging_drawing = Some((id, ep));
+                        chart.drag_start_price = pos_to_price(pos);
+                        chart.drag_start_bar = pos_to_bar(pos);
+                    }
                 }
             }
+        }
+        // Order dragging
+        if let Some(order_id) = chart.dragging_order {
+            if resp.dragged_by(egui::PointerButton::Primary) {
+                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    let new_price = pos_to_price(pos);
+                    if let Some(o) = chart.orders.iter_mut().find(|o| o.id == order_id) {
+                        o.price = new_price;
+                    }
+                }
+                if pointer_in_pane { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical); }
+            }
+            if resp.drag_stopped() { chart.dragging_order = None; }
         }
         if let Some((ref id, ep)) = chart.dragging_drawing.clone() {
             if resp.dragged_by(egui::PointerButton::Primary) {
@@ -1888,6 +2333,44 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // Context menu
         resp.context_menu(|ui| {
+            // Get price at click position for order placement
+            let click_price = ui.input(|i| i.pointer.latest_pos()).map(|p| pos_to_price(p)).unwrap_or(0.0);
+
+            // Orders section
+            ui.label(egui::RichText::new(format!("ORDERS @ {:.2}", click_price)).small().color(t.dim));
+            if ui.button(egui::RichText::new(format!("{} Buy Order", Icon::ARROW_FAT_UP)).color(t.bull)).clicked() {
+                let id = chart.next_order_id; chart.next_order_id += 1;
+                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft });
+                ui.close_menu();
+            }
+            if ui.button(egui::RichText::new(format!("{} Sell Order", Icon::ARROW_FAT_DOWN)).color(t.bear)).clicked() {
+                let id = chart.next_order_id; chart.next_order_id += 1;
+                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft });
+                ui.close_menu();
+            }
+            if ui.button(egui::RichText::new(format!("{} Stop Loss", Icon::SHIELD_WARNING)).color(t.bear)).clicked() {
+                let id = chart.next_order_id; chart.next_order_id += 1;
+                chart.orders.push(OrderLevel { id, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft });
+                ui.close_menu();
+            }
+            if !chart.orders.is_empty() {
+                if ui.button(egui::RichText::new(format!("{} Cancel All Orders", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                    chart.orders.clear(); ui.close_menu();
+                }
+            }
+            ui.separator();
+            // Alerts
+            ui.label(egui::RichText::new(format!("ALERTS @ {:.2}", click_price)).small().color(t.dim));
+            if ui.button(format!("{} Alert Above {:.2}", Icon::ARROW_FAT_UP, click_price)).clicked() {
+                // Need to access watchlist — use thread-local
+                PENDING_ALERT.with(|a| *a.borrow_mut() = Some((chart.symbol.clone(), click_price, true)));
+                ui.close_menu();
+            }
+            if ui.button(format!("{} Alert Below {:.2}", Icon::ARROW_FAT_DOWN, click_price)).clicked() {
+                PENDING_ALERT.with(|a| *a.borrow_mut() = Some((chart.symbol.clone(), click_price, false)));
+                ui.close_menu();
+            }
+            ui.separator();
             ui.label(egui::RichText::new("DRAWING TOOLS").small().color(t.dim));
             if ui.button("Draw HLine").clicked() { chart.draw_tool="hline".into(); chart.pending_pt=None; ui.close_menu(); }
             if ui.button("Draw Trendline").clicked() { chart.draw_tool="trendline".into(); chart.pending_pt=None; ui.close_menu(); }
@@ -1999,6 +2482,15 @@ struct Watchlist {
     items: Vec<WatchlistItem>,
     search_query: String,
     search_results: Vec<(String, String)>, // (symbol, name)
+    // Orders book panel
+    orders_panel_open: bool,
+    // Positions
+    positions: Vec<Position>,
+    // Alerts
+    alerts: Vec<Alert>,
+    next_alert_id: u32,
+    #[allow(dead_code)]
+    alert_query: String, // for adding new alerts
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -2008,7 +2500,8 @@ impl Watchlist {
         let items = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
             symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
-        Self { open: true, items, search_query: String::new(), search_results: vec![] }
+        Self { open: true, items, search_query: String::new(), search_results: vec![],
+               orders_panel_open: false, positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new() }
     }
 
     fn add_symbol(&mut self, sym: &str) {
@@ -2342,6 +2835,11 @@ impl ApplicationHandler for App {
                 CURRENT_WINDOW.with(|w| *w.borrow_mut() = None);
                 if CLOSE_REQUESTED.with(|f| f.get()) {
                     cw.close_requested = true;
+                }
+                // Process pending alerts from context menu
+                if let Some((sym, price, above)) = PENDING_ALERT.with(|a| a.borrow_mut().take()) {
+                    let id = cw.watchlist.next_alert_id; cw.watchlist.next_alert_id += 1;
+                    cw.watchlist.alerts.push(Alert { id, symbol: sym, price, above, triggered: false, message: String::new() });
                 }
             }
             // Don't request_redraw on every input — about_to_wait drives the frame loop
