@@ -98,6 +98,12 @@ pub enum ChartCommand {
     RemoveDrawing { id: String },
     /// Clear all drawings
     ClearDrawings,
+    /// Bulk-load drawings from DB (async delivery)
+    LoadDrawings {
+        symbol: String,
+        drawings: Vec<Drawing>,
+        groups: Vec<DrawingGroup>,
+    },
     /// Resize the window
     Resize { width: u32, height: u32 },
     /// Close the renderer

@@ -12,6 +12,11 @@ pub fn init(pool: PgPool) {
     eprintln!("[drawing-db] Global pool initialized");
 }
 
+/// Get a reference to the pool (for direct queries from background threads).
+pub fn get_pool() -> Option<&'static PgPool> {
+    DB_POOL.get()
+}
+
 /// Drawing as stored in PostgreSQL.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DbDrawing {
@@ -27,22 +32,22 @@ pub struct DbDrawing {
     pub group_id: String,
 }
 
-/// Load all drawings for a symbol (blocking, for use from native chart thread).
-pub fn load_symbol(symbol: &str) -> Vec<DbDrawing> {
-    let Some(pool) = DB_POOL.get() else { eprintln!("[drawing-db] load_symbol: no pool"); return vec![]; };
+/// Load all drawings for a symbol. Sends results to the provided channel.
+/// Fully non-blocking — spawns a thread with its own tokio runtime.
+pub fn load_symbol_async(symbol: &str, tx: std::sync::mpsc::Sender<(String, Vec<DbDrawing>)>) {
+    let Some(pool) = DB_POOL.get() else { eprintln!("[drawing-db] load_symbol: no pool"); return; };
+    let pool = pool.clone();
     let sym = symbol.to_string();
 
-    let result = std::thread::spawn(move || {
+    std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        rt.block_on(async {
-            let rows = sqlx::query_as::<_, DrawingRow>(
+        let drawings = rt.block_on(async {
+            match sqlx::query_as::<_, DrawingRow>(
                 "SELECT id, symbol, timeframe, type, points, color, opacity, line_style, thickness, group_id FROM drawings WHERE symbol = $1 ORDER BY created_at"
             )
             .bind(&sym)
-            .fetch_all(pool)
-            .await;
-
-            match rows {
+            .fetch_all(&pool)
+            .await {
                 Ok(rows) => {
                     let drawings: Vec<DbDrawing> = rows.into_iter().filter_map(|r| row_to_drawing(r)).collect();
                     eprintln!("[drawing-db] loaded {} drawings for {}", drawings.len(), sym);
@@ -50,10 +55,16 @@ pub fn load_symbol(symbol: &str) -> Vec<DbDrawing> {
                 }
                 Err(e) => { eprintln!("[drawing-db] load error: {e}"); vec![] }
             }
-        })
-    }).join().unwrap_or_default();
+        });
+        let _ = tx.send((sym, drawings));
+    });
+}
 
-    result
+/// Load all drawings for a symbol (blocking). Only use from background threads, never render thread.
+pub fn load_symbol(symbol: &str) -> Vec<DbDrawing> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    load_symbol_async(symbol, tx);
+    rx.recv().map(|(_, d)| d).unwrap_or_default()
 }
 
 /// Save a drawing (fire-and-forget from native chart thread).

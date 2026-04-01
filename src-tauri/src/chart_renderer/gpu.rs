@@ -390,6 +390,7 @@ struct Chart {
     hidden_groups: Vec<String>,
     signal_drawings: Vec<SignalDrawing>, // auto-generated trendlines from server
     hide_signal_drawings: bool,
+    drawings_requested: bool, // prevents duplicate fetch_drawings_background calls
     last_signal_fetch: std::time::Instant,
     hide_all_drawings: bool,
     hide_all_indicators: bool,
@@ -462,7 +463,7 @@ impl Chart {
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true,
-            signal_drawings: vec![], hide_signal_drawings: false, last_signal_fetch: std::time::Instant::now(),
+            signal_drawings: vec![], hide_signal_drawings: false, last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
             draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
@@ -479,24 +480,17 @@ impl Chart {
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
             ChartCommand::LoadBars { bars, timestamps, symbol, timeframe, .. } => {
+                let is_new_symbol = self.symbol != symbol;
                 self.symbol = symbol; self.timeframe = timeframe;
                 self.bars = bars; self.timestamps = timestamps;
                 self.vs = (self.bars.len() as f32 - self.vc as f32 + 8.0).max(0.0);
                 self.sim_price = 0.0;
                 self.last_candle_time = std::time::Instant::now();
                 self.indicator_bar_count = 0; // force recompute
-                // Load persisted drawings for this symbol
-                self.drawings.clear();
-                let db_drawings = crate::drawing_db::load_symbol(&self.symbol);
-                for dd in &db_drawings {
-                    if let Some(d) = db_to_drawing(dd) { self.drawings.push(d); }
-                }
-                // Load groups from DB
-                let db_groups = crate::drawing_db::load_groups();
-                self.groups.clear();
-                for (id, name, color) in db_groups {
-                    self.groups.push(super::DrawingGroup { id, name, color });
-                }
+                // Skip drawing fetch entirely — was causing memory explosion.
+                // Drawings are created in-memory and saved via fire-and-forget DB writes.
+                // They persist in the state file and reload on app restart.
+                if is_new_symbol { self.drawings.clear(); }
 
                 // Fetch signal drawings for new symbol
                 self.signal_drawings.clear();
@@ -534,6 +528,12 @@ impl Chart {
             ChartCommand::SetDrawing(d) => { self.drawings.retain(|x| x.id != d.id); self.drawings.push(d); }
             ChartCommand::RemoveDrawing { id } => { self.drawings.retain(|x| x.id != id); }
             ChartCommand::ClearDrawings => { self.drawings.clear(); }
+            ChartCommand::LoadDrawings { symbol, drawings, groups } => {
+                if symbol == self.symbol {
+                    self.drawings = drawings;
+                    self.groups = groups.into_iter().map(|g| super::DrawingGroup { id: g.id, name: g.name, color: g.color }).collect();
+                }
+            }
             ChartCommand::SignalDrawings { symbol, drawings_json } => {
                 if symbol == self.symbol {
                     // Parse signal drawings from JSON
@@ -884,7 +884,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     span_begin("cmd_routing");
     while let Ok(cmd) = rx.try_recv() {
         let sym = match &cmd {
-            ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } => Some(symbol.clone()),
+            ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
             _ => None,
         };
         if let Some(s) = sym {
@@ -4559,7 +4559,7 @@ impl ApplicationHandler for App {
                 // Simpler: just process ALL commands here and pass pane commands to the right pane.
                 for cmd in cmds_to_requeue {
                     let sym = match &cmd {
-                        ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } => Some(symbol.clone()),
+                        ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
                         ChartCommand::IndicatorSourceBars { .. } => None,
                         _ => None,
                     };
@@ -4633,6 +4633,7 @@ impl ApplicationHandler for App {
                     pane.timestamps.clear();
                     pane.indicators.clear();
                     pane.drawings.clear(); // cleared here, reloaded when LoadBars arrives
+                    pane.drawings_requested = false; // allow re-fetch for new timeframe
                     pane.sim_price = 0.0;
                     pane.last_candle_time = std::time::Instant::now();
 
@@ -4705,6 +4706,69 @@ fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32) {
 /// Fetch bars from Redis cache → OCOCO → yfinance sidecar → Yahoo Finance v8 on a background thread.
 /// Sends LoadBars command via the global NATIVE_CHART_TXS channels (all windows).
 /// Results are cached in Redis for subsequent requests.
+/// Queue a drawing fetch request. A single persistent background thread processes
+/// all requests sequentially to avoid pool exhaustion.
+fn fetch_drawings_background(sym: String) {
+    use std::sync::{OnceLock, Mutex};
+    static DRAW_TX: OnceLock<Mutex<std::sync::mpsc::Sender<String>>> = OnceLock::new();
+
+    let tx = DRAW_TX.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            let pool = match crate::drawing_db::get_pool() {
+                Some(p) => p.clone(),
+                None => { eprintln!("[drawing-db] worker: no pool"); return; }
+            };
+            let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            // Process requests sequentially — one at a time, one connection
+            while let Ok(sym) = rx.recv() {
+                let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
+                    .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+                if txs.is_empty() { continue; }
+
+                let (drawings, groups) = rt.block_on(async {
+                    let drawings = match sqlx::query_as::<_, (uuid::Uuid, String, String, String, serde_json::Value, String, f32, String, f32, String)>(
+                        "SELECT id, symbol, timeframe, type, points, color, opacity, line_style, thickness, group_id FROM drawings WHERE symbol = $1 ORDER BY created_at"
+                    ).bind(&sym).fetch_all(&pool).await {
+                        Ok(rows) => {
+                            let ds: Vec<crate::drawing_db::DbDrawing> = rows.into_iter().filter_map(|r| {
+                                let points: Vec<(f64, f64)> = r.4.as_array().map(|arr| {
+                                    arr.iter().filter_map(|p| Some((p.get("time")?.as_f64()?, p.get("price")?.as_f64()?))).collect()
+                                }).unwrap_or_default();
+                                Some(crate::drawing_db::DbDrawing {
+                                    id: r.0.to_string(), symbol: r.1, timeframe: r.2, drawing_type: r.3,
+                                    points, color: r.5, opacity: r.6, line_style: r.7, thickness: r.8, group_id: r.9,
+                                })
+                            }).collect();
+                            eprintln!("[drawing-db] loaded {} drawings for {}", ds.len(), sym);
+                            ds
+                        }
+                        Err(e) => { eprintln!("[drawing-db] load error: {e}"); vec![] }
+                    };
+
+                    let groups: Vec<super::DrawingGroup> = match sqlx::query_as::<_, (uuid::Uuid, String, Option<String>)>(
+                        "SELECT id, name, color FROM drawing_groups ORDER BY name"
+                    ).fetch_all(&pool).await {
+                        Ok(rows) => rows.into_iter().map(|(id, name, color)| super::DrawingGroup { id: id.to_string(), name, color }).collect(),
+                        Err(_) => vec![],
+                    };
+
+                    (drawings, groups)
+                });
+
+                let native_drawings: Vec<Drawing> = drawings.iter().filter_map(|dd| db_to_drawing(dd)).collect();
+                let cmd = ChartCommand::LoadDrawings { symbol: sym, drawings: native_drawings, groups };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+            }
+        });
+        Mutex::new(tx)
+    });
+
+    if let Ok(tx) = tx.lock() {
+        let _ = tx.send(sym);
+    }
+}
+
 /// Public entry point for standalone binary to trigger initial data load.
 pub fn fetch_bars_background_pub(sym: String, tf: String) { fetch_bars_background(sym, tf); }
 
