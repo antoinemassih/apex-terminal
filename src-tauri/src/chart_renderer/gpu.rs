@@ -695,6 +695,50 @@ impl Chart {
 /// Run one tick of price simulation for a single pane.
 fn new_uuid() -> String { uuid::Uuid::new_v4().to_string() }
 
+/// Generate a 32x32 RGBA window icon — Apex triangle in orange on transparent bg.
+fn make_window_icon() -> Option<winit::window::Icon> {
+    let s: u32 = 32;
+    let mut rgba = vec![0u8; (s * s * 4) as usize];
+    let color = [254u8, 128, 25, 255]; // Gruvbox accent orange
+
+    // Draw triangle outline: top-center to bottom-left to bottom-right
+    let m = 3.0_f32; // margin
+    let cx = s as f32 / 2.0;
+    let top = (cx, m);
+    let bl = (m, s as f32 - m);
+    let br = (s as f32 - m, s as f32 - m);
+
+    let draw_line = |rgba: &mut Vec<u8>, x0: f32, y0: f32, x1: f32, y1: f32, w: f32| {
+        let len = ((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)).sqrt();
+        let steps = (len * 2.0) as i32;
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            let px = x0 + (x1-x0) * t;
+            let py = y0 + (y1-y0) * t;
+            for dy in -(w as i32)..=(w as i32) {
+                for dx in -(w as i32)..=(w as i32) {
+                    let ix = (px + dx as f32) as i32;
+                    let iy = (py + dy as f32) as i32;
+                    if ix >= 0 && ix < s as i32 && iy >= 0 && iy < s as i32 {
+                        let idx = ((iy as u32 * s + ix as u32) * 4) as usize;
+                        rgba[idx..idx+4].copy_from_slice(&color);
+                    }
+                }
+            }
+        }
+    };
+
+    // Triangle sides
+    draw_line(&mut rgba, top.0, top.1, bl.0, bl.1, 1.0);
+    draw_line(&mut rgba, bl.0, bl.1, br.0, br.1, 1.0);
+    draw_line(&mut rgba, br.0, br.1, top.0, top.1, 1.0);
+    // Horizontal bar
+    let bar_y = cx + 2.0;
+    draw_line(&mut rgba, cx - 7.0, bar_y, cx + 7.0, bar_y, 1.0);
+
+    winit::window::Icon::from_rgba(rgba, s, s).ok()
+}
+
 /// Convert a native Drawing to DbDrawing for persistence.
 fn drawing_to_db(d: &Drawing, symbol: &str, timeframe: &str) -> crate::drawing_db::DbDrawing {
     let (drawing_type, points) = match &d.kind {
@@ -960,6 +1004,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             // Placeholder buttons for future features
             tb_btn(ui, "triangulator", false, t);
             tb_btn(ui, "auto target", false, t);
+
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // New window button
+            if tb_btn(ui, "+ Window", false, t).clicked() {
+                // Spawn a new independent chart window via the existing multi-window system
+                let (tx, rx) = std::sync::mpsc::channel();
+                let sym = panes[ap].symbol.clone();
+                let tf = panes[ap].timeframe.clone();
+                let initial = super::ChartCommand::LoadBars {
+                    symbol: sym.clone(), timeframe: tf.clone(), bars: vec![], timestamps: vec![],
+                };
+                // Register sender for tick broadcasting
+                {
+                    let global = crate::NATIVE_CHART_TXS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+                    global.lock().unwrap().push(tx);
+                }
+                // Send spawn request to the render thread
+                open_window(rx, initial, None);
+                // Fetch data for the new window
+                fetch_bars_background(sym, tf);
+            }
 
             // ── Right side: LIVE + separator + window controls ──
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -3996,6 +4062,10 @@ impl App {
                         }
                     }
                 }
+                // Set taskbar/window icon — 32x32 Apex triangle
+                let icon = make_window_icon();
+                if let Some(icon) = icon { w.set_window_icon(Some(icon)); }
+
                 Arc::new(w)
             }
             Err(e) => { eprintln!("[native-chart] Window creation failed: {e}"); return; }
