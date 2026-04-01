@@ -1068,8 +1068,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     let theme_idx = panes[*active_pane].theme_idx;
     let t = &THEMES[theme_idx];
-    let n = panes[*active_pane].bars.len();
-
     let ap = *active_pane;
     // Store window ref for drag/minimize/maximize/close
     let win_ref: Option<Arc<Window>> = {
@@ -1134,7 +1132,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             // ── Scrollable middle section ──
             // Calculate available width: total - logo(25) - symbol(~70) - right section(~350)
-            let right_width = 360.0;
+            let right_width = 110.0; // only window controls (3 × 34px + separator)
             let middle_width = (ui.available_width() - right_width).max(60.0);
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
@@ -1209,7 +1207,41 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
             }
 
-            }); // end scrollable middle
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // Indicator dropdown (add new indicator from toolbar)
+            let ind_resp = tb_btn(ui, "+ ind", false, t);
+            if ind_resp.clicked() {
+                // Show indicator type menu below the button
+                ui.memory_mut(|m| m.toggle_popup(egui::Id::new("ind_add_popup")));
+            }
+            egui::popup_below_widget(ui, egui::Id::new("ind_add_popup"), &ind_resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+                ui.set_min_width(160.0);
+                ui.label(egui::RichText::new("OVERLAYS").monospace().size(9.0).strong().color(t.accent));
+                for &kind in IndicatorType::overlays() {
+                    if ui.button(egui::RichText::new(kind.label()).monospace().size(10.0)).clicked() {
+                        let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                        let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                        panes[ap].indicators.push(Indicator::new(id, kind, if kind == IndicatorType::RSI { 14 } else { 20 }, color));
+                        panes[ap].indicator_bar_count = 0;
+                        panes[ap].editing_indicator = Some(id);
+                        ui.close_menu();
+                    }
+                }
+                ui.separator();
+                ui.label(egui::RichText::new("OSCILLATORS").monospace().size(9.0).strong().color(t.accent));
+                for &kind in IndicatorType::oscillators() {
+                    let default_period = match kind { IndicatorType::RSI => 14, IndicatorType::MACD => 12, IndicatorType::Stochastic => 14, _ => 20 };
+                    if ui.button(egui::RichText::new(kind.label()).monospace().size(10.0)).clicked() {
+                        let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                        let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                        panes[ap].indicators.push(Indicator::new(id, kind, default_period, color));
+                        panes[ap].indicator_bar_count = 0;
+                        panes[ap].editing_indicator = Some(id);
+                        ui.close_menu();
+                    }
+                }
+            });
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -1220,25 +1252,52 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             // New window button
             if tb_btn(ui, "+ Window", false, t).clicked() {
-                // Spawn a new independent chart window via the existing multi-window system
                 let (tx, rx) = std::sync::mpsc::channel();
                 let sym = panes[ap].symbol.clone();
                 let tf = panes[ap].timeframe.clone();
                 let initial = super::ChartCommand::LoadBars {
                     symbol: sym.clone(), timeframe: tf.clone(), bars: vec![], timestamps: vec![],
                 };
-                // Register sender for tick broadcasting
                 {
                     let global = crate::NATIVE_CHART_TXS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
                     global.lock().unwrap().push(tx);
                 }
-                // Send spawn request to the render thread
                 open_window(rx, initial, None);
-                // Fetch data for the new window
                 fetch_bars_background(sym, tf);
             }
 
-            // ── Right side: LIVE + separator + window controls ──
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // Watchlist toggle
+            if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() { watchlist.open = !watchlist.open; }
+            // Order entry toggle
+            if tb_btn(ui, "orders", watchlist.order_entry_open, t).clicked() { watchlist.order_entry_open = !watchlist.order_entry_open; }
+            // Orders book panel toggle
+            if tb_btn(ui, "book", watchlist.orders_panel_open, t).clicked() { watchlist.orders_panel_open = !watchlist.orders_panel_open; }
+            // Connection status
+            {
+                let dot_color = rgb(46, 204, 113);
+                let conn_resp = ui.add(egui::Button::new(egui::RichText::new("CONN").monospace().size(9.0).color(t.dim))
+                    .fill(if *conn_panel_open { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),30) } else { t.toolbar_bg })
+                    .stroke(egui::Stroke::new(1.0, t.toolbar_border)).corner_radius(2.0));
+                ui.painter().circle_filled(egui::pos2(conn_resp.rect.left() - 6.0, conn_resp.rect.center().y), 3.0, dot_color);
+                if conn_resp.clicked() { *conn_panel_open = !*conn_panel_open; }
+            }
+
+            // LIVE indicator
+            if !panes[ap].auto_scroll {
+                if tb_btn(ui, "LIVE", false, t).clicked() {
+                    panes[ap].auto_scroll=true; panes[ap].price_lock=None;
+                    let bar_count = panes[ap].bars.len();
+                    panes[ap].vs=(bar_count as f32-panes[ap].vc as f32+8.0).max(0.0);
+                }
+            } else {
+                ui.label(egui::RichText::new("LIVE").monospace().size(11.0).color(t.accent));
+            }
+
+            }); // end scrollable middle
+
+            // ── Fixed right: window controls only ──
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
 
@@ -1275,43 +1334,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if let Some(w) = &win_ref { w.set_minimized(true); }
                 }
 
-                ui.add(egui::Separator::default().spacing(6.0));
-                ui.spacing_mut().item_spacing.x = 6.0;
-
-                // Watchlist toggle
-                if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() {
-                    watchlist.open = !watchlist.open;
-                }
-
-                // Order entry toggle
-                if tb_btn(ui, "orders", watchlist.order_entry_open, t).clicked() {
-                    watchlist.order_entry_open = !watchlist.order_entry_open;
-                }
-                // Orders book panel toggle
-                if tb_btn(ui, "book", watchlist.orders_panel_open, t).clicked() {
-                    watchlist.orders_panel_open = !watchlist.orders_panel_open;
-                }
-
-                // Connection status button
-                {
-                    let dot_color = rgb(46, 204, 113); // green — assume ok
-                    let conn_resp = ui.add(egui::Button::new(egui::RichText::new("CONN").monospace().size(9.0).color(t.dim))
-                        .fill(if *conn_panel_open { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),30) } else { t.toolbar_bg })
-                        .stroke(egui::Stroke::new(1.0, t.toolbar_border)).corner_radius(2.0));
-                    // Draw dot on button
-                    ui.painter().circle_filled(egui::pos2(conn_resp.rect.left() - 6.0, conn_resp.rect.center().y), 3.0, dot_color);
-                    if conn_resp.clicked() { *conn_panel_open = !*conn_panel_open; }
-                }
-
-                // LIVE indicator
-                if !panes[ap].auto_scroll {
-                    if tb_btn(ui, "LIVE", false, t).clicked() {
-                        panes[ap].auto_scroll=true; panes[ap].price_lock=None;
-                        panes[ap].vs=(n as f32-panes[ap].vc as f32+8.0).max(0.0);
-                    }
-                } else {
-                    ui.label(egui::RichText::new("LIVE").monospace().size(11.0).color(t.accent));
-                }
+                // Separator between window controls and scrollable content
+                ui.add(egui::Separator::default().spacing(4.0));
             });
         });
     });
