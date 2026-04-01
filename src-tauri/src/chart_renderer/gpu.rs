@@ -1985,7 +1985,49 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 );
                 ui.add_space(4.0);
 
-                // Orders list — compact card style for narrow panel
+                // Group selection actions
+                let sel_count = watchlist.selected_order_ids.len();
+                if sel_count > 0 {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("{} selected", sel_count)).monospace().size(9.0).color(t.accent));
+                        if ui.add(egui::Button::new(egui::RichText::new("Place").monospace().size(9.0).color(t.accent))
+                            .stroke(egui::Stroke::new(0.5, t.accent)).corner_radius(2.0)).clicked() {
+                            for (pi, oid) in &watchlist.selected_order_ids {
+                                if let Some(o) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == *oid)) {
+                                    if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; }
+                                    if let Some(pid) = o.pair_id {
+                                        if let Some(p) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == pid)) {
+                                            if p.status == OrderStatus::Draft { p.status = OrderStatus::Placed; }
+                                        }
+                                    }
+                                }
+                            }
+                            watchlist.selected_order_ids.clear();
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new("Cancel").monospace().size(9.0).color(t.bear))
+                            .corner_radius(2.0)).clicked() {
+                            for (pi, oid) in &watchlist.selected_order_ids {
+                                if *pi < panes.len() { cancel_order_with_pair(&mut panes[*pi].orders, *oid); }
+                            }
+                            watchlist.selected_order_ids.clear();
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new("Unarm").monospace().size(9.0).color(t.dim))
+                            .corner_radius(2.0)).clicked() {
+                            for (pi, oid) in &watchlist.selected_order_ids {
+                                if let Some(o) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == *oid)) {
+                                    if o.status == OrderStatus::Placed { o.status = OrderStatus::Draft; }
+                                }
+                            }
+                            watchlist.selected_order_ids.clear();
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new("Deselect").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
+                            watchlist.selected_order_ids.clear();
+                        }
+                    });
+                    ui.add_space(2.0);
+                }
+
+                // Orders list — compact cards with checkboxes
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let mut cancel_order: Option<(usize, u32)> = None;
                     let full_w = ui.available_width();
@@ -2001,14 +2043,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 OrderStatus::Draft => t.dim, OrderStatus::Placed => t.accent,
                                 OrderStatus::Executed => t.bull, OrderStatus::Cancelled => t.bear,
                             };
+                            let is_active = order.status == OrderStatus::Draft || order.status == OrderStatus::Placed;
+                            let is_selected = watchlist.selected_order_ids.iter().any(|(p, id)| *p == pi && *id == order.id);
 
-                            // Compact card
-                            ui.horizontal(|ui| {
+                            // Row with checkbox
+                            let resp = ui.horizontal(|ui| {
                                 ui.set_min_width(full_w);
+
+                                // Selection checkbox (only for active orders)
+                                if is_active {
+                                    let check_icon = if is_selected { "\u{25C9}" } else { "\u{25CB}" }; // ◉ / ○
+                                    let check_color = if is_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
+                                    if ui.add(egui::Button::new(egui::RichText::new(check_icon).size(11.0).color(check_color)).frame(false).min_size(egui::vec2(14.0, 16.0))).clicked() {
+                                        if is_selected {
+                                            watchlist.selected_order_ids.retain(|(p, id)| !(*p == pi && *id == order.id));
+                                        } else {
+                                            watchlist.selected_order_ids.push((pi, order.id));
+                                        }
+                                    }
+                                } else {
+                                    ui.add_space(14.0);
+                                }
+
                                 ui.label(egui::RichText::new(order.label()).monospace().size(10.0).strong().color(color));
                                 ui.label(egui::RichText::new(&pane.symbol).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if order.status == OrderStatus::Draft || order.status == OrderStatus::Placed {
+                                    if is_active {
                                         if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false)).clicked() {
                                             cancel_order = Some((pi, order.id));
                                         }
@@ -2016,7 +2076,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     ui.label(egui::RichText::new(status_text).monospace().size(9.0).color(status_color));
                                 });
                             });
+                            // Selected highlight
+                            if is_selected {
+                                ui.painter().rect_filled(resp.response.rect, 0.0, egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 15));
+                            }
+
                             ui.horizontal(|ui| {
+                                ui.add_space(14.0); // align with checkbox
                                 ui.label(egui::RichText::new(format!("{:.2}", order.price)).monospace().size(10.0).color(color));
                                 ui.label(egui::RichText::new(format!("x{}", order.qty)).monospace().size(9.0).color(t.dim));
                                 ui.label(egui::RichText::new(fmt_notional(order.notional())).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
@@ -3567,6 +3633,7 @@ struct Watchlist {
     // Orders
     orders_panel_open: bool,
     order_entry_open: bool,
+    selected_order_ids: Vec<(usize, u32)>, // (pane_idx, order_id) for multi-select
     // Positions
     positions: Vec<Position>,
     // Alerts
@@ -3595,7 +3662,7 @@ impl Watchlist {
             symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
         Self { open: true, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
-               orders_panel_open: false, order_entry_open: false, positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
+               orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, saved_options: vec![], dte_filter: -1 }
