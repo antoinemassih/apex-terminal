@@ -14,14 +14,18 @@ pub fn mono_bold(text: &str, size: f32, color: Color32) -> RichText {
     RichText::new(text).monospace().size(size).strong().color(color)
 }
 
-/// Standard toolbar button — 11px monospace, 3px radius, themed colors.
+/// Standard toolbar button — 11px monospace, 3px radius, themed colors, pointer cursor.
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let bg = if active { Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 51) } else { toolbar_bg };
     let fg = if active { accent } else { dim };
     let border = if active { Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 136) } else { toolbar_border };
-    ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).color(fg))
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).color(fg))
         .fill(bg).stroke(Stroke::new(1.0, border)).corner_radius(3.0)
-        .min_size(egui::vec2(0.0, 22.0)))
+        .min_size(egui::vec2(0.0, 22.0)));
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
 }
 
 /// Standard popup window frame — dark background, no title bar.
@@ -35,6 +39,106 @@ pub fn popup_frame(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, f
         .fixed_size(egui::vec2(width, 0.0))
         .title_bar(false)
         .frame(frame)
+}
+
+/// Application-quality dialog window — zero inner padding, border, rounded corners.
+/// `bg` should be the theme's chart background; header will be one shade darker.
+/// Use with `dialog_header()` inside the `.show()` closure.
+pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, border_color: Option<Color32>) -> egui::Window<'static> {
+    // Default fill — caller should use dialog_window_themed for theme-aware colors
+    let fill = Color32::from_rgb(26, 26, 32);
+    let border = border_color.unwrap_or(Color32::from_rgba_unmultiplied(60, 60, 70, 80));
+    egui::Window::new(id.to_string())
+        .fixed_pos(pos)
+        .fixed_size(egui::vec2(width, 0.0))
+        .title_bar(false)
+        .frame(egui::Frame::popup(&ctx.style()).fill(fill).inner_margin(0.0)
+            .stroke(Stroke::new(1.0, border)).corner_radius(6.0))
+}
+
+/// Theme-aware dialog window — body is toolbar_bg, header will be one shade darker.
+pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, toolbar_bg: Color32, toolbar_border: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
+    let border = border_color.unwrap_or(color_alpha(toolbar_border, 100));
+    egui::Window::new(id.to_string())
+        .fixed_pos(pos)
+        .fixed_size(egui::vec2(width, 0.0))
+        .title_bar(false)
+        .frame(egui::Frame::popup(&ctx.style()).fill(toolbar_bg).inner_margin(0.0)
+            .stroke(Stroke::new(1.0, border)).corner_radius(6.0))
+}
+
+/// Dialog header bar — one shade darker than body. Returns true if closed.
+/// `toolbar_bg` is the panel body color; header is darkened from it.
+pub fn dialog_header(ui: &mut egui::Ui, title: &str, dim: Color32) -> bool {
+    dialog_header_colored(ui, title, dim, None)
+}
+
+/// Dialog header bar with explicit background color control.
+pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, header_bg: Option<Color32>) -> bool {
+    use super::super::super::ui_kit::icons::Icon;
+    let fill = header_bg.unwrap_or_else(|| {
+        // Darken: subtract ~8 from each channel, clamped
+        let bg = ui.visuals().window_fill();
+        Color32::from_rgb(bg.r().saturating_sub(8), bg.g().saturating_sub(8), bg.b().saturating_sub(8))
+    });
+    let mut closed = false;
+    egui::Frame::NONE.fill(fill)
+        .inner_margin(egui::Margin { left: 10, right: 8, top: 8, bottom: 8 })
+        .corner_radius(egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 })
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(title).monospace().size(11.0).strong()
+                    .color(Color32::from_rgb(220, 220, 230)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(egui::Button::new(RichText::new(Icon::X).size(11.0)
+                        .color(dim.gamma_multiply(0.6)))
+                        .frame(false).min_size(egui::vec2(20.0, 20.0))).clicked() {
+                        closed = true;
+                    }
+                });
+            });
+        });
+    closed
+}
+
+/// Inset separator with gradient shadow — horizontal line with a soft shadow below it.
+pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
+    let rect = ui.available_rect_before_wrap();
+    let y = ui.cursor().min.y;
+    let left = rect.left() + margin;
+    let right = rect.right() - margin;
+    // Main line
+    ui.painter().line_segment(
+        [egui::pos2(left, y), egui::pos2(right, y)],
+        Stroke::new(0.5, color));
+    // Soft shadow gradient (3 lines fading down)
+    for i in 1..=3u8 {
+        let alpha = (color.a() / 3).saturating_sub(i * 8);
+        let shadow = Color32::from_rgba_unmultiplied(0, 0, 0, alpha);
+        ui.painter().line_segment(
+            [egui::pos2(left, y + i as f32), egui::pos2(right, y + i as f32)],
+            Stroke::new(0.5, shadow));
+    }
+    ui.add_space(4.0);
+}
+
+/// Inset separator — horizontal line with margins on both sides.
+pub fn dialog_separator(ui: &mut egui::Ui, margin: f32, color: Color32) {
+    let rect = ui.available_rect_before_wrap();
+    ui.painter().line_segment(
+        [egui::pos2(rect.left() + margin, ui.cursor().min.y),
+         egui::pos2(rect.right() - margin, ui.cursor().min.y)],
+        Stroke::new(0.5, color));
+    ui.add_space(1.0);
+}
+
+/// Indented section label — label with left margin, used inside dialogs.
+pub fn dialog_section(ui: &mut egui::Ui, text: &str, margin: f32, color: Color32) {
+    ui.horizontal(|ui| {
+        ui.add_space(margin);
+        ui.label(RichText::new(text).monospace().size(9.0).strong().color(color));
+    });
+    ui.add_space(3.0);
 }
 
 /// Draw a dashed or dotted line between two points.
@@ -169,9 +273,10 @@ pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
 }
 
 /// Order card frame — paints a left-border accent stripe and a subtle card background.
-pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: impl FnOnce(&mut egui::Ui)) {
+/// Returns true if the card area was clicked (for selection).
+pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: impl FnOnce(&mut egui::Ui)) -> bool {
     let available_w = ui.available_width();
-    egui::Frame::NONE
+    let resp = egui::Frame::NONE
         .fill(bg)
         .inner_margin(egui::Margin { left: 9, right: 6, top: 5, bottom: 5 })
         .corner_radius(4.0)
@@ -186,7 +291,14 @@ pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: 
             ui.painter().rect_filled(stripe, egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, accent);
             add_content(ui);
         });
+    // Make the whole card clickable
+    let card_rect = resp.response.rect;
+    let click_resp = ui.interact(card_rect, ui.id().with(("card_click", card_rect.min.x as i32, card_rect.min.y as i32)), egui::Sense::click());
+    if click_resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
     ui.add_space(4.0);
+    click_resp.clicked()
 }
 
 /// Action button — accent-tinted background, used for Place/Cancel/Clear actions.
@@ -194,14 +306,18 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
     let bg = if enabled { color_alpha(color, 30) } else { color_alpha(color, 10) };
     let fg = if enabled { color } else { color_alpha(color, 100) };
     let border = if enabled { color_alpha(color, 100) } else { color_alpha(color, 40) };
-    ui.add_enabled(enabled, egui::Button::new(RichText::new(label).monospace().size(9.0).strong().color(fg))
+    let resp = ui.add_enabled(enabled, egui::Button::new(RichText::new(label).monospace().size(9.0).strong().color(fg))
         .fill(bg).stroke(Stroke::new(0.5, border)).corner_radius(3.0)
-        .min_size(egui::vec2(0.0, 20.0))).clicked()
+        .min_size(egui::vec2(0.0, 20.0)));
+    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    resp.clicked()
 }
 
 /// Trade button — full-color background for BUY/SELL. Like web version.
 pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> bool {
-    ui.add(egui::Button::new(RichText::new(label).monospace().size(10.0).strong().color(Color32::WHITE))
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(10.0).strong().color(Color32::WHITE))
         .fill(color_alpha(color, 200))
-        .min_size(egui::vec2(width, 24.0)).corner_radius(3.0)).clicked()
+        .min_size(egui::vec2(width, 24.0)).corner_radius(3.0));
+    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    resp.clicked()
 }

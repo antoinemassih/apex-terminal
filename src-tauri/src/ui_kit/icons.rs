@@ -37,11 +37,32 @@ impl Icon {
     // UI
     pub const CARET_DOWN: &'static str = ph::CARET_DOWN;
     pub const CHECK: &'static str = ph::CHECK;
+    pub const CHECK_SQUARE: &'static str = ph::CHECK_SQUARE;
+    pub const SQUARE_EMPTY: &'static str = ph::SQUARE;
     pub const DOTS_THREE: &'static str = ph::DOTS_THREE;
     pub const PALETTE: &'static str = ph::PALETTE;
     pub const SLIDERS: &'static str = ph::SLIDERS;
     pub const FOLDER: &'static str = ph::FOLDER;
     pub const PLUS: &'static str = ph::PLUS;
+    pub const QUESTION: &'static str = ph::QUESTION;
+    pub const GEAR: &'static str = ph::GEAR;
+    pub const FUNNEL: &'static str = ph::FUNNEL;
+    pub const PLUGS_CONNECTED: &'static str = ph::PLUGS_CONNECTED;
+    pub const BOOK_OPEN: &'static str = ph::BOOK_OPEN;
+    pub const SHOPPING_CART: &'static str = ph::SHOPPING_CART;
+    pub const CIRCLES_FOUR: &'static str = ph::CIRCLES_FOUR;
+    pub const BROWSERS: &'static str = ph::BROWSERS;
+    pub const SIDEBAR: &'static str = ph::SIDEBAR;
+    pub const TAG: &'static str = ph::TAG;
+    pub const CROSSHAIR: &'static str = ph::CROSSHAIR;
+    pub const LIGHTNING: &'static str = ph::LIGHTNING;
+    pub const RADIO_BUTTON: &'static str = ph::RADIO_BUTTON;
+    pub const CURRENCY_DOLLAR: &'static str = ph::CURRENCY_DOLLAR;
+    pub const GIT_DIFF: &'static str = ph::GIT_DIFF;
+    pub const ARTICLE: &'static str = ph::ARTICLE;
+    pub const SPARKLE: &'static str = ph::SPARKLE;
+    pub const PULSE: &'static str = ph::PULSE;
+    pub const NOTEBOOK: &'static str = ph::NOTEBOOK;
 
     // Chart
     pub const CHART_LINE: &'static str = ph::CHART_LINE;
@@ -81,9 +102,17 @@ impl Icon {
 }
 
 /// Initialize Phosphor icon font. Call once during app setup.
+/// Adds Phosphor as fallback for BOTH Proportional and Monospace families,
+/// so icons render correctly even in `.monospace()` text.
 pub fn init_icons(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Bold);
+    // Also add phosphor as fallback for Monospace so icons work in monospace text
+    if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+        if !mono_keys.contains(&"phosphor".to_string()) {
+            mono_keys.push("phosphor".into());
+        }
+    }
     ctx.set_fonts(fonts);
 }

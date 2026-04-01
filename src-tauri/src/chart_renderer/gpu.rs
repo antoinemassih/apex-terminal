@@ -57,7 +57,7 @@ const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent symbols list
 const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, panel_header, section_label, dim_label, popup_frame, color_alpha, form_row, separator, status_badge, order_card, action_btn, trade_btn, close_button};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section};
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -1028,14 +1028,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             tb_btn(ui, "auto target", false, t);
 
             // Trendline filter button
-            if tb_btn(ui, "filters", watchlist.trendline_filter_open, t).clicked() {
+            if tb_btn(ui, &format!("{} filters", Icon::FUNNEL), watchlist.trendline_filter_open, t).clicked() {
                 watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
             // Indicator dropdown (add new indicator from toolbar)
-            let ind_resp = tb_btn(ui, "+ ind", false, t);
+            let ind_resp = tb_btn(ui, &format!("{} ind", Icon::PLUS), false, t);
             if ind_resp.clicked() {
                 // Show indicator type menu below the button
                 ui.memory_mut(|m| m.toggle_popup(egui::Id::new("ind_add_popup")));
@@ -1071,12 +1071,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             ui.add(egui::Separator::default().spacing(4.0));
 
             // Keyboard shortcuts help
-            if tb_btn(ui, "?", watchlist.shortcuts_open, t).clicked() {
+            if tb_btn(ui, Icon::QUESTION, watchlist.shortcuts_open, t).clicked() {
                 watchlist.shortcuts_open = !watchlist.shortcuts_open;
             }
 
             // New window button
-            if tb_btn(ui, "+ Window", false, t).clicked() {
+            if tb_btn(ui, &format!("{} Window", Icon::PLUS), false, t).clicked() {
                 let (tx, rx) = std::sync::mpsc::channel();
                 let sym = panes[ap].symbol.clone();
                 let tf = panes[ap].timeframe.clone();
@@ -1089,24 +1089,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 open_window(rx, initial, None);
                 fetch_bars_background(sym, tf);
-            }
-
-            ui.add(egui::Separator::default().spacing(4.0));
-
-            // Watchlist toggle
-            if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() { watchlist.open = !watchlist.open; }
-            // Order entry toggle
-            if tb_btn(ui, "orders", watchlist.order_entry_open, t).clicked() { watchlist.order_entry_open = !watchlist.order_entry_open; }
-            // Orders book panel toggle
-            if tb_btn(ui, "book", watchlist.orders_panel_open, t).clicked() { watchlist.orders_panel_open = !watchlist.orders_panel_open; }
-            // Connection status
-            {
-                let dot_color = rgb(46, 204, 113);
-                let conn_resp = ui.add(egui::Button::new(egui::RichText::new("CONN").monospace().size(9.0).color(t.dim))
-                    .fill(if *conn_panel_open { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),30) } else { t.toolbar_bg })
-                    .stroke(egui::Stroke::new(1.0, t.toolbar_border)).corner_radius(2.0));
-                ui.painter().circle_filled(egui::pos2(conn_resp.rect.left() - 6.0, conn_resp.rect.center().y), 3.0, dot_color);
-                if conn_resp.clicked() { *conn_panel_open = !*conn_panel_open; }
             }
 
             // LIVE indicator
@@ -1122,7 +1104,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             }); // end scrollable middle
 
-            // ── Fixed right: window controls only ──
+            // ── Fixed right: panels + window controls ──
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
 
@@ -1159,7 +1141,34 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if let Some(w) = &win_ref { w.set_minimized(true); }
                 }
 
-                // Separator between window controls and scrollable content
+                // Separator between window controls and panel toggles
+                ui.add(egui::Separator::default().spacing(4.0));
+
+                // Panel toggle buttons (right-to-left, so ordered right→left)
+                ui.spacing_mut().item_spacing.x = 4.0;
+
+                // Connection status
+                {
+                    let conn_resp = tb_btn(ui, Icon::SPARKLE, *conn_panel_open, t);
+                    // Green dot overlay
+                    let dot_color = rgb(46, 204, 113);
+                    ui.painter().circle_filled(egui::pos2(conn_resp.rect.right() - 3.0, conn_resp.rect.top() + 5.0), 2.5, dot_color);
+                    if conn_resp.clicked() { *conn_panel_open = !*conn_panel_open; }
+                }
+
+                // Orders book panel
+                if tb_btn(ui, Icon::ARTICLE, watchlist.orders_panel_open, t).clicked() {
+                    watchlist.orders_panel_open = !watchlist.orders_panel_open;
+                }
+
+                // Order entry toggle
+                if tb_btn(ui, Icon::CURRENCY_DOLLAR, watchlist.order_entry_open, t).clicked() {
+                    watchlist.order_entry_open = !watchlist.order_entry_open;
+                }
+
+                // Watchlist toggle
+                if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() { watchlist.open = !watchlist.open; }
+
                 ui.add(egui::Separator::default().spacing(4.0));
             });
         });
@@ -1185,48 +1194,53 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Keyboard shortcuts help panel ──────────────────────────────────────
     if watchlist.shortcuts_open {
-        popup_frame(ctx, "shortcuts_help", egui::pos2(ctx.screen_rect().center().x - 150.0, 50.0), 300.0, egui::Color32::from_rgb(28, 28, 34), None)
+        dialog_window_themed(ctx, "shortcuts_help", egui::pos2(ctx.screen_rect().center().x - 150.0, 50.0), 300.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
-                if panel_header(ui, "KEYBOARD SHORTCUTS", t.accent, t.dim) { watchlist.shortcuts_open = false; }
-                ui.add_space(6.0);
-                let key_w = 90.0;
+                if dialog_header(ui, "KEYBOARD SHORTCUTS", t.dim) { watchlist.shortcuts_open = false; }
+                ui.add_space(8.0);
+                let m = 10.0;
                 let shortcut_row = |ui: &mut egui::Ui, key: &str, desc: &str| {
-                    form_row(ui, key, key_w, egui::Color32::from_rgb(200,200,210), |ui| {
-                        ui.label(egui::RichText::new(desc).monospace().size(9.0).color(t.dim));
+                    ui.horizontal(|ui| {
+                        ui.add_space(m);
+                        ui.allocate_ui(egui::vec2(90.0, 16.0), |ui| {
+                            ui.label(egui::RichText::new(key).monospace().size(9.0).strong().color(egui::Color32::from_rgb(200,200,210)));
+                        });
+                        ui.label(egui::RichText::new(desc).monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
                     });
                 };
-                section_label(ui, "NAVIGATION", t.accent);
-                ui.add_space(2.0);
+                dialog_section(ui, "NAVIGATION", m, t.accent);
                 shortcut_row(ui, "Scroll", "Zoom in/out");
                 shortcut_row(ui, "Drag", "Pan chart");
                 shortcut_row(ui, "Drag Y-axis", "Vertical zoom");
                 shortcut_row(ui, "Drag X-axis", "Horizontal zoom");
                 shortcut_row(ui, "Dbl-click Y", "Reset Y zoom");
                 ui.add_space(6.0);
-                section_label(ui, "DRAWING", t.accent);
-                ui.add_space(2.0);
+                dialog_section(ui, "DRAWING", m, t.accent);
                 shortcut_row(ui, "Middle-click", "Cycle drawing tools");
                 shortcut_row(ui, "Escape", "Cancel / deselect");
                 shortcut_row(ui, "Delete", "Delete selected drawing");
                 shortcut_row(ui, "Shift+Drag", "Measure tool");
                 shortcut_row(ui, "Dbl-click line", "Edit indicator/order");
                 ui.add_space(6.0);
-                section_label(ui, "ORDERS", t.accent);
-                ui.add_space(2.0);
+                dialog_section(ui, "ORDERS", m, t.accent);
                 shortcut_row(ui, "Right-click", "Place order at price");
                 shortcut_row(ui, "Drag order", "Adjust order price");
                 shortcut_row(ui, "Dbl-click order", "Edit order details");
+                ui.add_space(8.0);
             });
     }
 
     // ── Trendline filter dropdown ────────────────────────────────────────────
     if watchlist.trendline_filter_open {
-        popup_frame(ctx, "trendline_filter", egui::pos2(300.0, 40.0), 200.0, egui::Color32::from_rgb(28, 28, 34), None)
+        dialog_window_themed(ctx, "trendline_filter", egui::pos2(300.0, 40.0), 210.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
-                if panel_header(ui, "DRAWING FILTERS", t.accent, t.dim) { watchlist.trendline_filter_open = false; }
-                ui.add_space(4.0);
+                if dialog_header(ui, "DRAWING FILTERS", t.dim) { watchlist.trendline_filter_open = false; }
+                ui.add_space(8.0);
+                let m = 10.0;
                 let chart = &mut panes[ap];
+
                 // Per-type visibility toggles
+                dialog_section(ui, "BY TYPE", m, t.dim.gamma_multiply(0.5));
                 let types = [("trendline", "Trendlines"), ("hline", "H-Lines"), ("hzone", "Zones"), ("barmarker", "Markers")];
                 for (dtype, label) in &types {
                     let count = chart.drawings.iter().filter(|d| {
@@ -1239,39 +1253,51 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }).count();
                     ui.horizontal(|ui| {
+                        ui.add_space(m);
                         ui.label(egui::RichText::new(format!("{} ({})", label, count)).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
                     });
                 }
 
-                ui.add_space(4.0);
-                ui.separator();
-                ui.add_space(2.0);
+                ui.add_space(8.0);
+                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
+                ui.add_space(8.0);
 
-                // Signal drawings toggle
+                // Visibility toggles
+                dialog_section(ui, "VISIBILITY", m, t.dim.gamma_multiply(0.5));
+                let vis_btn = |ui: &mut egui::Ui, hidden: bool, label: &str, count: usize| -> bool {
+                    let icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
+                    let fg = if hidden { t.dim.gamma_multiply(0.4) } else { t.dim };
+                    ui.horizontal(|ui| {
+                        ui.add_space(m);
+                        ui.add(egui::Button::new(egui::RichText::new(format!("{} {} ({})", icon, label, count))
+                            .monospace().size(9.0).color(fg)).frame(false))
+                            .clicked()
+                    }).inner
+                };
                 let sig_count = chart.signal_drawings.len();
-                let sig_icon = if chart.hide_signal_drawings { Icon::EYE_SLASH } else { Icon::EYE };
-                if ui.button(format!("{} Signals ({})", sig_icon, sig_count)).clicked() {
+                if vis_btn(ui, chart.hide_signal_drawings, "Signals", sig_count) {
                     chart.hide_signal_drawings = !chart.hide_signal_drawings;
                 }
-
-                // All drawings toggle
-                let draw_icon = if chart.hide_all_drawings { Icon::EYE_SLASH } else { Icon::EYE };
-                if ui.button(format!("{} All Drawings", draw_icon)).clicked() {
+                if vis_btn(ui, chart.hide_all_drawings, "All Drawings", chart.drawings.len()) {
                     chart.hide_all_drawings = !chart.hide_all_drawings;
                 }
 
                 // Groups
-                ui.add_space(4.0);
-                dim_label(ui, "GROUPS", t.dim);
-                for g in chart.groups.clone() {
-                    let hidden = chart.hidden_groups.contains(&g.id);
-                    let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
-                    let icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
-                    if ui.button(format!("{} {} ({})", icon, g.name, count)).clicked() {
-                        if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
-                        else { chart.hidden_groups.push(g.id.clone()); }
+                if !chart.groups.is_empty() {
+                    ui.add_space(8.0);
+                    dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
+                    ui.add_space(8.0);
+                    dialog_section(ui, "GROUPS", m, t.dim.gamma_multiply(0.5));
+                    for g in chart.groups.clone() {
+                        let hidden = chart.hidden_groups.contains(&g.id);
+                        let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
+                        if vis_btn(ui, hidden, &g.name, count) {
+                            if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
+                            else { chart.hidden_groups.push(g.id.clone()); }
+                        }
                     }
                 }
+                ui.add_space(8.0);
             });
     }
 
@@ -1545,55 +1571,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let pane_symbol = panes[ap].symbol.clone(); // clone to avoid borrow conflict
 
         {
-        let panel_fill = egui::Color32::from_rgb(26, 26, 32);
-        let header_fill = egui::Color32::from_rgb(32, 32, 40);
-
-        egui::Window::new(format!("ind_editor_{}", edit_id))
-            .fixed_pos(egui::pos2(200.0, 80.0))
-            .fixed_size(egui::vec2(280.0, 0.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style()).fill(panel_fill).inner_margin(0.0)
-                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)))
-                .corner_radius(6.0))
+        dialog_window_themed(ctx, &format!("ind_editor_{}", edit_id), egui::pos2(200.0, 80.0), 280.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
                 if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
-                    // ── Header bar ──
-                    egui::Frame::NONE.fill(header_fill)
-                        .inner_margin(egui::Margin { left: 10, right: 8, top: 8, bottom: 8 })
-                        .corner_radius(egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 })
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                // Colored dot for the indicator
-                                let ind_color = hex_to_color(&ind.color, 1.0);
-                                let dot_pos = egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 8.0);
-                                ui.painter().circle_filled(dot_pos, 4.0, ind_color);
-                                ui.add_space(14.0);
-                                // Indicator name
-                                ui.label(egui::RichText::new(ind.display_name()).monospace().size(11.0).strong()
-                                    .color(egui::Color32::from_rgb(220, 220, 230)));
-                                // Close button
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(11.0)
-                                        .color(t.dim.gamma_multiply(0.6)))
-                                        .frame(false).min_size(egui::vec2(20.0, 20.0))).clicked() {
-                                        close_editor = true;
-                                    }
-                                });
-                            });
-                        });
+                    if dialog_header(ui, &ind.display_name(), t.dim) { close_editor = true; }
 
                     // ── Body ──
                     ui.add_space(8.0);
-                    let body_margin = 10.0;
+                    let m = 10.0; // body margin
 
                     // Type selector — full-width segmented control
+                    dialog_section(ui, "TYPE", m, t.dim.gamma_multiply(0.5));
                     ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
-                        section_label(ui, "TYPE", t.dim.gamma_multiply(0.5));
-                    });
-                    ui.add_space(3.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
+                        ui.add_space(m);
                         ui.spacing_mut().item_spacing.x = 0.0;
                         for (i, &kind) in IndicatorType::all().iter().enumerate() {
                             let selected = ind.kind == kind;
@@ -1619,13 +1609,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.add_space(8.0);
 
                     // Period — drag value + quick presets
+                    dialog_section(ui, "PERIOD", m, t.dim.gamma_multiply(0.5));
                     ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
-                        section_label(ui, "PERIOD", t.dim.gamma_multiply(0.5));
-                    });
-                    ui.add_space(3.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
+                        ui.add_space(m);
                         let mut period = ind.period as i32;
                         if ui.add(egui::DragValue::new(&mut period).range(1..=500).speed(0.5)
                             .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
@@ -1651,13 +1637,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.add_space(8.0);
 
                     // Source interval — segmented control
+                    dialog_section(ui, "SOURCE", m, t.dim.gamma_multiply(0.5));
                     ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
-                        section_label(ui, "SOURCE", t.dim.gamma_multiply(0.5));
-                    });
-                    ui.add_space(3.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
+                        ui.add_space(m);
                         ui.spacing_mut().item_spacing.x = 0.0;
                         let tfs = INDICATOR_TIMEFRAMES;
                         for (i, &tf) in tfs.iter().enumerate() {
@@ -1689,24 +1671,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     });
 
                     ui.add_space(10.0);
-                    // Separator
-                    let sep_rect = ui.available_rect_before_wrap();
-                    ui.painter().line_segment(
-                        [egui::pos2(sep_rect.left() + body_margin, ui.cursor().min.y),
-                         egui::pos2(sep_rect.right() - body_margin, ui.cursor().min.y)],
-                        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
+                    dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
                     ui.add_space(10.0);
 
                     // APPEARANCE section
-                    ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
-                        section_label(ui, "APPEARANCE", t.dim.gamma_multiply(0.5));
-                    });
-                    ui.add_space(6.0);
+                    dialog_section(ui, "APPEARANCE", m, t.dim.gamma_multiply(0.5));
+                    ui.add_space(3.0);
 
                     // Color picker
                     ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
+                        ui.add_space(m);
                         ui.label(egui::RichText::new("Color").monospace().size(9.0).color(t.dim));
                         ui.add_space(8.0);
                         ui.spacing_mut().item_spacing.x = 4.0;
@@ -1726,7 +1700,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // Width — segmented
                     ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
+                        ui.add_space(m);
                         ui.label(egui::RichText::new("Width").monospace().size(9.0).color(t.dim));
                         ui.add_space(6.0);
                         ui.spacing_mut().item_spacing.x = 0.0;
@@ -1752,7 +1726,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // Style — segmented
                     ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
+                        ui.add_space(m);
                         ui.label(egui::RichText::new("Style").monospace().size(9.0).color(t.dim));
                         ui.add_space(8.0);
                         ui.spacing_mut().item_spacing.x = 0.0;
@@ -1776,17 +1750,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     });
 
                     ui.add_space(10.0);
-                    // Footer separator
-                    let sep_rect2 = ui.available_rect_before_wrap();
-                    ui.painter().line_segment(
-                        [egui::pos2(sep_rect2.left() + body_margin, ui.cursor().min.y),
-                         egui::pos2(sep_rect2.right() - body_margin, ui.cursor().min.y)],
-                        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
+                    dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
                     ui.add_space(8.0);
 
                     // ── Footer actions ──
                     ui.horizontal(|ui| {
-                        ui.add_space(body_margin);
+                        ui.add_space(m);
                         // Visibility toggle
                         let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
                         let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
@@ -1797,7 +1766,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ind.visible = !ind.visible;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add_space(body_margin);
+                            ui.add_space(m);
                             let del_color = egui::Color32::from_rgb(224, 85, 96);
                             if ui.add(egui::Button::new(egui::RichText::new(format!("{} Delete", Icon::TRASH))
                                 .monospace().size(9.0).color(del_color))
@@ -1827,51 +1796,61 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     // ── Group manager popup ────────────────────────────────────────────────────
     if panes[ap].group_manager_open {
         let mut close_gm = false;
-        popup_frame(ctx, "group_manager", egui::pos2(200.0, 100.0), 240.0, egui::Color32::from_rgb(30, 30, 36), None)
+        dialog_window_themed(ctx, "group_manager", egui::pos2(200.0, 100.0), 250.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
-                if panel_header(ui, "NEW GROUP", t.accent, t.dim) { close_gm = true; }
-                ui.add_space(6.0);
-                let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].new_group_name)
-                    .hint_text("Group name...").desired_width(220.0).font(egui::FontId::monospace(11.0)));
-                resp.request_focus();
-                ui.add_space(6.0);
-                let can_create = !panes[ap].new_group_name.trim().is_empty();
-                if ui.add_enabled(can_create, egui::Button::new(
-                    egui::RichText::new(format!("{} Create", Icon::PLUS)).monospace().size(11.0)
-                ).min_size(egui::vec2(220.0, 24.0))).clicked() || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && can_create) {
-                    let name = panes[ap].new_group_name.trim().to_string();
-                    let id = new_uuid();
-                    crate::drawing_db::save_group(&id, &name, None);
-                    panes[ap].groups.push(super::DrawingGroup { id, name, color: None });
-                    panes[ap].new_group_name.clear();
-                    close_gm = true;
-                }
+                if dialog_header(ui, "NEW GROUP", t.dim) { close_gm = true; }
+                ui.add_space(10.0);
+                let m = 10.0;
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].new_group_name)
+                        .hint_text("Group name...").desired_width(230.0 - m * 2.0).font(egui::FontId::monospace(12.0)));
+                    resp.request_focus();
+                });
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    let can_create = !panes[ap].new_group_name.trim().is_empty();
+                    if action_btn(ui, &format!("{} Create", Icon::PLUS), t.accent, can_create) {
+                        let name = panes[ap].new_group_name.trim().to_string();
+                        let id = new_uuid();
+                        crate::drawing_db::save_group(&id, &name, None);
+                        panes[ap].groups.push(super::DrawingGroup { id, name, color: None });
+                        panes[ap].new_group_name.clear();
+                        close_gm = true;
+                    }
+                });
+                ui.add_space(8.0);
             });
         if close_gm { panes[ap].group_manager_open = false; }
     }
 
     // ── Connection panel popup ──────────────────────────────────────────────
     if *conn_panel_open {
-        popup_frame(ctx, "conn_panel", egui::pos2(ctx.screen_rect().right() - 260.0, 40.0), 240.0, egui::Color32::from_rgb(28, 28, 34), None)
+        dialog_window_themed(ctx, "conn_panel", egui::pos2(ctx.screen_rect().right() - 260.0, 40.0), 240.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
-                if panel_header(ui, "CONNECTIONS", t.accent, t.dim) { *conn_panel_open = false; }
-                ui.add_space(6.0);
+                if dialog_header(ui, "CONNECTIONS", t.dim) { *conn_panel_open = false; }
+                ui.add_space(8.0);
+                let m = 10.0;
 
+                dialog_section(ui, "SERVICES", m, t.dim.gamma_multiply(0.5));
                 let svc_row = |ui: &mut egui::Ui, name: &str, status: &str, ok: bool, detail: &str| {
                     ui.horizontal(|ui| {
+                        ui.add_space(m);
                         let dot_color = if ok { rgb(46,204,113) } else { rgb(231,76,60) };
                         ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0), 3.5, dot_color);
                         ui.add_space(12.0);
                         ui.label(egui::RichText::new(name).monospace().size(10.0).strong().color(egui::Color32::from_rgb(200,200,210)));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add_space(m);
                             status_badge(ui, status, if ok { t.bull } else { t.bear });
                         });
                     });
                     ui.horizontal(|ui| {
-                        ui.add_space(12.0);
-                        ui.label(egui::RichText::new(detail).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                        ui.add_space(m + 12.0);
+                        ui.label(egui::RichText::new(detail).monospace().size(8.0).color(t.dim.gamma_multiply(0.45)));
                     });
-                    ui.add_space(4.0);
+                    ui.add_space(3.0);
                 };
 
                 let redis_ok = crate::bar_cache::get("__ping_test", "").is_none();
@@ -1880,9 +1859,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 svc_row(ui, "Data Feed", "OK", true, "query1.finance.yahoo.com");
                 svc_row(ui, "OCOCO", "OK", true, "192.168.1.60:30300");
 
-                separator(ui, color_alpha(t.toolbar_border, 40));
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("redis:6379 \u{00B7} ococo:30300 \u{00B7} yahoo").monospace().size(8.0).color(t.dim.gamma_multiply(0.35)));
+                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 40));
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new("redis:6379 \u{00B7} ococo:30300 \u{00B7} yahoo").monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
+                });
+                ui.add_space(8.0);
             });
     }
 
@@ -1904,7 +1888,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     .fill(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (40.0 * alpha) as u8))
                     .inner_margin(4.0))
                 .show(ctx, |ui| {
-                    ui.label(egui::RichText::new(format!("\u{2713} {}", msg)).monospace().size(10.0)
+                    ui.label(egui::RichText::new(format!("{} {}", Icon::CHECK, msg)).monospace().size(10.0)
                         .color(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (255.0 * alpha) as u8)));
                 });
         }
@@ -2067,7 +2051,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 });
 
                             // Select mode toggle
-                            let sel_label = if watchlist.chain_select_mode { "\u{2713} sel" } else { "sel" };
+                            let sel_label = if watchlist.chain_select_mode { format!("{} sel", Icon::CHECK) } else { "sel".to_string() };
                             let sel_active = watchlist.chain_select_mode;
                             if ui.add(egui::Button::new(egui::RichText::new(sel_label).monospace().size(9.0)
                                 .color(if sel_active { t.accent } else { t.dim }))
@@ -2130,7 +2114,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                 // Check mark column
                                 ui.allocate_ui(egui::vec2(col_chk, 20.0), |ui| {
-                                    if is_saved { ui.label(egui::RichText::new("\u{2713}").size(10.0).color(t.accent)); }
+                                    if is_saved { ui.label(egui::RichText::new(Icon::CHECK).size(11.0).color(t.accent)); }
                                 });
                                 // Strike
                                 ui.allocate_ui(egui::vec2(col_stk, 20.0), |ui| {
@@ -2345,9 +2329,34 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.add_space(4.0);
                 }
 
+                // ── Select all toggle ──
+                {
+                    let active_orders: Vec<(usize, u32)> = panes.iter().enumerate()
+                        .flat_map(|(pi, p)| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).map(move |o| (pi, o.id)))
+                        .collect();
+                    let all_selected = !active_orders.is_empty() && active_orders.iter().all(|(pi, oid)| watchlist.selected_order_ids.iter().any(|(p, id)| p == pi && id == oid));
+                    if !active_orders.is_empty() {
+                        ui.horizontal(|ui| {
+                            let check_icon = if all_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
+                            let check_color = if all_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            if ui.add(egui::Button::new(egui::RichText::new(check_icon).size(11.0).color(check_color))
+                                .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                if all_selected {
+                                    watchlist.selected_order_ids.clear();
+                                } else {
+                                    watchlist.selected_order_ids = active_orders;
+                                }
+                            }
+                            ui.label(egui::RichText::new("Select all").monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                        });
+                        ui.add_space(2.0);
+                    }
+                }
+
                 // ── Order cards ──
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let mut cancel_order: Option<(usize, u32)> = None;
+                    let mut toggle_select: Option<(usize, u32)> = None;
 
                     for (pi, pane) in panes.iter().enumerate() {
                         for order in &pane.orders {
@@ -2364,21 +2373,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let is_selected = watchlist.selected_order_ids.iter().any(|(p, id)| *p == pi && *id == order.id);
                             let card_bg = if is_selected { color_alpha(t.accent, 12) } else { color_alpha(t.toolbar_border, 15) };
 
-                            order_card(ui, color, card_bg, |ui| {
+                            let card_clicked = order_card(ui, color, card_bg, |ui| {
                                 // Card header: checkbox + type + symbol + status + close
                                 ui.horizontal(|ui| {
-                                    // Selection checkbox
+                                    // Selection checkbox (visual only — click handled by card)
                                     if is_active {
-                                        let check_icon = if is_selected { "\u{25C9}" } else { "\u{25CB}" };
+                                        let check_icon = if is_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
                                         let check_color = if is_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
-                                        if ui.add(egui::Button::new(egui::RichText::new(check_icon).size(11.0).color(check_color))
-                                            .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
-                                            if is_selected {
-                                                watchlist.selected_order_ids.retain(|(p, id)| !(*p == pi && *id == order.id));
-                                            } else {
-                                                watchlist.selected_order_ids.push((pi, order.id));
-                                            }
-                                        }
+                                        ui.label(egui::RichText::new(check_icon).size(11.0).color(check_color));
                                     }
                                     ui.label(egui::RichText::new(order.label()).monospace().size(10.0).strong().color(color));
                                     ui.label(egui::RichText::new(format!("{} {}", &pane.symbol, &pane.timeframe))
@@ -2404,11 +2406,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     });
                                 });
                             });
+
+                            // Toggle selection on card click (for active orders)
+                            if card_clicked && is_active {
+                                toggle_select = Some((pi, order.id));
+                            }
                         }
                     }
 
                     if let Some((pi, oid)) = cancel_order {
                         cancel_order_with_pair(&mut panes[pi].orders, oid);
+                    }
+                    if let Some((pi, oid)) = toggle_select {
+                        let already = watchlist.selected_order_ids.iter().any(|(p, id)| *p == pi && *id == oid);
+                        if already {
+                            watchlist.selected_order_ids.retain(|(p, id)| !(*p == pi && *id == oid));
+                        } else {
+                            watchlist.selected_order_ids.push((pi, oid));
+                        }
                     }
 
                     // ── Positions section ──
@@ -3123,35 +3138,51 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let mut apply_qty: Option<u32> = None;
                 let mut cancel_it = false;
 
-                popup_frame(ctx, &format!("order_edit_{}", edit_id), popup_pos, 200.0, t.toolbar_bg, Some(color))
+                dialog_window_themed(ctx, &format!("order_edit_{}", edit_id), popup_pos, 210.0, t.toolbar_bg, t.toolbar_border, Some(color))
                     .show(ctx, |ui| {
-                        if panel_header(ui, &format!("EDIT {}", order_label), color, t.dim) { close_editor = true; }
-                        ui.add_space(6.0);
+                        if dialog_header(ui, &format!("EDIT {}", order_label), t.dim) { close_editor = true; }
+                        ui.add_space(8.0);
+                        let m = 10.0;
 
-                        form_row(ui, "Price", 36.0, t.dim, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            ui.label(egui::RichText::new("Price").monospace().size(9.0).color(t.dim));
+                            ui.add_space(4.0);
                             let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_price)
-                                .desired_width(100.0).font(egui::FontId::monospace(11.0))
+                                .desired_width(110.0).font(egui::FontId::monospace(12.0))
                                 .horizontal_align(egui::Align::RIGHT));
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 if let Ok(p) = chart.edit_order_price.parse::<f32>() { apply_price = Some(p); }
                             }
                         });
-                        ui.add_space(2.0);
-                        form_row(ui, "Qty", 36.0, t.dim, |ui| {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            ui.label(egui::RichText::new("Qty  ").monospace().size(9.0).color(t.dim));
+                            ui.add_space(4.0);
                             let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_qty)
-                                .desired_width(100.0).font(egui::FontId::monospace(11.0))
+                                .desired_width(110.0).font(egui::FontId::monospace(12.0))
                                 .horizontal_align(egui::Align::RIGHT));
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 if let Ok(q) = chart.edit_order_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
                             }
                         });
 
+                        ui.add_space(8.0);
+                        dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
                         ui.add_space(6.0);
-                        separator(ui, color_alpha(t.toolbar_border, 60));
-                        ui.add_space(4.0);
-                        if action_btn(ui, &format!("{} Cancel Order", Icon::TRASH), t.bear, true) {
-                            cancel_it = true;
-                        }
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            let del_color = t.bear;
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} Cancel Order", Icon::TRASH))
+                                .monospace().size(9.0).color(del_color))
+                                .fill(color_alpha(del_color, 15)).corner_radius(3.0)
+                                .stroke(egui::Stroke::new(0.5, color_alpha(del_color, 60)))
+                                .min_size(egui::vec2(0.0, 22.0))).clicked() {
+                                cancel_it = true;
+                            }
+                        });
+                        ui.add_space(8.0);
                     });
 
                 // Apply deferred changes
@@ -3306,7 +3337,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             .show(ctx, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(10.0).color(color));
-                                    if ui.add(egui::Button::new(egui::RichText::new("\u{2713}").size(11.0).color(t.bull))
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::CHECK).size(12.0).color(t.bull))
                                         .fill(egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 40))
                                         .corner_radius(2.0).min_size(egui::vec2(24.0, 20.0))).clicked() {
                                         confirm_ids.push(*oid);
