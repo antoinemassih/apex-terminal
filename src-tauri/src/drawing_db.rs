@@ -29,26 +29,25 @@ pub struct DbDrawing {
 
 /// Load all drawings for a symbol (blocking, for use from native chart thread).
 pub fn load_symbol(symbol: &str) -> Vec<DbDrawing> {
-    let Some(pool) = DB_POOL.get() else { return vec![]; };
+    let Some(pool) = DB_POOL.get() else { eprintln!("[drawing-db] load_symbol: no pool"); return vec![]; };
     let sym = symbol.to_string();
-    let _rt = match tokio::runtime::Handle::try_current() {
-        Ok(h) => h,
-        Err(_) => return vec![], // no async runtime available
-    };
 
-    // Use spawn_blocking to avoid blocking the async runtime
     let result = std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
             let rows = sqlx::query_as::<_, DrawingRow>(
-                "SELECT id, symbol, timeframe, type as drawing_type, points, color, opacity, line_style, thickness, group_id FROM drawings WHERE symbol = $1 ORDER BY created_at"
+                "SELECT id, symbol, timeframe, type, points, color, opacity, line_style, thickness, group_id FROM drawings WHERE symbol = $1 ORDER BY created_at"
             )
             .bind(&sym)
             .fetch_all(pool)
             .await;
 
             match rows {
-                Ok(rows) => rows.into_iter().filter_map(|r| row_to_drawing(r)).collect(),
+                Ok(rows) => {
+                    let drawings: Vec<DbDrawing> = rows.into_iter().filter_map(|r| row_to_drawing(r)).collect();
+                    eprintln!("[drawing-db] loaded {} drawings for {}", drawings.len(), sym);
+                    drawings
+                }
                 Err(e) => { eprintln!("[drawing-db] load error: {e}"); vec![] }
             }
         })
@@ -73,7 +72,7 @@ pub fn save(drawing: &DbDrawing) {
                 serde_json::json!({"time": t, "price": p})
             }).collect::<Vec<_>>());
 
-            let _ = sqlx::query(
+            let res = sqlx::query(
                 "INSERT INTO drawings (id, symbol, timeframe, type, points, color, opacity, line_style, thickness, group_id, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
                  ON CONFLICT (id) DO UPDATE SET
@@ -85,6 +84,10 @@ pub fn save(drawing: &DbDrawing) {
             .bind(&points).bind(&d.color).bind(d.opacity).bind(&d.line_style)
             .bind(d.thickness).bind(&d.group_id)
             .execute(&pool).await;
+            match res {
+                Ok(_) => eprintln!("[drawing-db] saved {} {} {}", d.drawing_type, d.symbol, d.id),
+                Err(e) => eprintln!("[drawing-db] save error: {e}"),
+            }
         });
     });
 }
