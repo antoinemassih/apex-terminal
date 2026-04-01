@@ -2,6 +2,7 @@
 //! egui handles UI + chart painting. winit handles window on non-main thread.
 
 use std::sync::{mpsc, Arc, Mutex};
+use std::fmt::Write as FmtWrite;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -474,8 +475,12 @@ struct Chart {
     // Symbol/timeframe change request — signals the App to reload data
     pending_symbol_change: Option<String>,
     pending_timeframe_change: Option<String>,
+    // Cached formatted strings — updated only when data changes, not every frame
+    #[allow(dead_code)] cached_ohlc: String,
+    #[allow(dead_code)] cached_ohlc_bar_count: usize,
     // Reusable buffers to avoid per-frame allocations
     indicator_pts_buf: Vec<egui::Pos2>,
+    fmt_buf: String, // reusable format buffer
 }
 
 impl Chart {
@@ -515,7 +520,8 @@ impl Chart {
             armed: false, pending_confirms: vec![],
             measuring: false, measure_start: None, measure_active: false,
             pending_symbol_change: None, pending_timeframe_change: None,
-            indicator_pts_buf: Vec::with_capacity(512) }
+            cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
+            indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256) }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -1365,14 +1371,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     } // end for picker_pane_idx
     span_end();
 
-    // Status bar and style toolbar use active pane
+    // Style toolbar — active pane
     let chart = &mut panes[ap];
-    if !chart.draw_tool.is_empty() {
-        egui::TopBottomPanel::bottom("st").show(ctx, |ui| {
-            let h = match chart.draw_tool.as_str() { "hline"=>"Click to place HLine (Esc cancel)", "trendline" if chart.pending_pt.is_some()=>"Click 2nd point (Esc cancel)", "trendline"=>"Click 1st point (Esc cancel)", _=>"" };
-            ui.label(egui::RichText::new(h).color(egui::Color32::from_rgb(255,200,50)));
-        });
-    }
 
     // Style toolbar — compact, centered at top of chart
     if !chart.selected_ids.is_empty() {
@@ -2385,7 +2385,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let mut p=(min_p/step).ceil()*step;
         while p<=max_p { let y=py(p);
             painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
-            let d=if p>=10.0{2}else{4}; painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,format!("{:.1$}",p,d),egui::FontId::monospace(8.5),t.dim);
+            let d=if p>=10.0{2}else{4};
+            chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", p, d);
+            painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),t.dim);
             p+=step;
         }
 
@@ -2407,19 +2409,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if bar_idx >= vs as usize && bar_idx < end as usize {
                         let x = bx(bar_idx as f32);
                         if x > rect.left()+20.0 && x < rect.left()+cw-40.0 {
-                            let txt = if time_interval >= 86400 {
+                            chart.fmt_buf.clear();
+                            if time_interval >= 86400 {
                                 let days = (ti / 86400) as i32; let y2k = days - 10957;
                                 let month = ((y2k % 365) / 30 + 1).min(12).max(1);
                                 let day = ((y2k % 365) % 30 + 1).min(31).max(1);
-                                format!("{:02}/{:02}", month, day)
+                                let _ = write!(chart.fmt_buf, "{:02}/{:02}", month, day);
                             } else {
                                 let h = ((ti % 86400) / 3600) as u32;
                                 let m = ((ti % 3600) / 60) as u32;
-                                format!("{:02}:{:02}", h, m)
+                                let _ = write!(chart.fmt_buf, "{:02}:{:02}", h, m);
                             };
-                            // Overlay on volume area (bottom of chart)
                             let y = rect.top() + pt + ch - 10.0;
-                            painter.text(egui::pos2(x, y), egui::Align2::CENTER_BOTTOM, txt, egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.6));
+                            painter.text(egui::pos2(x, y), egui::Align2::CENTER_BOTTOM, &chart.fmt_buf, egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.6));
                         }
                     }
                     ti += time_interval;
@@ -2443,13 +2445,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }}
         }
 
-        // Candles
+        // Candles — no rounding (0.0) for fast tessellation
         for i in (vs as u32)..end { if let Some(b)=chart.bars.get(i as usize) {
             let x=bx(i as f32); let c=if b.close>=b.open{t.bull}else{t.bear};
             let bt=py(b.open.max(b.close)); let bb=py(b.open.min(b.close));
             let wt=py(b.high); let wb=py(b.low); let bw=(bs*0.35).max(1.0);
             painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,c));
-            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),1.0,c);
+            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),0.0,c);
         }}
 
         // Indicators
@@ -2762,7 +2764,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             painter.rect_stroke(axis_rect, 2.0, egui::Stroke::new(0.5, color), egui::StrokeKind::Outside);
             let d = if order.price >= 10.0 { 2 } else { 4 };
             painter.text(egui::pos2(rect.left() + cw + 3.0, y), egui::Align2::LEFT_CENTER,
-                format!("{:.1$}", order.price, d), egui::FontId::monospace(8.5), color);
+                {
+                    chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", order.price, d);
+                    &chart.fmt_buf
+                }, egui::FontId::monospace(8.5), color);
         }
 
         // ── Order edit popup (double-click) ──────────────────────────────────
@@ -3047,7 +3052,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(0.5,egui::Color32::from_white_alpha(50)));
                     let hp = min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
                     let d = if hp>=10.0{2}else{4};
-                    painter.text(egui::pos2(rect.left()+cw+3.0,pos.y),egui::Align2::LEFT_CENTER,format!("{:.1$}",hp,d),egui::FontId::monospace(8.5),egui::Color32::WHITE);
+                    chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", hp, d);
+                    painter.text(egui::pos2(rect.left()+cw+3.0,pos.y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),egui::Color32::WHITE);
                 }
             }
         }
@@ -3780,7 +3786,7 @@ impl Watchlist {
         let items = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
             symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
-        Self { open: true, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
+        Self { open: false, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
