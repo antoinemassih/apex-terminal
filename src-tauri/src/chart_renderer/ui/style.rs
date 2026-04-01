@@ -83,6 +83,38 @@ pub fn draw_line_rgba(rgba: &mut [u8], width: u32, x0: f32, y0: f32, x1: f32, y1
     }
 }
 
+// ─── Consistent UI widget components ─────────────────────────────────────────
+
+/// Section header label — used in context menus, panels, popups.
+#[inline]
+pub fn section_label(ui: &mut egui::Ui, text: &str, color: Color32) {
+    ui.label(RichText::new(text).monospace().size(9.0).strong().color(color));
+}
+
+/// Dim info label — used for counts, subtitles, status text.
+#[inline]
+pub fn dim_label(ui: &mut egui::Ui, text: &str, color: Color32) {
+    ui.label(RichText::new(text).monospace().size(9.0).color(color));
+}
+
+/// Close button (X icon) — consistent across all popups and panels.
+#[inline]
+pub fn close_button(ui: &mut egui::Ui, dim: Color32) -> bool {
+    ui.add(egui::Button::new(RichText::new(super::super::super::ui_kit::icons::Icon::X).size(10.0).color(dim)).frame(false)).clicked()
+}
+
+/// Panel header row — title + close button, used in watchlist, order book, connection panel, etc.
+pub fn panel_header(ui: &mut egui::Ui, title: &str, accent: Color32, dim: Color32) -> bool {
+    let mut closed = false;
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(title).monospace().size(10.0).strong().color(accent));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if close_button(ui, dim) { closed = true; }
+        });
+    });
+    closed
+}
+
 /// Convert hex color string to egui Color32 with opacity.
 pub fn hex_to_color(hex: &str, opacity: f32) -> Color32 {
     let h = hex.trim_start_matches('#');

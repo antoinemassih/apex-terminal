@@ -57,7 +57,7 @@ const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent symbols list
 const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, panel_header, section_label, dim_label, popup_frame};
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -1042,7 +1042,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             egui::popup_below_widget(ui, egui::Id::new("ind_add_popup"), &ind_resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
                 ui.set_min_width(160.0);
-                ui.label(egui::RichText::new("OVERLAYS").monospace().size(9.0).strong().color(t.accent));
+                section_label(ui, "OVERLAYS", t.accent);
                 for &kind in IndicatorType::overlays() {
                     if ui.button(egui::RichText::new(kind.label()).monospace().size(10.0)).clicked() {
                         let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
@@ -1054,7 +1054,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
                 ui.separator();
-                ui.label(egui::RichText::new("OSCILLATORS").monospace().size(9.0).strong().color(t.accent));
+                section_label(ui, "OSCILLATORS", t.accent);
                 for &kind in IndicatorType::oscillators() {
                     let default_period = match kind { IndicatorType::RSI => 14, IndicatorType::MACD => 12, IndicatorType::Stochastic => 14, _ => 20 };
                     if ui.button(egui::RichText::new(kind.label()).monospace().size(10.0)).clicked() {
@@ -1185,20 +1185,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Keyboard shortcuts help panel ──────────────────────────────────────
     if watchlist.shortcuts_open {
-        egui::Window::new("shortcuts_help")
-            .fixed_pos(egui::pos2(ctx.screen_rect().center().x - 140.0, 50.0))
-            .fixed_size(egui::vec2(280.0, 0.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28, 28, 34)).inner_margin(12.0))
+        popup_frame(ctx, "shortcuts_help", egui::pos2(ctx.screen_rect().center().x - 140.0, 50.0), 280.0, egui::Color32::from_rgb(28, 28, 34), None)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("KEYBOARD SHORTCUTS").monospace().size(10.0).strong().color(t.accent));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
-                            watchlist.shortcuts_open = false;
-                        }
-                    });
-                });
+                if panel_header(ui, "KEYBOARD SHORTCUTS", t.accent, t.dim) { watchlist.shortcuts_open = false; }
                 ui.add_space(8.0);
                 let row = |ui: &mut egui::Ui, key: &str, desc: &str| {
                     ui.horizontal(|ui| {
@@ -1206,21 +1195,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.label(egui::RichText::new(desc).monospace().size(9.0).color(t.dim));
                     });
                 };
-                ui.label(egui::RichText::new("NAVIGATION").monospace().size(9.0).color(t.accent));
+                dim_label(ui, "NAVIGATION", t.accent);
                 row(ui, "Scroll", "Zoom in/out");
                 row(ui, "Drag", "Pan chart");
                 row(ui, "Drag Y-axis", "Vertical zoom");
                 row(ui, "Drag X-axis", "Horizontal zoom");
                 row(ui, "Dbl-click Y", "Reset Y zoom");
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("DRAWING").monospace().size(9.0).color(t.accent));
+                dim_label(ui, "DRAWING", t.accent);
                 row(ui, "Middle-click", "Cycle drawing tools");
                 row(ui, "Escape", "Cancel / deselect");
                 row(ui, "Delete", "Delete selected drawing");
                 row(ui, "Shift+Drag", "Measure tool");
                 row(ui, "Dbl-click line", "Edit indicator/order");
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("ORDERS").monospace().size(9.0).color(t.accent));
+                dim_label(ui, "ORDERS", t.accent);
                 row(ui, "Right-click", "Place order at price");
                 row(ui, "Drag order", "Adjust order price");
                 row(ui, "Dbl-click order", "Edit order details");
@@ -1229,22 +1218,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Trendline filter dropdown ────────────────────────────────────────────
     if watchlist.trendline_filter_open {
-        egui::Window::new("trendline_filter")
-            .fixed_pos(egui::pos2(300.0, 40.0))
-            .fixed_size(egui::vec2(200.0, 0.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28, 28, 34)).inner_margin(8.0))
+        popup_frame(ctx, "trendline_filter", egui::pos2(300.0, 40.0), 200.0, egui::Color32::from_rgb(28, 28, 34), None)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("DRAWING FILTERS").monospace().size(10.0).strong().color(t.accent));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
-                            watchlist.trendline_filter_open = false;
-                        }
-                    });
-                });
+                if panel_header(ui, "DRAWING FILTERS", t.accent, t.dim) { watchlist.trendline_filter_open = false; }
                 ui.add_space(4.0);
-
                 let chart = &mut panes[ap];
                 // Per-type visibility toggles
                 let types = [("trendline", "Trendlines"), ("hline", "H-Lines"), ("hzone", "Zones"), ("barmarker", "Markers")];
@@ -1282,7 +1259,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                 // Groups
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("GROUPS").monospace().size(9.0).color(t.dim));
+                dim_label(ui, "GROUPS", t.dim);
                 for g in chart.groups.clone() {
                     let hidden = chart.hidden_groups.contains(&g.id);
                     let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
@@ -1564,19 +1541,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let mut needs_source_fetch: Option<(String, String, u32)> = None;
         let pane_symbol = panes[ap].symbol.clone(); // clone to avoid borrow conflict
 
-        egui::Window::new(format!("ind_editor_{}", edit_id))
-            .fixed_pos(egui::pos2(200.0, 80.0))
-            .fixed_size(egui::vec2(280.0, 0.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(30, 30, 36)).inner_margin(10.0))
+        popup_frame(ctx, &format!("ind_editor_{}", edit_id), egui::pos2(200.0, 80.0), 280.0, egui::Color32::from_rgb(30, 30, 36), None)
             .show(ctx, |ui| {
                 if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("EDIT INDICATOR").strong().color(t.bull));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("X").clicked() { close_editor = true; }
-                        });
-                    });
+                    if panel_header(ui, "EDIT INDICATOR", t.bull, t.dim) { close_editor = true; }
                     ui.add_space(4.0);
 
                     // Type selector
@@ -1711,20 +1679,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     // ── Group manager popup ────────────────────────────────────────────────────
     if panes[ap].group_manager_open {
         let mut close_gm = false;
-        egui::Window::new("group_manager")
-            .fixed_pos(egui::pos2(200.0, 100.0))
-            .fixed_size(egui::vec2(240.0, 0.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(30, 30, 36)).inner_margin(10.0))
+        popup_frame(ctx, "group_manager", egui::pos2(200.0, 100.0), 240.0, egui::Color32::from_rgb(30, 30, 36), None)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("NEW GROUP").monospace().size(10.0).strong().color(t.accent));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
-                            close_gm = true;
-                        }
-                    });
-                });
+                if panel_header(ui, "NEW GROUP", t.accent, t.dim) { close_gm = true; }
                 ui.add_space(6.0);
                 let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].new_group_name)
                     .hint_text("Group name...").desired_width(220.0).font(egui::FontId::monospace(11.0)));
@@ -1747,20 +1704,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Connection panel popup ──────────────────────────────────────────────
     if *conn_panel_open {
-        egui::Window::new("conn_panel")
-            .fixed_pos(egui::pos2(ctx.screen_rect().right() - 250.0, 40.0))
-            .fixed_size(egui::vec2(230.0, 0.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28, 28, 34)).inner_margin(10.0))
+        popup_frame(ctx, "conn_panel", egui::pos2(ctx.screen_rect().right() - 250.0, 40.0), 230.0, egui::Color32::from_rgb(28, 28, 34), None)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("CONNECTIONS").monospace().size(10.0).strong().color(t.dim));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
-                            *conn_panel_open = false;
-                        }
-                    });
-                });
+                if panel_header(ui, "CONNECTIONS", t.dim, t.dim) { *conn_panel_open = false; }
                 ui.add_space(6.0);
 
                 let svc_row = |ui: &mut egui::Ui, name: &str, status: &str, ok: bool, detail: &str| {
@@ -1945,7 +1891,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                         // ── Controls: strikes ± | DTE selector | sel toggle ──
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("strikes").monospace().size(9.0).color(t.dim));
+                            dim_label(ui, "strikes", t.dim);
                             if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(16.0, 16.0))).clicked() {
                                 watchlist.chain_num_strikes = watchlist.chain_num_strikes.saturating_sub(1).max(1);
                                 watchlist.chain_0dte = build_chain(chain_price, watchlist.chain_num_strikes, 0);
@@ -2006,10 +1952,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.spacing_mut().item_spacing.x = gap;
                             let hdr_color = t.dim.gamma_multiply(0.4);
                             ui.add_space(col_chk);
-                            ui.allocate_ui(egui::vec2(col_stk, 14.0), |ui| { ui.label(egui::RichText::new("STK").monospace().size(9.0).color(hdr_color)); });
-                            ui.allocate_ui(egui::vec2(col_bid, 14.0), |ui| { ui.label(egui::RichText::new("BID").monospace().size(9.0).color(hdr_color)); });
-                            ui.allocate_ui(egui::vec2(col_ask, 14.0), |ui| { ui.label(egui::RichText::new("ASK").monospace().size(9.0).color(hdr_color)); });
-                            ui.allocate_ui(egui::vec2(col_oi, 14.0), |ui| { ui.label(egui::RichText::new("OI").monospace().size(9.0).color(hdr_color)); });
+                            ui.allocate_ui(egui::vec2(col_stk, 14.0), |ui| { dim_label(ui, "STK", hdr_color); });
+                            ui.allocate_ui(egui::vec2(col_bid, 14.0), |ui| { dim_label(ui, "BID", hdr_color); });
+                            ui.allocate_ui(egui::vec2(col_ask, 14.0), |ui| { dim_label(ui, "ASK", hdr_color); });
+                            ui.allocate_ui(egui::vec2(col_oi, 14.0), |ui| { dim_label(ui, "OI", hdr_color); });
                         });
 
                         // ── Helper to render one option row ──
@@ -2078,7 +2024,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             });
                             ui.add_space(1.0);
 
-                            ui.label(egui::RichText::new("CALLS").monospace().size(9.0).strong().color(t.bull));
+                            section_label(ui, "CALLS", t.bull);
                             for row in calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
 
                             // Underlying divider
@@ -2089,7 +2035,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 ui.label(egui::RichText::new(format!("{}  ${:.2}", sym, price)).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
                             });
 
-                            ui.label(egui::RichText::new("PUTS").monospace().size(9.0).strong().color(t.bear));
+                            section_label(ui, "PUTS", t.bear);
                             for row in puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }
                             ui.add_space(6.0);
                         };
@@ -2142,7 +2088,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                             if let Some(i) = remove_idx { watchlist.saved_options.remove(i); }
                             if watchlist.saved_options.is_empty() {
-                                ui.label(egui::RichText::new("Click a contract in\nthe CHAIN tab to save it").monospace().size(9.0).color(t.dim));
+                                dim_label(ui, "Click a contract in\nthe CHAIN tab to save it", t.dim);
                             }
                         });
                     }
@@ -2159,21 +2105,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
             .show(ctx, |ui| {
                 // Header
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("ORDERS").monospace().size(10.0).strong().color(t.accent));
-
-                    // Count active orders across all panes
-                    let total_orders: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
-                    if total_orders > 0 {
-                        ui.label(egui::RichText::new(format!("({})", total_orders)).monospace().size(9.0).color(t.dim));
-                    }
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
-                            watchlist.orders_panel_open = false;
-                        }
-                    });
-                });
+                if panel_header(ui, "ORDERS", t.accent, t.dim) { watchlist.orders_panel_open = false; }
+                let total_orders: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
+                if total_orders > 0 { dim_label(ui, &format!("{} active", total_orders), t.dim); }
 
                 // Action buttons
                 ui.horizontal(|ui| {
@@ -2330,7 +2264,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     // Positions section
                     if !watchlist.positions.is_empty() {
                         ui.add_space(8.0);
-                        ui.label(egui::RichText::new("POSITIONS").monospace().size(9.0).strong().color(t.dim));
+                        section_label(ui, "POSITIONS", t.dim);
                         ui.add_space(2.0);
                         let total_pnl: f32 = watchlist.positions.iter().map(|p| p.pnl()).sum();
                         for pos in &watchlist.positions {
@@ -2352,7 +2286,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     // Alerts section
                     if !watchlist.alerts.is_empty() {
                         ui.add_space(8.0);
-                        ui.label(egui::RichText::new("ALERTS").monospace().size(9.0).strong().color(t.dim));
+                        section_label(ui, "ALERTS", t.dim);
                         ui.add_space(2.0);
                         let mut remove_alert: Option<u32> = None;
                         for alert in &watchlist.alerts {
@@ -3022,25 +2956,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let mut apply_qty: Option<u32> = None;
                 let mut cancel_it = false;
 
-                egui::Window::new(format!("order_edit_{}", edit_id))
-                    .fixed_pos(popup_pos)
-                    .fixed_size(egui::vec2(180.0, 0.0))
-                    .title_bar(false)
-                    .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(8.0)
-                        .stroke(egui::Stroke::new(1.0, color)))
+                popup_frame(ctx, &format!("order_edit_{}", edit_id), popup_pos, 180.0, t.toolbar_bg, Some(color))
                     .show(ctx, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("EDIT {}", order_label)).monospace().size(10.0).strong().color(color));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
-                                    close_editor = true;
-                                }
-                            });
-                        });
+                        if panel_header(ui, &format!("EDIT {}", order_label), color, t.dim) { close_editor = true; }
                         ui.add_space(4.0);
 
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Price").monospace().size(9.0).color(t.dim));
+                            dim_label(ui, "Price", t.dim);
                             let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_price)
                                 .desired_width(80.0).font(egui::FontId::monospace(11.0)));
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -3049,7 +2971,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Qty  ").monospace().size(9.0).color(t.dim));
+                            dim_label(ui, "Qty  ", t.dim);
                             let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_qty)
                                 .desired_width(80.0).font(egui::FontId::monospace(11.0)));
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
