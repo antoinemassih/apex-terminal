@@ -1544,64 +1544,137 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let mut needs_source_fetch: Option<(String, String, u32)> = None;
         let pane_symbol = panes[ap].symbol.clone(); // clone to avoid borrow conflict
 
-        popup_frame(ctx, &format!("ind_editor_{}", edit_id), egui::pos2(200.0, 80.0), 300.0, egui::Color32::from_rgb(30, 30, 36), None)
+        {
+        let panel_fill = egui::Color32::from_rgb(26, 26, 32);
+        let header_fill = egui::Color32::from_rgb(32, 32, 40);
+
+        egui::Window::new(format!("ind_editor_{}", edit_id))
+            .fixed_pos(egui::pos2(200.0, 80.0))
+            .fixed_size(egui::vec2(280.0, 0.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style()).fill(panel_fill).inner_margin(0.0)
+                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)))
+                .corner_radius(6.0))
             .show(ctx, |ui| {
                 if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
-                    if panel_header(ui, "EDIT INDICATOR", t.accent, t.dim) { close_editor = true; }
-                    ui.add_space(6.0);
+                    // ── Header bar ──
+                    egui::Frame::NONE.fill(header_fill)
+                        .inner_margin(egui::Margin { left: 10, right: 8, top: 8, bottom: 8 })
+                        .corner_radius(egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 })
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                // Colored dot for the indicator
+                                let ind_color = hex_to_color(&ind.color, 1.0);
+                                let dot_pos = egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 8.0);
+                                ui.painter().circle_filled(dot_pos, 4.0, ind_color);
+                                ui.add_space(14.0);
+                                // Indicator name
+                                ui.label(egui::RichText::new(ind.display_name()).monospace().size(11.0).strong()
+                                    .color(egui::Color32::from_rgb(220, 220, 230)));
+                                // Close button
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(11.0)
+                                        .color(t.dim.gamma_multiply(0.6)))
+                                        .frame(false).min_size(egui::vec2(20.0, 20.0))).clicked() {
+                                        close_editor = true;
+                                    }
+                                });
+                            });
+                        });
 
-                    let lw = 50.0; // consistent label width for all form rows
+                    // ── Body ──
+                    ui.add_space(8.0);
+                    let body_margin = 10.0;
 
-                    // Type selector
-                    form_row(ui, "Type", lw, t.dim, |ui| {
-                        ui.spacing_mut().item_spacing.x = 1.0;
-                        for &kind in IndicatorType::all() {
+                    // Type selector — full-width segmented control
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        section_label(ui, "TYPE", t.dim.gamma_multiply(0.5));
+                    });
+                    ui.add_space(3.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        for (i, &kind) in IndicatorType::all().iter().enumerate() {
                             let selected = ind.kind == kind;
-                            let fg = if selected { t.accent } else { t.dim.gamma_multiply(0.7) };
-                            let bg = if selected { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                            let fg = if selected { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                            let bg = if selected { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                            let rounding = if i == 0 {
+                                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
+                            } else if i == IndicatorType::all().len() - 1 {
+                                egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
+                            } else {
+                                egui::CornerRadius::ZERO
+                            };
                             if ui.add(egui::Button::new(egui::RichText::new(kind.label()).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(0.0, 18.0))
-                                .stroke(if selected { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }))
+                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 22.0))
+                                .stroke(egui::Stroke::new(0.5, if selected { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
                                 .clicked() && !selected {
                                 ind.kind = kind;
                                 needs_recompute = true;
                             }
                         }
                     });
-                    ui.add_space(2.0);
 
-                    // Period
-                    form_row(ui, "Period", lw, t.dim, |ui| {
+                    ui.add_space(8.0);
+
+                    // Period — drag value + quick presets
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        section_label(ui, "PERIOD", t.dim.gamma_multiply(0.5));
+                    });
+                    ui.add_space(3.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
                         let mut period = ind.period as i32;
-                        if ui.add(egui::DragValue::new(&mut period).range(1..=500).speed(0.5)).changed() {
+                        if ui.add(egui::DragValue::new(&mut period).range(1..=500).speed(0.5)
+                            .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
                             ind.period = (period as usize).max(1);
                             needs_recompute = true;
                         }
-                        ui.add_space(4.0);
-                        ui.spacing_mut().item_spacing.x = 1.0;
+                        ui.add_space(8.0);
+                        ui.spacing_mut().item_spacing.x = 2.0;
                         for &p in &[9, 12, 20, 26, 50, 100, 200] {
                             let sel = ind.period == p;
                             let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
+                            let bg = if sel { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT };
                             if ui.add(egui::Button::new(egui::RichText::new(format!("{}", p)).monospace().size(8.0).color(fg))
-                                .frame(false).min_size(egui::vec2(20.0, 16.0))).clicked() && !sel {
+                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(22.0, 18.0))
+                                .stroke(if sel { egui::Stroke::new(0.5, color_alpha(t.accent, 60)) } else { egui::Stroke::NONE }))
+                                .clicked() && !sel {
                                 ind.period = p;
                                 needs_recompute = true;
                             }
                         }
                     });
-                    ui.add_space(2.0);
 
-                    // Source interval
-                    form_row(ui, "Source", lw, t.dim, |ui| {
-                        ui.spacing_mut().item_spacing.x = 1.0;
-                        for &tf in INDICATOR_TIMEFRAMES {
+                    ui.add_space(8.0);
+
+                    // Source interval — segmented control
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        section_label(ui, "SOURCE", t.dim.gamma_multiply(0.5));
+                    });
+                    ui.add_space(3.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let tfs = INDICATOR_TIMEFRAMES;
+                        for (i, &tf) in tfs.iter().enumerate() {
                             let label = if tf.is_empty() { "Chart" } else { tf };
                             let sel = ind.source_tf == tf;
-                            let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.7) };
-                            let bg = if sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                            let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                            let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                            let rounding = if i == 0 {
+                                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
+                            } else if i == tfs.len() - 1 {
+                                egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
+                            } else {
+                                egui::CornerRadius::ZERO
+                            };
                             if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(0.0, 18.0))
-                                .stroke(if sel { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }))
+                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 22.0))
+                                .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
                                 .clicked() && !sel {
                                 ind.source_tf = tf.to_string();
                                 ind.source_loaded = tf.is_empty();
@@ -1615,76 +1688,133 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     });
 
-                    ui.add_space(6.0);
-                    separator(ui, color_alpha(t.toolbar_border, 60));
+                    ui.add_space(10.0);
+                    // Separator
+                    let sep_rect = ui.available_rect_before_wrap();
+                    ui.painter().line_segment(
+                        [egui::pos2(sep_rect.left() + body_margin, ui.cursor().min.y),
+                         egui::pos2(sep_rect.right() - body_margin, ui.cursor().min.y)],
+                        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
+                    ui.add_space(10.0);
+
+                    // APPEARANCE section
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        section_label(ui, "APPEARANCE", t.dim.gamma_multiply(0.5));
+                    });
                     ui.add_space(6.0);
 
-                    // Color
-                    form_row(ui, "Color", lw, t.dim, |ui| {
-                        ui.spacing_mut().item_spacing.x = 3.0;
+                    // Color picker
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        ui.label(egui::RichText::new("Color").monospace().size(9.0).color(t.dim));
+                        ui.add_space(8.0);
+                        ui.spacing_mut().item_spacing.x = 4.0;
                         for &c in INDICATOR_COLORS {
                             let color = hex_to_color(c, 1.0);
                             let is_cur = ind.color == c;
-                            let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
-                            ui.painter().circle_filled(r.center(), if is_cur { 7.0 } else { 5.5 }, color);
-                            if is_cur { ui.painter().circle_stroke(r.center(), 8.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
+                            let (r, resp) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+                            if is_cur {
+                                ui.painter().rect_filled(r, 3.0, color_alpha(color, 30));
+                                ui.painter().rect_stroke(r, 3.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
+                            }
+                            ui.painter().circle_filled(r.center(), if is_cur { 5.5 } else { 4.5 }, color);
                             if resp.clicked() { ind.color = c.to_string(); }
                         }
                     });
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
 
-                    // Thickness
-                    form_row(ui, "Width", lw, t.dim, |ui| {
-                        ui.spacing_mut().item_spacing.x = 1.0;
-                        for &th in &[0.5_f32, 1.0, 1.5, 2.0, 3.0] {
+                    // Width — segmented
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        ui.label(egui::RichText::new("Width").monospace().size(9.0).color(t.dim));
+                        ui.add_space(6.0);
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let widths = [0.5_f32, 1.0, 1.5, 2.0, 3.0];
+                        for (i, &th) in widths.iter().enumerate() {
                             let sel = (ind.thickness - th).abs() < 0.1;
-                            let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.7) };
-                            let bg = if sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                            let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                            let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                            let rounding = if i == 0 {
+                                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
+                            } else if i == widths.len() - 1 {
+                                egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
+                            } else {
+                                egui::CornerRadius::ZERO
+                            };
                             if ui.add(egui::Button::new(egui::RichText::new(format!("{:.1}", th)).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(28.0, 18.0))
-                                .stroke(if sel { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }))
+                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(30.0, 20.0))
+                                .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
                                 .clicked() { ind.thickness = th; }
                         }
                     });
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
 
-                    // Line style
-                    form_row(ui, "Style", lw, t.dim, |ui| {
-                        ui.spacing_mut().item_spacing.x = 1.0;
-                        for (ls, label) in [(LineStyle::Solid, "Solid"), (LineStyle::Dashed, "Dash"), (LineStyle::Dotted, "Dot")] {
-                            let sel = ind.line_style == ls;
-                            let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.7) };
-                            let bg = if sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
-                            if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(36.0, 18.0))
-                                .stroke(if sel { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }))
-                                .clicked() { ind.line_style = ls; }
+                    // Style — segmented
+                    ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        ui.label(egui::RichText::new("Style").monospace().size(9.0).color(t.dim));
+                        ui.add_space(8.0);
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let styles = [(LineStyle::Solid, "Solid"), (LineStyle::Dashed, "Dash"), (LineStyle::Dotted, "Dot")];
+                        for (i, (ls, label)) in styles.iter().enumerate() {
+                            let sel = ind.line_style == *ls;
+                            let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                            let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                            let rounding = if i == 0 {
+                                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
+                            } else if i == styles.len() - 1 {
+                                egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
+                            } else {
+                                egui::CornerRadius::ZERO
+                            };
+                            if ui.add(egui::Button::new(egui::RichText::new(*label).monospace().size(9.0).color(fg))
+                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(42.0, 20.0))
+                                .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
+                                .clicked() { ind.line_style = *ls; }
                         }
                     });
 
-                    ui.add_space(6.0);
-                    separator(ui, color_alpha(t.toolbar_border, 60));
-                    ui.add_space(4.0);
+                    ui.add_space(10.0);
+                    // Footer separator
+                    let sep_rect2 = ui.available_rect_before_wrap();
+                    ui.painter().line_segment(
+                        [egui::pos2(sep_rect2.left() + body_margin, ui.cursor().min.y),
+                         egui::pos2(sep_rect2.right() - body_margin, ui.cursor().min.y)],
+                        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
+                    ui.add_space(8.0);
 
-                    // Bottom actions: visibility + delete
+                    // ── Footer actions ──
                     ui.horizontal(|ui| {
+                        ui.add_space(body_margin);
+                        // Visibility toggle
                         let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
-                        let vis_color = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
+                        let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
+                        let vis_bg = if ind.visible { color_alpha(t.toolbar_border, 20) } else { egui::Color32::TRANSPARENT };
                         if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", vis_icon, if ind.visible { "Visible" } else { "Hidden" }))
-                            .monospace().size(9.0).color(vis_color)).frame(false)).clicked() {
+                            .monospace().size(9.0).color(vis_fg))
+                            .fill(vis_bg).corner_radius(3.0).min_size(egui::vec2(0.0, 22.0))).clicked() {
                             ind.visible = !ind.visible;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if action_btn(ui, &format!("{} Delete", Icon::TRASH), egui::Color32::from_rgb(224, 85, 96), true) {
+                            ui.add_space(body_margin);
+                            let del_color = egui::Color32::from_rgb(224, 85, 96);
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} Delete", Icon::TRASH))
+                                .monospace().size(9.0).color(del_color))
+                                .fill(color_alpha(del_color, 15)).corner_radius(3.0)
+                                .stroke(egui::Stroke::new(0.5, color_alpha(del_color, 60)))
+                                .min_size(egui::vec2(0.0, 22.0))).clicked() {
                                 delete_id = Some(edit_id);
                                 close_editor = true;
                             }
                         });
                     });
+                    ui.add_space(8.0);
                 } else {
                     close_editor = true;
                 }
             });
+        }
 
         if close_editor { panes[ap].editing_indicator = None; }
         if let Some(id) = delete_id { panes[ap].indicators.retain(|i| i.id != id); }
