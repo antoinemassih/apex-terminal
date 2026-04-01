@@ -13,6 +13,7 @@
 pub mod gpu;
 mod types;
 pub mod ui;
+pub mod compute;
 
 pub use types::*;
 
