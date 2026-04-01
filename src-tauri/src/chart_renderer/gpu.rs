@@ -4632,15 +4632,9 @@ impl ApplicationHandler for App {
                     pane.bars.clear();
                     pane.timestamps.clear();
                     pane.indicators.clear();
+                    pane.drawings.clear(); // cleared here, reloaded when LoadBars arrives
                     pane.sim_price = 0.0;
                     pane.last_candle_time = std::time::Instant::now();
-
-                    // Reload drawings for the new symbol+timeframe
-                    pane.drawings.clear();
-                    let db_drawings = crate::drawing_db::load_symbol(&pane.symbol);
-                    for dd in &db_drawings {
-                        if let Some(d) = db_to_drawing(dd) { pane.drawings.push(d); }
-                    }
 
                     if let Some(handle) = &self.app_handle {
                         use tauri::Emitter;
