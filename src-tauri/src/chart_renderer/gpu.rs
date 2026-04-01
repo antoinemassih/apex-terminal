@@ -56,13 +56,8 @@ const AUTO_SCROLL_RESUME_SECS: u64 = 5;   // Resume auto-scroll after N seconds 
 const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent symbols list
 const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
-fn hex_to_color(hex: &str, opacity: f32) -> egui::Color32 {
-    let h = hex.trim_start_matches('#');
-    let r = u8::from_str_radix(&h[0..2], 16).unwrap_or(128);
-    let g = u8::from_str_radix(&h[2..4], 16).unwrap_or(128);
-    let b = u8::from_str_radix(&h[4..6], 16).unwrap_or(128);
-    egui::Color32::from_rgba_unmultiplied(r, g, b, (opacity * 255.0) as u8)
-}
+// Shared helpers re-exported from ui::style
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba};
 
 fn compute_sma(data: &[f32], period: usize) -> Vec<f32> {
     let mut r = vec![f32::NAN; data.len()];
@@ -821,33 +816,13 @@ fn make_window_icon() -> Option<winit::window::Icon> {
     let bl = (m, s as f32 - m);
     let br = (s as f32 - m, s as f32 - m);
 
-    let draw_line = |rgba: &mut Vec<u8>, x0: f32, y0: f32, x1: f32, y1: f32, w: f32| {
-        let len = ((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)).sqrt();
-        let steps = (len * 2.0) as i32;
-        for i in 0..=steps {
-            let t = i as f32 / steps as f32;
-            let px = x0 + (x1-x0) * t;
-            let py = y0 + (y1-y0) * t;
-            for dy in -(w as i32)..=(w as i32) {
-                for dx in -(w as i32)..=(w as i32) {
-                    let ix = (px + dx as f32) as i32;
-                    let iy = (py + dy as f32) as i32;
-                    if ix >= 0 && ix < s as i32 && iy >= 0 && iy < s as i32 {
-                        let idx = ((iy as u32 * s + ix as u32) * 4) as usize;
-                        rgba[idx..idx+4].copy_from_slice(&color);
-                    }
-                }
-            }
-        }
-    };
-
     // Triangle sides
-    draw_line(&mut rgba, top.0, top.1, bl.0, bl.1, 1.0);
-    draw_line(&mut rgba, bl.0, bl.1, br.0, br.1, 1.0);
-    draw_line(&mut rgba, br.0, br.1, top.0, top.1, 1.0);
+    draw_line_rgba(&mut rgba, s, top.0, top.1, bl.0, bl.1, 1.0, color);
+    draw_line_rgba(&mut rgba, s, bl.0, bl.1, br.0, br.1, 1.0, color);
+    draw_line_rgba(&mut rgba, s, br.0, br.1, top.0, top.1, 1.0, color);
     // Horizontal bar
     let bar_y = cx + 2.0;
-    draw_line(&mut rgba, cx - 7.0, bar_y, cx + 7.0, bar_y, 1.0);
+    draw_line_rgba(&mut rgba, s, cx - 7.0, bar_y, cx + 7.0, bar_y, 1.0, color);
 
     winit::window::Icon::from_rgba(rgba, s, s).ok()
 }
@@ -863,32 +838,12 @@ fn make_window_icon_hicon() -> Option<isize> {
     let mut bgra = vec![0u8; (s * s * 4) as usize];
     let color_bgra = [25u8, 128, 254, 255]; // BGRA for orange #FE8019
 
-    let set_px = |buf: &mut Vec<u8>, x: i32, y: i32| {
-        if x >= 0 && x < s && y >= 0 && y < s {
-            let idx = ((y * s + x) * 4) as usize;
-            buf[idx..idx+4].copy_from_slice(&color_bgra);
-        }
-    };
-
-    let draw_line = |buf: &mut Vec<u8>, x0: f32, y0: f32, x1: f32, y1: f32| {
-        let len = ((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)).sqrt();
-        let steps = (len * 3.0) as i32;
-        for i in 0..=steps {
-            let t = i as f32 / steps.max(1) as f32;
-            let px = (x0 + (x1-x0)*t) as i32;
-            let py = (y0 + (y1-y0)*t) as i32;
-            for dy in -1..=1 { for dx in -1..=1 { set_px(buf, px+dx, py+dy); } }
-        }
-    };
-
     let m = 3.0_f32;
     let cx = s as f32 / 2.0;
-    // Triangle
-    draw_line(&mut bgra, cx, m, m, s as f32 - m);
-    draw_line(&mut bgra, m, s as f32 - m, s as f32 - m, s as f32 - m);
-    draw_line(&mut bgra, s as f32 - m, s as f32 - m, cx, m);
-    // Horizontal bar
-    draw_line(&mut bgra, cx - 7.0, cx + 2.0, cx + 7.0, cx + 2.0);
+    draw_line_rgba(&mut bgra, s as u32, cx, m, m, s as f32 - m, 1.0, color_bgra);
+    draw_line_rgba(&mut bgra, s as u32, m, s as f32 - m, s as f32 - m, s as f32 - m, 1.0, color_bgra);
+    draw_line_rgba(&mut bgra, s as u32, s as f32 - m, s as f32 - m, cx, m, 1.0, color_bgra);
+    draw_line_rgba(&mut bgra, s as u32, cx - 7.0, cx + 2.0, cx + 7.0, cx + 2.0, 1.0, color_bgra);
 
     unsafe {
         // Create a DIB section for the color bitmap
@@ -1080,13 +1035,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // Toolbar button helper — matches WebView's btnStyle: 11px monospace, 3px radius, 2px 8px padding
     let tb_btn = |ui: &mut egui::Ui, label: &str, active: bool, t: &Theme| -> egui::Response {
-        let bg = if active { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 51) } else { t.toolbar_bg };
-        let fg = if active { t.accent } else { t.dim };
-        let border = if active { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 136) } else { t.toolbar_border };
-        let btn = egui::Button::new(egui::RichText::new(label).monospace().size(11.0).color(fg))
-            .fill(bg).stroke(egui::Stroke::new(1.0, border)).corner_radius(3.0)
-            .min_size(egui::vec2(0.0, 22.0));
-        ui.add(btn)
+        super::ui::style::tb_btn(ui, label, active, t.accent, t.dim, t.toolbar_bg, t.toolbar_border)
     };
 
     egui::TopBottomPanel::top("tb")
@@ -2779,27 +2728,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // Drawings (with selection highlight + endpoint handles)
-        // Helper: draw a line with optional dash pattern
-        let draw_line = |painter: &egui::Painter, a: egui::Pos2, b: egui::Pos2, stroke: egui::Stroke, style: LineStyle| {
-            match style {
-                LineStyle::Solid => { painter.line_segment([a, b], stroke); }
-                LineStyle::Dashed | LineStyle::Dotted => {
-                    let (dash_l, gap_l) = if style == LineStyle::Dashed { (8.0, 4.0) } else { (2.0, 3.0) };
-                    let dir = b - a;
-                    let len = dir.length();
-                    if len < 1.0 { return; }
-                    let norm = dir / len;
-                    let step = dash_l + gap_l;
-                    let mut d = 0.0;
-                    while d < len {
-                        let p0 = a + norm * d;
-                        let p1 = a + norm * (d + dash_l).min(len);
-                        painter.line_segment([p0, p1], stroke);
-                        d += step;
-                    }
-                }
-            }
-        };
 
         for d in &chart.drawings {
             if chart.hide_all_drawings { break; }
@@ -2811,14 +2739,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             match &d.kind {
                 DrawingKind::HLine{price}=>{
                     let y=py(*price);
-                    draw_line(&painter, egui::pos2(rect.left(),y), egui::pos2(rect.left()+cw,y), sc, ls);
+                    dashed_line(&painter, egui::pos2(rect.left(),y), egui::pos2(rect.left()+cw,y), sc, ls);
                     if is_sel {
                         painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), 4.0, egui::Color32::from_rgb(74,158,255));
                     }
                 }
                 DrawingKind::TrendLine{price0,bar0,price1,bar1}=>{
                     let p0=egui::pos2(bx(*bar0),py(*price0)); let p1=egui::pos2(bx(*bar1),py(*price1));
-                    draw_line(&painter, p0, p1, sc, ls);
+                    dashed_line(&painter, p0, p1, sc, ls);
                     if is_sel {
                         painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
                         painter.circle_stroke(p0, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
@@ -2830,8 +2758,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let(y0,y1)=(py(*price0),py(*price1));
                     let fill = hex_to_color(&d.color, d.opacity * 0.1);
                     painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(),y0.min(y1)),egui::pos2(rect.left()+cw,y0.max(y1))),0.0,fill);
-                    draw_line(&painter, egui::pos2(rect.left(),y0), egui::pos2(rect.left()+cw,y0), sc, ls);
-                    draw_line(&painter, egui::pos2(rect.left(),y1), egui::pos2(rect.left()+cw,y1), sc, ls);
+                    dashed_line(&painter, egui::pos2(rect.left(),y0), egui::pos2(rect.left()+cw,y0), sc, ls);
+                    dashed_line(&painter, egui::pos2(rect.left(),y1), egui::pos2(rect.left()+cw,y1), sc, ls);
                     if is_sel {
                         painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y0), 4.0, egui::Color32::from_rgb(74,158,255));
                         painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y1), 4.0, egui::Color32::from_rgb(74,158,255));

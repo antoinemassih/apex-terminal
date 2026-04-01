@@ -12,6 +12,7 @@
 
 pub mod gpu;
 mod types;
+pub mod ui;
 
 pub use types::*;
 
