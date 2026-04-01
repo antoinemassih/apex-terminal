@@ -32,14 +32,19 @@ struct Theme {
 }
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 const THEMES: &[Theme] = &[
-    Theme { name: "Midnight",    bg: rgb(13,13,13),   bull: rgb(46,204,113),  bear: rgb(231,76,60),   dim: rgb(102,102,102), toolbar_bg: rgb(17,17,17),  toolbar_border: rgb(34,34,34),  accent: rgb(42,100,150) },
-    Theme { name: "Nord",        bg: rgb(46,52,64),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(46,52,64),  toolbar_border: rgb(59,66,82),  accent: rgb(136,192,208) },
-    Theme { name: "Monokai",     bg: rgb(39,40,34),   bull: rgb(166,226,46),  bear: rgb(249,38,114),  dim: rgb(165,159,133), toolbar_bg: rgb(30,31,28),  toolbar_border: rgb(62,61,50),  accent: rgb(230,219,116) },
-    Theme { name: "Solarized",   bg: rgb(0,43,54),    bull: rgb(133,153,0),   bear: rgb(220,50,47),   dim: rgb(131,148,150), toolbar_bg: rgb(0,43,54),   toolbar_border: rgb(7,54,66),   accent: rgb(42,161,152) },
-    Theme { name: "Dracula",     bg: rgb(40,42,54),   bull: rgb(80,250,123),  bear: rgb(255,85,85),   dim: rgb(189,147,249), toolbar_bg: rgb(33,34,44),  toolbar_border: rgb(52,55,70),  accent: rgb(255,121,198) },
-    Theme { name: "Gruvbox",     bg: rgb(40,40,40),   bull: rgb(184,187,38),  bear: rgb(251,73,52),   dim: rgb(213,196,161), toolbar_bg: rgb(29,32,33),  toolbar_border: rgb(60,56,54),  accent: rgb(254,128,25) },
-    Theme { name: "Catppuccin",  bg: rgb(30,30,46),   bull: rgb(166,227,161), bear: rgb(243,139,168), dim: rgb(180,190,254), toolbar_bg: rgb(24,24,37),  toolbar_border: rgb(49,50,68),  accent: rgb(203,166,247) },
-    Theme { name: "Tokyo Night", bg: rgb(26,27,38),   bull: rgb(158,206,106), bear: rgb(247,118,142), dim: rgb(122,162,247), toolbar_bg: rgb(22,22,30),  toolbar_border: rgb(36,40,59),  accent: rgb(125,207,255) },
+    Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: rgb(28,32,40),  accent: rgb(62,120,180) },
+    Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: rgb(50,56,70),  accent: rgb(136,192,208) },
+    Theme { name: "Monokai",     bg: rgb(39,40,34),   bull: rgb(166,226,46),  bear: rgb(249,38,114),  dim: rgb(165,159,133), toolbar_bg: rgb(33,34,28),  toolbar_border: rgb(55,54,44),  accent: rgb(230,219,116) },
+    Theme { name: "Solarized",   bg: rgb(0,43,54),    bull: rgb(133,153,0),   bear: rgb(220,50,47),   dim: rgb(131,148,150), toolbar_bg: rgb(0,37,48),   toolbar_border: rgb(7,54,66),   accent: rgb(42,161,152) },
+    Theme { name: "Dracula",     bg: rgb(40,42,54),   bull: rgb(80,250,123),  bear: rgb(255,85,85),   dim: rgb(189,147,249), toolbar_bg: rgb(34,36,48),  toolbar_border: rgb(52,55,70),  accent: rgb(255,121,198) },
+    Theme { name: "Gruvbox",     bg: rgb(40,40,40),   bull: rgb(184,187,38),  bear: rgb(251,73,52),   dim: rgb(213,196,161), toolbar_bg: rgb(34,34,34),  toolbar_border: rgb(55,52,50),  accent: rgb(254,128,25) },
+    Theme { name: "Catppuccin",  bg: rgb(30,30,46),   bull: rgb(166,227,161), bear: rgb(243,139,168), dim: rgb(180,190,254), toolbar_bg: rgb(24,24,38),  toolbar_border: rgb(49,50,68),  accent: rgb(203,166,247) },
+    Theme { name: "Tokyo Night", bg: rgb(26,27,38),   bull: rgb(158,206,106), bear: rgb(247,118,142), dim: rgb(122,162,247), toolbar_bg: rgb(21,22,32),  toolbar_border: rgb(36,40,59),  accent: rgb(125,207,255) },
+    // ── Additional themes ──
+    Theme { name: "One Dark",    bg: rgb(40,44,52),   bull: rgb(152,195,121), bear: rgb(224,108,117), dim: rgb(171,178,191), toolbar_bg: rgb(34,38,46),  toolbar_border: rgb(53,59,69),  accent: rgb(97,175,239) },
+    Theme { name: "Ayu Dark",    bg: rgb(10,14,20),   bull: rgb(170,217,76),  bear: rgb(255,51,51),   dim: rgb(107,120,138), toolbar_bg: rgb(5,9,15),    toolbar_border: rgb(25,30,40),  accent: rgb(255,180,84) },
+    Theme { name: "Vesper",      bg: rgb(16,16,16),   bull: rgb(166,218,149), bear: rgb(238,130,98),  dim: rgb(120,120,120), toolbar_bg: rgb(11,11,11),  toolbar_border: rgb(36,36,36),  accent: rgb(255,199,119) },
+    Theme { name: "Rosé Pine",   bg: rgb(25,23,36),   bull: rgb(156,207,216), bear: rgb(235,111,146), dim: rgb(110,106,134), toolbar_bg: rgb(20,18,30),  toolbar_border: rgb(38,35,53),  accent: rgb(196,167,231) },
 ];
 
 const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#ffffff","#e67e22"];
@@ -4629,6 +4634,13 @@ impl ApplicationHandler for App {
                     pane.indicators.clear();
                     pane.sim_price = 0.0;
                     pane.last_candle_time = std::time::Instant::now();
+
+                    // Reload drawings for the new symbol+timeframe
+                    pane.drawings.clear();
+                    let db_drawings = crate::drawing_db::load_symbol(&pane.symbol);
+                    for dd in &db_drawings {
+                        if let Some(d) = db_to_drawing(dd) { pane.drawings.push(d); }
+                    }
 
                     if let Some(handle) = &self.app_handle {
                         use tauri::Emitter;
