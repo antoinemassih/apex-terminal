@@ -487,10 +487,12 @@ impl Chart {
                 self.sim_price = 0.0;
                 self.last_candle_time = std::time::Instant::now();
                 self.indicator_bar_count = 0; // force recompute
-                // Skip drawing fetch entirely — was causing memory explosion.
-                // Drawings are created in-memory and saved via fire-and-forget DB writes.
-                // They persist in the state file and reload on app restart.
-                if is_new_symbol { self.drawings.clear(); }
+                // Drawings: fetch asynchronously via single worker thread
+                if is_new_symbol { self.drawings_requested = false; self.drawings.clear(); }
+                if !self.drawings_requested {
+                    self.drawings_requested = true;
+                    fetch_drawings_background(self.symbol.clone());
+                }
 
                 // Fetch signal drawings for new symbol
                 self.signal_drawings.clear();
@@ -4706,67 +4708,23 @@ fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32) {
 /// Fetch bars from Redis cache → OCOCO → yfinance sidecar → Yahoo Finance v8 on a background thread.
 /// Sends LoadBars command via the global NATIVE_CHART_TXS channels (all windows).
 /// Results are cached in Redis for subsequent requests.
-/// Queue a drawing fetch request. A single persistent background thread processes
-/// all requests sequentially to avoid pool exhaustion.
+/// Load drawings from DB — uses the single DB worker thread, no per-call runtime.
 fn fetch_drawings_background(sym: String) {
-    use std::sync::{OnceLock, Mutex};
-    static DRAW_TX: OnceLock<Mutex<std::sync::mpsc::Sender<String>>> = OnceLock::new();
+    let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
 
-    let tx = DRAW_TX.get_or_init(|| {
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        std::thread::spawn(move || {
-            let pool = match crate::drawing_db::get_pool() {
-                Some(p) => p.clone(),
-                None => { eprintln!("[drawing-db] worker: no pool"); return; }
-            };
-            let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-            // Process requests sequentially — one at a time, one connection
-            while let Ok(sym) = rx.recv() {
-                let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
-                    .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
-                if txs.is_empty() { continue; }
-
-                let (drawings, groups) = rt.block_on(async {
-                    let drawings = match sqlx::query_as::<_, (uuid::Uuid, String, String, String, serde_json::Value, String, f32, String, f32, String)>(
-                        "SELECT id, symbol, timeframe, type, points, color, opacity, line_style, thickness, group_id FROM drawings WHERE symbol = $1 ORDER BY created_at"
-                    ).bind(&sym).fetch_all(&pool).await {
-                        Ok(rows) => {
-                            let ds: Vec<crate::drawing_db::DbDrawing> = rows.into_iter().filter_map(|r| {
-                                let points: Vec<(f64, f64)> = r.4.as_array().map(|arr| {
-                                    arr.iter().filter_map(|p| Some((p.get("time")?.as_f64()?, p.get("price")?.as_f64()?))).collect()
-                                }).unwrap_or_default();
-                                Some(crate::drawing_db::DbDrawing {
-                                    id: r.0.to_string(), symbol: r.1, timeframe: r.2, drawing_type: r.3,
-                                    points, color: r.5, opacity: r.6, line_style: r.7, thickness: r.8, group_id: r.9,
-                                })
-                            }).collect();
-                            eprintln!("[drawing-db] loaded {} drawings for {}", ds.len(), sym);
-                            ds
-                        }
-                        Err(e) => { eprintln!("[drawing-db] load error: {e}"); vec![] }
-                    };
-
-                    let groups: Vec<super::DrawingGroup> = match sqlx::query_as::<_, (uuid::Uuid, String, Option<String>)>(
-                        "SELECT id, name, color FROM drawing_groups ORDER BY name"
-                    ).fetch_all(&pool).await {
-                        Ok(rows) => rows.into_iter().map(|(id, name, color)| super::DrawingGroup { id: id.to_string(), name, color }).collect(),
-                        Err(_) => vec![],
-                    };
-
-                    (drawings, groups)
-                });
-
-                let native_drawings: Vec<Drawing> = drawings.iter().filter_map(|dd| db_to_drawing(dd)).collect();
-                let cmd = ChartCommand::LoadDrawings { symbol: sym, drawings: native_drawings, groups };
-                for tx in &txs { let _ = tx.send(cmd.clone()); }
-            }
-        });
-        Mutex::new(tx)
+    // Spawn a thread that sends requests to the DB worker and waits for replies.
+    // The DB worker is a single thread with a single tokio runtime — no pool exhaustion.
+    std::thread::spawn(move || {
+        let db_drawings = crate::drawing_db::load_symbol(&sym);
+        let drawings: Vec<Drawing> = db_drawings.iter().filter_map(|dd| db_to_drawing(dd)).collect();
+        let db_groups = crate::drawing_db::load_groups();
+        let groups: Vec<super::DrawingGroup> = db_groups.into_iter()
+            .map(|(id, name, color)| super::DrawingGroup { id, name, color }).collect();
+        let cmd = ChartCommand::LoadDrawings { symbol: sym, drawings, groups };
+        for tx in &txs { let _ = tx.send(cmd.clone()); }
     });
-
-    if let Ok(tx) = tx.lock() {
-        let _ = tx.send(sym);
-    }
 }
 
 /// Public entry point for standalone binary to trigger initial data load.
