@@ -448,6 +448,9 @@ struct Chart {
     order_limit_price: String, // limit price as editable text
     order_entry_open: bool,
     dragging_order: Option<u32>, // order id being dragged
+    editing_order: Option<u32>, // order id being edited (double-click)
+    edit_order_qty: String,
+    edit_order_price: String,
     // Measure tool (shift+drag)
     measuring: bool,
     measure_start: Option<(f32, f32)>, // (bar, price) start point
@@ -492,7 +495,7 @@ impl Chart {
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
             orders: vec![], next_order_id: 1, order_qty: 100, order_market: true, order_limit_price: String::new(),
-            order_entry_open: false, dragging_order: None,
+            order_entry_open: false, dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             measuring: false, measure_start: None, measure_active: false,
             pending_symbol_change: None, pending_timeframe_change: None,
             indicator_pts_buf: Vec::with_capacity(512) }
@@ -2582,32 +2585,110 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
             let color = order.color(t);
             let dash_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200);
-            // Dashed line
+
+            // Dashed line across full width
             let mut dx = rect.left();
             while dx < rect.left() + cw {
                 let end = (dx + 6.0).min(rect.left() + cw);
                 painter.line_segment([egui::pos2(dx, y), egui::pos2(end, y)], egui::Stroke::new(1.0, dash_color));
                 dx += 10.0;
             }
-            // Label badge on right edge
-            let label = format!("{} {} @ {:.2} {}", order.label(), order.qty, order.price, fmt_notional(order.notional()));
-            let badge_w = label.len() as f32 * 6.0 + 12.0;
+
+            // Label badge — LEFT aligned, opaque background
+            let label = format!("{} x{} @ {:.2}  {}", order.label(), order.qty, order.price, fmt_notional(order.notional()));
+            let badge_w = label.len() as f32 * 5.8 + 16.0;
             let badge_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.left() + cw - badge_w - 4.0, y - 9.0),
-                egui::vec2(badge_w, 18.0),
+                egui::pos2(rect.left() + 6.0, y - 10.0),
+                egui::vec2(badge_w, 20.0),
             );
-            painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 40));
-            painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(1.0, dash_color), egui::StrokeKind::Outside);
-            painter.text(badge_rect.center(), egui::Align2::CENTER_CENTER, &label,
-                egui::FontId::monospace(9.0), color);
-            // Price label on y-axis
-            painter.rect_filled(
-                egui::Rect::from_min_size(egui::pos2(rect.left() + cw + 1.0, y - 7.0), egui::vec2(pr - 2.0, 14.0)),
-                2.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 50),
+            // Opaque background matching toolbar
+            painter.rect_filled(badge_rect, 3.0, t.toolbar_bg);
+            painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
+            painter.text(
+                egui::pos2(badge_rect.left() + 6.0, badge_rect.center().y),
+                egui::Align2::LEFT_CENTER, &label, egui::FontId::monospace(9.0), color,
             );
+
+            // Price label on y-axis — opaque
+            let axis_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw + 1.0, y - 8.0), egui::vec2(pr - 2.0, 16.0));
+            painter.rect_filled(axis_rect, 2.0, t.toolbar_bg);
+            painter.rect_stroke(axis_rect, 2.0, egui::Stroke::new(0.5, color), egui::StrokeKind::Outside);
             let d = if order.price >= 10.0 { 2 } else { 4 };
             painter.text(egui::pos2(rect.left() + cw + 3.0, y), egui::Align2::LEFT_CENTER,
                 format!("{:.1$}", order.price, d), egui::FontId::monospace(8.5), color);
+        }
+
+        // ── Order edit popup (double-click) ──────────────────────────────────
+        if let Some(edit_id) = chart.editing_order {
+            // Extract order data to avoid borrow conflict
+            let order_data = chart.orders.iter().find(|o| o.id == edit_id)
+                .map(|o| (o.price, o.color(t), o.label()));
+
+            if let Some((order_price, color, order_label)) = order_data {
+                let y = py(order_price);
+                let popup_pos = egui::pos2(rect.left() + 10.0, y + 14.0);
+                let mut close_editor = false;
+                let mut apply_price: Option<f32> = None;
+                let mut apply_qty: Option<u32> = None;
+                let mut cancel_it = false;
+
+                egui::Window::new(format!("order_edit_{}", edit_id))
+                    .fixed_pos(popup_pos)
+                    .fixed_size(egui::vec2(180.0, 0.0))
+                    .title_bar(false)
+                    .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(8.0)
+                        .stroke(egui::Stroke::new(1.0, color)))
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("EDIT {}", order_label)).monospace().size(10.0).strong().color(color));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
+                                    close_editor = true;
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Price").monospace().size(9.0).color(t.dim));
+                            let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_price)
+                                .desired_width(80.0).font(egui::FontId::monospace(11.0)));
+                            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                if let Ok(p) = chart.edit_order_price.parse::<f32>() { apply_price = Some(p); }
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Qty  ").monospace().size(9.0).color(t.dim));
+                            let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_qty)
+                                .desired_width(80.0).font(egui::FontId::monospace(11.0)));
+                            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                if let Ok(q) = chart.edit_order_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
+                            }
+                        });
+
+                        ui.add_space(4.0);
+                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} Cancel Order", Icon::TRASH)).monospace().size(10.0).color(t.bear))
+                            .min_size(egui::vec2(164.0, 22.0)).corner_radius(3.0)).clicked() {
+                            cancel_it = true;
+                        }
+                    });
+
+                // Apply deferred changes
+                if let Some(p) = apply_price {
+                    if let Some(o) = chart.orders.iter_mut().find(|o| o.id == edit_id) { o.price = p; }
+                }
+                if let Some(q) = apply_qty {
+                    if let Some(o) = chart.orders.iter_mut().find(|o| o.id == edit_id) { o.qty = q; }
+                }
+                if cancel_it {
+                    if let Some(o) = chart.orders.iter_mut().find(|o| o.id == edit_id) { o.status = OrderStatus::Cancelled; }
+                    chart.editing_order = None;
+                }
+                if close_editor { chart.editing_order = None; }
+            } else {
+                chart.editing_order = None;
+            }
         }
 
         // ── Order entry panel (bottom-left of pane) ─────────────────────────
@@ -2883,7 +2964,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // Check if hovering over an order line
                 for order in &chart.orders {
                     if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
-                    if (pos.y - py(order.price)).abs() < 10.0 && pos.x < rect.left() + cw {
+                    if (pos.y - py(order.price)).abs() < 18.0 && pos.x < rect.left() + cw {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                         break;
                     }
@@ -2993,7 +3074,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let mut hit_order = false;
                 for order in &chart.orders {
                     if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
-                    if (pos.y - py(order.price)).abs() < 10.0 && pos.x < rect.left() + cw {
+                    if (pos.y - py(order.price)).abs() < 18.0 && pos.x < rect.left() + cw {
                         chart.dragging_order = Some(order.id);
                         hit_order = true;
                         break;
@@ -3339,8 +3420,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         });
 
+        // Double-click on order line to edit it
+        if resp.double_clicked() && chart.draw_tool.is_empty() && chart.editing_order.is_none() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                for order in &chart.orders {
+                    if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
+                    if (pos.y - py(order.price)).abs() < 18.0 && pos.x < rect.left() + cw {
+                        chart.editing_order = Some(order.id);
+                        chart.edit_order_price = format!("{:.2}", order.price);
+                        chart.edit_order_qty = format!("{}", order.qty);
+                        break;
+                    }
+                }
+            }
+        }
+
         // Double-click on indicator line to edit it
-        if resp.double_clicked() && chart.draw_tool.is_empty() {
+        if resp.double_clicked() && chart.draw_tool.is_empty() && chart.editing_order.is_none() {
             if let Some(pos) = resp.interact_pointer_pos() {
                 for ind in &chart.indicators {
                     if !ind.visible { continue; }
@@ -3360,7 +3456,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.selected_id = None; chart.editing_indicator = None; }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None; }
 
         span_end(); // interaction
         } // end for pane_idx
