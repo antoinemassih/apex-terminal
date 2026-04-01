@@ -108,6 +108,11 @@ pub enum ChartCommand {
         price: f32,
         prev_close: f32,
     },
+    /// Signal drawings from analysis server
+    SignalDrawings {
+        symbol: String,
+        drawings_json: String, // raw JSON — parsed in gpu.rs
+    },
     /// Deliver source bars for a cross-timeframe indicator
     IndicatorSourceBars {
         indicator_id: u32,

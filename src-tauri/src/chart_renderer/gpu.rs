@@ -333,6 +333,79 @@ fn detect_divergences(closes: &[f32], indicator: &[f32], lookback: usize) -> Vec
     div
 }
 
+// ─── Signal drawings (auto-generated trendlines from analysis server) ────────
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct SignalDrawing {
+    id: String,
+    symbol: String,
+    drawing_type: String, // "trendline", "hline", "hzone"
+    points: Vec<(i64, f32)>, // (unix_timestamp, price)
+    color: String,
+    opacity: f32,
+    thickness: f32,
+    line_style: LineStyle,
+    strength: f32, // 0.0-1.0, how confident the analysis is
+    timeframe: String,
+}
+
+impl SignalDrawing {
+    /// Convert timestamp to fractional bar index using the chart's timestamp array.
+    fn time_to_bar(ts: i64, timestamps: &[i64]) -> f32 {
+        if timestamps.is_empty() { return 0.0; }
+        // Binary search for the closest bar
+        let pos = timestamps.partition_point(|&t| t < ts);
+        if pos == 0 { return 0.0; }
+        if pos >= timestamps.len() { return timestamps.len() as f32 - 1.0; }
+        // Interpolate between bars
+        let t0 = timestamps[pos - 1];
+        let t1 = timestamps[pos];
+        if t1 == t0 { return pos as f32; }
+        let frac = (ts - t0) as f32 / (t1 - t0) as f32;
+        (pos - 1) as f32 + frac
+    }
+}
+
+/// Fetch signal annotations from OCOCO API for a symbol.
+fn fetch_signal_drawings(symbol: String) {
+    let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
+    std::thread::spawn(move || {
+        let url = format!("http://192.168.1.60:30300/api/annotations?symbol={}&source=signal", symbol);
+        let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+        if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
+            if let Ok(json) = resp.json::<Vec<serde_json::Value>>() {
+                let drawings: Vec<SignalDrawing> = json.iter().filter_map(|a| {
+                    let id = a.get("id")?.as_str()?.to_string();
+                    let sym = a.get("symbol")?.as_str()?.to_string();
+                    let dtype = a.get("type")?.as_str().unwrap_or("trendline").to_string();
+                    let points: Vec<(i64, f32)> = a.get("points")?.as_array()?.iter().filter_map(|p| {
+                        Some((p.get("time")?.as_i64()?, p.get("price")?.as_f64()? as f32))
+                    }).collect();
+                    let style = a.get("style");
+                    let color = style.and_then(|s| s.get("color")).and_then(|c| c.as_str()).unwrap_or("#4a9eff").to_string();
+                    let opacity = style.and_then(|s| s.get("opacity")).and_then(|o| o.as_f64()).unwrap_or(0.7) as f32;
+                    let thickness = style.and_then(|s| s.get("thickness")).and_then(|t| t.as_f64()).unwrap_or(1.0) as f32;
+                    let ls_str = style.and_then(|s| s.get("lineStyle")).and_then(|l| l.as_str()).unwrap_or("dashed");
+                    let line_style = match ls_str { "solid" => LineStyle::Solid, "dotted" => LineStyle::Dotted, _ => LineStyle::Dashed };
+                    let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
+                    let timeframe = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
+                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe })
+                }).collect();
+
+                if !drawings.is_empty() {
+                    eprintln!("[signal] Fetched {} signal drawings for {}", drawings.len(), symbol);
+                }
+                // Send via command channel
+                let cmd = super::ChartCommand::SignalDrawings { symbol, drawings_json: serde_json::to_string(&json).unwrap_or_default() };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+            }
+        }
+    });
+}
+
 // ─── Orders ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -439,6 +512,9 @@ struct Chart {
     drag_start_price: f32, drag_start_bar: f32,
     groups: Vec<DrawingGroup>,
     hidden_groups: Vec<String>,
+    signal_drawings: Vec<SignalDrawing>, // auto-generated trendlines from server
+    hide_signal_drawings: bool,
+    last_signal_fetch: std::time::Instant,
     hide_all_drawings: bool,
     hide_all_indicators: bool,
     show_volume: bool,
@@ -510,6 +586,7 @@ impl Chart {
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true,
+            signal_drawings: vec![], hide_signal_drawings: false, last_signal_fetch: std::time::Instant::now(),
             draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
@@ -545,6 +622,11 @@ impl Chart {
                     self.groups.push(super::DrawingGroup { id, name, color });
                 }
 
+                // Fetch signal drawings for new symbol
+                self.signal_drawings.clear();
+                self.last_signal_fetch = std::time::Instant::now();
+                fetch_signal_drawings(self.symbol.clone());
+
                 // Reload cross-timeframe indicator sources for new symbol
                 for ind in &mut self.indicators {
                     if !ind.source_tf.is_empty() {
@@ -576,6 +658,31 @@ impl Chart {
             ChartCommand::SetDrawing(d) => { self.drawings.retain(|x| x.id != d.id); self.drawings.push(d); }
             ChartCommand::RemoveDrawing { id } => { self.drawings.retain(|x| x.id != id); }
             ChartCommand::ClearDrawings => { self.drawings.clear(); }
+            ChartCommand::SignalDrawings { symbol, drawings_json } => {
+                if symbol == self.symbol {
+                    // Parse signal drawings from JSON
+                    if let Ok(annotations) = serde_json::from_str::<Vec<serde_json::Value>>(&drawings_json) {
+                        self.signal_drawings.clear();
+                        for a in &annotations {
+                            let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let dtype = a.get("type").and_then(|v| v.as_str()).unwrap_or("trendline").to_string();
+                            let points: Vec<(i64, f32)> = a.get("points").and_then(|v| v.as_array()).map(|arr| {
+                                arr.iter().filter_map(|p| Some((p.get("time")?.as_i64()?, p.get("price")?.as_f64()? as f32))).collect()
+                            }).unwrap_or_default();
+                            let style = a.get("style");
+                            let color = style.and_then(|s| s.get("color")).and_then(|c| c.as_str()).unwrap_or("#4a9eff").to_string();
+                            let opacity = style.and_then(|s| s.get("opacity")).and_then(|o| o.as_f64()).unwrap_or(0.7) as f32;
+                            let thickness = style.and_then(|s| s.get("thickness")).and_then(|t| t.as_f64()).unwrap_or(1.0) as f32;
+                            let ls = match style.and_then(|s| s.get("lineStyle")).and_then(|l| l.as_str()).unwrap_or("dashed") {
+                                "solid" => LineStyle::Solid, "dotted" => LineStyle::Dotted, _ => LineStyle::Dashed,
+                            };
+                            let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
+                            let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf });
+                        }
+                    }
+                }
+            }
             ChartCommand::IndicatorSourceBars { indicator_id, timeframe, bars, timestamps } => {
                 if let Some(ind) = self.indicators.iter_mut().find(|i| i.id == indicator_id && i.source_tf == timeframe) {
                     ind.source_bars = bars;
@@ -2718,6 +2825,63 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
+        // ── Signal drawings (auto-generated trendlines from server) ──────────
+        if !chart.hide_signal_drawings && !chart.signal_drawings.is_empty() {
+            for sd in &chart.signal_drawings {
+                let color = hex_to_color(&sd.color, sd.opacity);
+                let stroke = egui::Stroke::new(sd.thickness, color);
+                match sd.drawing_type.as_str() {
+                    "trendline" if sd.points.len() >= 2 => {
+                        let b0 = SignalDrawing::time_to_bar(sd.points[0].0, &chart.timestamps);
+                        let b1 = SignalDrawing::time_to_bar(sd.points[1].0, &chart.timestamps);
+                        let p0 = egui::pos2(bx(b0), py(sd.points[0].1));
+                        let p1 = egui::pos2(bx(b1), py(sd.points[1].1));
+                        match sd.line_style {
+                            LineStyle::Solid => { painter.line_segment([p0, p1], stroke); }
+                            _ => {
+                                let (dash, gap) = if sd.line_style == LineStyle::Dashed { (6.0, 3.0) } else { (2.0, 2.0) };
+                                let dir = p1 - p0; let len = dir.length();
+                                if len > 1.0 { let norm = dir / len; let mut d = 0.0;
+                                    while d < len { let a = p0 + norm * d; let b = p0 + norm * (d+dash).min(len);
+                                        painter.line_segment([a, b], stroke); d += dash + gap; }
+                                }
+                            }
+                        }
+                        // Strength indicator — small dot at midpoint, size = strength
+                        if sd.strength > 0.0 {
+                            let mid = egui::pos2((p0.x+p1.x)/2.0, (p0.y+p1.y)/2.0);
+                            painter.circle_filled(mid, 2.0 + sd.strength * 3.0, color);
+                        }
+                    }
+                    "hline" if !sd.points.is_empty() => {
+                        let y = py(sd.points[0].1);
+                        match sd.line_style {
+                            LineStyle::Solid => { painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y)], stroke); }
+                            _ => {
+                                let mut dx = rect.left(); while dx < rect.left()+cw {
+                                    painter.line_segment([egui::pos2(dx, y), egui::pos2((dx+6.0).min(rect.left()+cw), y)], stroke); dx += 10.0;
+                                }
+                            }
+                        }
+                    }
+                    "hzone" if sd.points.len() >= 2 => {
+                        let y0 = py(sd.points[0].1); let y1 = py(sd.points[1].1);
+                        let fill = hex_to_color(&sd.color, sd.opacity * 0.15);
+                        painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(y1)), egui::pos2(rect.left()+cw, y0.max(y1))), 0.0, fill);
+                        painter.line_segment([egui::pos2(rect.left(), y0), egui::pos2(rect.left()+cw, y0)], stroke);
+                        painter.line_segment([egui::pos2(rect.left(), y1), egui::pos2(rect.left()+cw, y1)], stroke);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // ── Periodic signal fetch (every 30s) ────────────────────────────────
+        if chart.last_signal_fetch.elapsed().as_secs() >= 30 {
+            chart.last_signal_fetch = std::time::Instant::now();
+            fetch_signal_drawings(chart.symbol.clone());
+        }
+
         // ── OCO/Trigger bracket bands ─────────────────────────────────────────
         {
             let active_orders: Vec<&OrderLevel> = chart.orders.iter().filter(|o| o.status != OrderStatus::Cancelled && o.status != OrderStatus::Executed).collect();
@@ -3598,6 +3762,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let ind_label = if chart.hide_all_indicators { "Show All Indicators" } else { "Hide All Indicators" };
                 if ui.button(format!("{} {}", ind_icon, ind_label)).clicked() {
                     chart.hide_all_indicators = !chart.hide_all_indicators;
+                    ui.close_menu();
+                }
+                let sig_icon = if chart.hide_signal_drawings { Icon::EYE_SLASH } else { Icon::EYE };
+                let sig_label = if chart.hide_signal_drawings { "Show Signal Lines" } else { "Hide Signal Lines" };
+                if ui.button(format!("{} {}", sig_icon, sig_label)).clicked() {
+                    chart.hide_signal_drawings = !chart.hide_signal_drawings;
                     ui.close_menu();
                 }
                 if ui.button(format!("{} Add Indicator", Icon::PLUS)).clicked() {
