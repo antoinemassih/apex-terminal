@@ -461,7 +461,6 @@ struct Chart {
     order_qty: u32,
     order_market: bool, // true=market, false=limit
     order_limit_price: String, // limit price as editable text
-    order_entry_open: bool,
     dragging_order: Option<u32>, // order id being dragged
     editing_order: Option<u32>,
     edit_order_qty: String,
@@ -512,7 +511,7 @@ impl Chart {
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
             orders: vec![], next_order_id: 1, order_qty: 100, order_market: true, order_limit_price: String::new(),
-            order_entry_open: false, dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
+            dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
             measuring: false, measure_start: None, measure_active: false,
             pending_symbol_change: None, pending_timeframe_change: None,
@@ -1008,8 +1007,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
 
                 // Order entry toggle
-                if tb_btn(ui, "orders", panes[ap].order_entry_open, t).clicked() {
-                    panes[ap].order_entry_open = !panes[ap].order_entry_open;
+                if tb_btn(ui, "orders", watchlist.order_entry_open, t).clicked() {
+                    watchlist.order_entry_open = !watchlist.order_entry_open;
                 }
                 // Orders book panel toggle
                 if tb_btn(ui, "book", watchlist.orders_panel_open, t).clicked() {
@@ -2081,75 +2080,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             });
     }
 
-    // ── Order execution simulation — check if placed orders should fill ──
-    for pane in panes.iter_mut() {
-        let current_price = pane.bars.last().map(|b| b.close).unwrap_or(0.0);
-        if current_price == 0.0 { continue; }
-        let mut new_positions: Vec<(String, i32, f32)> = Vec::new();
-        let mut activate_pairs: Vec<u32> = Vec::new();
-        for order in &mut pane.orders {
-            if order.status != OrderStatus::Placed { continue; }
-            let should_fill = match order.side {
-                OrderSide::Buy | OrderSide::TriggerBuy => current_price <= order.price,
-                OrderSide::Sell | OrderSide::TriggerSell | OrderSide::OcoTarget => current_price >= order.price,
-                OrderSide::Stop | OrderSide::OcoStop => current_price <= order.price,
-            };
-            if should_fill {
-                order.status = OrderStatus::Executed;
-                PENDING_TOASTS.with(|ts| ts.borrow_mut().push((
-                    format!("{} {} x{} @ {:.2}", order.label(), pane.symbol, order.qty, order.price),
-                    order.price,
-                    matches!(order.side, OrderSide::Buy | OrderSide::TriggerBuy | OrderSide::OcoTarget),
-                )));
-                let qty = match order.side {
-                    OrderSide::Buy | OrderSide::TriggerBuy => order.qty as i32,
-                    _ => -(order.qty as i32),
-                };
-                new_positions.push((pane.symbol.clone(), qty, order.price));
+    // NOTE: Order execution is NOT simulated locally — fills come from the brokerage API.
+    // The chart only displays order levels; execution status changes are signaled externally.
 
-                // OCO: cancel the paired order when one fills
-                if matches!(order.side, OrderSide::OcoTarget | OrderSide::OcoStop) {
-                    if let Some(pid) = order.pair_id { activate_pairs.push(pid); }
-                }
-                // Trigger: when buy entry fills, activate the sell target
-                if order.side == OrderSide::TriggerBuy {
-                    if let Some(pid) = order.pair_id { activate_pairs.push(pid); }
-                }
-            }
-        }
-        // Process pair actions — OCO: cancel partner; Trigger: place partner
-        for pid in activate_pairs {
-            if let Some(paired) = pane.orders.iter_mut().find(|o| o.id == pid) {
-                if matches!(paired.side, OrderSide::OcoTarget | OrderSide::OcoStop) {
-                    // OCO: cancel the other leg
-                    paired.status = OrderStatus::Cancelled;
-                } else if paired.side == OrderSide::TriggerSell && paired.status == OrderStatus::Draft {
-                    // Trigger: activate the sell target
-                    paired.status = OrderStatus::Placed;
-                }
-            }
-        }
-        // Create or update positions
-        for (sym, qty, price) in new_positions {
-            if let Some(pos) = watchlist.positions.iter_mut().find(|p| p.symbol == sym) {
-                // Average in
-                let old_notional = pos.avg_price * pos.qty.abs() as f32;
-                let new_notional = price * qty.abs() as f32;
-                pos.qty += qty;
-                if pos.qty != 0 {
-                    pos.avg_price = (old_notional + new_notional) / pos.qty.abs() as f32;
-                }
-                // Remove flat positions
-                if pos.qty == 0 {
-                    watchlist.positions.retain(|p| p.symbol != sym || p.qty != 0);
-                }
-            } else {
-                watchlist.positions.push(Position { symbol: sym, qty, avg_price: price, current_price: price });
-            }
-        }
-    }
-
-    // Update position current prices
+    // Update position current prices from chart data
     for pos in &mut watchlist.positions {
         if let Some(pane) = panes.iter().find(|p| p.symbol == pos.symbol) {
             if let Some(bar) = pane.bars.last() {
@@ -2720,9 +2654,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── Order entry panel (bottom-left of pane) ─────────────────────────
-        if chart.order_entry_open && is_active {
-            let panel_w = 180.0;
-            let panel_h = 120.0;
+        if watchlist.order_entry_open {
+            let panel_w = 190.0;
+            let panel_h = 56.0;
             let panel_pos = egui::pos2(rect.left() + 8.0, rect.top() + pt + ch - panel_h - 8.0);
 
             egui::Window::new(format!("order_entry_{}", pane_idx))
@@ -2730,91 +2664,91 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 .fixed_size(egui::vec2(panel_w, panel_h))
                 .title_bar(false)
                 .frame(egui::Frame::popup(&ctx.style())
-                    .fill(egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230))
-                    .inner_margin(8.0))
+                    .fill(egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 235))
+                    .inner_margin(6.0))
                 .show(ctx, |ui| {
                     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
                     let spread = (last_price * 0.0001).max(0.01);
 
-                    // Row 1: MKT/LMT toggle + limit price
+                    // Row 1: [-] qty [+] | price/last | MKT/LMT
                     ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
+                        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(16.0, 18.0)).corner_radius(2.0)).clicked() {
+                            chart.order_qty = chart.order_qty.saturating_sub(step).max(1);
+                        }
+                        ui.label(egui::RichText::new(format!("{}", chart.order_qty)).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
+                        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0)).min_size(egui::vec2(16.0, 18.0)).corner_radius(2.0)).clicked() {
+                            chart.order_qty += step;
+                        }
+
+                        ui.add_space(4.0);
+
+                        // Price input or last price display
+                        if chart.order_market {
+                            ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(10.0).color(t.dim));
+                        } else {
+                            ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
+                                .desired_width(58.0).font(egui::FontId::monospace(10.0)).hint_text("Price"));
+                        }
+
+                        // MKT/LMT toggle
                         let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
-                        let mkt_color = if chart.order_market { t.accent } else { t.dim };
-                        if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(10.0).strong().color(mkt_color))
-                            .fill(if chart.order_market { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 40) } else { t.toolbar_bg })
-                            .stroke(egui::Stroke::new(1.0, t.toolbar_border))
-                            .corner_radius(3.0)
-                            .min_size(egui::vec2(36.0, 20.0))
-                        ).clicked() {
+                        let mkt_active = chart.order_market;
+                        if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(9.0).strong()
+                            .color(if mkt_active { t.accent } else { t.dim }))
+                            .fill(if mkt_active { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 35) } else { t.toolbar_bg })
+                            .stroke(egui::Stroke::new(0.5, t.toolbar_border)).corner_radius(2.0)
+                            .min_size(egui::vec2(28.0, 18.0))).clicked() {
                             chart.order_market = !chart.order_market;
                             if !chart.order_market && chart.order_limit_price.is_empty() {
                                 chart.order_limit_price = format!("{:.2}", last_price);
                             }
                         }
-
-                        if chart.order_market {
-                            ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(10.0).color(t.dim));
-                        } else {
-                            ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
-                                .desired_width(70.0)
-                                .font(egui::FontId::monospace(11.0))
-                                .hint_text("Price"));
-                        }
                     });
 
                     ui.add_space(2.0);
 
-                    // Row 2: Qty stepper
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("QTY").monospace().size(9.0).color(t.dim));
-                        let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
-                        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0)).min_size(egui::vec2(18.0, 18.0))).clicked() {
-                            chart.order_qty = chart.order_qty.saturating_sub(step).max(1);
-                        }
-                        ui.label(egui::RichText::new(format!("{}", chart.order_qty)).monospace().size(11.0).strong().color(egui::Color32::from_rgb(220,220,230)));
-                        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0)).min_size(egui::vec2(18.0, 18.0))).clicked() {
-                            chart.order_qty += step;
-                        }
-                    });
-
-                    ui.add_space(4.0);
-
-                    // Row 3: Buy / Sell buttons
+                    // Row 2: BUY | SELL | armed glyph
                     let buy_price = if chart.order_market { last_price + spread } else {
                         chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
                     };
                     let sell_price = if chart.order_market { last_price - spread } else {
                         chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
                     };
-                    // All orders start as Draft — armed mode auto-places in the buy/sell handlers below
 
                     ui.horizontal(|ui| {
-                        let buy_label = format!("BUY {:.2}", buy_price);
-                        if ui.add(egui::Button::new(egui::RichText::new(&buy_label).monospace().size(10.0).strong().color(egui::Color32::WHITE))
+                        ui.spacing_mut().item_spacing.x = 3.0;
+                        // BUY
+                        if ui.add(egui::Button::new(egui::RichText::new(format!("BUY {:.2}", buy_price)).monospace().size(9.0).strong().color(egui::Color32::WHITE))
                             .fill(egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 180))
-                            .min_size(egui::vec2(82.0, 22.0)).corner_radius(3.0)).clicked() {
+                            .min_size(egui::vec2(76.0, 20.0)).corner_radius(3.0)).clicked() {
                             let id = chart.next_order_id; chart.next_order_id += 1;
                             let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
                             chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None });
                             if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                         }
-
-                        let sell_label = format!("SELL {:.2}", sell_price);
-                        if ui.add(egui::Button::new(egui::RichText::new(&sell_label).monospace().size(10.0).strong().color(egui::Color32::WHITE))
+                        // SELL
+                        if ui.add(egui::Button::new(egui::RichText::new(format!("SELL {:.2}", sell_price)).monospace().size(9.0).strong().color(egui::Color32::WHITE))
                             .fill(egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 180))
-                            .min_size(egui::vec2(82.0, 22.0)).corner_radius(3.0)).clicked() {
+                            .min_size(egui::vec2(76.0, 20.0)).corner_radius(3.0)).clicked() {
                             let id = chart.next_order_id; chart.next_order_id += 1;
                             let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
                             chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None });
                             if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                         }
-                    });
-
-                    // Row 4: Armed checkbox + info
-                    ui.horizontal(|ui| {
-                        let armed_color = if chart.armed { t.accent } else { t.dim };
-                        ui.checkbox(&mut chart.armed, egui::RichText::new("Armed").monospace().size(9.0).color(armed_color));
-                        ui.label(egui::RichText::new(format!("Spr:{:.4} Last:{:.2}", spread * 2.0, last_price)).monospace().size(8.0).color(t.dim));
+                        // Armed toggle — glyph only, tooltip on hover
+                        let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
+                        let armed_color = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.5) };
+                        let armed_resp = ui.add(egui::Button::new(egui::RichText::new(armed_icon).size(12.0).color(armed_color))
+                            .fill(if chart.armed { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 30) } else { egui::Color32::TRANSPARENT })
+                            .stroke(egui::Stroke::NONE).min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0));
+                        if armed_resp.clicked() { chart.armed = !chart.armed; }
+                        if armed_resp.hovered() {
+                            egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("armed_tip"), |ui| {
+                                ui.label(egui::RichText::new(if chart.armed { "Armed — orders fire immediately" } else { "Unarmed — orders need confirmation" }).monospace().size(9.0));
+                            });
+                        }
                     });
                 });
 
@@ -2822,7 +2756,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if !chart.pending_confirms.is_empty() {
                 let mut confirm_ids: Vec<u32> = Vec::new();
                 let mut cancel_ids: Vec<u32> = Vec::new();
-                let base_y = rect.top() + pt + ch - 120.0 - 8.0; // above the panel
+                let base_y = rect.top() + pt + ch - 120.0 - 28.0; // above the panel (raised 20px)
 
                 for (ci, (oid, _created)) in chart.pending_confirms.iter().enumerate() {
                     let order_data = chart.orders.iter().find(|o| o.id == *oid)
@@ -3630,8 +3564,9 @@ struct Watchlist {
     items: Vec<WatchlistItem>,
     search_query: String,
     search_results: Vec<(String, String)>,
-    // Orders book panel
+    // Orders
     orders_panel_open: bool,
+    order_entry_open: bool,
     // Positions
     positions: Vec<Position>,
     // Alerts
@@ -3660,7 +3595,7 @@ impl Watchlist {
             symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
         Self { open: true, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
-               orders_panel_open: false, positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
+               orders_panel_open: false, order_entry_open: false, positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, saved_options: vec![], dte_filter: -1 }
