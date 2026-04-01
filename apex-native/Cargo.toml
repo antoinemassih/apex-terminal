@@ -1,0 +1,17 @@
+[package]
+name = "apex-native"
+version = "0.1.0"
+edition = "2021"
+description = "Apex Terminal — Standalone Native GPU Trading Chart"
+
+[[bin]]
+name = "apex-native"
+path = "src/main.rs"
+
+[dependencies]
+_scaffold_lib = { package = "_scaffold", path = "../src-tauri" }
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
+
+[build-dependencies]
+winresource = "0.1"
