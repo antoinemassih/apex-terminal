@@ -3,6 +3,9 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[global_allocator]
+static GLOBAL: _scaffold_lib::monitoring::CountingAlloc = _scaffold_lib::monitoring::CountingAlloc;
+
 use std::sync::Mutex;
 
 fn main() {
@@ -36,6 +39,9 @@ fn main() {
 
     // Initialize global chart channel (for tick broadcasting)
     _scaffold_lib::NATIVE_CHART_TXS.get_or_init(|| Mutex::new(Vec::new()));
+
+    // Start performance monitoring — Prometheus metrics + jank detection + GPU telemetry
+    _scaffold_lib::monitoring::start();
 
     eprintln!("[apex-native] Opening chart window...");
 
