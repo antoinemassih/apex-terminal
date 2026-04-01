@@ -17,6 +17,8 @@ std::thread_local! {
     static CURRENT_WINDOW: std::cell::RefCell<Option<Arc<Window>>> = const { std::cell::RefCell::new(None) };
     static CLOSE_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PENDING_ALERT: std::cell::RefCell<Option<(String, f32, bool)>> = const { std::cell::RefCell::new(None) };
+    static PENDING_TOASTS: std::cell::RefCell<Vec<(String, f32, bool)>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CONN_PANEL_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 use crate::ui_kit::{self, icons::Icon};
 
@@ -142,13 +144,27 @@ const ALL_LAYOUTS: &[Layout] = &[Layout::One, Layout::Two, Layout::TwoH, Layout:
 // ─── Indicators ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA }
+enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, RSI, MACD, Stochastic }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum IndicatorCategory { Overlay, Oscillator }
 
 impl IndicatorType {
     fn label(self) -> &'static str {
-        match self { Self::SMA => "SMA", Self::EMA => "EMA", Self::WMA => "WMA", Self::DEMA => "DEMA", Self::TEMA => "TEMA" }
+        match self {
+            Self::SMA => "SMA", Self::EMA => "EMA", Self::WMA => "WMA",
+            Self::DEMA => "DEMA", Self::TEMA => "TEMA", Self::VWAP => "VWAP",
+            Self::RSI => "RSI", Self::MACD => "MACD", Self::Stochastic => "STOCH",
+        }
     }
-    fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA] }
+    fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::RSI, Self::MACD, Self::Stochastic] }
+    #[allow(dead_code)]
+    fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP] }
+    #[allow(dead_code)]
+    fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic] }
+    fn category(self) -> IndicatorCategory {
+        match self { Self::RSI | Self::MACD | Self::Stochastic => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
+    }
 
     fn compute(self, closes: &[f32], period: usize) -> Vec<f32> {
         match self {
@@ -178,6 +194,10 @@ impl IndicatorType {
                     .map(|(&a, (&b, &c))| if a.is_nan() || b.is_nan() || c.is_nan() { f32::NAN } else { 3.0 * a - 3.0 * b + c })
                     .collect()
             }
+            Self::VWAP => vec![f32::NAN; closes.len()], // computed separately with volume
+            Self::RSI => compute_rsi(closes, period),
+            Self::MACD => compute_ema(closes, period), // primary=MACD line, signal/histogram set separately
+            Self::Stochastic => vec![f32::NAN; closes.len()], // computed separately with high/low
         }
     }
 }
@@ -187,16 +207,19 @@ struct Indicator {
     id: u32,
     kind: IndicatorType,
     period: usize,
-    source_tf: String,   // "" = chart's timeframe, or "1m","5m","1h","1d" etc.
-    color: String,       // hex
+    source_tf: String,
+    color: String,
     thickness: f32,
     line_style: LineStyle,
     visible: bool,
-    values: Vec<f32>,    // computed values (same length as chart bars)
+    values: Vec<f32>,         // primary line (same length as chart bars)
+    values2: Vec<f32>,        // secondary line: MACD signal, Stochastic %D
+    histogram: Vec<f32>,      // MACD histogram
+    divergences: Vec<i8>,     // 1=bullish divergence, -1=bearish, 0=none
     // Cross-timeframe state
-    source_bars: Vec<Bar>,        // bars fetched for source_tf (empty when same as chart)
-    source_timestamps: Vec<i64>,  // timestamps for source_bars
-    source_loaded: bool,          // true once source_bars have been fetched
+    source_bars: Vec<Bar>,
+    source_timestamps: Vec<i64>,
+    source_loaded: bool,
 }
 
 const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1wk"];
@@ -205,7 +228,7 @@ const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m", "1h", "4h"
 impl Indicator {
     fn new(id: u32, kind: IndicatorType, period: usize, color: &str) -> Self {
         Self { id, kind, period, source_tf: String::new(), color: color.into(), thickness: 1.2,
-               line_style: LineStyle::Solid, visible: true, values: vec![],
+               line_style: LineStyle::Solid, visible: true, values: vec![], values2: vec![], histogram: vec![], divergences: vec![],
                source_bars: vec![], source_timestamps: vec![], source_loaded: false }
     }
     fn display_name(&self) -> String {
@@ -218,6 +241,96 @@ impl Indicator {
 }
 
 static INDICATOR_COLORS: &[&str] = &["#00bef0", "#f0961a", "#f0d732", "#b266e6", "#1abc9c", "#e74c3c", "#3498db", "#e67e22"];
+
+fn compute_rsi(closes: &[f32], period: usize) -> Vec<f32> {
+    let mut r = vec![f32::NAN; closes.len()];
+    if closes.len() <= period { return r; }
+    let mut avg_gain = 0.0_f32;
+    let mut avg_loss = 0.0_f32;
+    for i in 1..=period {
+        let d = closes[i] - closes[i-1];
+        if d > 0.0 { avg_gain += d; } else { avg_loss += -d; }
+    }
+    avg_gain /= period as f32;
+    avg_loss /= period as f32;
+    let rs = if avg_loss == 0.0 { 100.0 } else { avg_gain / avg_loss };
+    r[period] = 100.0 - 100.0 / (1.0 + rs);
+    for i in (period+1)..closes.len() {
+        let d = closes[i] - closes[i-1];
+        let (gain, loss) = if d > 0.0 { (d, 0.0) } else { (0.0, -d) };
+        avg_gain = (avg_gain * (period as f32 - 1.0) + gain) / period as f32;
+        avg_loss = (avg_loss * (period as f32 - 1.0) + loss) / period as f32;
+        let rs = if avg_loss == 0.0 { 100.0 } else { avg_gain / avg_loss };
+        r[i] = 100.0 - 100.0 / (1.0 + rs);
+    }
+    r
+}
+
+fn compute_macd(closes: &[f32], fast: usize, slow: usize, signal: usize) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+    let ema_fast = compute_ema(closes, fast);
+    let ema_slow = compute_ema(closes, slow);
+    let macd_line: Vec<f32> = ema_fast.iter().zip(&ema_slow).map(|(&f, &s)| {
+        if f.is_nan() || s.is_nan() { f32::NAN } else { f - s }
+    }).collect();
+    let signal_line = compute_ema(&macd_line, signal);
+    let histogram: Vec<f32> = macd_line.iter().zip(&signal_line).map(|(&m, &s)| {
+        if m.is_nan() || s.is_nan() { f32::NAN } else { m - s }
+    }).collect();
+    (macd_line, signal_line, histogram)
+}
+
+fn compute_stochastic(highs: &[f32], lows: &[f32], closes: &[f32], k_period: usize, d_period: usize) -> (Vec<f32>, Vec<f32>) {
+    let n = closes.len();
+    let mut k = vec![f32::NAN; n];
+    for i in (k_period-1)..n {
+        let mut hi = f32::MIN;
+        let mut lo = f32::MAX;
+        for j in (i+1-k_period)..=i { hi = hi.max(highs[j]); lo = lo.min(lows[j]); }
+        k[i] = if hi == lo { 50.0 } else { (closes[i] - lo) / (hi - lo) * 100.0 };
+    }
+    let d = compute_sma(&k, d_period);
+    (k, d)
+}
+
+fn compute_vwap(closes: &[f32], volumes: &[f32], highs: &[f32], lows: &[f32]) -> Vec<f32> {
+    let n = closes.len();
+    let mut r = vec![f32::NAN; n];
+    let mut cum_tp_vol = 0.0_f32;
+    let mut cum_vol = 0.0_f32;
+    for i in 0..n {
+        let tp = (highs[i] + lows[i] + closes[i]) / 3.0;
+        cum_tp_vol += tp * volumes[i];
+        cum_vol += volumes[i];
+        if cum_vol > 0.0 { r[i] = cum_tp_vol / cum_vol; }
+    }
+    r
+}
+
+/// Detect bullish/bearish divergences between price and indicator
+fn detect_divergences(closes: &[f32], indicator: &[f32], lookback: usize) -> Vec<i8> {
+    let n = closes.len();
+    let mut div = vec![0i8; n];
+    if n < lookback * 2 { return div; }
+    // Find local swing lows/highs in both price and indicator
+    for i in lookback..n.saturating_sub(lookback) {
+        // Check for swing low in price
+        let is_price_low = (1..=lookback).all(|j| closes[i] <= closes[i.saturating_sub(j)] && closes[i] <= closes[(i+j).min(n-1)]);
+        if is_price_low && !indicator[i].is_nan() {
+            // Look back for a previous swing low
+            for k in (lookback..i).rev().take(lookback * 4) {
+                let was_low = (1..=lookback.min(k)).all(|j| closes[k] <= closes[k.saturating_sub(j)]);
+                if was_low && !indicator[k].is_nan() {
+                    // Bullish: price makes lower low but indicator makes higher low
+                    if closes[i] < closes[k] && indicator[i] > indicator[k] { div[i] = 1; }
+                    // Bearish: price makes higher low but indicator makes lower low
+                    if closes[i] > closes[k] && indicator[i] < indicator[k] { div[i] = -1; }
+                    break;
+                }
+            }
+        }
+    }
+    div
+}
 
 // ─── Orders ──────────────────────────────────────────────────────────────────
 
@@ -299,6 +412,8 @@ struct Chart {
     hidden_groups: Vec<String>,
     hide_all_drawings: bool,
     hide_all_indicators: bool,
+    show_volume: bool,
+    show_oscillators: bool, // toggle oscillator sub-panel
     draw_color: String, // current drawing color
     zoom_selecting: bool, zoom_start: egui::Pos2,
     // Symbol picker
@@ -357,7 +472,7 @@ impl Chart {
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
-            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false,
+            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true,
             draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
@@ -436,30 +551,47 @@ impl Chart {
     /// Recompute all indicator values from bar data.
     fn recompute_indicators(&mut self) {
         let chart_closes: Vec<f32> = self.bars.iter().map(|b| b.close).collect();
+        let chart_highs: Vec<f32> = self.bars.iter().map(|b| b.high).collect();
+        let chart_lows: Vec<f32> = self.bars.iter().map(|b| b.low).collect();
+        let chart_volumes: Vec<f32> = self.bars.iter().map(|b| b.volume).collect();
+
         for ind in &mut self.indicators {
-            if ind.source_tf.is_empty() {
-                // Same timeframe as chart — compute directly
-                ind.values = ind.kind.compute(&chart_closes, ind.period);
-            } else if ind.source_loaded && !ind.source_bars.is_empty() {
-                // Cross-timeframe: compute on source bars, then map to chart's x-axis
-                let src_closes: Vec<f32> = ind.source_bars.iter().map(|b| b.close).collect();
-                let src_values = ind.kind.compute(&src_closes, ind.period);
-                // Map: for each chart bar, find the source bar whose timestamp is <= chart bar's timestamp
-                ind.values = Vec::with_capacity(self.bars.len());
-                let mut si = 0;
-                for ci in 0..self.bars.len() {
-                    let ct = if ci < self.timestamps.len() { self.timestamps[ci] } else { 0 };
-                    // Advance source index to the latest source bar at or before this chart bar
-                    while si + 1 < ind.source_timestamps.len() && ind.source_timestamps[si + 1] <= ct { si += 1; }
-                    if si < src_values.len() && ind.source_timestamps.get(si).map_or(false, |&st| st <= ct) {
-                        ind.values.push(src_values[si]);
-                    } else {
-                        ind.values.push(f32::NAN);
-                    }
-                }
+            let closes = if ind.source_tf.is_empty() { &chart_closes } else if ind.source_loaded && !ind.source_bars.is_empty() {
+                // For cross-timeframe, we'd need to map — for now use chart closes
+                &chart_closes
             } else {
-                // Source not loaded yet — fill with NaN
                 ind.values = vec![f32::NAN; self.bars.len()];
+                ind.values2 = vec![];
+                ind.histogram = vec![];
+                continue;
+            };
+
+            match ind.kind {
+                IndicatorType::VWAP => {
+                    ind.values = compute_vwap(closes, &chart_volumes, &chart_highs, &chart_lows);
+                }
+                IndicatorType::RSI => {
+                    ind.values = compute_rsi(closes, ind.period);
+                    ind.divergences = detect_divergences(closes, &ind.values, 5);
+                }
+                IndicatorType::MACD => {
+                    let (macd, signal, hist) = compute_macd(closes, 12, 26, 9);
+                    ind.values = macd;
+                    ind.values2 = signal;
+                    ind.histogram = hist;
+                    ind.divergences = detect_divergences(closes, &ind.values, 5);
+                }
+                IndicatorType::Stochastic => {
+                    let (k, d) = compute_stochastic(&chart_highs, &chart_lows, closes, ind.period.max(2), 3);
+                    ind.values = k;
+                    ind.values2 = d;
+                    ind.divergences = detect_divergences(closes, &ind.values, 5);
+                }
+                _ => {
+                    ind.values = ind.kind.compute(closes, ind.period);
+                    ind.values2 = vec![];
+                    ind.histogram = vec![];
+                }
             }
         }
         self.indicator_bar_count = self.bars.len();
@@ -507,9 +639,9 @@ impl Chart {
                         } else { close * k + prev * (1.0 - k) };
                         ind.values.push(v);
                     }
-                    IndicatorType::DEMA | IndicatorType::TEMA => {
-                        // These need full recompute — can't easily do incremental
-                        ind.values.push(f32::NAN); // placeholder, will be fixed on next full recompute
+                    _ => {
+                        // DEMA, TEMA, VWAP, RSI, MACD, Stochastic — need full recompute
+                        ind.values.push(f32::NAN);
                     }
                 }
             }
@@ -639,7 +771,7 @@ fn tick_simulation(chart: &mut Chart) {
     }
 }
 
-fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, rx: &mpsc::Receiver<ChartCommand>) {
+fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
     use crate::monitoring::{span_begin, span_end};
 
     // Route incoming commands to the matching pane (by symbol), or active pane as fallback
@@ -738,6 +870,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     panes[ap].pending_timeframe_change = Some(tf.to_string());
                 }
             }
+
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // ── Volume + Oscillator toggles ──
+            if tb_btn(ui, "VOL", panes[ap].show_volume, t).clicked() { panes[ap].show_volume = !panes[ap].show_volume; }
+            if tb_btn(ui, "OSC", panes[ap].show_oscillators, t).clicked() { panes[ap].show_oscillators = !panes[ap].show_oscillators; }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -844,12 +982,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.orders_panel_open = !watchlist.orders_panel_open;
                 }
 
-                // Connection status dot
+                // Connection status button
                 {
-                    let redis_ok = crate::bar_cache::get("__ping", "").is_none(); // cheap check — always returns None but tests connection
-                    let dot_color = if redis_ok { rgb(46, 204, 113) } else { rgb(231, 76, 60) };
-                    let (dot_rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                    ui.painter().circle_filled(dot_rect.center(), 3.5, dot_color);
+                    let dot_color = rgb(46, 204, 113); // green — assume ok
+                    let conn_resp = ui.add(egui::Button::new(egui::RichText::new("CONN").monospace().size(9.0).color(t.dim))
+                        .fill(if *conn_panel_open { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),30) } else { t.toolbar_bg })
+                        .stroke(egui::Stroke::new(1.0, t.toolbar_border)).corner_radius(2.0));
+                    // Draw dot on button
+                    ui.painter().circle_filled(egui::pos2(conn_resp.rect.left() - 6.0, conn_resp.rect.center().y), 3.0, dot_color);
+                    if conn_resp.clicked() { *conn_panel_open = !*conn_panel_open; }
                 }
 
                 // LIVE indicator
@@ -1339,12 +1480,81 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         if close_gm { panes[ap].group_manager_open = false; }
     }
 
+    // ── Connection panel popup ──────────────────────────────────────────────
+    if *conn_panel_open {
+        egui::Window::new("conn_panel")
+            .fixed_pos(egui::pos2(ctx.screen_rect().right() - 250.0, 40.0))
+            .fixed_size(egui::vec2(230.0, 0.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28, 28, 34)).inner_margin(10.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("CONNECTIONS").monospace().size(10.0).strong().color(t.dim));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
+                            *conn_panel_open = false;
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+
+                let svc_row = |ui: &mut egui::Ui, name: &str, status: &str, ok: bool, detail: &str| {
+                    ui.horizontal(|ui| {
+                        let color = if ok { rgb(46,204,113) } else { rgb(231,76,60) };
+                        ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 8.0), 3.0, color);
+                        ui.add_space(12.0);
+                        ui.label(egui::RichText::new(name).monospace().size(10.0).strong().color(egui::Color32::from_rgb(200,200,210)));
+                        ui.label(egui::RichText::new(status).monospace().size(9.0).color(if ok { t.bull } else { t.bear }));
+                    });
+                    ui.label(egui::RichText::new(format!("  {}", detail)).monospace().size(8.0).color(t.dim));
+                    ui.add_space(4.0);
+                };
+
+                let redis_ok = crate::bar_cache::get("__ping_test", "").is_none(); // tests connection
+                svc_row(ui, "Redis Cache", if redis_ok { "connected" } else { "offline" }, redis_ok, "192.168.1.89:6379");
+                svc_row(ui, "GPU Engine", "DX12 active", true, "wgpu + egui");
+                svc_row(ui, "Data Feed", "Yahoo Finance", true, "query1.finance.yahoo.com");
+                svc_row(ui, "OCOCO", "cache", true, "192.168.1.60:30300");
+
+                ui.add_space(4.0);
+                ui.painter().line_segment(
+                    [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
+                    egui::Stroke::new(0.5, t.toolbar_border));
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Endpoints: redis:6379 · ococo:30300 · yahoo").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+            });
+    }
+
+    // ── Order execution toasts ───────────────────────────────────────────────
+    if !toasts.is_empty() {
+        let screen = ctx.screen_rect();
+        for (i, (msg, _price, created, is_buy)) in toasts.iter().enumerate() {
+            let age = created.elapsed().as_secs_f32();
+            let alpha = ((5.0 - age) / 1.0).min(1.0).max(0.0); // fade out in last second
+            if alpha <= 0.0 { continue; }
+            let color = if *is_buy { t.bull } else { t.bear };
+            let y_offset = screen.top() + 44.0 + i as f32 * 28.0;
+
+            egui::Window::new(format!("toast_{}", i))
+                .fixed_pos(egui::pos2(screen.center().x - 100.0, y_offset))
+                .fixed_size(egui::vec2(200.0, 20.0))
+                .title_bar(false)
+                .frame(egui::Frame::popup(&ctx.style())
+                    .fill(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (40.0 * alpha) as u8))
+                    .inner_margin(4.0))
+                .show(ctx, |ui| {
+                    ui.label(egui::RichText::new(format!("\u{2713} {}", msg)).monospace().size(10.0)
+                        .color(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (255.0 * alpha) as u8)));
+                });
+        }
+    }
+
     // ── Watchlist side panel ───────────────────────────────────────────────────
     if watchlist.open {
         egui::SidePanel::right("watchlist")
-            .default_width(200.0)
-            .min_width(160.0)
-            .max_width(360.0)
+            .default_width(260.0)
+            .min_width(200.0)
+            .max_width(400.0)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
             .show(ctx, |ui| {
                 // Header with tabs
@@ -1507,38 +1717,87 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         });
 
-                        // ── Column headers ──
+                        // ── Column layout ──
+                        // Each data column needs space for ~8 chars of monospace 10px (~6.5px each = ~52px)
+                        // Plus 8px gap between columns
                         let full_w = ui.available_width();
+                        let gap = 8.0;
+                        let col_chk = 14.0;
+                        let col_stk = 44.0;
+                        let col_bid = 56.0;
+                        let col_ask = 56.0;
+                        let col_oi  = 56.0;
+                        // If panel is wide enough, expand proportionally
+                        let used = col_chk + col_stk + col_bid + col_ask + col_oi + gap * 4.0;
+                        let scale = if full_w > used { full_w / used } else { 1.0 };
+                        let col_stk = col_stk * scale;
+                        let col_bid = col_bid * scale;
+                        let col_ask = col_ask * scale;
+                        let col_oi = col_oi * scale;
+
+                        // Column headers
                         ui.horizontal(|ui| {
                             ui.set_min_width(full_w);
-                            ui.add_space(12.0);
-                            ui.label(egui::RichText::new("STK").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(egui::RichText::new("OI").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                                ui.label(egui::RichText::new("ASK").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                                ui.label(egui::RichText::new("BID").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                            });
+                            ui.spacing_mut().item_spacing.x = gap;
+                            let hdr_color = t.dim.gamma_multiply(0.4);
+                            ui.add_space(col_chk);
+                            ui.allocate_ui(egui::vec2(col_stk, 14.0), |ui| { ui.label(egui::RichText::new("STK").monospace().size(9.0).color(hdr_color)); });
+                            ui.allocate_ui(egui::vec2(col_bid, 14.0), |ui| { ui.label(egui::RichText::new("BID").monospace().size(9.0).color(hdr_color)); });
+                            ui.allocate_ui(egui::vec2(col_ask, 14.0), |ui| { ui.label(egui::RichText::new("ASK").monospace().size(9.0).color(hdr_color)); });
+                            ui.allocate_ui(egui::vec2(col_oi, 14.0), |ui| { ui.label(egui::RichText::new("OI").monospace().size(9.0).color(hdr_color)); });
                         });
 
                         // ── Helper to render one option row ──
                         let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let is_saved = saved.iter().any(|s| s.contract == row.contract);
                             let color = if is_call { t.bull } else { t.bear };
+                            let hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| {
+                                let cursor_y = p.y;
+                                let row_top = ui.cursor().min.y;
+                                cursor_y >= row_top && cursor_y < row_top + 20.0 && p.x >= ui.min_rect().left() && p.x <= ui.min_rect().right()
+                            });
                             let bg = if is_saved { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),40) }
-                                else if row.itm { color.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
+                                else if hovered { t.toolbar_border.gamma_multiply(0.4) }
+                                else if row.itm { color.gamma_multiply(0.06) }
+                                else { egui::Color32::TRANSPARENT };
+
                             let resp = ui.horizontal(|ui| {
                                 ui.set_min_width(w);
+                                ui.set_min_height(20.0);
+                                ui.spacing_mut().item_spacing.x = gap;
                                 ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
-                                if is_saved { ui.label(egui::RichText::new("\u{2713}").size(10.0).color(t.accent)); }
-                                else { ui.add_space(14.0); }
-                                ui.label(egui::RichText::new(format!("{:.0}", row.strike)).monospace().size(11.0).strong().color(egui::Color32::from_rgb(210,210,220)));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(egui::RichText::new(format!("{}", row.oi)).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
-                                    ui.label(egui::RichText::new(format!("{:.2}", row.ask)).monospace().size(10.0).color(t.dim));
+
+                                // Check mark column
+                                ui.allocate_ui(egui::vec2(col_chk, 20.0), |ui| {
+                                    if is_saved { ui.label(egui::RichText::new("\u{2713}").size(10.0).color(t.accent)); }
+                                });
+                                // Strike
+                                ui.allocate_ui(egui::vec2(col_stk, 20.0), |ui| {
+                                    ui.label(egui::RichText::new(format!("{:.0}", row.strike)).monospace().size(11.0).strong().color(egui::Color32::from_rgb(210,210,220)));
+                                });
+                                // Bid
+                                ui.allocate_ui(egui::vec2(col_bid, 20.0), |ui| {
                                     ui.label(egui::RichText::new(format!("{:.2}", row.bid)).monospace().size(10.0).color(color));
                                 });
+                                // Ask
+                                ui.allocate_ui(egui::vec2(col_ask, 20.0), |ui| {
+                                    ui.label(egui::RichText::new(format!("{:.2}", row.ask)).monospace().size(10.0).color(t.dim));
+                                });
+                                // OI
+                                ui.allocate_ui(egui::vec2(col_oi, 20.0), |ui| {
+                                    let oi_str = if row.oi >= 1_000_000 { format!("{:.1}M", row.oi as f32 / 1_000_000.0) }
+                                        else if row.oi >= 1_000 { format!("{},{:03}", row.oi / 1000, row.oi % 1000) }
+                                        else { format!("{}", row.oi) };
+                                    ui.label(egui::RichText::new(oi_str).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                                });
                             });
-                            if (select_mode || ui.input(|i| i.modifiers.shift)) && resp.response.interact(egui::Sense::click()).clicked() {
+
+                            // Hover cursor + click handling
+                            let row_resp = resp.response.interact(egui::Sense::click());
+                            if row_resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            }
+                            if (select_mode || ui.input(|i| i.modifiers.shift)) && row_resp.clicked() {
                                 if is_saved { saved.retain(|s| s.contract != row.contract); }
                                 else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call, expiry: exp_label.into(), last: row.last }); }
                             }
@@ -1644,16 +1903,46 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.label(egui::RichText::new(format!("({})", total_orders)).monospace().size(9.0).color(t.dim));
                     }
 
-                    ui.separator();
-                    ui.label(egui::RichText::new("POSITIONS").monospace().size(10.0).color(t.dim));
-                    ui.separator();
-                    ui.label(egui::RichText::new("ALERTS").monospace().size(10.0).color(t.dim));
-
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
                             watchlist.orders_panel_open = false;
                         }
                     });
+                });
+
+                // Action buttons
+                ui.horizontal(|ui| {
+                    let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
+                    let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
+                    let history_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Executed || o.status == OrderStatus::Cancelled).count()).sum();
+
+                    if draft_count > 0 {
+                        if ui.add(egui::Button::new(egui::RichText::new(format!("Place All ({})", draft_count)).monospace().size(9.0).color(t.accent))
+                            .fill(egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),30))
+                            .stroke(egui::Stroke::new(1.0, t.accent)).corner_radius(2.0)).clicked() {
+                            for pane in panes.iter_mut() {
+                                for o in &mut pane.orders { if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; } }
+                            }
+                        }
+                    }
+                    if active_count > 0 {
+                        if ui.add(egui::Button::new(egui::RichText::new("Cancel All").monospace().size(9.0).color(t.bear))
+                            .corner_radius(2.0)).clicked() {
+                            for pane in panes.iter_mut() {
+                                for o in &mut pane.orders {
+                                    if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed { o.status = OrderStatus::Cancelled; }
+                                }
+                            }
+                        }
+                    }
+                    if history_count > 0 {
+                        if ui.add(egui::Button::new(egui::RichText::new("Clear").monospace().size(9.0).color(t.dim))
+                            .corner_radius(2.0)).clicked() {
+                            for pane in panes.iter_mut() {
+                                pane.orders.retain(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed);
+                            }
+                        }
+                    }
                 });
 
                 ui.add_space(4.0);
@@ -1773,6 +2062,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             };
             if should_fill {
                 order.status = OrderStatus::Executed;
+                PENDING_TOASTS.with(|ts| ts.borrow_mut().push((
+                    format!("{} {} x{} @ {:.2}", order.label(), pane.symbol, order.qty, order.price),
+                    order.price,
+                    order.side == OrderSide::Buy,
+                )));
                 let qty = match order.side {
                     OrderSide::Buy => order.qty as i32,
                     OrderSide::Sell | OrderSide::Stop => -(order.qty as i32),
@@ -1889,8 +2183,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             egui::vec2(pane_rect.width(), pane_rect.height() - pane_top_offset),
         );
         let (w,h) = (rect.width(), rect.height());
-        let (pr,pt,pb) = (42.0_f32, 4.0_f32, 0.0_f32); // pb=0: time axis overlays volume
-        let (cw,ch) = (w-pr, h-pt-pb);
+        let (pr,pt,pb) = (42.0_f32, 4.0_f32, 0.0_f32);
+        // Reserve space for oscillator sub-panel if any oscillator indicators are active
+        let has_oscillators = chart.show_oscillators && chart.indicators.iter().any(|i| i.visible && i.kind.category() == IndicatorCategory::Oscillator);
+        let osc_h = if has_oscillators { (h * 0.22).min(120.0) } else { 0.0 };
+        let (cw,ch) = (w-pr, h-pt-pb-osc_h);
         if n==0 || cw<=0.0 || ch<=0.0 { continue; }
 
         // Only set cursors for the pane the pointer is actually over
@@ -1956,17 +2253,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // Volume + candles + indicators + drawings
+        // Volume + candles + indicators + oscillators + drawings
         span_begin("pane_render");
-        let mut mv:f32=0.0;
-        for i in (vs as u32)..end { if let Some(b)=chart.bars.get(i as usize) { mv=mv.max(b.volume); } }
-        if mv==0.0{mv=1.0;}
-        for i in (vs as u32)..end { if let Some(b)=chart.bars.get(i as usize) {
-            let x=bx(i as f32); let vh=(b.volume/mv)*ch*0.2;
-            let c=if b.close>=b.open{t.bull.gamma_multiply(0.2)}else{t.bear.gamma_multiply(0.2)};
-            let bw=(bs*0.4).max(1.0);
-            painter.rect_filled(egui::Rect::from_min_max(egui::pos2(x-bw,rect.top()+pt+ch-vh),egui::pos2(x+bw,rect.top()+pt+ch)),0.0,c);
-        }}
+
+        // Volume bars (gated by show_volume)
+        if chart.show_volume {
+            let mut mv: f32 = 0.0;
+            for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) { mv = mv.max(b.volume); } }
+            if mv == 0.0 { mv = 1.0; }
+            for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) {
+                let x = bx(i as f32); let vh = (b.volume / mv) * ch * 0.2;
+                let c = if b.close >= b.open { t.bull.gamma_multiply(0.2) } else { t.bear.gamma_multiply(0.2) };
+                let bw = (bs * 0.4).max(1.0);
+                painter.rect_filled(egui::Rect::from_min_max(egui::pos2(x-bw, rect.top()+pt+ch-vh), egui::pos2(x+bw, rect.top()+pt+ch)), 0.0, c);
+            }}
+        }
 
         // Candles
         for i in (vs as u32)..end { if let Some(b)=chart.bars.get(i as usize) {
@@ -2086,6 +2387,131 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         painter.circle_stroke(egui::pos2(x, y), 8.0, egui::Stroke::new(1.5, egui::Color32::WHITE));
                     }
                 }
+            }
+        }
+
+        // ── Oscillator sub-panel (RSI, MACD, Stochastic) ─────────────────────
+        if has_oscillators && osc_h > 10.0 {
+            let osc_top = rect.top() + pt + ch + 2.0;
+            let osc_bottom = osc_top + osc_h - 4.0;
+            let osc_height = osc_bottom - osc_top;
+
+            // Separator line
+            painter.line_segment([egui::pos2(rect.left(), osc_top - 1.0), egui::pos2(rect.left() + cw, osc_top - 1.0)],
+                egui::Stroke::new(1.0, t.toolbar_border));
+
+            for ind in &chart.indicators {
+                if !ind.visible || ind.kind.category() != IndicatorCategory::Oscillator { continue; }
+                let color = hex_to_color(&ind.color, 1.0);
+
+                // Determine value range for this oscillator
+                let (osc_min, osc_max) = match ind.kind {
+                    IndicatorType::RSI => (0.0_f32, 100.0),
+                    IndicatorType::Stochastic => (0.0, 100.0),
+                    IndicatorType::MACD => {
+                        let mut lo = f32::MAX; let mut hi = f32::MIN;
+                        for i in (vs as u32)..end {
+                            if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
+                            if let Some(&v) = ind.histogram.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
+                        }
+                        if lo >= hi { lo -= 1.0; hi += 1.0; }
+                        let pad = (hi - lo) * 0.1;
+                        (lo - pad, hi + pad)
+                    }
+                    _ => (0.0, 100.0),
+                };
+
+                let osc_y = |v: f32| -> f32 { osc_top + (osc_max - v) / (osc_max - osc_min) * osc_height };
+
+                // Reference lines for RSI/Stochastic (30/70 or 20/80)
+                if ind.kind == IndicatorType::RSI || ind.kind == IndicatorType::Stochastic {
+                    let (low_ref, high_ref) = if ind.kind == IndicatorType::RSI { (30.0, 70.0) } else { (20.0, 80.0) };
+                    for &level in &[low_ref, 50.0, high_ref] {
+                        let y = osc_y(level);
+                        painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
+                            egui::Stroke::new(0.3, t.dim.gamma_multiply(0.3)));
+                    }
+                    // Overbought/oversold zones
+                    painter.rect_filled(egui::Rect::from_min_max(
+                        egui::pos2(rect.left(), osc_y(high_ref)), egui::pos2(rect.left() + cw, osc_y(osc_max))),
+                        0.0, t.bear.gamma_multiply(0.04));
+                    painter.rect_filled(egui::Rect::from_min_max(
+                        egui::pos2(rect.left(), osc_y(osc_min)), egui::pos2(rect.left() + cw, osc_y(low_ref))),
+                        0.0, t.bull.gamma_multiply(0.04));
+                }
+
+                // Zero line for MACD
+                if ind.kind == IndicatorType::MACD {
+                    let y = osc_y(0.0);
+                    painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
+                        egui::Stroke::new(0.5, t.dim.gamma_multiply(0.3)));
+                }
+
+                // MACD histogram bars
+                if ind.kind == IndicatorType::MACD && !ind.histogram.is_empty() {
+                    let zero_y = osc_y(0.0);
+                    for i in (vs as u32)..end {
+                        if let Some(&h) = ind.histogram.get(i as usize) {
+                            if !h.is_nan() {
+                                let x = bx(i as f32);
+                                let y = osc_y(h);
+                                let bw = (bs * 0.3).max(1.0);
+                                let c = if h >= 0.0 { t.bull.gamma_multiply(0.4) } else { t.bear.gamma_multiply(0.4) };
+                                painter.rect_filled(egui::Rect::from_min_max(
+                                    egui::pos2(x - bw, y.min(zero_y)), egui::pos2(x + bw, y.max(zero_y))), 0.0, c);
+                            }
+                        }
+                    }
+                }
+
+                // Primary line
+                let mut pts = Vec::new();
+                for i in (vs as u32)..end {
+                    if let Some(&v) = ind.values.get(i as usize) {
+                        if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), osc_y(v))); }
+                    }
+                }
+                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness, color))); }
+
+                // Secondary line (MACD signal, Stochastic %D)
+                if !ind.values2.is_empty() {
+                    let mut pts2 = Vec::new();
+                    for i in (vs as u32)..end {
+                        if let Some(&v) = ind.values2.get(i as usize) {
+                            if !v.is_nan() { pts2.push(egui::pos2(bx(i as f32), osc_y(v))); }
+                        }
+                    }
+                    if pts2.len() > 1 {
+                        let c2 = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 140);
+                        painter.add(egui::Shape::line(pts2, egui::Stroke::new(1.0, c2)));
+                    }
+                }
+
+                // Divergence markers
+                for i in (vs as u32)..end {
+                    if let Some(&d) = ind.divergences.get(i as usize) {
+                        if d != 0 {
+                            let x = bx(i as f32);
+                            if let Some(&v) = ind.values.get(i as usize) {
+                                if !v.is_nan() {
+                                    let y = osc_y(v);
+                                    let div_color = if d > 0 { t.bull } else { t.bear };
+                                    // Small triangle marker
+                                    let dir = if d > 0 { -1.0 } else { 1.0 };
+                                    painter.add(egui::Shape::convex_polygon(vec![
+                                        egui::pos2(x, y + dir * 2.0),
+                                        egui::pos2(x - 4.0, y + dir * 7.0),
+                                        egui::pos2(x + 4.0, y + dir * 7.0),
+                                    ], div_color, egui::Stroke::NONE));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Label
+                painter.text(egui::pos2(rect.left() + 4.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
+                    ind.display_name(), egui::FontId::monospace(9.0), color.gamma_multiply(0.7));
             }
         }
 
@@ -3095,6 +3521,10 @@ struct ChartWindow {
     layout: Layout,
     close_requested: bool,
     watchlist: Watchlist,
+    // Order execution toasts
+    toasts: Vec<(String, f32, std::time::Instant, bool)>, // (message, price, created, is_buy)
+    // Connection panel
+    conn_panel_open: bool,
 }
 
 /// Request to spawn a new window (sent from Tauri command thread).
@@ -3158,7 +3588,7 @@ impl GpuCtx {
         Some(Self { device, queue, surface, config, egui_ctx, egui_state, egui_renderer })
     }
 
-    fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, rx: &mpsc::Receiver<ChartCommand>) {
+    fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
         crate::monitoring::frame_begin();
 
         // Phase 1: Acquire surface texture
@@ -3172,7 +3602,7 @@ impl GpuCtx {
         // Phase 2: egui layout + draw_chart logic
         let t1 = std::time::Instant::now();
         let raw_input = self.egui_state.take_egui_input(window);
-        let full_output = self.egui_ctx.run(raw_input, |ctx| { draw_chart(ctx, panes, active_pane, layout, watchlist, rx); });
+        let full_output = self.egui_ctx.run(raw_input, |ctx| { draw_chart(ctx, panes, active_pane, layout, watchlist, toasts, conn_panel_open, rx); });
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
 
@@ -3276,7 +3706,7 @@ impl App {
         let (panes, layout) = load_state();
         let wl = Watchlist::new();
         let wl_syms: Vec<String> = wl.items.iter().map(|i| i.symbol.clone()).collect();
-        let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, close_requested: false, watchlist: wl };
+        let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false };
         // Fetch prices for default watchlist symbols
         fetch_watchlist_prices(wl_syms);
         if let Some(cmd) = initial_cmd {
@@ -3352,7 +3782,7 @@ impl ApplicationHandler for App {
 
                 CURRENT_WINDOW.with(|w| *w.borrow_mut() = Some(Arc::clone(&cw.win)));
                 CLOSE_REQUESTED.with(|f| f.set(false));
-                cw.gpu.render(&cw.win, &mut cw.panes, &mut cw.active_pane, &mut cw.layout, &mut cw.watchlist, &cw.rx);
+                cw.gpu.render(&cw.win, &mut cw.panes, &mut cw.active_pane, &mut cw.layout, &mut cw.watchlist, &cw.toasts, &mut cw.conn_panel_open, &cw.rx);
                 CURRENT_WINDOW.with(|w| *w.borrow_mut() = None);
                 if CLOSE_REQUESTED.with(|f| f.get()) {
                     cw.close_requested = true;
@@ -3362,6 +3792,17 @@ impl ApplicationHandler for App {
                     let id = cw.watchlist.next_alert_id; cw.watchlist.next_alert_id += 1;
                     cw.watchlist.alerts.push(Alert { id, symbol: sym, price, above, triggered: false, message: String::new() });
                 }
+                // Collect order execution toasts
+                let new_toasts = PENDING_TOASTS.with(|ts| {
+                    let mut v = ts.borrow_mut();
+                    let r = v.drain(..).collect::<Vec<_>>();
+                    r
+                });
+                for (msg, price, is_buy) in new_toasts {
+                    cw.toasts.push((msg, price, std::time::Instant::now(), is_buy));
+                }
+                // Remove expired toasts (>5 seconds)
+                cw.toasts.retain(|(_, _, created, _)| created.elapsed().as_secs() < 5);
             }
             // Don't request_redraw on every input — about_to_wait drives the frame loop
             _ => {}
