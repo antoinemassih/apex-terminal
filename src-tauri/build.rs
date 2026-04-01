@@ -1,6 +1,5 @@
 fn main() {
     tauri_build::build();
-    // Note: winresource icon embedding is skipped here to avoid duplicate resource
-    // conflict with Tauri's own resource embedding. The standalone apex-native binary
-    // gets its icon from the programmatic make_window_icon() in gpu.rs instead.
+    // Icon for standalone apex-native is set at runtime via WM_SETICON + set_window_icon.
+    // Build-time resource embedding conflicts with Tauri's resource in the shared crate.
 }

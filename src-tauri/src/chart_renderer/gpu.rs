@@ -745,57 +745,36 @@ fn make_window_icon() -> Option<winit::window::Icon> {
     winit::window::Icon::from_rgba(rgba, s, s).ok()
 }
 
-/// Create a Windows HICON from RGBA data for reliable taskbar icon display.
+/// Load HICON from the .ico file on disk for taskbar display.
 #[cfg(target_os = "windows")]
 fn make_window_icon_hicon() -> Option<isize> {
-    let s: u32 = 32;
-    let mut rgba = vec![0u8; (s * s * 4) as usize];
-    let color = [254u8, 128, 25, 255];
-
-    let m = 3.0_f32;
-    let cx = s as f32 / 2.0;
-    let top = (cx, m);
-    let bl = (m, s as f32 - m);
-    let br = (s as f32 - m, s as f32 - m);
-
-    let draw_line = |rgba: &mut Vec<u8>, x0: f32, y0: f32, x1: f32, y1: f32, w: f32| {
-        let len = ((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)).sqrt();
-        let steps = (len * 2.0) as i32;
-        for i in 0..=steps {
-            let t = i as f32 / steps.max(1) as f32;
-            let px = x0 + (x1-x0) * t;
-            let py = y0 + (y1-y0) * t;
-            for dy in -(w as i32)..=(w as i32) {
-                for dx in -(w as i32)..=(w as i32) {
-                    let ix = (px + dx as f32) as i32;
-                    let iy = (py + dy as f32) as i32;
-                    if ix >= 0 && ix < s as i32 && iy >= 0 && iy < s as i32 {
-                        let idx = ((iy as u32 * s + ix as u32) * 4) as usize;
-                        rgba[idx..idx+4].copy_from_slice(&color);
+    // Try to find the ico file relative to the exe
+    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    let ico_paths = [
+        exe_dir.as_ref().map(|d| d.join("icons").join("apex-native.ico")),
+        exe_dir.as_ref().map(|d| d.join("..").join("..").join("icons").join("apex-native.ico")),
+        Some(std::path::PathBuf::from("icons/apex-native.ico")),
+    ];
+    for maybe_path in &ico_paths {
+        if let Some(path) = maybe_path {
+            if path.exists() {
+                let wide: Vec<u16> = path.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+                unsafe {
+                    let hicon = windows_sys::Win32::UI::WindowsAndMessaging::LoadImageW(
+                        std::ptr::null_mut(),
+                        wide.as_ptr(),
+                        1, // IMAGE_ICON
+                        32, 32,
+                        0x00000010, // LR_LOADFROMFILE
+                    );
+                    if !hicon.is_null() {
+                        return Some(hicon as isize);
                     }
                 }
             }
         }
-    };
-
-    draw_line(&mut rgba, top.0, top.1, bl.0, bl.1, 1.0);
-    draw_line(&mut rgba, bl.0, bl.1, br.0, br.1, 1.0);
-    draw_line(&mut rgba, br.0, br.1, top.0, top.1, 1.0);
-    let bar_y = cx + 2.0;
-    draw_line(&mut rgba, cx - 7.0, bar_y, cx + 7.0, bar_y, 1.0);
-
-    // Convert RGBA to BGRA (Windows expects BGRA for CreateIcon)
-    for pixel in rgba.chunks_exact_mut(4) {
-        pixel.swap(0, 2); // R <-> B
     }
-
-    unsafe {
-        let hicon = windows_sys::Win32::UI::WindowsAndMessaging::CreateIcon(
-            std::ptr::null_mut(), s as i32, s as i32, 1, 32,
-            std::ptr::null(), rgba.as_ptr(),
-        );
-        if hicon.is_null() { None } else { Some(hicon as isize) }
-    }
+    None
 }
 
 /// Convert a native Drawing to DbDrawing for persistence.
