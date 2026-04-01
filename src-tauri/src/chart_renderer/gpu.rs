@@ -4207,6 +4207,9 @@ fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32) {
 /// Fetch bars from Redis cache → OCOCO → yfinance sidecar → Yahoo Finance v8 on a background thread.
 /// Sends LoadBars command via the global NATIVE_CHART_TXS channels (all windows).
 /// Results are cached in Redis for subsequent requests.
+/// Public entry point for standalone binary to trigger initial data load.
+pub fn fetch_bars_background_pub(sym: String, tf: String) { fetch_bars_background(sym, tf); }
+
 fn fetch_bars_background(sym: String, tf: String) {
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get()

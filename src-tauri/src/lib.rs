@@ -1,9 +1,9 @@
-mod data;
-mod drawings;
+pub mod data;
+pub mod drawings;
 mod ib_ws;
-mod chart_renderer;
-mod ui_kit;
-mod bar_cache;
+pub mod chart_renderer;
+pub mod ui_kit;
+pub mod bar_cache;
 pub mod drawing_db;
 pub mod monitoring;
 
@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 /// Global senders for forwarding ticks/data to ALL native chart windows
-static NATIVE_CHART_TXS: std::sync::OnceLock<Mutex<Vec<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
+pub static NATIVE_CHART_TXS: std::sync::OnceLock<Mutex<Vec<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
 
 /// Send bar data from WebView to native chart (called when WebView loads data for requested symbol)
 #[tauri::command]
