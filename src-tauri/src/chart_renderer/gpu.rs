@@ -335,7 +335,7 @@ fn detect_divergences(closes: &[f32], indicator: &[f32], lookback: usize) -> Vec
 // ─── Orders ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum OrderSide { Buy, Sell, Stop }
+enum OrderSide { Buy, Sell, Stop, OcoTarget, OcoStop, TriggerBuy, TriggerSell }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum OrderStatus { Draft, Placed, Executed, Cancelled }
@@ -347,18 +347,31 @@ struct OrderLevel {
     price: f32,
     qty: u32,
     status: OrderStatus,
+    pair_id: Option<u32>, // linked order (OCO target↔stop, trigger buy↔sell)
 }
 
 impl OrderLevel {
     fn color(&self, t: &Theme) -> egui::Color32 {
         match self.side {
-            OrderSide::Buy => t.bull,
-            OrderSide::Sell | OrderSide::Stop => t.bear,
+            OrderSide::Buy | OrderSide::TriggerBuy => t.bull,
+            OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::TriggerSell => t.bear,
+            OrderSide::OcoTarget => egui::Color32::from_rgb(167, 139, 250), // purple
         }
     }
     fn label(&self) -> &'static str {
-        match self.side { OrderSide::Buy => "BUY", OrderSide::Sell => "SELL", OrderSide::Stop => "STOP" }
+        match self.side {
+            OrderSide::Buy => "BUY", OrderSide::Sell => "SELL", OrderSide::Stop => "STOP",
+            OrderSide::OcoTarget => "OCO\u{2191}", OrderSide::OcoStop => "OCO\u{2193}",
+            OrderSide::TriggerBuy => "TRIG\u{2191}", OrderSide::TriggerSell => "TRIG\u{2193}",
+        }
     }
+    fn notional(&self) -> f32 { self.price * self.qty as f32 }
+}
+
+fn fmt_notional(v: f32) -> String {
+    if v >= 1_000_000.0 { format!("${:.1}M", v / 1_000_000.0) }
+    else if v >= 1_000.0 { format!("${:.1}K", v / 1_000.0) }
+    else { format!("${:.0}", v) }
 }
 
 // ─── Positions & Alerts ──────────────────────────────────────────────────────
@@ -1986,6 +1999,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(format!("{:.2}", order.price)).monospace().size(10.0).color(color));
                                 ui.label(egui::RichText::new(format!("x{}", order.qty)).monospace().size(9.0).color(t.dim));
+                                ui.label(egui::RichText::new(fmt_notional(order.notional())).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
                             });
                             ui.add_space(2.0);
                         }
@@ -2053,25 +2067,47 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let current_price = pane.bars.last().map(|b| b.close).unwrap_or(0.0);
         if current_price == 0.0 { continue; }
         let mut new_positions: Vec<(String, i32, f32)> = Vec::new();
+        let mut activate_pairs: Vec<u32> = Vec::new();
         for order in &mut pane.orders {
             if order.status != OrderStatus::Placed { continue; }
             let should_fill = match order.side {
-                OrderSide::Buy => current_price <= order.price,
-                OrderSide::Sell => current_price >= order.price,
-                OrderSide::Stop => current_price <= order.price,
+                OrderSide::Buy | OrderSide::TriggerBuy => current_price <= order.price,
+                OrderSide::Sell | OrderSide::TriggerSell | OrderSide::OcoTarget => current_price >= order.price,
+                OrderSide::Stop | OrderSide::OcoStop => current_price <= order.price,
             };
             if should_fill {
                 order.status = OrderStatus::Executed;
                 PENDING_TOASTS.with(|ts| ts.borrow_mut().push((
                     format!("{} {} x{} @ {:.2}", order.label(), pane.symbol, order.qty, order.price),
                     order.price,
-                    order.side == OrderSide::Buy,
+                    matches!(order.side, OrderSide::Buy | OrderSide::TriggerBuy | OrderSide::OcoTarget),
                 )));
                 let qty = match order.side {
-                    OrderSide::Buy => order.qty as i32,
-                    OrderSide::Sell | OrderSide::Stop => -(order.qty as i32),
+                    OrderSide::Buy | OrderSide::TriggerBuy => order.qty as i32,
+                    _ => -(order.qty as i32),
                 };
                 new_positions.push((pane.symbol.clone(), qty, order.price));
+
+                // OCO: cancel the paired order when one fills
+                if matches!(order.side, OrderSide::OcoTarget | OrderSide::OcoStop) {
+                    if let Some(pid) = order.pair_id { activate_pairs.push(pid); }
+                }
+                // Trigger: when buy entry fills, activate the sell target
+                if order.side == OrderSide::TriggerBuy {
+                    if let Some(pid) = order.pair_id { activate_pairs.push(pid); }
+                }
+            }
+        }
+        // Process pair actions — OCO: cancel partner; Trigger: place partner
+        for pid in activate_pairs {
+            if let Some(paired) = pane.orders.iter_mut().find(|o| o.id == pid) {
+                if matches!(paired.side, OrderSide::OcoTarget | OrderSide::OcoStop) {
+                    // OCO: cancel the other leg
+                    paired.status = OrderStatus::Cancelled;
+                } else if paired.side == OrderSide::TriggerSell && paired.status == OrderStatus::Draft {
+                    // Trigger: activate the sell target
+                    paired.status = OrderStatus::Placed;
+                }
             }
         }
         // Create or update positions
@@ -2515,6 +2551,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
+        // ── OCO/Trigger bracket bands ─────────────────────────────────────────
+        {
+            let active_orders: Vec<&OrderLevel> = chart.orders.iter().filter(|o| o.status != OrderStatus::Cancelled && o.status != OrderStatus::Executed).collect();
+            for order in &active_orders {
+                if let Some(pair_id) = order.pair_id {
+                    if let Some(pair) = active_orders.iter().find(|o| o.id == pair_id) {
+                        // Only draw band once (from the higher-id order to avoid double-draw)
+                        if order.id > pair.id {
+                            let y1 = py(order.price);
+                            let y2 = py(pair.price);
+                            let band_color = match order.side {
+                                OrderSide::OcoTarget | OrderSide::OcoStop => egui::Color32::from_rgba_unmultiplied(167, 139, 250, 15),
+                                OrderSide::TriggerBuy | OrderSide::TriggerSell => egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 12),
+                                _ => egui::Color32::TRANSPARENT,
+                            };
+                            painter.rect_filled(egui::Rect::from_min_max(
+                                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
+                                0.0, band_color);
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Order lines on chart ──────────────────────────────────────────────
         for order in &chart.orders {
             if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
@@ -2530,7 +2590,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 dx += 10.0;
             }
             // Label badge on right edge
-            let label = format!("{} {} @ {:.2}", order.label(), order.qty, order.price);
+            let label = format!("{} {} @ {:.2} {}", order.label(), order.qty, order.price, fmt_notional(order.notional()));
             let badge_w = label.len() as f32 * 6.0 + 12.0;
             let badge_rect = egui::Rect::from_min_size(
                 egui::pos2(rect.left() + cw - badge_w - 4.0, y - 9.0),
@@ -2625,7 +2685,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             .fill(egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 180))
                             .min_size(egui::vec2(82.0, 22.0)).corner_radius(3.0)).clicked() {
                             let id = chart.next_order_id; chart.next_order_id += 1;
-                            chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status });
+                            chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status, pair_id: None });
                         }
 
                         let sell_label = format!("SELL {:.2}", sell_price);
@@ -2633,7 +2693,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             .fill(egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 180))
                             .min_size(egui::vec2(82.0, 22.0)).corner_radius(3.0)).clicked() {
                             let id = chart.next_order_id; chart.next_order_id += 1;
-                            chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status });
+                            chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status, pair_id: None });
                         }
                     });
 
@@ -3117,17 +3177,36 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             ui.label(egui::RichText::new(format!("ORDERS @ {:.2}", click_price)).small().color(t.dim));
             if ui.button(egui::RichText::new(format!("{} Buy Order", Icon::ARROW_FAT_UP)).color(t.bull)).clicked() {
                 let id = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft });
+                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None });
                 ui.close_menu();
             }
             if ui.button(egui::RichText::new(format!("{} Sell Order", Icon::ARROW_FAT_DOWN)).color(t.bear)).clicked() {
                 let id = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft });
+                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None });
                 ui.close_menu();
             }
             if ui.button(egui::RichText::new(format!("{} Stop Loss", Icon::SHIELD_WARNING)).color(t.bear)).clicked() {
                 let id = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft });
+                chart.orders.push(OrderLevel { id, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None });
+                ui.close_menu();
+            }
+            // OCO Bracket (target +1%, stop -1%)
+            if ui.button(egui::RichText::new(format!("\u{21C5} OCO Bracket")).color(egui::Color32::from_rgb(167,139,250))).clicked() {
+                let target_price = click_price * 1.01;
+                let stop_price = click_price * 0.99;
+                let id1 = chart.next_order_id; chart.next_order_id += 1;
+                let id2 = chart.next_order_id; chart.next_order_id += 1;
+                chart.orders.push(OrderLevel { id: id1, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2) });
+                chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop, price: stop_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1) });
+                ui.close_menu();
+            }
+            // Trigger Order (buy entry at click, sell target +2%)
+            if ui.button(egui::RichText::new(format!("\u{27F2} Trigger Order")).color(t.accent)).clicked() {
+                let target_price = click_price * 1.02;
+                let id1 = chart.next_order_id; chart.next_order_id += 1;
+                let id2 = chart.next_order_id; chart.next_order_id += 1;
+                chart.orders.push(OrderLevel { id: id1, side: OrderSide::TriggerBuy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2) });
+                chart.orders.push(OrderLevel { id: id2, side: OrderSide::TriggerSell, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1) });
                 ui.close_menu();
             }
             if !chart.orders.is_empty() {
@@ -3247,6 +3326,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if ui.button(egui::RichText::new(format!("{} Delete All Drawings", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                     for d in &chart.drawings { crate::drawing_db::remove(&d.id); }
                     chart.drawings.clear(); chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
+                }
+                let temp_count = chart.drawings.iter().filter(|d| d.group_id == "default").count();
+                if temp_count > 0 {
+                    if ui.button(egui::RichText::new(format!("{} Delete All Temporary ({})", Icon::TRASH, temp_count)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                        let to_remove: Vec<String> = chart.drawings.iter().filter(|d| d.group_id == "default").map(|d| d.id.clone()).collect();
+                        for id in &to_remove { crate::drawing_db::remove(id); }
+                        chart.drawings.retain(|d| d.group_id != "default");
+                        chart.selected_ids.clear(); chart.selected_id = None; ui.close_menu();
+                    }
                 }
             }
         });
