@@ -4167,11 +4167,14 @@ impl App {
                         if let winit::raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
                             if let Some(hicon) = make_window_icon_hicon() {
                                 unsafe {
-                                    // WM_SETICON = 0x0080, ICON_BIG = 1, ICON_SMALL = 0
-                                    windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
-                                        h.hwnd.get() as _, 0x0080, 1, hicon);
-                                    windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
-                                        h.hwnd.get() as _, 0x0080, 0, hicon);
+                                    let hwnd_msg = h.hwnd.get() as *mut std::ffi::c_void;
+                                    // WM_SETICON: ICON_BIG=1, ICON_SMALL=0
+                                    windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(hwnd_msg, 0x0080, 1, hicon);
+                                    windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(hwnd_msg, 0x0080, 0, hicon);
+                                    // Set on window CLASS — this is what Win11 taskbar reads
+                                    // GCLP_HICON = -14, GCLP_HICONSM = -34
+                                    windows_sys::Win32::UI::WindowsAndMessaging::SetClassLongPtrW(hwnd_msg, -14, hicon as _);
+                                    windows_sys::Win32::UI::WindowsAndMessaging::SetClassLongPtrW(hwnd_msg, -34, hicon as _);
                                 }
                             }
                         }
