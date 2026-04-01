@@ -739,6 +739,59 @@ fn make_window_icon() -> Option<winit::window::Icon> {
     winit::window::Icon::from_rgba(rgba, s, s).ok()
 }
 
+/// Create a Windows HICON from RGBA data for reliable taskbar icon display.
+#[cfg(target_os = "windows")]
+fn make_window_icon_hicon() -> Option<isize> {
+    let s: u32 = 32;
+    let mut rgba = vec![0u8; (s * s * 4) as usize];
+    let color = [254u8, 128, 25, 255];
+
+    let m = 3.0_f32;
+    let cx = s as f32 / 2.0;
+    let top = (cx, m);
+    let bl = (m, s as f32 - m);
+    let br = (s as f32 - m, s as f32 - m);
+
+    let draw_line = |rgba: &mut Vec<u8>, x0: f32, y0: f32, x1: f32, y1: f32, w: f32| {
+        let len = ((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)).sqrt();
+        let steps = (len * 2.0) as i32;
+        for i in 0..=steps {
+            let t = i as f32 / steps.max(1) as f32;
+            let px = x0 + (x1-x0) * t;
+            let py = y0 + (y1-y0) * t;
+            for dy in -(w as i32)..=(w as i32) {
+                for dx in -(w as i32)..=(w as i32) {
+                    let ix = (px + dx as f32) as i32;
+                    let iy = (py + dy as f32) as i32;
+                    if ix >= 0 && ix < s as i32 && iy >= 0 && iy < s as i32 {
+                        let idx = ((iy as u32 * s + ix as u32) * 4) as usize;
+                        rgba[idx..idx+4].copy_from_slice(&color);
+                    }
+                }
+            }
+        }
+    };
+
+    draw_line(&mut rgba, top.0, top.1, bl.0, bl.1, 1.0);
+    draw_line(&mut rgba, bl.0, bl.1, br.0, br.1, 1.0);
+    draw_line(&mut rgba, br.0, br.1, top.0, top.1, 1.0);
+    let bar_y = cx + 2.0;
+    draw_line(&mut rgba, cx - 7.0, bar_y, cx + 7.0, bar_y, 1.0);
+
+    // Convert RGBA to BGRA (Windows expects BGRA for CreateIcon)
+    for pixel in rgba.chunks_exact_mut(4) {
+        pixel.swap(0, 2); // R <-> B
+    }
+
+    unsafe {
+        let hicon = windows_sys::Win32::UI::WindowsAndMessaging::CreateIcon(
+            std::ptr::null_mut(), s as i32, s as i32, 1, 32,
+            std::ptr::null(), rgba.as_ptr(),
+        );
+        if hicon.is_null() { None } else { Some(hicon as isize) }
+    }
+}
+
 /// Convert a native Drawing to DbDrawing for persistence.
 fn drawing_to_db(d: &Drawing, symbol: &str, timeframe: &str) -> crate::drawing_db::DbDrawing {
     let (drawing_type, points) = match &d.kind {
@@ -4062,9 +4115,28 @@ impl App {
                         }
                     }
                 }
-                // Set taskbar/window icon — 32x32 Apex triangle
-                let icon = make_window_icon();
-                if let Some(icon) = icon { w.set_window_icon(Some(icon)); }
+                // Set window icon (taskbar + alt-tab)
+                if let Some(icon) = make_window_icon() {
+                    w.set_window_icon(Some(icon));
+                }
+                // Also set via Win32 WM_SETICON for reliable taskbar display
+                #[cfg(target_os = "windows")]
+                {
+                    use winit::raw_window_handle::HasWindowHandle;
+                    if let Ok(handle) = w.window_handle() {
+                        if let winit::raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
+                            if let Some(hicon) = make_window_icon_hicon() {
+                                unsafe {
+                                    // WM_SETICON = 0x0080, ICON_BIG = 1, ICON_SMALL = 0
+                                    windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
+                                        h.hwnd.get() as _, 0x0080, 1, hicon);
+                                    windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
+                                        h.hwnd.get() as _, 0x0080, 0, hicon);
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Arc::new(w)
             }
