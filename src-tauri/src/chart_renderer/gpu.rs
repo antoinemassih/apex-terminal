@@ -2973,9 +2973,98 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
 
-                // Label
-                painter.text(egui::pos2(rect.left() + 4.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
-                    ind.display_name(), egui::FontId::monospace(9.0), color.gamma_multiply(0.7));
+                // Clickable label — click to edit, shows [x] delete on hover
+                let label_text = ind.display_name();
+                let label_rect = egui::Rect::from_min_size(
+                    egui::pos2(rect.left() + 4.0, osc_top + 2.0),
+                    egui::vec2(label_text.len() as f32 * 6.0 + 20.0, 14.0),
+                );
+                let label_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| label_rect.contains(p));
+                let label_bg = if label_hovered { t.toolbar_border.gamma_multiply(0.5) } else { egui::Color32::TRANSPARENT };
+                painter.rect_filled(label_rect, 2.0, label_bg);
+                painter.text(egui::pos2(label_rect.left() + 2.0, label_rect.center().y), egui::Align2::LEFT_CENTER,
+                    &label_text, egui::FontId::monospace(9.0), color.gamma_multiply(if label_hovered { 1.0 } else { 0.7 }));
+                // [x] delete button at end of label
+                if label_hovered {
+                    let x_rect = egui::Rect::from_min_size(
+                        egui::pos2(label_rect.right() - 12.0, label_rect.top()),
+                        egui::vec2(12.0, 14.0),
+                    );
+                    painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, Icon::X,
+                        egui::FontId::proportional(8.0), t.bear);
+                }
+            }
+
+            // Oscillator click interaction — allocate rect over the whole panel
+            let osc_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), osc_top), egui::vec2(cw, osc_height));
+            let osc_resp = ui.allocate_rect(osc_rect, egui::Sense::click());
+
+            if osc_resp.clicked() {
+                if let Some(pos) = osc_resp.interact_pointer_pos() {
+                    // Check if clicked on a label's [x] delete button
+                    let mut deleted_id: Option<u32> = None;
+                    let mut label_y_offset = 0.0_f32;
+                    for ind in &chart.indicators {
+                        if !ind.visible || ind.kind.category() != IndicatorCategory::Oscillator { continue; }
+                        let label_text = ind.display_name();
+                        let label_rect = egui::Rect::from_min_size(
+                            egui::pos2(rect.left() + 4.0, osc_top + 2.0 + label_y_offset),
+                            egui::vec2(label_text.len() as f32 * 6.0 + 20.0, 14.0),
+                        );
+                        let x_rect = egui::Rect::from_min_size(
+                            egui::pos2(label_rect.right() - 12.0, label_rect.top()),
+                            egui::vec2(12.0, 14.0),
+                        );
+                        if x_rect.contains(pos) {
+                            deleted_id = Some(ind.id);
+                            break;
+                        }
+                        if label_rect.contains(pos) {
+                            chart.editing_indicator = Some(ind.id);
+                            break;
+                        }
+                        label_y_offset += 16.0;
+                    }
+                    if let Some(id) = deleted_id {
+                        chart.indicators.retain(|i| i.id != id);
+                        chart.indicator_bar_count = 0;
+                    }
+                }
+            }
+
+            // Double-click on oscillator line to edit
+            if osc_resp.double_clicked() {
+                if let Some(pos) = osc_resp.interact_pointer_pos() {
+                    for ind in &chart.indicators {
+                        if !ind.visible || ind.kind.category() != IndicatorCategory::Oscillator { continue; }
+                        // Check proximity to the oscillator's primary line
+                        let (osc_min, osc_max) = match ind.kind {
+                            IndicatorType::RSI | IndicatorType::Stochastic => (0.0_f32, 100.0),
+                            _ => {
+                                let mut lo = f32::MAX; let mut hi = f32::MIN;
+                                for &v in &ind.values { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
+                                if lo >= hi { lo -= 1.0; hi += 1.0; }
+                                let pad = (hi - lo) * 0.1; (lo - pad, hi + pad)
+                            }
+                        };
+                        let osc_y = |v: f32| -> f32 { osc_top + (osc_max - v) / (osc_max - osc_min) * osc_height };
+                        let bar_at_x = ((pos.x - rect.left() + off - bs * 0.5) / bs + vs) as usize;
+                        for di in 0..3 {
+                            let idx = if di == 0 { bar_at_x } else if di == 1 { bar_at_x.saturating_sub(1) } else { bar_at_x + 1 };
+                            if let Some(&v) = ind.values.get(idx) {
+                                if !v.is_nan() && (pos.y - osc_y(v)).abs() < 10.0 {
+                                    chart.editing_indicator = Some(ind.id);
+                                    break;
+                                }
+                            }
+                        }
+                        if chart.editing_indicator.is_some() { break; }
+                    }
+                }
+            }
+
+            if osc_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
         }
 
