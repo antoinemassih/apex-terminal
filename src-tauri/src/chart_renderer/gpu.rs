@@ -57,7 +57,7 @@ const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent symbols list
 const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, panel_header, section_label, dim_label, popup_frame};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, panel_header, section_label, dim_label, popup_frame, color_alpha, form_row, separator, status_badge, order_card, action_btn, trade_btn, close_button};
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -1185,34 +1185,37 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Keyboard shortcuts help panel ──────────────────────────────────────
     if watchlist.shortcuts_open {
-        popup_frame(ctx, "shortcuts_help", egui::pos2(ctx.screen_rect().center().x - 140.0, 50.0), 280.0, egui::Color32::from_rgb(28, 28, 34), None)
+        popup_frame(ctx, "shortcuts_help", egui::pos2(ctx.screen_rect().center().x - 150.0, 50.0), 300.0, egui::Color32::from_rgb(28, 28, 34), None)
             .show(ctx, |ui| {
                 if panel_header(ui, "KEYBOARD SHORTCUTS", t.accent, t.dim) { watchlist.shortcuts_open = false; }
-                ui.add_space(8.0);
-                let row = |ui: &mut egui::Ui, key: &str, desc: &str| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(key).monospace().size(10.0).strong().color(egui::Color32::from_rgb(200,200,210)));
+                ui.add_space(6.0);
+                let key_w = 90.0;
+                let shortcut_row = |ui: &mut egui::Ui, key: &str, desc: &str| {
+                    form_row(ui, key, key_w, egui::Color32::from_rgb(200,200,210), |ui| {
                         ui.label(egui::RichText::new(desc).monospace().size(9.0).color(t.dim));
                     });
                 };
-                dim_label(ui, "NAVIGATION", t.accent);
-                row(ui, "Scroll", "Zoom in/out");
-                row(ui, "Drag", "Pan chart");
-                row(ui, "Drag Y-axis", "Vertical zoom");
-                row(ui, "Drag X-axis", "Horizontal zoom");
-                row(ui, "Dbl-click Y", "Reset Y zoom");
-                ui.add_space(4.0);
-                dim_label(ui, "DRAWING", t.accent);
-                row(ui, "Middle-click", "Cycle drawing tools");
-                row(ui, "Escape", "Cancel / deselect");
-                row(ui, "Delete", "Delete selected drawing");
-                row(ui, "Shift+Drag", "Measure tool");
-                row(ui, "Dbl-click line", "Edit indicator/order");
-                ui.add_space(4.0);
-                dim_label(ui, "ORDERS", t.accent);
-                row(ui, "Right-click", "Place order at price");
-                row(ui, "Drag order", "Adjust order price");
-                row(ui, "Dbl-click order", "Edit order details");
+                section_label(ui, "NAVIGATION", t.accent);
+                ui.add_space(2.0);
+                shortcut_row(ui, "Scroll", "Zoom in/out");
+                shortcut_row(ui, "Drag", "Pan chart");
+                shortcut_row(ui, "Drag Y-axis", "Vertical zoom");
+                shortcut_row(ui, "Drag X-axis", "Horizontal zoom");
+                shortcut_row(ui, "Dbl-click Y", "Reset Y zoom");
+                ui.add_space(6.0);
+                section_label(ui, "DRAWING", t.accent);
+                ui.add_space(2.0);
+                shortcut_row(ui, "Middle-click", "Cycle drawing tools");
+                shortcut_row(ui, "Escape", "Cancel / deselect");
+                shortcut_row(ui, "Delete", "Delete selected drawing");
+                shortcut_row(ui, "Shift+Drag", "Measure tool");
+                shortcut_row(ui, "Dbl-click line", "Edit indicator/order");
+                ui.add_space(6.0);
+                section_label(ui, "ORDERS", t.accent);
+                ui.add_space(2.0);
+                shortcut_row(ui, "Right-click", "Place order at price");
+                shortcut_row(ui, "Drag order", "Adjust order price");
+                shortcut_row(ui, "Dbl-click order", "Edit order details");
             });
     }
 
@@ -1541,130 +1544,145 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let mut needs_source_fetch: Option<(String, String, u32)> = None;
         let pane_symbol = panes[ap].symbol.clone(); // clone to avoid borrow conflict
 
-        popup_frame(ctx, &format!("ind_editor_{}", edit_id), egui::pos2(200.0, 80.0), 280.0, egui::Color32::from_rgb(30, 30, 36), None)
+        popup_frame(ctx, &format!("ind_editor_{}", edit_id), egui::pos2(200.0, 80.0), 300.0, egui::Color32::from_rgb(30, 30, 36), None)
             .show(ctx, |ui| {
                 if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
-                    if panel_header(ui, "EDIT INDICATOR", t.bull, t.dim) { close_editor = true; }
-                    ui.add_space(4.0);
+                    if panel_header(ui, "EDIT INDICATOR", t.accent, t.dim) { close_editor = true; }
+                    ui.add_space(6.0);
+
+                    let lw = 50.0; // consistent label width for all form rows
 
                     // Type selector
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Type").small().color(t.dim));
+                    form_row(ui, "Type", lw, t.dim, |ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
                         for &kind in IndicatorType::all() {
                             let selected = ind.kind == kind;
-                            let text = egui::RichText::new(kind.label()).small()
-                                .color(if selected { t.bull } else { egui::Color32::from_rgb(180,180,190) });
-                            if ui.add(egui::Button::new(text).frame(false).min_size(egui::vec2(32.0, 18.0))).clicked() && !selected {
+                            let fg = if selected { t.accent } else { t.dim.gamma_multiply(0.7) };
+                            let bg = if selected { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                            if ui.add(egui::Button::new(egui::RichText::new(kind.label()).monospace().size(9.0).color(fg))
+                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(0.0, 18.0))
+                                .stroke(if selected { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }))
+                                .clicked() && !selected {
                                 ind.kind = kind;
                                 needs_recompute = true;
                             }
                         }
                     });
+                    ui.add_space(2.0);
 
                     // Period
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Period").small().color(t.dim));
+                    form_row(ui, "Period", lw, t.dim, |ui| {
                         let mut period = ind.period as i32;
                         if ui.add(egui::DragValue::new(&mut period).range(1..=500).speed(0.5)).changed() {
                             ind.period = (period as usize).max(1);
                             needs_recompute = true;
                         }
-                        // Quick presets
+                        ui.add_space(4.0);
+                        ui.spacing_mut().item_spacing.x = 1.0;
                         for &p in &[9, 12, 20, 26, 50, 100, 200] {
                             let sel = ind.period == p;
-                            let txt = egui::RichText::new(format!("{}", p)).small()
-                                .color(if sel { t.bull } else { t.dim });
-                            if ui.add(egui::Button::new(txt).frame(false).min_size(egui::vec2(22.0, 16.0))).clicked() && !sel {
+                            let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("{}", p)).monospace().size(8.0).color(fg))
+                                .frame(false).min_size(egui::vec2(20.0, 16.0))).clicked() && !sel {
                                 ind.period = p;
                                 needs_recompute = true;
                             }
                         }
                     });
+                    ui.add_space(2.0);
 
                     // Source interval
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Interval").small().color(t.dim));
+                    form_row(ui, "Source", lw, t.dim, |ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
                         for &tf in INDICATOR_TIMEFRAMES {
                             let label = if tf.is_empty() { "Chart" } else { tf };
                             let sel = ind.source_tf == tf;
-                            let txt = egui::RichText::new(label).small()
-                                .color(if sel { t.bull } else { t.dim });
-                            if ui.add(egui::Button::new(txt).frame(false).min_size(egui::vec2(28.0, 16.0))).clicked() && !sel {
+                            let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.7) };
+                            let bg = if sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                            if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(fg))
+                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(0.0, 18.0))
+                                .stroke(if sel { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }))
+                                .clicked() && !sel {
                                 ind.source_tf = tf.to_string();
-                                ind.source_loaded = tf.is_empty(); // chart TF is always loaded
+                                ind.source_loaded = tf.is_empty();
                                 ind.source_bars.clear();
                                 ind.source_timestamps.clear();
                                 needs_recompute = true;
-                                // Fetch cross-timeframe data if needed
                                 if !tf.is_empty() {
-                                    let sym = pane_symbol.clone();
-                                    let ind_id = ind.id;
-                                    let ind_tf = tf.to_string();
-                                    // Defer fetch to after the borrow ends
-                                    needs_source_fetch = Some((sym, ind_tf, ind_id));
+                                    needs_source_fetch = Some((pane_symbol.clone(), tf.to_string(), ind.id));
                                 }
                             }
                         }
                     });
 
-                    ui.add_space(4.0);
-                    ui.separator();
-                    ui.add_space(4.0);
+                    ui.add_space(6.0);
+                    separator(ui, color_alpha(t.toolbar_border, 60));
+                    ui.add_space(6.0);
 
                     // Color
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Color").small().color(t.dim));
+                    form_row(ui, "Color", lw, t.dim, |ui| {
+                        ui.spacing_mut().item_spacing.x = 3.0;
                         for &c in INDICATOR_COLORS {
                             let color = hex_to_color(c, 1.0);
                             let is_cur = ind.color == c;
-                            let (r, resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
-                            ui.painter().circle_filled(r.center(), if is_cur { 6.0 } else { 5.0 }, color);
-                            if is_cur { ui.painter().circle_stroke(r.center(), 7.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
+                            let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+                            ui.painter().circle_filled(r.center(), if is_cur { 7.0 } else { 5.5 }, color);
+                            if is_cur { ui.painter().circle_stroke(r.center(), 8.0, egui::Stroke::new(1.5, egui::Color32::WHITE)); }
                             if resp.clicked() { ind.color = c.to_string(); }
                         }
                     });
-
-                    // Thickness
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Width").small().color(t.dim));
-                        for &th in &[0.5, 1.0, 1.5, 2.0, 3.0] {
-                            let sel = (ind.thickness - th).abs() < 0.1;
-                            let txt = egui::RichText::new(format!("{:.1}", th)).small()
-                                .color(if sel { t.bull } else { t.dim });
-                            if ui.add(egui::Button::new(txt).frame(false)).clicked() { ind.thickness = th; }
-                        }
-                    });
-
-                    // Line style
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Style").small().color(t.dim));
-                        for (ls, label) in [(LineStyle::Solid, "Solid"), (LineStyle::Dashed, "Dash"), (LineStyle::Dotted, "Dot")] {
-                            let sel = ind.line_style == ls;
-                            let txt = egui::RichText::new(label).small()
-                                .color(if sel { t.bull } else { t.dim });
-                            if ui.add(egui::Button::new(txt).frame(false)).clicked() { ind.line_style = ls; }
-                        }
-                    });
-
-                    // Visibility toggle
-                    ui.horizontal(|ui| {
-                        let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
-                        if ui.button(format!("{} {}", vis_icon, if ind.visible { "Visible" } else { "Hidden" })).clicked() {
-                            ind.visible = !ind.visible;
-                        }
-                    });
-
-                    ui.add_space(4.0);
-                    ui.separator();
                     ui.add_space(2.0);
 
-                    // Delete
-                    if ui.button(egui::RichText::new(format!("{} Delete", Icon::TRASH)).color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
-                        delete_id = Some(edit_id);
-                        close_editor = true;
-                    }
+                    // Thickness
+                    form_row(ui, "Width", lw, t.dim, |ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
+                        for &th in &[0.5_f32, 1.0, 1.5, 2.0, 3.0] {
+                            let sel = (ind.thickness - th).abs() < 0.1;
+                            let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.7) };
+                            let bg = if sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("{:.1}", th)).monospace().size(9.0).color(fg))
+                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(28.0, 18.0))
+                                .stroke(if sel { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }))
+                                .clicked() { ind.thickness = th; }
+                        }
+                    });
+                    ui.add_space(2.0);
+
+                    // Line style
+                    form_row(ui, "Style", lw, t.dim, |ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
+                        for (ls, label) in [(LineStyle::Solid, "Solid"), (LineStyle::Dashed, "Dash"), (LineStyle::Dotted, "Dot")] {
+                            let sel = ind.line_style == ls;
+                            let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.7) };
+                            let bg = if sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                            if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(fg))
+                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(36.0, 18.0))
+                                .stroke(if sel { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }))
+                                .clicked() { ind.line_style = ls; }
+                        }
+                    });
+
+                    ui.add_space(6.0);
+                    separator(ui, color_alpha(t.toolbar_border, 60));
+                    ui.add_space(4.0);
+
+                    // Bottom actions: visibility + delete
+                    ui.horizontal(|ui| {
+                        let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
+                        let vis_color = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
+                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", vis_icon, if ind.visible { "Visible" } else { "Hidden" }))
+                            .monospace().size(9.0).color(vis_color)).frame(false)).clicked() {
+                            ind.visible = !ind.visible;
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if action_btn(ui, &format!("{} Delete", Icon::TRASH), egui::Color32::from_rgb(224, 85, 96), true) {
+                                delete_id = Some(edit_id);
+                                close_editor = true;
+                            }
+                        });
+                    });
                 } else {
-                    close_editor = true; // indicator was deleted
+                    close_editor = true;
                 }
             });
 
@@ -1704,35 +1722,37 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Connection panel popup ──────────────────────────────────────────────
     if *conn_panel_open {
-        popup_frame(ctx, "conn_panel", egui::pos2(ctx.screen_rect().right() - 250.0, 40.0), 230.0, egui::Color32::from_rgb(28, 28, 34), None)
+        popup_frame(ctx, "conn_panel", egui::pos2(ctx.screen_rect().right() - 260.0, 40.0), 240.0, egui::Color32::from_rgb(28, 28, 34), None)
             .show(ctx, |ui| {
-                if panel_header(ui, "CONNECTIONS", t.dim, t.dim) { *conn_panel_open = false; }
+                if panel_header(ui, "CONNECTIONS", t.accent, t.dim) { *conn_panel_open = false; }
                 ui.add_space(6.0);
 
                 let svc_row = |ui: &mut egui::Ui, name: &str, status: &str, ok: bool, detail: &str| {
                     ui.horizontal(|ui| {
-                        let color = if ok { rgb(46,204,113) } else { rgb(231,76,60) };
-                        ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 8.0), 3.0, color);
+                        let dot_color = if ok { rgb(46,204,113) } else { rgb(231,76,60) };
+                        ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0), 3.5, dot_color);
                         ui.add_space(12.0);
                         ui.label(egui::RichText::new(name).monospace().size(10.0).strong().color(egui::Color32::from_rgb(200,200,210)));
-                        ui.label(egui::RichText::new(status).monospace().size(9.0).color(if ok { t.bull } else { t.bear }));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            status_badge(ui, status, if ok { t.bull } else { t.bear });
+                        });
                     });
-                    ui.label(egui::RichText::new(format!("  {}", detail)).monospace().size(8.0).color(t.dim));
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        ui.label(egui::RichText::new(detail).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                    });
                     ui.add_space(4.0);
                 };
 
-                let redis_ok = crate::bar_cache::get("__ping_test", "").is_none(); // tests connection
-                svc_row(ui, "Redis Cache", if redis_ok { "connected" } else { "offline" }, redis_ok, "192.168.1.89:6379");
-                svc_row(ui, "GPU Engine", "DX12 active", true, "wgpu + egui");
-                svc_row(ui, "Data Feed", "Yahoo Finance", true, "query1.finance.yahoo.com");
-                svc_row(ui, "OCOCO", "cache", true, "192.168.1.60:30300");
+                let redis_ok = crate::bar_cache::get("__ping_test", "").is_none();
+                svc_row(ui, "Redis Cache", if redis_ok { "OK" } else { "OFF" }, redis_ok, "192.168.1.89:6379");
+                svc_row(ui, "GPU Engine", "DX12", true, "wgpu + egui");
+                svc_row(ui, "Data Feed", "OK", true, "query1.finance.yahoo.com");
+                svc_row(ui, "OCOCO", "OK", true, "192.168.1.60:30300");
 
+                separator(ui, color_alpha(t.toolbar_border, 40));
                 ui.add_space(4.0);
-                ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
-                    egui::Stroke::new(0.5, t.toolbar_border));
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("Endpoints: redis:6379 · ococo:30300 · yahoo").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("redis:6379 \u{00B7} ococo:30300 \u{00B7} yahoo").monospace().size(8.0).color(t.dim.gamma_multiply(0.35)));
             });
     }
 
@@ -2099,65 +2119,69 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     // ── Orders / Positions / Alerts side panel (left of watchlist) ─────────────
     if watchlist.orders_panel_open {
         egui::SidePanel::right("orders_panel")
-            .default_width(220.0)
-            .min_width(180.0)
-            .max_width(320.0)
-            .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
+            .default_width(270.0)
+            .min_width(220.0)
+            .max_width(350.0)
+            .frame(egui::Frame::NONE.fill(t.toolbar_bg)
+                .inner_margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 6 })
+                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
             .show(ctx, |ui| {
-                // Header
-                if panel_header(ui, "ORDERS", t.accent, t.dim) { watchlist.orders_panel_open = false; }
-                let total_orders: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
-                if total_orders > 0 { dim_label(ui, &format!("{} active", total_orders), t.dim); }
-
-                // Action buttons
+                // ── Header with title + status counters ──
                 ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("ORDERS").monospace().size(11.0).strong().color(t.accent));
+                    let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
+                    let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
+                    let exec_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Executed).count()).sum();
+                    let cxl_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Cancelled).count()).sum();
+                    // Status counters — like web version
+                    if active_count > 0 || exec_count > 0 || cxl_count > 0 {
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(format!("{}d {}p {}e {}c", draft_count, active_count - draft_count, exec_count, cxl_count))
+                            .monospace().size(8.0).color(t.dim.gamma_multiply(0.6)));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if close_button(ui, t.dim) { watchlist.orders_panel_open = false; }
+                    });
+                });
+                ui.add_space(4.0);
+
+                // ── Action bar ──
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
                     let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
                     let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
                     let history_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Executed || o.status == OrderStatus::Cancelled).count()).sum();
 
-                    if draft_count > 0 {
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("Place All ({})", draft_count)).monospace().size(9.0).color(t.accent))
-                            .fill(egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),30))
-                            .stroke(egui::Stroke::new(1.0, t.accent)).corner_radius(2.0)).clicked() {
-                            for pane in panes.iter_mut() {
-                                for o in &mut pane.orders { if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; } }
+                    if action_btn(ui, &format!("Place All ({})", draft_count), t.accent, draft_count > 0) {
+                        for pane in panes.iter_mut() {
+                            for o in &mut pane.orders { if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; } }
+                        }
+                    }
+                    if action_btn(ui, "Cancel All", t.bear, active_count > 0) {
+                        for pane in panes.iter_mut() {
+                            for o in &mut pane.orders {
+                                if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed { o.status = OrderStatus::Cancelled; }
                             }
                         }
                     }
-                    if active_count > 0 {
-                        if ui.add(egui::Button::new(egui::RichText::new("Cancel All").monospace().size(9.0).color(t.bear))
-                            .corner_radius(2.0)).clicked() {
-                            for pane in panes.iter_mut() {
-                                for o in &mut pane.orders {
-                                    if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed { o.status = OrderStatus::Cancelled; }
-                                }
-                            }
-                        }
-                    }
-                    if history_count > 0 {
-                        if ui.add(egui::Button::new(egui::RichText::new("Clear").monospace().size(9.0).color(t.dim))
-                            .corner_radius(2.0)).clicked() {
-                            for pane in panes.iter_mut() {
-                                pane.orders.retain(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed);
-                            }
+                    if action_btn(ui, "Clear", t.dim, history_count > 0) {
+                        for pane in panes.iter_mut() {
+                            pane.orders.retain(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed);
                         }
                     }
                 });
 
                 ui.add_space(4.0);
-                ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
-                    egui::Stroke::new(1.0, t.toolbar_border),
-                );
+                separator(ui, color_alpha(t.toolbar_border, 60));
                 ui.add_space(4.0);
 
-                // Group selection actions
+                // ── Group selection bar ──
                 let sel_count = watchlist.selected_order_ids.len();
                 if sel_count > 0 {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("{} selected", sel_count)).monospace().size(9.0).color(t.accent));
-                        if ui.add(egui::Button::new(egui::RichText::new("Place").monospace().size(9.0).color(t.accent))
-                            .stroke(egui::Stroke::new(0.5, t.accent)).corner_radius(2.0)).clicked() {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.label(egui::RichText::new(format!("{} selected", sel_count)).monospace().size(9.0).strong().color(t.accent));
+                        action_btn(ui, "Place", t.accent, true).then(|| {
                             for (pi, oid) in &watchlist.selected_order_ids {
                                 if let Some(o) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == *oid)) {
                                     if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; }
@@ -2169,34 +2193,31 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 }
                             }
                             watchlist.selected_order_ids.clear();
-                        }
-                        if ui.add(egui::Button::new(egui::RichText::new("Cancel").monospace().size(9.0).color(t.bear))
-                            .corner_radius(2.0)).clicked() {
+                        });
+                        action_btn(ui, "Cancel", t.bear, true).then(|| {
                             for (pi, oid) in &watchlist.selected_order_ids {
                                 if *pi < panes.len() { cancel_order_with_pair(&mut panes[*pi].orders, *oid); }
                             }
                             watchlist.selected_order_ids.clear();
-                        }
-                        if ui.add(egui::Button::new(egui::RichText::new("Unarm").monospace().size(9.0).color(t.dim))
-                            .corner_radius(2.0)).clicked() {
+                        });
+                        action_btn(ui, "Unarm", t.dim, true).then(|| {
                             for (pi, oid) in &watchlist.selected_order_ids {
                                 if let Some(o) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == *oid)) {
                                     if o.status == OrderStatus::Placed { o.status = OrderStatus::Draft; }
                                 }
                             }
                             watchlist.selected_order_ids.clear();
-                        }
+                        });
                         if ui.add(egui::Button::new(egui::RichText::new("Deselect").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
                             watchlist.selected_order_ids.clear();
                         }
                     });
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
                 }
 
-                // Orders list — compact cards with checkboxes
+                // ── Order cards ──
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let mut cancel_order: Option<(usize, u32)> = None;
-                    let full_w = ui.available_width();
 
                     for (pi, pane) in panes.iter().enumerate() {
                         for order in &pane.orders {
@@ -2211,49 +2232,48 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             };
                             let is_active = order.status == OrderStatus::Draft || order.status == OrderStatus::Placed;
                             let is_selected = watchlist.selected_order_ids.iter().any(|(p, id)| *p == pi && *id == order.id);
+                            let card_bg = if is_selected { color_alpha(t.accent, 12) } else { color_alpha(t.toolbar_border, 15) };
 
-                            // Row with checkbox
-                            let resp = ui.horizontal(|ui| {
-                                ui.set_min_width(full_w);
-
-                                // Selection checkbox (only for active orders)
-                                if is_active {
-                                    let check_icon = if is_selected { "\u{25C9}" } else { "\u{25CB}" }; // ◉ / ○
-                                    let check_color = if is_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
-                                    if ui.add(egui::Button::new(egui::RichText::new(check_icon).size(11.0).color(check_color)).frame(false).min_size(egui::vec2(14.0, 16.0))).clicked() {
-                                        if is_selected {
-                                            watchlist.selected_order_ids.retain(|(p, id)| !(*p == pi && *id == order.id));
-                                        } else {
-                                            watchlist.selected_order_ids.push((pi, order.id));
-                                        }
-                                    }
-                                } else {
-                                    ui.add_space(14.0);
-                                }
-
-                                ui.label(egui::RichText::new(order.label()).monospace().size(10.0).strong().color(color));
-                                ui.label(egui::RichText::new(&pane.symbol).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            order_card(ui, color, card_bg, |ui| {
+                                // Card header: checkbox + type + symbol + status + close
+                                ui.horizontal(|ui| {
+                                    // Selection checkbox
                                     if is_active {
-                                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false)).clicked() {
-                                            cancel_order = Some((pi, order.id));
+                                        let check_icon = if is_selected { "\u{25C9}" } else { "\u{25CB}" };
+                                        let check_color = if is_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
+                                        if ui.add(egui::Button::new(egui::RichText::new(check_icon).size(11.0).color(check_color))
+                                            .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                            if is_selected {
+                                                watchlist.selected_order_ids.retain(|(p, id)| !(*p == pi && *id == order.id));
+                                            } else {
+                                                watchlist.selected_order_ids.push((pi, order.id));
+                                            }
                                         }
                                     }
-                                    ui.label(egui::RichText::new(status_text).monospace().size(9.0).color(status_color));
+                                    ui.label(egui::RichText::new(order.label()).monospace().size(10.0).strong().color(color));
+                                    ui.label(egui::RichText::new(format!("{} {}", &pane.symbol, &pane.timeframe))
+                                        .monospace().size(9.0).color(egui::Color32::from_rgba_unmultiplied(200, 200, 210, 180)));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if is_active {
+                                            if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5)))
+                                                .frame(false)).clicked() {
+                                                cancel_order = Some((pi, order.id));
+                                            }
+                                        }
+                                        status_badge(ui, status_text, status_color);
+                                    });
+                                });
+
+                                // Card body: price | qty | notional
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("{:.2}", order.price)).monospace().size(13.0).strong().color(color));
+                                    ui.add_space(6.0);
+                                    ui.label(egui::RichText::new(format!("\u{00D7}{}", order.qty)).monospace().size(10.0).color(t.dim.gamma_multiply(0.6)));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.label(egui::RichText::new(fmt_notional(order.notional())).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                                    });
                                 });
                             });
-                            // Selected highlight
-                            if is_selected {
-                                ui.painter().rect_filled(resp.response.rect, 0.0, egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 15));
-                            }
-
-                            ui.horizontal(|ui| {
-                                ui.add_space(14.0); // align with checkbox
-                                ui.label(egui::RichText::new(format!("{:.2}", order.price)).monospace().size(10.0).color(color));
-                                ui.label(egui::RichText::new(format!("x{}", order.qty)).monospace().size(9.0).color(t.dim));
-                                ui.label(egui::RichText::new(fmt_notional(order.notional())).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                            });
-                            ui.add_space(2.0);
                         }
                     }
 
@@ -2261,48 +2281,65 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         cancel_order_with_pair(&mut panes[pi].orders, oid);
                     }
 
-                    // Positions section
+                    // ── Positions section ──
                     if !watchlist.positions.is_empty() {
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
+                        separator(ui, color_alpha(t.toolbar_border, 40));
+                        ui.add_space(4.0);
                         section_label(ui, "POSITIONS", t.dim);
-                        ui.add_space(2.0);
+                        ui.add_space(4.0);
                         let total_pnl: f32 = watchlist.positions.iter().map(|p| p.pnl()).sum();
                         for pos in &watchlist.positions {
                             let pnl = pos.pnl();
                             let pnl_pct = pos.pnl_pct();
-                            let color = if pnl >= 0.0 { t.bull } else { t.bear };
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
-                                ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price)).monospace().size(10.0).color(t.dim));
-                                ui.label(egui::RichText::new(format!("{:+.2}", pnl)).monospace().size(10.0).color(color));
-                                ui.label(egui::RichText::new(format!("({:+.1}%)", pnl_pct)).monospace().size(9.0).color(color));
+                            let pnl_color = if pnl >= 0.0 { t.bull } else { t.bear };
+                            order_card(ui, pnl_color, color_alpha(t.toolbar_border, 10), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
+                                    ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("{:+.2}", pnl)).monospace().size(12.0).strong().color(pnl_color));
+                                    ui.add_space(4.0);
+                                    ui.label(egui::RichText::new(format!("({:+.1}%)", pnl_pct)).monospace().size(9.0).color(pnl_color));
+                                });
                             });
                         }
-                        ui.add_space(2.0);
                         let total_color = if total_pnl >= 0.0 { t.bull } else { t.bear };
-                        ui.label(egui::RichText::new(format!("Total P&L: {:+.2}", total_pnl)).monospace().size(10.0).strong().color(total_color));
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Total P&L").monospace().size(9.0).color(t.dim));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.label(egui::RichText::new(format!("{:+.2}", total_pnl)).monospace().size(11.0).strong().color(total_color));
+                            });
+                        });
                     }
 
-                    // Alerts section
+                    // ── Alerts section ──
                     if !watchlist.alerts.is_empty() {
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
+                        separator(ui, color_alpha(t.toolbar_border, 40));
+                        ui.add_space(4.0);
                         section_label(ui, "ALERTS", t.dim);
-                        ui.add_space(2.0);
+                        ui.add_space(4.0);
                         let mut remove_alert: Option<u32> = None;
                         for alert in &watchlist.alerts {
-                            let dir = if alert.above { "\u{2191}" } else { "\u{2193}" }; // ↑ ↓
-                            let color = if alert.triggered { t.accent } else { t.dim };
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).color(egui::Color32::from_rgb(220,220,230)));
-                                ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price)).monospace().size(10.0).color(color));
-                                if alert.triggered {
-                                    ui.label(egui::RichText::new("TRIGGERED").monospace().size(9.0).color(t.accent));
-                                }
+                            let dir = if alert.above { "\u{2191}" } else { "\u{2193}" };
+                            let alert_color = if alert.triggered { t.accent } else { t.dim };
+                            order_card(ui, alert_color, color_alpha(t.toolbar_border, 10), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
+                                    ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price)).monospace().size(10.0).color(alert_color));
+                                    if alert.triggered {
+                                        status_badge(ui, "TRIGGERED", t.accent);
+                                    }
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5))).frame(false)).clicked() {
+                                            remove_alert = Some(alert.id);
+                                        }
+                                    });
+                                });
                                 if !alert.message.is_empty() {
-                                    ui.label(egui::RichText::new(&alert.message).monospace().size(9.0).color(t.dim));
-                                }
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false)).clicked() {
-                                    remove_alert = Some(alert.id);
+                                    ui.label(egui::RichText::new(&alert.message).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
                                 }
                             });
                         }
@@ -2956,32 +2993,33 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let mut apply_qty: Option<u32> = None;
                 let mut cancel_it = false;
 
-                popup_frame(ctx, &format!("order_edit_{}", edit_id), popup_pos, 180.0, t.toolbar_bg, Some(color))
+                popup_frame(ctx, &format!("order_edit_{}", edit_id), popup_pos, 200.0, t.toolbar_bg, Some(color))
                     .show(ctx, |ui| {
                         if panel_header(ui, &format!("EDIT {}", order_label), color, t.dim) { close_editor = true; }
-                        ui.add_space(4.0);
+                        ui.add_space(6.0);
 
-                        ui.horizontal(|ui| {
-                            dim_label(ui, "Price", t.dim);
+                        form_row(ui, "Price", 36.0, t.dim, |ui| {
                             let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_price)
-                                .desired_width(80.0).font(egui::FontId::monospace(11.0)));
+                                .desired_width(100.0).font(egui::FontId::monospace(11.0))
+                                .horizontal_align(egui::Align::RIGHT));
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 if let Ok(p) = chart.edit_order_price.parse::<f32>() { apply_price = Some(p); }
                             }
                         });
-
-                        ui.horizontal(|ui| {
-                            dim_label(ui, "Qty  ", t.dim);
+                        ui.add_space(2.0);
+                        form_row(ui, "Qty", 36.0, t.dim, |ui| {
                             let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_qty)
-                                .desired_width(80.0).font(egui::FontId::monospace(11.0)));
+                                .desired_width(100.0).font(egui::FontId::monospace(11.0))
+                                .horizontal_align(egui::Align::RIGHT));
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 if let Ok(q) = chart.edit_order_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
                             }
                         });
 
+                        ui.add_space(6.0);
+                        separator(ui, color_alpha(t.toolbar_border, 60));
                         ui.add_space(4.0);
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} Cancel Order", Icon::TRASH)).monospace().size(10.0).color(t.bear))
-                            .min_size(egui::vec2(164.0, 22.0)).corner_radius(3.0)).clicked() {
+                        if action_btn(ui, &format!("{} Cancel Order", Icon::TRASH), t.bear, true) {
                             cancel_it = true;
                         }
                     });
@@ -3005,51 +3043,72 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // ── Order entry panel (bottom-left of pane) ─────────────────────────
         if watchlist.order_entry_open {
-            let panel_w = 190.0;
-            let panel_h = 56.0;
-            let panel_pos = egui::pos2(rect.left() + 8.0, rect.top() + pt + ch - panel_h - 8.0);
+            let panel_w = 230.0;
+            let panel_h = 0.0; // auto-size height
+            let panel_pos = egui::pos2(rect.left() + 8.0, rect.top() + pt + ch - 80.0);
 
             egui::Window::new(format!("order_entry_{}", pane_idx))
                 .fixed_pos(panel_pos)
                 .fixed_size(egui::vec2(panel_w, panel_h))
                 .title_bar(false)
                 .frame(egui::Frame::popup(&ctx.style())
-                    .fill(egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 235))
-                    .inner_margin(6.0))
+                    .fill(color_alpha(t.toolbar_bg, 240))
+                    .inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 6 })
+                    .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
+                    .corner_radius(4.0))
                 .show(ctx, |ui| {
                     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
                     let spread = (last_price * 0.0001).max(0.01);
+                    ui.spacing_mut().item_spacing.y = 5.0;
 
-                    // Row 1: [-] qty [+] | price/last | MKT/LMT
+                    // Row 1: [-] qty [+] | divider | LMT price | MKT/LMT toggle
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
-                        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(16.0, 18.0)).corner_radius(2.0)).clicked() {
+                        // Minus
+                        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0))
+                            .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
+                            .fill(color_alpha(t.toolbar_border, 40))).clicked() {
                             chart.order_qty = chart.order_qty.saturating_sub(step).max(1);
                         }
-                        ui.label(egui::RichText::new(format!("{}", chart.order_qty)).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
-                        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0)).min_size(egui::vec2(16.0, 18.0)).corner_radius(2.0)).clicked() {
+                        // Qty display
+                        let qty_resp = ui.add(egui::TextEdit::singleline(&mut format!("{}", chart.order_qty))
+                            .desired_width(44.0).font(egui::FontId::monospace(12.0))
+                            .horizontal_align(egui::Align::Center).interactive(false));
+                        let _ = qty_resp;
+                        // Plus
+                        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0))
+                            .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
+                            .fill(color_alpha(t.toolbar_border, 40))).clicked() {
                             chart.order_qty += step;
                         }
 
+                        // Vertical divider
                         ui.add_space(4.0);
+                        let cursor = ui.cursor().min;
+                        ui.painter().line_segment(
+                            [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
+                            egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
+                        ui.add_space(6.0);
 
-                        // Price input or last price display
+                        // Price input or last price
                         if chart.order_market {
-                            ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(10.0).color(t.dim));
+                            ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(12.0).color(t.dim));
                         } else {
                             ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
-                                .desired_width(58.0).font(egui::FontId::monospace(10.0)).hint_text("Price"));
+                                .desired_width(68.0).font(egui::FontId::monospace(12.0)).hint_text("Price")
+                                .horizontal_align(egui::Align::RIGHT));
                         }
+
+                        ui.add_space(2.0);
 
                         // MKT/LMT toggle
                         let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
-                        let mkt_active = chart.order_market;
                         if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(9.0).strong()
-                            .color(if mkt_active { t.accent } else { t.dim }))
-                            .fill(if mkt_active { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 35) } else { t.toolbar_bg })
-                            .stroke(egui::Stroke::new(0.5, t.toolbar_border)).corner_radius(2.0)
-                            .min_size(egui::vec2(28.0, 18.0))).clicked() {
+                            .color(if chart.order_market { t.accent } else { t.dim }))
+                            .fill(if chart.order_market { color_alpha(t.accent, 35) } else { t.toolbar_bg })
+                            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 90))).corner_radius(2.0)
+                            .min_size(egui::vec2(30.0, 20.0))).clicked() {
                             chart.order_market = !chart.order_market;
                             if !chart.order_market && chart.order_limit_price.is_empty() {
                                 chart.order_limit_price = format!("{:.2}", last_price);
@@ -3057,9 +3116,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     });
 
-                    ui.add_space(2.0);
-
-                    // Row 2: BUY | SELL | armed glyph
+                    // Row 2: BUY | SELL | armed toggle
                     let buy_price = if chart.order_market { last_price + spread } else {
                         chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
                     };
@@ -3068,31 +3125,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     };
 
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 3.0;
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let btn_w = (ui.available_width() - 30.0) / 2.0;
                         // BUY
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("BUY {:.2}", buy_price)).monospace().size(9.0).strong().color(egui::Color32::WHITE))
-                            .fill(egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 180))
-                            .min_size(egui::vec2(76.0, 20.0)).corner_radius(3.0)).clicked() {
+                        if trade_btn(ui, &format!("BUY {:.2}", buy_price), t.bull, btn_w) {
                             let id = chart.next_order_id; chart.next_order_id += 1;
                             let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
                             chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None });
                             if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                         }
                         // SELL
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("SELL {:.2}", sell_price)).monospace().size(9.0).strong().color(egui::Color32::WHITE))
-                            .fill(egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 180))
-                            .min_size(egui::vec2(76.0, 20.0)).corner_radius(3.0)).clicked() {
+                        if trade_btn(ui, &format!("SELL {:.2}", sell_price), t.bear, btn_w) {
                             let id = chart.next_order_id; chart.next_order_id += 1;
                             let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
                             chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None });
                             if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                         }
-                        // Armed toggle — glyph only, tooltip on hover
+                        // Armed toggle
                         let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
                         let armed_color = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        let armed_resp = ui.add(egui::Button::new(egui::RichText::new(armed_icon).size(12.0).color(armed_color))
-                            .fill(if chart.armed { egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 30) } else { egui::Color32::TRANSPARENT })
-                            .stroke(egui::Stroke::NONE).min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0));
+                        let armed_resp = ui.add(egui::Button::new(egui::RichText::new(armed_icon).size(13.0).color(armed_color))
+                            .fill(if chart.armed { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT })
+                            .stroke(egui::Stroke::NONE).min_size(egui::vec2(22.0, 24.0)).corner_radius(2.0));
                         if armed_resp.clicked() { chart.armed = !chart.armed; }
                         if armed_resp.hovered() {
                             egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("armed_tip"), |ui| {

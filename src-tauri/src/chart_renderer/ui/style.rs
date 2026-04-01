@@ -123,3 +123,85 @@ pub fn hex_to_color(hex: &str, opacity: f32) -> Color32 {
     let b = u8::from_str_radix(h.get(4..6).unwrap_or("80"), 16).unwrap_or(128);
     Color32::from_rgba_unmultiplied(r, g, b, (opacity * 255.0) as u8)
 }
+
+/// Color with alpha overlay — e.g. accent at 20% opacity for button backgrounds.
+#[inline]
+pub fn color_alpha(c: Color32, alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+}
+
+// ─── Form layout helpers ─────────────────────────────────────────────────────
+
+/// Form row: fixed-width label + content. Used in order edit, indicator editor, etc.
+/// Returns the inner response for chaining.
+pub fn form_row(ui: &mut egui::Ui, label: &str, label_width: f32, dim: Color32, add_content: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.allocate_ui(egui::vec2(label_width, 18.0), |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(4.0);
+                ui.label(RichText::new(label).monospace().size(9.0).color(dim));
+            });
+        });
+        add_content(ui);
+    });
+}
+
+/// Horizontal separator line — thin divider between sections.
+#[inline]
+pub fn separator(ui: &mut egui::Ui, color: Color32) {
+    let rect = ui.available_rect_before_wrap();
+    ui.painter().line_segment(
+        [egui::pos2(rect.left(), ui.cursor().min.y), egui::pos2(rect.right(), ui.cursor().min.y)],
+        Stroke::new(0.5, color),
+    );
+    ui.add_space(1.0);
+}
+
+// ─── Card / badge components ────────────────────────────────────────────────
+
+/// Status badge — small colored pill label (e.g. "DRAFT", "PLACED", "EXEC").
+pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
+    let bg = color_alpha(color, 24);
+    let border = color_alpha(color, 68);
+    ui.add(egui::Button::new(RichText::new(text).monospace().size(8.0).strong().color(color))
+        .fill(bg).stroke(Stroke::new(0.5, border)).corner_radius(2.0)
+        .min_size(egui::vec2(0.0, 14.0)));
+}
+
+/// Order card frame — paints a left-border accent stripe and a subtle card background.
+pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: impl FnOnce(&mut egui::Ui)) {
+    let available_w = ui.available_width();
+    egui::Frame::NONE
+        .fill(bg)
+        .inner_margin(egui::Margin { left: 9, right: 6, top: 5, bottom: 5 })
+        .corner_radius(4.0)
+        .show(ui, |ui| {
+            ui.set_min_width(available_w - 15.0);
+            // Paint the left accent stripe
+            let outer = ui.min_rect();
+            let stripe = egui::Rect::from_min_max(
+                egui::pos2(outer.left() - 9.0, outer.top() - 5.0),
+                egui::pos2(outer.left() - 6.0, outer.bottom() + 5.0),
+            );
+            ui.painter().rect_filled(stripe, egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, accent);
+            add_content(ui);
+        });
+    ui.add_space(4.0);
+}
+
+/// Action button — accent-tinted background, used for Place/Cancel/Clear actions.
+pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
+    let bg = if enabled { color_alpha(color, 30) } else { color_alpha(color, 10) };
+    let fg = if enabled { color } else { color_alpha(color, 100) };
+    let border = if enabled { color_alpha(color, 100) } else { color_alpha(color, 40) };
+    ui.add_enabled(enabled, egui::Button::new(RichText::new(label).monospace().size(9.0).strong().color(fg))
+        .fill(bg).stroke(Stroke::new(0.5, border)).corner_radius(3.0)
+        .min_size(egui::vec2(0.0, 20.0))).clicked()
+}
+
+/// Trade button — full-color background for BUY/SELL. Like web version.
+pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> bool {
+    ui.add(egui::Button::new(RichText::new(label).monospace().size(10.0).strong().color(Color32::WHITE))
+        .fill(color_alpha(color, 200))
+        .min_size(egui::vec2(width, 24.0)).corner_radius(3.0)).clicked()
+}
