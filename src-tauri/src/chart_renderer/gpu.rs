@@ -1130,8 +1130,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 panes[ap].picker_pos = egui::pos2(sym_btn.rect.left(), sym_btn.rect.bottom());
             }
 
-            // ── Separator ──
             ui.add(egui::Separator::default().spacing(4.0));
+
+            // ── Scrollable middle section ──
+            // Calculate available width: total - logo(25) - symbol(~70) - right section(~350)
+            let right_width = 360.0;
+            let middle_width = (ui.available_width() - right_width).max(60.0);
+            egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
 
             // ── Timeframes ──
             for &tf in &["1m","5m","15m","30m","1h","4h","1d","1wk"] {
@@ -1198,7 +1204,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             tb_btn(ui, "triangulator", false, t);
             tb_btn(ui, "auto target", false, t);
 
+            // Trendline filter button
+            if tb_btn(ui, "filters", watchlist.trendline_filter_open, t).clicked() {
+                watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
+            }
+
+            }); // end scrollable middle
+
             ui.add(egui::Separator::default().spacing(4.0));
+
+            // Keyboard shortcuts help
+            if tb_btn(ui, "?", watchlist.shortcuts_open, t).clicked() {
+                watchlist.shortcuts_open = !watchlist.shortcuts_open;
+            }
 
             // New window button
             if tb_btn(ui, "+ Window", false, t).clicked() {
@@ -1314,6 +1332,118 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
             }
         }
+    }
+
+    // ── Keyboard shortcuts help panel ──────────────────────────────────────
+    if watchlist.shortcuts_open {
+        egui::Window::new("shortcuts_help")
+            .fixed_pos(egui::pos2(ctx.screen_rect().center().x - 140.0, 50.0))
+            .fixed_size(egui::vec2(280.0, 0.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28, 28, 34)).inner_margin(12.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("KEYBOARD SHORTCUTS").monospace().size(10.0).strong().color(t.accent));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
+                            watchlist.shortcuts_open = false;
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+                let row = |ui: &mut egui::Ui, key: &str, desc: &str| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(key).monospace().size(10.0).strong().color(egui::Color32::from_rgb(200,200,210)));
+                        ui.label(egui::RichText::new(desc).monospace().size(9.0).color(t.dim));
+                    });
+                };
+                ui.label(egui::RichText::new("NAVIGATION").monospace().size(9.0).color(t.accent));
+                row(ui, "Scroll", "Zoom in/out");
+                row(ui, "Drag", "Pan chart");
+                row(ui, "Drag Y-axis", "Vertical zoom");
+                row(ui, "Drag X-axis", "Horizontal zoom");
+                row(ui, "Dbl-click Y", "Reset Y zoom");
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("DRAWING").monospace().size(9.0).color(t.accent));
+                row(ui, "Middle-click", "Cycle drawing tools");
+                row(ui, "Escape", "Cancel / deselect");
+                row(ui, "Delete", "Delete selected drawing");
+                row(ui, "Shift+Drag", "Measure tool");
+                row(ui, "Dbl-click line", "Edit indicator/order");
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("ORDERS").monospace().size(9.0).color(t.accent));
+                row(ui, "Right-click", "Place order at price");
+                row(ui, "Drag order", "Adjust order price");
+                row(ui, "Dbl-click order", "Edit order details");
+            });
+    }
+
+    // ── Trendline filter dropdown ────────────────────────────────────────────
+    if watchlist.trendline_filter_open {
+        egui::Window::new("trendline_filter")
+            .fixed_pos(egui::pos2(300.0, 40.0))
+            .fixed_size(egui::vec2(200.0, 0.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28, 28, 34)).inner_margin(8.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("DRAWING FILTERS").monospace().size(10.0).strong().color(t.accent));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
+                            watchlist.trendline_filter_open = false;
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+
+                let chart = &mut panes[ap];
+                // Per-type visibility toggles
+                let types = [("trendline", "Trendlines"), ("hline", "H-Lines"), ("hzone", "Zones"), ("barmarker", "Markers")];
+                for (dtype, label) in &types {
+                    let count = chart.drawings.iter().filter(|d| {
+                        match (dtype, &d.kind) {
+                            (&"trendline", DrawingKind::TrendLine{..}) => true,
+                            (&"hline", DrawingKind::HLine{..}) => true,
+                            (&"hzone", DrawingKind::HZone{..}) => true,
+                            (&"barmarker", DrawingKind::BarMarker{..}) => true,
+                            _ => false,
+                        }
+                    }).count();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("{} ({})", label, count)).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
+                    });
+                }
+
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(2.0);
+
+                // Signal drawings toggle
+                let sig_count = chart.signal_drawings.len();
+                let sig_icon = if chart.hide_signal_drawings { Icon::EYE_SLASH } else { Icon::EYE };
+                if ui.button(format!("{} Signals ({})", sig_icon, sig_count)).clicked() {
+                    chart.hide_signal_drawings = !chart.hide_signal_drawings;
+                }
+
+                // All drawings toggle
+                let draw_icon = if chart.hide_all_drawings { Icon::EYE_SLASH } else { Icon::EYE };
+                if ui.button(format!("{} All Drawings", draw_icon)).clicked() {
+                    chart.hide_all_drawings = !chart.hide_all_drawings;
+                }
+
+                // Groups
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("GROUPS").monospace().size(9.0).color(t.dim));
+                for g in chart.groups.clone() {
+                    let hidden = chart.hidden_groups.contains(&g.id);
+                    let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
+                    let icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
+                    if ui.button(format!("{} {} ({})", icon, g.name, count)).clicked() {
+                        if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
+                        else { chart.hidden_groups.push(g.id.clone()); }
+                    }
+                }
+            });
     }
 
     // Symbol picker popup — render for any pane that has it open
@@ -3952,6 +4082,10 @@ struct Watchlist {
     items: Vec<WatchlistItem>,
     search_query: String,
     search_results: Vec<(String, String)>,
+    // Toolbar
+    #[allow(dead_code)] toolbar_scroll: f32,
+    shortcuts_open: bool, // keyboard shortcuts help panel
+    trendline_filter_open: bool, // trendline filter dropdown
     // Orders
     orders_panel_open: bool,
     order_entry_open: bool,
@@ -3984,6 +4118,7 @@ impl Watchlist {
             symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
         Self { open: false, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
+               toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false,
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
