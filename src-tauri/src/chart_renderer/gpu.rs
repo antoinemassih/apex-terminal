@@ -745,43 +745,84 @@ fn make_window_icon() -> Option<winit::window::Icon> {
     winit::window::Icon::from_rgba(rgba, s, s).ok()
 }
 
-/// Load HICON from the .ico file on disk for taskbar display.
+/// Create HICON in memory using CreateIconIndirect — no file needed.
 #[cfg(target_os = "windows")]
 fn make_window_icon_hicon() -> Option<isize> {
-    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
-    let candidates = [
-        exe_dir.as_ref().map(|d| d.join("icons").join("apex-native.ico")),
-        exe_dir.as_ref().map(|d| d.join("..").join("..").join("icons").join("apex-native.ico")),
-        Some(std::path::PathBuf::from("icons/apex-native.ico")),
-        // Also check src-tauri path for dev builds
-        exe_dir.as_ref().map(|d| d.join("..").join("..").join("..").join("icons").join("apex-native.ico")),
-    ];
-    for maybe_path in &candidates {
-        if let Some(path) = maybe_path {
-            if path.exists() {
-                // Canonicalize to absolute path — LoadImageW needs it
-                let abs = path.canonicalize().unwrap_or_else(|_| path.clone());
-                let abs_str = abs.to_string_lossy().to_string();
-                let clean = abs_str.strip_prefix("\\\\?\\").unwrap_or(&abs_str);
-                let wide: Vec<u16> = clean.encode_utf16().chain(std::iter::once(0)).collect();
-                unsafe {
-                    let handle = windows_sys::Win32::UI::WindowsAndMessaging::LoadImageW(
-                        0 as _, // null hInstance
-                        wide.as_ptr(),
-                        1, // IMAGE_ICON
-                        0, 0, // use default size from ico
-                        0x00000010, // LR_LOADFROMFILE
-                    );
-                    if handle != 0 as _ {
-                        eprintln!("[native-chart] Icon loaded from {}", abs.display());
-                        return Some(handle as isize);
-                    }
-                }
-            }
+    use windows_sys::Win32::Graphics::Gdi::*;
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+
+    let s: i32 = 32;
+    // Build BGRA pixel data (pre-multiplied alpha)
+    let mut bgra = vec![0u8; (s * s * 4) as usize];
+    let color_bgra = [25u8, 128, 254, 255]; // BGRA for orange #FE8019
+
+    let set_px = |buf: &mut Vec<u8>, x: i32, y: i32| {
+        if x >= 0 && x < s && y >= 0 && y < s {
+            let idx = ((y * s + x) * 4) as usize;
+            buf[idx..idx+4].copy_from_slice(&color_bgra);
+        }
+    };
+
+    let draw_line = |buf: &mut Vec<u8>, x0: f32, y0: f32, x1: f32, y1: f32| {
+        let len = ((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)).sqrt();
+        let steps = (len * 3.0) as i32;
+        for i in 0..=steps {
+            let t = i as f32 / steps.max(1) as f32;
+            let px = (x0 + (x1-x0)*t) as i32;
+            let py = (y0 + (y1-y0)*t) as i32;
+            for dy in -1..=1 { for dx in -1..=1 { set_px(buf, px+dx, py+dy); } }
+        }
+    };
+
+    let m = 3.0_f32;
+    let cx = s as f32 / 2.0;
+    // Triangle
+    draw_line(&mut bgra, cx, m, m, s as f32 - m);
+    draw_line(&mut bgra, m, s as f32 - m, s as f32 - m, s as f32 - m);
+    draw_line(&mut bgra, s as f32 - m, s as f32 - m, cx, m);
+    // Horizontal bar
+    draw_line(&mut bgra, cx - 7.0, cx + 2.0, cx + 7.0, cx + 2.0);
+
+    unsafe {
+        // Create a DIB section for the color bitmap
+        let hdc = GetDC(std::ptr::null_mut());
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = s;
+        bmi.bmiHeader.biHeight = -(s); // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = 0; // BI_RGB
+
+        let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+        let hbm_color = CreateDIBSection(hdc, &bmi, 0, &mut bits, std::ptr::null_mut(), 0);
+        if !hbm_color.is_null() && !bits.is_null() {
+            std::ptr::copy_nonoverlapping(bgra.as_ptr(), bits as *mut u8, bgra.len());
+        }
+
+        // Create monochrome mask (all zeros = fully opaque where color has alpha)
+        let hbm_mask = CreateBitmap(s, s, 1, 1, std::ptr::null());
+
+        let mut ii: ICONINFO = std::mem::zeroed();
+        ii.fIcon = 1; // TRUE = icon
+        ii.hbmMask = hbm_mask;
+        ii.hbmColor = hbm_color;
+
+        let hicon = CreateIconIndirect(&ii);
+
+        // Cleanup bitmaps (icon keeps its own copy)
+        if !hbm_color.is_null() { DeleteObject(hbm_color as _); }
+        if !hbm_mask.is_null() { DeleteObject(hbm_mask as _); }
+        ReleaseDC(std::ptr::null_mut(), hdc);
+
+        if !hicon.is_null() {
+            eprintln!("[native-chart] Icon created via CreateIconIndirect");
+            Some(hicon as isize)
+        } else {
+            eprintln!("[native-chart] Warning: CreateIconIndirect failed");
+            None
         }
     }
-    eprintln!("[native-chart] Warning: could not load icon file");
-    None
 }
 
 /// Convert a native Drawing to DbDrawing for persistence.
