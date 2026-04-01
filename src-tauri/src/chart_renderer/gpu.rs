@@ -748,32 +748,39 @@ fn make_window_icon() -> Option<winit::window::Icon> {
 /// Load HICON from the .ico file on disk for taskbar display.
 #[cfg(target_os = "windows")]
 fn make_window_icon_hicon() -> Option<isize> {
-    // Try to find the ico file relative to the exe
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
-    let ico_paths = [
+    let candidates = [
         exe_dir.as_ref().map(|d| d.join("icons").join("apex-native.ico")),
         exe_dir.as_ref().map(|d| d.join("..").join("..").join("icons").join("apex-native.ico")),
         Some(std::path::PathBuf::from("icons/apex-native.ico")),
+        // Also check src-tauri path for dev builds
+        exe_dir.as_ref().map(|d| d.join("..").join("..").join("..").join("icons").join("apex-native.ico")),
     ];
-    for maybe_path in &ico_paths {
+    for maybe_path in &candidates {
         if let Some(path) = maybe_path {
             if path.exists() {
-                let wide: Vec<u16> = path.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+                // Canonicalize to absolute path — LoadImageW needs it
+                let abs = path.canonicalize().unwrap_or_else(|_| path.clone());
+                let abs_str = abs.to_string_lossy().to_string();
+                let clean = abs_str.strip_prefix("\\\\?\\").unwrap_or(&abs_str);
+                let wide: Vec<u16> = clean.encode_utf16().chain(std::iter::once(0)).collect();
                 unsafe {
-                    let hicon = windows_sys::Win32::UI::WindowsAndMessaging::LoadImageW(
-                        std::ptr::null_mut(),
+                    let handle = windows_sys::Win32::UI::WindowsAndMessaging::LoadImageW(
+                        0 as _, // null hInstance
                         wide.as_ptr(),
                         1, // IMAGE_ICON
-                        32, 32,
+                        0, 0, // use default size from ico
                         0x00000010, // LR_LOADFROMFILE
                     );
-                    if !hicon.is_null() {
-                        return Some(hicon as isize);
+                    if handle != 0 as _ {
+                        eprintln!("[native-chart] Icon loaded from {}", abs.display());
+                        return Some(handle as isize);
                     }
                 }
             }
         }
     }
+    eprintln!("[native-chart] Warning: could not load icon file");
     None
 }
 
@@ -4088,10 +4095,16 @@ impl App {
                     if let Ok(handle) = w.window_handle() {
                         if let winit::raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
                             unsafe {
+                                let hwnd = h.hwnd.get() as *mut std::ffi::c_void;
+
+                                // Ensure WS_EX_APPWINDOW so taskbar shows our icon
+                                let ex_style = windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, -20);
+                                windows_sys::Win32::UI::WindowsAndMessaging::SetWindowLongW(hwnd, -20, ex_style | 0x00040000);
+
                                 // DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2
                                 let preference: u32 = 2;
                                 let _ = windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute(
-                                    h.hwnd.get() as _,
+                                    hwnd,
                                     33,
                                     &preference as *const u32 as *const _,
                                     std::mem::size_of::<u32>() as u32,
