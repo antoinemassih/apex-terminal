@@ -368,6 +368,21 @@ impl OrderLevel {
     fn notional(&self) -> f32 { self.price * self.qty as f32 }
 }
 
+/// Cancel an order and its paired leg (OCO/Trigger).
+fn cancel_order_with_pair(orders: &mut Vec<OrderLevel>, id: u32) {
+    let pair_id = orders.iter().find(|o| o.id == id).and_then(|o| o.pair_id);
+    if let Some(o) = orders.iter_mut().find(|o| o.id == id) {
+        o.status = OrderStatus::Cancelled;
+    }
+    if let Some(pid) = pair_id {
+        if let Some(o) = orders.iter_mut().find(|o| o.id == pid) {
+            if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed {
+                o.status = OrderStatus::Cancelled;
+            }
+        }
+    }
+}
+
 fn fmt_notional(v: f32) -> String {
     if v >= 1_000_000.0 { format!("${:.1}M", v / 1_000_000.0) }
     else if v >= 1_000.0 { format!("${:.1}K", v / 1_000.0) }
@@ -448,9 +463,11 @@ struct Chart {
     order_limit_price: String, // limit price as editable text
     order_entry_open: bool,
     dragging_order: Option<u32>, // order id being dragged
-    editing_order: Option<u32>, // order id being edited (double-click)
+    editing_order: Option<u32>,
     edit_order_qty: String,
     edit_order_price: String,
+    armed: bool, // skip confirmation, fire orders immediately
+    pending_confirms: Vec<(u32, std::time::Instant)>, // order ids awaiting user confirm from panel
     // Measure tool (shift+drag)
     measuring: bool,
     measure_start: Option<(f32, f32)>, // (bar, price) start point
@@ -496,6 +513,7 @@ impl Chart {
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
             orders: vec![], next_order_id: 1, order_qty: 100, order_market: true, order_limit_price: String::new(),
             order_entry_open: false, dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
+            armed: false, pending_confirms: vec![],
             measuring: false, measure_start: None, measure_active: false,
             pending_symbol_change: None, pending_timeframe_change: None,
             indicator_pts_buf: Vec::with_capacity(512) }
@@ -2009,9 +2027,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
 
                     if let Some((pi, oid)) = cancel_order {
-                        if let Some(o) = panes[pi].orders.iter_mut().find(|o| o.id == oid) {
-                            o.status = OrderStatus::Cancelled;
-                        }
+                        cancel_order_with_pair(&mut panes[pi].orders, oid);
                     }
 
                     // Positions section
@@ -2594,20 +2610,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 dx += 10.0;
             }
 
-            // Label badge — LEFT aligned, opaque background
-            let label = format!("{} x{} @ {:.2}  {}", order.label(), order.qty, order.price, fmt_notional(order.notional()));
-            let badge_w = label.len() as f32 * 5.8 + 16.0;
+            // Label badge — LEFT aligned, opaque, with submit button for drafts
+            let status_tag = match order.status { OrderStatus::Draft => " DRAFT", OrderStatus::Placed => "", _ => "" };
+            let label = format!("{} x{} @ {:.2} {}{}", order.label(), order.qty, order.price, fmt_notional(order.notional()), status_tag);
+            let extra_w = if order.status == OrderStatus::Draft { 50.0 } else { 0.0 }; // space for submit btn
+            let badge_w = label.len() as f32 * 5.8 + 16.0 + extra_w;
             let badge_rect = egui::Rect::from_min_size(
                 egui::pos2(rect.left() + 6.0, y - 10.0),
                 egui::vec2(badge_w, 20.0),
             );
-            // Opaque background matching toolbar
             painter.rect_filled(badge_rect, 3.0, t.toolbar_bg);
             painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
             painter.text(
                 egui::pos2(badge_rect.left() + 6.0, badge_rect.center().y),
                 egui::Align2::LEFT_CENTER, &label, egui::FontId::monospace(9.0), color,
             );
+            // Submit button for draft orders (rendered as a clickable rect at badge end)
+            if order.status == OrderStatus::Draft {
+                let btn_rect = egui::Rect::from_min_size(
+                    egui::pos2(badge_rect.right() - 46.0, badge_rect.top() + 2.0),
+                    egui::vec2(42.0, 16.0),
+                );
+                painter.rect_filled(btn_rect, 2.0, egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 60));
+                painter.rect_stroke(btn_rect, 2.0, egui::Stroke::new(0.5, t.accent), egui::StrokeKind::Outside);
+                painter.text(btn_rect.center(), egui::Align2::CENTER_CENTER, "SUBMIT", egui::FontId::monospace(8.0), t.accent);
+                // We'll detect clicks on this in the interaction section below
+            }
 
             // Price label on y-axis — opaque
             let axis_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw + 1.0, y - 8.0), egui::vec2(pr - 2.0, 16.0));
@@ -2682,7 +2710,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if let Some(o) = chart.orders.iter_mut().find(|o| o.id == edit_id) { o.qty = q; }
                 }
                 if cancel_it {
-                    if let Some(o) = chart.orders.iter_mut().find(|o| o.id == edit_id) { o.status = OrderStatus::Cancelled; }
+                    cancel_order_with_pair(&mut chart.orders, edit_id);
                     chart.editing_order = None;
                 }
                 if close_editor { chart.editing_order = None; }
@@ -2758,7 +2786,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let sell_price = if chart.order_market { last_price - spread } else {
                         chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
                     };
-                    let status = if chart.order_market { OrderStatus::Placed } else { OrderStatus::Draft };
+                    // All orders start as Draft — armed mode auto-places in the buy/sell handlers below
 
                     ui.horizontal(|ui| {
                         let buy_label = format!("BUY {:.2}", buy_price);
@@ -2766,7 +2794,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             .fill(egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 180))
                             .min_size(egui::vec2(82.0, 22.0)).corner_radius(3.0)).clicked() {
                             let id = chart.next_order_id; chart.next_order_id += 1;
-                            chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status, pair_id: None });
+                            let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
+                            chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None });
+                            if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                         }
 
                         let sell_label = format!("SELL {:.2}", sell_price);
@@ -2774,14 +2804,68 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             .fill(egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 180))
                             .min_size(egui::vec2(82.0, 22.0)).corner_radius(3.0)).clicked() {
                             let id = chart.next_order_id; chart.next_order_id += 1;
-                            chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status, pair_id: None });
+                            let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
+                            chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None });
+                            if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                         }
                     });
 
-                    // Row 4: Info
-                    ui.add_space(2.0);
-                    ui.label(egui::RichText::new(format!("Spread: {:.4}  Last: {:.2}", spread * 2.0, last_price)).monospace().size(8.0).color(t.dim));
+                    // Row 4: Armed checkbox + info
+                    ui.horizontal(|ui| {
+                        let armed_color = if chart.armed { t.accent } else { t.dim };
+                        ui.checkbox(&mut chart.armed, egui::RichText::new("Armed").monospace().size(9.0).color(armed_color));
+                        ui.label(egui::RichText::new(format!("Spr:{:.4} Last:{:.2}", spread * 2.0, last_price)).monospace().size(8.0).color(t.dim));
+                    });
                 });
+
+            // ── Pending confirm toasts (above order entry panel) ─────────
+            if !chart.pending_confirms.is_empty() {
+                let mut confirm_ids: Vec<u32> = Vec::new();
+                let mut cancel_ids: Vec<u32> = Vec::new();
+                let base_y = rect.top() + pt + ch - 120.0 - 8.0; // above the panel
+
+                for (ci, (oid, _created)) in chart.pending_confirms.iter().enumerate() {
+                    let order_data = chart.orders.iter().find(|o| o.id == *oid)
+                        .map(|o| (o.label(), o.price, o.qty, o.color(t)));
+                    if let Some((label, price, qty, color)) = order_data {
+                        let toast_y = base_y - ci as f32 * 34.0;
+                        egui::Window::new(format!("confirm_toast_{}_{}", pane_idx, oid))
+                            .fixed_pos(egui::pos2(rect.left() + 8.0, toast_y))
+                            .fixed_size(egui::vec2(180.0, 26.0))
+                            .title_bar(false)
+                            .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(4.0)
+                                .stroke(egui::Stroke::new(1.0, color)))
+                            .show(ctx, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(10.0).color(color));
+                                    if ui.add(egui::Button::new(egui::RichText::new("\u{2713}").size(11.0).color(t.bull))
+                                        .fill(egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 40))
+                                        .corner_radius(2.0).min_size(egui::vec2(24.0, 20.0))).clicked() {
+                                        confirm_ids.push(*oid);
+                                    }
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.bear))
+                                        .corner_radius(2.0).min_size(egui::vec2(24.0, 20.0))).clicked() {
+                                        cancel_ids.push(*oid);
+                                    }
+                                });
+                            });
+                    } else {
+                        cancel_ids.push(*oid); // order was deleted
+                    }
+                }
+
+                // Apply confirms — place the orders
+                for id in &confirm_ids {
+                    if let Some(o) = chart.orders.iter_mut().find(|o| o.id == *id) {
+                        o.status = OrderStatus::Placed;
+                    }
+                }
+                // Apply cancels (with pair cancellation)
+                for id in &cancel_ids {
+                    cancel_order_with_pair(&mut chart.orders, *id);
+                }
+                chart.pending_confirms.retain(|(id, _)| !confirm_ids.contains(id) && !cancel_ids.contains(id));
+            }
         }
 
         // Middle-click cycles through drawing tools
@@ -2860,6 +2944,38 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         // Activate pane on any interaction
         if visible_count > 1 && (resp.clicked() || resp.drag_started()) {
             *active_pane = pane_idx;
+        }
+
+        // Check for submit button clicks on draft order badges
+        if resp.clicked() && chart.draw_tool.is_empty() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                let mut submitted = Vec::new();
+                for order in &chart.orders {
+                    if order.status != OrderStatus::Draft { continue; }
+                    let oy = py(order.price);
+                    // Submit button is at badge right side
+                    let status_tag = " DRAFT";
+                    let label = format!("{} x{} @ {:.2} {}{}", order.label(), order.qty, order.price, fmt_notional(order.notional()), status_tag);
+                    let badge_w = label.len() as f32 * 5.8 + 16.0 + 50.0;
+                    let btn_left = rect.left() + 6.0 + badge_w - 46.0;
+                    let btn_top = oy - 10.0 + 2.0;
+                    let btn_rect = egui::Rect::from_min_size(egui::pos2(btn_left, btn_top), egui::vec2(42.0, 16.0));
+                    if btn_rect.contains(pos) {
+                        submitted.push(order.id);
+                    }
+                }
+                for id in &submitted {
+                    // Submit this order and its pair
+                    if let Some(o) = chart.orders.iter_mut().find(|o| o.id == *id) {
+                        o.status = OrderStatus::Placed;
+                        if let Some(pid) = o.pair_id {
+                            if let Some(p) = chart.orders.iter_mut().find(|o| o.id == pid && o.status == OrderStatus::Draft) {
+                                p.status = OrderStatus::Placed;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         let pos_to_bar = |pos: egui::Pos2| -> f32 { (pos.x - rect.left() + off - bs*0.5) / bs + vs };
