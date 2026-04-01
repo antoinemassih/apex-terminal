@@ -4126,6 +4126,7 @@ impl App {
             .with_inner_size(PhysicalSize::new(self.iw, self.ih))
             .with_min_inner_size(PhysicalSize::new(960, 540))
             .with_decorations(false)
+            .with_window_icon(make_window_icon())
             .with_active(true))
         {
             Ok(w) => {
