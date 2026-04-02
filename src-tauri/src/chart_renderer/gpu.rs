@@ -2616,6 +2616,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             let mut remove_sym: Option<String> = None;
                             let mut click_sym: Option<String> = None;
+                            let mut click_opt: Option<(String, f32, bool, String)> = None; // option click -> open chart
                             let mut toggle_collapse: Option<usize> = None;
                             let mut remove_section: Option<usize> = None;
                             let full_w = ui.available_width();
@@ -2765,6 +2766,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         let item_price = item.price;
                                         let item_prev_close = item.prev_close;
                                         let item_loaded = item.loaded;
+                                        let item_is_option = item.is_option;
+                                        let item_underlying = item.underlying.clone();
+                                        let item_option_type = item.option_type.clone();
+                                        let item_strike = item.strike;
+                                        let item_expiry = item.expiry.clone();
                                         let is_dragged = drag_confirmed && dragging == Some((si, ii));
 
                                         // Skip rendering the dragged item in-place (it's shown as floating)
@@ -2776,67 +2782,132 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
 
                                         let is_active = item_sym == active_sym;
-                                        let change_pct = if item_prev_close > 0.0 { ((item_price - item_prev_close) / item_prev_close) * 100.0 } else { 0.0 };
-                                        let color = if change_pct >= 0.0 { t.bull } else { t.bear };
-                                        let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
-                                        let change_str = if item_loaded { format!("{:+.1}%", change_pct) } else { "".into() };
 
-                                        // Active highlight background (no per-row section tint — handled by continuous block)
-                                        let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
+                                        if item_is_option {
+                                            // ── Option item rendering ──
+                                            let opt_color = if item_option_type == "C" { t.bull } else { t.bear };
+                                            let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
+                                            let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
 
-                                        let resp = ui.horizontal(|ui| {
-                                            ui.set_min_width(full_w);
-                                            ui.set_min_height(24.0);
-                                            // Paint background
-                                            ui.painter().rect_filled(ui.max_rect(), 0.0, row_bg);
-                                            // Active indicator bar
-                                            if is_active {
-                                                let r = ui.max_rect();
-                                                ui.painter().rect_filled(
-                                                    egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 2.5, r.max.y)),
-                                                    1.0, t.accent);
-                                            }
-                                            ui.add_space(if is_active { 8.0 } else { 4.0 });
-                                            // Drag grip (subtle dots icon)
-                                            ui.label(egui::RichText::new(Icon::DOTS_SIX_VERTICAL).size(9.0).color(t.dim.gamma_multiply(0.2)));
-                                            ui.add_space(2.0);
-                                            // Symbol name
-                                            let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(200, 200, 210) };
-                                            ui.label(egui::RichText::new(&item_sym).monospace().size(12.0).strong().color(sym_color));
-                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                // X button
-                                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
-                                                    remove_sym = Some(item_sym.clone());
+                                            let resp = ui.horizontal(|ui| {
+                                                ui.set_min_width(full_w);
+                                                ui.set_min_height(24.0);
+                                                ui.painter().rect_filled(ui.max_rect(), 0.0, row_bg);
+                                                if is_active {
+                                                    let r = ui.max_rect();
+                                                    ui.painter().rect_filled(
+                                                        egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 2.5, r.max.y)),
+                                                        1.0, t.accent);
                                                 }
-                                                // Change %
-                                                ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
-                                                // Price
-                                                ui.label(egui::RichText::new(&price_str).monospace().size(12.0).color(color));
+                                                ui.add_space(if is_active { 8.0 } else { 4.0 });
+                                                // Drag grip
+                                                ui.label(egui::RichText::new(Icon::DOTS_SIX_VERTICAL).size(9.0).color(t.dim.gamma_multiply(0.2)));
+                                                ui.add_space(2.0);
+                                                // C/P badge
+                                                let badge_bg = color_alpha(opt_color, 35);
+                                                let badge_resp = ui.add(egui::Button::new(
+                                                    egui::RichText::new(&item_option_type).monospace().size(9.0).strong().color(opt_color))
+                                                    .fill(badge_bg).corner_radius(2.0).stroke(egui::Stroke::NONE)
+                                                    .min_size(egui::vec2(16.0, 16.0)));
+                                                let _ = badge_resp;
+                                                ui.add_space(2.0);
+                                                // Full option name (e.g. "SPY 560C 0DTE")
+                                                let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(200, 200, 210) };
+                                                ui.label(egui::RichText::new(&item_sym).monospace().size(10.5).strong().color(sym_color));
+                                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                    // X button
+                                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
+                                                        remove_sym = Some(item_sym.clone());
+                                                    }
+                                                    // Price
+                                                    ui.label(egui::RichText::new(&price_str).monospace().size(11.0).color(opt_color));
+                                                });
                                             });
-                                        });
 
-                                        let row_rect = resp.response.rect;
-                                        row_rects.push((si, ii, row_rect));
+                                            let row_rect = resp.response.rect;
+                                            row_rects.push((si, ii, row_rect));
 
-                                        // Drag-and-drop: use click_and_drag sense on the row
-                                        let drag_resp = resp.response.interact(egui::Sense::click_and_drag());
+                                            let drag_resp = resp.response.interact(egui::Sense::click_and_drag());
+                                            if drag_resp.drag_started() {
+                                                watchlist.dragging = Some((si, ii));
+                                                watchlist.drag_start_pos = pointer_pos;
+                                                watchlist.drag_confirmed = false;
+                                            }
+                                            // Click opens option chart (not stock symbol change)
+                                            if drag_resp.clicked() && !drag_confirmed {
+                                                let is_call = item_option_type == "C";
+                                                click_opt = Some((item_underlying.clone(), item_strike, is_call, item_expiry.clone()));
+                                            }
+                                            if drag_resp.hovered() && !drag_confirmed {
+                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                                if !is_active {
+                                                    ui.painter().rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, 25));
+                                                }
+                                            }
+                                        } else {
+                                            // ── Stock item rendering (original) ──
+                                            let change_pct = if item_prev_close > 0.0 { ((item_price - item_prev_close) / item_prev_close) * 100.0 } else { 0.0 };
+                                            let color = if change_pct >= 0.0 { t.bull } else { t.bear };
+                                            let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
+                                            let change_str = if item_loaded { format!("{:+.1}%", change_pct) } else { "".into() };
 
-                                        if drag_resp.drag_started() {
-                                            watchlist.dragging = Some((si, ii));
-                                            watchlist.drag_start_pos = pointer_pos;
-                                            watchlist.drag_confirmed = false;
-                                        }
+                                            // Active highlight background (no per-row section tint — handled by continuous block)
+                                            let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
 
-                                        // Click to select symbol (only if not dragging)
-                                        if drag_resp.clicked() && !drag_confirmed {
-                                            click_sym = Some(item_sym.clone());
-                                        }
+                                            let resp = ui.horizontal(|ui| {
+                                                ui.set_min_width(full_w);
+                                                ui.set_min_height(24.0);
+                                                // Paint background
+                                                ui.painter().rect_filled(ui.max_rect(), 0.0, row_bg);
+                                                // Active indicator bar
+                                                if is_active {
+                                                    let r = ui.max_rect();
+                                                    ui.painter().rect_filled(
+                                                        egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 2.5, r.max.y)),
+                                                        1.0, t.accent);
+                                                }
+                                                ui.add_space(if is_active { 8.0 } else { 4.0 });
+                                                // Drag grip (subtle dots icon)
+                                                ui.label(egui::RichText::new(Icon::DOTS_SIX_VERTICAL).size(9.0).color(t.dim.gamma_multiply(0.2)));
+                                                ui.add_space(2.0);
+                                                // Symbol name
+                                                let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(200, 200, 210) };
+                                                ui.label(egui::RichText::new(&item_sym).monospace().size(12.0).strong().color(sym_color));
+                                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                    // X button
+                                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
+                                                        remove_sym = Some(item_sym.clone());
+                                                    }
+                                                    // Change %
+                                                    ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
+                                                    // Price
+                                                    ui.label(egui::RichText::new(&price_str).monospace().size(12.0).color(color));
+                                                });
+                                            });
 
-                                        // Hover highlight (only if not dragging)
-                                        if drag_resp.hovered() && !drag_confirmed {
-                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                            if !is_active {
-                                                ui.painter().rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, 25));
+                                            let row_rect = resp.response.rect;
+                                            row_rects.push((si, ii, row_rect));
+
+                                            // Drag-and-drop: use click_and_drag sense on the row
+                                            let drag_resp = resp.response.interact(egui::Sense::click_and_drag());
+
+                                            if drag_resp.drag_started() {
+                                                watchlist.dragging = Some((si, ii));
+                                                watchlist.drag_start_pos = pointer_pos;
+                                                watchlist.drag_confirmed = false;
+                                            }
+
+                                            // Click to select symbol (only if not dragging)
+                                            if drag_resp.clicked() && !drag_confirmed {
+                                                click_sym = Some(item_sym.clone());
+                                            }
+
+                                            // Hover highlight (only if not dragging)
+                                            if drag_resp.hovered() && !drag_confirmed {
+                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                                if !is_active {
+                                                    ui.painter().rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, 25));
+                                                }
                                             }
                                         }
                                     }
@@ -2980,6 +3051,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             if let Some(sym) = click_sym {
                                 panes[ap].pending_symbol_change = Some(sym.clone());
                                 panes[ap].is_option = false; // reset option flag when switching to stock
+                            }
+                            if let Some(opt_info) = click_opt {
+                                open_option_chart = Some(opt_info);
                             }
                             if let Some(sym) = remove_sym { watchlist.remove_symbol(&sym); watchlist.persist(); }
                             if let Some(si) = toggle_collapse {
@@ -3211,7 +3285,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
                         });
                         // Open option chart if a contract was clicked (non-select mode)
+                        // Also add to watchlist "Options" section
                         if let Some(info) = clicked_contract.take() {
+                            let (ref sym, strike, is_call, ref expiry) = info;
+                            watchlist.add_option_to_watchlist(sym, strike, is_call, expiry);
+                            watchlist.persist();
                             open_option_chart = Some(info);
                         }
                     }
@@ -5729,6 +5807,12 @@ struct WatchlistItem {
     price: f32,
     prev_close: f32,
     loaded: bool,
+    // Option fields (defaults for stocks)
+    is_option: bool,
+    underlying: String,    // e.g. "SPY"
+    option_type: String,   // "C" or "P"
+    strike: f32,
+    expiry: String,        // "0DTE", "5DTE" etc.
 }
 
 #[derive(Clone)]
@@ -5864,7 +5948,7 @@ impl Watchlist {
             self.sections.push(WatchlistSection { id, title: String::new(), color: None, collapsed: false, items: vec![] });
         }
         let last = self.sections.last_mut().unwrap();
-        last.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false });
+        last.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new() });
     }
 
     /// Remove symbol from all sections.
@@ -5907,6 +5991,32 @@ impl Watchlist {
         self.sections.push(WatchlistSection {
             id, title: title.to_string(), color: None, collapsed: false, items: vec![],
         });
+    }
+
+    /// Add an option contract to the "Options" section (auto-creates if needed).
+    /// Returns false if already present (duplicate check by symbol string).
+    fn add_option_to_watchlist(&mut self, underlying: &str, strike: f32, is_call: bool, expiry: &str) -> bool {
+        let type_str = if is_call { "C" } else { "P" };
+        let opt_sym = format!("{} {:.0}{} {}", underlying, strike, type_str, expiry);
+        // Duplicate check across all sections
+        if self.sections.iter().any(|sec| sec.items.iter().any(|i| i.symbol == opt_sym)) {
+            return false;
+        }
+        // Find or create "Options" section
+        let sec_idx = if let Some(idx) = self.sections.iter().position(|s| s.title == "Options") {
+            idx
+        } else {
+            let id = self.next_section_id; self.next_section_id += 1;
+            self.sections.push(WatchlistSection {
+                id, title: "Options".to_string(), color: Some("#9b59b6".to_string()), collapsed: false, items: vec![],
+            });
+            self.sections.len() - 1
+        };
+        self.sections[sec_idx].items.push(WatchlistItem {
+            symbol: opt_sym, price: 0.0, prev_close: 0.0, loaded: false,
+            is_option: true, underlying: underlying.to_string(), option_type: type_str.to_string(), strike, expiry: expiry.to_string(),
+        });
+        true
     }
 
     /// Move an item from (src_sec, src_idx) to (dst_sec, dst_idx).
@@ -6803,7 +6913,11 @@ fn save_watchlists(watchlist: &Watchlist) {
     let wls: Vec<serde_json::Value> = watchlist.saved_watchlists.iter().map(|wl| {
         let sections: Vec<serde_json::Value> = wl.sections.iter().map(|sec| {
             let items: Vec<serde_json::Value> = sec.items.iter().map(|item| {
-                serde_json::json!({ "symbol": item.symbol })
+                if item.is_option {
+                    serde_json::json!({ "symbol": item.symbol, "is_option": true, "underlying": item.underlying, "option_type": item.option_type, "strike": item.strike, "expiry": item.expiry })
+                } else {
+                    serde_json::json!({ "symbol": item.symbol })
+                }
             }).collect();
             serde_json::json!({
                 "id": sec.id,
@@ -6857,7 +6971,12 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
                     for item_val in item_arr {
                         let symbol = item_val.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
                         if !symbol.is_empty() {
-                            items.push(WatchlistItem { symbol, price: 0.0, prev_close: 0.0, loaded: false });
+                            let is_option = item_val.get("is_option").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let underlying = item_val.get("underlying").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let option_type = item_val.get("option_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let strike = item_val.get("strike").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                            let expiry = item_val.get("expiry").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            items.push(WatchlistItem { symbol, price: 0.0, prev_close: 0.0, loaded: false, is_option, underlying, option_type, strike, expiry });
                         }
                     }
                 }
@@ -6873,7 +6992,7 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
 
 fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
     let items: Vec<WatchlistItem> = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
-        symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
+        symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(),
     }).collect();
     let default_section = WatchlistSection {
         id: 1, title: String::new(), color: None, collapsed: false, items,
