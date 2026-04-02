@@ -477,37 +477,47 @@ struct Alert {
     message: String,
 }
 
-// ─── Trigger order (options entry/exit on underlying price) ─────────────────
+// ─── Trigger order (options on underlying price level) ──────────────────────
+
+/// A placed trigger level — like an order level but for conditional options trades.
+/// Lives on the underlying chart. Draggable, double-clickable.
+#[derive(Debug, Clone)]
+struct TriggerLevel {
+    id: u32,
+    side: OrderSide,         // BUY or SELL the option
+    trigger_price: f32,      // underlying price that triggers the order
+    above: bool,             // true = trigger when underlying >= price
+    // Option contract
+    symbol: String,           // underlying symbol
+    option_type: String,      // "C" or "P"
+    strike: f32,              // 0 = ATM
+    expiry: String,           // "" = 0DTE
+    qty: u32,
+    submitted: bool,          // true = sent to IB
+}
 
 #[derive(Debug, Clone, PartialEq)]
-enum TriggerPhase { Idle, PickEntry, PickExit, Ready }
+enum TriggerPhase { Idle, Picking }
 
 #[derive(Debug, Clone)]
 struct TriggerSetup {
     phase: TriggerPhase,
-    // Option contract
-    option_symbol: String,    // e.g. "SPY"
-    option_type: String,      // "C" or "P"
-    option_strike: f32,       // 0 = ATM
-    option_expiry: String,    // "20260402" or "" for 0DTE
-    option_qty: u32,
-    // Underlying price levels (set by clicking on chart)
-    entry_price: f32,
-    entry_above: bool,        // true = trigger when price goes above entry
-    exit_price: f32,
-    exit_above: bool,
-    // Which pane has the underlying chart (for crosshair rendering)
-    underlying_pane: Option<usize>,
+    pending_side: OrderSide,  // which side we're placing
+    option_type: String,
+    strike: f32,
+    expiry: String,
+    qty: u32,
+    // Pane management
+    source_pane: usize,       // pane where the order panel is
+    target_pane: Option<usize>, // pane with the underlying chart
 }
 
 impl Default for TriggerSetup {
     fn default() -> Self {
         Self {
-            phase: TriggerPhase::Idle,
-            option_symbol: String::new(), option_type: "C".into(),
-            option_strike: 0.0, option_expiry: String::new(), option_qty: 1,
-            entry_price: 0.0, entry_above: true, exit_price: 0.0, exit_above: true,
-            underlying_pane: None,
+            phase: TriggerPhase::Idle, pending_side: OrderSide::Buy,
+            option_type: "C".into(), strike: 0.0, expiry: String::new(), qty: 1,
+            source_pane: 0, target_pane: None,
         }
     }
 }
@@ -578,8 +588,12 @@ struct Chart {
     edit_order_price: String,
     armed: bool, // skip confirmation, fire orders immediately
     pending_confirms: Vec<(u32, std::time::Instant)>, // order ids awaiting user confirm from panel
-    // ── Trigger order (options entry/exit on underlying) ──
+    // ── Trigger orders (options on underlying price) ──
     trigger_setup: TriggerSetup,
+    trigger_levels: Vec<TriggerLevel>,
+    next_trigger_id: u32,
+    dragging_trigger: Option<u32>,
+    editing_trigger: Option<u32>,
     // Measure tool (shift+drag)
     measuring: bool,
     measure_start: Option<(f32, f32)>, // (bar, price) start point
@@ -634,7 +648,8 @@ impl Chart {
             order_tp_price: String::new(), order_sl_price: String::new(),
             order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false,
             dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
-            armed: false, pending_confirms: vec![], trigger_setup: TriggerSetup::default(),
+            armed: false, pending_confirms: vec![],
+            trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None,
             measuring: false, measure_start: None, measure_active: false,
             pending_symbol_change: None, pending_timeframe_change: None,
             cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
@@ -3193,29 +3208,31 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // Drawings (with selection highlight + endpoint handles)
         // Clamp helper — prevents extreme coordinates from causing massive tessellation allocations
-        // ── Trigger order lines (entry/exit on underlying) ──
-        if chart.trigger_setup.phase == TriggerPhase::Ready || chart.trigger_setup.phase == TriggerPhase::PickExit {
-            if chart.trigger_setup.entry_price > 0.0 {
-                let ey = py(chart.trigger_setup.entry_price);
-                if ey.is_finite() && ey.abs() < 50000.0 {
-                    // Dashed entry line
-                    dashed_line(&painter, egui::pos2(rect.left(), ey), egui::pos2(rect.left()+cw, ey),
-                        egui::Stroke::new(1.5, t.accent), LineStyle::Dashed);
-                    painter.text(egui::pos2(rect.left() + 4.0, ey - 12.0), egui::Align2::LEFT_BOTTOM,
-                        &format!("{} ENTRY {:.2}", Icon::LIGHTNING, chart.trigger_setup.entry_price),
-                        egui::FontId::monospace(9.0), t.accent);
-                }
-            }
-            if chart.trigger_setup.exit_price > 0.0 {
-                let xy = py(chart.trigger_setup.exit_price);
-                if xy.is_finite() && xy.abs() < 50000.0 {
-                    dashed_line(&painter, egui::pos2(rect.left(), xy), egui::pos2(rect.left()+cw, xy),
-                        egui::Stroke::new(1.5, t.bull), LineStyle::Dashed);
-                    painter.text(egui::pos2(rect.left() + 4.0, xy - 12.0), egui::Align2::LEFT_BOTTOM,
-                        &format!("{} EXIT {:.2}", Icon::LIGHTNING, chart.trigger_setup.exit_price),
-                        egui::FontId::monospace(9.0), t.bull);
-                }
-            }
+        // ── Trigger level lines (options conditional orders on underlying) ──
+        for tl in &chart.trigger_levels {
+            let y = py(tl.trigger_price);
+            if !y.is_finite() || y.abs() > 50000.0 { continue; }
+            let is_buy = tl.side == OrderSide::Buy;
+            let color = if is_buy { t.bull } else { t.bear };
+            let alpha = if tl.submitted { 180 } else { 255 };
+            let label = format!("{} {} {} {:.2} x{}", Icon::LIGHTNING,
+                if is_buy { "BUY" } else { "SELL" }, tl.option_type, tl.trigger_price, tl.qty);
+            let status = if tl.submitted { " LIVE" } else { " DRAFT" };
+            // Dashed line
+            dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+                egui::Stroke::new(1.5, color_alpha(color, alpha)), LineStyle::Dashed);
+            // Label on the left
+            painter.text(egui::pos2(rect.left() + 4.0, y - 12.0), egui::Align2::LEFT_BOTTOM,
+                &label, egui::FontId::monospace(9.0), color_alpha(color, alpha));
+            // Status badge on the right
+            painter.text(egui::pos2(rect.left() + cw - 4.0, y - 12.0), egui::Align2::RIGHT_BOTTOM,
+                status, egui::FontId::monospace(8.0), color_alpha(color, 120));
+            // Y-axis price tag
+            let tag_w = 54.0;
+            let tag_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw, y - 8.0), egui::vec2(tag_w, 16.0));
+            painter.rect_filled(tag_rect, 2.0, color_alpha(color, alpha));
+            painter.text(tag_rect.center(), egui::Align2::CENTER_CENTER,
+                &format!("{:.2}", tl.trigger_price), egui::FontId::monospace(9.0), egui::Color32::WHITE);
         }
 
         let clamp_pt = |p: egui::Pos2| -> egui::Pos2 {
@@ -3934,68 +3951,52 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         });
 
-                        // Trigger order mode
+                        // ── Options trigger: BUY/SELL at underlying level ──
                         ui.horizontal(|ui| {
                             ui.add_space(pad);
-                            let is_picking = chart.trigger_setup.phase == TriggerPhase::PickEntry || chart.trigger_setup.phase == TriggerPhase::PickExit;
-                            let trg_color = if is_picking { t.accent } else { t.dim.gamma_multiply(0.5) };
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} Opt Trigger", Icon::LIGHTNING)).monospace().size(9.0).color(trg_color))
-                                .fill(if is_picking { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
-                                .min_size(egui::vec2(0.0, 18.0))).clicked() {
-                                if is_picking {
-                                    chart.trigger_setup.phase = TriggerPhase::Idle;
-                                } else {
-                                    chart.trigger_setup = TriggerSetup {
-                                        phase: TriggerPhase::PickEntry,
-                                        option_symbol: chart.symbol.clone(),
-                                        option_qty: chart.order_qty,
-                                        ..TriggerSetup::default()
-                                    };
-                                }
+                            let picking = chart.trigger_setup.phase == TriggerPhase::Picking;
+                            // C/P toggle
+                            for opt_t in ["C", "P"] {
+                                let sel = chart.trigger_setup.option_type == opt_t;
+                                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.6) };
+                                let bg = if sel { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 25) };
+                                if ui.add(egui::Button::new(egui::RichText::new(opt_t).monospace().size(9.0).color(fg))
+                                    .fill(bg).corner_radius(2.0).min_size(egui::vec2(20.0, 18.0))
+                                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 100) } else { color_alpha(t.toolbar_border, 50) })))
+                                    .clicked() { chart.trigger_setup.option_type = opt_t.into(); }
                             }
-                            // Status text
-                            match chart.trigger_setup.phase {
-                                TriggerPhase::PickEntry => { ui.label(egui::RichText::new("Click entry level").monospace().size(8.0).color(t.accent)); }
-                                TriggerPhase::PickExit => { ui.label(egui::RichText::new("Click exit level").monospace().size(8.0).color(t.bull)); }
-                                TriggerPhase::Ready => {
-                                    ui.label(egui::RichText::new(format!("E:{:.0} X:{:.0}", chart.trigger_setup.entry_price, chart.trigger_setup.exit_price))
-                                        .monospace().size(8.0).color(t.accent));
-                                    // Submit button
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::CHECK).size(10.0).color(t.bull))
-                                        .fill(color_alpha(t.bull, 25)).corner_radius(2.0)
-                                        .min_size(egui::vec2(20.0, 16.0))).clicked() {
-                                        // Submit to ApexIB
-                                        let ts = chart.trigger_setup.clone();
-                                        std::thread::spawn(move || {
-                                            let body = serde_json::json!({
-                                                "underlying": ts.option_symbol,
-                                                "optionType": ts.option_type,
-                                                "strike": ts.option_strike,
-                                                "expiration": ts.option_expiry,
-                                                "quantity": ts.option_qty,
-                                                "entryPrice": ts.entry_price,
-                                                "entryDirection": if ts.entry_above { "above" } else { "below" },
-                                                "exitPrice": ts.exit_price,
-                                                "exitDirection": if ts.exit_above { "above" } else { "below" },
-                                                "exitOrderType": "market"
-                                            });
-                                            match reqwest::blocking::Client::new()
-                                                .post(format!("{}/orders/options-trigger", APEXIB_URL))
-                                                .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
-                                                Ok(r) => eprintln!("[trigger] submitted: {}", r.status()),
-                                                Err(e) => eprintln!("[trigger] error: {e}"),
-                                            }
-                                        });
-                                        chart.trigger_setup.phase = TriggerPhase::Idle;
-                                    }
-                                    // Cancel
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.bear))
-                                        .frame(false)).clicked() {
-                                        chart.trigger_setup.phase = TriggerPhase::Idle;
-                                    }
+                            ui.add_space(4.0);
+                            // BUY trigger
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} BUY", Icon::LIGHTNING)).monospace().size(9.0)
+                                .color(if picking && chart.trigger_setup.pending_side == OrderSide::Buy { egui::Color32::WHITE } else { t.bull }))
+                                .fill(if picking && chart.trigger_setup.pending_side == OrderSide::Buy { color_alpha(t.bull, 80) } else { color_alpha(t.bull, 20) })
+                                .stroke(egui::Stroke::new(0.5, color_alpha(t.bull, 80))).corner_radius(2.0)
+                                .min_size(egui::vec2(0.0, 18.0))).clicked() {
+                                chart.trigger_setup = TriggerSetup {
+                                    phase: TriggerPhase::Picking, pending_side: OrderSide::Buy,
+                                    option_type: chart.trigger_setup.option_type.clone(),
+                                    qty: chart.order_qty, source_pane: pane_idx,
+                                    ..TriggerSetup::default()
+                                };
+                            }
+                            // SELL trigger
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} SELL", Icon::LIGHTNING)).monospace().size(9.0)
+                                .color(if picking && chart.trigger_setup.pending_side == OrderSide::Sell { egui::Color32::WHITE } else { t.bear }))
+                                .fill(if picking && chart.trigger_setup.pending_side == OrderSide::Sell { color_alpha(t.bear, 80) } else { color_alpha(t.bear, 20) })
+                                .stroke(egui::Stroke::new(0.5, color_alpha(t.bear, 80))).corner_radius(2.0)
+                                .min_size(egui::vec2(0.0, 18.0))).clicked() {
+                                chart.trigger_setup = TriggerSetup {
+                                    phase: TriggerPhase::Picking, pending_side: OrderSide::Sell,
+                                    option_type: chart.trigger_setup.option_type.clone(),
+                                    qty: chart.order_qty, source_pane: pane_idx,
+                                    ..TriggerSetup::default()
+                                };
+                            }
+                            if picking {
+                                ui.label(egui::RichText::new("click level").monospace().size(8.0).color(t.accent));
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim)).frame(false)).clicked() {
+                                    chart.trigger_setup.phase = TriggerPhase::Idle;
                                 }
-                                _ => {}
                             }
                         });
                     }
@@ -4525,50 +4526,44 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 chart.dragging_drawing = None;
             }
         }
-        // Trigger order crosshair mode — click to set entry/exit price
-        else if chart.trigger_setup.phase == TriggerPhase::PickEntry || chart.trigger_setup.phase == TriggerPhase::PickExit {
+        // Trigger order crosshair mode — click to place ONE trigger level
+        else if chart.trigger_setup.phase == TriggerPhase::Picking {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-            // Draw crosshair line at mouse Y
             if let Some(mouse) = ui.input(|i| i.pointer.hover_pos()) {
                 if rect.contains(mouse) {
                     let price_at_mouse = py_inv(mouse.y);
-                    let is_entry = chart.trigger_setup.phase == TriggerPhase::PickEntry;
-                    let line_color = if is_entry { t.accent } else { t.bull };
-                    // Horizontal line
+                    let is_buy = chart.trigger_setup.pending_side == OrderSide::Buy;
+                    let line_color = if is_buy { t.bull } else { t.bear };
+                    let side_label = if is_buy { "BUY" } else { "SELL" };
+                    let opt_label = &chart.trigger_setup.option_type;
+                    // Horizontal line at cursor
                     painter.line_segment(
                         [egui::pos2(rect.left(), mouse.y), egui::pos2(rect.left() + cw, mouse.y)],
-                        egui::Stroke::new(1.0, color_alpha(line_color, 180)));
-                    // Price label
-                    let label = if is_entry { format!("ENTRY {:.2}", price_at_mouse) } else { format!("EXIT {:.2}", price_at_mouse) };
-                    painter.text(egui::pos2(rect.left() + cw - 80.0, mouse.y - 12.0), egui::Align2::LEFT_BOTTOM,
-                        &label, egui::FontId::monospace(10.0), line_color);
-                    // Click to set
+                        egui::Stroke::new(1.5, color_alpha(line_color, 200)));
+                    // Label
+                    painter.text(egui::pos2(rect.left() + cw - 120.0, mouse.y - 14.0), egui::Align2::LEFT_BOTTOM,
+                        &format!("{} {} {} @ {:.2}", Icon::LIGHTNING, side_label, opt_label, price_at_mouse),
+                        egui::FontId::monospace(10.0), line_color);
+                    // Click to place
                     if resp.clicked() {
-                        if is_entry {
-                            chart.trigger_setup.entry_price = price_at_mouse;
-                            chart.trigger_setup.entry_above = price_at_mouse > last_price;
-                            chart.trigger_setup.phase = TriggerPhase::PickExit;
-                        } else {
-                            chart.trigger_setup.exit_price = price_at_mouse;
-                            chart.trigger_setup.exit_above = price_at_mouse > last_price;
-                            chart.trigger_setup.phase = TriggerPhase::Ready;
-                        }
+                        let id = chart.next_trigger_id; chart.next_trigger_id += 1;
+                        let above = price_at_mouse > last_price;
+                        chart.trigger_levels.push(TriggerLevel {
+                            id, side: chart.trigger_setup.pending_side.clone(),
+                            trigger_price: price_at_mouse, above,
+                            symbol: chart.symbol.clone(),
+                            option_type: chart.trigger_setup.option_type.clone(),
+                            strike: chart.trigger_setup.strike,
+                            expiry: chart.trigger_setup.expiry.clone(),
+                            qty: chart.trigger_setup.qty,
+                            submitted: false,
+                        });
+                        chart.trigger_setup.phase = TriggerPhase::Idle;
                     }
-                    // Escape to cancel
                     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                         chart.trigger_setup.phase = TriggerPhase::Idle;
                     }
                 }
-            }
-            // Draw already-set entry line
-            if chart.trigger_setup.entry_price > 0.0 && chart.trigger_setup.phase != TriggerPhase::PickEntry {
-                let ey = py(chart.trigger_setup.entry_price);
-                painter.line_segment(
-                    [egui::pos2(rect.left(), ey), egui::pos2(rect.left() + cw, ey)],
-                    egui::Stroke::new(1.5, t.accent));
-                painter.text(egui::pos2(rect.left() + 4.0, ey - 12.0), egui::Align2::LEFT_BOTTOM,
-                    &format!("{} ENTRY {:.2}", Icon::LIGHTNING, chart.trigger_setup.entry_price),
-                    egui::FontId::monospace(9.0), t.accent);
             }
         }
         // Pan chart (only when not dragging a drawing and no tool active)
