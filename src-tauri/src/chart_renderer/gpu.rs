@@ -1390,72 +1390,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // Keyboard shortcuts help
-            if tb_btn(ui, Icon::QUESTION, watchlist.shortcuts_open, t).clicked() {
-                watchlist.shortcuts_open = !watchlist.shortcuts_open;
-            }
-
-            // New window button
-            if tb_btn(ui, &format!("{} Window", Icon::PLUS), false, t).clicked() {
-                let (tx, rx) = std::sync::mpsc::channel();
-                let sym = panes[ap].symbol.clone();
-                let tf = panes[ap].timeframe.clone();
-                let initial = super::ChartCommand::LoadBars {
-                    symbol: sym.clone(), timeframe: tf.clone(), bars: vec![], timestamps: vec![],
-                };
-                {
-                    let global = crate::NATIVE_CHART_TXS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
-                    global.lock().unwrap().push(tx);
-                }
-                open_window(rx, initial, None);
-                fetch_bars_background(sym, tf);
-            }
-
-            // Simulated option chart (for testing) — replaces active pane directly
-            if tb_btn(ui, "Opt", false, t).clicked() && !panes[ap].bars.is_empty() {
-                let sym = panes[ap].symbol.clone();
-                let strike = (panes[ap].bars.last().unwrap().close / 5.0).round() * 5.0;
-                let opt_sym = format!("{} {:.0}C 0DTE", sym, strike);
-                let underlying_bars = panes[ap].bars.clone();
-                let underlying_ts = panes[ap].timestamps.clone();
-                let mut opt_bars = Vec::new();
-                for (i, bar) in underlying_bars.iter().enumerate() {
-                    let mid = (bar.open + bar.close) / 2.0;
-                    let intrinsic = (mid - strike).max(0.0);
-                    let time_pct = 1.0 - (i as f32 / underlying_bars.len().max(1) as f32);
-                    let time_val = strike * 0.005 * time_pct.max(0.1);
-                    let opt_mid = (intrinsic + time_val).max(0.01);
-                    let noise = ((i as f32 * 7.3).sin() * 0.3 + (i as f32 * 13.7).cos() * 0.2) * opt_mid * 0.05;
-                    let o = opt_mid + noise * 0.5;
-                    let c = opt_mid - noise * 0.3;
-                    let h = o.max(c) + opt_mid * 0.01;
-                    let l = (o.min(c) - opt_mid * 0.01).max(0.01);
-                    opt_bars.push(Bar { open: o, high: h, low: l, close: c, volume: bar.volume * 0.1, _pad: 0.0 });
-                }
-                panes[ap].symbol = opt_sym;
-                panes[ap].is_option = true;
-                panes[ap].underlying = sym;
-                panes[ap].option_type = "C".into();
-                panes[ap].option_strike = strike;
-                panes[ap].option_expiry = "0DTE".into();
-                panes[ap].bars = opt_bars;
-                panes[ap].timestamps = underlying_ts;
-                panes[ap].vs = (panes[ap].bars.len() as f32 - panes[ap].vc as f32 + 8.0).max(0.0);
-                panes[ap].auto_scroll = true;
-                panes[ap].indicator_bar_count = 0;
-            }
-
-            // LIVE indicator
-            if !panes[ap].auto_scroll {
-                if tb_btn(ui, "LIVE", false, t).clicked() {
-                    panes[ap].auto_scroll=true; panes[ap].price_lock=None;
-                    let bar_count = panes[ap].bars.len();
-                    panes[ap].vs=(bar_count as f32-panes[ap].vc as f32+8.0).max(0.0);
-                }
-            } else {
-                ui.label(egui::RichText::new("LIVE").monospace().size(11.0).color(t.accent));
-            }
-
             }); // end scrollable middle
 
             // ── Fixed right: panels + window controls ──
@@ -1527,6 +1461,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                 // Watchlist toggle
                 if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() { watchlist.open = !watchlist.open; }
+
+                ui.add(egui::Separator::default().spacing(4.0));
+
+                // Keyboard shortcuts help
+                if tb_btn(ui, Icon::QUESTION, watchlist.shortcuts_open, t).clicked() {
+                    watchlist.shortcuts_open = !watchlist.shortcuts_open;
+                }
+
+                // New window
+                if tb_btn(ui, &format!("{} Window", Icon::PLUS), false, t).clicked() {
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let sym = panes[ap].symbol.clone();
+                    let tf = panes[ap].timeframe.clone();
+                    let initial = super::ChartCommand::LoadBars {
+                        symbol: sym.clone(), timeframe: tf.clone(), bars: vec![], timestamps: vec![],
+                    };
+                    {
+                        let global = crate::NATIVE_CHART_TXS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+                        global.lock().unwrap().push(tx);
+                    }
+                    open_window(rx, initial, None);
+                    fetch_bars_background(sym, tf);
+                }
 
                 ui.add(egui::Separator::default().spacing(4.0));
             });
