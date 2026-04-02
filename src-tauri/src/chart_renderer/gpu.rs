@@ -910,12 +910,14 @@ fn tick_simulation(chart: &mut Chart) {
         }
 
         // ── History pagination: fetch older bars when scrolled near left edge ──
-        if chart.vs < 10.0 && !chart.auto_scroll && !chart.history_loading && !chart.history_exhausted
+        let threshold = chart.vc as f32 * 0.5;
+        if chart.vs < threshold && !chart.auto_scroll && !chart.history_loading && !chart.history_exhausted
             && !chart.bars.is_empty() && chart.timestamps.len() > 1 {
             chart.history_loading = true;
             let sym = chart.symbol.clone();
             let tf = chart.timeframe.clone();
             let earliest_ts = chart.timestamps[0];
+            eprintln!("[history] triggered for {} {} (vs={:.1}, bars={})", sym, tf, chart.vs, chart.bars.len());
             fetch_history_background(sym, tf, earliest_ts);
         }
     }
@@ -942,6 +944,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         } else if let Some(p) = panes.get_mut(*active_pane) { p.process(cmd); }
     }
     if *active_pane >= panes.len() { *active_pane = 0; }
+
+    // ── History pagination check (active pane only) ──
+    {
+        let ap = *active_pane;
+        if ap < panes.len() {
+            let chart = &mut panes[ap];
+            let threshold = chart.vc as f32 * 0.5;
+            if chart.vs < threshold && !chart.auto_scroll && !chart.history_loading && !chart.history_exhausted
+                && !chart.bars.is_empty() && chart.timestamps.len() > 1 {
+                chart.history_loading = true;
+                let sym = chart.symbol.clone();
+                let tf = chart.timeframe.clone();
+                let earliest_ts = chart.timestamps[0];
+                eprintln!("[history] triggered for {} {} (vs={:.1}, threshold={:.0}, bars={})", sym, tf, chart.vs, threshold, chart.bars.len());
+                fetch_history_background(sym, tf, earliest_ts);
+            }
+        }
+    }
 
     // Simulation + indicators for all panes
     span_begin("simulation_indicators");
