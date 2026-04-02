@@ -352,7 +352,22 @@ fn fmt_notional(v: f32) -> String {
     else { format!("${:.0}", v) }
 }
 
-// ─── Positions & Alerts ──────────────────────────────────────────────────────
+// ─── Account & Positions (from ApexIB) ──────────────────────────────────────
+
+#[derive(Debug, Clone, Default)]
+struct AccountSummary {
+    nav: f64,
+    buying_power: f64,
+    excess_liquidity: f64,
+    initial_margin: f64,
+    maintenance_margin: f64,
+    daily_pnl: f64,
+    unrealized_pnl: f64,
+    realized_pnl: f64,
+    gross_position_value: f64,
+    connected: bool,
+    last_update: Option<std::time::Instant>,
+}
 
 #[derive(Debug, Clone)]
 struct Position {
@@ -360,14 +375,96 @@ struct Position {
     qty: i32,         // positive=long, negative=short
     avg_price: f32,
     current_price: f32,
+    market_value: f64,
+    unrealized_pnl: f64,
+    con_id: i64,
 }
 
 impl Position {
-    fn pnl(&self) -> f32 { (self.current_price - self.avg_price) * self.qty as f32 }
+    fn pnl(&self) -> f32 { self.unrealized_pnl as f32 }
     fn pnl_pct(&self) -> f32 {
         if self.avg_price == 0.0 { return 0.0; }
         ((self.current_price - self.avg_price) / self.avg_price) * 100.0
     }
+}
+
+/// ApexIB endpoint configuration
+const APEXIB_URL: &str = "http://127.0.0.1:5000";
+
+// Shared account data — written by background worker, read by render thread
+static ACCOUNT_DATA: std::sync::OnceLock<std::sync::Mutex<Option<(AccountSummary, Vec<Position>)>>> = std::sync::OnceLock::new();
+
+/// Start the account polling worker (call once). Polls ApexIB every 5 seconds.
+fn start_account_poller() {
+    use std::sync::OnceLock;
+    static STARTED: OnceLock<bool> = OnceLock::new();
+    STARTED.get_or_init(|| {
+        let _ = ACCOUNT_DATA.get_or_init(|| std::sync::Mutex::new(None));
+        std::thread::spawn(|| {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(3))
+                .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+            loop {
+                let mut summary = AccountSummary::default();
+                let mut positions = Vec::new();
+
+                // Fetch account summary
+                if let Ok(resp) = client.get(format!("{}/account/summary", APEXIB_URL)).send() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        summary.connected = true;
+                        summary.nav = json["netLiquidation"].as_f64().unwrap_or(0.0);
+                        summary.buying_power = json["buyingPower"].as_f64().unwrap_or(0.0);
+                        summary.excess_liquidity = json["excessLiquidity"].as_f64().unwrap_or(0.0);
+                        summary.initial_margin = json["initMarginReq"].as_f64().unwrap_or(0.0);
+                        summary.maintenance_margin = json["maintMarginReq"].as_f64().unwrap_or(0.0);
+                        summary.gross_position_value = json["grossPositionValue"].as_f64().unwrap_or(0.0);
+                    }
+                }
+
+                // Fetch P&L
+                if let Ok(resp) = client.get(format!("{}/account/pnl", APEXIB_URL)).send() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        summary.daily_pnl = json["dailyPnl"].as_f64().unwrap_or(0.0);
+                        summary.unrealized_pnl = json["unrealizedPnl"].as_f64().unwrap_or(0.0);
+                        summary.realized_pnl = json["realizedPnl"].as_f64().unwrap_or(0.0);
+                    }
+                }
+
+                // Fetch positions
+                if let Ok(resp) = client.get(format!("{}/positions", APEXIB_URL)).send() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        if let Some(pos_arr) = json["positions"].as_array() {
+                            for p in pos_arr {
+                                positions.push(Position {
+                                    symbol: p["symbol"].as_str().unwrap_or("").into(),
+                                    qty: p["quantity"].as_i64().unwrap_or(0) as i32,
+                                    avg_price: p["avgCost"].as_f64().unwrap_or(0.0) as f32,
+                                    current_price: p["marketPrice"].as_f64().unwrap_or(0.0) as f32,
+                                    market_value: p["marketValue"].as_f64().unwrap_or(0.0),
+                                    unrealized_pnl: p["unrealizedPnl"].as_f64().unwrap_or(0.0),
+                                    con_id: p["conId"].as_i64().unwrap_or(0),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                summary.last_update = Some(std::time::Instant::now());
+
+                if let Some(data) = ACCOUNT_DATA.get() {
+                    if let Ok(mut d) = data.lock() { *d = Some((summary, positions)); }
+                }
+
+                std::thread::sleep(std::time::Duration::from_secs(5));
+            }
+        });
+        true
+    });
+}
+
+/// Read latest account data (non-blocking)
+fn read_account_data() -> Option<(AccountSummary, Vec<Position>)> {
+    ACCOUNT_DATA.get()?.lock().ok()?.clone()
 }
 
 #[derive(Debug, Clone)]
@@ -1236,6 +1333,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.order_entry_open = !watchlist.order_entry_open;
                 }
 
+                // Account strip toggle
+                if tb_btn(ui, Icon::PULSE, watchlist.account_strip_open, t).clicked() {
+                    watchlist.account_strip_open = !watchlist.account_strip_open;
+                }
+
                 // Watchlist toggle
                 if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() { watchlist.open = !watchlist.open; }
 
@@ -1243,6 +1345,72 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             });
         });
     });
+
+    // ── Account summary strip (below toolbar) ──
+    if watchlist.account_strip_open {
+        let account_data = read_account_data();
+        egui::TopBottomPanel::top("account_strip")
+            .exact_height(22.0)
+            .frame(egui::Frame::NONE.fill(t.toolbar_bg)
+                .inner_margin(egui::Margin { left: 10, right: 10, top: 2, bottom: 2 })
+                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))))
+            .show(ctx, |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.spacing_mut().item_spacing.x = 12.0;
+                    if let Some((acct, _positions)) = &account_data {
+                        if acct.connected {
+                            // NAV
+                            ui.label(egui::RichText::new("NAV").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("${:.0}", acct.nav)).monospace().size(10.0).strong()
+                                .color(egui::Color32::from_rgb(220, 220, 230)));
+
+                            ui.add(egui::Separator::default().spacing(4.0));
+
+                            // Buying Power
+                            ui.label(egui::RichText::new("BP").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(10.0)
+                                .color(egui::Color32::from_rgb(200, 200, 210)));
+
+                            ui.add(egui::Separator::default().spacing(4.0));
+
+                            // Daily P&L
+                            let daily_color = if acct.daily_pnl >= 0.0 { t.bull } else { t.bear };
+                            ui.label(egui::RichText::new("Day P&L").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("{:+.0}", acct.daily_pnl)).monospace().size(10.0).strong()
+                                .color(daily_color));
+
+                            ui.add(egui::Separator::default().spacing(4.0));
+
+                            // Unrealized P&L
+                            let unr_color = if acct.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
+                            ui.label(egui::RichText::new("Unr P&L").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(10.0)
+                                .color(unr_color));
+
+                            ui.add(egui::Separator::default().spacing(4.0));
+
+                            // Margin
+                            ui.label(egui::RichText::new("Margin").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(10.0)
+                                .color(t.dim));
+
+                            ui.add(egui::Separator::default().spacing(4.0));
+
+                            // Excess Liquidity
+                            ui.label(egui::RichText::new("Excess").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(10.0)
+                                .color(t.dim));
+                        } else {
+                            // Not connected
+                            ui.label(egui::RichText::new("IB Disconnected").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("connecting to {}...", APEXIB_URL)).monospace().size(9.0).color(t.dim.gamma_multiply(0.3)));
+                        }
+                    } else {
+                        ui.label(egui::RichText::new("Loading account...").monospace().size(10.0).color(t.dim.gamma_multiply(0.4)));
+                    }
+                });
+            });
+    }
 
     // ── Drag to move window ──
     // If a click/drag starts in the toolbar zone (y < 36) and egui didn't use the pointer
@@ -2468,6 +2636,50 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.add_space(4.0);
                 }
 
+                // ── Live Positions from ApexIB ──
+                {
+                    let ib_positions = read_account_data().map(|(_, p)| p).unwrap_or_default();
+                    if !ib_positions.is_empty() {
+                        section_label(ui, "POSITIONS", t.accent);
+                        ui.add_space(4.0);
+                        let mut total_pnl: f64 = 0.0;
+                        for pos in &ib_positions {
+                            total_pnl += pos.unrealized_pnl;
+                            let pnl_color = if pos.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
+                            order_card(ui, pnl_color, color_alpha(t.toolbar_border, 10), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong()
+                                        .color(egui::Color32::from_rgb(220,220,230)));
+                                    ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price))
+                                        .monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.label(egui::RichText::new(format!("${:.0}", pos.market_value))
+                                            .monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                    });
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("{:+.2}", pos.unrealized_pnl))
+                                        .monospace().size(12.0).strong().color(pnl_color));
+                                    ui.add_space(4.0);
+                                    ui.label(egui::RichText::new(format!("({:+.1}%)", pos.pnl_pct()))
+                                        .monospace().size(9.0).color(pnl_color));
+                                });
+                            });
+                        }
+                        // Total P&L
+                        let total_color = if total_pnl >= 0.0 { t.bull } else { t.bear };
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Total P&L").monospace().size(9.0).color(t.dim));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.label(egui::RichText::new(format!("{:+.2}", total_pnl)).monospace().size(11.0).strong().color(total_color));
+                            });
+                        });
+                        ui.add_space(6.0);
+                        separator(ui, color_alpha(t.toolbar_border, 40));
+                        ui.add_space(6.0);
+                    }
+                }
+
                 // ── Select all toggle ──
                 {
                     let active_orders: Vec<(usize, u32)> = panes.iter().enumerate()
@@ -2565,38 +2777,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
 
-                    // ── Positions section ──
-                    if !watchlist.positions.is_empty() {
-                        ui.add_space(6.0);
-                        separator(ui, color_alpha(t.toolbar_border, 40));
-                        ui.add_space(4.0);
-                        section_label(ui, "POSITIONS", t.dim);
-                        ui.add_space(4.0);
-                        let total_pnl: f32 = watchlist.positions.iter().map(|p| p.pnl()).sum();
-                        for pos in &watchlist.positions {
-                            let pnl = pos.pnl();
-                            let pnl_pct = pos.pnl_pct();
-                            let pnl_color = if pnl >= 0.0 { t.bull } else { t.bear };
-                            order_card(ui, pnl_color, color_alpha(t.toolbar_border, 10), |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
-                                    ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(format!("{:+.2}", pnl)).monospace().size(12.0).strong().color(pnl_color));
-                                    ui.add_space(4.0);
-                                    ui.label(egui::RichText::new(format!("({:+.1}%)", pnl_pct)).monospace().size(9.0).color(pnl_color));
-                                });
-                            });
-                        }
-                        let total_color = if total_pnl >= 0.0 { t.bull } else { t.bear };
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Total P&L").monospace().size(9.0).color(t.dim));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(egui::RichText::new(format!("{:+.2}", total_pnl)).monospace().size(11.0).strong().color(total_color));
-                            });
-                        });
-                    }
+                    // Positions are now shown above orders via ApexIB live data
 
                     // ── Alerts section ──
                     if !watchlist.alerts.is_empty() {
@@ -4307,6 +4488,7 @@ struct Watchlist {
     #[allow(dead_code)] toolbar_scroll: f32,
     shortcuts_open: bool, // keyboard shortcuts help panel
     trendline_filter_open: bool, // trendline filter dropdown
+    account_strip_open: bool, // account summary bar below toolbar
     // Orders
     orders_panel_open: bool,
     order_entry_open: bool,
@@ -4339,7 +4521,7 @@ impl Watchlist {
             symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
         Self { open: false, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
-               toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false,
+               toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false,
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
@@ -4510,6 +4692,7 @@ impl GpuCtx {
         let egui_ctx = egui::Context::default();
         egui_ctx.set_visuals(egui::Visuals::dark());
         ui_kit::icons::init_icons(&egui_ctx);
+        start_account_poller();
         let egui_state = egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, &*window, Some(window.scale_factor() as f32), None, None);
         let egui_renderer = egui_wgpu::Renderer::new(&device, fmt, None, 1, false);
 
