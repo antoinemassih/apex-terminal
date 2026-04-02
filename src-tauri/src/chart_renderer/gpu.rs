@@ -2526,27 +2526,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 match watchlist.tab {
                     // ── STOCKS TAB ──────────────────────────────────────────
                     WatchlistTab::Stocks => {
-                        // Search bar + options toggle
-                        ui.horizontal(|ui| {
-                            // Options section toggle
-                            let opt_icon = if watchlist.options_visible { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
-                            let opt_color = if watchlist.options_visible { t.accent } else { t.dim.gamma_multiply(0.4) };
-                            let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(10.0).color(opt_color))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0)));
-                            if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
-                            if opt_resp.hovered() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("opt_toggle_tip"), |ui| {
-                                    ui.label(egui::RichText::new(if watchlist.options_visible { "Hide options" } else { "Show options" }).monospace().size(9.0));
-                                });
-                            }
-                        });
+                        // Search bar with inline options toggle
                         let search_id = egui::Id::new("wl_search_input");
-                        let search_resp = ui.add(
-                            egui::TextEdit::singleline(&mut watchlist.search_query)
-                                .id(search_id)
-                                .hint_text("Add symbol...").desired_width(ui.available_width()).font(egui::FontId::monospace(11.0))
-                        );
+                        let search_resp = ui.horizontal(|ui| {
+                            // Options toggle chevron
+                            let has_opts = watchlist.sections.iter().any(|s| s.title.contains("Options"));
+                            if has_opts {
+                                let opt_icon = if watchlist.options_visible { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
+                                let opt_color = if watchlist.options_visible { t.accent } else { t.dim.gamma_multiply(0.4) };
+                                let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(10.0).color(opt_color))
+                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0)));
+                                if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
+                                if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                            }
+                            // Search input
+                            ui.add(
+                                egui::TextEdit::singleline(&mut watchlist.search_query)
+                                    .id(search_id)
+                                    .hint_text("Add symbol...").desired_width(ui.available_width()).font(egui::FontId::monospace(11.0))
+                            )
+                        }).inner;
                         // Refocus after adding a symbol
                         if watchlist.search_refocus {
                             watchlist.search_refocus = false;
@@ -2660,17 +2659,37 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 // Skip option sections if toggled off
                                 if is_option_section && !watchlist.options_visible { continue; }
 
-                                // Draw thick divider before the first option section
+                                // Draw thick divider + "Section" button before first option section
                                 let is_first_opt = is_option_section && !options_divider_drawn;
                                 if is_first_opt {
                                     options_divider_drawn = true;
-                                    ui.add_space(6.0);
+                                    // "+ Section" button (in stocks area, before options)
+                                    ui.add_space(4.0);
+                                    ui.horizontal(|ui| {
+                                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
+                                            .frame(false)).clicked() {
+                                            watchlist.add_section("New Section");
+                                            watchlist.persist();
+                                        }
+                                    });
+                                    ui.add_space(4.0);
+                                    // Thick draggable divider
                                     let r = ui.available_rect_before_wrap();
                                     let y = ui.cursor().min.y;
+                                    let divider_rect = egui::Rect::from_min_max(egui::pos2(r.left(), y - 2.0), egui::pos2(r.right(), y + 5.0));
                                     ui.painter().rect_filled(
                                         egui::Rect::from_min_max(egui::pos2(r.left(), y), egui::pos2(r.right(), y + 3.0)),
                                         0.0, color_alpha(t.toolbar_border, 140));
-                                    ui.add_space(8.0);
+                                    let div_resp = ui.interact(divider_rect, egui::Id::new("wl_opt_divider"), egui::Sense::click_and_drag());
+                                    if div_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical); }
+                                    if div_resp.dragged() {
+                                        let delta = div_resp.drag_delta().y;
+                                        let total = ui.max_rect().height();
+                                        if total > 0.0 {
+                                            watchlist.options_split = (watchlist.options_split + delta / total).clamp(0.2, 0.9);
+                                        }
+                                    }
+                                    ui.add_space(6.0);
                                     // Options header
                                     ui.horizontal(|ui| {
                                         ui.label(egui::RichText::new("OPTIONS").monospace().size(9.0).strong().color(t.accent.gamma_multiply(0.7)));
@@ -3091,14 +3110,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
 
                             // ── Add section button ──
-                            ui.add_space(6.0);
-                            ui.horizontal(|ui| {
-                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
-                                    .frame(false)).clicked() {
-                                    watchlist.add_section("New Section");
-                                    watchlist.persist();
-                                }
-                            });
+                            // "+ Section" at bottom (only if no options divider already has one)
+                            if !options_divider_drawn {
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
+                                        .frame(false)).clicked() {
+                                        watchlist.add_section("New Section");
+                                        watchlist.persist();
+                                    }
+                                });
+                            }
 
                             if let Some(sym) = click_sym {
                                 panes[ap].pending_symbol_change = Some(sym.clone());
