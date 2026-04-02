@@ -1350,55 +1350,55 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     if watchlist.account_strip_open {
         let account_data = read_account_data();
         egui::TopBottomPanel::top("account_strip")
-            .exact_height(22.0)
+            .exact_height(28.0)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-                .inner_margin(egui::Margin { left: 10, right: 10, top: 2, bottom: 2 })
+                .inner_margin(egui::Margin { left: 10, right: 10, top: 4, bottom: 4 })
                 .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))))
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.spacing_mut().item_spacing.x = 12.0;
+                    ui.spacing_mut().item_spacing.x = 14.0;
                     if let Some((acct, _positions)) = &account_data {
                         if acct.connected {
                             // NAV
-                            ui.label(egui::RichText::new("NAV").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("${:.0}", acct.nav)).monospace().size(10.0).strong()
+                            ui.label(egui::RichText::new("NAV").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("${:.0}", acct.nav)).monospace().size(12.0).strong()
                                 .color(egui::Color32::from_rgb(220, 220, 230)));
 
-                            ui.add(egui::Separator::default().spacing(4.0));
+                            ui.add(egui::Separator::default().spacing(6.0));
 
                             // Buying Power
-                            ui.label(egui::RichText::new("BP").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(10.0)
+                            ui.label(egui::RichText::new("BP").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(12.0)
                                 .color(egui::Color32::from_rgb(200, 200, 210)));
 
-                            ui.add(egui::Separator::default().spacing(4.0));
+                            ui.add(egui::Separator::default().spacing(6.0));
 
                             // Daily P&L
                             let daily_color = if acct.daily_pnl >= 0.0 { t.bull } else { t.bear };
-                            ui.label(egui::RichText::new("Day P&L").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("{:+.0}", acct.daily_pnl)).monospace().size(10.0).strong()
+                            ui.label(egui::RichText::new("Day P&L").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("{:+.0}", acct.daily_pnl)).monospace().size(12.0).strong()
                                 .color(daily_color));
 
-                            ui.add(egui::Separator::default().spacing(4.0));
+                            ui.add(egui::Separator::default().spacing(6.0));
 
                             // Unrealized P&L
                             let unr_color = if acct.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
-                            ui.label(egui::RichText::new("Unr P&L").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(10.0)
+                            ui.label(egui::RichText::new("Unr P&L").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(12.0)
                                 .color(unr_color));
 
-                            ui.add(egui::Separator::default().spacing(4.0));
+                            ui.add(egui::Separator::default().spacing(6.0));
 
                             // Margin
-                            ui.label(egui::RichText::new("Margin").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(10.0)
+                            ui.label(egui::RichText::new("Margin").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(12.0)
                                 .color(t.dim));
 
-                            ui.add(egui::Separator::default().spacing(4.0));
+                            ui.add(egui::Separator::default().spacing(6.0));
 
                             // Excess Liquidity
-                            ui.label(egui::RichText::new("Excess").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(10.0)
+                            ui.label(egui::RichText::new("Excess").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(12.0)
                                 .color(t.dim));
                         } else {
                             // Not connected
