@@ -527,6 +527,14 @@ struct Chart {
     order_qty: u32,
     order_market: bool, // true=market, false=limit
     order_limit_price: String, // limit price as editable text
+    order_type_idx: usize, // 0=MKT, 1=LMT, 2=STP, 3=STP-LMT, 4=TRAIL
+    order_tif_idx: usize, // 0=DAY, 1=GTC, 2=IOC
+    order_advanced: bool, // expanded mode
+    order_bracket: bool, // bracket mode: entry + TP + SL
+    order_tp_price: String, // take profit price
+    order_sl_price: String, // stop loss price
+    order_panel_pos: egui::Pos2, // draggable position (relative to chart rect)
+    order_panel_dragging: bool,
     dragging_order: Option<u32>, // order id being dragged
     editing_order: Option<u32>,
     edit_order_qty: String,
@@ -582,6 +590,9 @@ impl Chart {
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
             orders: vec![], next_order_id: 1, order_qty: 100, order_market: true, order_limit_price: String::new(),
+            order_type_idx: 0, order_tif_idx: 0, order_advanced: false, order_bracket: false,
+            order_tp_price: String::new(), order_sl_price: String::new(),
+            order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false,
             dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
             measuring: false, measure_start: None, measure_active: false,
@@ -3637,55 +3648,132 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // ── Order entry panel (bottom-left of pane) ─────────────────────────
         if watchlist.order_entry_open {
-            let panel_w = 230.0;
-            let panel_h = 0.0; // auto-size height
-            let panel_pos = egui::pos2(rect.left() + 8.0, rect.top() + pt + ch - 80.0);
+            let adv = chart.order_advanced;
+            let panel_w = if adv { 300.0 } else { 230.0 };
+            // Position: relative to chart rect, default bottom-left. Negative Y = from bottom.
+            let abs_pos = if chart.order_panel_pos.y < 0.0 {
+                egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + ch + chart.order_panel_pos.y)
+            } else {
+                egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + chart.order_panel_pos.y)
+            };
+
+            let order_types = ["MKT", "LMT", "STP", "STP-LMT", "TRAIL"];
+            let tifs = ["DAY", "GTC", "IOC"];
 
             egui::Window::new(format!("order_entry_{}", pane_idx))
-                .fixed_pos(panel_pos)
-                .fixed_size(egui::vec2(panel_w, panel_h))
+                .fixed_pos(abs_pos)
+                .fixed_size(egui::vec2(panel_w, 0.0))
                 .title_bar(false)
                 .frame(egui::Frame::popup(&ctx.style())
-                    .fill(color_alpha(t.toolbar_bg, 240))
-                    .inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 6 })
+                    .fill(color_alpha(t.toolbar_bg, 245))
+                    .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
                     .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
                     .corner_radius(4.0))
                 .show(ctx, |ui| {
                     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
                     let spread = (last_price * 0.0001).max(0.01);
-                    ui.spacing_mut().item_spacing.y = 5.0;
 
-                    // Row 1: [-] qty [+] | divider | LMT price | MKT/LMT toggle
+                    // ── Draggable header bar ──
+                    let header_resp = ui.horizontal(|ui| {
+                        ui.set_min_width(panel_w);
+                        let header_rect = ui.max_rect();
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(header_rect.min, egui::vec2(panel_w, 20.0)),
+                            egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
+                            color_alpha(t.toolbar_border, 30));
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add_space(4.0);
+                            // Expand/collapse toggle
+                            let exp_icon = if adv { Icon::MINUS } else { Icon::PLUS };
+                            if ui.add(egui::Button::new(egui::RichText::new(exp_icon).size(9.0).color(t.dim.gamma_multiply(0.5)))
+                                .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                chart.order_advanced = !chart.order_advanced;
+                            }
+                        });
+                    });
+                    // Handle drag on header
+                    let header_rect = egui::Rect::from_min_size(header_resp.response.rect.min, egui::vec2(panel_w, 20.0));
+                    let drag_resp = ui.interact(header_rect, egui::Id::new("order_panel_drag"), egui::Sense::click_and_drag());
+                    if drag_resp.dragged() {
+                        let delta = drag_resp.drag_delta();
+                        chart.order_panel_pos.x += delta.x;
+                        chart.order_panel_pos.y += delta.y;
+                        // Clamp to chart area
+                        chart.order_panel_pos.x = chart.order_panel_pos.x.clamp(0.0, (cw - panel_w).max(0.0));
+                        if chart.order_panel_pos.y < 0.0 {
+                            chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(-(ch - 30.0), -30.0);
+                        } else {
+                            chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(0.0, (ch - 30.0).max(0.0));
+                        }
+                    }
+                    if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+
+                    // ── Body ──
+                    let pad = 8.0;
+                    ui.add_space(4.0);
+
+                    // Advanced: Order type + TIF selectors
+                    if adv {
+                        ui.horizontal(|ui| {
+                            ui.add_space(pad);
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            for (i, &ot) in order_types.iter().enumerate() {
+                                let sel = chart.order_type_idx == i;
+                                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                                let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                                let rounding = if i == 0 {
+                                    egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
+                                } else if i == order_types.len() - 1 {
+                                    egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
+                                } else { egui::CornerRadius::ZERO };
+                                if ui.add(egui::Button::new(egui::RichText::new(ot).monospace().size(8.0).color(fg))
+                                    .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 18.0))
+                                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
+                                    .clicked() {
+                                    chart.order_type_idx = i;
+                                    chart.order_market = i == 0;
+                                }
+                            }
+                            ui.add_space(8.0);
+                            // TIF
+                            for (i, &tf) in tifs.iter().enumerate() {
+                                let sel = chart.order_tif_idx == i;
+                                let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
+                                if ui.add(egui::Button::new(egui::RichText::new(tf).monospace().size(8.0).color(fg))
+                                    .frame(false).min_size(egui::vec2(24.0, 18.0))).clicked() {
+                                    chart.order_tif_idx = i;
+                                }
+                            }
+                        });
+                        ui.add_space(4.0);
+                    }
+
+                    // Row 1: [-] qty [+] | price
                     ui.horizontal(|ui| {
+                        ui.add_space(pad);
                         ui.spacing_mut().item_spacing.x = 2.0;
                         let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
-                        // Minus
                         if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0))
                             .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
                             .fill(color_alpha(t.toolbar_border, 40))).clicked() {
                             chart.order_qty = chart.order_qty.saturating_sub(step).max(1);
                         }
-                        // Qty display
-                        let qty_resp = ui.add(egui::TextEdit::singleline(&mut format!("{}", chart.order_qty))
+                        let _ = ui.add(egui::TextEdit::singleline(&mut format!("{}", chart.order_qty))
                             .desired_width(44.0).font(egui::FontId::monospace(12.0))
                             .horizontal_align(egui::Align::Center).interactive(false));
-                        let _ = qty_resp;
-                        // Plus
                         if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0))
                             .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
                             .fill(color_alpha(t.toolbar_border, 40))).clicked() {
                             chart.order_qty += step;
                         }
-
-                        // Vertical divider
                         ui.add_space(4.0);
                         let cursor = ui.cursor().min;
                         ui.painter().line_segment(
                             [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
                             egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
                         ui.add_space(6.0);
-
-                        // Price input or last price
                         if chart.order_market {
                             ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(12.0).color(t.dim));
                         } else {
@@ -3693,22 +3781,49 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 .desired_width(68.0).font(egui::FontId::monospace(12.0)).hint_text("Price")
                                 .horizontal_align(egui::Align::RIGHT));
                         }
-
-                        ui.add_space(2.0);
-
-                        // MKT/LMT toggle
-                        let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
-                        if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(9.0).strong()
-                            .color(if chart.order_market { t.accent } else { t.dim }))
-                            .fill(if chart.order_market { color_alpha(t.accent, 35) } else { t.toolbar_bg })
-                            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 90))).corner_radius(2.0)
-                            .min_size(egui::vec2(30.0, 20.0))).clicked() {
-                            chart.order_market = !chart.order_market;
-                            if !chart.order_market && chart.order_limit_price.is_empty() {
-                                chart.order_limit_price = format!("{:.2}", last_price);
+                        if !adv {
+                            ui.add_space(2.0);
+                            let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
+                            if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(9.0).strong()
+                                .color(if chart.order_market { t.accent } else { t.dim }))
+                                .fill(if chart.order_market { color_alpha(t.accent, 35) } else { t.toolbar_bg })
+                                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 90))).corner_radius(2.0)
+                                .min_size(egui::vec2(30.0, 20.0))).clicked() {
+                                chart.order_market = !chart.order_market;
+                                if !chart.order_market && chart.order_limit_price.is_empty() {
+                                    chart.order_limit_price = format!("{:.2}", last_price);
+                                }
                             }
                         }
                     });
+
+                    // Advanced: Bracket mode (TP + SL)
+                    if adv {
+                        ui.add_space(2.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(pad);
+                            let brk_color = if chart.order_bracket { t.accent } else { t.dim.gamma_multiply(0.5) };
+                            if ui.add(egui::Button::new(egui::RichText::new("Bracket").monospace().size(9.0).color(brk_color))
+                                .fill(if chart.order_bracket { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+                                .min_size(egui::vec2(0.0, 18.0))).clicked() {
+                                chart.order_bracket = !chart.order_bracket;
+                            }
+                            if chart.order_bracket {
+                                ui.add_space(4.0);
+                                ui.label(egui::RichText::new("TP").monospace().size(9.0).color(t.bull));
+                                ui.add(egui::TextEdit::singleline(&mut chart.order_tp_price)
+                                    .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Take")
+                                    .horizontal_align(egui::Align::RIGHT));
+                                ui.label(egui::RichText::new("SL").monospace().size(9.0).color(t.bear));
+                                ui.add(egui::TextEdit::singleline(&mut chart.order_sl_price)
+                                    .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Stop")
+                                    .horizontal_align(egui::Align::RIGHT));
+                            }
+                        });
+                    }
+
+                    ui.add_space(4.0);
 
                     // Row 2: BUY | SELL | armed toggle
                     let buy_price = if chart.order_market { last_price + spread } else {
@@ -3719,21 +3834,51 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     };
 
                     ui.horizontal(|ui| {
+                        ui.add_space(pad);
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        let btn_w = (ui.available_width() - 30.0) / 2.0;
+                        let btn_w = (panel_w - pad * 2.0 - 30.0) / 2.0;
                         // BUY
                         if trade_btn(ui, &format!("BUY {:.2}", buy_price), t.bull, btn_w) {
-                            let id = chart.next_order_id; chart.next_order_id += 1;
-                            let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
-                            chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None });
-                            if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
+                            if chart.armed && adv {
+                                // Submit to ApexIB
+                                let sym = chart.symbol.clone();
+                                let qty = chart.order_qty;
+                                let ot_idx = chart.order_type_idx;
+                                let tif_idx = chart.order_tif_idx;
+                                let price = buy_price;
+                                let bracket = chart.order_bracket;
+                                let tp = chart.order_tp_price.parse::<f32>().ok();
+                                let sl = chart.order_sl_price.parse::<f32>().ok();
+                                std::thread::spawn(move || {
+                                    submit_ib_order(&sym, "BUY", qty, ot_idx, tif_idx, price, bracket, tp, sl);
+                                });
+                            } else {
+                                let id = chart.next_order_id; chart.next_order_id += 1;
+                                let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
+                                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None });
+                                if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
+                            }
                         }
                         // SELL
                         if trade_btn(ui, &format!("SELL {:.2}", sell_price), t.bear, btn_w) {
-                            let id = chart.next_order_id; chart.next_order_id += 1;
-                            let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
-                            chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None });
-                            if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
+                            if chart.armed && adv {
+                                let sym = chart.symbol.clone();
+                                let qty = chart.order_qty;
+                                let ot_idx = chart.order_type_idx;
+                                let tif_idx = chart.order_tif_idx;
+                                let price = sell_price;
+                                let bracket = chart.order_bracket;
+                                let tp = chart.order_tp_price.parse::<f32>().ok();
+                                let sl = chart.order_sl_price.parse::<f32>().ok();
+                                std::thread::spawn(move || {
+                                    submit_ib_order(&sym, "SELL", qty, ot_idx, tif_idx, price, bracket, tp, sl);
+                                });
+                            } else {
+                                let id = chart.next_order_id; chart.next_order_id += 1;
+                                let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
+                                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None });
+                                if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
+                            }
                         }
                         // Armed toggle
                         let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
@@ -3744,10 +3889,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if armed_resp.clicked() { chart.armed = !chart.armed; }
                         if armed_resp.hovered() {
                             egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("armed_tip"), |ui| {
-                                ui.label(egui::RichText::new(if chart.armed { "Armed — orders fire immediately" } else { "Unarmed — orders need confirmation" }).monospace().size(9.0));
+                                ui.label(egui::RichText::new(if chart.armed { "Armed — sends to IB immediately" } else { "Unarmed — creates draft orders" }).monospace().size(9.0));
                             });
                         }
                     });
+                    ui.add_space(6.0);
                 });
 
             // ── Pending confirm toasts (above order entry panel) ─────────
@@ -5150,6 +5296,50 @@ fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32) {
 }
 
 /// Fetch older historical bars before `before_ts` and deliver as PrependBars.
+/// Submit an order to ApexIB. Called from background thread.
+fn submit_ib_order(symbol: &str, side: &str, qty: u32, order_type_idx: usize, tif_idx: usize, price: f32, bracket: bool, tp: Option<f32>, sl: Option<f32>) {
+    let order_type = match order_type_idx { 0 => "market", 1 => "limit", 2 => "stop", 3 => "stop_limit", 4 => "trailing_stop", _ => "market" };
+    let tif = match tif_idx { 0 => "day", 1 => "gtc", 2 => "ioc", _ => "day" };
+    let client = reqwest::blocking::Client::new();
+
+    // First resolve symbol to conId
+    let con_id = match client.get(format!("{}/contract/{}", APEXIB_URL, symbol))
+        .timeout(std::time::Duration::from_secs(5)).send()
+        .and_then(|r| r.json::<serde_json::Value>()) {
+        Ok(json) => json["conId"].as_i64().unwrap_or(0),
+        Err(e) => { eprintln!("[order] contract resolve failed: {e}"); return; }
+    };
+    if con_id == 0 { eprintln!("[order] no conId for {}", symbol); return; }
+
+    if bracket {
+        if let (Some(tp_price), Some(sl_price)) = (tp, sl) {
+            let body = serde_json::json!({
+                "conId": con_id, "side": side, "quantity": qty,
+                "orderType": order_type, "limitPrice": price, "tif": tif,
+                "takeProfitPrice": tp_price, "stopLossPrice": sl_price
+            });
+            match client.post(format!("{}/orders/bracket", APEXIB_URL))
+                .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
+                Ok(resp) => eprintln!("[order] bracket {} {} x{} → {}", side, symbol, qty, resp.status()),
+                Err(e) => eprintln!("[order] bracket failed: {e}"),
+            }
+        }
+    } else {
+        let mut body = serde_json::json!({
+            "conId": con_id, "side": side, "quantity": qty,
+            "orderType": order_type, "tif": tif
+        });
+        if order_type != "market" {
+            body["limitPrice"] = serde_json::json!(price);
+        }
+        match client.post(format!("{}/orders", APEXIB_URL))
+            .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
+            Ok(resp) => eprintln!("[order] {} {} x{} @ {:.2} → {}", side, symbol, qty, price, resp.status()),
+            Err(e) => eprintln!("[order] submit failed: {e}"),
+        }
+    }
+}
+
 fn fetch_history_background(sym: String, tf: String, before_ts: i64) {
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
