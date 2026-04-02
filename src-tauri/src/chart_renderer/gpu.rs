@@ -1572,13 +1572,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let screen = ctx.screen_rect();
         let ids = chart.selected_ids.clone();
         // Extract current style values (avoids borrow conflict with mutable drawing access)
-        let (cur_color, cur_ls, cur_th, cur_op) = chart.drawings.iter().find(|d| ids.contains(&d.id))
-            .map(|d| (d.color.clone(), d.line_style, d.thickness, d.opacity))
-            .unwrap_or(("#4a9eff".into(), LineStyle::Solid, 1.5, 1.0));
+        let (cur_color, cur_ls, cur_th, cur_op, cur_group) = chart.drawings.iter().find(|d| ids.contains(&d.id))
+            .map(|d| (d.color.clone(), d.line_style, d.thickness, d.opacity, d.group_id.clone()))
+            .unwrap_or(("#4a9eff".into(), LineStyle::Solid, 1.5, 1.0, "default".into()));
+        let cur_group_name = chart.groups.iter().find(|g| g.id == cur_group)
+            .map(|g| g.name.clone()).unwrap_or("default".into());
+        let groups_snapshot: Vec<(String, String)> = std::iter::once(("default".into(), "default".into()))
+            .chain(chart.groups.iter().map(|g| (g.id.clone(), g.name.clone())))
+            .collect();
 
+        let bar_w = 580.0;
         egui::Window::new("style_bar")
-            .fixed_pos(egui::pos2(screen.center().x - 230.0, 32.0))
-            .fixed_size(egui::vec2(460.0, 24.0))
+            .fixed_pos(egui::pos2(screen.center().x - bar_w / 2.0, 32.0))
+            .fixed_size(egui::vec2(bar_w, 24.0))
             .title_bar(false)
             .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(35,35,40)).inner_margin(4.0))
             .show(ctx, |ui| {
@@ -1599,7 +1605,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.separator();
                     ui.add_space(4.0);
 
-                    // Line style dropdown with visual previews
+                    // Line style dropdown
                     let ls_label = match cur_ls { LineStyle::Solid => "____", LineStyle::Dashed => "- - -", LineStyle::Dotted => ". . ." };
                     egui::ComboBox::from_id_salt("ls").selected_text(ls_label).width(65.0).show_ui(ui, |ui| {
                         if ui.selectable_label(cur_ls == LineStyle::Solid, "_____ Solid").clicked() { for d in &mut chart.drawings { if ids.contains(&d.id) { d.line_style = LineStyle::Solid; } } }
@@ -1624,6 +1630,65 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         }
                     });
+
+                    ui.add_space(4.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+
+                    // Group dropdown
+                    egui::ComboBox::from_id_salt("grp").selected_text(
+                        egui::RichText::new(format!("{} {}", Icon::FOLDER, cur_group_name)).monospace().size(10.0)
+                    ).width(80.0).show_ui(ui, |ui| {
+                        // Existing groups
+                        for (gid, gname) in &groups_snapshot {
+                            let is_cur = *gid == cur_group;
+                            if ui.selectable_label(is_cur, egui::RichText::new(gname).monospace().size(10.0)).clicked() && !is_cur {
+                                let sym = chart.symbol.clone();
+                                let tf = chart.timeframe.clone();
+                                for d in &mut chart.drawings {
+                                    if ids.contains(&d.id) {
+                                        d.group_id = gid.clone();
+                                        crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                    }
+                                }
+                            }
+                        }
+                        ui.separator();
+                        // + New Group
+                        if ui.selectable_label(false, egui::RichText::new(format!("{} New Group...", Icon::PLUS)).monospace().size(10.0).color(t.accent)).clicked() {
+                            chart.group_manager_open = true;
+                        }
+                    });
+
+                    // Apply style to entire group
+                    if cur_group != "default" {
+                        let group_count = chart.drawings.iter().filter(|d| d.group_id == cur_group).count();
+                        if group_count > 1 {
+                            let tip = format!("Apply style to all {} drawings in {}", group_count, cur_group_name);
+                            let resp = ui.add(egui::Button::new(egui::RichText::new(Icon::PALETTE).size(14.0).color(t.accent))
+                                .frame(false).min_size(egui::vec2(20.0, 20.0)));
+                            if resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("group_style_tip"), |ui| {
+                                    ui.label(egui::RichText::new(tip).monospace().size(9.0));
+                                });
+                            }
+                            if resp.clicked() {
+                                let sym = chart.symbol.clone();
+                                let tf = chart.timeframe.clone();
+                                let target_group = cur_group.clone();
+                                for d in &mut chart.drawings {
+                                    if d.group_id == target_group {
+                                        d.color = cur_color.clone();
+                                        d.line_style = cur_ls;
+                                        d.thickness = cur_th;
+                                        d.opacity = cur_op;
+                                        crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     ui.add_space(4.0);
                     // Delete icon
