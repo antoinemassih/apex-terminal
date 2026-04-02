@@ -531,8 +531,10 @@ struct Chart {
     order_tif_idx: usize, // 0=DAY, 1=GTC, 2=IOC
     order_advanced: bool, // expanded mode
     order_bracket: bool, // bracket mode: entry + TP + SL
-    order_tp_price: String, // take profit price
-    order_sl_price: String, // stop loss price
+    order_stop_price: String, // stop trigger price (for STP, STP-LMT)
+    order_trail_amt: String, // trailing amount (for TRAIL)
+    order_tp_price: String, // take profit price (bracket)
+    order_sl_price: String, // stop loss price (bracket)
     order_panel_pos: egui::Pos2, // draggable position (relative to chart rect)
     order_panel_dragging: bool,
     dragging_order: Option<u32>, // order id being dragged
@@ -591,6 +593,7 @@ impl Chart {
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
             orders: vec![], next_order_id: 1, order_qty: 100, order_market: true, order_limit_price: String::new(),
             order_type_idx: 0, order_tif_idx: 0, order_advanced: false, order_bracket: false,
+            order_stop_price: String::new(), order_trail_amt: String::new(),
             order_tp_price: String::new(), order_sl_price: String::new(),
             order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false,
             dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
@@ -3751,7 +3754,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.add_space(4.0);
                     }
 
-                    // Row 1: [-] qty [+] | price
+                    // Row 1: [-] qty [+]
                     ui.horizontal(|ui| {
                         ui.add_space(pad);
                         ui.spacing_mut().item_spacing.x = 2.0;
@@ -3775,14 +3778,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
                             egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
                         ui.add_space(6.0);
-                        if chart.order_market {
-                            ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(12.0).color(t.dim));
-                        } else {
-                            ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
-                                .desired_width(68.0).font(egui::FontId::monospace(12.0)).hint_text("Price")
-                                .horizontal_align(egui::Align::RIGHT));
-                        }
+
                         if !adv {
+                            // Compact mode: single price + MKT/LMT toggle
+                            if chart.order_market {
+                                ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(12.0).color(t.dim));
+                            } else {
+                                ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
+                                    .desired_width(68.0).font(egui::FontId::monospace(12.0)).hint_text("Price")
+                                    .horizontal_align(egui::Align::RIGHT));
+                            }
                             ui.add_space(2.0);
                             let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
                             if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(9.0).strong()
@@ -3795,8 +3800,50 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     chart.order_limit_price = format!("{:.2}", last_price);
                                 }
                             }
+                        } else {
+                            // Advanced: show last price as reference
+                            ui.label(egui::RichText::new(format!("Last {:.2}", last_price)).monospace().size(10.0).color(t.dim.gamma_multiply(0.6)));
                         }
                     });
+
+                    // Advanced: price fields per order type
+                    if adv {
+                        let oti = chart.order_type_idx;
+                        ui.add_space(2.0);
+                        // LMT, STP-LMT: Limit price
+                        if oti == 1 || oti == 3 {
+                            ui.horizontal(|ui| {
+                                ui.add_space(pad);
+                                ui.label(egui::RichText::new("Limit").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
+                                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Limit price")
+                                    .horizontal_align(egui::Align::RIGHT));
+                            });
+                        }
+                        // STP, STP-LMT: Stop price
+                        if oti == 2 || oti == 3 {
+                            ui.horizontal(|ui| {
+                                ui.add_space(pad);
+                                ui.label(egui::RichText::new("Stop ").monospace().size(9.0).color(t.bear));
+                                ui.add_space(4.0);
+                                ui.add(egui::TextEdit::singleline(&mut chart.order_stop_price)
+                                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Stop price")
+                                    .horizontal_align(egui::Align::RIGHT));
+                            });
+                        }
+                        // TRAIL: Trailing amount
+                        if oti == 4 {
+                            ui.horizontal(|ui| {
+                                ui.add_space(pad);
+                                ui.label(egui::RichText::new("Trail").monospace().size(9.0).color(t.accent));
+                                ui.add_space(4.0);
+                                ui.add(egui::TextEdit::singleline(&mut chart.order_trail_amt)
+                                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Trail amt")
+                                    .horizontal_align(egui::Align::RIGHT));
+                            });
+                        }
+                    }
 
                     // Advanced: Bracket mode (TP + SL)
                     if adv {
