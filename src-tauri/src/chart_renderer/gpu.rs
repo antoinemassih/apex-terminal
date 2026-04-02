@@ -1334,6 +1334,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 fetch_bars_background(sym, tf);
             }
 
+            // Simulated option chart (for testing)
+            if tb_btn(ui, "Opt", false, t).clicked() {
+                let sym = panes[ap].symbol.clone();
+                let strike = panes[ap].bars.last().map(|b| (b.close / 5.0).round() * 5.0).unwrap_or(500.0);
+                // Deferred — store request on watchlist
+                watchlist.pending_opt_chart = Some((sym, strike, true, "0DTE".into()));
+            }
+
             // LIVE indicator
             if !panes[ap].auto_scroll {
                 if tb_btn(ui, "LIVE", false, t).clicked() {
@@ -4977,6 +4985,49 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     });
     span_end(); // chart_panes
 
+    // ── Handle deferred option chart open ──
+    if let Some((sym, strike, is_call, expiry)) = watchlist.pending_opt_chart.take() {
+        let ap = *active_pane;
+        let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
+        let target = if panes.len() > 1 { (ap + 1) % panes.len() } else {
+            *layout = Layout::TwoH;
+            let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
+            p.theme_idx = panes[ap].theme_idx;
+            panes.push(p);
+            panes.len() - 1
+        };
+        panes[target].symbol = opt_sym;
+        panes[target].is_option = true;
+        panes[target].underlying = sym.clone();
+        panes[target].option_type = if is_call { "C".into() } else { "P".into() };
+        panes[target].option_strike = strike;
+        panes[target].option_expiry = expiry;
+        // Generate simulated option bars
+        let underlying_bars = panes[ap].bars.clone();
+        let underlying_ts = panes[ap].timestamps.clone();
+        let mut opt_bars = Vec::new();
+        for (i, bar) in underlying_bars.iter().enumerate() {
+            let mid = (bar.open + bar.close) / 2.0;
+            let intrinsic = if is_call { (mid - strike).max(0.0) } else { (strike - mid).max(0.0) };
+            let time_pct = 1.0 - (i as f32 / underlying_bars.len().max(1) as f32);
+            let time_val = strike * 0.005 * time_pct.max(0.1);
+            let opt_mid = (intrinsic + time_val).max(0.01);
+            let vol = 0.3 + (1.0 - time_pct) * 0.2; // increasing vol near expiry
+            let noise = ((i as f32 * 7.3).sin() * 0.3 + (i as f32 * 13.7).cos() * 0.2) * opt_mid * 0.05;
+            let o = opt_mid + noise * 0.5;
+            let c = opt_mid - noise * 0.3;
+            let h = o.max(c) + opt_mid * vol * 0.02;
+            let l = (o.min(c) - opt_mid * vol * 0.02).max(0.01);
+            opt_bars.push(Bar { open: o, high: h, low: l, close: c, volume: bar.volume * 0.1, _pad: 0.0 });
+        }
+        panes[target].bars = opt_bars;
+        panes[target].timestamps = underlying_ts;
+        panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + 8.0).max(0.0);
+        panes[target].auto_scroll = true;
+        panes[target].indicator_bar_count = 0;
+        *active_pane = target;
+    }
+
     // ── Handle deferred underlying order actions ──
     // Check if any option pane requested to place an order on its underlying
     let mut und_action: Option<(usize, OrderSide, String, String, f32, String, u32)> = None;
@@ -5078,6 +5129,7 @@ struct Watchlist {
     shortcuts_open: bool, // keyboard shortcuts help panel
     trendline_filter_open: bool, // trendline filter dropdown
     account_strip_open: bool, // account summary bar below toolbar
+    pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
     // Orders
     orders_panel_open: bool,
     order_entry_open: bool,
@@ -5110,7 +5162,7 @@ impl Watchlist {
             symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
         Self { open: false, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
-               toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false,
+               toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
