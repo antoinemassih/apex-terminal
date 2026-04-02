@@ -384,6 +384,7 @@ struct IbOrder {
     status: String,
     strike: f64,
     option_type: String,
+    submitted_at: i64, // unix ms
 }
 
 #[derive(Debug, Clone)]
@@ -475,9 +476,15 @@ fn start_account_poller() {
 
                 // Fetch executions + pending + cancelled orders
                 let mut ib_orders = Vec::new();
-                let parse_orders = |json: &serde_json::Value, key: &str, orders: &mut Vec<IbOrder>| {
+                // Only show orders from the last 24 hours
+                let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+                let cutoff_ms = now_ms - 86_400_000; // 24 hours ago
+
+                let parse_orders = |json: &serde_json::Value, key: &str, orders: &mut Vec<IbOrder>, cutoff: i64| {
                     if let Some(arr) = json[key].as_array() {
                         for o in arr {
+                            let ts = o["submittedAt"].as_i64().or_else(|| o["time"].as_i64()).unwrap_or(0);
+                            if ts > 0 && ts < cutoff { continue; } // skip old orders
                             orders.push(IbOrder {
                                 symbol: o["symbol"].as_str().unwrap_or("").into(),
                                 side: o["side"].as_str().or_else(|| o["action"].as_str()).unwrap_or("").into(),
@@ -489,6 +496,7 @@ fn start_account_poller() {
                                 status: o["status"].as_str().unwrap_or(if key == "executions" { "filled" } else { "" }).into(),
                                 strike: o["strike"].as_f64().unwrap_or(0.0),
                                 option_type: o["optionType"].as_str().unwrap_or("").into(),
+                                submitted_at: ts,
                             });
                         }
                     }
@@ -496,19 +504,19 @@ fn start_account_poller() {
                 // Executions (filled trades)
                 if let Ok(resp) = client.get(format!("{}/executions", APEXIB_URL)).send() {
                     if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "executions", &mut ib_orders);
+                        parse_orders(&json, "executions", &mut ib_orders, cutoff_ms);
                     }
                 }
                 // Pending/submitted orders
                 if let Ok(resp) = client.get(format!("{}/orders?status=submitted", APEXIB_URL)).send() {
                     if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "orders", &mut ib_orders);
+                        parse_orders(&json, "orders", &mut ib_orders, cutoff_ms);
                     }
                 }
                 // Cancelled orders
                 if let Ok(resp) = client.get(format!("{}/orders?status=cancelled", APEXIB_URL)).send() {
                     if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "orders", &mut ib_orders);
+                        parse_orders(&json, "orders", &mut ib_orders, cutoff_ms);
                     }
                 }
 
@@ -652,6 +660,7 @@ struct Chart {
     order_sl_price: String, // stop loss price (bracket)
     order_panel_pos: egui::Pos2, // draggable position (relative to chart rect)
     order_panel_dragging: bool,
+    order_collapsed: bool, // true = show as pill, double-click to expand
     dragging_order: Option<u32>, // order id being dragged
     editing_order: Option<u32>,
     edit_order_qty: String,
@@ -719,7 +728,7 @@ impl Chart {
             order_type_idx: 0, order_tif_idx: 0, order_advanced: false, order_bracket: false,
             order_stop_price: String::new(), order_trail_amt: String::new(),
             order_tp_price: String::new(), order_sl_price: String::new(),
-            order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false,
+            order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false, order_collapsed: false,
             dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
@@ -3975,6 +3984,37 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             };
             let tifs = ["DAY", "GTC", "IOC"];
 
+            // Collapsed mode: just a small pill
+            if chart.order_collapsed {
+                let pill_w = 70.0;
+                egui::Window::new(format!("order_pill_{}", pane_idx))
+                    .fixed_pos(abs_pos)
+                    .fixed_size(egui::vec2(pill_w, 22.0))
+                    .title_bar(false)
+                    .frame(egui::Frame::popup(&ctx.style())
+                        .fill(color_alpha(t.toolbar_bg, 230))
+                        .inner_margin(egui::Margin { left: 6, right: 6, top: 3, bottom: 3 })
+                        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)))
+                        .corner_radius(10.0))
+                    .show(ctx, |ui| {
+                        let resp = ui.horizontal(|ui| {
+                            let armed_dot = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.3) };
+                            ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 8.0), 3.0, armed_dot);
+                            ui.add_space(10.0);
+                            ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.7)));
+                        });
+                        let pill_resp = resp.response.interact(egui::Sense::click());
+                        if pill_resp.double_clicked() { chart.order_collapsed = false; }
+                        if pill_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                        // Drag
+                        let drag_resp = ui.interact(resp.response.rect, egui::Id::new(("order_pill_drag", pane_idx)), egui::Sense::drag());
+                        if drag_resp.dragged() {
+                            let delta = drag_resp.drag_delta();
+                            chart.order_panel_pos.x += delta.x;
+                            chart.order_panel_pos.y += delta.y;
+                        }
+                    });
+            } else {
             egui::Window::new(format!("order_entry_{}", pane_idx))
                 .fixed_pos(abs_pos)
                 .fixed_size(egui::vec2(panel_w, 0.0))
@@ -3988,29 +4028,50 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
                     let spread = (last_price * 0.0001).max(0.01);
 
-                    // ── Draggable header bar ──
+                    // ── Header bar: armed toggle | ORDER | separator | +/- ──
                     let header_resp = ui.horizontal(|ui| {
                         ui.set_min_width(panel_w);
                         let header_rect = ui.max_rect();
                         ui.painter().rect_filled(
-                            egui::Rect::from_min_size(header_rect.min, egui::vec2(panel_w, 20.0)),
+                            egui::Rect::from_min_size(header_rect.min, egui::vec2(panel_w, 22.0)),
                             egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
                             color_alpha(t.toolbar_border, 30));
-                        ui.add_space(6.0);
+                        ui.add_space(4.0);
+                        // Armed toggle (inline in header)
+                        let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
+                        let armed_color = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.4) };
+                        let armed_resp = ui.add(egui::Button::new(egui::RichText::new(armed_icon).size(11.0).color(armed_color))
+                            .fill(if chart.armed { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                            .stroke(egui::Stroke::NONE).min_size(egui::vec2(18.0, 18.0)).corner_radius(2.0));
+                        if armed_resp.clicked() { chart.armed = !chart.armed; }
+                        if armed_resp.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new(("armed_tip", pane_idx)), |ui| {
+                                ui.label(egui::RichText::new(if chart.armed { "Armed — sends to IB" } else { "Unarmed — drafts only" }).monospace().size(9.0));
+                            });
+                        }
+                        // Label
                         ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(4.0);
-                            // Expand/collapse toggle
+                            // Expand/collapse advanced toggle
                             let exp_icon = if adv { Icon::MINUS } else { Icon::PLUS };
-                            if ui.add(egui::Button::new(egui::RichText::new(exp_icon).size(9.0).color(t.dim.gamma_multiply(0.5)))
-                                .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                chart.order_advanced = !chart.order_advanced;
-                            }
+                            let exp_resp = ui.add(egui::Button::new(egui::RichText::new(exp_icon).size(10.0).color(t.dim.gamma_multiply(0.5)))
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 18.0)).corner_radius(2.0));
+                            if exp_resp.clicked() { chart.order_advanced = !chart.order_advanced; }
+                            if exp_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                            // Separator
+                            ui.add(egui::Separator::default().spacing(2.0));
                         });
                     });
-                    // Handle drag on header — only the left part (exclude button zone on right)
+                    // Double-click header to collapse
+                    let hdr_click = ui.interact(header_resp.response.rect, egui::Id::new(("order_hdr_dblclick", pane_idx)), egui::Sense::click());
+                    if hdr_click.double_clicked() { chart.order_collapsed = true; }
+                    // Handle drag on header — exclude armed button (left 24px) and +/- button (right 30px)
                     let hdr_min = header_resp.response.rect.min;
-                    let drag_rect = egui::Rect::from_min_size(hdr_min, egui::vec2(panel_w - 30.0, 20.0));
+                    let drag_rect = egui::Rect::from_min_size(
+                        egui::pos2(hdr_min.x + 24.0, hdr_min.y),
+                        egui::vec2(panel_w - 54.0, 22.0));
                     let drag_resp = ui.interact(drag_rect, egui::Id::new(("order_panel_drag", pane_idx)), egui::Sense::drag());
                     if drag_resp.dragged() {
                         let delta = drag_resp.drag_delta();
@@ -4198,7 +4259,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.horizontal(|ui| {
                         ui.add_space(pad);
                         ui.spacing_mut().item_spacing.x = 4.0;
-                        let btn_w = (panel_w - pad * 2.0 - 30.0) / 2.0;
+                        let btn_w = (panel_w - pad * 2.0 - 8.0) / 2.0;
                         let is_und = adv && chart.order_type_idx == 5 && chart.is_option;
                         let buy_label = if is_und { format!("BUY {} on UND", chart.option_type) } else { format!("BUY {:.2}", buy_price) };
                         let sell_label = if is_und { format!("SELL {} on UND", chart.option_type) } else { format!("SELL {:.2}", sell_price) };
@@ -4249,21 +4310,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                             }
                         }
-                        // Armed toggle
-                        let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
-                        let armed_color = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        let armed_resp = ui.add(egui::Button::new(egui::RichText::new(armed_icon).size(13.0).color(armed_color))
-                            .fill(if chart.armed { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT })
-                            .stroke(egui::Stroke::NONE).min_size(egui::vec2(22.0, 24.0)).corner_radius(2.0));
-                        if armed_resp.clicked() { chart.armed = !chart.armed; }
-                        if armed_resp.hovered() {
-                            egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("armed_tip"), |ui| {
-                                ui.label(egui::RichText::new(if chart.armed { "Armed — sends to IB immediately" } else { "Unarmed — creates draft orders" }).monospace().size(9.0));
-                            });
-                        }
                     });
                     ui.add_space(6.0);
                 });
+            } // end if !collapsed
 
             // ── Pending confirm toasts (above order entry panel) ─────────
             if !chart.pending_confirms.is_empty() {
