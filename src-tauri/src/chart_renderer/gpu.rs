@@ -2771,6 +2771,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         let item_option_type = item.option_type.clone();
                                         let item_strike = item.strike;
                                         let item_expiry = item.expiry.clone();
+                                        let item_bid = item.bid;
+                                        let item_ask = item.ask;
                                         let is_dragged = drag_confirmed && dragging == Some((si, ii));
 
                                         // Skip rendering the dragged item in-place (it's shown as floating)
@@ -2786,7 +2788,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         if item_is_option {
                                             // ── Option item rendering ──
                                             let opt_color = if item_option_type == "C" { t.bull } else { t.bear };
-                                            let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
+                                            let price_str = if item_bid > 0.0 || item_ask > 0.0 {
+                                                format!("{:.2} \u{00D7} {:.2}", item_bid, item_ask)
+                                            } else if item_price > 0.0 {
+                                                format!("{:.2}", item_price)
+                                            } else {
+                                                "---".into()
+                                            };
                                             let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
 
                                             let resp = ui.horizontal(|ui| {
@@ -2819,7 +2827,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                     if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
                                                         remove_sym = Some(item_sym.clone());
                                                     }
-                                                    // Price
+                                                    // Bid x Ask (or price fallback)
                                                     ui.label(egui::RichText::new(&price_str).monospace().size(11.0).color(opt_color));
                                                 });
                                             });
@@ -3180,8 +3188,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         });
 
                         // ── Helper to render one option row ──
-                        // Track clicked contract for opening chart (when not in select mode)
+                        // Track clicked contract for opening chart (normal click)
                         let clicked_contract: std::cell::Cell<Option<(String, f32, bool, String)>> = std::cell::Cell::new(None);
+                        // Track shift-clicked contract for adding to watchlist (select mode / shift+click)
+                        let watchlist_add: std::cell::Cell<Option<(String, f32, bool, String, f32, f32)>> = std::cell::Cell::new(None);
                         let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let is_saved = saved.iter().any(|s| s.contract == row.contract);
                             let color = if is_call { t.bull } else { t.bear };
@@ -3233,11 +3243,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                             if row_resp.clicked() {
                                 if select_mode || ui.input(|i| i.modifiers.shift) {
-                                    // Select mode: toggle saved
+                                    // Select mode / shift+click: add to watchlist + toggle saved
                                     if is_saved { saved.retain(|s| s.contract != row.contract); }
                                     else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call, expiry: exp_label.into(), last: row.last }); }
+                                    watchlist_add.set(Some((sym.into(), row.strike, is_call, exp_label.into(), row.bid, row.ask)));
                                 } else {
-                                    // Normal click: open option chart
+                                    // Normal click: just open option chart (no watchlist add)
                                     clicked_contract.set(Some((sym.into(), row.strike, is_call, exp_label.into())));
                                 }
                             }
@@ -3284,13 +3295,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
                             render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
                         });
-                        // Open option chart if a contract was clicked (non-select mode)
-                        // Also add to watchlist "Options" section
+                        // Normal click: just open option chart (no watchlist add)
                         if let Some(info) = clicked_contract.take() {
-                            let (ref sym, strike, is_call, ref expiry) = info;
-                            watchlist.add_option_to_watchlist(sym, strike, is_call, expiry);
-                            watchlist.persist();
                             open_option_chart = Some(info);
+                        }
+                        // Select mode / shift+click: add to watchlist + persist
+                        if let Some((ref sym, strike, is_call, ref expiry, bid, ask)) = watchlist_add.take() {
+                            watchlist.add_option_to_watchlist(sym, strike, is_call, expiry, bid, ask);
+                            watchlist.persist();
                         }
                     }
 
@@ -5813,6 +5825,8 @@ struct WatchlistItem {
     option_type: String,   // "C" or "P"
     strike: f32,
     expiry: String,        // "0DTE", "5DTE" etc.
+    bid: f32,
+    ask: f32,
 }
 
 #[derive(Clone)]
@@ -5948,7 +5962,7 @@ impl Watchlist {
             self.sections.push(WatchlistSection { id, title: String::new(), color: None, collapsed: false, items: vec![] });
         }
         let last = self.sections.last_mut().unwrap();
-        last.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new() });
+        last.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0 });
     }
 
     /// Remove symbol from all sections.
@@ -5995,26 +6009,27 @@ impl Watchlist {
 
     /// Add an option contract to the "Options" section (auto-creates if needed).
     /// Returns false if already present (duplicate check by symbol string).
-    fn add_option_to_watchlist(&mut self, underlying: &str, strike: f32, is_call: bool, expiry: &str) -> bool {
+    fn add_option_to_watchlist(&mut self, underlying: &str, strike: f32, is_call: bool, expiry: &str, bid: f32, ask: f32) -> bool {
         let type_str = if is_call { "C" } else { "P" };
         let opt_sym = format!("{} {:.0}{} {}", underlying, strike, type_str, expiry);
         // Duplicate check across all sections
         if self.sections.iter().any(|sec| sec.items.iter().any(|i| i.symbol == opt_sym)) {
             return false;
         }
-        // Find or create "Options" section
-        let sec_idx = if let Some(idx) = self.sections.iter().position(|s| s.title == "Options") {
+        // Find or create section named after underlying (e.g. "SPY Options")
+        let section_title = format!("{} Options", underlying);
+        let sec_idx = if let Some(idx) = self.sections.iter().position(|s| s.title == section_title) {
             idx
         } else {
             let id = self.next_section_id; self.next_section_id += 1;
             self.sections.push(WatchlistSection {
-                id, title: "Options".to_string(), color: Some("#9b59b6".to_string()), collapsed: false, items: vec![],
+                id, title: section_title, color: Some("#9b59b6".to_string()), collapsed: false, items: vec![],
             });
             self.sections.len() - 1
         };
         self.sections[sec_idx].items.push(WatchlistItem {
             symbol: opt_sym, price: 0.0, prev_close: 0.0, loaded: false,
-            is_option: true, underlying: underlying.to_string(), option_type: type_str.to_string(), strike, expiry: expiry.to_string(),
+            is_option: true, underlying: underlying.to_string(), option_type: type_str.to_string(), strike, expiry: expiry.to_string(), bid, ask,
         });
         true
     }
@@ -6914,7 +6929,7 @@ fn save_watchlists(watchlist: &Watchlist) {
         let sections: Vec<serde_json::Value> = wl.sections.iter().map(|sec| {
             let items: Vec<serde_json::Value> = sec.items.iter().map(|item| {
                 if item.is_option {
-                    serde_json::json!({ "symbol": item.symbol, "is_option": true, "underlying": item.underlying, "option_type": item.option_type, "strike": item.strike, "expiry": item.expiry })
+                    serde_json::json!({ "symbol": item.symbol, "is_option": true, "underlying": item.underlying, "option_type": item.option_type, "strike": item.strike, "expiry": item.expiry, "bid": item.bid, "ask": item.ask })
                 } else {
                     serde_json::json!({ "symbol": item.symbol })
                 }
@@ -6976,7 +6991,9 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
                             let option_type = item_val.get("option_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let strike = item_val.get("strike").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                             let expiry = item_val.get("expiry").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            items.push(WatchlistItem { symbol, price: 0.0, prev_close: 0.0, loaded: false, is_option, underlying, option_type, strike, expiry });
+                            let bid = item_val.get("bid").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                            let ask = item_val.get("ask").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                            items.push(WatchlistItem { symbol, price: 0.0, prev_close: 0.0, loaded: false, is_option, underlying, option_type, strike, expiry, bid, ask });
                         }
                     }
                 }
@@ -6992,7 +7009,7 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
 
 fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
     let items: Vec<WatchlistItem> = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
-        symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(),
+        symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
     }).collect();
     let default_section = WatchlistSection {
         id: 1, title: String::new(), color: None, collapsed: false, items,
