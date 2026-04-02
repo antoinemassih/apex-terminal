@@ -2647,49 +2647,136 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.add_space(4.0);
                 }
 
-                // ── Live Positions from ApexIB ──
+                // ══════════════════════════════════════════════════════
+                // ── POSITIONS SECTION (top half of book) ──
+                // ══════════════════════════════════════════════════════
                 {
                     let ib_positions = read_account_data().map(|(_, p)| p).unwrap_or_default();
-                    if !ib_positions.is_empty() {
+                    let has_positions = !ib_positions.is_empty();
+
+                    // Header + Close All
+                    ui.horizontal(|ui| {
                         section_label(ui, "POSITIONS", t.accent);
-                        ui.add_space(4.0);
-                        let mut total_pnl: f64 = 0.0;
-                        for pos in &ib_positions {
-                            total_pnl += pos.unrealized_pnl;
-                            let pnl_color = if pos.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
-                            order_card(ui, pnl_color, color_alpha(t.toolbar_border, 10), |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong()
-                                        .color(egui::Color32::from_rgb(220,220,230)));
-                                    ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price))
-                                        .monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(egui::RichText::new(format!("${:.0}", pos.market_value))
-                                            .monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                        if has_positions {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let del_color = t.bear;
+                                if ui.add(egui::Button::new(egui::RichText::new("Close All")
+                                    .monospace().size(8.0).color(del_color))
+                                    .fill(color_alpha(del_color, 15)).corner_radius(2.0)
+                                    .stroke(egui::Stroke::new(0.5, color_alpha(del_color, 50)))
+                                    .min_size(egui::vec2(0.0, 16.0))).clicked() {
+                                    // Fire close-all via ApexIB
+                                    std::thread::spawn(|| {
+                                        let _ = reqwest::blocking::Client::new()
+                                            .post(format!("{}/risk/flatten", APEXIB_URL))
+                                            .timeout(std::time::Duration::from_secs(5))
+                                            .send();
                                     });
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(format!("{:+.2}", pos.unrealized_pnl))
-                                        .monospace().size(12.0).strong().color(pnl_color));
-                                    ui.add_space(4.0);
-                                    ui.label(egui::RichText::new(format!("({:+.1}%)", pos.pnl_pct()))
-                                        .monospace().size(9.0).color(pnl_color));
-                                });
+                                }
                             });
                         }
-                        // Total P&L
+                    });
+                    ui.add_space(4.0);
+
+                    if has_positions {
+                        let mut total_pnl: f64 = 0.0;
+                        egui::ScrollArea::vertical().id_salt("positions_scroll").max_height(ui.available_height() * 0.45).show(ui, |ui| {
+                            for pos in &ib_positions {
+                                total_pnl += pos.unrealized_pnl;
+                                let pnl_color = if pos.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
+                                order_card(ui, pnl_color, color_alpha(t.toolbar_border, 10), |ui| {
+                                    // Row 1: symbol, qty@price, close buttons
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong()
+                                            .color(egui::Color32::from_rgb(220,220,230)));
+                                        ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price))
+                                            .monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            // Close button
+                                            let close_color = t.bear;
+                                            if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(close_color))
+                                                .fill(color_alpha(close_color, 12)).corner_radius(2.0)
+                                                .min_size(egui::vec2(18.0, 16.0))).clicked() {
+                                                // Close full position via ApexIB
+                                                let sym = pos.symbol.clone();
+                                                let qty = pos.qty;
+                                                let con_id = pos.con_id;
+                                                std::thread::spawn(move || {
+                                                    let side = if qty > 0 { "SELL" } else { "BUY" };
+                                                    let _ = reqwest::blocking::Client::new()
+                                                        .post(format!("{}/orders", APEXIB_URL))
+                                                        .json(&serde_json::json!({
+                                                            "conId": con_id, "side": side,
+                                                            "quantity": qty.unsigned_abs(),
+                                                            "orderType": "market"
+                                                        }))
+                                                        .timeout(std::time::Duration::from_secs(5))
+                                                        .send();
+                                                });
+                                            }
+                                            // Close half button
+                                            if pos.qty.abs() > 1 {
+                                                if ui.add(egui::Button::new(egui::RichText::new("\u{00BD}").size(9.0).color(t.dim))
+                                                    .fill(color_alpha(t.toolbar_border, 15)).corner_radius(2.0)
+                                                    .min_size(egui::vec2(18.0, 16.0))).clicked() {
+                                                    let sym = pos.symbol.clone();
+                                                    let half = (pos.qty.abs() / 2).max(1);
+                                                    let con_id = pos.con_id;
+                                                    let qty = pos.qty;
+                                                    std::thread::spawn(move || {
+                                                        let side = if qty > 0 { "SELL" } else { "BUY" };
+                                                        let _ = reqwest::blocking::Client::new()
+                                                            .post(format!("{}/orders", APEXIB_URL))
+                                                            .json(&serde_json::json!({
+                                                                "conId": con_id, "side": side,
+                                                                "quantity": half,
+                                                                "orderType": "market"
+                                                            }))
+                                                            .timeout(std::time::Duration::from_secs(5))
+                                                            .send();
+                                                    });
+                                                }
+                                            }
+                                        });
+                                    });
+                                    // Row 2: P&L + market value
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(format!("{:+.2}", pos.unrealized_pnl))
+                                            .monospace().size(12.0).strong().color(pnl_color));
+                                        ui.add_space(4.0);
+                                        ui.label(egui::RichText::new(format!("({:+.1}%)", pos.pnl_pct()))
+                                            .monospace().size(9.0).color(pnl_color));
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            ui.label(egui::RichText::new(format!("${:.0}", pos.market_value))
+                                                .monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                        });
+                                    });
+                                });
+                            }
+                        });
+                        // Total P&L row
                         let total_color = if total_pnl >= 0.0 { t.bull } else { t.bear };
+                        ui.add_space(2.0);
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new("Total P&L").monospace().size(9.0).color(t.dim));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.label(egui::RichText::new(format!("{:+.2}", total_pnl)).monospace().size(11.0).strong().color(total_color));
                             });
                         });
-                        ui.add_space(6.0);
-                        separator(ui, color_alpha(t.toolbar_border, 40));
-                        ui.add_space(6.0);
+                    } else {
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new("No open positions").monospace().size(10.0).color(t.dim.gamma_multiply(0.4)));
+                        ui.add_space(8.0);
                     }
+
+                    ui.add_space(6.0);
+                    separator(ui, color_alpha(t.toolbar_border, 60));
+                    ui.add_space(6.0);
                 }
+
+                // ══════════════════════════════════════════════════════
+                // ── ORDERS SECTION (bottom half of book) ──
+                // ══════════════════════════════════════════════════════
 
                 // ── Select all toggle ──
                 {
