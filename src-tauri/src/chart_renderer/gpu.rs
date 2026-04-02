@@ -3811,6 +3811,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // ── Order entry panel (bottom-left of pane) ─────────────────────────
         if watchlist.order_entry_open {
+            // Auto-expand advanced mode for option charts (UND is there)
+            if chart.is_option && !chart.order_advanced {
+                chart.order_advanced = true;
+                chart.order_type_idx = 5; // default to UND for options
+            }
             let adv = chart.order_advanced;
             let panel_w = if adv { 300.0 } else { 230.0 };
             // Position: relative to chart rect, default bottom-left. Negative Y = from bottom.
