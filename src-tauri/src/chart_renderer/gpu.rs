@@ -909,17 +909,6 @@ fn tick_simulation(chart: &mut Chart) {
             chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + 8.0).max(0.0);
         }
 
-        // ── History pagination: fetch older bars when scrolled near left edge ──
-        let threshold = chart.vc as f32 * 0.5;
-        if chart.vs < threshold && !chart.auto_scroll && !chart.history_loading && !chart.history_exhausted
-            && !chart.bars.is_empty() && chart.timestamps.len() > 1 {
-            chart.history_loading = true;
-            let sym = chart.symbol.clone();
-            let tf = chart.timeframe.clone();
-            let earliest_ts = chart.timestamps[0];
-            eprintln!("[history] triggered for {} {} (vs={:.1}, bars={})", sym, tf, chart.vs, chart.bars.len());
-            fetch_history_background(sym, tf, earliest_ts);
-        }
     }
 
     if !chart.auto_scroll && chart.last_input.elapsed().as_secs() >= AUTO_SCROLL_RESUME_SECS {
@@ -950,14 +939,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let ap = *active_pane;
         if ap < panes.len() {
             let chart = &mut panes[ap];
-            let threshold = chart.vc as f32 * 0.5;
-            if chart.vs < threshold && !chart.auto_scroll && !chart.history_loading && !chart.history_exhausted
+            // Trigger when left edge of viewport is within 30 bars of start of data
+            let threshold = 30.0;
+            if !chart.auto_scroll && chart.vs < threshold && !chart.history_loading && !chart.history_exhausted
                 && !chart.bars.is_empty() && chart.timestamps.len() > 1 {
                 chart.history_loading = true;
                 let sym = chart.symbol.clone();
                 let tf = chart.timeframe.clone();
                 let earliest_ts = chart.timestamps[0];
-                eprintln!("[history] triggered for {} {} (vs={:.1}, threshold={:.0}, bars={})", sym, tf, chart.vs, threshold, chart.bars.len());
+                eprintln!("[history] TRIGGERED for {} {} (vs={:.1}, bars={})", sym, tf, chart.vs, chart.bars.len());
                 fetch_history_background(sym, tf, earliest_ts);
             }
         }
