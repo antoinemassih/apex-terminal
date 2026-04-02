@@ -2161,6 +2161,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 };
 
                 let redis_ok = crate::bar_cache::get("__ping_test", "").is_none();
+                let ib_ok = read_account_data().map(|(a, _)| a.connected).unwrap_or(false);
+                svc_row(ui, "ApexIB", if ib_ok { "OK" } else { "OFF" }, ib_ok, APEXIB_URL);
                 svc_row(ui, "Redis Cache", if redis_ok { "OK" } else { "OFF" }, redis_ok, "192.168.1.89:6379");
                 svc_row(ui, "GPU Engine", "DX12", true, "wgpu + egui");
                 svc_row(ui, "Data Feed", "OK", true, "query1.finance.yahoo.com");
@@ -2171,7 +2173,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("redis:6379 \u{00B7} ococo:30300 \u{00B7} yahoo").monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
+                    ui.label(egui::RichText::new("apexib:5000 \u{00B7} redis:6379 \u{00B7} ococo:30300 \u{00B7} yahoo").monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
                 });
                 ui.add_space(8.0);
             });
