@@ -373,6 +373,20 @@ struct AccountSummary {
 }
 
 #[derive(Debug, Clone)]
+struct IbOrder {
+    symbol: String,
+    side: String,
+    qty: i32,
+    filled_qty: i32,
+    order_type: String,
+    limit_price: f64,
+    avg_fill_price: f64,
+    status: String,
+    strike: f64,
+    option_type: String,
+}
+
+#[derive(Debug, Clone)]
 struct Position {
     symbol: String,
     qty: i32,         // positive=long, negative=short
@@ -395,7 +409,7 @@ impl Position {
 const APEXIB_URL: &str = "http://apexib-dev.xllio.com";
 
 // Shared account data — written by background worker, read by render thread
-static ACCOUNT_DATA: std::sync::OnceLock<std::sync::Mutex<Option<(AccountSummary, Vec<Position>)>>> = std::sync::OnceLock::new();
+static ACCOUNT_DATA: std::sync::OnceLock<std::sync::Mutex<Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>> = std::sync::OnceLock::new();
 
 /// Start the account polling worker (call once). Polls ApexIB every 5 seconds.
 fn start_account_poller() {
@@ -421,15 +435,22 @@ fn start_account_poller() {
                         summary.initial_margin = json["initMarginReq"].as_f64().unwrap_or(0.0);
                         summary.maintenance_margin = json["maintMarginReq"].as_f64().unwrap_or(0.0);
                         summary.gross_position_value = json["grossPositionValue"].as_f64().unwrap_or(0.0);
+                        // Account summary also has unrealized/realized P&L
+                        if summary.unrealized_pnl == 0.0 {
+                            summary.unrealized_pnl = json["unrealizedPnL"].as_f64().unwrap_or(0.0);
+                        }
+                        if summary.realized_pnl == 0.0 {
+                            summary.realized_pnl = json["realizedPnL"].as_f64().unwrap_or(0.0);
+                        }
                     }
                 }
 
                 // Fetch P&L
                 if let Ok(resp) = client.get(format!("{}/account/pnl", APEXIB_URL)).send() {
                     if let Ok(json) = resp.json::<serde_json::Value>() {
-                        summary.daily_pnl = json["dailyPnl"].as_f64().unwrap_or(0.0);
-                        summary.unrealized_pnl = json["unrealizedPnl"].as_f64().unwrap_or(0.0);
-                        summary.realized_pnl = json["realizedPnl"].as_f64().unwrap_or(0.0);
+                        summary.daily_pnl = json["dailyPnL"].as_f64().unwrap_or(0.0);
+                        summary.unrealized_pnl = json["unrealizedPnL"].as_f64().unwrap_or(0.0);
+                        summary.realized_pnl = json["realizedPnL"].as_f64().unwrap_or(0.0);
                     }
                 }
 
@@ -452,10 +473,33 @@ fn start_account_poller() {
                     }
                 }
 
+                // Fetch orders (history)
+                let mut ib_orders = Vec::new();
+                if let Ok(resp) = client.get(format!("{}/orders", APEXIB_URL)).send() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        if let Some(arr) = json["orders"].as_array() {
+                            for o in arr {
+                                ib_orders.push(IbOrder {
+                                    symbol: o["symbol"].as_str().unwrap_or("").into(),
+                                    side: o["side"].as_str().unwrap_or("").into(),
+                                    qty: o["quantity"].as_i64().unwrap_or(0) as i32,
+                                    filled_qty: o["filledQty"].as_i64().unwrap_or(0) as i32,
+                                    order_type: o["orderType"].as_str().unwrap_or("").into(),
+                                    limit_price: o["limitPrice"].as_f64().unwrap_or(0.0),
+                                    avg_fill_price: o["avgFillPrice"].as_f64().unwrap_or(0.0),
+                                    status: o["status"].as_str().unwrap_or("").into(),
+                                    strike: o["strike"].as_f64().unwrap_or(0.0),
+                                    option_type: o["optionType"].as_str().unwrap_or("").into(),
+                                });
+                            }
+                        }
+                    }
+                }
+
                 summary.last_update = Some(std::time::Instant::now());
 
                 if let Some(data) = ACCOUNT_DATA.get() {
-                    if let Ok(mut d) = data.lock() { *d = Some((summary, positions)); }
+                    if let Ok(mut d) = data.lock() { *d = Some((summary, positions, ib_orders)); }
                 }
 
                 std::thread::sleep(std::time::Duration::from_secs(5));
@@ -466,7 +510,7 @@ fn start_account_poller() {
 }
 
 /// Read latest account data (non-blocking)
-fn read_account_data() -> Option<(AccountSummary, Vec<Position>)> {
+fn read_account_data() -> Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)> {
     ACCOUNT_DATA.get()?.lock().ok()?.clone()
 }
 
@@ -1478,7 +1522,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     // Calculate total width of content to center it
                     let avail = ui.available_width();
                     ui.spacing_mut().item_spacing.x = 16.0;
-                    if let Some((acct, _positions)) = &account_data {
+                    if let Some((acct, _positions, _orders)) = &account_data {
                         if acct.connected {
                             // Estimate content width and add left padding to center
                             let content_w = 680.0; // approximate
@@ -1526,6 +1570,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.label(egui::RichText::new("Excess").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
                             ui.label(egui::RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(13.0)
                                 .color(t.dim));
+
+                            ui.add(egui::Separator::default().spacing(8.0));
+
+                            // Realized P&L
+                            let rpnl_color = if acct.realized_pnl >= 0.0 { t.bull } else { t.bear };
+                            ui.label(egui::RichText::new("Real P&L").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(format!("{:+.0}", acct.realized_pnl)).monospace().size(13.0).strong()
+                                .color(rpnl_color));
                         } else {
                             // Not connected
                             ui.label(egui::RichText::new("IB Disconnected").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
@@ -2288,7 +2340,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 };
 
                 let redis_ok = crate::bar_cache::get("__ping_test", "").is_none();
-                let ib_ok = read_account_data().map(|(a, _)| a.connected).unwrap_or(false);
+                let ib_ok = read_account_data().map(|(a, _, _)| a.connected).unwrap_or(false);
                 svc_row(ui, "ApexIB", if ib_ok { "OK" } else { "OFF" }, ib_ok, APEXIB_URL);
                 svc_row(ui, "Redis Cache", if redis_ok { "OK" } else { "OFF" }, redis_ok, "192.168.1.89:6379");
                 svc_row(ui, "GPU Engine", "DX12", true, "wgpu + egui");
@@ -2715,7 +2767,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // ── POSITIONS SECTION (top half of book) ──
                 // ══════════════════════════════════════════════════════
                 {
-                    let ib_positions = read_account_data().map(|(_, p)| p).unwrap_or_default();
+                    let (ib_positions, ib_orders) = read_account_data().map(|(_, p, o)| (p, o)).unwrap_or_default();
                     let has_positions = !ib_positions.is_empty();
 
                     // Header + Close All
@@ -3022,9 +3074,53 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // Positions are now shown above orders via ApexIB live data
 
-                    // ── Alerts section ──
+                    // ── IB Order History ──
+                    let ib_orders = read_account_data().map(|(_, _, o)| o).unwrap_or_default();
+                    if !ib_orders.is_empty() {
+                        ui.add_space(4.0);
+                        separator(ui, color_alpha(t.toolbar_border, 40));
+                        ui.add_space(4.0);
+                        section_label(ui, "IB ORDERS", t.accent);
+                        ui.add_space(4.0);
+                        for o in &ib_orders {
+                            let is_fill = o.status == "filled";
+                            let is_cancel = o.status == "cancelled";
+                            let side_color = if o.side == "BUY" { t.bull } else { t.bear };
+                            let status_color = if is_fill { t.bull } else if is_cancel { t.dim.gamma_multiply(0.4) } else { t.accent };
+                            let opt_label = if !o.option_type.is_empty() { format!(" {:.0}{}", o.strike, o.option_type) } else { String::new() };
+                            order_card(ui, side_color, color_alpha(t.toolbar_border, if is_cancel { 5 } else { 10 }), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(&o.side).monospace().size(9.0).strong().color(side_color));
+                                    ui.label(egui::RichText::new(format!("{}{}", o.symbol, opt_label)).monospace().size(10.0).strong()
+                                        .color(egui::Color32::from_rgb(220, 220, 230)));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        status_badge(ui, &o.status.to_uppercase(), status_color);
+                                    });
+                                });
+                                ui.horizontal(|ui| {
+                                    if o.avg_fill_price > 0.0 {
+                                        ui.label(egui::RichText::new(format!("{:.2}", o.avg_fill_price)).monospace().size(11.0).strong().color(side_color));
+                                    } else if o.limit_price > 0.0 {
+                                        ui.label(egui::RichText::new(format!("{:.2}", o.limit_price)).monospace().size(11.0).color(t.dim));
+                                    }
+                                    ui.label(egui::RichText::new(format!("\u{00D7}{}", o.qty)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                                    if o.filled_qty > 0 && o.filled_qty != o.qty {
+                                        ui.label(egui::RichText::new(format!("filled {}", o.filled_qty)).monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                    }
+                                    let notional = if o.avg_fill_price > 0.0 { o.avg_fill_price * o.qty as f64 } else { o.limit_price * o.qty as f64 };
+                                    if notional > 0.0 {
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            ui.label(egui::RichText::new(format!("${:.0}", notional)).monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                        });
+                                    }
+                                });
+                            });
+                        }
+                    }
+
+                    // ── Alerts ──
                     if !watchlist.alerts.is_empty() {
-                        ui.add_space(6.0);
+                        ui.add_space(4.0);
                         separator(ui, color_alpha(t.toolbar_border, 40));
                         ui.add_space(4.0);
                         section_label(ui, "ALERTS", t.dim);
