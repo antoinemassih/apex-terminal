@@ -671,6 +671,8 @@ impl Chart {
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
             ChartCommand::LoadBars { bars, timestamps, symbol, timeframe, .. } => {
+                // Skip if this pane is an option chart and the LoadBars is for the underlying
+                if self.is_option && symbol != self.symbol { return; }
                 let is_new_symbol = self.symbol != symbol;
                 self.symbol = symbol; self.timeframe = timeframe;
                 self.bars = bars; self.timestamps = timestamps;
@@ -1111,7 +1113,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         };
         if let Some(s) = sym {
             if let Some(p) = panes.iter_mut().find(|p| p.symbol == s) { p.process(cmd); }
-            else if let Some(p) = panes.get_mut(*active_pane) { p.process(cmd); }
+            else if let Some(p) = panes.get_mut(*active_pane) {
+                // Don't route mismatched commands to option charts
+                if !p.is_option { p.process(cmd); }
+            }
         } else if let Some(p) = panes.get_mut(*active_pane) { p.process(cmd); }
     }
     if *active_pane >= panes.len() { *active_pane = 0; }
