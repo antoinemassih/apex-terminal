@@ -1577,9 +1577,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             .unwrap_or(("#4a9eff".into(), LineStyle::Solid, 1.5, 1.0, "default".into()));
         let cur_group_name = chart.groups.iter().find(|g| g.id == cur_group)
             .map(|g| g.name.clone()).unwrap_or("default".into());
-        let groups_snapshot: Vec<(String, String)> = std::iter::once(("default".into(), "default".into()))
-            .chain(chart.groups.iter().map(|g| (g.id.clone(), g.name.clone())))
-            .collect();
+        let groups_snapshot: Vec<(String, String)> = {
+            let mut gs = vec![("default".into(), "default".into())];
+            for g in &chart.groups {
+                if g.id != "default" { gs.push((g.id.clone(), g.name.clone())); }
+            }
+            gs
+        };
 
         let bar_w = 580.0;
         egui::Window::new("style_bar")
