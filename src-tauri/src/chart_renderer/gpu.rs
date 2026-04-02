@@ -391,6 +391,8 @@ struct Chart {
     editing_indicator: Option<u32>, // id of indicator being edited
     vs: f32, vc: u32, price_lock: Option<(f32,f32)>,
     auto_scroll: bool, last_input: std::time::Instant,
+    history_loading: bool, // true while fetching older bars
+    history_exhausted: bool, // true if no more history available
     tick_counter: u64, last_candle_time: std::time::Instant, sim_price: f32, sim_seed: u64,
     theme_idx: usize,
     draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker"
@@ -466,7 +468,7 @@ impl Chart {
                 Indicator::new(3, IndicatorType::EMA, 12, "#f0d732"),
                 Indicator::new(4, IndicatorType::EMA, 26, "#b266e6"),
             ],
-            vs: 0.0, vc: 200, price_lock: None, auto_scroll: true,
+            vs: 0.0, vc: 200, price_lock: None, auto_scroll: true, history_loading: false, history_exhausted: false,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
@@ -521,6 +523,28 @@ impl Chart {
                         fetch_indicator_source(self.symbol.clone(), ind.source_tf.clone(), ind.id);
                     }
                 }
+            }
+            ChartCommand::PrependBars { symbol, timeframe, bars, timestamps } => {
+                if symbol == self.symbol && timeframe == self.timeframe && !bars.is_empty() {
+                    // Deduplicate: remove any bars from new data that overlap with existing
+                    let earliest_existing = self.timestamps.first().copied().unwrap_or(i64::MAX);
+                    let new_count = timestamps.iter().take_while(|&&t| t < earliest_existing).count();
+                    if new_count == 0 {
+                        self.history_exhausted = true;
+                    } else {
+                        let mut new_bars: Vec<Bar> = bars[..new_count].to_vec();
+                        let mut new_ts: Vec<i64> = timestamps[..new_count].to_vec();
+                        new_bars.append(&mut self.bars);
+                        new_ts.append(&mut self.timestamps);
+                        self.bars = new_bars;
+                        self.timestamps = new_ts;
+                        // Shift viewport right so the view stays on the same bars
+                        self.vs += new_count as f32;
+                        self.indicator_bar_count = 0; // force recompute
+                        eprintln!("[history] prepended {} bars for {} {} (total: {})", new_count, symbol, timeframe, self.bars.len());
+                    }
+                }
+                self.history_loading = false;
             }
             ChartCommand::AppendBar { bar, timestamp, .. } => {
                 self.bars.push(bar); self.timestamps.push(timestamp);
@@ -884,6 +908,16 @@ fn tick_simulation(chart: &mut Chart) {
         if chart.auto_scroll {
             chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + 8.0).max(0.0);
         }
+
+        // ── History pagination: fetch older bars when scrolled near left edge ──
+        if chart.vs < 10.0 && !chart.auto_scroll && !chart.history_loading && !chart.history_exhausted
+            && !chart.bars.is_empty() && chart.timestamps.len() > 1 {
+            chart.history_loading = true;
+            let sym = chart.symbol.clone();
+            let tf = chart.timeframe.clone();
+            let earliest_ts = chart.timestamps[0];
+            fetch_history_background(sym, tf, earliest_ts);
+        }
     }
 
     if !chart.auto_scroll && chart.last_input.elapsed().as_secs() >= AUTO_SCROLL_RESUME_SECS {
@@ -899,7 +933,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     span_begin("cmd_routing");
     while let Ok(cmd) = rx.try_recv() {
         let sym = match &cmd {
-            ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
+            ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
             _ => None,
         };
         if let Some(s) = sym {
@@ -4602,7 +4636,7 @@ impl ApplicationHandler for App {
                 // Simpler: just process ALL commands here and pass pane commands to the right pane.
                 for cmd in cmds_to_requeue {
                     let sym = match &cmd {
-                        ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
+                        ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
                         ChartCommand::IndicatorSourceBars { .. } => None,
                         _ => None,
                     };
@@ -4677,6 +4711,8 @@ impl ApplicationHandler for App {
                     pane.indicators.clear();
                     pane.drawings.clear(); // cleared here, reloaded when LoadBars arrives
                     pane.drawings_requested = false; // allow re-fetch for new timeframe
+                    pane.history_loading = false;
+                    pane.history_exhausted = false;
                     pane.sim_price = 0.0;
                     pane.last_candle_time = std::time::Instant::now();
 
@@ -4743,6 +4779,75 @@ fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32) {
                 }
             }
         }
+    });
+}
+
+/// Fetch older historical bars before `before_ts` and deliver as PrependBars.
+fn fetch_history_background(sym: String, tf: String, before_ts: i64) {
+    let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
+
+    std::thread::spawn(move || {
+        // Calculate how far back to fetch based on timeframe
+        let page_seconds: i64 = match tf.as_str() {
+            "1m" => 86400 * 2,        // 2 days
+            "2m" => 86400 * 3,        // 3 days
+            "5m" => 86400 * 5,        // 5 days
+            "15m" => 86400 * 30,      // 30 days
+            "30m" => 86400 * 30,      // 30 days
+            "1h" | "60m" => 86400 * 60, // 60 days
+            "4h" => 86400 * 180,      // 6 months
+            "1d" => 86400 * 365 * 2,  // 2 years
+            "1wk" => 86400 * 365 * 5, // 5 years
+            _ => 86400 * 5,
+        };
+
+        let period2 = before_ts;
+        let period1 = before_ts - page_seconds;
+        let yf_interval = match tf.as_str() {
+            "1h" => "60m", "4h" => "1h",
+            other => other,
+        };
+
+        let url = format!(
+            "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&period1={}&period2={}",
+            sym, yf_interval, period1, period2
+        );
+        eprintln!("[history] fetching {} {} before {} ({}..{})", sym, tf, before_ts, period1, period2);
+
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("Mozilla/5.0")
+            .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+
+        match client.get(&url).timeout(std::time::Duration::from_secs(10)).send() {
+            Ok(resp) => {
+                if let Ok(json) = resp.json::<serde_json::Value>() {
+                    if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
+                        let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
+                            open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                        }).collect();
+                        let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
+                        eprintln!("[history] got {} bars for {} {} (oldest: {})", gpu_bars.len(), sym, tf,
+                            timestamps.first().copied().unwrap_or(0));
+
+                        let cmd = ChartCommand::PrependBars {
+                            symbol: sym, timeframe: tf, bars: gpu_bars, timestamps,
+                        };
+                        for tx in &txs { let _ = tx.send(cmd.clone()); }
+                        return;
+                    }
+                }
+            }
+            Err(e) => eprintln!("[history] fetch error: {e}"),
+        }
+
+        // On failure, send empty to clear loading flag and mark exhausted
+        let cmd = ChartCommand::PrependBars {
+            symbol: sym, timeframe: tf, bars: vec![], timestamps: vec![],
+        };
+        for tx in &txs { let _ = tx.send(cmd.clone()); }
     });
 }
 

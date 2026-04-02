@@ -67,6 +67,13 @@ pub enum ChartCommand {
         bars: Vec<Bar>,
         timestamps: Vec<i64>,
     },
+    /// Prepend historical bars (pagination — older data loaded on scroll-left)
+    PrependBars {
+        symbol: String,
+        timeframe: String,
+        bars: Vec<Bar>,
+        timestamps: Vec<i64>,
+    },
     /// Append a single new bar + timestamp
     AppendBar {
         symbol: String,
