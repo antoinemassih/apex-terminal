@@ -41,8 +41,8 @@ const THEMES: &[Theme] = &[
     Theme { name: "Catppuccin",  bg: rgb(30,30,46),   bull: rgb(166,227,161), bear: rgb(243,139,168), dim: rgb(180,190,254), toolbar_bg: rgb(24,24,38),  toolbar_border: rgb(49,50,68),  accent: rgb(203,166,247) },
     Theme { name: "Tokyo Night", bg: rgb(26,27,38),   bull: rgb(158,206,106), bear: rgb(247,118,142), dim: rgb(122,162,247), toolbar_bg: rgb(21,22,32),  toolbar_border: rgb(36,40,59),  accent: rgb(125,207,255) },
     // ── Additional themes ──
-    Theme { name: "One Dark",    bg: rgb(40,44,52),   bull: rgb(152,195,121), bear: rgb(224,108,117), dim: rgb(171,178,191), toolbar_bg: rgb(34,38,46),  toolbar_border: rgb(53,59,69),  accent: rgb(97,175,239) },
-    Theme { name: "Ayu Dark",    bg: rgb(10,14,20),   bull: rgb(170,217,76),  bear: rgb(255,51,51),   dim: rgb(107,120,138), toolbar_bg: rgb(5,9,15),    toolbar_border: rgb(25,30,40),  accent: rgb(255,180,84) },
+    Theme { name: "Kanagawa",    bg: rgb(22,22,29),   bull: rgb(118,169,130), bear: rgb(195,64,67),   dim: rgb(84,88,104),   toolbar_bg: rgb(18,18,24),  toolbar_border: rgb(34,34,46),  accent: rgb(127,180,202) },
+    Theme { name: "Everforest",  bg: rgb(39,46,38),   bull: rgb(167,192,128), bear: rgb(230,126,128), dim: rgb(157,169,140), toolbar_bg: rgb(33,40,32),  toolbar_border: rgb(52,60,50),  accent: rgb(131,165,152) },
     Theme { name: "Vesper",      bg: rgb(16,16,16),   bull: rgb(166,218,149), bear: rgb(238,130,98),  dim: rgb(120,120,120), toolbar_bg: rgb(11,11,11),  toolbar_border: rgb(36,36,36),  accent: rgb(255,199,119) },
     Theme { name: "Rosé Pine",   bg: rgb(25,23,36),   bull: rgb(156,207,216), bear: rgb(235,111,146), dim: rgb(110,106,134), toolbar_bg: rgb(20,18,30),  toolbar_border: rgb(38,35,53),  accent: rgb(196,167,231) },
 ];
