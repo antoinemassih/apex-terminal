@@ -406,7 +406,7 @@ impl Position {
 }
 
 /// ApexIB endpoint configuration
-const APEXIB_URL: &str = "http://apexib-dev.xllio.com";
+const APEXIB_URL: &str = "https://apexib-dev.xllio.com";
 
 // Shared account data — written by background worker, read by render thread
 static ACCOUNT_DATA: std::sync::OnceLock<std::sync::Mutex<Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>> = std::sync::OnceLock::new();
@@ -473,26 +473,42 @@ fn start_account_poller() {
                     }
                 }
 
-                // Fetch orders (history)
+                // Fetch executions + pending + cancelled orders
                 let mut ib_orders = Vec::new();
-                if let Ok(resp) = client.get(format!("{}/orders", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        if let Some(arr) = json["orders"].as_array() {
-                            for o in arr {
-                                ib_orders.push(IbOrder {
-                                    symbol: o["symbol"].as_str().unwrap_or("").into(),
-                                    side: o["side"].as_str().unwrap_or("").into(),
-                                    qty: o["quantity"].as_i64().unwrap_or(0) as i32,
-                                    filled_qty: o["filledQty"].as_i64().unwrap_or(0) as i32,
-                                    order_type: o["orderType"].as_str().unwrap_or("").into(),
-                                    limit_price: o["limitPrice"].as_f64().unwrap_or(0.0),
-                                    avg_fill_price: o["avgFillPrice"].as_f64().unwrap_or(0.0),
-                                    status: o["status"].as_str().unwrap_or("").into(),
-                                    strike: o["strike"].as_f64().unwrap_or(0.0),
-                                    option_type: o["optionType"].as_str().unwrap_or("").into(),
-                                });
-                            }
+                let parse_orders = |json: &serde_json::Value, key: &str, orders: &mut Vec<IbOrder>| {
+                    if let Some(arr) = json[key].as_array() {
+                        for o in arr {
+                            orders.push(IbOrder {
+                                symbol: o["symbol"].as_str().unwrap_or("").into(),
+                                side: o["side"].as_str().or_else(|| o["action"].as_str()).unwrap_or("").into(),
+                                qty: o["quantity"].as_i64().or_else(|| o["shares"].as_i64()).unwrap_or(0) as i32,
+                                filled_qty: o["filledQty"].as_i64().or_else(|| o["shares"].as_i64()).unwrap_or(0) as i32,
+                                order_type: o["orderType"].as_str().unwrap_or("").into(),
+                                limit_price: o["limitPrice"].as_f64().or_else(|| o["price"].as_f64()).unwrap_or(0.0),
+                                avg_fill_price: o["avgFillPrice"].as_f64().or_else(|| o["avgPrice"].as_f64()).or_else(|| o["price"].as_f64()).unwrap_or(0.0),
+                                status: o["status"].as_str().unwrap_or(if key == "executions" { "filled" } else { "" }).into(),
+                                strike: o["strike"].as_f64().unwrap_or(0.0),
+                                option_type: o["optionType"].as_str().unwrap_or("").into(),
+                            });
                         }
+                    }
+                };
+                // Executions (filled trades)
+                if let Ok(resp) = client.get(format!("{}/executions", APEXIB_URL)).send() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        parse_orders(&json, "executions", &mut ib_orders);
+                    }
+                }
+                // Pending/submitted orders
+                if let Ok(resp) = client.get(format!("{}/orders?status=submitted", APEXIB_URL)).send() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        parse_orders(&json, "orders", &mut ib_orders);
+                    }
+                }
+                // Cancelled orders
+                if let Ok(resp) = client.get(format!("{}/orders?status=cancelled", APEXIB_URL)).send() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        parse_orders(&json, "orders", &mut ib_orders);
                     }
                 }
 
