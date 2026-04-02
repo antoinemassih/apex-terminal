@@ -2428,29 +2428,98 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.add_space(4.0);
 
                         // Symbol list
+                        let active_sym = panes[ap].symbol.clone();
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             let mut remove_sym: Option<String> = None;
                             let mut click_sym: Option<String> = None;
+                            let mut add_separator = false;
                             let full_w = ui.available_width();
+
                             for item in &watchlist.items {
+                                // Section separator
+                                if item.is_separator {
+                                    ui.add_space(4.0);
+                                    ui.horizontal(|ui| {
+                                        let sep_w = full_w;
+                                        ui.painter().line_segment(
+                                            [egui::pos2(ui.cursor().min.x, ui.cursor().min.y + 6.0),
+                                             egui::pos2(ui.cursor().min.x + sep_w, ui.cursor().min.y + 6.0)],
+                                            egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60)));
+                                        ui.add_space(4.0);
+                                        ui.label(egui::RichText::new(&item.symbol).monospace().size(9.0).strong()
+                                            .color(t.dim.gamma_multiply(0.4)));
+                                    });
+                                    ui.add_space(2.0);
+                                    continue;
+                                }
+
+                                let is_active = item.symbol == active_sym;
                                 let change_pct = if item.prev_close > 0.0 { ((item.price - item.prev_close) / item.prev_close) * 100.0 } else { 0.0 };
                                 let color = if change_pct >= 0.0 { t.bull } else { t.bear };
                                 let price_str = if item.price > 0.0 { format!("{:.2}", item.price) } else { "---".into() };
-                                let change_str = if item.loaded { format!("{:+.2}%", change_pct) } else { "".into() };
+                                let change_str = if item.loaded { format!("{:+.1}%", change_pct) } else { "".into() };
+
+                                // Active highlight background
+                                let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
+
                                 let resp = ui.horizontal(|ui| {
                                     ui.set_min_width(full_w);
-                                    let sym_resp = ui.add(egui::Button::new(egui::RichText::new(&item.symbol).monospace().size(11.0).strong().color(egui::Color32::from_rgb(220,220,230))).frame(false));
-                                    if sym_resp.clicked() { click_sym = Some(item.symbol.clone()); }
+                                    ui.set_min_height(24.0);
+                                    // Paint background
+                                    ui.painter().rect_filled(ui.max_rect(), 2.0, row_bg);
+                                    // Active indicator bar
+                                    if is_active {
+                                        let r = ui.max_rect();
+                                        ui.painter().rect_filled(
+                                            egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 2.5, r.max.y)),
+                                            1.0, t.accent);
+                                    }
+                                    ui.add_space(if is_active { 8.0 } else { 4.0 });
+                                    // Symbol name
+                                    let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(200, 200, 210) };
+                                    ui.label(egui::RichText::new(&item.symbol).monospace().size(12.0).strong().color(sym_color));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5))).frame(false)).clicked() { remove_sym = Some(item.symbol.clone()); }
+                                        // X button (only on hover)
+                                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
+                                            remove_sym = Some(item.symbol.clone());
+                                        }
+                                        // Change %
                                         ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
-                                        ui.label(egui::RichText::new(&price_str).monospace().size(11.0).color(color));
+                                        // Price
+                                        ui.label(egui::RichText::new(&price_str).monospace().size(12.0).color(color));
                                     });
                                 });
-                                if resp.response.hovered() { ui.painter().rect_filled(resp.response.rect, 0.0, t.toolbar_border.gamma_multiply(0.3)); }
+
+                                // Full row clickable
+                                let row_click = resp.response.interact(egui::Sense::click());
+                                if row_click.hovered() {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                    if !is_active {
+                                        ui.painter().rect_filled(resp.response.rect, 2.0, color_alpha(t.toolbar_border, 25));
+                                    }
+                                }
+                                if row_click.clicked() { click_sym = Some(item.symbol.clone()); }
                             }
-                            if let Some(sym) = click_sym { panes[ap].pending_symbol_change = Some(sym); }
+
+                            // Add section button
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
+                                    .frame(false)).clicked() {
+                                    add_separator = true;
+                                }
+                            });
+
+                            if let Some(sym) = click_sym {
+                                panes[ap].pending_symbol_change = Some(sym.clone());
+                                panes[ap].is_option = false; // reset option flag when switching to stock
+                            }
                             if let Some(sym) = remove_sym { watchlist.remove_symbol(&sym); }
+                            if add_separator {
+                                watchlist.items.push(WatchlistItem {
+                                    symbol: "─────".into(), price: 0.0, prev_close: 0.0, loaded: false, is_separator: true,
+                                });
+                            }
                         });
                     }
 
@@ -5188,6 +5257,7 @@ struct WatchlistItem {
     price: f32,
     prev_close: f32,
     loaded: bool,
+    is_separator: bool, // true = section header/divider, symbol is the label
 }
 
 // ─── Options chain ───────────────────────────────────────────────────────────
@@ -5261,7 +5331,7 @@ const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA
 impl Watchlist {
     fn new() -> Self {
         let items = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
-            symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
+            symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false, is_separator: false,
         }).collect();
         Self { open: false, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
                toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
@@ -5274,7 +5344,7 @@ impl Watchlist {
     fn add_symbol(&mut self, sym: &str) {
         let s = sym.to_uppercase();
         if !self.items.iter().any(|i| i.symbol == s) {
-            self.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false });
+            self.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false, is_separator: false });
         }
     }
 

@@ -313,13 +313,16 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
     resp.clicked()
 }
 
-/// Trade button — full-color background for BUY/SELL. Contrasting text auto-selected.
+/// Trade button — deep saturated background for BUY/SELL. Always white bold text.
 pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> bool {
-    // Pick text color based on background luminance for readability
-    let lum = 0.299 * color.r() as f32 + 0.587 * color.g() as f32 + 0.114 * color.b() as f32;
-    let text_color = if lum > 140.0 { Color32::from_rgb(10, 10, 10) } else { Color32::WHITE };
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(text_color))
-        .fill(color_alpha(color, 220))
+    // Darken the color for a rich, deep button background
+    let bg = Color32::from_rgb(
+        (color.r() as f32 * 0.55) as u8,
+        (color.g() as f32 * 0.55) as u8,
+        (color.b() as f32 * 0.55) as u8,
+    );
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(Color32::WHITE))
+        .fill(bg)
         .min_size(egui::vec2(width, 26.0)).corner_radius(3.0));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
