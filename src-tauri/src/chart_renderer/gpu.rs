@@ -1337,12 +1337,38 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 fetch_bars_background(sym, tf);
             }
 
-            // Simulated option chart (for testing)
-            if tb_btn(ui, "Opt", false, t).clicked() {
+            // Simulated option chart (for testing) — replaces active pane directly
+            if tb_btn(ui, "Opt", false, t).clicked() && !panes[ap].bars.is_empty() {
                 let sym = panes[ap].symbol.clone();
-                let strike = panes[ap].bars.last().map(|b| (b.close / 5.0).round() * 5.0).unwrap_or(500.0);
-                // Deferred — store request on watchlist
-                watchlist.pending_opt_chart = Some((sym, strike, true, "0DTE".into()));
+                let strike = (panes[ap].bars.last().unwrap().close / 5.0).round() * 5.0;
+                let opt_sym = format!("{} {:.0}C 0DTE", sym, strike);
+                let underlying_bars = panes[ap].bars.clone();
+                let underlying_ts = panes[ap].timestamps.clone();
+                let mut opt_bars = Vec::new();
+                for (i, bar) in underlying_bars.iter().enumerate() {
+                    let mid = (bar.open + bar.close) / 2.0;
+                    let intrinsic = (mid - strike).max(0.0);
+                    let time_pct = 1.0 - (i as f32 / underlying_bars.len().max(1) as f32);
+                    let time_val = strike * 0.005 * time_pct.max(0.1);
+                    let opt_mid = (intrinsic + time_val).max(0.01);
+                    let noise = ((i as f32 * 7.3).sin() * 0.3 + (i as f32 * 13.7).cos() * 0.2) * opt_mid * 0.05;
+                    let o = opt_mid + noise * 0.5;
+                    let c = opt_mid - noise * 0.3;
+                    let h = o.max(c) + opt_mid * 0.01;
+                    let l = (o.min(c) - opt_mid * 0.01).max(0.01);
+                    opt_bars.push(Bar { open: o, high: h, low: l, close: c, volume: bar.volume * 0.1, _pad: 0.0 });
+                }
+                panes[ap].symbol = opt_sym;
+                panes[ap].is_option = true;
+                panes[ap].underlying = sym;
+                panes[ap].option_type = "C".into();
+                panes[ap].option_strike = strike;
+                panes[ap].option_expiry = "0DTE".into();
+                panes[ap].bars = opt_bars;
+                panes[ap].timestamps = underlying_ts;
+                panes[ap].vs = (panes[ap].bars.len() as f32 - panes[ap].vc as f32 + 8.0).max(0.0);
+                panes[ap].auto_scroll = true;
+                panes[ap].indicator_bar_count = 0;
             }
 
             // LIVE indicator
@@ -3738,28 +3764,60 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         if let Some(edit_id) = chart.editing_order {
             // Extract order data to avoid borrow conflict
             let order_data = chart.orders.iter().find(|o| o.id == edit_id)
-                .map(|o| (o.price, o.color(t), o.label()));
+                .map(|o| (o.price, o.color(t), o.label(), o.option_symbol.clone(), o.side));
 
-            if let Some((order_price, color, order_label)) = order_data {
+            if let Some((order_price, color, order_label, opt_sym, side)) = order_data {
+                let is_trigger = matches!(side, OrderSide::TriggerBuy | OrderSide::TriggerSell);
                 let y = py(order_price);
                 let popup_pos = egui::pos2(rect.left() + 10.0, y + 14.0);
+                let dialog_w = if is_trigger { 260.0 } else { 210.0 };
                 let mut close_editor = false;
                 let mut apply_price: Option<f32> = None;
                 let mut apply_qty: Option<u32> = None;
                 let mut cancel_it = false;
 
-                dialog_window_themed(ctx, &format!("order_edit_{}", edit_id), popup_pos, 210.0, t.toolbar_bg, t.toolbar_border, Some(color))
+                let title = if is_trigger {
+                    format!("EDIT {} TRIGGER", if side == OrderSide::TriggerBuy { "BUY" } else { "SELL" })
+                } else {
+                    format!("EDIT {}", order_label)
+                };
+
+                dialog_window_themed(ctx, &format!("order_edit_{}", edit_id), popup_pos, dialog_w, t.toolbar_bg, t.toolbar_border, Some(color))
                     .show(ctx, |ui| {
-                        if dialog_header(ui, &format!("EDIT {}", order_label), t.dim) { close_editor = true; }
+                        if dialog_header(ui, &title, t.dim) { close_editor = true; }
                         ui.add_space(8.0);
                         let m = 10.0;
 
+                        // Show option contract info for trigger orders
+                        if is_trigger {
+                            if let Some(ref opt) = opt_sym {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(m);
+                                    ui.label(egui::RichText::new(Icon::LIGHTNING).size(11.0).color(t.accent));
+                                    ui.label(egui::RichText::new(opt).monospace().size(11.0).strong()
+                                        .color(egui::Color32::from_rgb(220, 220, 230)));
+                                });
+                                ui.add_space(2.0);
+                                ui.horizontal(|ui| {
+                                    ui.add_space(m);
+                                    let action = if side == OrderSide::TriggerBuy { "Buy option" } else { "Sell option" };
+                                    ui.label(egui::RichText::new(format!("{} when {} reaches trigger price", action, chart.symbol))
+                                        .monospace().size(8.0).color(t.dim.gamma_multiply(0.6)));
+                                });
+                                ui.add_space(6.0);
+                                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 40));
+                                ui.add_space(4.0);
+                            }
+                        }
+
+                        // Trigger/Limit price
+                        let price_label = if is_trigger { "Trigger" } else { "Price" };
                         ui.horizontal(|ui| {
                             ui.add_space(m);
-                            ui.label(egui::RichText::new("Price").monospace().size(9.0).color(t.dim));
+                            ui.label(egui::RichText::new(format!("{:6}", price_label)).monospace().size(9.0).color(t.dim));
                             ui.add_space(4.0);
                             let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_price)
-                                .desired_width(110.0).font(egui::FontId::monospace(12.0))
+                                .desired_width(if is_trigger { 130.0 } else { 110.0 }).font(egui::FontId::monospace(12.0))
                                 .horizontal_align(egui::Align::RIGHT));
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 if let Ok(p) = chart.edit_order_price.parse::<f32>() { apply_price = Some(p); }
@@ -3768,10 +3826,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
                             ui.add_space(m);
-                            ui.label(egui::RichText::new("Qty  ").monospace().size(9.0).color(t.dim));
+                            ui.label(egui::RichText::new("Qty   ").monospace().size(9.0).color(t.dim));
                             ui.add_space(4.0);
                             let resp = ui.add(egui::TextEdit::singleline(&mut chart.edit_order_qty)
-                                .desired_width(110.0).font(egui::FontId::monospace(12.0))
+                                .desired_width(if is_trigger { 130.0 } else { 110.0 }).font(egui::FontId::monospace(12.0))
                                 .horizontal_align(egui::Align::RIGHT));
                             if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 if let Ok(q) = chart.edit_order_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
