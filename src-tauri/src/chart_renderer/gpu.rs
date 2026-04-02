@@ -2526,7 +2526,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 match watchlist.tab {
                     // ── STOCKS TAB ──────────────────────────────────────────
                     WatchlistTab::Stocks => {
-                        // Search input
+                        // Search bar + options toggle
+                        ui.horizontal(|ui| {
+                            // Options section toggle
+                            let opt_icon = if watchlist.options_visible { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
+                            let opt_color = if watchlist.options_visible { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(10.0).color(opt_color))
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0)));
+                            if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
+                            if opt_resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("opt_toggle_tip"), |ui| {
+                                    ui.label(egui::RichText::new(if watchlist.options_visible { "Hide options" } else { "Show options" }).monospace().size(9.0));
+                                });
+                            }
+                        });
                         let search_id = egui::Id::new("wl_search_input");
                         let search_resp = ui.add(
                             egui::TextEdit::singleline(&mut watchlist.search_query)
@@ -2613,6 +2627,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
                         let pointer_down = ui.ctx().input(|i| i.pointer.any_down());
 
+                        // Mark which sections are option sections (for visual separation + toggle)
+                        let option_section_ids: Vec<u32> = watchlist.sections.iter()
+                            .filter(|s| s.title.contains("Options"))
+                            .map(|s| s.id).collect();
+
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             let mut remove_sym: Option<String> = None;
                             let mut click_sym: Option<String> = None;
@@ -2632,15 +2651,40 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // Section color presets for the color picker
                             let color_presets = ["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
+                            let mut options_divider_drawn = false;
+
                             for si in 0..section_count {
                                 let sec_id = watchlist.sections[si].id;
+                                let is_option_section = option_section_ids.contains(&sec_id);
+
+                                // Skip option sections if toggled off
+                                if is_option_section && !watchlist.options_visible { continue; }
+
+                                // Draw thick divider before the first option section
+                                let is_first_opt = is_option_section && !options_divider_drawn;
+                                if is_first_opt {
+                                    options_divider_drawn = true;
+                                    ui.add_space(6.0);
+                                    let r = ui.available_rect_before_wrap();
+                                    let y = ui.cursor().min.y;
+                                    ui.painter().rect_filled(
+                                        egui::Rect::from_min_max(egui::pos2(r.left(), y), egui::pos2(r.right(), y + 3.0)),
+                                        0.0, color_alpha(t.toolbar_border, 140));
+                                    ui.add_space(8.0);
+                                    // Options header
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("OPTIONS").monospace().size(9.0).strong().color(t.accent.gamma_multiply(0.7)));
+                                    });
+                                    ui.add_space(4.0);
+                                }
+
                                 let sec_title = watchlist.sections[si].title.clone();
                                 let sec_color = watchlist.sections[si].color.clone();
                                 let sec_collapsed = watchlist.sections[si].collapsed;
                                 let sec_item_count = watchlist.sections[si].items.len();
 
-                                // ── Section divider line (between sections, not before first) ──
-                                if si > 0 {
+                                // ── Section divider line (skip if thick options divider just drawn) ──
+                                if si > 0 && !is_first_opt {
                                     ui.add_space(2.0);
                                     let cursor_y = ui.cursor().min.y;
                                     ui.painter().line_segment(
@@ -5890,6 +5934,8 @@ struct Watchlist {
     search_results: Vec<(String, String)>,
     search_sel: i32, // -1 = none, 0+ = highlighted suggestion index
     search_refocus: bool, // request refocus on search bar after adding
+    options_visible: bool, // toggle options section below stocks
+    options_split: f32,    // fraction of height for stocks (0.3..0.9), rest for options
     // Drag-and-drop state
     dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
     drag_start_pos: Option<egui::Pos2>,      // mouse position when drag started
@@ -5942,6 +5988,7 @@ impl Watchlist {
                saved_watchlists, active_watchlist_idx: active_idx,
                watchlist_name_editing: false, watchlist_name_buf: String::new(), watchlist_ctx_menu_idx: None,
                search_query: String::new(), search_results: vec![], search_sel: -1, search_refocus: false,
+               options_visible: true, options_split: 0.6,
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
