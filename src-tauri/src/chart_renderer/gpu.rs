@@ -4064,15 +4064,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.add(egui::Separator::default().spacing(2.0));
                         });
                     });
-                    // Double-click header to collapse
-                    let hdr_click = ui.interact(header_resp.response.rect, egui::Id::new(("order_hdr_dblclick", pane_idx)), egui::Sense::click());
-                    if hdr_click.double_clicked() { chart.order_collapsed = true; }
-                    // Handle drag on header — exclude armed button (left 24px) and +/- button (right 30px)
+                    // Drag + double-click on middle zone only (between armed button and +/- button)
                     let hdr_min = header_resp.response.rect.min;
-                    let drag_rect = egui::Rect::from_min_size(
-                        egui::pos2(hdr_min.x + 24.0, hdr_min.y),
-                        egui::vec2(panel_w - 54.0, 22.0));
-                    let drag_resp = ui.interact(drag_rect, egui::Id::new(("order_panel_drag", pane_idx)), egui::Sense::drag());
+                    let mid_rect = egui::Rect::from_min_size(
+                        egui::pos2(hdr_min.x + 26.0, hdr_min.y),
+                        egui::vec2(panel_w - 56.0, 22.0));
+                    let drag_resp = ui.interact(mid_rect, egui::Id::new(("order_panel_drag", pane_idx)), egui::Sense::click_and_drag());
+                    if drag_resp.double_clicked() { chart.order_collapsed = true; }
                     if drag_resp.dragged() {
                         let delta = drag_resp.drag_delta();
                         chart.order_panel_pos.x += delta.x;
