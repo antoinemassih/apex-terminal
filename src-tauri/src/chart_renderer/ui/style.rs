@@ -144,13 +144,13 @@ pub fn dialog_section(ui: &mut egui::Ui, text: &str, margin: f32, color: Color32
 /// Draw a dashed or dotted line between two points.
 pub fn dashed_line(painter: &egui::Painter, a: egui::Pos2, b: egui::Pos2, stroke: Stroke, style: super::super::LineStyle) {
     use super::super::LineStyle;
+    let dir = b - a;
+    let len = dir.length();
+    if len < 1.0 || !len.is_finite() || len > 20000.0 { return; } // safety: skip degenerate lines
     match style {
         LineStyle::Solid => { painter.line_segment([a, b], stroke); }
         LineStyle::Dashed | LineStyle::Dotted => {
             let (dash, gap) = if style == LineStyle::Dashed { (6.0, 3.0) } else { (2.0, 2.0) };
-            let dir = b - a;
-            let len = dir.length();
-            if len < 1.0 { return; }
             let norm = dir / len;
             let mut d = 0.0;
             while d < len {

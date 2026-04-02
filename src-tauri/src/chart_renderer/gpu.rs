@@ -2727,6 +2727,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // Drawings (with selection highlight + endpoint handles)
+        // Clamp helper — prevents extreme coordinates from causing massive tessellation allocations
+        let clamp_pt = |p: egui::Pos2| -> egui::Pos2 {
+            let margin = 10000.0;
+            egui::pos2(p.x.clamp(-margin, margin), p.y.clamp(-margin, margin))
+        };
+        let in_bounds = |p: egui::Pos2| -> bool { p.x.is_finite() && p.y.is_finite() && p.x.abs() < 50000.0 && p.y.abs() < 50000.0 };
 
         for d in &chart.drawings {
             if chart.hide_all_drawings { break; }
@@ -2738,34 +2744,42 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             match &d.kind {
                 DrawingKind::HLine{price}=>{
                     let y=py(*price);
-                    dashed_line(&painter, egui::pos2(rect.left(),y), egui::pos2(rect.left()+cw,y), sc, ls);
-                    if is_sel {
-                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), 4.0, egui::Color32::from_rgb(74,158,255));
+                    if y.is_finite() && y.abs() < 50000.0 {
+                        dashed_line(&painter, egui::pos2(rect.left(),y), egui::pos2(rect.left()+cw,y), sc, ls);
+                        if is_sel {
+                            painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), 4.0, egui::Color32::from_rgb(74,158,255));
+                        }
                     }
                 }
                 DrawingKind::TrendLine{price0,bar0,price1,bar1}=>{
-                    let p0=egui::pos2(bx(*bar0),py(*price0)); let p1=egui::pos2(bx(*bar1),py(*price1));
-                    dashed_line(&painter, p0, p1, sc, ls);
-                    if is_sel {
-                        painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
-                        painter.circle_stroke(p0, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
-                        painter.circle_filled(p1, 5.0, egui::Color32::from_rgb(74,158,255));
-                        painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                    let p0=clamp_pt(egui::pos2(bx(*bar0),py(*price0)));
+                    let p1=clamp_pt(egui::pos2(bx(*bar1),py(*price1)));
+                    if in_bounds(p0) && in_bounds(p1) {
+                        dashed_line(&painter, p0, p1, sc, ls);
+                        if is_sel {
+                            painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
+                            painter.circle_stroke(p0, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                            painter.circle_filled(p1, 5.0, egui::Color32::from_rgb(74,158,255));
+                            painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                        }
                     }
                 }
                 DrawingKind::HZone{price0,price1}=>{
                     let(y0,y1)=(py(*price0),py(*price1));
-                    let fill = hex_to_color(&d.color, d.opacity * 0.1);
-                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(),y0.min(y1)),egui::pos2(rect.left()+cw,y0.max(y1))),0.0,fill);
-                    dashed_line(&painter, egui::pos2(rect.left(),y0), egui::pos2(rect.left()+cw,y0), sc, ls);
-                    dashed_line(&painter, egui::pos2(rect.left(),y1), egui::pos2(rect.left()+cw,y1), sc, ls);
-                    if is_sel {
-                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y0), 4.0, egui::Color32::from_rgb(74,158,255));
-                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y1), 4.0, egui::Color32::from_rgb(74,158,255));
+                    if y0.is_finite() && y1.is_finite() && y0.abs() < 50000.0 && y1.abs() < 50000.0 {
+                        let fill = hex_to_color(&d.color, d.opacity * 0.1);
+                        painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(),y0.min(y1)),egui::pos2(rect.left()+cw,y0.max(y1))),0.0,fill);
+                        dashed_line(&painter, egui::pos2(rect.left(),y0), egui::pos2(rect.left()+cw,y0), sc, ls);
+                        dashed_line(&painter, egui::pos2(rect.left(),y1), egui::pos2(rect.left()+cw,y1), sc, ls);
+                        if is_sel {
+                            painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y0), 4.0, egui::Color32::from_rgb(74,158,255));
+                            painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y1), 4.0, egui::Color32::from_rgb(74,158,255));
+                        }
                     }
                 }
                 DrawingKind::BarMarker{bar,price,up}=>{
                     let x=bx(*bar); let y=py(*price);
+                    if !in_bounds(egui::pos2(x, y)) { continue; }
                     let dir = if *up { -1.0 } else { 1.0 };
                     let sz = 6.0;
                     let pts = vec![
