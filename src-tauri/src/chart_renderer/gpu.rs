@@ -5980,6 +5980,9 @@ fn load_state() -> (Vec<Chart>, Layout) {
         }
     }
     if panes.is_empty() { panes.push(Chart::new()); }
+    // Trim excess panes to match layout capacity
+    let max = layout.max_panes();
+    panes.truncate(max);
 
     (panes, layout)
 }
