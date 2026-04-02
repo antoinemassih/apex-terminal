@@ -51,9 +51,10 @@ pub struct DrawingGroup {
 #[derive(Debug, Clone)]
 pub enum DrawingKind {
     HLine { price: f32 },
-    TrendLine { price0: f32, bar0: f32, price1: f32, bar1: f32 },
+    /// Trendline — timestamps (i64) resolve to fractional bar positions on any timeframe.
+    TrendLine { price0: f32, time0: i64, price1: f32, time1: i64 },
     HZone { price0: f32, price1: f32 },
-    BarMarker { bar: f32, price: f32, up: bool },
+    BarMarker { time: i64, price: f32, up: bool },
 }
 
 /// Commands sent from Tauri/WebView to the native chart renderer

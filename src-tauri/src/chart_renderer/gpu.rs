@@ -243,6 +243,19 @@ impl SignalDrawing {
     }
 }
 
+/// Convert a fractional bar index to a timestamp using interpolation.
+fn bar_to_time(bar: f32, timestamps: &[i64]) -> i64 {
+    let idx = bar as usize;
+    if timestamps.is_empty() { return 0; }
+    if idx >= timestamps.len() { return *timestamps.last().unwrap_or(&0); }
+    let frac = bar - idx as f32;
+    if frac < 0.01 || idx + 1 >= timestamps.len() { return timestamps[idx]; }
+    // Interpolate
+    let t0 = timestamps[idx];
+    let t1 = timestamps[idx + 1];
+    t0 + ((t1 - t0) as f32 * frac) as i64
+}
+
 /// Fetch signal annotations from OCOCO API for a symbol.
 fn fetch_signal_drawings(symbol: String) {
     let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
@@ -774,9 +787,9 @@ fn make_window_icon_hicon() -> Option<isize> {
 fn drawing_to_db(d: &Drawing, symbol: &str, timeframe: &str) -> crate::drawing_db::DbDrawing {
     let (drawing_type, points) = match &d.kind {
         DrawingKind::HLine { price } => ("hline".into(), vec![(0.0, *price as f64)]),
-        DrawingKind::TrendLine { price0, bar0, price1, bar1 } => ("trendline".into(), vec![(*bar0 as f64, *price0 as f64), (*bar1 as f64, *price1 as f64)]),
+        DrawingKind::TrendLine { price0, time0, price1, time1 } => ("trendline".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
         DrawingKind::HZone { price0, price1 } => ("hzone".into(), vec![(0.0, *price0 as f64), (0.0, *price1 as f64)]),
-        DrawingKind::BarMarker { bar, price, up } => ("barmarker".into(), vec![(*bar as f64, *price as f64), (if *up { 1.0 } else { 0.0 }, 0.0)]),
+        DrawingKind::BarMarker { time, price, up } => ("barmarker".into(), vec![(*time as f64, *price as f64), (if *up { 1.0 } else { 0.0 }, 0.0)]),
     };
     let ls = match d.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" };
     crate::drawing_db::DbDrawing {
@@ -793,10 +806,10 @@ fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing> {
         "trendline" => {
             let p0 = d.points.get(0)?;
             let p1 = d.points.get(1)?;
-            DrawingKind::TrendLine { bar0: p0.0 as f32, price0: p0.1 as f32, bar1: p1.0 as f32, price1: p1.1 as f32 }
+            DrawingKind::TrendLine { time0: p0.0 as i64, price0: p0.1 as f32, time1: p1.0 as i64, price1: p1.1 as f32 }
         }
         "hzone" => DrawingKind::HZone { price0: d.points.get(0)?.1 as f32, price1: d.points.get(1)?.1 as f32 },
-        "barmarker" => DrawingKind::BarMarker { bar: d.points.get(0)?.0 as f32, price: d.points.get(0)?.1 as f32, up: d.points.get(1).map(|p| p.0 > 0.5).unwrap_or(true) },
+        "barmarker" => DrawingKind::BarMarker { time: d.points.get(0)?.0 as i64, price: d.points.get(0)?.1 as f32, up: d.points.get(1).map(|p| p.0 > 0.5).unwrap_or(true) },
         _ => return None,
     };
     let ls = match d.line_style.as_str() { "dashed" => LineStyle::Dashed, "dotted" => LineStyle::Dotted, _ => LineStyle::Solid };
@@ -2751,9 +2764,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
                 }
-                DrawingKind::TrendLine{price0,bar0,price1,bar1}=>{
-                    let p0=clamp_pt(egui::pos2(bx(*bar0),py(*price0)));
-                    let p1=clamp_pt(egui::pos2(bx(*bar1),py(*price1)));
+                DrawingKind::TrendLine{price0,time0,price1,time1}=>{
+                    let p0=clamp_pt(egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)),py(*price0)));
+                    let p1=clamp_pt(egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)),py(*price1)));
                     if in_bounds(p0) && in_bounds(p1) {
                         dashed_line(&painter, p0, p1, sc, ls);
                         if is_sel {
@@ -2777,8 +2790,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
                 }
-                DrawingKind::BarMarker{bar,price,up}=>{
-                    let x=bx(*bar); let y=py(*price);
+                DrawingKind::BarMarker{time,price,up}=>{
+                    let x=bx(SignalDrawing::time_to_bar(*time, &chart.timestamps)); let y=py(*price);
                     if !in_bounds(egui::pos2(x, y)) { continue; }
                     let dir = if *up { -1.0 } else { 1.0 };
                     let sz = 6.0;
@@ -3573,8 +3586,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     DrawingKind::HLine{price} => {
                         if (pos.y - py(*price)).abs() < 12.0 && pos.x < rect.left()+cw { return Some((d.id.clone(), -1)); }
                     }
-                    DrawingKind::TrendLine{price0,bar0,price1,bar1} => {
-                        let p0 = egui::pos2(bx(*bar0), py(*price0)); let p1 = egui::pos2(bx(*bar1), py(*price1));
+                    DrawingKind::TrendLine{price0,time0,price1,time1} => {
+                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0)); let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), py(*price1));
                         if p0.distance(pos) < 14.0 { return Some((d.id.clone(), 0)); }
                         if p1.distance(pos) < 14.0 { return Some((d.id.clone(), 1)); }
                         let dx=p1.x-p0.x; let dy=p1.y-p0.y; let len2=dx*dx+dy*dy;
@@ -3586,8 +3599,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if (pos.y-py(*price0)).abs()<10.0 { return Some((d.id.clone(),0)); }
                         if (pos.y-py(*price1)).abs()<10.0 { return Some((d.id.clone(),1)); }
                     }
-                    DrawingKind::BarMarker{bar,price,..} => {
-                        if egui::pos2(bx(*bar),py(*price)).distance(pos) < 12.0 { return Some((d.id.clone(), -1)); }
+                    DrawingKind::BarMarker{time,price,..} => {
+                        if egui::pos2(bx(SignalDrawing::time_to_bar(*time, &chart.timestamps)),py(*price)).distance(pos) < 12.0 { return Some((d.id.clone(), -1)); }
                     }
                 }
             }
@@ -3609,15 +3622,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
+        let ts_ref = &chart.timestamps;
         let hit_at = |px: f32, py_pos: f32, drawings: &[Drawing]| -> Option<(String, i32)> {
             for d in drawings.iter().rev() {
                 match &d.kind {
                     DrawingKind::HLine{price} => {
                         if (py_pos - py(*price)).abs() < 12.0 { return Some((d.id.clone(), -1)); }
                     }
-                    DrawingKind::TrendLine{price0,bar0,price1,bar1} => {
-                        let p0 = egui::pos2(bx(*bar0), py(*price0));
-                        let p1 = egui::pos2(bx(*bar1), py(*price1));
+                    DrawingKind::TrendLine{price0,time0,price1,time1} => {
+                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, ts_ref)), py(*price0));
+                        let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, ts_ref)), py(*price1));
                         if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
                         if p1.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 1)); }
                         let dx = p1.x-p0.x; let dy = p1.y-p0.y; let len2 = dx*dx+dy*dy;
@@ -3630,8 +3644,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if (py_pos - py(*price0)).abs() < 10.0 { return Some((d.id.clone(), 0)); }
                         if (py_pos - py(*price1)).abs() < 10.0 { return Some((d.id.clone(), 1)); }
                     }
-                    DrawingKind::BarMarker{bar,price,..} => {
-                        if egui::pos2(bx(*bar),py(*price)).distance(egui::pos2(px,py_pos)) < 12.0 { return Some((d.id.clone(), -1)); }
+                    DrawingKind::BarMarker{time,price,..} => {
+                        if egui::pos2(bx(SignalDrawing::time_to_bar(*time, ts_ref)),py(*price)).distance(egui::pos2(px,py_pos)) < 12.0 { return Some((d.id.clone(), -1)); }
                     }
                 }
             }
@@ -3654,7 +3668,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                     "trendline" => {
                         if let Some((b0, p0)) = chart.pending_pt {
-                            let mut d = Drawing::new(new_uuid(), DrawingKind::TrendLine { price0: p0, bar0: b0, price1: price, bar1: bar });
+                            let t0 = bar_to_time(b0, &chart.timestamps);
+                            let t1 = bar_to_time(bar, &chart.timestamps);
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::TrendLine { price0: p0, time0: t0, price1: price, time1: t1 });
                             d.color = chart.draw_color.clone();
                             crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
                             chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
@@ -3674,7 +3690,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let mid = (b.open + b.close) / 2.0;
                             let up = price > mid;
                             let snap_price = if up { b.high } else { b.low };
-                            let mut d = Drawing::new(new_uuid(), DrawingKind::BarMarker { bar: bar_idx as f32, price: snap_price, up });
+                            let ts = chart.timestamps.get(bar_idx).copied().unwrap_or(0);
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::BarMarker { time: ts, price: snap_price, up });
                             d.color = chart.draw_color.clone();
                             crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
                             chart.drawings.push(d); chart.draw_tool.clear();
@@ -3749,17 +3766,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
                         match &mut d.kind {
                             DrawingKind::HLine{price} => *price += dp,
-                            DrawingKind::TrendLine{price0,bar0,price1,bar1} => match ep {
-                                0 => { *price0 = new_p; *bar0 = new_b; }
-                                1 => { *price1 = new_p; *bar1 = new_b; }
-                                _ => { *price0 += dp; *price1 += dp; *bar0 += db; *bar1 += db; }
+                            DrawingKind::TrendLine{price0,time0,price1,time1} => match ep {
+                                0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
+                                1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
+                                _ => {
+                                    *price0 += dp; *price1 += dp;
+                                    let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
+                                    let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
+                                    *time0 = bar_to_time(b0, &chart.timestamps);
+                                    *time1 = bar_to_time(b1, &chart.timestamps);
+                                }
                             },
                             DrawingKind::HZone{price0,price1} => match ep {
                                 0 => *price0 = new_p,
                                 1 => *price1 = new_p,
                                 _ => { *price0 += dp; *price1 += dp; }
                             },
-                            DrawingKind::BarMarker{bar,price,..} => { *bar += db; *price += dp; },
+                            DrawingKind::BarMarker{time,price,..} => {
+                                let b = SignalDrawing::time_to_bar(*time, &chart.timestamps) + db;
+                                *time = bar_to_time(b, &chart.timestamps);
+                                *price += dp;
+                            },
                         }
                     }
                     chart.drag_start_price = new_p;
