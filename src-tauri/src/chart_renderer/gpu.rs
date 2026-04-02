@@ -526,6 +526,13 @@ impl Default for TriggerSetup {
 
 struct Chart {
     symbol: String, timeframe: String,
+    // Option chart metadata
+    is_option: bool,
+    underlying: String,       // e.g. "SPY" when this chart shows an option
+    option_type: String,      // "C" or "P"
+    option_strike: f32,
+    option_expiry: String,    // "20260402"
+    option_con_id: i64,
     bars: Vec<Bar>, timestamps: Vec<i64>, drawings: Vec<Drawing>,
     indicators: Vec<Indicator>,
     indicator_bar_count: usize, // bar count when indicators were last computed
@@ -591,6 +598,7 @@ struct Chart {
     // ── Trigger orders (options on underlying price) ──
     trigger_setup: TriggerSetup,
     trigger_levels: Vec<TriggerLevel>,
+    pending_und_order: Option<OrderSide>, // deferred: activate underlying crosshair
     next_trigger_id: u32,
     dragging_trigger: Option<u32>,
     editing_trigger: Option<u32>,
@@ -618,6 +626,8 @@ impl Chart {
     }
     fn new() -> Self {
         Self { symbol: "AAPL".into(), timeframe: "5m".into(),
+            is_option: false, underlying: String::new(), option_type: String::new(),
+            option_strike: 0.0, option_expiry: String::new(), option_con_id: 0,
             bars: vec![], timestamps: vec![], drawings: vec![], indicator_bar_count: 0,
             next_indicator_id: 5, editing_indicator: None,
             indicators: vec![
@@ -649,7 +659,7 @@ impl Chart {
             order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false,
             dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
-            trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None,
+            trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
             measuring: false, measure_start: None, measure_active: false,
             pending_symbol_change: None, pending_timeframe_change: None,
             cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
@@ -2589,12 +2599,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         });
                         ui.add_space(4.0);
 
+                        let mut open_option_chart: Option<(String, f32, bool, String)> = None; // (symbol, strike, is_call, expiry)
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             let mut remove_idx: Option<usize> = None;
                             for (i, opt) in watchlist.saved_options.iter().enumerate() {
                                 let type_label = if opt.is_call { "C" } else { "P" };
                                 let color = if opt.is_call { t.bull } else { t.bear };
                                 ui.horizontal(|ui| {
+                                    // Chart button — opens option in a pane
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::CHART_LINE).size(10.0).color(t.accent))
+                                        .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                        open_option_chart = Some((opt.symbol.clone(), opt.strike, opt.is_call, opt.expiry.clone()));
+                                    }
                                     ui.label(egui::RichText::new(&opt.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
                                     ui.label(egui::RichText::new(format!("{:.0}{}", opt.strike, type_label)).monospace().size(10.0).color(color));
                                     ui.label(egui::RichText::new(format!("{:.2}", opt.last)).monospace().size(10.0).color(color));
@@ -2609,6 +2625,49 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 dim_label(ui, "Click a contract in\nthe CHAIN tab to save it", t.dim);
                             }
                         });
+                        // Open option chart in a pane
+                        if let Some((sym, strike, is_call, expiry)) = open_option_chart {
+                            let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
+                            // Find an empty pane or use the one after active, or add one
+                            let target = if panes.len() > 1 { (ap + 1) % panes.len() } else {
+                                // Switch to 2H layout
+                                *layout = Layout::TwoH;
+                                let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
+                                p.theme_idx = panes[ap].theme_idx;
+                                panes.push(p);
+                                panes.len() - 1
+                            };
+                            // Set up the target pane as an option chart
+                            panes[target].symbol = opt_sym;
+                            panes[target].is_option = true;
+                            panes[target].underlying = sym.clone();
+                            panes[target].option_type = if is_call { "C".into() } else { "P".into() };
+                            panes[target].option_strike = strike;
+                            panes[target].option_expiry = expiry;
+                            // Generate placeholder option price data
+                            let underlying_bars = panes[ap].bars.clone();
+                            let underlying_ts = panes[ap].timestamps.clone();
+                            let mut opt_bars = Vec::new();
+                            for (i, bar) in underlying_bars.iter().enumerate() {
+                                // Simple BS-ish placeholder: option price ~ max(0, underlying - strike) + time_value
+                                let mid = (bar.open + bar.close) / 2.0;
+                                let intrinsic = if is_call { (mid - strike).max(0.0) } else { (strike - mid).max(0.0) };
+                                let time_pct = 1.0 - (i as f32 / underlying_bars.len().max(1) as f32);
+                                let time_val = strike * 0.005 * time_pct.max(0.1);
+                                let opt_mid = intrinsic + time_val;
+                                let spread = opt_mid * 0.02;
+                                opt_bars.push(Bar {
+                                    open: opt_mid - spread * 0.3, high: opt_mid + spread,
+                                    low: (opt_mid - spread).max(0.01), close: opt_mid + spread * 0.3,
+                                    volume: bar.volume * 0.1, _pad: 0.0,
+                                });
+                            }
+                            panes[target].bars = opt_bars;
+                            panes[target].timestamps = underlying_ts.clone();
+                            panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + 8.0).max(0.0);
+                            panes[target].auto_scroll = true;
+                            panes[target].indicator_bar_count = 0;
+                        }
                     }
                 }
             });
@@ -3741,7 +3800,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + chart.order_panel_pos.y)
             };
 
-            let order_types = ["MKT", "LMT", "STP", "STP-LMT", "TRAIL"];
+            let order_types: Vec<&str> = if chart.is_option {
+                vec!["MKT", "LMT", "STP", "STP-LMT", "TRAIL", "UND"]
+            } else {
+                vec!["MKT", "LMT", "STP", "STP-LMT", "TRAIL"]
+            };
             let tifs = ["DAY", "GTC", "IOC"];
 
             egui::Window::new(format!("order_entry_{}", pane_idx))
@@ -4015,10 +4078,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.add_space(pad);
                         ui.spacing_mut().item_spacing.x = 4.0;
                         let btn_w = (panel_w - pad * 2.0 - 30.0) / 2.0;
+                        let is_und = adv && chart.order_type_idx == 5 && chart.is_option;
+                        let buy_label = if is_und { format!("BUY {} on UND", chart.option_type) } else { format!("BUY {:.2}", buy_price) };
+                        let sell_label = if is_und { format!("SELL {} on UND", chart.option_type) } else { format!("SELL {:.2}", sell_price) };
                         // BUY
-                        if trade_btn(ui, &format!("BUY {:.2}", buy_price), t.bull, btn_w) {
-                            if chart.armed && adv {
-                                // Submit to ApexIB
+                        if trade_btn(ui, &buy_label, t.bull, btn_w) {
+                            if is_und {
+                                chart.pending_und_order = Some(OrderSide::Buy);
+                            } else if chart.armed && adv {
                                 let sym = chart.symbol.clone();
                                 let qty = chart.order_qty;
                                 let ot_idx = chart.order_type_idx;
@@ -4038,8 +4105,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         }
                         // SELL
-                        if trade_btn(ui, &format!("SELL {:.2}", sell_price), t.bear, btn_w) {
-                            if chart.armed && adv {
+                        if trade_btn(ui, &sell_label, t.bear, btn_w) {
+                            if is_und {
+                                chart.pending_und_order = Some(OrderSide::Sell);
+                            } else if chart.armed && adv {
                                 let sym = chart.symbol.clone();
                                 let qty = chart.order_qty;
                                 let ot_idx = chart.order_type_idx;
@@ -4895,6 +4964,51 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         } // end for pane_idx
     });
     span_end(); // chart_panes
+
+    // ── Handle deferred underlying order actions ──
+    // Check if any option pane requested to place an order on its underlying
+    let mut und_action: Option<(usize, OrderSide, String, String, f32, String, u32)> = None;
+    for (pi, pane) in panes.iter_mut().enumerate() {
+        if let Some(side) = pane.pending_und_order.take() {
+            und_action = Some((pi, side, pane.underlying.clone(), pane.option_type.clone(), pane.option_strike, pane.option_expiry.clone(), pane.order_qty));
+        }
+    }
+    if let Some((source_pi, side, underlying, opt_type, strike, expiry, qty)) = und_action {
+        // Find the underlying pane
+        let source_sym = panes[source_pi].symbol.clone();
+        let tf = panes[0].timeframe.clone();
+        let theme = panes[0].theme_idx;
+        let und_pane = panes.iter().position(|p| p.symbol == underlying && !p.is_option);
+        let target_pi = if let Some(pi) = und_pane {
+            pi
+        } else if panes.len() <= 1 {
+            *layout = Layout::TwoH;
+            let mut p = Chart::new_with(&underlying, &tf);
+            p.theme_idx = theme;
+            p.pending_symbol_change = Some(underlying.clone());
+            panes.push(p);
+            panes.len() - 1
+        } else {
+            let other = panes.iter().position(|p| !p.is_option && p.symbol != source_sym);
+            let pi = other.unwrap_or((source_pi + 1) % panes.len());
+            panes[pi].pending_symbol_change = Some(underlying.clone());
+            panes[pi].is_option = false;
+            pi
+        };
+        // Activate crosshair on the underlying pane
+        panes[target_pi].trigger_setup = TriggerSetup {
+            phase: TriggerPhase::Picking,
+            pending_side: side,
+            option_type: opt_type,
+            strike,
+            expiry,
+            qty,
+            source_pane: source_pi,
+            target_pane: Some(target_pi),
+        };
+        *active_pane = target_pi;
+    }
+
     ctx.request_repaint();
 }
 
