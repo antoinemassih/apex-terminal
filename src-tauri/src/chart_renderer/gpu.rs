@@ -3195,60 +3195,59 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let is_saved = saved.iter().any(|s| s.contract == row.contract);
                             let color = if is_call { t.bull } else { t.bear };
-                            let hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| {
-                                let cursor_y = p.y;
-                                let row_top = ui.cursor().min.y;
-                                cursor_y >= row_top && cursor_y < row_top + 20.0 && p.x >= ui.min_rect().left() && p.x <= ui.min_rect().right()
-                            });
-                            let bg = if is_saved { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),40) }
-                                else if hovered { t.toolbar_border.gamma_multiply(0.4) }
-                                else if row.itm { color.gamma_multiply(0.06) }
-                                else { egui::Color32::TRANSPARENT };
+                            let itm_bg = if row.itm { color.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
+                            let saved_bg = if is_saved { color_alpha(t.accent, 40) } else { itm_bg };
 
-                            let resp = ui.horizontal(|ui| {
-                                ui.set_min_width(w);
-                                ui.set_min_height(20.0);
-                                ui.spacing_mut().item_spacing.x = gap;
-                                ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
+                            // Reserve a clickable rect for the whole row FIRST
+                            let row_rect = ui.allocate_exact_size(egui::vec2(w, 22.0), egui::Sense::click());
+                            let (rect, row_resp) = row_rect;
 
-                                // Check mark column
-                                ui.allocate_ui(egui::vec2(col_chk, 20.0), |ui| {
-                                    if is_saved { ui.label(egui::RichText::new(Icon::CHECK).size(11.0).color(t.accent)); }
-                                });
-                                // Strike
-                                ui.allocate_ui(egui::vec2(col_stk, 20.0), |ui| {
-                                    ui.label(egui::RichText::new(format!("{:.0}", row.strike)).monospace().size(11.0).strong().color(egui::Color32::from_rgb(210,210,220)));
-                                });
-                                // Bid
-                                ui.allocate_ui(egui::vec2(col_bid, 20.0), |ui| {
-                                    ui.label(egui::RichText::new(format!("{:.2}", row.bid)).monospace().size(10.0).color(color));
-                                });
-                                // Ask
-                                ui.allocate_ui(egui::vec2(col_ask, 20.0), |ui| {
-                                    ui.label(egui::RichText::new(format!("{:.2}", row.ask)).monospace().size(10.0).color(t.dim));
-                                });
-                                // OI
-                                ui.allocate_ui(egui::vec2(col_oi, 20.0), |ui| {
-                                    let oi_str = if row.oi >= 1_000_000 { format!("{:.1}M", row.oi as f32 / 1_000_000.0) }
-                                        else if row.oi >= 1_000 { format!("{},{:03}", row.oi / 1000, row.oi % 1000) }
-                                        else { format!("{}", row.oi) };
-                                    ui.label(egui::RichText::new(oi_str).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
-                                });
-                            });
+                            // Paint background
+                            let bg = if row_resp.hovered() { color_alpha(t.toolbar_border, 50) } else { saved_bg };
+                            ui.painter().rect_filled(rect, 0.0, bg);
+                            if row_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
-                            // Hover cursor + click handling
-                            let row_resp = resp.response.interact(egui::Sense::click());
-                            if row_resp.hovered() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            // Paint content on top of the rect
+                            let mut x = rect.left();
+                            let y_center = rect.center().y;
+                            let painter = ui.painter();
+
+                            // Check mark
+                            if is_saved {
+                                painter.text(egui::pos2(x + col_chk * 0.5, y_center), egui::Align2::CENTER_CENTER,
+                                    Icon::CHECK, egui::FontId::proportional(11.0), t.accent);
                             }
+                            x += col_chk + gap;
+
+                            // Strike
+                            painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
+                                &format!("{:.0}", row.strike), egui::FontId::monospace(11.0), egui::Color32::from_rgb(210, 210, 220));
+                            x += col_stk + gap;
+
+                            // Bid
+                            painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
+                                &format!("{:.2}", row.bid), egui::FontId::monospace(10.0), color);
+                            x += col_bid + gap;
+
+                            // Ask
+                            painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
+                                &format!("{:.2}", row.ask), egui::FontId::monospace(10.0), t.dim);
+                            x += col_ask + gap;
+
+                            // OI
+                            let oi_str = if row.oi >= 1_000_000 { format!("{:.1}M", row.oi as f32 / 1_000_000.0) }
+                                else if row.oi >= 1_000 { format!("{},{:03}", row.oi / 1000, row.oi % 1000) }
+                                else { format!("{}", row.oi) };
+                            painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
+                                &oi_str, egui::FontId::monospace(10.0), t.dim.gamma_multiply(0.5));
+
+                            // Click handling
                             if row_resp.clicked() {
                                 if select_mode || ui.input(|i| i.modifiers.shift) {
-                                    // Select mode / shift+click: add to watchlist + toggle saved
                                     if is_saved { saved.retain(|s| s.contract != row.contract); }
                                     else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call, expiry: exp_label.into(), last: row.last }); }
                                     watchlist_add.set(Some((sym.into(), row.strike, is_call, exp_label.into(), row.bid, row.ask)));
                                 } else {
-                                    // Normal click: just open option chart (no watchlist add)
                                     clicked_contract.set(Some((sym.into(), row.strike, is_call, exp_label.into())));
                                 }
                             }
