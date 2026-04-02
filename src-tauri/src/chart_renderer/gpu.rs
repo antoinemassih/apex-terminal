@@ -3693,9 +3693,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         });
                     });
-                    // Handle drag on header
-                    let header_rect = egui::Rect::from_min_size(header_resp.response.rect.min, egui::vec2(panel_w, 20.0));
-                    let drag_resp = ui.interact(header_rect, egui::Id::new("order_panel_drag"), egui::Sense::click_and_drag());
+                    // Handle drag on header — only the left part (exclude button zone on right)
+                    let hdr_min = header_resp.response.rect.min;
+                    let drag_rect = egui::Rect::from_min_size(hdr_min, egui::vec2(panel_w - 30.0, 20.0));
+                    let drag_resp = ui.interact(drag_rect, egui::Id::new("order_panel_drag"), egui::Sense::drag());
                     if drag_resp.dragged() {
                         let delta = drag_resp.drag_delta();
                         chart.order_panel_pos.x += delta.x;
