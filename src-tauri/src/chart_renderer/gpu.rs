@@ -2529,16 +2529,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // Search bar with inline options toggle
                         let search_id = egui::Id::new("wl_search_input");
                         let search_resp = ui.horizontal(|ui| {
-                            // Options toggle chevron
+                            // Options toggle chevron (always visible)
                             let has_opts = watchlist.sections.iter().any(|s| s.title.contains("Options"));
-                            if has_opts {
-                                let opt_icon = if watchlist.options_visible { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
-                                let opt_color = if watchlist.options_visible { t.accent } else { t.dim.gamma_multiply(0.4) };
-                                let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(10.0).color(opt_color))
-                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0)));
-                                if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
-                                if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                            }
+                            let opt_icon = if watchlist.options_visible { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
+                            let opt_color = if watchlist.options_visible && has_opts { t.accent } else { t.dim.gamma_multiply(0.3) };
+                            let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(10.0).color(opt_color))
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0)));
+                            if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
+                            if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                             // Search input
                             ui.add(
                                 egui::TextEdit::singleline(&mut watchlist.search_query)
@@ -2673,22 +2671,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
                                     });
                                     ui.add_space(4.0);
-                                    // Thick draggable divider
+                                    // Thick visual divider
                                     let r = ui.available_rect_before_wrap();
                                     let y = ui.cursor().min.y;
-                                    let divider_rect = egui::Rect::from_min_max(egui::pos2(r.left(), y - 2.0), egui::pos2(r.right(), y + 5.0));
                                     ui.painter().rect_filled(
                                         egui::Rect::from_min_max(egui::pos2(r.left(), y), egui::pos2(r.right(), y + 3.0)),
                                         0.0, color_alpha(t.toolbar_border, 140));
-                                    let div_resp = ui.interact(divider_rect, egui::Id::new("wl_opt_divider"), egui::Sense::click_and_drag());
-                                    if div_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical); }
-                                    if div_resp.dragged() {
-                                        let delta = div_resp.drag_delta().y;
-                                        let total = ui.max_rect().height();
-                                        if total > 0.0 {
-                                            watchlist.options_split = (watchlist.options_split + delta / total).clamp(0.2, 0.9);
-                                        }
-                                    }
                                     ui.add_space(6.0);
                                     // Options header
                                     ui.horizontal(|ui| {
@@ -6025,12 +6013,16 @@ impl Watchlist {
         let s = sym.to_uppercase();
         // Check all sections for duplicates
         if self.sections.iter().any(|sec| sec.items.iter().any(|i| i.symbol == s)) { return; }
-        if self.sections.is_empty() {
+        // Find the last non-option section, or create one
+        let target = self.sections.iter().rposition(|sec| !sec.title.contains("Options"));
+        let target_idx = if let Some(idx) = target {
+            idx
+        } else {
             let id = self.next_section_id; self.next_section_id += 1;
-            self.sections.push(WatchlistSection { id, title: String::new(), color: None, collapsed: false, items: vec![] });
-        }
-        let last = self.sections.last_mut().unwrap();
-        last.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0 });
+            self.sections.insert(0, WatchlistSection { id, title: String::new(), color: None, collapsed: false, items: vec![] });
+            0
+        };
+        self.sections[target_idx].items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0 });
     }
 
     /// Remove symbol from all sections.
