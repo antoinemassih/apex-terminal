@@ -311,6 +311,9 @@ struct OrderLevel {
     qty: u32,
     status: OrderStatus,
     pair_id: Option<u32>, // linked order (OCO target↔stop, trigger buy↔sell)
+    // Option trigger metadata (only for TriggerBuy/TriggerSell on underlying chart)
+    option_symbol: Option<String>,  // e.g. "SPY 560C 0DTE"
+    option_con_id: Option<i64>,
 }
 
 impl OrderLevel {
@@ -4039,54 +4042,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         });
 
-                        // ── Options trigger: BUY/SELL at underlying level ──
-                        ui.horizontal(|ui| {
-                            ui.add_space(pad);
-                            let picking = chart.trigger_setup.phase == TriggerPhase::Picking;
-                            // C/P toggle
-                            for opt_t in ["C", "P"] {
-                                let sel = chart.trigger_setup.option_type == opt_t;
-                                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.6) };
-                                let bg = if sel { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 25) };
-                                if ui.add(egui::Button::new(egui::RichText::new(opt_t).monospace().size(9.0).color(fg))
-                                    .fill(bg).corner_radius(2.0).min_size(egui::vec2(20.0, 18.0))
-                                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 100) } else { color_alpha(t.toolbar_border, 50) })))
-                                    .clicked() { chart.trigger_setup.option_type = opt_t.into(); }
-                            }
-                            ui.add_space(4.0);
-                            // BUY trigger
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} BUY", Icon::LIGHTNING)).monospace().size(9.0)
-                                .color(if picking && chart.trigger_setup.pending_side == OrderSide::Buy { egui::Color32::WHITE } else { t.bull }))
-                                .fill(if picking && chart.trigger_setup.pending_side == OrderSide::Buy { color_alpha(t.bull, 80) } else { color_alpha(t.bull, 20) })
-                                .stroke(egui::Stroke::new(0.5, color_alpha(t.bull, 80))).corner_radius(2.0)
-                                .min_size(egui::vec2(0.0, 18.0))).clicked() {
-                                chart.trigger_setup = TriggerSetup {
-                                    phase: TriggerPhase::Picking, pending_side: OrderSide::Buy,
-                                    option_type: chart.trigger_setup.option_type.clone(),
-                                    qty: chart.order_qty, source_pane: pane_idx,
-                                    ..TriggerSetup::default()
-                                };
-                            }
-                            // SELL trigger
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} SELL", Icon::LIGHTNING)).monospace().size(9.0)
-                                .color(if picking && chart.trigger_setup.pending_side == OrderSide::Sell { egui::Color32::WHITE } else { t.bear }))
-                                .fill(if picking && chart.trigger_setup.pending_side == OrderSide::Sell { color_alpha(t.bear, 80) } else { color_alpha(t.bear, 20) })
-                                .stroke(egui::Stroke::new(0.5, color_alpha(t.bear, 80))).corner_radius(2.0)
-                                .min_size(egui::vec2(0.0, 18.0))).clicked() {
-                                chart.trigger_setup = TriggerSetup {
-                                    phase: TriggerPhase::Picking, pending_side: OrderSide::Sell,
-                                    option_type: chart.trigger_setup.option_type.clone(),
-                                    qty: chart.order_qty, source_pane: pane_idx,
-                                    ..TriggerSetup::default()
-                                };
-                            }
-                            if picking {
-                                ui.label(egui::RichText::new("click level").monospace().size(8.0).color(t.accent));
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim)).frame(false)).clicked() {
-                                    chart.trigger_setup.phase = TriggerPhase::Idle;
-                                }
-                            }
-                        });
+                        // (C/P + trigger buttons removed — UND BUY/SELL in main buttons handles this)
                     }
 
                     ui.add_space(4.0);
@@ -4109,7 +4065,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // BUY
                         if trade_btn(ui, &buy_label, t.bull, btn_w) {
                             if is_und {
-                                chart.pending_und_order = Some(OrderSide::Buy);
+                                // Place a TriggerBuy order level on the underlying pane
+                                chart.pending_und_order = Some(OrderSide::TriggerBuy);
                             } else if chart.armed && adv {
                                 let sym = chart.symbol.clone();
                                 let qty = chart.order_qty;
@@ -4125,14 +4082,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             } else {
                                 let id = chart.next_order_id; chart.next_order_id += 1;
                                 let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
-                                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None });
+                                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None, option_symbol: None, option_con_id: None });
                                 if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                             }
                         }
                         // SELL
                         if trade_btn(ui, &sell_label, t.bear, btn_w) {
                             if is_und {
-                                chart.pending_und_order = Some(OrderSide::Sell);
+                                chart.pending_und_order = Some(OrderSide::TriggerSell);
                             } else if chart.armed && adv {
                                 let sym = chart.symbol.clone();
                                 let qty = chart.order_qty;
@@ -4148,7 +4105,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             } else {
                                 let id = chart.next_order_id; chart.next_order_id += 1;
                                 let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
-                                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None });
+                                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None, option_symbol: None, option_con_id: None });
                                 if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
                             }
                         }
@@ -4779,17 +4736,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             ui.label(egui::RichText::new(format!("ORDERS @ {:.2}", click_price)).small().color(t.dim));
             if ui.button(egui::RichText::new(format!("{} Buy Order", Icon::ARROW_FAT_UP)).color(t.bull)).clicked() {
                 let id = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None });
+                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
             if ui.button(egui::RichText::new(format!("{} Sell Order", Icon::ARROW_FAT_DOWN)).color(t.bear)).clicked() {
                 let id = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None });
+                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
             if ui.button(egui::RichText::new(format!("{} Stop Loss", Icon::SHIELD_WARNING)).color(t.bear)).clicked() {
                 let id = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None });
+                chart.orders.push(OrderLevel { id, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
             // OCO Bracket (target +1%, stop -1%)
@@ -4798,8 +4755,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let stop_price = click_price * 0.99;
                 let id1 = chart.next_order_id; chart.next_order_id += 1;
                 let id2 = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id: id1, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2) });
-                chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop, price: stop_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1) });
+                chart.orders.push(OrderLevel { id: id1, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2), option_symbol: None, option_con_id: None });
+                chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop, price: stop_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1), option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
             // Trigger Order (buy entry at click, sell target +2%)
@@ -4807,8 +4764,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let target_price = click_price * 1.02;
                 let id1 = chart.next_order_id; chart.next_order_id += 1;
                 let id2 = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id: id1, side: OrderSide::TriggerBuy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2) });
-                chart.orders.push(OrderLevel { id: id2, side: OrderSide::TriggerSell, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1) });
+                chart.orders.push(OrderLevel { id: id1, side: OrderSide::TriggerBuy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2), option_symbol: None, option_con_id: None });
+                chart.orders.push(OrderLevel { id: id2, side: OrderSide::TriggerSell, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1), option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
             if !chart.orders.is_empty() {
@@ -5037,10 +4994,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
     }
     if let Some((source_pi, side, underlying, opt_type, strike, expiry, qty)) = und_action {
-        // Find the underlying pane
+        let opt_sym = panes[source_pi].symbol.clone();
         let source_sym = panes[source_pi].symbol.clone();
         let tf = panes[0].timeframe.clone();
         let theme = panes[0].theme_idx;
+
+        // Find or create the underlying pane
         let und_pane = panes.iter().position(|p| p.symbol == underlying && !p.is_option);
         let target_pi = if let Some(pi) = und_pane {
             pi
@@ -5058,17 +5017,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             panes[pi].is_option = false;
             pi
         };
-        // Activate crosshair on the underlying pane
-        panes[target_pi].trigger_setup = TriggerSetup {
-            phase: TriggerPhase::Picking,
-            pending_side: side,
-            option_type: opt_type,
-            strike,
-            expiry,
-            qty,
-            source_pane: source_pi,
-            target_pane: Some(target_pi),
-        };
+
+        // Place a draft order level on the underlying pane — same as regular orders
+        let last = panes[target_pi].bars.last().map(|b| b.close).unwrap_or(0.0);
+        let id = panes[target_pi].next_order_id;
+        panes[target_pi].next_order_id += 1;
+        panes[target_pi].orders.push(OrderLevel {
+            id, side, price: last, qty, status: OrderStatus::Draft, pair_id: None,
+            option_symbol: Some(opt_sym), option_con_id: None,
+        });
+        panes[target_pi].pending_confirms.push((id, std::time::Instant::now()));
         *active_pane = target_pi;
     }
 
