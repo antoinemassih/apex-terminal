@@ -1418,6 +1418,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // Close
                 if win_ctrl(ui, Icon::X, true) {
                     save_state(panes, *layout);
+                    watchlist.persist();
                     CLOSE_REQUESTED.with(|f| f.set(true));
                 }
                 // Maximize
@@ -2372,6 +2373,132 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             .max_width(400.0)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
             .show(ctx, |ui| {
+                // ── Watchlist selector bar ──
+                let mut wl_switch_to: Option<usize> = None;
+                let mut wl_fetch_syms: Vec<String> = Vec::new();
+                let mut wl_rename_idx: Option<usize> = None;
+                let mut wl_delete_idx: Option<usize> = None;
+                let mut wl_dup_idx: Option<usize> = None;
+                ui.horizontal(|ui| {
+                    ui.set_min_height(20.0);
+                    // Inline rename mode
+                    if watchlist.watchlist_name_editing {
+                        let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.watchlist_name_buf)
+                            .desired_width(ui.available_width() - 30.0)
+                            .font(egui::FontId::monospace(10.0)));
+                        if resp.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            let new_name = watchlist.watchlist_name_buf.trim().to_string();
+                            if !new_name.is_empty() {
+                                if let Some(wl) = watchlist.saved_watchlists.get_mut(watchlist.active_watchlist_idx) {
+                                    wl.name = new_name;
+                                }
+                            }
+                            watchlist.watchlist_name_editing = false;
+                            watchlist.persist();
+                        } else {
+                            resp.request_focus();
+                        }
+                    } else {
+                        // Snapshot names and count for the dropdown to avoid borrow conflicts
+                        let wl_names: Vec<String> = watchlist.saved_watchlists.iter().map(|w| w.name.clone()).collect();
+                        let wl_count = wl_names.len();
+                        let active_idx = watchlist.active_watchlist_idx;
+                        let active_name = wl_names.get(active_idx).cloned().unwrap_or_else(|| "Default".into());
+                        let combo_resp = egui::ComboBox::from_id_salt("wl_selector")
+                            .selected_text(egui::RichText::new(&active_name).monospace().size(10.0).color(t.accent))
+                            .width(ui.available_width() - 30.0)
+                            .show_ui(ui, |ui| {
+                                for (i, name) in wl_names.iter().enumerate() {
+                                    let is_active = i == active_idx;
+                                    let label_color = if is_active { t.accent } else { egui::Color32::from_rgb(200, 200, 210) };
+                                    let resp = ui.selectable_label(is_active,
+                                        egui::RichText::new(name).monospace().size(10.0).color(label_color));
+                                    if resp.clicked() && !is_active {
+                                        wl_switch_to = Some(i);
+                                    }
+                                    // Right-click context menu on each watchlist entry
+                                    resp.context_menu(|ui| {
+                                        if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                            wl_rename_idx = Some(i);
+                                            ui.close_menu();
+                                        }
+                                        if ui.button(egui::RichText::new("Duplicate").monospace().size(10.0)).clicked() {
+                                            wl_dup_idx = Some(i);
+                                            ui.close_menu();
+                                        }
+                                        if wl_count > 1 {
+                                            ui.separator();
+                                            if ui.button(egui::RichText::new("Delete").monospace().size(10.0)
+                                                .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                                                wl_delete_idx = Some(i);
+                                                ui.close_menu();
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        // Right-click the combo box header for rename/dup/delete
+                        combo_resp.response.context_menu(|ui| {
+                            if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                wl_rename_idx = Some(active_idx);
+                                ui.close_menu();
+                            }
+                            if ui.button(egui::RichText::new("Duplicate").monospace().size(10.0)).clicked() {
+                                wl_dup_idx = Some(active_idx);
+                                ui.close_menu();
+                            }
+                            if wl_count > 1 {
+                                ui.separator();
+                                if ui.button(egui::RichText::new("Delete").monospace().size(10.0)
+                                    .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                                    wl_delete_idx = Some(active_idx);
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                    }
+                    // "+" button to create new watchlist
+                    if ui.add(egui::Button::new(egui::RichText::new(Icon::PLUS).size(12.0).color(t.dim)).frame(false)).clicked() {
+                        let n = watchlist.saved_watchlists.len() + 1;
+                        let syms = watchlist.create_watchlist(&format!("Watchlist {}", n));
+                        if !syms.is_empty() { wl_fetch_syms = syms; }
+                    }
+                });
+                // Handle deferred rename
+                if let Some(idx) = wl_rename_idx {
+                    if idx != watchlist.active_watchlist_idx {
+                        wl_switch_to = Some(idx);
+                    }
+                    watchlist.watchlist_name_buf = watchlist.saved_watchlists.get(idx).map(|w| w.name.clone()).unwrap_or_default();
+                    watchlist.watchlist_name_editing = true;
+                }
+                // Handle deferred duplicate
+                if let Some(dup_idx) = wl_dup_idx {
+                    let syms = watchlist.duplicate_watchlist(dup_idx);
+                    if !syms.is_empty() { wl_fetch_syms = syms; }
+                }
+                // Handle deferred delete
+                if let Some(del_idx) = wl_delete_idx {
+                    let syms = watchlist.delete_watchlist(del_idx);
+                    if !syms.is_empty() { wl_fetch_syms = syms; }
+                }
+                // Handle watchlist switch
+                if let Some(idx) = wl_switch_to {
+                    let syms = watchlist.switch_to(idx);
+                    if !syms.is_empty() { wl_fetch_syms = syms; }
+                }
+                // Trigger price fetches for new watchlist
+                if !wl_fetch_syms.is_empty() {
+                    fetch_watchlist_prices(wl_fetch_syms);
+                }
+
+                ui.add_space(2.0);
+                ui.painter().line_segment(
+                    [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
+                    egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 60)),
+                );
+                ui.add_space(2.0);
+
                 // Header with tabs
                 ui.horizontal(|ui| {
                     for (tab, label) in [(WatchlistTab::Stocks, "STOCKS"), (WatchlistTab::Chain, "CHAIN"), (WatchlistTab::Saved, "SAVED")] {
@@ -2416,6 +2543,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         watchlist.add_symbol(&sym);
                                         watchlist.search_query.clear(); watchlist.search_results.clear();
                                         fetch_watchlist_prices(vec![sym]);
+                                        watchlist.persist();
                                     }
                                 }
                             });
@@ -2424,6 +2552,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let sym = watchlist.search_query.trim().to_uppercase();
                             watchlist.add_symbol(&sym); fetch_watchlist_prices(vec![sym.clone()]);
                             watchlist.search_query.clear(); watchlist.search_results.clear();
+                            watchlist.persist();
                         }
                         ui.add_space(4.0);
 
@@ -2528,6 +2657,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                             sec.color = Some(hex.to_string());
                                                         }
+                                                        watchlist.persist();
                                                         ui.close_menu();
                                                     }
                                                 }
@@ -2537,6 +2667,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                 sec.color = None;
                                             }
+                                            watchlist.persist();
                                             ui.close_menu();
                                         }
                                         ui.separator();
@@ -2566,6 +2697,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 sec.title = watchlist.rename_buf.clone();
                                             }
                                             watchlist.renaming_section = None;
+                                            watchlist.persist();
                                         }
                                         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                                             watchlist.renaming_section = None;
@@ -2763,6 +2895,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     // Adjust destination index if same section and source is before target
                                     let adj_dst = if src_sec == dst_sec && src_idx < dst_idx { dst_idx - 1 } else { dst_idx };
                                     watchlist.move_item(src_sec, src_idx, dst_sec, adj_dst);
+                                    watchlist.persist();
                                 }
                                 watchlist.dragging = None;
                                 watchlist.drag_start_pos = None;
@@ -2789,6 +2922,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
                                     .frame(false)).clicked() {
                                     watchlist.add_section("New Section");
+                                    watchlist.persist();
                                 }
                             });
 
@@ -2796,13 +2930,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 panes[ap].pending_symbol_change = Some(sym.clone());
                                 panes[ap].is_option = false; // reset option flag when switching to stock
                             }
-                            if let Some(sym) = remove_sym { watchlist.remove_symbol(&sym); }
+                            if let Some(sym) = remove_sym { watchlist.remove_symbol(&sym); watchlist.persist(); }
                             if let Some(si) = toggle_collapse {
                                 watchlist.sections[si].collapsed = !watchlist.sections[si].collapsed;
+                                watchlist.persist();
                             }
                             if let Some(si) = remove_section {
                                 if si < watchlist.sections.len() && watchlist.sections[si].items.is_empty() {
                                     watchlist.sections.remove(si);
+                                    watchlist.persist();
                                 }
                             }
                         });
@@ -5553,6 +5689,13 @@ struct WatchlistSection {
     items: Vec<WatchlistItem>,
 }
 
+#[derive(Clone)]
+struct SavedWatchlist {
+    name: String,
+    sections: Vec<WatchlistSection>,
+    next_section_id: u32,
+}
+
 // ─── Options chain ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -5588,6 +5731,13 @@ struct Watchlist {
     tab: WatchlistTab,
     sections: Vec<WatchlistSection>,
     next_section_id: u32,
+    // Multi-watchlist
+    saved_watchlists: Vec<SavedWatchlist>,
+    active_watchlist_idx: usize,
+    watchlist_name_editing: bool,
+    watchlist_name_buf: String,
+    #[allow(dead_code)]
+    watchlist_ctx_menu_idx: Option<usize>,   // which watchlist index has context menu open
     search_query: String,
     search_results: Vec<(String, String)>,
     // Drag-and-drop state
@@ -5634,13 +5784,13 @@ const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA
 
 impl Watchlist {
     fn new() -> Self {
-        let items: Vec<WatchlistItem> = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
-            symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
-        }).collect();
-        let default_section = WatchlistSection {
-            id: 1, title: String::new(), color: None, collapsed: false, items,
-        };
-        Self { open: false, tab: WatchlistTab::Stocks, sections: vec![default_section], next_section_id: 2,
+        let (saved_watchlists, active_idx) = load_watchlists();
+        let active = &saved_watchlists[active_idx];
+        let sections = active.sections.clone();
+        let next_section_id = active.next_section_id;
+        Self { open: false, tab: WatchlistTab::Stocks, sections, next_section_id,
+               saved_watchlists, active_watchlist_idx: active_idx,
+               watchlist_name_editing: false, watchlist_name_buf: String::new(), watchlist_ctx_menu_idx: None,
                search_query: String::new(), search_results: vec![],
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
@@ -5714,6 +5864,97 @@ impl Watchlist {
         let dst_sec = dst_sec.min(self.sections.len() - 1);
         let clamped = dst_idx.min(self.sections[dst_sec].items.len());
         self.sections[dst_sec].items.insert(clamped, item);
+    }
+
+    /// Sync current live sections back into saved_watchlists at active index.
+    fn sync_to_saved(&mut self) {
+        if self.active_watchlist_idx < self.saved_watchlists.len() {
+            self.saved_watchlists[self.active_watchlist_idx].sections = self.sections.clone();
+            self.saved_watchlists[self.active_watchlist_idx].next_section_id = self.next_section_id;
+        }
+    }
+
+    /// Save current state and persist to disk.
+    fn persist(&mut self) {
+        self.sync_to_saved();
+        save_watchlists(self);
+    }
+
+    /// Switch to a different watchlist by index. Returns symbols needing price fetch.
+    fn switch_to(&mut self, idx: usize) -> Vec<String> {
+        if idx >= self.saved_watchlists.len() || idx == self.active_watchlist_idx { return vec![]; }
+        // Save current
+        self.sync_to_saved();
+        // Load new
+        self.active_watchlist_idx = idx;
+        let wl = &self.saved_watchlists[idx];
+        self.sections = wl.sections.clone();
+        self.next_section_id = wl.next_section_id;
+        // Clear prices
+        for sec in &mut self.sections {
+            for item in &mut sec.items {
+                item.price = 0.0;
+                item.prev_close = 0.0;
+                item.loaded = false;
+            }
+        }
+        save_watchlists(self);
+        self.all_symbols()
+    }
+
+    /// Create a new watchlist and switch to it. Returns symbols needing price fetch.
+    fn create_watchlist(&mut self, name: &str) -> Vec<String> {
+        self.sync_to_saved();
+        let new_wl = SavedWatchlist {
+            name: name.to_string(),
+            sections: vec![WatchlistSection { id: 1, title: String::new(), color: None, collapsed: false, items: vec![] }],
+            next_section_id: 2,
+        };
+        self.saved_watchlists.push(new_wl);
+        let new_idx = self.saved_watchlists.len() - 1;
+        self.switch_to(new_idx)
+    }
+
+    /// Duplicate watchlist at given index. Returns symbols needing price fetch.
+    fn duplicate_watchlist(&mut self, idx: usize) -> Vec<String> {
+        if idx >= self.saved_watchlists.len() { return vec![]; }
+        self.sync_to_saved();
+        let mut dup = self.saved_watchlists[idx].clone();
+        dup.name = format!("{} (copy)", dup.name);
+        self.saved_watchlists.push(dup);
+        let new_idx = self.saved_watchlists.len() - 1;
+        self.switch_to(new_idx)
+    }
+
+    /// Delete watchlist at given index (only if more than 1 exists). Returns symbols needing price fetch if active changed.
+    fn delete_watchlist(&mut self, idx: usize) -> Vec<String> {
+        if self.saved_watchlists.len() <= 1 || idx >= self.saved_watchlists.len() { return vec![]; }
+        self.saved_watchlists.remove(idx);
+        // Adjust active index
+        if self.active_watchlist_idx == idx {
+            let new_idx = if idx > 0 { idx - 1 } else { 0 };
+            self.active_watchlist_idx = new_idx;
+            let wl = &self.saved_watchlists[new_idx];
+            self.sections = wl.sections.clone();
+            self.next_section_id = wl.next_section_id;
+            for sec in &mut self.sections {
+                for item in &mut sec.items {
+                    item.price = 0.0; item.prev_close = 0.0; item.loaded = false;
+                }
+            }
+            save_watchlists(self);
+            return self.all_symbols();
+        } else if self.active_watchlist_idx > idx {
+            self.active_watchlist_idx -= 1;
+        }
+        save_watchlists(self);
+        vec![]
+    }
+
+    /// Get name of the active watchlist.
+    #[allow(dead_code)]
+    fn active_name(&self) -> &str {
+        self.saved_watchlists.get(self.active_watchlist_idx).map(|w| w.name.as_str()).unwrap_or("Default")
     }
 }
 
@@ -6040,6 +6281,7 @@ impl ApplicationHandler for App {
         match ev {
             WindowEvent::CloseRequested => {
                 save_state(&cw.panes, cw.layout);
+                cw.watchlist.persist();
                 self.windows.retain(|w| w.id != wid);
             }
             WindowEvent::Resized(s) => {
@@ -6494,6 +6736,97 @@ fn load_state() -> (Vec<Chart>, Layout) {
     panes.truncate(max);
 
     (panes, layout)
+}
+
+fn watchlists_path() -> std::path::PathBuf {
+    let mut p = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    p.push("apex-terminal");
+    let _ = std::fs::create_dir_all(&p);
+    p.push("watchlists.json");
+    p
+}
+
+fn save_watchlists(watchlist: &Watchlist) {
+    let wls: Vec<serde_json::Value> = watchlist.saved_watchlists.iter().map(|wl| {
+        let sections: Vec<serde_json::Value> = wl.sections.iter().map(|sec| {
+            let items: Vec<serde_json::Value> = sec.items.iter().map(|item| {
+                serde_json::json!({ "symbol": item.symbol })
+            }).collect();
+            serde_json::json!({
+                "id": sec.id,
+                "title": sec.title,
+                "color": sec.color,
+                "collapsed": sec.collapsed,
+                "items": items,
+            })
+        }).collect();
+        serde_json::json!({
+            "name": wl.name,
+            "sections": sections,
+            "next_section_id": wl.next_section_id,
+        })
+    }).collect();
+    let state = serde_json::json!({
+        "watchlists": wls,
+        "active_idx": watchlist.active_watchlist_idx,
+    });
+    let _ = std::fs::write(watchlists_path(), serde_json::to_string_pretty(&state).unwrap_or_default());
+}
+
+fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
+    let path = watchlists_path();
+    let data = match std::fs::read_to_string(&path) {
+        Ok(d) => d,
+        Err(_) => return default_watchlists(),
+    };
+    let json: serde_json::Value = match serde_json::from_str(&data) {
+        Ok(v) => v,
+        Err(_) => return default_watchlists(),
+    };
+    let active_idx = json.get("active_idx").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let wl_arr = match json.get("watchlists").and_then(|v| v.as_array()) {
+        Some(a) => a,
+        None => return default_watchlists(),
+    };
+    let mut watchlists: Vec<SavedWatchlist> = Vec::new();
+    for wl_val in wl_arr {
+        let name = wl_val.get("name").and_then(|v| v.as_str()).unwrap_or("Untitled").to_string();
+        let next_section_id = wl_val.get("next_section_id").and_then(|v| v.as_u64()).unwrap_or(2) as u32;
+        let mut sections: Vec<WatchlistSection> = Vec::new();
+        if let Some(sec_arr) = wl_val.get("sections").and_then(|v| v.as_array()) {
+            for sec_val in sec_arr {
+                let id = sec_val.get("id").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+                let title = sec_val.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let color = sec_val.get("color").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let collapsed = sec_val.get("collapsed").and_then(|v| v.as_bool()).unwrap_or(false);
+                let mut items: Vec<WatchlistItem> = Vec::new();
+                if let Some(item_arr) = sec_val.get("items").and_then(|v| v.as_array()) {
+                    for item_val in item_arr {
+                        let symbol = item_val.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        if !symbol.is_empty() {
+                            items.push(WatchlistItem { symbol, price: 0.0, prev_close: 0.0, loaded: false });
+                        }
+                    }
+                }
+                sections.push(WatchlistSection { id, title, color, collapsed, items });
+            }
+        }
+        watchlists.push(SavedWatchlist { name, sections, next_section_id });
+    }
+    if watchlists.is_empty() { return default_watchlists(); }
+    let idx = active_idx.min(watchlists.len() - 1);
+    (watchlists, idx)
+}
+
+fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
+    let items: Vec<WatchlistItem> = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
+        symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
+    }).collect();
+    let default_section = WatchlistSection {
+        id: 1, title: String::new(), color: None, collapsed: false, items,
+    };
+    let wl = SavedWatchlist { name: "Default".into(), sections: vec![default_section], next_section_id: 2 };
+    (vec![wl], 0)
 }
 
 /// Global sender for spawning new windows on the persistent render thread.
