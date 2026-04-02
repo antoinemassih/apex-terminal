@@ -3984,32 +3984,31 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             };
             let tifs = ["DAY", "GTC", "IOC"];
 
-            // Collapsed mode: just a small pill
+            // Collapsed mode: pill with double-click to expand
             if chart.order_collapsed {
-                let pill_w = 70.0;
+                let pill_w = 90.0;
                 egui::Window::new(format!("order_pill_{}", pane_idx))
                     .fixed_pos(abs_pos)
-                    .fixed_size(egui::vec2(pill_w, 22.0))
+                    .fixed_size(egui::vec2(pill_w, 24.0))
                     .title_bar(false)
                     .frame(egui::Frame::popup(&ctx.style())
-                        .fill(color_alpha(t.toolbar_bg, 230))
-                        .inner_margin(egui::Margin { left: 6, right: 6, top: 3, bottom: 3 })
-                        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)))
-                        .corner_radius(10.0))
+                        .fill(color_alpha(t.toolbar_bg, 235))
+                        .inner_margin(egui::Margin { left: 8, right: 8, top: 4, bottom: 4 })
+                        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
+                        .corner_radius(12.0))
                     .show(ctx, |ui| {
                         let resp = ui.horizontal(|ui| {
                             let armed_dot = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.3) };
-                            ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 8.0), 3.0, armed_dot);
-                            ui.add_space(10.0);
-                            ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.7)));
+                            ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 8.0), 3.5, armed_dot);
+                            ui.add_space(12.0);
+                            ui.label(egui::RichText::new("ORDER").monospace().size(10.0).strong().color(t.dim.gamma_multiply(0.7)));
                         });
-                        let pill_resp = resp.response.interact(egui::Sense::click());
+                        // Single interaction: click_and_drag on the whole pill
+                        let pill_resp = ui.interact(resp.response.rect, egui::Id::new(("order_pill_interact", pane_idx)), egui::Sense::click_and_drag());
                         if pill_resp.double_clicked() { chart.order_collapsed = false; }
                         if pill_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                        // Drag
-                        let drag_resp = ui.interact(resp.response.rect, egui::Id::new(("order_pill_drag", pane_idx)), egui::Sense::drag());
-                        if drag_resp.dragged() {
-                            let delta = drag_resp.drag_delta();
+                        if pill_resp.dragged() {
+                            let delta = pill_resp.drag_delta();
                             chart.order_panel_pos.x += delta.x;
                             chart.order_panel_pos.y += delta.y;
                         }
