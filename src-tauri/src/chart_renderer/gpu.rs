@@ -389,7 +389,7 @@ impl Position {
 }
 
 /// ApexIB endpoint configuration
-const APEXIB_URL: &str = "http://127.0.0.1:5000";
+const APEXIB_URL: &str = "http://apexib-dev.xllio.com";
 
 // Shared account data — written by background worker, read by render thread
 static ACCOUNT_DATA: std::sync::OnceLock<std::sync::Mutex<Option<(AccountSummary, Vec<Position>)>>> = std::sync::OnceLock::new();
