@@ -2529,12 +2529,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // Search bar with inline options toggle
                         let search_id = egui::Id::new("wl_search_input");
                         let search_resp = ui.horizontal(|ui| {
-                            // Options toggle chevron (always visible)
-                            let has_opts = watchlist.sections.iter().any(|s| s.title.contains("Options"));
+                            // Options toggle chevron (always clickable)
                             let opt_icon = if watchlist.options_visible { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
-                            let opt_color = if watchlist.options_visible && has_opts { t.accent } else { t.dim.gamma_multiply(0.3) };
-                            let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(10.0).color(opt_color))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0)));
+                            let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
+                            let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(11.0).color(opt_color))
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)));
                             if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                             // Search input
@@ -2624,12 +2623,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
                         let pointer_down = ui.ctx().input(|i| i.pointer.any_down());
 
-                        // Mark which sections are option sections (for visual separation + toggle)
+                        // Mark which sections are option sections
                         let option_section_ids: Vec<u32> = watchlist.sections.iter()
                             .filter(|s| s.title.contains("Options"))
                             .map(|s| s.id).collect();
 
-                        egui::ScrollArea::vertical().show(ui, |ui| {
+                        // Height split for stocks vs options
+                        let total_avail = ui.available_height();
+                        let show_opts = watchlist.options_visible && !option_section_ids.is_empty();
+                        let stocks_h = if show_opts { (total_avail * watchlist.options_split).max(60.0) } else { total_avail };
+
+                        egui::ScrollArea::vertical().id_salt("wl_stocks").max_height(stocks_h).show(ui, |ui| {
                             let mut remove_sym: Option<String> = None;
                             let mut click_sym: Option<String> = None;
                             let mut click_opt: Option<(String, f32, bool, String)> = None; // option click -> open chart
@@ -3128,7 +3132,116 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     watchlist.persist();
                                 }
                             }
-                        });
+                        }); // end stocks scroll
+
+                        // ── Draggable divider + Options scroll ──
+                        if show_opts {
+                            // Divider bar — draggable to resize
+                            ui.add_space(2.0);
+                            let div_r = ui.available_rect_before_wrap();
+                            let div_y = ui.cursor().min.y;
+                            let div_rect = egui::Rect::from_min_max(
+                                egui::pos2(div_r.left(), div_y - 3.0),
+                                egui::pos2(div_r.right(), div_y + 6.0));
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_max(egui::pos2(div_r.left(), div_y), egui::pos2(div_r.right(), div_y + 3.0)),
+                                0.0, color_alpha(t.toolbar_border, 140));
+                            let div_resp = ui.interact(div_rect, egui::Id::new("wl_split_divider"), egui::Sense::click_and_drag());
+                            if div_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical); }
+                            if div_resp.dragged() {
+                                let delta = div_resp.drag_delta().y;
+                                if total_avail > 0.0 {
+                                    watchlist.options_split = (watchlist.options_split + delta / total_avail).clamp(0.2, 0.85);
+                                }
+                            }
+                            ui.add_space(4.0);
+
+                            // OPTIONS label
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("OPTIONS").monospace().size(9.0).strong().color(t.accent.gamma_multiply(0.7)));
+                            });
+                            ui.add_space(2.0);
+
+                            // Options scroll area
+                            egui::ScrollArea::vertical().id_salt("wl_options").show(ui, |ui| {
+                                let active_sym = panes[ap].symbol.clone();
+                                let mut click_opt: Option<(String, f32, bool, String)> = None;
+                                let mut remove_sym: Option<String> = None;
+
+                                for si in 0..watchlist.sections.len() {
+                                    if !option_section_ids.contains(&watchlist.sections[si].id) { continue; }
+                                    let sec = &watchlist.sections[si];
+                                    let sec_title = sec.title.clone();
+                                    let sec_color = sec.color.clone();
+                                    let full_w = ui.available_width();
+
+                                    // Section header
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(&sec_title).monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.5)));
+                                    });
+                                    ui.add_space(2.0);
+
+                                    // Section background
+                                    if let Some(ref hex) = sec_color {
+                                        let bg = hex_to_color(hex, 0.07);
+                                        let r = ui.available_rect_before_wrap();
+                                        ui.painter().rect_filled(r, 0.0, bg);
+                                    }
+
+                                    if !sec.collapsed {
+                                        for item in &sec.items {
+                                            let is_call = item.option_type == "C";
+                                            let color = if is_call { t.bull } else { t.bear };
+                                            let is_active = item.symbol == active_sym;
+                                            let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
+
+                                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, 22.0), egui::Sense::click());
+                                            ui.painter().rect_filled(rect, 0.0, row_bg);
+                                            if resp.hovered() {
+                                                ui.painter().rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 25));
+                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                            }
+
+                                            // C/P badge + name
+                                            let badge = if is_call { "C" } else { "P" };
+                                            let painter = ui.painter();
+                                            let y_c = rect.center().y;
+                                            painter.text(egui::pos2(rect.left() + 4.0, y_c), egui::Align2::LEFT_CENTER,
+                                                badge, egui::FontId::monospace(9.0), color);
+                                            painter.text(egui::pos2(rect.left() + 18.0, y_c), egui::Align2::LEFT_CENTER,
+                                                &format!("{} {:.0} {}", item.underlying, item.strike, item.expiry),
+                                                egui::FontId::monospace(10.0), egui::Color32::from_rgb(200, 200, 210));
+                                            // Bid x Ask
+                                            if item.bid > 0.0 || item.ask > 0.0 {
+                                                painter.text(egui::pos2(rect.right() - 4.0, y_c), egui::Align2::RIGHT_CENTER,
+                                                    &format!("{:.2} x {:.2}", item.bid, item.ask),
+                                                    egui::FontId::monospace(9.0), color);
+                                            }
+
+                                            if resp.clicked() {
+                                                click_opt = Some((item.underlying.clone(), item.strike, is_call, item.expiry.clone()));
+                                            }
+
+                                            // X button to remove
+                                            let x_rect = egui::Rect::from_min_size(egui::pos2(rect.right() - 16.0, rect.top()), egui::vec2(16.0, 22.0));
+                                            if resp.hovered() {
+                                                let x_resp = ui.interact(x_rect, egui::Id::new(("opt_x", si, item.symbol.as_str())), egui::Sense::click());
+                                                if x_resp.clicked() { remove_sym = Some(item.symbol.clone()); }
+                                            }
+                                        }
+                                    }
+                                    ui.add_space(4.0);
+                                }
+
+                                if let Some(opt_info) = click_opt {
+                                    open_option_chart = Some(opt_info);
+                                }
+                                if let Some(sym) = remove_sym {
+                                    watchlist.remove_symbol(&sym);
+                                    watchlist.persist();
+                                }
+                            });
+                        }
                     }
 
                     // ── CHAIN TAB ───────────────────────────────────────────
@@ -6062,9 +6175,14 @@ impl Watchlist {
     /// Add a new empty section.
     fn add_section(&mut self, title: &str) {
         let id = self.next_section_id; self.next_section_id += 1;
-        self.sections.push(WatchlistSection {
-            id, title: title.to_string(), color: None, collapsed: false, items: vec![],
-        });
+        let new_sec = WatchlistSection { id, title: title.to_string(), color: None, collapsed: false, items: vec![] };
+        // Insert before the first options section (so new sections go in the stocks area)
+        let first_opt = self.sections.iter().position(|s| s.title.contains("Options"));
+        if let Some(pos) = first_opt {
+            self.sections.insert(pos, new_sec);
+        } else {
+            self.sections.push(new_sec);
+        }
     }
 
     /// Add an option contract to the "Options" section (auto-creates if needed).
