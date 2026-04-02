@@ -2527,32 +2527,83 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     // ── STOCKS TAB ──────────────────────────────────────────
                     WatchlistTab::Stocks => {
                         // Search input
+                        let search_id = egui::Id::new("wl_search_input");
                         let search_resp = ui.add(
                             egui::TextEdit::singleline(&mut watchlist.search_query)
+                                .id(search_id)
                                 .hint_text("Add symbol...").desired_width(ui.available_width()).font(egui::FontId::monospace(11.0))
                         );
-                        if search_resp.changed() && !watchlist.search_query.is_empty() {
-                            watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.search_query, 5)
-                                .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
+                        // Refocus after adding a symbol
+                        if watchlist.search_refocus {
+                            watchlist.search_refocus = false;
+                            search_resp.request_focus();
                         }
-                        if !watchlist.search_query.is_empty() && !watchlist.search_results.is_empty() {
-                            egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(30, 30, 36)).show(ui, |ui| {
-                                for (sym, name) in watchlist.search_results.clone() {
-                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(10.0).color(t.dim))
-                                        .frame(false).min_size(egui::vec2(ui.available_width(), 18.0))).clicked() {
-                                        watchlist.add_symbol(&sym);
-                                        watchlist.search_query.clear(); watchlist.search_results.clear();
-                                        fetch_watchlist_prices(vec![sym]);
+                        if search_resp.changed() {
+                            watchlist.search_sel = -1; // reset selection on text change
+                            if !watchlist.search_query.is_empty() {
+                                watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.search_query, 8)
+                                    .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
+                            } else {
+                                watchlist.search_results.clear();
+                            }
+                        }
+                        // Arrow key navigation + Enter to select
+                        let has_results = !watchlist.search_query.is_empty() && !watchlist.search_results.is_empty();
+                        if has_results && search_resp.has_focus() {
+                            let max = watchlist.search_results.len() as i32;
+                            if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                                watchlist.search_sel = (watchlist.search_sel + 1).min(max - 1);
+                            }
+                            if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                                watchlist.search_sel = (watchlist.search_sel - 1).max(-1);
+                            }
+                        }
+                        // Enter: add highlighted or typed symbol
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.search_query.is_empty() {
+                            let sym = if watchlist.search_sel >= 0 && (watchlist.search_sel as usize) < watchlist.search_results.len() {
+                                watchlist.search_results[watchlist.search_sel as usize].0.clone()
+                            } else {
+                                watchlist.search_query.trim().to_uppercase()
+                            };
+                            watchlist.add_symbol(&sym);
+                            fetch_watchlist_prices(vec![sym]);
+                            watchlist.search_query.clear();
+                            watchlist.search_results.clear();
+                            watchlist.search_sel = -1;
+                            watchlist.search_refocus = true;
+                            watchlist.persist();
+                        }
+                        // Escape clears search
+                        if search_resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            watchlist.search_query.clear();
+                            watchlist.search_results.clear();
+                            watchlist.search_sel = -1;
+                        }
+                        // Suggestion dropdown
+                        if has_results {
+                            egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(28, 28, 34)).corner_radius(4.0).show(ui, |ui| {
+                                for (i, (sym, name)) in watchlist.search_results.clone().iter().enumerate() {
+                                    let is_sel = i as i32 == watchlist.search_sel;
+                                    let bg = if is_sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                                    let fg = if is_sel { egui::Color32::from_rgb(230, 230, 240) } else { t.dim };
+                                    let resp = ui.add(egui::Button::new(
+                                        egui::RichText::new(format!("{:6} {}", sym, name)).monospace().size(10.0).color(fg))
+                                        .fill(bg).frame(false).min_size(egui::vec2(ui.available_width(), 20.0)));
+                                    if resp.clicked() {
+                                        watchlist.add_symbol(sym);
+                                        fetch_watchlist_prices(vec![sym.clone()]);
+                                        watchlist.search_query.clear();
+                                        watchlist.search_results.clear();
+                                        watchlist.search_sel = -1;
+                                        watchlist.search_refocus = true;
                                         watchlist.persist();
+                                    }
+                                    if resp.hovered() {
+                                        watchlist.search_sel = i as i32;
+                                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     }
                                 }
                             });
-                        }
-                        if search_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.search_query.is_empty() {
-                            let sym = watchlist.search_query.trim().to_uppercase();
-                            watchlist.add_symbol(&sym); fetch_watchlist_prices(vec![sym.clone()]);
-                            watchlist.search_query.clear(); watchlist.search_results.clear();
-                            watchlist.persist();
                         }
                         ui.add_space(4.0);
 
@@ -5740,6 +5791,8 @@ struct Watchlist {
     watchlist_ctx_menu_idx: Option<usize>,   // which watchlist index has context menu open
     search_query: String,
     search_results: Vec<(String, String)>,
+    search_sel: i32, // -1 = none, 0+ = highlighted suggestion index
+    search_refocus: bool, // request refocus on search bar after adding
     // Drag-and-drop state
     dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
     drag_start_pos: Option<egui::Pos2>,      // mouse position when drag started
@@ -5791,7 +5844,7 @@ impl Watchlist {
         Self { open: false, tab: WatchlistTab::Stocks, sections, next_section_id,
                saved_watchlists, active_watchlist_idx: active_idx,
                watchlist_name_editing: false, watchlist_name_buf: String::new(), watchlist_ctx_menu_idx: None,
-               search_query: String::new(), search_results: vec![],
+               search_query: String::new(), search_results: vec![], search_sel: -1, search_refocus: false,
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
