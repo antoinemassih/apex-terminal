@@ -2685,44 +2685,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
 
                 // ── Handle option chart opening (from any tab) ──
-                if let Some((sym, strike, is_call, expiry)) = open_option_chart {
-                    let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
-                    let target = if panes.len() > 1 { (ap + 1) % panes.len() } else {
-                        *layout = Layout::TwoH;
-                        let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
-                        p.theme_idx = panes[ap].theme_idx;
-                        panes.push(p);
-                        panes.len() - 1
-                    };
-                    panes[target].symbol = opt_sym;
-                    panes[target].is_option = true;
-                    panes[target].underlying = sym.clone();
-                    panes[target].option_type = if is_call { "C".into() } else { "P".into() };
-                    panes[target].option_strike = strike;
-                    panes[target].option_expiry = expiry;
-                    // Placeholder option bars from underlying
-                    let underlying_bars = panes[ap].bars.clone();
-                    let underlying_ts = panes[ap].timestamps.clone();
-                    let mut opt_bars = Vec::new();
-                    for (i, bar) in underlying_bars.iter().enumerate() {
-                        let mid = (bar.open + bar.close) / 2.0;
-                        let intrinsic = if is_call { (mid - strike).max(0.0) } else { (strike - mid).max(0.0) };
-                        let time_pct = 1.0 - (i as f32 / underlying_bars.len().max(1) as f32);
-                        let time_val = strike * 0.005 * time_pct.max(0.1);
-                        let opt_mid = intrinsic + time_val;
-                        let spread = opt_mid * 0.02;
-                        opt_bars.push(Bar {
-                            open: opt_mid - spread * 0.3, high: opt_mid + spread,
-                            low: (opt_mid - spread).max(0.01), close: opt_mid + spread * 0.3,
-                            volume: bar.volume * 0.1, _pad: 0.0,
-                        });
-                    }
-                    panes[target].bars = opt_bars;
-                    panes[target].timestamps = underlying_ts;
-                    panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + 8.0).max(0.0);
-                    panes[target].auto_scroll = true;
-                    panes[target].indicator_bar_count = 0;
-                    *active_pane = target;
+                // Delegate to deferred handler which always replaces active pane
+                if let Some(info) = open_option_chart {
+                    watchlist.pending_opt_chart = Some(info);
                 }
             });
     }
