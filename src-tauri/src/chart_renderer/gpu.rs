@@ -2318,6 +2318,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 );
                 ui.add_space(4.0);
 
+                let mut open_option_chart: Option<(String, f32, bool, String)> = None;
+
                 match watchlist.tab {
                     // ── STOCKS TAB ──────────────────────────────────────────
                     WatchlistTab::Stocks => {
@@ -2487,6 +2489,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         });
 
                         // ── Helper to render one option row ──
+                        // Track clicked contract for opening chart (when not in select mode)
+                        let clicked_contract: std::cell::Cell<Option<(String, f32, bool, String)>> = std::cell::Cell::new(None);
                         let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let is_saved = saved.iter().any(|s| s.contract == row.contract);
                             let color = if is_call { t.bull } else { t.bear };
@@ -2536,9 +2540,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             if row_resp.hovered() {
                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                             }
-                            if (select_mode || ui.input(|i| i.modifiers.shift)) && row_resp.clicked() {
-                                if is_saved { saved.retain(|s| s.contract != row.contract); }
-                                else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call, expiry: exp_label.into(), last: row.last }); }
+                            if row_resp.clicked() {
+                                if select_mode || ui.input(|i| i.modifiers.shift) {
+                                    // Select mode: toggle saved
+                                    if is_saved { saved.retain(|s| s.contract != row.contract); }
+                                    else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call, expiry: exp_label.into(), last: row.last }); }
+                                } else {
+                                    // Normal click: open option chart
+                                    clicked_contract.set(Some((sym.into(), row.strike, is_call, exp_label.into())));
+                                }
                             }
                         };
 
@@ -2583,6 +2593,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
                             render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
                         });
+                        // Open option chart if a contract was clicked (non-select mode)
+                        if let Some(info) = clicked_contract.take() {
+                            open_option_chart = Some(info);
+                        }
                     }
 
                     // ── SAVED TAB ───────────────────────────────────────────
@@ -2599,18 +2613,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         });
                         ui.add_space(4.0);
 
-                        let mut open_option_chart: Option<(String, f32, bool, String)> = None; // (symbol, strike, is_call, expiry)
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             let mut remove_idx: Option<usize> = None;
                             for (i, opt) in watchlist.saved_options.iter().enumerate() {
                                 let type_label = if opt.is_call { "C" } else { "P" };
                                 let color = if opt.is_call { t.bull } else { t.bear };
-                                ui.horizontal(|ui| {
-                                    // Chart button — opens option in a pane
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::CHART_LINE).size(10.0).color(t.accent))
-                                        .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                        open_option_chart = Some((opt.symbol.clone(), opt.strike, opt.is_call, opt.expiry.clone()));
-                                    }
+                                let row_resp = ui.horizontal(|ui| {
                                     ui.label(egui::RichText::new(&opt.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
                                     ui.label(egui::RichText::new(format!("{:.0}{}", opt.strike, type_label)).monospace().size(10.0).color(color));
                                     ui.label(egui::RichText::new(format!("{:.2}", opt.last)).monospace().size(10.0).color(color));
@@ -2619,56 +2627,60 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         remove_idx = Some(i);
                                     }
                                 });
+                                // Click row to open chart
+                                let click = row_resp.response.interact(egui::Sense::click());
+                                if click.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                                if click.clicked() && remove_idx.is_none() {
+                                    open_option_chart = Some((opt.symbol.clone(), opt.strike, opt.is_call, opt.expiry.clone()));
+                                }
                             }
                             if let Some(i) = remove_idx { watchlist.saved_options.remove(i); }
                             if watchlist.saved_options.is_empty() {
                                 dim_label(ui, "Click a contract in\nthe CHAIN tab to save it", t.dim);
                             }
                         });
-                        // Open option chart in a pane
-                        if let Some((sym, strike, is_call, expiry)) = open_option_chart {
-                            let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
-                            // Find an empty pane or use the one after active, or add one
-                            let target = if panes.len() > 1 { (ap + 1) % panes.len() } else {
-                                // Switch to 2H layout
-                                *layout = Layout::TwoH;
-                                let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
-                                p.theme_idx = panes[ap].theme_idx;
-                                panes.push(p);
-                                panes.len() - 1
-                            };
-                            // Set up the target pane as an option chart
-                            panes[target].symbol = opt_sym;
-                            panes[target].is_option = true;
-                            panes[target].underlying = sym.clone();
-                            panes[target].option_type = if is_call { "C".into() } else { "P".into() };
-                            panes[target].option_strike = strike;
-                            panes[target].option_expiry = expiry;
-                            // Generate placeholder option price data
-                            let underlying_bars = panes[ap].bars.clone();
-                            let underlying_ts = panes[ap].timestamps.clone();
-                            let mut opt_bars = Vec::new();
-                            for (i, bar) in underlying_bars.iter().enumerate() {
-                                // Simple BS-ish placeholder: option price ~ max(0, underlying - strike) + time_value
-                                let mid = (bar.open + bar.close) / 2.0;
-                                let intrinsic = if is_call { (mid - strike).max(0.0) } else { (strike - mid).max(0.0) };
-                                let time_pct = 1.0 - (i as f32 / underlying_bars.len().max(1) as f32);
-                                let time_val = strike * 0.005 * time_pct.max(0.1);
-                                let opt_mid = intrinsic + time_val;
-                                let spread = opt_mid * 0.02;
-                                opt_bars.push(Bar {
-                                    open: opt_mid - spread * 0.3, high: opt_mid + spread,
-                                    low: (opt_mid - spread).max(0.01), close: opt_mid + spread * 0.3,
-                                    volume: bar.volume * 0.1, _pad: 0.0,
-                                });
-                            }
-                            panes[target].bars = opt_bars;
-                            panes[target].timestamps = underlying_ts.clone();
-                            panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + 8.0).max(0.0);
-                            panes[target].auto_scroll = true;
-                            panes[target].indicator_bar_count = 0;
-                        }
                     }
+                }
+
+                // ── Handle option chart opening (from any tab) ──
+                if let Some((sym, strike, is_call, expiry)) = open_option_chart {
+                    let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
+                    let target = if panes.len() > 1 { (ap + 1) % panes.len() } else {
+                        *layout = Layout::TwoH;
+                        let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
+                        p.theme_idx = panes[ap].theme_idx;
+                        panes.push(p);
+                        panes.len() - 1
+                    };
+                    panes[target].symbol = opt_sym;
+                    panes[target].is_option = true;
+                    panes[target].underlying = sym.clone();
+                    panes[target].option_type = if is_call { "C".into() } else { "P".into() };
+                    panes[target].option_strike = strike;
+                    panes[target].option_expiry = expiry;
+                    // Placeholder option bars from underlying
+                    let underlying_bars = panes[ap].bars.clone();
+                    let underlying_ts = panes[ap].timestamps.clone();
+                    let mut opt_bars = Vec::new();
+                    for (i, bar) in underlying_bars.iter().enumerate() {
+                        let mid = (bar.open + bar.close) / 2.0;
+                        let intrinsic = if is_call { (mid - strike).max(0.0) } else { (strike - mid).max(0.0) };
+                        let time_pct = 1.0 - (i as f32 / underlying_bars.len().max(1) as f32);
+                        let time_val = strike * 0.005 * time_pct.max(0.1);
+                        let opt_mid = intrinsic + time_val;
+                        let spread = opt_mid * 0.02;
+                        opt_bars.push(Bar {
+                            open: opt_mid - spread * 0.3, high: opt_mid + spread,
+                            low: (opt_mid - spread).max(0.01), close: opt_mid + spread * 0.3,
+                            volume: bar.volume * 0.1, _pad: 0.0,
+                        });
+                    }
+                    panes[target].bars = opt_bars;
+                    panes[target].timestamps = underlying_ts;
+                    panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + 8.0).max(0.0);
+                    panes[target].auto_scroll = true;
+                    panes[target].indicator_bar_count = 0;
+                    *active_pane = target;
                 }
             });
     }
