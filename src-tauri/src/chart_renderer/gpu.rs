@@ -47,7 +47,7 @@ const THEMES: &[Theme] = &[
     Theme { name: "Rosé Pine",   bg: rgb(25,23,36),   bull: rgb(156,207,216), bear: rgb(235,111,146), dim: rgb(110,106,134), toolbar_bg: rgb(20,18,30),  toolbar_border: rgb(38,35,53),  accent: rgb(196,167,231) },
 ];
 
-const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#ffffff","#e67e22"];
+const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
 // ─── Simulation constants ────────────────────────────────────────────────────
 const SIM_TICK_FRAMES: u64 = 5;           // Update price every N frames (~12 ticks/sec at 60fps)
@@ -2449,7 +2449,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let drag_confirmed = watchlist.drag_confirmed;
 
                             // Section color presets for the color picker
-                            let color_presets = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#06B6D4","#84CC16"];
+                            let color_presets = ["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
                             for si in 0..section_count {
                                 let sec_id = watchlist.sections[si].id;
@@ -2469,30 +2469,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     ui.add_space(2.0);
                                 }
 
+                                // ── Track section start for continuous background ──
+                                let section_block_start_y = ui.cursor().min.y;
+
+                                // Remove item_spacing.y within section for flush rows
+                                let prev_item_spacing_y = ui.spacing().item_spacing.y;
+                                ui.spacing_mut().item_spacing.y = 0.0;
+
                                 // ── Section header (only if title is non-empty) ──
-                                if !sec_title.is_empty() {
+                                if !sec_title.is_empty() && watchlist.renaming_section != Some(sec_id) {
                                     let header_resp = ui.horizontal(|ui| {
                                         ui.set_min_width(full_w);
                                         ui.set_min_height(20.0);
-
-                                        // Section tint background
-                                        if let Some(ref hex) = sec_color {
-                                            let tint = hex_to_color(hex, 0.06);
-                                            ui.painter().rect_filled(ui.max_rect(), 2.0, tint);
-                                        }
 
                                         // Collapse chevron
                                         let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
                                         if ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false)).clicked() {
                                             toggle_collapse = Some(si);
-                                        }
-
-                                        // Color dot
-                                        if let Some(ref hex) = sec_color {
-                                            let dot_color = hex_to_color(hex, 1.0);
-                                            let dot_pos = ui.cursor().min + egui::vec2(0.0, 5.0);
-                                            ui.painter().circle_filled(dot_pos, 3.0, dot_color);
-                                            ui.add_space(10.0);
                                         }
 
                                         // Title
@@ -2527,17 +2520,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         ui.separator();
                                         // Color presets
                                         ui.label(egui::RichText::new("Color").monospace().size(9.0).color(t.dim));
-                                        ui.horizontal(|ui| {
-                                            for hex in &color_presets {
-                                                let c = hex_to_color(hex, 1.0);
-                                                if ui.add(egui::Button::new(egui::RichText::new("\u{25CF}").size(14.0).color(c)).frame(false)).clicked() {
-                                                    if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
-                                                        sec.color = Some(hex.to_string());
+                                        for row in color_presets.chunks(8) {
+                                            ui.horizontal(|ui| {
+                                                for hex in row {
+                                                    let c = hex_to_color(hex, 1.0);
+                                                    if ui.add(egui::Button::new(egui::RichText::new("\u{25CF}").size(14.0).color(c)).frame(false)).clicked() {
+                                                        if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
+                                                            sec.color = Some(hex.to_string());
+                                                        }
+                                                        ui.close_menu();
                                                     }
-                                                    ui.close_menu();
                                                 }
-                                            }
-                                        });
+                                            });
+                                        }
                                         if ui.button(egui::RichText::new("No color").monospace().size(10.0).color(t.dim)).clicked() {
                                             if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                 sec.color = None;
@@ -2554,11 +2549,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     });
                                 }
 
-                                // ── Inline rename editor ──
+                                // ── Inline rename editor (replaces title in header row) ──
                                 if watchlist.renaming_section == Some(sec_id) {
-                                    let rename_resp = ui.horizontal(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.set_min_width(full_w);
+                                        ui.set_min_height(20.0);
+
+                                        // Collapse chevron (keep visible during rename)
+                                        let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
+                                        ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false));
+
                                         let te = ui.add(egui::TextEdit::singleline(&mut watchlist.rename_buf)
-                                            .desired_width(full_w - 40.0).font(egui::FontId::monospace(10.0)));
+                                            .desired_width(full_w - 40.0).font(egui::FontId::monospace(9.0)));
                                         if te.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                             if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                 sec.title = watchlist.rename_buf.clone();
@@ -2570,14 +2572,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
                                         te.request_focus();
                                     });
-                                    let _ = rename_resp;
                                 }
 
                                 // ── Section items (skip if collapsed) ──
                                 if !sec_collapsed {
-                                    // Section background tint
-                                    let section_start_y = ui.cursor().min.y;
-
                                     for ii in 0..sec_item_count {
                                         let item = &watchlist.sections[si].items[ii];
                                         let item_sym = item.symbol.clone();
@@ -2600,20 +2598,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
                                         let change_str = if item_loaded { format!("{:+.1}%", change_pct) } else { "".into() };
 
-                                        // Active highlight background
-                                        let mut row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
-                                        // Section tint
-                                        if let Some(ref hex) = sec_color {
-                                            if !is_active {
-                                                row_bg = hex_to_color(hex, 0.04);
-                                            }
-                                        }
+                                        // Active highlight background (no per-row section tint — handled by continuous block)
+                                        let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
 
                                         let resp = ui.horizontal(|ui| {
                                             ui.set_min_width(full_w);
                                             ui.set_min_height(24.0);
                                             // Paint background
-                                            ui.painter().rect_filled(ui.max_rect(), 2.0, row_bg);
+                                            ui.painter().rect_filled(ui.max_rect(), 0.0, row_bg);
                                             // Active indicator bar
                                             if is_active {
                                                 let r = ui.max_rect();
@@ -2661,20 +2653,31 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         if drag_resp.hovered() && !drag_confirmed {
                                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             if !is_active {
-                                                ui.painter().rect_filled(row_rect, 2.0, color_alpha(t.toolbar_border, 25));
+                                                ui.painter().rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, 25));
                                             }
                                         }
                                     }
+                                }
 
-                                    // Paint section background tint over items area
-                                    if let Some(ref hex) = sec_color {
-                                        let section_end_y = ui.cursor().min.y;
-                                        if section_end_y > section_start_y {
-                                            let tint_rect = egui::Rect::from_min_max(
-                                                egui::pos2(ui.min_rect().left(), section_start_y),
-                                                egui::pos2(ui.min_rect().left() + full_w, section_end_y));
-                                            // Paint behind items (very low opacity)
-                                            ui.painter().rect_filled(tint_rect, 0.0, hex_to_color(hex, 0.03));
+                                // Restore item_spacing.y
+                                ui.spacing_mut().item_spacing.y = prev_item_spacing_y;
+
+                                // ── Paint continuous section background tint (header + all items) ──
+                                if let Some(ref hex) = sec_color {
+                                    let section_block_end_y = ui.cursor().min.y;
+                                    if section_block_end_y > section_block_start_y {
+                                        let left = ui.min_rect().left();
+                                        let block_rect = egui::Rect::from_min_max(
+                                            egui::pos2(left, section_block_start_y),
+                                            egui::pos2(left + full_w, section_block_end_y));
+                                        // Items area: low opacity tint (~18 alpha)
+                                        ui.painter().rect_filled(block_rect, 0.0, hex_to_color(hex, 0.07));
+                                        // Header area: darker tint overlay (~35 alpha)
+                                        if let Some(&(_, header_rect)) = section_header_rects.iter().find(|&&(s, _)| s == si) {
+                                            let header_tint_rect = egui::Rect::from_min_max(
+                                                egui::pos2(left, header_rect.min.y),
+                                                egui::pos2(left + full_w, header_rect.max.y));
+                                            ui.painter().rect_filled(header_tint_rect, 0.0, hex_to_color(hex, 0.07));
                                         }
                                     }
                                 }
