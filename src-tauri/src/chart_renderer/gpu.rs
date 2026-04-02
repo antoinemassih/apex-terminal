@@ -4991,16 +4991,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     span_end(); // chart_panes
 
     // ── Handle deferred option chart open ──
+    // Replaces the CURRENT (active) pane with the option chart
     if let Some((sym, strike, is_call, expiry)) = watchlist.pending_opt_chart.take() {
         let ap = *active_pane;
         let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
-        let target = if panes.len() > 1 { (ap + 1) % panes.len() } else {
-            *layout = Layout::TwoH;
-            let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
-            p.theme_idx = panes[ap].theme_idx;
-            panes.push(p);
-            panes.len() - 1
-        };
+        let target = ap;
         panes[target].symbol = opt_sym;
         panes[target].is_option = true;
         panes[target].underlying = sym.clone();
