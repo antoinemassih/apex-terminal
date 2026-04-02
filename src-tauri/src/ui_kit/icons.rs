@@ -36,6 +36,8 @@ impl Icon {
 
     // UI
     pub const CARET_DOWN: &'static str = ph::CARET_DOWN;
+    pub const CARET_RIGHT: &'static str = ph::CARET_RIGHT;
+    pub const DOTS_SIX_VERTICAL: &'static str = ph::DOTS_SIX_VERTICAL;
     pub const CHECK: &'static str = ph::CHECK;
     pub const CHECK_SQUARE: &'static str = ph::CHECK_SQUARE;
     pub const SQUARE_EMPTY: &'static str = ph::SQUARE;

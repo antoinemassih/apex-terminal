@@ -2427,86 +2427,365 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         ui.add_space(4.0);
 
-                        // Symbol list
+                        // Symbol list with sections and drag-and-drop
                         let active_sym = panes[ap].symbol.clone();
+                        let pointer_pos = ui.ctx().input(|i| i.pointer.hover_pos());
+                        let pointer_released = ui.ctx().input(|i| i.pointer.any_released());
+                        let pointer_down = ui.ctx().input(|i| i.pointer.any_down());
+
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             let mut remove_sym: Option<String> = None;
                             let mut click_sym: Option<String> = None;
-                            let mut add_separator = false;
+                            let mut toggle_collapse: Option<usize> = None;
+                            let mut remove_section: Option<usize> = None;
                             let full_w = ui.available_width();
 
-                            for item in &watchlist.items {
-                                // Section separator
-                                if item.is_separator {
-                                    ui.add_space(4.0);
-                                    ui.horizontal(|ui| {
-                                        let sep_w = full_w;
-                                        ui.painter().line_segment(
-                                            [egui::pos2(ui.cursor().min.x, ui.cursor().min.y + 6.0),
-                                             egui::pos2(ui.cursor().min.x + sep_w, ui.cursor().min.y + 6.0)],
-                                            egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60)));
-                                        ui.add_space(4.0);
-                                        ui.label(egui::RichText::new(&item.symbol).monospace().size(9.0).strong()
-                                            .color(t.dim.gamma_multiply(0.4)));
-                                    });
+                            // Collect row rects for drop target calculation
+                            let mut row_rects: Vec<(usize, usize, egui::Rect)> = Vec::new(); // (sec_idx, item_idx, rect)
+                            let mut section_header_rects: Vec<(usize, egui::Rect)> = Vec::new();
+
+                            let section_count = watchlist.sections.len();
+                            let dragging = watchlist.dragging;
+                            let drag_confirmed = watchlist.drag_confirmed;
+
+                            // Section color presets for the color picker
+                            let color_presets = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#06B6D4","#84CC16"];
+
+                            for si in 0..section_count {
+                                let sec_id = watchlist.sections[si].id;
+                                let sec_title = watchlist.sections[si].title.clone();
+                                let sec_color = watchlist.sections[si].color.clone();
+                                let sec_collapsed = watchlist.sections[si].collapsed;
+                                let sec_item_count = watchlist.sections[si].items.len();
+
+                                // ── Section divider line (between sections, not before first) ──
+                                if si > 0 {
                                     ui.add_space(2.0);
-                                    continue;
+                                    let cursor_y = ui.cursor().min.y;
+                                    ui.painter().line_segment(
+                                        [egui::pos2(ui.min_rect().left(), cursor_y),
+                                         egui::pos2(ui.min_rect().left() + full_w, cursor_y)],
+                                        egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
+                                    ui.add_space(2.0);
                                 }
 
-                                let is_active = item.symbol == active_sym;
-                                let change_pct = if item.prev_close > 0.0 { ((item.price - item.prev_close) / item.prev_close) * 100.0 } else { 0.0 };
-                                let color = if change_pct >= 0.0 { t.bull } else { t.bear };
-                                let price_str = if item.price > 0.0 { format!("{:.2}", item.price) } else { "---".into() };
-                                let change_str = if item.loaded { format!("{:+.1}%", change_pct) } else { "".into() };
+                                // ── Section header (only if title is non-empty) ──
+                                if !sec_title.is_empty() {
+                                    let header_resp = ui.horizontal(|ui| {
+                                        ui.set_min_width(full_w);
+                                        ui.set_min_height(20.0);
 
-                                // Active highlight background
-                                let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
-
-                                let resp = ui.horizontal(|ui| {
-                                    ui.set_min_width(full_w);
-                                    ui.set_min_height(24.0);
-                                    // Paint background
-                                    ui.painter().rect_filled(ui.max_rect(), 2.0, row_bg);
-                                    // Active indicator bar
-                                    if is_active {
-                                        let r = ui.max_rect();
-                                        ui.painter().rect_filled(
-                                            egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 2.5, r.max.y)),
-                                            1.0, t.accent);
-                                    }
-                                    ui.add_space(if is_active { 8.0 } else { 4.0 });
-                                    // Symbol name
-                                    let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(200, 200, 210) };
-                                    ui.label(egui::RichText::new(&item.symbol).monospace().size(12.0).strong().color(sym_color));
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        // X button (only on hover)
-                                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
-                                            remove_sym = Some(item.symbol.clone());
+                                        // Section tint background
+                                        if let Some(ref hex) = sec_color {
+                                            let tint = hex_to_color(hex, 0.06);
+                                            ui.painter().rect_filled(ui.max_rect(), 2.0, tint);
                                         }
-                                        // Change %
-                                        ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
-                                        // Price
-                                        ui.label(egui::RichText::new(&price_str).monospace().size(12.0).color(color));
-                                    });
-                                });
 
-                                // Full row clickable
-                                let row_click = resp.response.interact(egui::Sense::click());
-                                if row_click.hovered() {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                    if !is_active {
-                                        ui.painter().rect_filled(resp.response.rect, 2.0, color_alpha(t.toolbar_border, 25));
+                                        // Collapse chevron
+                                        let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
+                                        if ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false)).clicked() {
+                                            toggle_collapse = Some(si);
+                                        }
+
+                                        // Color dot
+                                        if let Some(ref hex) = sec_color {
+                                            let dot_color = hex_to_color(hex, 1.0);
+                                            let dot_pos = ui.cursor().min + egui::vec2(0.0, 5.0);
+                                            ui.painter().circle_filled(dot_pos, 3.0, dot_color);
+                                            ui.add_space(10.0);
+                                        }
+
+                                        // Title
+                                        ui.label(egui::RichText::new(&sec_title).monospace().size(9.0).strong()
+                                            .color(t.dim.gamma_multiply(0.6)));
+
+                                        // Item count when collapsed
+                                        if sec_collapsed {
+                                            ui.label(egui::RichText::new(format!("({})", sec_item_count)).monospace().size(8.0)
+                                                .color(t.dim.gamma_multiply(0.3)));
+                                        }
+
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            // Delete section (only if empty)
+                                            if sec_item_count == 0 {
+                                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
+                                                    remove_section = Some(si);
+                                                }
+                                            }
+                                        });
+                                    });
+                                    section_header_rects.push((si, header_resp.response.rect));
+
+                                    // Right-click context menu on section header
+                                    header_resp.response.context_menu(|ui| {
+                                        // Rename
+                                        if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                            watchlist.renaming_section = Some(sec_id);
+                                            watchlist.rename_buf = sec_title.clone();
+                                            ui.close_menu();
+                                        }
+                                        ui.separator();
+                                        // Color presets
+                                        ui.label(egui::RichText::new("Color").monospace().size(9.0).color(t.dim));
+                                        ui.horizontal(|ui| {
+                                            for hex in &color_presets {
+                                                let c = hex_to_color(hex, 1.0);
+                                                if ui.add(egui::Button::new(egui::RichText::new("\u{25CF}").size(14.0).color(c)).frame(false)).clicked() {
+                                                    if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
+                                                        sec.color = Some(hex.to_string());
+                                                    }
+                                                    ui.close_menu();
+                                                }
+                                            }
+                                        });
+                                        if ui.button(egui::RichText::new("No color").monospace().size(10.0).color(t.dim)).clicked() {
+                                            if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
+                                                sec.color = None;
+                                            }
+                                            ui.close_menu();
+                                        }
+                                        ui.separator();
+                                        if sec_item_count == 0 {
+                                            if ui.button(egui::RichText::new("Delete section").monospace().size(10.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                                                remove_section = Some(si);
+                                                ui.close_menu();
+                                            }
+                                        }
+                                    });
+                                }
+
+                                // ── Inline rename editor ──
+                                if watchlist.renaming_section == Some(sec_id) {
+                                    let rename_resp = ui.horizontal(|ui| {
+                                        let te = ui.add(egui::TextEdit::singleline(&mut watchlist.rename_buf)
+                                            .desired_width(full_w - 40.0).font(egui::FontId::monospace(10.0)));
+                                        if te.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                            if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
+                                                sec.title = watchlist.rename_buf.clone();
+                                            }
+                                            watchlist.renaming_section = None;
+                                        }
+                                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                                            watchlist.renaming_section = None;
+                                        }
+                                        te.request_focus();
+                                    });
+                                    let _ = rename_resp;
+                                }
+
+                                // ── Section items (skip if collapsed) ──
+                                if !sec_collapsed {
+                                    // Section background tint
+                                    let section_start_y = ui.cursor().min.y;
+
+                                    for ii in 0..sec_item_count {
+                                        let item = &watchlist.sections[si].items[ii];
+                                        let item_sym = item.symbol.clone();
+                                        let item_price = item.price;
+                                        let item_prev_close = item.prev_close;
+                                        let item_loaded = item.loaded;
+                                        let is_dragged = drag_confirmed && dragging == Some((si, ii));
+
+                                        // Skip rendering the dragged item in-place (it's shown as floating)
+                                        if is_dragged {
+                                            // Reserve space so layout doesn't shift
+                                            let placeholder = ui.allocate_space(egui::vec2(full_w, 24.0));
+                                            row_rects.push((si, ii, placeholder.1));
+                                            continue;
+                                        }
+
+                                        let is_active = item_sym == active_sym;
+                                        let change_pct = if item_prev_close > 0.0 { ((item_price - item_prev_close) / item_prev_close) * 100.0 } else { 0.0 };
+                                        let color = if change_pct >= 0.0 { t.bull } else { t.bear };
+                                        let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
+                                        let change_str = if item_loaded { format!("{:+.1}%", change_pct) } else { "".into() };
+
+                                        // Active highlight background
+                                        let mut row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
+                                        // Section tint
+                                        if let Some(ref hex) = sec_color {
+                                            if !is_active {
+                                                row_bg = hex_to_color(hex, 0.04);
+                                            }
+                                        }
+
+                                        let resp = ui.horizontal(|ui| {
+                                            ui.set_min_width(full_w);
+                                            ui.set_min_height(24.0);
+                                            // Paint background
+                                            ui.painter().rect_filled(ui.max_rect(), 2.0, row_bg);
+                                            // Active indicator bar
+                                            if is_active {
+                                                let r = ui.max_rect();
+                                                ui.painter().rect_filled(
+                                                    egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 2.5, r.max.y)),
+                                                    1.0, t.accent);
+                                            }
+                                            ui.add_space(if is_active { 8.0 } else { 4.0 });
+                                            // Drag grip (subtle dots icon)
+                                            ui.label(egui::RichText::new(Icon::DOTS_SIX_VERTICAL).size(9.0).color(t.dim.gamma_multiply(0.2)));
+                                            ui.add_space(2.0);
+                                            // Symbol name
+                                            let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(200, 200, 210) };
+                                            ui.label(egui::RichText::new(&item_sym).monospace().size(12.0).strong().color(sym_color));
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                // X button
+                                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
+                                                    remove_sym = Some(item_sym.clone());
+                                                }
+                                                // Change %
+                                                ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
+                                                // Price
+                                                ui.label(egui::RichText::new(&price_str).monospace().size(12.0).color(color));
+                                            });
+                                        });
+
+                                        let row_rect = resp.response.rect;
+                                        row_rects.push((si, ii, row_rect));
+
+                                        // Drag-and-drop: use click_and_drag sense on the row
+                                        let drag_resp = resp.response.interact(egui::Sense::click_and_drag());
+
+                                        if drag_resp.drag_started() {
+                                            watchlist.dragging = Some((si, ii));
+                                            watchlist.drag_start_pos = pointer_pos;
+                                            watchlist.drag_confirmed = false;
+                                        }
+
+                                        // Click to select symbol (only if not dragging)
+                                        if drag_resp.clicked() && !drag_confirmed {
+                                            click_sym = Some(item_sym.clone());
+                                        }
+
+                                        // Hover highlight (only if not dragging)
+                                        if drag_resp.hovered() && !drag_confirmed {
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                            if !is_active {
+                                                ui.painter().rect_filled(row_rect, 2.0, color_alpha(t.toolbar_border, 25));
+                                            }
+                                        }
+                                    }
+
+                                    // Paint section background tint over items area
+                                    if let Some(ref hex) = sec_color {
+                                        let section_end_y = ui.cursor().min.y;
+                                        if section_end_y > section_start_y {
+                                            let tint_rect = egui::Rect::from_min_max(
+                                                egui::pos2(ui.min_rect().left(), section_start_y),
+                                                egui::pos2(ui.min_rect().left() + full_w, section_end_y));
+                                            // Paint behind items (very low opacity)
+                                            ui.painter().rect_filled(tint_rect, 0.0, hex_to_color(hex, 0.03));
+                                        }
                                     }
                                 }
-                                if row_click.clicked() { click_sym = Some(item.symbol.clone()); }
+                            } // end sections loop
+
+                            // ── Drag-and-drop logic ──
+                            // Confirm drag after mouse moves enough (5px threshold)
+                            if let (Some(start), Some(cur)) = (watchlist.drag_start_pos, pointer_pos) {
+                                if watchlist.dragging.is_some() && !watchlist.drag_confirmed {
+                                    if (cur - start).length() > 5.0 {
+                                        watchlist.drag_confirmed = true;
+                                    }
+                                }
                             }
 
-                            // Add section button
+                            // Calculate drop target from mouse position
+                            if watchlist.drag_confirmed {
+                                if let Some(mouse) = pointer_pos {
+                                    let mut best: Option<(usize, usize, f32)> = None; // (sec, insert_idx, dist)
+                                    for &(si, ii, rect) in &row_rects {
+                                        let mid_y = rect.center().y;
+                                        let dist = (mouse.y - mid_y).abs();
+                                        // Insert before this item if mouse is above midpoint
+                                        let insert_idx = if mouse.y < mid_y { ii } else { ii + 1 };
+                                        if best.is_none() || dist < best.unwrap().2 {
+                                            best = Some((si, insert_idx, dist));
+                                        }
+                                    }
+                                    // Also consider dropping at the end of each section
+                                    for &(si, rect) in &section_header_rects {
+                                        if mouse.y > rect.max.y && watchlist.sections[si].items.is_empty() {
+                                            best = Some((si, 0, 0.0));
+                                        }
+                                    }
+                                    watchlist.drop_target = best.map(|(s, i, _)| (s, i));
+                                }
+
+                                // Draw insertion indicator line
+                                if let Some((dt_sec, dt_idx)) = watchlist.drop_target {
+                                    // Find the Y position for the indicator
+                                    let indicator_y = if let Some(&(_, _, rect)) = row_rects.iter().find(|&&(s, i, _)| s == dt_sec && i == dt_idx) {
+                                        rect.min.y
+                                    } else if dt_idx > 0 {
+                                        // Insert after last item
+                                        row_rects.iter().filter(|&&(s, _, _)| s == dt_sec)
+                                            .last().map(|&(_, _, rect)| rect.max.y)
+                                            .unwrap_or(0.0)
+                                    } else {
+                                        // Empty section — use header rect bottom
+                                        section_header_rects.iter().find(|&&(s, _)| s == dt_sec)
+                                            .map(|&(_, rect)| rect.max.y + 2.0)
+                                            .unwrap_or(0.0)
+                                    };
+                                    if indicator_y > 0.0 {
+                                        let left = ui.min_rect().left();
+                                        ui.painter().line_segment(
+                                            [egui::pos2(left, indicator_y), egui::pos2(left + full_w, indicator_y)],
+                                            egui::Stroke::new(2.0, t.accent));
+                                        // Small circles at endpoints
+                                        ui.painter().circle_filled(egui::pos2(left + 2.0, indicator_y), 3.0, t.accent);
+                                        ui.painter().circle_filled(egui::pos2(left + full_w - 2.0, indicator_y), 3.0, t.accent);
+                                    }
+                                }
+
+                                // Draw floating label at cursor
+                                if let (Some((src_sec, src_idx)), Some(mouse)) = (watchlist.dragging, pointer_pos) {
+                                    if src_sec < watchlist.sections.len() && src_idx < watchlist.sections[src_sec].items.len() {
+                                        let drag_sym = &watchlist.sections[src_sec].items[src_idx].symbol;
+                                        let float_rect = egui::Rect::from_min_size(
+                                            egui::pos2(mouse.x - 30.0, mouse.y - 10.0), egui::vec2(80.0, 20.0));
+                                        ui.painter().rect_filled(float_rect, 4.0, color_alpha(t.accent, 40));
+                                        ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(1.0, t.accent), egui::StrokeKind::Outside);
+                                        ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
+                                            drag_sym, egui::FontId::monospace(11.0), egui::Color32::from_rgb(240, 240, 245));
+                                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                                    }
+                                }
+                            }
+
+                            // Drop: on pointer release while dragging
+                            if pointer_released && watchlist.drag_confirmed {
+                                if let (Some((src_sec, src_idx)), Some((dst_sec, dst_idx))) = (watchlist.dragging, watchlist.drop_target) {
+                                    // Adjust destination index if same section and source is before target
+                                    let adj_dst = if src_sec == dst_sec && src_idx < dst_idx { dst_idx - 1 } else { dst_idx };
+                                    watchlist.move_item(src_sec, src_idx, dst_sec, adj_dst);
+                                }
+                                watchlist.dragging = None;
+                                watchlist.drag_start_pos = None;
+                                watchlist.drop_target = None;
+                                watchlist.drag_confirmed = false;
+                            }
+                            // Cancel drag if pointer released without confirming
+                            if pointer_released && watchlist.dragging.is_some() && !watchlist.drag_confirmed {
+                                watchlist.dragging = None;
+                                watchlist.drag_start_pos = None;
+                                watchlist.drop_target = None;
+                            }
+                            // Cancel drag if pointer is no longer down (safety)
+                            if !pointer_down && watchlist.dragging.is_some() {
+                                watchlist.dragging = None;
+                                watchlist.drag_start_pos = None;
+                                watchlist.drop_target = None;
+                                watchlist.drag_confirmed = false;
+                            }
+
+                            // ── Add section button ──
                             ui.add_space(6.0);
                             ui.horizontal(|ui| {
                                 if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
                                     .frame(false)).clicked() {
-                                    add_separator = true;
+                                    watchlist.add_section("New Section");
                                 }
                             });
 
@@ -2515,10 +2794,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 panes[ap].is_option = false; // reset option flag when switching to stock
                             }
                             if let Some(sym) = remove_sym { watchlist.remove_symbol(&sym); }
-                            if add_separator {
-                                watchlist.items.push(WatchlistItem {
-                                    symbol: "─────".into(), price: 0.0, prev_close: 0.0, loaded: false, is_separator: true,
-                                });
+                            if let Some(si) = toggle_collapse {
+                                watchlist.sections[si].collapsed = !watchlist.sections[si].collapsed;
+                            }
+                            if let Some(si) = remove_section {
+                                if si < watchlist.sections.len() && watchlist.sections[si].items.is_empty() {
+                                    watchlist.sections.remove(si);
+                                }
                             }
                         });
                     }
@@ -2555,7 +2837,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             watchlist.chain_0dte = (vec![], vec![]); // force rebuild
                         }
                         // Rebuild chain from current price
-                        let chain_price = watchlist.items.iter().find(|i| i.symbol == watchlist.chain_symbol).map(|i| i.price)
+                        let chain_price = watchlist.find_item(&watchlist.chain_symbol).map(|i| i.price)
                             .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
                             .unwrap_or(100.0);
                         if chain_price > 0.0 && watchlist.chain_0dte.0.is_empty() {
@@ -5257,7 +5539,15 @@ struct WatchlistItem {
     price: f32,
     prev_close: f32,
     loaded: bool,
-    is_separator: bool, // true = section header/divider, symbol is the label
+}
+
+#[derive(Clone)]
+struct WatchlistSection {
+    id: u32,
+    title: String,           // optional label, empty = no header shown
+    color: Option<String>,   // hex bg tint, None = default
+    collapsed: bool,
+    items: Vec<WatchlistItem>,
 }
 
 // ─── Options chain ───────────────────────────────────────────────────────────
@@ -5293,9 +5583,20 @@ enum WatchlistTab { Stocks, Chain, Saved }
 struct Watchlist {
     open: bool,
     tab: WatchlistTab,
-    items: Vec<WatchlistItem>,
+    sections: Vec<WatchlistSection>,
+    next_section_id: u32,
     search_query: String,
     search_results: Vec<(String, String)>,
+    // Drag-and-drop state
+    dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
+    drag_start_pos: Option<egui::Pos2>,      // mouse position when drag started
+    drop_target: Option<(usize, usize)>,     // (section_idx, insert_before_item_idx)
+    drag_confirmed: bool,                    // true once mouse moved enough to confirm drag
+    // Section editing
+    renaming_section: Option<u32>,           // section id being renamed
+    rename_buf: String,
+    #[allow(dead_code)]
+    color_picking_section: Option<u32>,      // section id picking color
     // Toolbar
     #[allow(dead_code)] toolbar_scroll: f32,
     shortcuts_open: bool, // keyboard shortcuts help panel
@@ -5330,10 +5631,16 @@ const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA
 
 impl Watchlist {
     fn new() -> Self {
-        let items = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
-            symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false, is_separator: false,
+        let items: Vec<WatchlistItem> = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
+            symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
         }).collect();
-        Self { open: false, tab: WatchlistTab::Stocks, items, search_query: String::new(), search_results: vec![],
+        let default_section = WatchlistSection {
+            id: 1, title: String::new(), color: None, collapsed: false, items,
+        };
+        Self { open: false, tab: WatchlistTab::Stocks, sections: vec![default_section], next_section_id: 2,
+               search_query: String::new(), search_results: vec![],
+               dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
+               renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
@@ -5341,28 +5648,69 @@ impl Watchlist {
                chain_select_mode: false, saved_options: vec![], dte_filter: -1 }
     }
 
+    /// Add symbol to the last section (creates one if none exist).
     fn add_symbol(&mut self, sym: &str) {
         let s = sym.to_uppercase();
-        if !self.items.iter().any(|i| i.symbol == s) {
-            self.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false, is_separator: false });
+        // Check all sections for duplicates
+        if self.sections.iter().any(|sec| sec.items.iter().any(|i| i.symbol == s)) { return; }
+        if self.sections.is_empty() {
+            let id = self.next_section_id; self.next_section_id += 1;
+            self.sections.push(WatchlistSection { id, title: String::new(), color: None, collapsed: false, items: vec![] });
+        }
+        let last = self.sections.last_mut().unwrap();
+        last.items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false });
+    }
+
+    /// Remove symbol from all sections.
+    fn remove_symbol(&mut self, sym: &str) {
+        for sec in &mut self.sections {
+            sec.items.retain(|i| i.symbol != sym);
         }
     }
 
-    fn remove_symbol(&mut self, sym: &str) {
-        self.items.retain(|i| i.symbol != sym);
-    }
-
     fn set_price(&mut self, sym: &str, price: f32) {
-        if let Some(item) = self.items.iter_mut().find(|i| i.symbol == sym) {
-            item.price = price;
+        for sec in &mut self.sections {
+            if let Some(item) = sec.items.iter_mut().find(|i| i.symbol == sym) {
+                item.price = price;
+            }
         }
     }
 
     fn set_prev_close(&mut self, sym: &str, prev_close: f32) {
-        if let Some(item) = self.items.iter_mut().find(|i| i.symbol == sym) {
-            item.prev_close = prev_close;
-            item.loaded = true;
+        for sec in &mut self.sections {
+            if let Some(item) = sec.items.iter_mut().find(|i| i.symbol == sym) {
+                item.prev_close = prev_close;
+                item.loaded = true;
+            }
         }
+    }
+
+    /// Collect all symbols across all sections.
+    fn all_symbols(&self) -> Vec<String> {
+        self.sections.iter().flat_map(|s| s.items.iter().map(|i| i.symbol.clone())).collect()
+    }
+
+    /// Find an item by symbol across all sections.
+    fn find_item(&self, sym: &str) -> Option<&WatchlistItem> {
+        self.sections.iter().flat_map(|s| s.items.iter()).find(|i| i.symbol == sym)
+    }
+
+    /// Add a new empty section.
+    fn add_section(&mut self, title: &str) {
+        let id = self.next_section_id; self.next_section_id += 1;
+        self.sections.push(WatchlistSection {
+            id, title: title.to_string(), color: None, collapsed: false, items: vec![],
+        });
+    }
+
+    /// Move an item from (src_sec, src_idx) to (dst_sec, dst_idx).
+    fn move_item(&mut self, src_sec: usize, src_idx: usize, dst_sec: usize, dst_idx: usize) {
+        if src_sec >= self.sections.len() { return; }
+        if src_idx >= self.sections[src_sec].items.len() { return; }
+        let item = self.sections[src_sec].items.remove(src_idx);
+        let dst_sec = dst_sec.min(self.sections.len() - 1);
+        let clamped = dst_idx.min(self.sections[dst_sec].items.len());
+        self.sections[dst_sec].items.insert(clamped, item);
     }
 }
 
@@ -5662,7 +6010,7 @@ impl App {
         let id = w.id();
         let (panes, layout) = load_state();
         let wl = Watchlist::new();
-        let wl_syms: Vec<String> = wl.items.iter().map(|i| i.symbol.clone()).collect();
+        let wl_syms: Vec<String> = wl.all_symbols();
         let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false };
         // Fetch prices for default watchlist symbols
         fetch_watchlist_prices(wl_syms);
@@ -5728,11 +6076,13 @@ impl ApplicationHandler for App {
                 }
 
                 // Also update watchlist from tick data (UpdateLastBar contains current price)
-                for item in &mut cw.watchlist.items {
-                    // Check if any pane has this symbol and get its latest price
-                    if let Some(pane) = cw.panes.iter().find(|p| p.symbol == item.symbol) {
-                        if let Some(bar) = pane.bars.last() {
-                            item.price = bar.close;
+                for sec in &mut cw.watchlist.sections {
+                    for item in &mut sec.items {
+                        // Check if any pane has this symbol and get its latest price
+                        if let Some(pane) = cw.panes.iter().find(|p| p.symbol == item.symbol) {
+                            if let Some(bar) = pane.bars.last() {
+                                item.price = bar.close;
+                            }
                         }
                     }
                 }
