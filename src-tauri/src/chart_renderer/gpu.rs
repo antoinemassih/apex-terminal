@@ -2558,94 +2558,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 .inner_margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 6 })
                 .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
             .show(ctx, |ui| {
-                // ── Header with title + status counters ──
+                // ── Panel close button ──
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("ORDERS").monospace().size(11.0).strong().color(t.accent));
-                    let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
-                    let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
-                    let exec_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Executed).count()).sum();
-                    let cxl_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Cancelled).count()).sum();
-                    // Status counters — like web version
-                    if active_count > 0 || exec_count > 0 || cxl_count > 0 {
-                        ui.add_space(4.0);
-                        ui.label(egui::RichText::new(format!("{}d {}p {}e {}c", draft_count, active_count - draft_count, exec_count, cxl_count))
-                            .monospace().size(8.0).color(t.dim.gamma_multiply(0.6)));
-                    }
+                    ui.label(egui::RichText::new("BOOK").monospace().size(11.0).strong().color(t.accent));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if close_button(ui, t.dim) { watchlist.orders_panel_open = false; }
                     });
                 });
                 ui.add_space(4.0);
-
-                // ── Action bar ──
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
-                    let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
-                    let history_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Executed || o.status == OrderStatus::Cancelled).count()).sum();
-
-                    if action_btn(ui, &format!("Place All ({})", draft_count), t.accent, draft_count > 0) {
-                        for pane in panes.iter_mut() {
-                            for o in &mut pane.orders { if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; } }
-                        }
-                    }
-                    if action_btn(ui, "Cancel All", t.bear, active_count > 0) {
-                        for pane in panes.iter_mut() {
-                            for o in &mut pane.orders {
-                                if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed { o.status = OrderStatus::Cancelled; }
-                            }
-                        }
-                    }
-                    if action_btn(ui, "Clear", t.dim, history_count > 0) {
-                        for pane in panes.iter_mut() {
-                            pane.orders.retain(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed);
-                        }
-                    }
-                });
-
-                ui.add_space(4.0);
-                separator(ui, color_alpha(t.toolbar_border, 60));
-                ui.add_space(4.0);
-
-                // ── Group selection bar ──
-                let sel_count = watchlist.selected_order_ids.len();
-                if sel_count > 0 {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.label(egui::RichText::new(format!("{} selected", sel_count)).monospace().size(9.0).strong().color(t.accent));
-                        action_btn(ui, "Place", t.accent, true).then(|| {
-                            for (pi, oid) in &watchlist.selected_order_ids {
-                                if let Some(o) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == *oid)) {
-                                    if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; }
-                                    if let Some(pid) = o.pair_id {
-                                        if let Some(p) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == pid)) {
-                                            if p.status == OrderStatus::Draft { p.status = OrderStatus::Placed; }
-                                        }
-                                    }
-                                }
-                            }
-                            watchlist.selected_order_ids.clear();
-                        });
-                        action_btn(ui, "Cancel", t.bear, true).then(|| {
-                            for (pi, oid) in &watchlist.selected_order_ids {
-                                if *pi < panes.len() { cancel_order_with_pair(&mut panes[*pi].orders, *oid); }
-                            }
-                            watchlist.selected_order_ids.clear();
-                        });
-                        action_btn(ui, "Unarm", t.dim, true).then(|| {
-                            for (pi, oid) in &watchlist.selected_order_ids {
-                                if let Some(o) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == *oid)) {
-                                    if o.status == OrderStatus::Placed { o.status = OrderStatus::Draft; }
-                                }
-                            }
-                            watchlist.selected_order_ids.clear();
-                        });
-                        if ui.add(egui::Button::new(egui::RichText::new("Deselect").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
-                            watchlist.selected_order_ids.clear();
-                        }
-                    });
-                    ui.add_space(4.0);
-                }
 
                 // ══════════════════════════════════════════════════════
                 // ── POSITIONS SECTION (top half of book) ──
@@ -2769,14 +2689,95 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.add_space(8.0);
                     }
 
-                    ui.add_space(6.0);
-                    separator(ui, color_alpha(t.toolbar_border, 60));
+                    ui.add_space(4.0);
+                }
+
+                // ══════════════════════════════════════════════════════
+                // ── THICK DIVIDER between positions and orders ──
+                // ══════════════════════════════════════════════════════
+                ui.add_space(4.0);
+                {
+                    let r = ui.available_rect_before_wrap();
+                    let y = ui.cursor().min.y;
+                    // 2px solid line like sidebar border
+                    ui.painter().rect_filled(
+                        egui::Rect::from_min_max(egui::pos2(r.left(), y), egui::pos2(r.right(), y + 2.0)),
+                        0.0, color_alpha(t.toolbar_border, 120));
                     ui.add_space(6.0);
                 }
 
                 // ══════════════════════════════════════════════════════
                 // ── ORDERS SECTION (bottom half of book) ──
                 // ══════════════════════════════════════════════════════
+
+                // Orders header + action bar
+                ui.horizontal(|ui| {
+                    section_label(ui, "ORDERS", t.accent);
+                    let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
+                    let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
+                    if active_count > 0 || draft_count > 0 {
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(format!("{}d {}a", draft_count, active_count - draft_count))
+                            .monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                    }
+                });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
+                    let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
+                    let history_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Executed || o.status == OrderStatus::Cancelled).count()).sum();
+                    if action_btn(ui, &format!("Place All ({})", draft_count), t.accent, draft_count > 0) {
+                        for pane in panes.iter_mut() {
+                            for o in &mut pane.orders { if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; } }
+                        }
+                    }
+                    if action_btn(ui, "Cancel All", t.bear, active_count > 0) {
+                        for pane in panes.iter_mut() {
+                            for o in &mut pane.orders {
+                                if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed { o.status = OrderStatus::Cancelled; }
+                            }
+                        }
+                    }
+                    if action_btn(ui, "Clear", t.dim, history_count > 0) {
+                        for pane in panes.iter_mut() {
+                            pane.orders.retain(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed);
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+
+                // ── Group selection bar ──
+                let sel_count = watchlist.selected_order_ids.len();
+                if sel_count > 0 {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.label(egui::RichText::new(format!("{} selected", sel_count)).monospace().size(9.0).strong().color(t.accent));
+                        action_btn(ui, "Place", t.accent, true).then(|| {
+                            for (pi, oid) in &watchlist.selected_order_ids {
+                                if let Some(o) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == *oid)) {
+                                    if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; }
+                                    if let Some(pid) = o.pair_id {
+                                        if let Some(p) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == pid)) {
+                                            if p.status == OrderStatus::Draft { p.status = OrderStatus::Placed; }
+                                        }
+                                    }
+                                }
+                            }
+                            watchlist.selected_order_ids.clear();
+                        });
+                        action_btn(ui, "Cancel", t.bear, true).then(|| {
+                            for (pi, oid) in &watchlist.selected_order_ids {
+                                if *pi < panes.len() { cancel_order_with_pair(&mut panes[*pi].orders, *oid); }
+                            }
+                            watchlist.selected_order_ids.clear();
+                        });
+                        if ui.add(egui::Button::new(egui::RichText::new("Deselect").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
+                            watchlist.selected_order_ids.clear();
+                        }
+                    });
+                    ui.add_space(4.0);
+                }
 
                 // ── Select all toggle ──
                 {
