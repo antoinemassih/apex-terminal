@@ -5919,7 +5919,8 @@ fn state_path() -> std::path::PathBuf {
 }
 
 fn save_state(panes: &[Chart], layout: Layout) {
-    let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| serde_json::json!({
+    // Don't persist option chart panes — they use placeholder data
+    let pane_data: Vec<serde_json::Value> = panes.iter().filter(|p| !p.is_option).map(|p| serde_json::json!({
         "symbol": p.symbol, "timeframe": p.timeframe,
     })).collect();
     let state = serde_json::json!({
