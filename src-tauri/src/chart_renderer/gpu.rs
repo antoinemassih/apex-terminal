@@ -525,26 +525,32 @@ impl Chart {
                 }
             }
             ChartCommand::PrependBars { symbol, timeframe, bars, timestamps } => {
-                if symbol == self.symbol && timeframe == self.timeframe && !bars.is_empty() {
-                    // Deduplicate: remove any bars from new data that overlap with existing
-                    let earliest_existing = self.timestamps.first().copied().unwrap_or(i64::MAX);
-                    let new_count = timestamps.iter().take_while(|&&t| t < earliest_existing).count();
-                    if new_count == 0 {
+                self.history_loading = false;
+                if symbol == self.symbol && timeframe == self.timeframe {
+                    if bars.is_empty() {
+                        // No data returned — no more history available
                         self.history_exhausted = true;
+                        eprintln!("[history] exhausted for {} {}", symbol, timeframe);
                     } else {
-                        let mut new_bars: Vec<Bar> = bars[..new_count].to_vec();
-                        let mut new_ts: Vec<i64> = timestamps[..new_count].to_vec();
-                        new_bars.append(&mut self.bars);
-                        new_ts.append(&mut self.timestamps);
-                        self.bars = new_bars;
-                        self.timestamps = new_ts;
-                        // Shift viewport right so the view stays on the same bars
-                        self.vs += new_count as f32;
-                        self.indicator_bar_count = 0; // force recompute
-                        eprintln!("[history] prepended {} bars for {} {} (total: {})", new_count, symbol, timeframe, self.bars.len());
+                        // Deduplicate: only keep bars older than our earliest
+                        let earliest_existing = self.timestamps.first().copied().unwrap_or(i64::MAX);
+                        let new_count = timestamps.iter().take_while(|&&t| t < earliest_existing).count();
+                        if new_count == 0 {
+                            self.history_exhausted = true;
+                            eprintln!("[history] no new unique bars for {} {} — exhausted", symbol, timeframe);
+                        } else {
+                            let mut new_bars: Vec<Bar> = bars[..new_count].to_vec();
+                            let mut new_ts: Vec<i64> = timestamps[..new_count].to_vec();
+                            new_bars.append(&mut self.bars);
+                            new_ts.append(&mut self.timestamps);
+                            self.bars = new_bars;
+                            self.timestamps = new_ts;
+                            self.vs += new_count as f32;
+                            self.indicator_bar_count = 0;
+                            eprintln!("[history] prepended {} bars for {} {} (total: {})", new_count, symbol, timeframe, self.bars.len());
+                        }
                     }
                 }
-                self.history_loading = false;
             }
             ChartCommand::AppendBar { bar, timestamp, .. } => {
                 self.bars.push(bar); self.timestamps.push(timestamp);
