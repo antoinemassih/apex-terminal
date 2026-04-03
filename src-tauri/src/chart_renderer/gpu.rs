@@ -3601,13 +3601,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 }
                                 // Up/down arrows (only when frozen)
                                 if watchlist.chain_frozen {
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim))
-                                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
-                                        watchlist.chain_center_offset += 1;
+                                    let max_offset = 20i32; // reasonable limit
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(10.0).color(t.dim))
+                                        .fill(color_alpha(t.toolbar_border, 15)).corner_radius(2.0).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                        watchlist.chain_center_offset = (watchlist.chain_center_offset + 1).min(max_offset);
                                     }
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim))
-                                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
-                                        watchlist.chain_center_offset -= 1;
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(10.0).color(t.dim))
+                                        .fill(color_alpha(t.toolbar_border, 15)).corner_radius(2.0).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                        watchlist.chain_center_offset = (watchlist.chain_center_offset - 1).max(-max_offset);
                                     }
                                 }
                             }
@@ -6756,8 +6757,8 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
         let client = apexib_client();
 
         // Build expiration query param: for 0DTE use today, otherwise offset by dte days
-        // Request 2x strikes to have enough on both sides of ATM after filtering
-        let api_strikes = num_strikes * 2 + 4; // extra buffer
+        // Request plenty of strikes — client-side filtering handles the window
+        let api_strikes = (num_strikes * 3).max(30); // always request at least 30
         let url = format!("{}/options/{}?strikeCount={}&dte={}", APEXIB_URL, symbol, api_strikes, dte);
 
         let send_chain = |calls: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
