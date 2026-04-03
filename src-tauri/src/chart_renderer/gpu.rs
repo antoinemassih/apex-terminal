@@ -1261,7 +1261,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 watchlist.set_price(symbol, *price);
                 watchlist.set_prev_close(symbol, *prev_close);
             }
-            ChartCommand::ChainData { symbol, dte, calls, puts } => {
+            ChartCommand::ChainData { symbol, dte, underlying_price, calls, puts } => {
                 if *symbol == watchlist.chain_symbol {
                     let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
                         data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
@@ -1275,10 +1275,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         watchlist.chain_far = (to_rows(calls), to_rows(puts));
                     }
                     watchlist.chain_loading = false;
-                    eprintln!("[chain] Loaded {} calls + {} puts for {} dte={}",
+                    if *underlying_price > 0.0 { watchlist.chain_underlying_price = *underlying_price; }
+                    eprintln!("[chain] Loaded {} calls + {} puts for {} dte={} price={:.2}",
                         if *dte == 0 { watchlist.chain_0dte.0.len() } else { watchlist.chain_far.0.len() },
                         if *dte == 0 { watchlist.chain_0dte.1.len() } else { watchlist.chain_far.1.len() },
-                        symbol, dte);
+                        symbol, dte, underlying_price);
                 }
             }
             ChartCommand::SearchResults { query, results, source } => {
@@ -3500,10 +3501,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── CHAIN TAB ───────────────────────────────────────────
                     WatchlistTab::Chain => {
-                        // Rebuild chain price
-                        let chain_price = watchlist.find_item(&watchlist.chain_symbol).map(|i| i.price)
-                            .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
-                            .unwrap_or(100.0);
+                        // Chain price: prefer IB underlying price, then watchlist, then chart, then fallback
+                        let chain_price = if watchlist.chain_underlying_price > 0.0 {
+                            watchlist.chain_underlying_price
+                        } else {
+                            watchlist.find_item(&watchlist.chain_symbol).map(|i| i.price)
+                                .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
+                                .unwrap_or(0.0)
+                        };
                         if chain_price > 0.0 && watchlist.chain_0dte.0.is_empty() && !watchlist.chain_loading {
                             let ns = watchlist.chain_num_strikes;
                             let sym = watchlist.chain_symbol.clone();
@@ -3636,7 +3641,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 watchlist.chain_sym_input.clear();
                                 watchlist.search_results.clear();
                                 watchlist.chain_0dte = (vec![], vec![]);
-                                watchlist.chain_loading = false; // reset loading on symbol change
+                                watchlist.chain_underlying_price = 0.0; // reset price for new symbol
+                                watchlist.chain_center_offset = 0;
+                                watchlist.chain_loading = false;
                             }
                         });
                         // Search suggestions popup
@@ -3649,7 +3656,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         watchlist.chain_sym_input.clear();
                                         watchlist.search_results.clear();
                                         watchlist.chain_0dte = (vec![], vec![]);
-                                        watchlist.chain_loading = false; // reset on symbol change
+                                        watchlist.chain_underlying_price = 0.0;
+                                        watchlist.chain_center_offset = 0;
+                                        watchlist.chain_loading = false;
                                     }
                                 }
                             });
@@ -6491,6 +6500,7 @@ struct Watchlist {
     chain_far: (Vec<OptionRow>, Vec<OptionRow>),   // (calls, puts) for far DTE
     chain_select_mode: bool,
     chain_loading: bool,       // true while fetching chain from ApexIB
+    chain_underlying_price: f32, // real-time underlying price from IB chain response
     chain_frozen: bool,        // freeze the strike window (don't move with price)
     chain_center_offset: i32,  // manual offset in strikes when frozen
     chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
@@ -6518,7 +6528,7 @@ impl Watchlist {
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
-               chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0,
+               chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
                saved_options: vec![], dte_filter: -1 }
     }
 
@@ -6782,10 +6792,12 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
         let url = format!("{}/options/{}?strikeCount={}&dte={}", APEXIB_URL, symbol, api_strikes, dte);
 
         let send_chain = |calls: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
-                          puts: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>| {
+                          puts: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
+                          und_price: f32| {
             let cmd = ChartCommand::ChainData {
                 symbol: symbol.clone(),
                 dte,
+                underlying_price: und_price,
                 calls,
                 puts,
             };
@@ -6795,6 +6807,8 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
         match client.get(&url).send() {
             Ok(resp) if resp.status().is_success() => {
                 if let Ok(json) = resp.json::<serde_json::Value>() {
+                    // Extract underlying price from API response
+                    let api_price = json.get("underlying").and_then(|u| u.get("price")).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                     let parse_rows = |key: &str| -> Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)> {
                         json.get(key).and_then(|v| v.as_array()).map(|arr| {
                             arr.iter().filter_map(|row| {
@@ -6824,7 +6838,8 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
 
                     if !calls.is_empty() || !puts.is_empty() {
                         eprintln!("[apexib] Fetched chain for {} dte={}: {} calls, {} puts", symbol, dte, calls.len(), puts.len());
-                        send_chain(calls, puts);
+                        let final_price = if api_price > 0.0 { api_price } else { underlying_price };
+                        send_chain(calls, puts, final_price);
                         return;
                     }
                 }
@@ -6843,7 +6858,7 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
             let (sim_calls, sim_puts) = build_chain(underlying_price, num_strikes, dte);
             let calls: Vec<_> = sim_calls.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
             let puts: Vec<_> = sim_puts.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
-            send_chain(calls, puts);
+            send_chain(calls, puts, underlying_price);
         }
     });
 }
@@ -7215,7 +7230,7 @@ impl ApplicationHandler for App {
                             cw.watchlist.set_price(symbol, price);
                             cw.watchlist.set_prev_close(symbol, prev_close);
                         }
-                        ChartCommand::ChainData { ref symbol, dte, ref calls, ref puts } => {
+                        ChartCommand::ChainData { ref symbol, dte, underlying_price, ref calls, ref puts } => {
                             if *symbol == cw.watchlist.chain_symbol {
                                 let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
                                     data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {

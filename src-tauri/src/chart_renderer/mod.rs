@@ -140,6 +140,7 @@ pub enum ChartCommand {
     ChainData {
         symbol: String,
         dte: i32,
+        underlying_price: f32, // real-time price from IB
         calls: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>, // strike, last, bid, ask, vol, oi, iv, itm, contract
         puts: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
     },
