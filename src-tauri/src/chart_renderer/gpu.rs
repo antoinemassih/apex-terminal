@@ -2925,70 +2925,78 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 }
                                             }
                                         } else {
-                                            // ── Stock item rendering (original) ──
+                                            // ── Stock item rendering — column-aligned ──
                                             let change_pct = if item_prev_close > 0.0 { ((item_price - item_prev_close) / item_prev_close) * 100.0 } else { 0.0 };
                                             let color = if change_pct >= 0.0 { t.bull } else { t.bear };
                                             let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
-                                            let change_str = if item_loaded { format!("{:+.1}%", change_pct) } else { "".into() };
+                                            let change_str = if item_loaded { format!("{:+.2}%", change_pct) } else { "".into() };
 
-                                            // Active highlight background (no per-row section tint — handled by continuous block)
                                             let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
+                                            let row_h = 26.0;
 
-                                            let resp = ui.horizontal(|ui| {
-                                                ui.set_min_width(full_w);
-                                                ui.set_min_height(24.0);
-                                                // Paint background
-                                                ui.painter().rect_filled(ui.max_rect(), 0.0, row_bg);
-                                                // Active indicator bar
-                                                if is_active {
-                                                    let r = ui.max_rect();
-                                                    ui.painter().rect_filled(
-                                                        egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 2.5, r.max.y)),
-                                                        1.0, t.accent);
+                                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, row_h), egui::Sense::click_and_drag());
+                                            let painter = ui.painter();
+
+                                            // Background
+                                            painter.rect_filled(rect, 0.0, row_bg);
+                                            // Active indicator bar
+                                            if is_active {
+                                                painter.rect_filled(
+                                                    egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 2.5, rect.max.y)),
+                                                    1.0, t.accent);
+                                            }
+
+                                            let y_c = rect.center().y;
+                                            let left = rect.left();
+
+                                            // Grip dots
+                                            painter.text(egui::pos2(left + 6.0, y_c), egui::Align2::LEFT_CENTER,
+                                                Icon::DOTS_SIX_VERTICAL, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.2));
+
+                                            // Symbol (left-aligned, col 1)
+                                            let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(210, 210, 220) };
+                                            painter.text(egui::pos2(left + 18.0, y_c), egui::Align2::LEFT_CENTER,
+                                                &item_sym, egui::FontId::monospace(13.0), sym_color);
+
+                                            // Change % (center area, prominent)
+                                            let mid_x = rect.left() + full_w * 0.52;
+                                            painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
+                                                &change_str, egui::FontId::monospace(12.0), color);
+
+                                            // Price (right-aligned, smaller)
+                                            painter.text(egui::pos2(rect.right() - 18.0, y_c), egui::Align2::RIGHT_CENTER,
+                                                &price_str, egui::FontId::monospace(11.0), color.gamma_multiply(0.7));
+
+                                            // X button zone (far right)
+                                            if resp.hovered() {
+                                                painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
+                                                    Icon::X, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.4));
+                                                let x_zone = egui::Rect::from_min_max(egui::pos2(rect.right() - 16.0, rect.top()), rect.max);
+                                                if ui.interact(x_zone, egui::Id::new(("wl_x", si, ii)), egui::Sense::click()).clicked() {
+                                                    remove_sym = Some(item_sym.clone());
                                                 }
-                                                ui.add_space(if is_active { 8.0 } else { 4.0 });
-                                                // Drag grip (subtle dots icon)
-                                                ui.label(egui::RichText::new(Icon::DOTS_SIX_VERTICAL).size(9.0).color(t.dim.gamma_multiply(0.2)));
-                                                ui.add_space(2.0);
-                                                // Symbol name
-                                                let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(200, 200, 210) };
-                                                ui.label(egui::RichText::new(&item_sym).monospace().size(12.0).strong().color(sym_color));
-                                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                    // X button
-                                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
-                                                        remove_sym = Some(item_sym.clone());
-                                                    }
-                                                    // Change %
-                                                    ui.label(egui::RichText::new(&change_str).monospace().size(10.0).color(color));
-                                                    // Price
-                                                    ui.label(egui::RichText::new(&price_str).monospace().size(12.0).color(color));
-                                                });
-                                            });
+                                            }
 
-                                            let row_rect = resp.response.rect;
+                                            // Hover highlight
+                                            if resp.hovered() && !is_active {
+                                                painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 20));
+                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                            }
+
+                                            let row_rect = rect;
                                             row_rects.push((si, ii, row_rect));
 
-                                            // Drag-and-drop: use click_and_drag sense on the row
-                                            let drag_resp = resp.response.interact(egui::Sense::click_and_drag());
-
-                                            if drag_resp.drag_started() {
+                                            // Drag-and-drop + click handling
+                                            if resp.drag_started() {
                                                 watchlist.dragging = Some((si, ii));
                                                 watchlist.drag_start_pos = pointer_pos;
                                                 watchlist.drag_confirmed = false;
                                             }
-
-                                            // Click to select symbol (only if not dragging)
-                                            if drag_resp.clicked() && !drag_confirmed {
+                                            if resp.clicked() && !drag_confirmed {
                                                 click_sym = Some(item_sym.clone());
                                             }
 
-                                            // Hover highlight (only if not dragging)
-                                            if drag_resp.hovered() && !drag_confirmed {
-                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                                if !is_active {
-                                                    ui.painter().rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, 25));
-                                                }
-                                            }
+                                            // (hover already handled above in painter section)
                                         }
                                     }
                                 }
