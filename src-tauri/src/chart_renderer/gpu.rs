@@ -3761,6 +3761,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // ── Helper to render one expiry block ──
                         let chain_frozen = watchlist.chain_frozen;
                         let chain_center_offset = watchlist.chain_center_offset;
+                        let num_strikes = watchlist.chain_num_strikes;
 
                         let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let exp_label = format!("{}DTE", dte);
@@ -3778,18 +3779,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             });
                             ui.add_space(2.0);
 
-                            // If price is 656:
-                            // Calls (above divider, top→bottom): 665, 664, 663, ..., 658, 657 ← nearest ATM
-                            // Puts (below divider, top→bottom): 655 ← nearest ATM, 654, 653, ...
+                            // Determine the strike interval from available data
+                            let strike_interval = if calls.len() >= 2 {
+                                (calls[1].strike - calls[0].strike).abs().max(1.0)
+                            } else { 1.0 };
+
+                            // Center price adjusted by manual offset when frozen
+                            let center = price + (chain_center_offset as f32 * strike_interval);
+
+                            // Calls (above divider): strikes > center, sorted descending, limited to num_strikes
                             let mut sorted_calls: Vec<&OptionRow> = calls.iter()
-                                .filter(|r| r.strike > price)
+                                .filter(|r| r.strike > center)
                                 .collect();
                             sorted_calls.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
+                            sorted_calls.truncate(num_strikes);
 
+                            // Puts (below divider): strikes <= center, sorted descending, limited to num_strikes
                             let mut sorted_puts: Vec<&OptionRow> = puts.iter()
-                                .filter(|r| r.strike <= price)
+                                .filter(|r| r.strike <= center)
                                 .collect();
                             sorted_puts.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
+                            sorted_puts.truncate(num_strikes);
 
                             // Calls (OTM at top, ATM at bottom)
                             for row in &sorted_calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
@@ -3813,8 +3823,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 ui.painter().rect_filled(badge_rect, 9.0, color_alpha(t.toolbar_border, 40));
                                 ui.painter().rect_stroke(badge_rect, 9.0, egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)), egui::StrokeKind::Outside);
                                 // Price text
+                                let badge_text = if chain_frozen && chain_center_offset != 0 {
+                                    format!("${:.2} ({:+})", price, chain_center_offset)
+                                } else {
+                                    format!("${:.2}", price)
+                                };
                                 ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER,
-                                    &format!("${:.2}", price), egui::FontId::monospace(11.0),
+                                    &badge_text, egui::FontId::monospace(11.0),
                                     egui::Color32::from_rgb(220, 220, 230));
                             }
                             ui.add_space(22.0);
@@ -6728,8 +6743,9 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
         let client = apexib_client();
 
         // Build expiration query param: for 0DTE use today, otherwise offset by dte days
-        // The API accepts strikeCount and expiration (ISO date) or dte parameter
-        let url = format!("{}/options/{}?strikeCount={}&dte={}", APEXIB_URL, symbol, num_strikes, dte);
+        // Request 2x strikes to have enough on both sides of ATM after filtering
+        let api_strikes = num_strikes * 2 + 4; // extra buffer
+        let url = format!("{}/options/{}?strikeCount={}&dte={}", APEXIB_URL, symbol, api_strikes, dte);
 
         let send_chain = |calls: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
                           puts: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>| {
