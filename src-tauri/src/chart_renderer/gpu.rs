@@ -3586,10 +3586,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
                                     display_text, egui::FontId::monospace(14.0), t.accent);
                             }
-                            // Price
+                            // Price + freeze toggle + arrows
                             if chain_price > 0.0 {
                                 ui.add_space(6.0);
                                 ui.label(egui::RichText::new(format!("${:.2}", chain_price)).monospace().size(14.0).color(egui::Color32::from_rgb(220, 220, 230)));
+                                ui.add_space(4.0);
+                                // Freeze toggle
+                                let freeze_icon = if watchlist.chain_frozen { Icon::PAUSE } else { Icon::PLAY };
+                                let freeze_color = if watchlist.chain_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
+                                if ui.add(egui::Button::new(egui::RichText::new(freeze_icon).size(10.0).color(freeze_color))
+                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                    watchlist.chain_frozen = !watchlist.chain_frozen;
+                                    if !watchlist.chain_frozen { watchlist.chain_center_offset = 0; }
+                                }
+                                // Up/down arrows (only when frozen)
+                                if watchlist.chain_frozen {
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim))
+                                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                        watchlist.chain_center_offset += 1;
+                                    }
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim))
+                                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                        watchlist.chain_center_offset -= 1;
+                                    }
+                                }
                             }
                             // Search — static immediate + ApexIB background
                             if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
@@ -3739,7 +3759,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         };
 
                         // ── Helper to render one expiry block ──
-                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, _price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
+                        let chain_frozen = watchlist.chain_frozen;
+                        let chain_center_offset = watchlist.chain_center_offset;
+
+                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let exp_label = format!("{}DTE", dte);
                             let date_str = if dte == 0 {
                                 "Today".to_string()
@@ -3755,19 +3778,44 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             });
                             ui.add_space(2.0);
 
-                            // Calls
-                            for row in calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
+                            // Sort calls descending by strike (highest at top, ATM at bottom near divider)
+                            let mut sorted_calls: Vec<&OptionRow> = calls.iter().collect();
+                            sorted_calls.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
 
-                            // Thin separator between calls and puts
-                            ui.add_space(2.0);
-                            let sep_r = ui.available_rect_before_wrap();
-                            ui.painter().line_segment(
-                                [egui::pos2(sep_r.left() + 4.0, ui.cursor().min.y), egui::pos2(sep_r.right() - 4.0, ui.cursor().min.y)],
-                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
-                            ui.add_space(2.0);
+                            // Sort puts descending by strike (ATM at top near divider, lowest at bottom)
+                            let mut sorted_puts: Vec<&OptionRow> = puts.iter().collect();
+                            sorted_puts.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
 
-                            // Puts
-                            for row in puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }
+                            // Calls (OTM at top, ATM at bottom)
+                            for row in &sorted_calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
+
+                            // ── ATM price badge divider ──
+                            ui.add_space(3.0);
+                            {
+                                let r = ui.available_rect_before_wrap();
+                                let y = ui.cursor().min.y;
+                                let badge_w = 80.0;
+                                let center_x = r.left() + r.width() / 2.0;
+                                // Lines on either side of the badge
+                                ui.painter().line_segment(
+                                    [egui::pos2(r.left() + 4.0, y + 10.0), egui::pos2(center_x - badge_w / 2.0 - 4.0, y + 10.0)],
+                                    egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
+                                ui.painter().line_segment(
+                                    [egui::pos2(center_x + badge_w / 2.0 + 4.0, y + 10.0), egui::pos2(r.right() - 4.0, y + 10.0)],
+                                    egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
+                                // Badge background
+                                let badge_rect = egui::Rect::from_center_size(egui::pos2(center_x, y + 10.0), egui::vec2(badge_w, 18.0));
+                                ui.painter().rect_filled(badge_rect, 9.0, color_alpha(t.toolbar_border, 40));
+                                ui.painter().rect_stroke(badge_rect, 9.0, egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)), egui::StrokeKind::Outside);
+                                // Price text
+                                ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER,
+                                    &format!("${:.2}", price), egui::FontId::monospace(11.0),
+                                    egui::Color32::from_rgb(220, 220, 230));
+                            }
+                            ui.add_space(22.0);
+
+                            // Puts (ATM at top, OTM at bottom)
+                            for row in &sorted_puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }
                             ui.add_space(4.0);
                         };
 
@@ -6389,6 +6437,8 @@ struct Watchlist {
     chain_far: (Vec<OptionRow>, Vec<OptionRow>),   // (calls, puts) for far DTE
     chain_select_mode: bool,
     chain_loading: bool,       // true while fetching chain from ApexIB
+    chain_frozen: bool,        // freeze the strike window (don't move with price)
+    chain_center_offset: i32,  // manual offset in strikes when frozen
     chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
     // Saved options
     saved_options: Vec<SavedOption>,
@@ -6414,7 +6464,7 @@ impl Watchlist {
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
-               chain_select_mode: false, chain_loading: false, chain_last_fetch: None,
+               chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0,
                saved_options: vec![], dte_filter: -1 }
     }
 
