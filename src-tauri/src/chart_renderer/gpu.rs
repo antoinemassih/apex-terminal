@@ -3779,27 +3779,40 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             });
                             ui.add_space(2.0);
 
-                            // Determine the strike interval from available data
-                            let strike_interval = if calls.len() >= 2 {
-                                (calls[1].strike - calls[0].strike).abs().max(1.0)
-                            } else { 1.0 };
+                            // Collect all unique strikes from calls + puts, sorted ascending
+                            let mut all_strikes: Vec<f32> = calls.iter().chain(puts.iter())
+                                .map(|r| r.strike).collect();
+                            all_strikes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                            all_strikes.dedup();
 
-                            // Center price adjusted by manual offset when frozen
-                            let center = price + (chain_center_offset as f32 * strike_interval);
+                            // Find the ATM index (closest strike to price)
+                            let atm_idx = all_strikes.iter().enumerate()
+                                .min_by(|(_, a), (_, b)| ((**a - price).abs()).partial_cmp(&((**b - price).abs())).unwrap_or(std::cmp::Ordering::Equal))
+                                .map(|(i, _)| i).unwrap_or(0);
 
-                            // Calls (above divider): strikes > center, sorted descending, limited to num_strikes
-                            let mut sorted_calls: Vec<&OptionRow> = calls.iter()
-                                .filter(|r| r.strike > center)
-                                .collect();
-                            sorted_calls.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
-                            sorted_calls.truncate(num_strikes);
+                            // Window: centered on ATM + offset, total size = num_strikes * 2
+                            let total_window = num_strikes * 2;
+                            let center_idx = (atm_idx as i32 + chain_center_offset).max(0) as usize;
+                            let half = total_window / 2;
+                            let start = center_idx.saturating_sub(half).min(all_strikes.len().saturating_sub(total_window));
+                            let end = (start + total_window).min(all_strikes.len());
+                            let visible_strikes: Vec<f32> = all_strikes[start..end].to_vec();
 
-                            // Puts (below divider): strikes <= center, sorted descending, limited to num_strikes
-                            let mut sorted_puts: Vec<&OptionRow> = puts.iter()
-                                .filter(|r| r.strike <= center)
-                                .collect();
-                            sorted_puts.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
-                            sorted_puts.truncate(num_strikes);
+                            // Split into calls (strikes > price) and puts (strikes <= price)
+                            let sorted_calls: Vec<&OptionRow> = {
+                                let mut v: Vec<&OptionRow> = calls.iter()
+                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike > price)
+                                    .collect();
+                                v.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
+                                v
+                            };
+                            let sorted_puts: Vec<&OptionRow> = {
+                                let mut v: Vec<&OptionRow> = puts.iter()
+                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike <= price)
+                                    .collect();
+                                v.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
+                                v
+                            };
 
                             // Calls (OTM at top, ATM at bottom)
                             for row in &sorted_calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
