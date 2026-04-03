@@ -1207,20 +1207,65 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
     }
 
-    // Route incoming commands to the matching pane (by symbol), or active pane as fallback
+    // Route incoming commands to the matching pane (by symbol), or watchlist
     span_begin("cmd_routing");
     while let Ok(cmd) = rx.try_recv() {
-        let sym = match &cmd {
-            ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
-            _ => None,
-        };
-        if let Some(s) = sym {
-            if let Some(p) = panes.iter_mut().find(|p| p.symbol == s) { p.process(cmd); }
-            else if let Some(p) = panes.get_mut(*active_pane) {
-                // Don't route mismatched commands to option charts
-                if !p.is_option { p.process(cmd); }
+        match &cmd {
+            // Pane-targeted commands: route by symbol
+            ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => {
+                let s = symbol.clone();
+                if let Some(p) = panes.iter_mut().find(|p| p.symbol == s) { p.process(cmd); }
+                else if let Some(p) = panes.get_mut(*active_pane) {
+                    if !p.is_option { p.process(cmd); }
+                }
             }
-        } else if let Some(p) = panes.get_mut(*active_pane) { p.process(cmd); }
+            // Watchlist-targeted commands: handle directly
+            ChartCommand::WatchlistPrice { symbol, price, prev_close } => {
+                watchlist.set_price(symbol, *price);
+                watchlist.set_prev_close(symbol, *prev_close);
+            }
+            ChartCommand::ChainData { symbol, dte, calls, puts } => {
+                if *symbol == watchlist.chain_symbol {
+                    let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
+                        data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
+                            strike: *strike, last: *last, bid: *bid, ask: *ask,
+                            volume: *vol, oi: *oi, iv: *iv, itm: *itm, contract: contract.clone(),
+                        }).collect()
+                    };
+                    if *dte == 0 {
+                        watchlist.chain_0dte = (to_rows(calls), to_rows(puts));
+                    } else {
+                        watchlist.chain_far = (to_rows(calls), to_rows(puts));
+                    }
+                    watchlist.chain_loading = false;
+                    eprintln!("[chain] Loaded {} calls + {} puts for {} dte={}",
+                        if *dte == 0 { watchlist.chain_0dte.0.len() } else { watchlist.chain_far.0.len() },
+                        if *dte == 0 { watchlist.chain_0dte.1.len() } else { watchlist.chain_far.1.len() },
+                        symbol, dte);
+                }
+            }
+            ChartCommand::SearchResults { query, results, source } => {
+                if source == "watchlist" && !query.is_empty()
+                    && watchlist.search_query.to_lowercase().starts_with(&query.to_lowercase()) {
+                    for (sym, name) in results {
+                        if !watchlist.search_results.iter().any(|(s, _)| s == sym) {
+                            watchlist.search_results.push((sym.clone(), name.clone()));
+                        }
+                    }
+                } else if source == "chain" && !query.is_empty()
+                    && watchlist.chain_sym_input.to_lowercase().starts_with(&query.to_lowercase()) {
+                    for (sym, name) in results {
+                        if !watchlist.search_results.iter().any(|(s, _)| s == sym) {
+                            watchlist.search_results.push((sym.clone(), name.clone()));
+                        }
+                    }
+                }
+            }
+            // Everything else goes to active pane
+            _ => {
+                if let Some(p) = panes.get_mut(*active_pane) { p.process(cmd); }
+            }
+        }
     }
     if *active_pane >= panes.len() { *active_pane = 0; }
 
