@@ -2959,12 +2959,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 &item_sym, egui::FontId::monospace(14.0), sym_color);
 
                                             // Change % (center-left, prominent)
-                                            let mid_x = rect.left() + full_w * 0.42;
+                                            let mid_x = rect.left() + full_w * 0.38;
                                             painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
                                                 &change_str, egui::FontId::monospace(14.0), color);
 
-                                            // Price (right-aligned, more space from edge)
-                                            painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
+                                            // Price (right-aligned, leave room for X button)
+                                            painter.text(egui::pos2(rect.right() - 24.0, y_c), egui::Align2::RIGHT_CENTER,
                                                 &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.6));
 
                                             // Faint row separator line
@@ -3392,11 +3392,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── CHAIN TAB ───────────────────────────────────────────
                     WatchlistTab::Chain => {
-                        // ── Symbol input ──
+                        // ── Symbol input (styled as accent label, editable on click) ──
+                        let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
+                        let input_bg = if has_focus { color_alpha(t.toolbar_border, 60) } else { color_alpha(t.toolbar_border, 20) };
                         let sym_resp = ui.add(egui::TextEdit::singleline(&mut watchlist.chain_sym_input)
+                            .id(egui::Id::new("chain_sym_edit"))
                             .hint_text(&watchlist.chain_symbol)
                             .desired_width(ui.available_width())
-                            .font(egui::FontId::monospace(13.0)));
+                            .font(egui::FontId::monospace(13.0))
+                            .text_color(t.accent)
+                            .background_color(input_bg)
+                            .margin(egui::Margin::symmetric(6, 4)));
+                        // Bold overlay: paint bold text on top when not focused
+                        if !has_focus {
+                            let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
+                            let r = sym_resp.rect;
+                            ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
+                                display_text, egui::FontId::monospace(13.0), t.accent);
+                        }
                         // Search suggestions
                         if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
                             watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.chain_sym_input, 5)
@@ -3508,7 +3521,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let is_saved = saved.iter().any(|s| s.contract == row.contract);
                             let color = if is_call { t.bull } else { t.bear };
-                            let itm_bg = if row.itm { color.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
+                            let base_tint = if is_call { color_alpha(t.bull, 8) } else { color_alpha(t.bear, 8) };
+                            let itm_bg = if row.itm { color.gamma_multiply(0.06) } else { base_tint };
                             let saved_bg = if is_saved { color_alpha(t.accent, 40) } else { itm_bg };
 
                             // Reserve a clickable rect for the whole row
@@ -3608,6 +3622,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let far_dte = watchlist.chain_far_dte;
 
                             render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
+                            ui.add_space(4.0);
+                            // DTE separator
+                            let sep_r = ui.available_rect_before_wrap();
+                            ui.painter().line_segment(
+                                [egui::pos2(sep_r.left() + 4.0, ui.cursor().min.y), egui::pos2(sep_r.right() - 4.0, ui.cursor().min.y)],
+                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
+                            ui.add_space(4.0);
                             render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
                         });
                         // Normal click: just open option chart (no watchlist add)
