@@ -2932,7 +2932,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             let change_str = if item_loaded { format!("{:+.2}%", change_pct) } else { "".into() };
 
                                             let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
-                                            let row_h = 26.0;
+                                            let row_h = 28.0;
 
                                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, row_h), egui::Sense::click_and_drag());
                                             let painter = ui.painter();
@@ -2953,19 +2953,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             painter.text(egui::pos2(left + 6.0, y_c), egui::Align2::LEFT_CENTER,
                                                 Icon::DOTS_SIX_VERTICAL, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.2));
 
-                                            // Symbol (left-aligned, col 1)
-                                            let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(210, 210, 220) };
+                                            // Symbol (left-aligned)
+                                            let sym_color = if is_active { egui::Color32::from_rgb(245, 245, 250) } else { egui::Color32::from_rgb(225, 225, 235) };
                                             painter.text(egui::pos2(left + 18.0, y_c), egui::Align2::LEFT_CENTER,
-                                                &item_sym, egui::FontId::monospace(13.0), sym_color);
+                                                &item_sym, egui::FontId::monospace(14.0), sym_color);
 
-                                            // Change % (center area, prominent)
-                                            let mid_x = rect.left() + full_w * 0.52;
+                                            // Change % (center, prominent)
+                                            let mid_x = rect.left() + full_w * 0.50;
                                             painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
-                                                &change_str, egui::FontId::monospace(12.0), color);
+                                                &change_str, egui::FontId::monospace(14.0), color);
 
-                                            // Price (right-aligned, smaller)
+                                            // Price (right-aligned)
                                             painter.text(egui::pos2(rect.right() - 18.0, y_c), egui::Align2::RIGHT_CENTER,
-                                                &price_str, egui::FontId::monospace(11.0), color.gamma_multiply(0.7));
+                                                &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.65));
+
+                                            // Faint row separator line
+                                            painter.line_segment(
+                                                [egui::pos2(rect.left() + 16.0, rect.bottom()), egui::pos2(rect.right() - 4.0, rect.bottom())],
+                                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 20)));
 
                                             // X button zone (far right)
                                             if resp.hovered() {

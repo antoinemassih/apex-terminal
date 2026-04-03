@@ -110,13 +110,29 @@ impl Icon {
 /// so icons render correctly even in `.monospace()` text.
 pub fn init_icons(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
+
+    // Load JetBrains Mono as the primary monospace AND proportional font
+    let jb_mono = include_bytes!("JetBrainsMono-Regular.ttf");
+    fonts.font_data.insert("jetbrains_mono".into(), std::sync::Arc::new(egui::FontData::from_static(jb_mono)));
+
+    // Set JetBrains Mono as primary for both font families
+    if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+        mono_keys.insert(0, "jetbrains_mono".into());
+    }
+    if let Some(prop_keys) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+        prop_keys.insert(0, "jetbrains_mono".into());
+    }
+
+    // Add Phosphor icon fonts
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Bold);
-    // Also add phosphor as fallback for Monospace so icons work in monospace text
+
+    // Ensure phosphor is a fallback for Monospace too (for icons in monospace text)
     if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
         if !mono_keys.contains(&"phosphor".to_string()) {
             mono_keys.push("phosphor".into());
         }
     }
+
     ctx.set_fonts(fonts);
 }
