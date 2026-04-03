@@ -2373,139 +2373,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             .max_width(400.0)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
             .show(ctx, |ui| {
-                // ── Watchlist selector bar ──
                 let mut wl_switch_to: Option<usize> = None;
                 let mut wl_fetch_syms: Vec<String> = Vec::new();
                 let mut wl_rename_idx: Option<usize> = None;
                 let mut wl_delete_idx: Option<usize> = None;
                 let mut wl_dup_idx: Option<usize> = None;
-                ui.horizontal(|ui| {
-                    ui.set_min_height(20.0);
-                    // Inline rename mode
-                    if watchlist.watchlist_name_editing {
-                        let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.watchlist_name_buf)
-                            .desired_width(ui.available_width() - 30.0)
-                            .font(egui::FontId::monospace(10.0)));
-                        if resp.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            let new_name = watchlist.watchlist_name_buf.trim().to_string();
-                            if !new_name.is_empty() {
-                                if let Some(wl) = watchlist.saved_watchlists.get_mut(watchlist.active_watchlist_idx) {
-                                    wl.name = new_name;
-                                }
-                            }
-                            watchlist.watchlist_name_editing = false;
-                            watchlist.persist();
-                        } else {
-                            resp.request_focus();
-                        }
-                    } else {
-                        // Snapshot names and count for the dropdown to avoid borrow conflicts
-                        let wl_names: Vec<String> = watchlist.saved_watchlists.iter().map(|w| w.name.clone()).collect();
-                        let wl_count = wl_names.len();
-                        let active_idx = watchlist.active_watchlist_idx;
-                        let active_name = wl_names.get(active_idx).cloned().unwrap_or_else(|| "Default".into());
-                        let combo_resp = egui::ComboBox::from_id_salt("wl_selector")
-                            .selected_text(egui::RichText::new(&active_name).monospace().size(10.0).color(t.accent))
-                            .width(ui.available_width() - 30.0)
-                            .show_ui(ui, |ui| {
-                                for (i, name) in wl_names.iter().enumerate() {
-                                    let is_active = i == active_idx;
-                                    let label_color = if is_active { t.accent } else { egui::Color32::from_rgb(200, 200, 210) };
-                                    let resp = ui.selectable_label(is_active,
-                                        egui::RichText::new(name).monospace().size(10.0).color(label_color));
-                                    if resp.clicked() && !is_active {
-                                        wl_switch_to = Some(i);
-                                    }
-                                    // Right-click context menu on each watchlist entry
-                                    resp.context_menu(|ui| {
-                                        if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
-                                            wl_rename_idx = Some(i);
-                                            ui.close_menu();
-                                        }
-                                        if ui.button(egui::RichText::new("Duplicate").monospace().size(10.0)).clicked() {
-                                            wl_dup_idx = Some(i);
-                                            ui.close_menu();
-                                        }
-                                        if wl_count > 1 {
-                                            ui.separator();
-                                            if ui.button(egui::RichText::new("Delete").monospace().size(10.0)
-                                                .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
-                                                wl_delete_idx = Some(i);
-                                                ui.close_menu();
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                        // Right-click the combo box header for rename/dup/delete
-                        combo_resp.response.context_menu(|ui| {
-                            if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
-                                wl_rename_idx = Some(active_idx);
-                                ui.close_menu();
-                            }
-                            if ui.button(egui::RichText::new("Duplicate").monospace().size(10.0)).clicked() {
-                                wl_dup_idx = Some(active_idx);
-                                ui.close_menu();
-                            }
-                            if wl_count > 1 {
-                                ui.separator();
-                                if ui.button(egui::RichText::new("Delete").monospace().size(10.0)
-                                    .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
-                                    wl_delete_idx = Some(active_idx);
-                                    ui.close_menu();
-                                }
-                            }
-                        });
-                    }
-                    // "+" button to create new watchlist
-                    if ui.add(egui::Button::new(egui::RichText::new(Icon::PLUS).size(12.0).color(t.dim)).frame(false)).clicked() {
-                        let n = watchlist.saved_watchlists.len() + 1;
-                        let syms = watchlist.create_watchlist(&format!("Watchlist {}", n));
-                        if !syms.is_empty() { wl_fetch_syms = syms; }
-                    }
-                });
-                // Handle deferred rename
-                if let Some(idx) = wl_rename_idx {
-                    if idx != watchlist.active_watchlist_idx {
-                        wl_switch_to = Some(idx);
-                    }
-                    watchlist.watchlist_name_buf = watchlist.saved_watchlists.get(idx).map(|w| w.name.clone()).unwrap_or_default();
-                    watchlist.watchlist_name_editing = true;
-                }
-                // Handle deferred duplicate
-                if let Some(dup_idx) = wl_dup_idx {
-                    let syms = watchlist.duplicate_watchlist(dup_idx);
-                    if !syms.is_empty() { wl_fetch_syms = syms; }
-                }
-                // Handle deferred delete
-                if let Some(del_idx) = wl_delete_idx {
-                    let syms = watchlist.delete_watchlist(del_idx);
-                    if !syms.is_empty() { wl_fetch_syms = syms; }
-                }
-                // Handle watchlist switch
-                if let Some(idx) = wl_switch_to {
-                    let syms = watchlist.switch_to(idx);
-                    if !syms.is_empty() { wl_fetch_syms = syms; }
-                }
-                // Trigger price fetches for new watchlist
-                if !wl_fetch_syms.is_empty() {
-                    fetch_watchlist_prices(wl_fetch_syms);
-                }
 
-                ui.add_space(2.0);
-                ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
-                    egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 60)),
-                );
-                ui.add_space(2.0);
-
-                // Header with tabs
-                ui.horizontal(|ui| {
-                    for (tab, label) in [(WatchlistTab::Stocks, "STOCKS"), (WatchlistTab::Chain, "CHAIN"), (WatchlistTab::Saved, "SAVED")] {
+                // ── A) Tabs at the very top with X button ──
+                let tab_row_resp = ui.horizontal(|ui| {
+                    ui.set_min_height(22.0);
+                    for (tab, label) in [(WatchlistTab::Stocks, "LIST"), (WatchlistTab::Chain, "CHAIN")] {
                         let active = watchlist.tab == tab;
                         let color = if active { t.accent } else { t.dim };
-                        if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).strong().color(color)).frame(false)).clicked() {
+                        let tab_resp = ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(11.0).strong().color(color)).frame(false));
+                        if tab_resp.clicked() {
                             watchlist.tab = tab;
+                        }
+                        // Draw 2px accent border under active tab
+                        if active {
+                            let r = tab_resp.rect;
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_max(egui::pos2(r.left(), r.max.y - 2.0), egui::pos2(r.right(), r.max.y)),
+                                0.0, t.accent);
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -2514,9 +2403,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     });
                 });
-                ui.add_space(2.0);
+                // 1px line below tabs
+                let line_y = tab_row_resp.response.rect.max.y + 1.0;
                 ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left(), ui.cursor().min.y), egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
+                    [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
                     egui::Stroke::new(1.0, t.toolbar_border),
                 );
                 ui.add_space(4.0);
@@ -2524,19 +2414,141 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let mut open_option_chart: Option<(String, f32, bool, String)> = None;
 
                 match watchlist.tab {
-                    // ── STOCKS TAB ──────────────────────────────────────────
+                    // ── STOCKS TAB (LIST) ──────────────────────────────────────────
                     WatchlistTab::Stocks => {
-                        // Search bar with inline options toggle
+                        // ── B) Watchlist selector + options toggle ──
+                        ui.horizontal(|ui| {
+                            ui.set_min_height(20.0);
+                            // Inline rename mode
+                            if watchlist.watchlist_name_editing {
+                                let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.watchlist_name_buf)
+                                    .desired_width(ui.available_width() - 50.0)
+                                    .font(egui::FontId::monospace(10.0)));
+                                if resp.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                    let new_name = watchlist.watchlist_name_buf.trim().to_string();
+                                    if !new_name.is_empty() {
+                                        if let Some(wl) = watchlist.saved_watchlists.get_mut(watchlist.active_watchlist_idx) {
+                                            wl.name = new_name;
+                                        }
+                                    }
+                                    watchlist.watchlist_name_editing = false;
+                                    watchlist.persist();
+                                } else {
+                                    resp.request_focus();
+                                }
+                            } else {
+                                // Snapshot names and count for the dropdown to avoid borrow conflicts
+                                let wl_names: Vec<String> = watchlist.saved_watchlists.iter().map(|w| w.name.clone()).collect();
+                                let wl_count = wl_names.len();
+                                let active_idx = watchlist.active_watchlist_idx;
+                                let active_name = wl_names.get(active_idx).cloned().unwrap_or_else(|| "Default".into());
+                                let combo_resp = egui::ComboBox::from_id_salt("wl_selector")
+                                    .selected_text(egui::RichText::new(&active_name).monospace().size(10.0).color(t.accent))
+                                    .width(ui.available_width() - 60.0)
+                                    .show_ui(ui, |ui| {
+                                        for (i, name) in wl_names.iter().enumerate() {
+                                            let is_active = i == active_idx;
+                                            let label_color = if is_active { t.accent } else { egui::Color32::from_rgb(200, 200, 210) };
+                                            let resp = ui.selectable_label(is_active,
+                                                egui::RichText::new(name).monospace().size(10.0).color(label_color));
+                                            if resp.clicked() && !is_active {
+                                                wl_switch_to = Some(i);
+                                            }
+                                            // Right-click context menu on each watchlist entry
+                                            resp.context_menu(|ui| {
+                                                if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                                    wl_rename_idx = Some(i);
+                                                    ui.close_menu();
+                                                }
+                                                if ui.button(egui::RichText::new("Duplicate").monospace().size(10.0)).clicked() {
+                                                    wl_dup_idx = Some(i);
+                                                    ui.close_menu();
+                                                }
+                                                if wl_count > 1 {
+                                                    ui.separator();
+                                                    if ui.button(egui::RichText::new("Delete").monospace().size(10.0)
+                                                        .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                                                        wl_delete_idx = Some(i);
+                                                        ui.close_menu();
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    });
+                                // Right-click the combo box header for rename/dup/delete
+                                combo_resp.response.context_menu(|ui| {
+                                    if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                        wl_rename_idx = Some(active_idx);
+                                        ui.close_menu();
+                                    }
+                                    if ui.button(egui::RichText::new("Duplicate").monospace().size(10.0)).clicked() {
+                                        wl_dup_idx = Some(active_idx);
+                                        ui.close_menu();
+                                    }
+                                    if wl_count > 1 {
+                                        ui.separator();
+                                        if ui.button(egui::RichText::new("Delete").monospace().size(10.0)
+                                            .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                                            wl_delete_idx = Some(active_idx);
+                                            ui.close_menu();
+                                        }
+                                    }
+                                });
+                                // "+" button to create new watchlist
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::PLUS).size(12.0).color(t.dim)).frame(false)).clicked() {
+                                    let n = watchlist.saved_watchlists.len() + 1;
+                                    let syms = watchlist.create_watchlist(&format!("Watchlist {}", n));
+                                    if !syms.is_empty() { wl_fetch_syms = syms; }
+                                }
+                            }
+                            // Options toggle (circle icon) — right-aligned
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
+                                let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
+                                let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(11.0).color(opt_color))
+                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)));
+                                if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
+                                if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                            });
+                        });
+                        // Handle deferred rename
+                        if let Some(idx) = wl_rename_idx {
+                            if idx != watchlist.active_watchlist_idx {
+                                wl_switch_to = Some(idx);
+                            }
+                            watchlist.watchlist_name_buf = watchlist.saved_watchlists.get(idx).map(|w| w.name.clone()).unwrap_or_default();
+                            watchlist.watchlist_name_editing = true;
+                        }
+                        // Handle deferred duplicate
+                        if let Some(dup_idx) = wl_dup_idx {
+                            let syms = watchlist.duplicate_watchlist(dup_idx);
+                            if !syms.is_empty() { wl_fetch_syms = syms; }
+                        }
+                        // Handle deferred delete
+                        if let Some(del_idx) = wl_delete_idx {
+                            let syms = watchlist.delete_watchlist(del_idx);
+                            if !syms.is_empty() { wl_fetch_syms = syms; }
+                        }
+                        // Handle watchlist switch
+                        if let Some(idx) = wl_switch_to {
+                            let syms = watchlist.switch_to(idx);
+                            if !syms.is_empty() { wl_fetch_syms = syms; }
+                        }
+                        // Trigger price fetches for new watchlist
+                        if !wl_fetch_syms.is_empty() {
+                            fetch_watchlist_prices(wl_fetch_syms);
+                        }
+                        ui.add_space(2.0);
+
+                        // ── C) Search field ──
                         let search_id = egui::Id::new("wl_search_input");
-                        let search_resp = ui.horizontal(|ui| {
-                            // Options toggle (circle icon)
-                            let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
-                            let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
-                            let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(11.0).color(opt_color))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)));
-                            if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
-                            if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                            // Search input
+                        let has_focus = ui.ctx().memory(|m| m.has_focus(search_id));
+                        let search_bg = if has_focus {
+                            egui::Color32::TRANSPARENT // normal background on focus (frame default)
+                        } else {
+                            color_alpha(t.toolbar_border, 15) // subtle background normally
+                        };
+                        let search_resp = egui::Frame::NONE.fill(search_bg).corner_radius(3.0).show(ui, |ui| {
                             ui.add(
                                 egui::TextEdit::singleline(&mut watchlist.search_query)
                                     .id(search_id)
@@ -3105,8 +3117,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                         // ── Draggable divider + Options scroll ──
                         if show_opts {
-                            // Divider bar — allocate a draggable strip
-                            // Divider — paint a bar and handle drag via raw pointer delta
+                            // Divider bar — allocate a draggable strip, decoupled from egui interaction
                             ui.add_space(2.0);
                             let div_r = ui.available_rect_before_wrap();
                             let div_y = ui.cursor().min.y;
@@ -3118,19 +3129,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     egui::pos2(div_r.left(), div_y + 1.0),
                                     egui::pos2(div_r.right(), div_y + 4.0)),
                                 0.0, color_alpha(t.toolbar_border, 160));
-                            // Use raw pointer for drag — avoids scroll/panel interference
+                            // Decoupled divider drag: track dragging state to avoid scroll/panel interference
                             let pointer = ui.input(|i| i.pointer.hover_pos());
                             let pointer_down = ui.input(|i| i.pointer.primary_down());
                             let pointer_delta = ui.input(|i| i.pointer.delta());
+                            // Start drag when pointer is pressed inside divider rect
                             if let Some(pos) = pointer {
+                                if div_rect.expand(4.0).contains(pos) && pointer_down && !watchlist.divider_dragging {
+                                    watchlist.divider_dragging = true;
+                                }
+                            }
+                            // While dragging, apply delta regardless of cursor position
+                            if watchlist.divider_dragging {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                                if pointer_delta.y.abs() > 0.1 && total_avail > 100.0 {
+                                    watchlist.options_split = (watchlist.options_split + pointer_delta.y / total_avail).clamp(0.15, 0.85);
+                                }
+                                // Release drag when pointer is released
+                                if !pointer_down {
+                                    watchlist.divider_dragging = false;
+                                }
+                            } else if let Some(pos) = pointer {
+                                // Show resize cursor on hover even when not dragging
                                 if div_rect.expand(4.0).contains(pos) {
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                                    if pointer_down && pointer_delta.y.abs() > 0.1 {
-                                        let delta = pointer_delta.y;
-                                        if total_avail > 100.0 {
-                                            watchlist.options_split = (watchlist.options_split + delta / total_avail).clamp(0.15, 0.85);
-                                        }
-                                    }
                                 }
                             }
                             ui.add_space(6.0);
@@ -3151,32 +3173,97 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let active_sym = panes[ap].symbol.clone();
                                 let mut click_opt: Option<(String, f32, bool, String)> = None;
                                 let mut remove_sym: Option<String> = None;
+                                let mut opt_remove_section: Option<usize> = None;
+                                let mut opt_toggle_collapse: Option<usize> = None;
+                                let color_presets = ["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
                                 for si in 0..watchlist.sections.len() {
                                     if !option_section_ids.contains(&watchlist.sections[si].id) { continue; }
-                                    let sec = &watchlist.sections[si];
-                                    let sec_title = sec.title.clone();
-                                    let sec_color = sec.color.clone();
+                                    let sec_id = watchlist.sections[si].id;
+                                    let sec_title = watchlist.sections[si].title.clone();
+                                    let sec_color = watchlist.sections[si].color.clone();
+                                    let sec_collapsed = watchlist.sections[si].collapsed;
+                                    let sec_item_count = watchlist.sections[si].items.len();
                                     let full_w = ui.available_width();
 
-                                    // Section header
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new(&sec_title).monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.5)));
+                                    let section_block_start_y = ui.cursor().min.y;
+
+                                    // Section header with collapse chevron
+                                    let header_resp = ui.horizontal(|ui| {
+                                        ui.set_min_width(full_w);
+                                        ui.set_min_height(20.0);
+                                        let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
+                                        if ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false)).clicked() {
+                                            opt_toggle_collapse = Some(si);
+                                        }
+                                        ui.label(egui::RichText::new(&sec_title).monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
+                                        if sec_collapsed {
+                                            ui.label(egui::RichText::new(format!("({})", sec_item_count)).monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
+                                        }
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            if sec_item_count == 0 {
+                                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim.gamma_multiply(0.3))).frame(false)).clicked() {
+                                                    opt_remove_section = Some(si);
+                                                }
+                                            }
+                                        });
+                                    });
+
+                                    // Right-click context menu on option section header (same as stock sections)
+                                    header_resp.response.context_menu(|ui| {
+                                        // Rename
+                                        if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                            watchlist.renaming_section = Some(sec_id);
+                                            watchlist.rename_buf = sec_title.clone();
+                                            ui.close_menu();
+                                        }
+                                        ui.separator();
+                                        // Color presets
+                                        ui.label(egui::RichText::new("Color").monospace().size(9.0).color(t.dim));
+                                        for row in color_presets.chunks(8) {
+                                            ui.horizontal(|ui| {
+                                                for hex in row {
+                                                    let c = hex_to_color(hex, 1.0);
+                                                    if ui.add(egui::Button::new(egui::RichText::new("\u{25CF}").size(14.0).color(c)).frame(false)).clicked() {
+                                                        if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
+                                                            sec.color = Some(hex.to_string());
+                                                        }
+                                                        watchlist.persist();
+                                                        ui.close_menu();
+                                                    }
+                                                }
+                                            });
+                                        }
+                                        if ui.button(egui::RichText::new("No color").monospace().size(10.0).color(t.dim)).clicked() {
+                                            if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
+                                                sec.color = None;
+                                            }
+                                            watchlist.persist();
+                                            ui.close_menu();
+                                        }
+                                        ui.separator();
+                                        if sec_item_count == 0 {
+                                            if ui.button(egui::RichText::new("Delete section").monospace().size(10.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                                                opt_remove_section = Some(si);
+                                                ui.close_menu();
+                                            }
+                                        }
                                     });
                                     ui.add_space(2.0);
 
-                                    // Section background
-                                    if let Some(ref hex) = sec_color {
-                                        let bg = hex_to_color(hex, 0.07);
-                                        let r = ui.available_rect_before_wrap();
-                                        ui.painter().rect_filled(r, 0.0, bg);
-                                    }
-
-                                    if !sec.collapsed {
-                                        for item in &sec.items {
-                                            let is_call = item.option_type == "C";
+                                    if !sec_collapsed {
+                                        for ii in 0..sec_item_count {
+                                            let item = &watchlist.sections[si].items[ii];
+                                            let item_sym = item.symbol.clone();
+                                            let item_underlying = item.underlying.clone();
+                                            let item_option_type = item.option_type.clone();
+                                            let item_strike = item.strike;
+                                            let item_expiry = item.expiry.clone();
+                                            let item_bid = item.bid;
+                                            let item_ask = item.ask;
+                                            let is_call = item_option_type == "C";
                                             let color = if is_call { t.bull } else { t.bear };
-                                            let is_active = item.symbol == active_sym;
+                                            let is_active = item_sym == active_sym;
                                             let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
 
                                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, 22.0), egui::Sense::click());
@@ -3193,25 +3280,37 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             painter.text(egui::pos2(rect.left() + 4.0, y_c), egui::Align2::LEFT_CENTER,
                                                 badge, egui::FontId::monospace(9.0), color);
                                             painter.text(egui::pos2(rect.left() + 18.0, y_c), egui::Align2::LEFT_CENTER,
-                                                &format!("{} {:.0} {}", item.underlying, item.strike, item.expiry),
+                                                &format!("{} {:.0} {}", item_underlying, item_strike, item_expiry),
                                                 egui::FontId::monospace(10.0), egui::Color32::from_rgb(200, 200, 210));
                                             // Bid x Ask
-                                            if item.bid > 0.0 || item.ask > 0.0 {
+                                            if item_bid > 0.0 || item_ask > 0.0 {
                                                 painter.text(egui::pos2(rect.right() - 4.0, y_c), egui::Align2::RIGHT_CENTER,
-                                                    &format!("{:.2} x {:.2}", item.bid, item.ask),
+                                                    &format!("{:.2} x {:.2}", item_bid, item_ask),
                                                     egui::FontId::monospace(9.0), color);
                                             }
 
                                             if resp.clicked() {
-                                                click_opt = Some((item.underlying.clone(), item.strike, is_call, item.expiry.clone()));
+                                                click_opt = Some((item_underlying.clone(), item_strike, is_call, item_expiry.clone()));
                                             }
 
                                             // X button to remove
                                             let x_rect = egui::Rect::from_min_size(egui::pos2(rect.right() - 16.0, rect.top()), egui::vec2(16.0, 22.0));
                                             if resp.hovered() {
-                                                let x_resp = ui.interact(x_rect, egui::Id::new(("opt_x", si, item.symbol.as_str())), egui::Sense::click());
-                                                if x_resp.clicked() { remove_sym = Some(item.symbol.clone()); }
+                                                let x_resp = ui.interact(x_rect, egui::Id::new(("opt_x", si, ii, "opt_item")), egui::Sense::click());
+                                                if x_resp.clicked() { remove_sym = Some(item_sym.clone()); }
                                             }
+                                        }
+                                    }
+
+                                    // Paint continuous section background tint
+                                    let section_block_end_y = ui.cursor().min.y;
+                                    if let Some(ref hex) = sec_color {
+                                        if section_block_end_y > section_block_start_y {
+                                            let left = ui.min_rect().left();
+                                            let block_rect = egui::Rect::from_min_max(
+                                                egui::pos2(left, section_block_start_y),
+                                                egui::pos2(left + full_w, section_block_end_y));
+                                            ui.painter().rect_filled(block_rect, 0.0, hex_to_color(hex, 0.07));
                                         }
                                     }
                                     ui.add_space(4.0);
@@ -3225,12 +3324,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     ui.add_space(8.0);
                                 }
 
+                                // "+ Section" button at bottom of options area
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
+                                        .frame(false)).clicked() {
+                                        watchlist.add_option_section("New Options");
+                                        watchlist.persist();
+                                    }
+                                });
+
                                 if let Some(opt_info) = click_opt {
                                     open_option_chart = Some(opt_info);
                                 }
                                 if let Some(sym) = remove_sym {
                                     watchlist.remove_symbol(&sym);
                                     watchlist.persist();
+                                }
+                                if let Some(si) = opt_toggle_collapse {
+                                    watchlist.sections[si].collapsed = !watchlist.sections[si].collapsed;
+                                    watchlist.persist();
+                                }
+                                if let Some(si) = opt_remove_section {
+                                    if si < watchlist.sections.len() && watchlist.sections[si].items.is_empty() {
+                                        watchlist.sections.remove(si);
+                                        watchlist.persist();
+                                    }
                                 }
                             });
                         }
@@ -3464,47 +3583,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
 
-                    // ── SAVED TAB ───────────────────────────────────────────
-                    WatchlistTab::Saved => {
-                        // DTE filter
-                        ui.horizontal(|ui| {
-                            for (f, label) in [(-1, "All"), (0, "0DTE"), (1, "1+DTE")] {
-                                let active = watchlist.dte_filter == f;
-                                let color = if active { t.accent } else { t.dim };
-                                if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(color)).frame(false)).clicked() {
-                                    watchlist.dte_filter = f;
-                                }
-                            }
-                        });
-                        ui.add_space(4.0);
-
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            let mut remove_idx: Option<usize> = None;
-                            for (i, opt) in watchlist.saved_options.iter().enumerate() {
-                                let type_label = if opt.is_call { "C" } else { "P" };
-                                let color = if opt.is_call { t.bull } else { t.bear };
-                                let row_resp = ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(&opt.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
-                                    ui.label(egui::RichText::new(format!("{:.0}{}", opt.strike, type_label)).monospace().size(10.0).color(color));
-                                    ui.label(egui::RichText::new(format!("{:.2}", opt.last)).monospace().size(10.0).color(color));
-                                    ui.label(egui::RichText::new(&opt.expiry).monospace().size(8.0).color(t.dim));
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false)).clicked() {
-                                        remove_idx = Some(i);
-                                    }
-                                });
-                                // Click row to open chart
-                                let click = row_resp.response.interact(egui::Sense::click());
-                                if click.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                                if click.clicked() && remove_idx.is_none() {
-                                    open_option_chart = Some((opt.symbol.clone(), opt.strike, opt.is_call, opt.expiry.clone()));
-                                }
-                            }
-                            if let Some(i) = remove_idx { watchlist.saved_options.remove(i); }
-                            if watchlist.saved_options.is_empty() {
-                                dim_label(ui, "Click a contract in\nthe CHAIN tab to save it", t.dim);
-                            }
-                        });
-                    }
                 }
 
                 // ── Handle option chart opening (from any tab) ──
@@ -6031,7 +6109,7 @@ struct SavedOption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum WatchlistTab { Stocks, Chain, Saved }
+enum WatchlistTab { Stocks, Chain }
 
 struct Watchlist {
     open: bool,
@@ -6051,6 +6129,7 @@ struct Watchlist {
     search_refocus: bool, // request refocus on search bar after adding
     options_visible: bool, // toggle options section below stocks
     options_split: f32,    // fraction of height for stocks (0.3..0.9), rest for options
+    divider_dragging: bool, // true while dragging the stocks/options divider
     // Drag-and-drop state
     dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
     drag_start_pos: Option<egui::Pos2>,      // mouse position when drag started
@@ -6103,7 +6182,7 @@ impl Watchlist {
                saved_watchlists, active_watchlist_idx: active_idx,
                watchlist_name_editing: false, watchlist_name_buf: String::new(), watchlist_ctx_menu_idx: None,
                search_query: String::new(), search_results: vec![], search_sel: -1, search_refocus: false,
-               options_visible: true, options_split: 0.6,
+               options_visible: true, options_split: 0.6, divider_dragging: false,
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
@@ -6164,7 +6243,7 @@ impl Watchlist {
         self.sections.iter().flat_map(|s| s.items.iter()).find(|i| i.symbol == sym)
     }
 
-    /// Add a new empty section.
+    /// Add a new empty section (stocks area — inserted before any options sections).
     fn add_section(&mut self, title: &str) {
         let id = self.next_section_id; self.next_section_id += 1;
         let new_sec = WatchlistSection { id, title: title.to_string(), color: None, collapsed: false, items: vec![] };
@@ -6175,6 +6254,14 @@ impl Watchlist {
         } else {
             self.sections.push(new_sec);
         }
+    }
+
+    /// Add a new empty section in the options area (title contains "Options").
+    fn add_option_section(&mut self, title: &str) {
+        let id = self.next_section_id; self.next_section_id += 1;
+        let full_title = if title.contains("Options") { title.to_string() } else { format!("{} Options", title) };
+        let new_sec = WatchlistSection { id, title: full_title, color: None, collapsed: false, items: vec![] };
+        self.sections.push(new_sec);
     }
 
     /// Add an option contract to the "Options" section (auto-creates if needed).
@@ -6193,7 +6280,7 @@ impl Watchlist {
         } else {
             let id = self.next_section_id; self.next_section_id += 1;
             self.sections.push(WatchlistSection {
-                id, title: section_title, color: Some("#9b59b6".to_string()), collapsed: false, items: vec![],
+                id, title: section_title, color: None, collapsed: false, items: vec![],
             });
             self.sections.len() - 1
         };
