@@ -3778,12 +3778,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             });
                             ui.add_space(2.0);
 
-                            // Sort calls descending by strike (highest at top, ATM at bottom near divider)
-                            let mut sorted_calls: Vec<&OptionRow> = calls.iter().collect();
+                            // If price is 656:
+                            // Calls (above divider, top→bottom): 665, 664, 663, ..., 658, 657 ← nearest ATM
+                            // Puts (below divider, top→bottom): 655 ← nearest ATM, 654, 653, ...
+                            let mut sorted_calls: Vec<&OptionRow> = calls.iter()
+                                .filter(|r| r.strike > price)
+                                .collect();
                             sorted_calls.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
 
-                            // Sort puts descending by strike (ATM at top near divider, lowest at bottom)
-                            let mut sorted_puts: Vec<&OptionRow> = puts.iter().collect();
+                            let mut sorted_puts: Vec<&OptionRow> = puts.iter()
+                                .filter(|r| r.strike <= price)
+                                .collect();
                             sorted_puts.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
 
                             // Calls (OTM at top, ATM at bottom)
