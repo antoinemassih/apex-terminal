@@ -7095,7 +7095,8 @@ impl App {
             .with_min_inner_size(PhysicalSize::new(960, 540))
             .with_decorations(false)
             .with_window_icon(make_window_icon())
-            .with_active(true))
+            .with_active(true)
+            .with_maximized(true))
         {
             Ok(w) => {
                 // Enable rounded corners on Windows 11 (DWM)
