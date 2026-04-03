@@ -2628,9 +2628,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             .filter(|s| s.title.contains("Options"))
                             .map(|s| s.id).collect();
 
-                        // Height split for stocks vs options
+                        // Options section always visible when toggled on (even if empty)
+                        let show_opts = watchlist.options_visible;
                         let total_avail = ui.available_height();
-                        let show_opts = watchlist.options_visible && !option_section_ids.is_empty();
                         let stocks_h = if show_opts { (total_avail * watchlist.options_split).max(60.0) } else { total_avail };
 
                         egui::ScrollArea::vertical().id_salt("wl_stocks").max_height(stocks_h).show(ui, |ui| {
@@ -2652,42 +2652,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // Section color presets for the color picker
                             let color_presets = ["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
-                            let mut options_divider_drawn = false;
 
                             for si in 0..section_count {
                                 let sec_id = watchlist.sections[si].id;
                                 let is_option_section = option_section_ids.contains(&sec_id);
 
-                                // Skip option sections if toggled off
-                                if is_option_section && !watchlist.options_visible { continue; }
-
-                                // Draw thick divider + "Section" button before first option section
-                                let is_first_opt = is_option_section && !options_divider_drawn;
-                                if is_first_opt {
-                                    options_divider_drawn = true;
-                                    // "+ Section" button (in stocks area, before options)
-                                    ui.add_space(4.0);
-                                    ui.horizontal(|ui| {
-                                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
-                                            .frame(false)).clicked() {
-                                            watchlist.add_section("New Section");
-                                            watchlist.persist();
-                                        }
-                                    });
-                                    ui.add_space(4.0);
-                                    // Thick visual divider
-                                    let r = ui.available_rect_before_wrap();
-                                    let y = ui.cursor().min.y;
-                                    ui.painter().rect_filled(
-                                        egui::Rect::from_min_max(egui::pos2(r.left(), y), egui::pos2(r.right(), y + 3.0)),
-                                        0.0, color_alpha(t.toolbar_border, 140));
-                                    ui.add_space(6.0);
-                                    // Options header
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("OPTIONS").monospace().size(9.0).strong().color(t.accent.gamma_multiply(0.7)));
-                                    });
-                                    ui.add_space(4.0);
-                                }
+                                // Option sections render in the bottom options scroll, not here
+                                if is_option_section { continue; }
 
                                 let sec_title = watchlist.sections[si].title.clone();
                                 let sec_color = watchlist.sections[si].color.clone();
@@ -2695,7 +2666,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let sec_item_count = watchlist.sections[si].items.len();
 
                                 // ── Section divider line (skip if thick options divider just drawn) ──
-                                if si > 0 && !is_first_opt {
+                                if si > 0 {
                                     ui.add_space(2.0);
                                     let cursor_y = ui.cursor().min.y;
                                     ui.painter().line_segment(
@@ -3102,17 +3073,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
 
                             // ── Add section button ──
-                            // "+ Section" at bottom (only if no options divider already has one)
-                            if !options_divider_drawn {
-                                ui.add_space(6.0);
-                                ui.horizontal(|ui| {
-                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
-                                        .frame(false)).clicked() {
-                                        watchlist.add_section("New Section");
-                                        watchlist.persist();
-                                    }
-                                });
-                            }
+                            // "+ Section" always at bottom of stocks scroll
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
+                                    .frame(false)).clicked() {
+                                    watchlist.add_section("New Section");
+                                    watchlist.persist();
+                                }
+                            });
 
                             if let Some(sym) = click_sym {
                                 panes[ap].pending_symbol_change = Some(sym.clone());
@@ -3136,33 +3105,41 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                         // ── Draggable divider + Options scroll ──
                         if show_opts {
-                            // Divider bar — draggable to resize
-                            ui.add_space(2.0);
+                            // Divider bar — allocate a draggable strip
                             let div_r = ui.available_rect_before_wrap();
-                            let div_y = ui.cursor().min.y;
-                            let div_rect = egui::Rect::from_min_max(
-                                egui::pos2(div_r.left(), div_y - 3.0),
-                                egui::pos2(div_r.right(), div_y + 6.0));
+                            let (div_alloc_rect, div_resp) = ui.allocate_exact_size(
+                                egui::vec2(div_r.width(), 8.0), egui::Sense::click_and_drag());
+                            // Paint the 3px bar centered in the 8px strip
+                            let bar_y = div_alloc_rect.center().y - 1.5;
                             ui.painter().rect_filled(
-                                egui::Rect::from_min_max(egui::pos2(div_r.left(), div_y), egui::pos2(div_r.right(), div_y + 3.0)),
-                                0.0, color_alpha(t.toolbar_border, 140));
-                            let div_resp = ui.interact(div_rect, egui::Id::new("wl_split_divider"), egui::Sense::click_and_drag());
+                                egui::Rect::from_min_max(
+                                    egui::pos2(div_alloc_rect.left(), bar_y),
+                                    egui::pos2(div_alloc_rect.right(), bar_y + 3.0)),
+                                0.0, color_alpha(t.toolbar_border, 160));
                             if div_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical); }
                             if div_resp.dragged() {
                                 let delta = div_resp.drag_delta().y;
-                                if total_avail > 0.0 {
-                                    watchlist.options_split = (watchlist.options_split + delta / total_avail).clamp(0.2, 0.85);
+                                if total_avail > 100.0 {
+                                    watchlist.options_split = (watchlist.options_split + delta / total_avail).clamp(0.15, 0.85);
                                 }
                             }
-                            ui.add_space(4.0);
 
                             // OPTIONS label
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("OPTIONS").monospace().size(9.0).strong().color(t.accent.gamma_multiply(0.7)));
+                                let opt_count: usize = watchlist.sections.iter()
+                                    .filter(|s| s.title.contains("Options"))
+                                    .map(|s| s.items.len()).sum();
+                                if opt_count > 0 {
+                                    ui.label(egui::RichText::new(format!("({})", opt_count)).monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                }
                             });
                             ui.add_space(2.0);
 
-                            // Options scroll area
+                            // Options scroll area with subtle tinted background
+                            let opts_rect = ui.available_rect_before_wrap();
+                            ui.painter().rect_filled(opts_rect, 0.0, color_alpha(t.accent, 8));
+
                             egui::ScrollArea::vertical().id_salt("wl_options").show(ui, |ui| {
                                 let active_sym = panes[ap].symbol.clone();
                                 let mut click_opt: Option<(String, f32, bool, String)> = None;
@@ -3231,6 +3208,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
                                     }
                                     ui.add_space(4.0);
+                                }
+
+                                // Empty state
+                                if option_section_ids.is_empty() {
+                                    ui.add_space(8.0);
+                                    ui.label(egui::RichText::new("No options saved").monospace().size(10.0).color(t.dim.gamma_multiply(0.35)));
+                                    ui.label(egui::RichText::new("Shift+click contracts in the CHAIN tab").monospace().size(8.0).color(t.dim.gamma_multiply(0.25)));
+                                    ui.add_space(8.0);
                                 }
 
                                 if let Some(opt_info) = click_opt {
