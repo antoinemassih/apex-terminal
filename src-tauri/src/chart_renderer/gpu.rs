@@ -1173,6 +1173,31 @@ fn tick_simulation(chart: &mut Chart) {
 fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
     use crate::monitoring::{span_begin, span_end};
 
+    // ── Watchlist divider drag (handled at top level to avoid panel interference) ──
+    if watchlist.divider_y > 0.0 && watchlist.options_visible {
+        let pointer = ctx.input(|i| i.pointer.hover_pos());
+        let primary_down = ctx.input(|i| i.pointer.primary_down());
+        let delta_y = ctx.input(|i| i.pointer.delta().y);
+
+        if !watchlist.divider_dragging {
+            // Start drag when clicking near the divider
+            if let Some(pos) = pointer {
+                if (pos.y - watchlist.divider_y).abs() < 8.0 && primary_down {
+                    watchlist.divider_dragging = true;
+                }
+            }
+        }
+        if watchlist.divider_dragging {
+            ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            if delta_y.abs() > 0.0 && watchlist.divider_total_h > 50.0 {
+                watchlist.options_split = (watchlist.options_split + delta_y / watchlist.divider_total_h).clamp(0.15, 0.85);
+            }
+            if !primary_down {
+                watchlist.divider_dragging = false;
+            }
+        }
+    }
+
     // Route incoming commands to the matching pane (by symbol), or active pane as fallback
     span_begin("cmd_routing");
     while let Ok(cmd) = rx.try_recv() {
@@ -3129,29 +3154,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     egui::pos2(div_r.left(), div_y + 1.0),
                                     egui::pos2(div_r.right(), div_y + 4.0)),
                                 0.0, color_alpha(t.toolbar_border, 160));
-                            // Decoupled divider drag: track dragging state to avoid scroll/panel interference
-                            let pointer = ui.input(|i| i.pointer.hover_pos());
-                            let pointer_down = ui.input(|i| i.pointer.primary_down());
-                            let pointer_delta = ui.input(|i| i.pointer.delta());
-                            // Start drag when pointer is pressed inside divider rect
-                            if let Some(pos) = pointer {
-                                if div_rect.expand(4.0).contains(pos) && pointer_down && !watchlist.divider_dragging {
-                                    watchlist.divider_dragging = true;
-                                }
-                            }
-                            // While dragging, apply delta regardless of cursor position
-                            if watchlist.divider_dragging {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                                if pointer_delta.y.abs() > 0.1 && total_avail > 100.0 {
-                                    watchlist.options_split = (watchlist.options_split + pointer_delta.y / total_avail).clamp(0.15, 0.85);
-                                }
-                                // Release drag when pointer is released
-                                if !pointer_down {
-                                    watchlist.divider_dragging = false;
-                                }
-                            } else if let Some(pos) = pointer {
-                                // Show resize cursor on hover even when not dragging
-                                if div_rect.expand(4.0).contains(pos) {
+                            // Store divider Y position for drag handling outside the panel
+                            watchlist.divider_y = div_rect.center().y;
+                            watchlist.divider_total_h = total_avail;
+                            // Show resize cursor on hover
+                            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                                if div_rect.expand(6.0).contains(pos) || watchlist.divider_dragging {
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                                 }
                             }
@@ -6130,6 +6138,8 @@ struct Watchlist {
     options_visible: bool, // toggle options section below stocks
     options_split: f32,    // fraction of height for stocks (0.3..0.9), rest for options
     divider_dragging: bool, // true while dragging the stocks/options divider
+    divider_y: f32,        // screen Y of divider (set during render)
+    divider_total_h: f32,  // total available height for split calculation
     // Drag-and-drop state
     dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
     drag_start_pos: Option<egui::Pos2>,      // mouse position when drag started
@@ -6182,7 +6192,7 @@ impl Watchlist {
                saved_watchlists, active_watchlist_idx: active_idx,
                watchlist_name_editing: false, watchlist_name_buf: String::new(), watchlist_ctx_menu_idx: None,
                search_query: String::new(), search_results: vec![], search_sel: -1, search_refocus: false,
-               options_visible: true, options_split: 0.6, divider_dragging: false,
+               options_visible: true, options_split: 0.6, divider_dragging: false, divider_y: 0.0, divider_total_h: 0.0,
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
