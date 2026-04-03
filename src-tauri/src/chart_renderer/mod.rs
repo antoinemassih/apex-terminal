@@ -136,5 +136,18 @@ pub enum ChartCommand {
         bars: Vec<Bar>,
         timestamps: Vec<i64>,
     },
+    /// Options chain data fetched from ApexIB
+    ChainData {
+        symbol: String,
+        dte: i32,
+        calls: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>, // strike, last, bid, ask, vol, oi, iv, itm, contract
+        puts: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
+    },
+    /// Symbol search results from ApexIB
+    SearchResults {
+        query: String,
+        results: Vec<(String, String)>, // (symbol, name)
+        source: String, // "watchlist" or "chain"
+    },
 }
 

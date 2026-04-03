@@ -1767,41 +1767,64 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     .iter().map(|s| (s.symbol.to_string(), s.name.to_string(), String::new())).collect();
                 chart.picker_results = static_results;
 
-                // Fire background Yahoo Finance search
+                // Fire background search: ApexIB first, Yahoo fallback
                 chart.picker_searching = true;
                 let (tx, rx) = mpsc::channel();
                 chart.picker_rx = Some(rx);
                 let query = q.clone();
                 std::thread::spawn(move || {
+                    let client = reqwest::blocking::Client::builder()
+                        .user_agent("Mozilla/5.0")
+                        .timeout(std::time::Duration::from_secs(3))
+                        .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
                     let mut results: Vec<(String, String, String)> = Vec::new();
-                    // Yahoo Finance search API
-                    let url = format!(
-                        "https://query2.finance.yahoo.com/v1/finance/search?q={}&quotesCount=15&newsCount=0",
-                        query
-                    );
-                    if let Ok(resp) = reqwest::blocking::Client::builder()
-                        .user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new())
-                        .get(&url).timeout(std::time::Duration::from_secs(3)).send()
-                    {
-                        if let Ok(json) = resp.json::<serde_json::Value>() {
-                            if let Some(quotes) = json.get("quotes").and_then(|q| q.as_array()) {
-                                for q in quotes.iter().take(MAX_SEARCH_RESULTS) {
-                                    if let Some(sym) = q.get("symbol").and_then(|s| s.as_str()) {
-                                        let name = q.get("shortname").or_else(|| q.get("longname"))
-                                            .and_then(|n| n.as_str()).unwrap_or("").to_string();
-                                        let exchange = q.get("exchDisp").and_then(|e| e.as_str()).unwrap_or("").to_string();
-                                        let type_disp = q.get("typeDisp").and_then(|t| t.as_str()).unwrap_or("").to_string();
-                                        let tag = if !exchange.is_empty() && !type_disp.is_empty() {
-                                            format!("{} · {}", exchange, type_disp)
-                                        } else if !exchange.is_empty() { exchange }
-                                        else { type_disp };
-                                        results.push((sym.to_string(), name, tag));
+
+                    // Try ApexIB search first
+                    let apexib_url = format!("{}/search/{}", APEXIB_URL, query);
+                    if let Ok(resp) = client.get(&apexib_url).send() {
+                        if resp.status().is_success() {
+                            if let Ok(json) = resp.json::<serde_json::Value>() {
+                                if let Some(arr) = json.as_array() {
+                                    for item in arr.iter().take(MAX_SEARCH_RESULTS) {
+                                        if let Some(sym) = item.get("symbol").and_then(|v| v.as_str()) {
+                                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let sec_type = item.get("secType").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            results.push((sym.to_string(), name, sec_type));
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    // If Yahoo returned nothing, use static
+
+                    // Fallback: Yahoo Finance search API
+                    if results.is_empty() {
+                        let url = format!(
+                            "https://query2.finance.yahoo.com/v1/finance/search?q={}&quotesCount=15&newsCount=0",
+                            query
+                        );
+                        if let Ok(resp) = client.get(&url).send() {
+                            if let Ok(json) = resp.json::<serde_json::Value>() {
+                                if let Some(quotes) = json.get("quotes").and_then(|q| q.as_array()) {
+                                    for q in quotes.iter().take(MAX_SEARCH_RESULTS) {
+                                        if let Some(sym) = q.get("symbol").and_then(|s| s.as_str()) {
+                                            let name = q.get("shortname").or_else(|| q.get("longname"))
+                                                .and_then(|n| n.as_str()).unwrap_or("").to_string();
+                                            let exchange = q.get("exchDisp").and_then(|e| e.as_str()).unwrap_or("").to_string();
+                                            let type_disp = q.get("typeDisp").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                                            let tag = if !exchange.is_empty() && !type_disp.is_empty() {
+                                                format!("{} · {}", exchange, type_disp)
+                                            } else if !exchange.is_empty() { exchange }
+                                            else { type_disp };
+                                            results.push((sym.to_string(), name, tag));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // If both returned nothing, use static
                     if results.is_empty() {
                         results = ui_kit::symbols::search_symbols(&query, MAX_SEARCH_RESULTS)
                             .iter().map(|s| (s.symbol.to_string(), s.name.to_string(), String::new())).collect();
@@ -2597,8 +2620,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if search_resp.changed() {
                             watchlist.search_sel = -1; // reset selection on text change
                             if !watchlist.search_query.is_empty() {
+                                // Immediate: static results
                                 watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.search_query, 8)
                                     .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
+                                // Background: ApexIB search (results merge via SearchResults command)
+                                fetch_search_background(watchlist.search_query.clone(), "watchlist".to_string());
                             } else {
                                 watchlist.search_results.clear();
                             }
@@ -3396,10 +3422,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let chain_price = watchlist.find_item(&watchlist.chain_symbol).map(|i| i.price)
                             .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
                             .unwrap_or(100.0);
-                        if chain_price > 0.0 && watchlist.chain_0dte.0.is_empty() {
+                        if chain_price > 0.0 && watchlist.chain_0dte.0.is_empty() && !watchlist.chain_loading {
                             let ns = watchlist.chain_num_strikes;
-                            watchlist.chain_0dte = build_chain(chain_price, ns, 0);
-                            watchlist.chain_far = build_chain(chain_price, ns, watchlist.chain_far_dte);
+                            let sym = watchlist.chain_symbol.clone();
+                            let far_dte = watchlist.chain_far_dte;
+                            watchlist.chain_loading = true;
+                            watchlist.chain_last_fetch = Some(std::time::Instant::now());
+                            fetch_chain_background(sym.clone(), ns, 0, chain_price);
+                            fetch_chain_background(sym, ns, far_dte, chain_price);
                         }
 
                         // ── Controls FIRST: strikes ± | DTE selector | sel toggle ──
@@ -3407,14 +3437,22 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             dim_label(ui, "strikes", t.dim);
                             if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(16.0, 16.0))).clicked() {
                                 watchlist.chain_num_strikes = watchlist.chain_num_strikes.saturating_sub(1).max(1);
-                                watchlist.chain_0dte = build_chain(chain_price, watchlist.chain_num_strikes, 0);
-                                watchlist.chain_far = build_chain(chain_price, watchlist.chain_num_strikes, watchlist.chain_far_dte);
+                                let sym = watchlist.chain_symbol.clone();
+                                let ns = watchlist.chain_num_strikes;
+                                let far_dte = watchlist.chain_far_dte;
+                                watchlist.chain_loading = true;
+                                fetch_chain_background(sym.clone(), ns, 0, chain_price);
+                                fetch_chain_background(sym, ns, far_dte, chain_price);
                             }
                             ui.label(egui::RichText::new(format!("{}", watchlist.chain_num_strikes)).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
                             if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0)).min_size(egui::vec2(16.0, 16.0))).clicked() {
                                 watchlist.chain_num_strikes += 1;
-                                watchlist.chain_0dte = build_chain(chain_price, watchlist.chain_num_strikes, 0);
-                                watchlist.chain_far = build_chain(chain_price, watchlist.chain_num_strikes, watchlist.chain_far_dte);
+                                let sym = watchlist.chain_symbol.clone();
+                                let ns = watchlist.chain_num_strikes;
+                                let far_dte = watchlist.chain_far_dte;
+                                watchlist.chain_loading = true;
+                                fetch_chain_background(sym.clone(), ns, 0, chain_price);
+                                fetch_chain_background(sym, ns, far_dte, chain_price);
                             }
 
                             // DTE dropdown
@@ -3424,7 +3462,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 .show_ui(ui, |ui| {
                                     for (d, label) in &dte_labels {
                                         if ui.selectable_value(&mut watchlist.chain_far_dte, *d, *label).changed() {
-                                            watchlist.chain_far = build_chain(chain_price, watchlist.chain_num_strikes, *d);
+                                            let sym = watchlist.chain_symbol.clone();
+                                            watchlist.chain_loading = true;
+                                            fetch_chain_background(sym, watchlist.chain_num_strikes, *d, chain_price);
                                         }
                                     }
                                 });
@@ -3466,16 +3506,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 ui.add_space(6.0);
                                 ui.label(egui::RichText::new(format!("${:.2}", chain_price)).monospace().size(14.0).color(egui::Color32::from_rgb(220, 220, 230)));
                             }
-                            // Search
+                            // Search — static immediate + ApexIB background
                             if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
                                 watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.chain_sym_input, 5)
                                     .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
+                                // Also fire ApexIB search in background
+                                fetch_search_background(watchlist.chain_sym_input.clone(), "chain".to_string());
                             }
                             if sym_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain_sym_input.is_empty() {
                                 watchlist.chain_symbol = watchlist.chain_sym_input.trim().to_uppercase();
                                 watchlist.chain_sym_input.clear();
                                 watchlist.search_results.clear();
                                 watchlist.chain_0dte = (vec![], vec![]);
+                                watchlist.chain_loading = false; // reset loading on symbol change
                             }
                         });
                         // Search suggestions popup
@@ -3488,6 +3531,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         watchlist.chain_sym_input.clear();
                                         watchlist.search_results.clear();
                                         watchlist.chain_0dte = (vec![], vec![]);
+                                        watchlist.chain_loading = false; // reset on symbol change
                                     }
                                 }
                             });
@@ -3500,6 +3544,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             [egui::pos2(sep_r.left(), ui.cursor().min.y), egui::pos2(sep_r.right(), ui.cursor().min.y)],
                             egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 40)));
                         ui.add_space(4.0);
+
+                        // Loading indicator
+                        if watchlist.chain_loading {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(egui::RichText::new("Loading chain...").monospace().size(10.0).color(t.dim));
+                            });
+                        }
 
                         // ── Column layout ──
                         // Each data column needs space for ~8 chars of monospace 10px (~6.5px each = ~52px)
@@ -6244,6 +6296,8 @@ struct Watchlist {
     chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
     chain_far: (Vec<OptionRow>, Vec<OptionRow>),   // (calls, puts) for far DTE
     chain_select_mode: bool,
+    chain_loading: bool,       // true while fetching chain from ApexIB
+    chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
     // Saved options
     saved_options: Vec<SavedOption>,
     dte_filter: i32,
@@ -6268,7 +6322,8 @@ impl Watchlist {
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
-               chain_select_mode: false, saved_options: vec![], dte_filter: -1 }
+               chain_select_mode: false, chain_loading: false, chain_last_fetch: None,
+               saved_options: vec![], dte_filter: -1 }
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -6505,25 +6560,158 @@ fn build_chain(underlying: f32, num_strikes: usize, dte: i32) -> (Vec<OptionRow>
     (calls, puts)
 }
 
+/// Fetch options chain from ApexIB in background. Sends ChainData command when done.
+/// Falls back to simulated build_chain if the API is unreachable.
+fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlying_price: f32) {
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("apex-native")
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new());
+
+        // Build expiration query param: for 0DTE use today, otherwise offset by dte days
+        // The API accepts strikeCount and expiration (ISO date) or dte parameter
+        let url = format!("{}/options/{}?strikeCount={}&dte={}", APEXIB_URL, symbol, num_strikes, dte);
+
+        let send_chain = |calls: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
+                          puts: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>| {
+            let cmd = ChartCommand::ChainData {
+                symbol: symbol.clone(),
+                dte,
+                calls,
+                puts,
+            };
+            crate::send_to_native_chart(cmd);
+        };
+
+        match client.get(&url).send() {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(json) = resp.json::<serde_json::Value>() {
+                    let parse_rows = |key: &str| -> Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)> {
+                        json.get(key).and_then(|v| v.as_array()).map(|arr| {
+                            arr.iter().filter_map(|row| {
+                                let strike = row.get("strike")?.as_f64()? as f32;
+                                let last = row.get("lastPrice").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                let bid = row.get("bid").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                let ask = row.get("ask").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                let vol = row.get("volume").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                let oi = row.get("openInterest").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                let iv = row.get("impliedVolatility").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                let itm = row.get("inTheMoney").and_then(|v| v.as_bool()).unwrap_or(false);
+                                let contract = row.get("contractSymbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                Some((strike, last, bid, ask, vol, oi, iv, itm, contract))
+                            }).collect()
+                        }).unwrap_or_default()
+                    };
+
+                    let calls = parse_rows("calls");
+                    let puts = parse_rows("puts");
+
+                    if !calls.is_empty() || !puts.is_empty() {
+                        eprintln!("[apexib] Fetched chain for {} dte={}: {} calls, {} puts", symbol, dte, calls.len(), puts.len());
+                        send_chain(calls, puts);
+                        return;
+                    }
+                }
+            }
+            Ok(resp) => {
+                eprintln!("[apexib] Chain fetch for {} dte={} returned status {}", symbol, dte, resp.status());
+            }
+            Err(e) => {
+                eprintln!("[apexib] Chain fetch for {} dte={} failed: {}", symbol, dte, e);
+            }
+        }
+
+        // Fallback: use simulated chain
+        eprintln!("[apexib] Falling back to simulated chain for {} dte={}", symbol, dte);
+        if underlying_price > 0.0 {
+            let (sim_calls, sim_puts) = build_chain(underlying_price, num_strikes, dte);
+            let calls: Vec<_> = sim_calls.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
+            let puts: Vec<_> = sim_puts.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
+            send_chain(calls, puts);
+        }
+    });
+}
+
+/// Fetch symbol search results from ApexIB in background.
+fn fetch_search_background(query: String, source: String) {
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("apex-native")
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new());
+
+        let url = format!("{}/search/{}", APEXIB_URL, query);
+        let mut results: Vec<(String, String)> = Vec::new();
+
+        if let Ok(resp) = client.get(&url).send() {
+            if resp.status().is_success() {
+                if let Ok(json) = resp.json::<serde_json::Value>() {
+                    if let Some(arr) = json.as_array() {
+                        for item in arr.iter().take(16) {
+                            if let Some(sym) = item.get("symbol").and_then(|v| v.as_str()) {
+                                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                results.push((sym.to_string(), name));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !results.is_empty() {
+            let cmd = ChartCommand::SearchResults {
+                query,
+                results,
+                source,
+            };
+            crate::send_to_native_chart(cmd);
+        }
+    });
+}
+
 /// Fetch daily previous close for all watchlist symbols (background thread).
+/// Tries ApexIB first (bars endpoint), falls back to Yahoo Finance.
 fn fetch_watchlist_prices(symbols: Vec<String>) {
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::builder()
-            .user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+            .user_agent("Mozilla/5.0")
+            .timeout(std::time::Duration::from_secs(5))
+            .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
         for sym in &symbols {
-            // Try Redis cache first, then Yahoo
+            // Try Redis cache first
             if let Some(bars) = crate::bar_cache::get(sym, "1d") {
                 if bars.len() >= 2 {
                     let price = bars.last().map(|b| b.close as f32).unwrap_or(0.0);
                     let prev = bars[bars.len()-2].close as f32;
-                    // Send via broadcast channel
                     let cmd = ChartCommand::WatchlistPrice { symbol: sym.clone(), price, prev_close: prev };
                     crate::send_to_native_chart(cmd);
                     continue;
                 }
             }
+
+            // Try ApexIB bars endpoint
+            let apexib_ok = (|| -> Option<()> {
+                let url = format!("{}/bars/{}?interval=1d&limit=2", APEXIB_URL, sym);
+                let resp = client.get(&url).send().ok()?;
+                if !resp.status().is_success() { return None; }
+                let json = resp.json::<serde_json::Value>().ok()?;
+                let bars = json.as_array()?;
+                if bars.len() < 2 { return None; }
+                let prev = bars[0].get("close").and_then(|v| v.as_f64())? as f32;
+                let price = bars[1].get("close").and_then(|v| v.as_f64())? as f32;
+                let cmd = ChartCommand::WatchlistPrice { symbol: sym.clone(), price, prev_close: prev };
+                crate::send_to_native_chart(cmd);
+                Some(())
+            })();
+
+            if apexib_ok.is_some() { continue; }
+
+            // Fallback: Yahoo Finance
             let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=5d", sym);
-            if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(5)).send() {
+            if let Ok(resp) = client.get(&url).send() {
                 if let Ok(json) = resp.json::<serde_json::Value>() {
                     if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
                         crate::bar_cache::set(sym, "1d", &bars);
@@ -6814,6 +7002,41 @@ impl ApplicationHandler for App {
                         ChartCommand::WatchlistPrice { ref symbol, price, prev_close } => {
                             cw.watchlist.set_price(symbol, price);
                             cw.watchlist.set_prev_close(symbol, prev_close);
+                        }
+                        ChartCommand::ChainData { ref symbol, dte, ref calls, ref puts } => {
+                            if *symbol == cw.watchlist.chain_symbol {
+                                let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
+                                    data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
+                                        strike: *strike, last: *last, bid: *bid, ask: *ask,
+                                        volume: *vol, oi: *oi, iv: *iv, itm: *itm, contract: contract.clone(),
+                                    }).collect()
+                                };
+                                if dte == 0 {
+                                    cw.watchlist.chain_0dte = (to_rows(calls), to_rows(puts));
+                                } else {
+                                    cw.watchlist.chain_far = (to_rows(calls), to_rows(puts));
+                                }
+                                cw.watchlist.chain_loading = false;
+                            }
+                        }
+                        ChartCommand::SearchResults { ref query, ref results, ref source } => {
+                            // Only apply if query still matches current search
+                            if source == "watchlist" && !query.is_empty()
+                                && cw.watchlist.search_query.to_lowercase().starts_with(&query.to_lowercase()) {
+                                // Merge: keep static results and append API results that aren't already present
+                                for (sym, name) in results {
+                                    if !cw.watchlist.search_results.iter().any(|(s, _)| s == sym) {
+                                        cw.watchlist.search_results.push((sym.clone(), name.clone()));
+                                    }
+                                }
+                            } else if source == "chain" && !query.is_empty()
+                                && cw.watchlist.chain_sym_input.to_lowercase().starts_with(&query.to_lowercase()) {
+                                for (sym, name) in results {
+                                    if !cw.watchlist.search_results.iter().any(|(s, _)| s == sym) {
+                                        cw.watchlist.search_results.push((sym.clone(), name.clone()));
+                                    }
+                                }
+                            }
                         }
                         other => cmds_to_requeue.push(other),
                     }
