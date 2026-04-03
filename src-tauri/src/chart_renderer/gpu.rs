@@ -1175,26 +1175,35 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Watchlist divider drag (handled at top level to avoid panel interference) ──
     if watchlist.divider_y > 0.0 && watchlist.options_visible {
-        let pointer = ctx.input(|i| i.pointer.hover_pos());
+        let pointer_pos = ctx.input(|i| i.pointer.latest_pos());
+        let primary_pressed = ctx.input(|i| i.pointer.primary_pressed());
         let primary_down = ctx.input(|i| i.pointer.primary_down());
-        let delta_y = ctx.input(|i| i.pointer.delta().y);
+        let primary_released = ctx.input(|i| i.pointer.primary_released());
 
-        if !watchlist.divider_dragging {
-            // Start drag when clicking near the divider
-            if let Some(pos) = pointer {
-                if (pos.y - watchlist.divider_y).abs() < 8.0 && primary_down {
+        // Start drag on press near divider
+        if primary_pressed {
+            if let Some(pos) = pointer_pos {
+                if (pos.y - watchlist.divider_y).abs() < 10.0 {
                     watchlist.divider_dragging = true;
                 }
             }
         }
-        if watchlist.divider_dragging {
-            ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
-            if delta_y.abs() > 0.0 && watchlist.divider_total_h > 50.0 {
-                watchlist.options_split = (watchlist.options_split + delta_y / watchlist.divider_total_h).clamp(0.15, 0.85);
+        // During drag, compute split from absolute Y position
+        if watchlist.divider_dragging && primary_down {
+            if let Some(pos) = pointer_pos {
+                ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                // divider_y is the absolute screen Y of the divider
+                // divider_total_h is the total height available for stocks+options
+                // The stocks area starts at divider_y - stocks_h and ends at divider_y
+                // We want: new divider_y = pos.y, solve for split
+                let stocks_start_y = watchlist.divider_y - watchlist.divider_total_h * watchlist.options_split;
+                let new_split = (pos.y - stocks_start_y) / watchlist.divider_total_h;
+                watchlist.options_split = new_split.clamp(0.15, 0.85);
             }
-            if !primary_down {
-                watchlist.divider_dragging = false;
-            }
+        }
+        // End drag
+        if primary_released && watchlist.divider_dragging {
+            watchlist.divider_dragging = false;
         }
     }
 
