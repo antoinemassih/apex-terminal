@@ -7026,7 +7026,18 @@ impl GpuCtx {
         surface.configure(&device, &config);
 
         let egui_ctx = egui::Context::default();
-        egui_ctx.set_visuals(egui::Visuals::dark());
+        let mut visuals = egui::Visuals::dark();
+        // Subtle rounded corners on all widgets
+        let r3 = egui::CornerRadius::same(3);
+        let r6 = egui::CornerRadius::same(6);
+        visuals.window_corner_radius = r6;
+        visuals.menu_corner_radius = egui::CornerRadius::same(4);
+        visuals.widgets.noninteractive.corner_radius = r3;
+        visuals.widgets.inactive.corner_radius = r3;
+        visuals.widgets.hovered.corner_radius = r3;
+        visuals.widgets.active.corner_radius = r3;
+        visuals.widgets.open.corner_radius = r3;
+        egui_ctx.set_visuals(visuals);
         ui_kit::icons::init_icons(&egui_ctx);
         start_account_poller();
         let egui_state = egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, &*window, Some(window.scale_factor() as f32), None, None);
