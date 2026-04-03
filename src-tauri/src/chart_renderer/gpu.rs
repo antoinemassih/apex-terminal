@@ -6562,13 +6562,23 @@ fn build_chain(underlying: f32, num_strikes: usize, dte: i32) -> (Vec<OptionRow>
 
 /// Fetch options chain from ApexIB in background. Sends ChainData command when done.
 /// Falls back to simulated build_chain if the API is unreachable.
+/// Shared HTTP client for ApexIB — avoids TLS handshake per request
+fn apexib_client() -> &'static reqwest::blocking::Client {
+    use std::sync::OnceLock;
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .user_agent("apex-native")
+            .timeout(std::time::Duration::from_secs(10))
+            .pool_max_idle_per_host(2)
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new())
+    })
+}
+
 fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlying_price: f32) {
     std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("apex-native")
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .unwrap_or_else(|_| reqwest::blocking::Client::new());
+        let client = apexib_client();
 
         // Build expiration query param: for 0DTE use today, otherwise offset by dte days
         // The API accepts strikeCount and expiration (ISO date) or dte parameter
@@ -6644,11 +6654,7 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
 /// Fetch symbol search results from ApexIB in background.
 fn fetch_search_background(query: String, source: String) {
     std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("apex-native")
-            .timeout(std::time::Duration::from_secs(3))
-            .build()
-            .unwrap_or_else(|_| reqwest::blocking::Client::new());
+        let client = apexib_client();
 
         let url = format!("{}/search/{}", APEXIB_URL, query);
         let mut results: Vec<(String, String)> = Vec::new();
@@ -6683,6 +6689,7 @@ fn fetch_search_background(query: String, source: String) {
 /// Tries ApexIB first (bars endpoint), falls back to Yahoo Finance.
 fn fetch_watchlist_prices(symbols: Vec<String>) {
     std::thread::spawn(move || {
+        let ib_client = apexib_client();
         let client = reqwest::blocking::Client::builder()
             .user_agent("Mozilla/5.0")
             .timeout(std::time::Duration::from_secs(5))
