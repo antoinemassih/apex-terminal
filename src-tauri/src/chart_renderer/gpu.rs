@@ -5839,7 +5839,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // Drag: pan chart OR move drawing OR move order
-        if chart.draw_tool.is_empty() && resp.drag_started_by(egui::PointerButton::Primary) && !ctx.is_pointer_over_area() {
+        if chart.draw_tool.is_empty() && resp.drag_started_by(egui::PointerButton::Primary) {
             if let Some(pos) = resp.interact_pointer_pos() {
                 // Check order lines first
                 let mut hit_order = false;
@@ -6785,9 +6785,13 @@ fn apexib_client() -> &'static reqwest::blocking::Client {
 /// Fast API fetch using curl subprocess — bypasses reqwest TLS issues on Windows
 fn apexib_curl(path: &str) -> Option<serde_json::Value> {
     let url = format!("{}{}", APEXIB_URL, path);
-    let output = std::process::Command::new("curl")
-        .args(&["-sL", "--max-time", "10", &url])
-        .output().ok()?;
+    #[cfg(windows)]
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut cmd = std::process::Command::new("curl");
+    cmd.args(&["-sL", "--max-time", "10", &url]);
+    #[cfg(windows)]
+    { use std::os::windows::process::CommandExt; cmd.creation_flags(CREATE_NO_WINDOW); }
+    let output = cmd.output().ok()?;
     if output.status.success() {
         serde_json::from_slice(&output.stdout).ok()
     } else { None }
