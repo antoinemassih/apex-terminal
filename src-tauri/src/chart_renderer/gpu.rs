@@ -2958,19 +2958,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             painter.text(egui::pos2(left + 18.0, y_c), egui::Align2::LEFT_CENTER,
                                                 &item_sym, egui::FontId::monospace(14.0), sym_color);
 
-                                            // Change % (center, prominent)
-                                            let mid_x = rect.left() + full_w * 0.50;
+                                            // Change % (center-left, prominent)
+                                            let mid_x = rect.left() + full_w * 0.42;
                                             painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
                                                 &change_str, egui::FontId::monospace(14.0), color);
 
-                                            // Price (right-aligned)
-                                            painter.text(egui::pos2(rect.right() - 18.0, y_c), egui::Align2::RIGHT_CENTER,
-                                                &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.65));
+                                            // Price (right-aligned, more space from edge)
+                                            painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
+                                                &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.6));
 
                                             // Faint row separator line
                                             painter.line_segment(
-                                                [egui::pos2(rect.left() + 16.0, rect.bottom()), egui::pos2(rect.right() - 4.0, rect.bottom())],
-                                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 20)));
+                                                [egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
+                                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 40)));
 
                                             // X button zone (far right)
                                             if resp.hovered() {
@@ -3296,28 +3296,33 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             let is_active = item_sym == active_sym;
                                             let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
 
-                                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, 22.0), egui::Sense::click());
-                                            ui.painter().rect_filled(rect, 0.0, row_bg);
+                                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, 28.0), egui::Sense::click());
+                                            let painter = ui.painter();
+                                            painter.rect_filled(rect, 0.0, row_bg);
                                             if resp.hovered() {
-                                                ui.painter().rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 25));
+                                                painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 25));
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             }
 
-                                            // C/P badge + name
                                             let badge = if is_call { "C" } else { "P" };
-                                            let painter = ui.painter();
                                             let y_c = rect.center().y;
-                                            painter.text(egui::pos2(rect.left() + 4.0, y_c), egui::Align2::LEFT_CENTER,
-                                                badge, egui::FontId::monospace(9.0), color);
-                                            painter.text(egui::pos2(rect.left() + 18.0, y_c), egui::Align2::LEFT_CENTER,
+                                            // C/P badge
+                                            painter.text(egui::pos2(rect.left() + 6.0, y_c), egui::Align2::LEFT_CENTER,
+                                                badge, egui::FontId::monospace(11.0), color);
+                                            // Contract name
+                                            painter.text(egui::pos2(rect.left() + 22.0, y_c), egui::Align2::LEFT_CENTER,
                                                 &format!("{} {:.0} {}", item_underlying, item_strike, item_expiry),
-                                                egui::FontId::monospace(10.0), egui::Color32::from_rgb(200, 200, 210));
-                                            // Bid x Ask
+                                                egui::FontId::monospace(14.0), egui::Color32::from_rgb(225, 225, 235));
+                                            // Bid x Ask (right-aligned)
                                             if item_bid > 0.0 || item_ask > 0.0 {
-                                                painter.text(egui::pos2(rect.right() - 4.0, y_c), egui::Align2::RIGHT_CENTER,
+                                                painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
                                                     &format!("{:.2} x {:.2}", item_bid, item_ask),
-                                                    egui::FontId::monospace(9.0), color);
+                                                    egui::FontId::monospace(14.0), color.gamma_multiply(0.7));
                                             }
+                                            // Faint separator
+                                            painter.line_segment(
+                                                [egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
+                                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 40)));
 
                                             if resp.clicked() {
                                                 click_opt = Some((item_underlying.clone(), item_strike, is_call, item_expiry.clone()));
@@ -3506,16 +3511,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let itm_bg = if row.itm { color.gamma_multiply(0.06) } else { egui::Color32::TRANSPARENT };
                             let saved_bg = if is_saved { color_alpha(t.accent, 40) } else { itm_bg };
 
-                            // Reserve a clickable rect for the whole row FIRST
-                            let row_rect = ui.allocate_exact_size(egui::vec2(w, 22.0), egui::Sense::click());
-                            let (rect, row_resp) = row_rect;
+                            // Reserve a clickable rect for the whole row
+                            let (rect, row_resp) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
 
                             // Paint background
                             let bg = if row_resp.hovered() { color_alpha(t.toolbar_border, 50) } else { saved_bg };
                             ui.painter().rect_filled(rect, 0.0, bg);
                             if row_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
-                            // Paint content on top of the rect
                             let mut x = rect.left();
                             let y_center = rect.center().y;
                             let painter = ui.painter();
@@ -3523,23 +3526,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // Check mark
                             if is_saved {
                                 painter.text(egui::pos2(x + col_chk * 0.5, y_center), egui::Align2::CENTER_CENTER,
-                                    Icon::CHECK, egui::FontId::proportional(11.0), t.accent);
+                                    Icon::CHECK, egui::FontId::proportional(12.0), t.accent);
                             }
                             x += col_chk + gap;
 
                             // Strike
                             painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                                &format!("{:.0}", row.strike), egui::FontId::monospace(11.0), egui::Color32::from_rgb(210, 210, 220));
+                                &format!("{:.0}", row.strike), egui::FontId::monospace(14.0), egui::Color32::from_rgb(225, 225, 235));
                             x += col_stk + gap;
 
                             // Bid
                             painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                                &format!("{:.2}", row.bid), egui::FontId::monospace(10.0), color);
+                                &format!("{:.2}", row.bid), egui::FontId::monospace(14.0), color);
                             x += col_bid + gap;
 
                             // Ask
                             painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                                &format!("{:.2}", row.ask), egui::FontId::monospace(10.0), t.dim);
+                                &format!("{:.2}", row.ask), egui::FontId::monospace(14.0), t.dim);
                             x += col_ask + gap;
 
                             // OI
@@ -3547,7 +3550,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 else if row.oi >= 1_000 { format!("{},{:03}", row.oi / 1000, row.oi % 1000) }
                                 else { format!("{}", row.oi) };
                             painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                                &oi_str, egui::FontId::monospace(10.0), t.dim.gamma_multiply(0.5));
+                                &oi_str, egui::FontId::monospace(12.0), t.dim.gamma_multiply(0.5));
+
+                            // Faint row separator
+                            painter.line_segment(
+                                [egui::pos2(rect.left() + 4.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
+                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 30)));
 
                             // Click handling
                             if row_resp.clicked() {
