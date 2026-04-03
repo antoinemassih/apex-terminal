@@ -3803,25 +3803,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 .min_by(|(_, a), (_, b)| ((**a - price).abs()).partial_cmp(&((**b - price).abs())).unwrap_or(std::cmp::Ordering::Equal))
                                 .map(|(i, _)| i).unwrap_or(0);
 
-                            // Window: centered on ATM + offset, total size = num_strikes * 2
-                            let total_window = num_strikes * 2;
-                            let center_idx = (atm_idx as i32 + chain_center_offset).max(0) as usize;
-                            let half = total_window / 2;
-                            let start = center_idx.saturating_sub(half).min(all_strikes.len().saturating_sub(total_window));
-                            let end = (start + total_window).min(all_strikes.len());
+                            // The offset shifts the center. The price badge always shows real price.
+                            // We select num_strikes above the shifted center and num_strikes below.
+                            let shifted_center_idx = (atm_idx as i32 + chain_center_offset).clamp(0, all_strikes.len() as i32 - 1) as usize;
+                            let start = shifted_center_idx.saturating_sub(num_strikes);
+                            let end = (shifted_center_idx + num_strikes).min(all_strikes.len());
                             let visible_strikes: Vec<f32> = all_strikes[start..end].to_vec();
+                            // Use shifted center for calls/puts split (not actual price)
+                            let split_price = all_strikes[shifted_center_idx];
 
-                            // Split into calls (strikes > price) and puts (strikes <= price)
+                            // Split: calls = visible strikes above split, puts = visible strikes at/below split
                             let sorted_calls: Vec<&OptionRow> = {
                                 let mut v: Vec<&OptionRow> = calls.iter()
-                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike > price)
+                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike > split_price)
                                     .collect();
                                 v.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
                                 v
                             };
                             let sorted_puts: Vec<&OptionRow> = {
                                 let mut v: Vec<&OptionRow> = puts.iter()
-                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike <= price)
+                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike <= split_price)
                                     .collect();
                                 v.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
                                 v
