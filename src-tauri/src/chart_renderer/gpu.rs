@@ -3392,49 +3392,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── CHAIN TAB ───────────────────────────────────────────
                     WatchlistTab::Chain => {
-                        // ── Symbol input (styled as accent label, editable on click) ──
-                        let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
-                        let input_bg = if has_focus { color_alpha(t.toolbar_border, 60) } else { color_alpha(t.toolbar_border, 20) };
-                        let sym_resp = ui.add(egui::TextEdit::singleline(&mut watchlist.chain_sym_input)
-                            .id(egui::Id::new("chain_sym_edit"))
-                            .hint_text(&watchlist.chain_symbol)
-                            .desired_width(ui.available_width())
-                            .font(egui::FontId::monospace(13.0))
-                            .text_color(t.accent)
-                            .background_color(input_bg)
-                            .margin(egui::Margin::symmetric(6, 4)));
-                        // Bold overlay: paint bold text on top when not focused
-                        if !has_focus {
-                            let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
-                            let r = sym_resp.rect;
-                            ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
-                                display_text, egui::FontId::monospace(13.0), t.accent);
-                        }
-                        // Search suggestions
-                        if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
-                            watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.chain_sym_input, 5)
-                                .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
-                        }
-                        if !watchlist.chain_sym_input.is_empty() && !watchlist.search_results.is_empty() && sym_resp.has_focus() {
-                            egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(30, 30, 36)).show(ui, |ui| {
-                                for (sym, name) in watchlist.search_results.clone() {
-                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(10.0).color(t.dim))
-                                        .frame(false).min_size(egui::vec2(ui.available_width(), 18.0))).clicked() {
-                                        watchlist.chain_symbol = sym;
-                                        watchlist.chain_sym_input.clear();
-                                        watchlist.search_results.clear();
-                                        watchlist.chain_0dte = (vec![], vec![]); // force rebuild
-                                    }
-                                }
-                            });
-                        }
-                        if sym_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain_sym_input.is_empty() {
-                            watchlist.chain_symbol = watchlist.chain_sym_input.trim().to_uppercase();
-                            watchlist.chain_sym_input.clear();
-                            watchlist.search_results.clear();
-                            watchlist.chain_0dte = (vec![], vec![]); // force rebuild
-                        }
-                        // Rebuild chain from current price
+                        // Rebuild chain price
                         let chain_price = watchlist.find_item(&watchlist.chain_symbol).map(|i| i.price)
                             .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
                             .unwrap_or(100.0);
@@ -3444,7 +3402,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             watchlist.chain_far = build_chain(chain_price, ns, watchlist.chain_far_dte);
                         }
 
-                        // ── Controls: strikes ± | DTE selector | sel toggle ──
+                        // ── Controls FIRST: strikes ± | DTE selector | sel toggle ──
                         ui.horizontal(|ui| {
                             dim_label(ui, "strikes", t.dim);
                             if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(16.0, 16.0))).clicked() {
@@ -3482,6 +3440,66 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 watchlist.chain_select_mode = !watchlist.chain_select_mode;
                             }
                         });
+
+                        ui.add_space(4.0);
+
+                        // ── Symbol selector + price ──
+                        ui.horizontal(|ui| {
+                            let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
+                            let input_bg = if has_focus { color_alpha(t.toolbar_border, 60) } else { color_alpha(t.toolbar_border, 15) };
+                            let sym_resp = ui.add(egui::TextEdit::singleline(&mut watchlist.chain_sym_input)
+                                .id(egui::Id::new("chain_sym_edit"))
+                                .hint_text(&watchlist.chain_symbol)
+                                .desired_width(70.0)
+                                .font(egui::FontId::monospace(14.0))
+                                .text_color(t.accent)
+                                .background_color(input_bg)
+                                .margin(egui::Margin::symmetric(4, 3)));
+                            if !has_focus {
+                                let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
+                                let r = sym_resp.rect;
+                                ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
+                                    display_text, egui::FontId::monospace(14.0), t.accent);
+                            }
+                            // Price
+                            if chain_price > 0.0 {
+                                ui.add_space(6.0);
+                                ui.label(egui::RichText::new(format!("${:.2}", chain_price)).monospace().size(14.0).color(egui::Color32::from_rgb(220, 220, 230)));
+                            }
+                            // Search
+                            if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
+                                watchlist.search_results = ui_kit::symbols::search_symbols(&watchlist.chain_sym_input, 5)
+                                    .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
+                            }
+                            if sym_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain_sym_input.is_empty() {
+                                watchlist.chain_symbol = watchlist.chain_sym_input.trim().to_uppercase();
+                                watchlist.chain_sym_input.clear();
+                                watchlist.search_results.clear();
+                                watchlist.chain_0dte = (vec![], vec![]);
+                            }
+                        });
+                        // Search suggestions popup
+                        if !watchlist.chain_sym_input.is_empty() && !watchlist.search_results.is_empty() {
+                            egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(28, 28, 34)).corner_radius(4.0).show(ui, |ui| {
+                                for (sym, name) in watchlist.search_results.clone() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(11.0).color(t.dim))
+                                        .frame(false).min_size(egui::vec2(ui.available_width(), 20.0))).clicked() {
+                                        watchlist.chain_symbol = sym;
+                                        watchlist.chain_sym_input.clear();
+                                        watchlist.search_results.clear();
+                                        watchlist.chain_0dte = (vec![], vec![]);
+                                    }
+                                }
+                            });
+                        }
+
+                        ui.add_space(4.0);
+                        // Separator before chain data
+                        let sep_r = ui.available_rect_before_wrap();
+                        ui.painter().line_segment(
+                            [egui::pos2(sep_r.left(), ui.cursor().min.y), egui::pos2(sep_r.right(), ui.cursor().min.y)],
+                            egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 40)));
+                        ui.add_space(4.0);
 
                         // ── Column layout ──
                         // Each data column needs space for ~8 chars of monospace 10px (~6.5px each = ~52px)
@@ -3584,29 +3602,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         };
 
                         // ── Helper to render one expiry block ──
-                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
+                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, _price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let exp_label = format!("{}DTE", dte);
-                            // Expiry header bar
+                            // Expiry header
                             ui.horizontal(|ui| {
                                 ui.set_min_width(w);
-                                ui.label(egui::RichText::new(&exp_label).monospace().size(11.0).strong().color(t.accent));
+                                ui.label(egui::RichText::new(&exp_label).monospace().size(12.0).strong().color(t.accent));
                             });
-                            ui.add_space(1.0);
+                            ui.add_space(2.0);
 
-                            section_label(ui, "CALLS", t.bull);
+                            // Calls
                             for row in calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
 
-                            // Underlying divider
-                            ui.horizontal(|ui| {
-                                ui.set_min_width(w);
-                                let divider_rect = ui.max_rect();
-                                ui.painter().rect_filled(divider_rect, 0.0, t.toolbar_border.gamma_multiply(0.15));
-                                ui.label(egui::RichText::new(format!("{}  ${:.2}", sym, price)).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
-                            });
+                            // Thin separator between calls and puts
+                            ui.add_space(2.0);
+                            let sep_r = ui.available_rect_before_wrap();
+                            ui.painter().line_segment(
+                                [egui::pos2(sep_r.left() + 4.0, ui.cursor().min.y), egui::pos2(sep_r.right() - 4.0, ui.cursor().min.y)],
+                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
+                            ui.add_space(2.0);
 
-                            section_label(ui, "PUTS", t.bear);
+                            // Puts
                             for row in puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }
-                            ui.add_space(6.0);
+                            ui.add_space(4.0);
                         };
 
                         // ── Scroll area with two expiry blocks ──
