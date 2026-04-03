@@ -244,6 +244,43 @@ impl SignalDrawing {
 }
 
 /// Convert a fractional bar index to a timestamp using interpolation.
+/// Convert DTE (trading days) to calendar date, skipping weekends
+fn trading_date(dte: i32) -> (u32, u32, u32) {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let mut days_added = 0i32;
+    let mut offset_days = 0i64;
+    while days_added < dte {
+        offset_days += 1;
+        let ts = now as i64 + offset_days * 86400;
+        let dow = ((ts / 86400 + 4) % 7) as u32;
+        if dow != 0 && dow != 6 { days_added += 1; }
+    }
+    let total_secs = now as i64 + offset_days * 86400;
+    let days_since_epoch = total_secs / 86400;
+    let mut y = 1970i32; let mut remaining = days_since_epoch;
+    loop {
+        let diy = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
+        if remaining < diy { break; }
+        remaining -= diy; y += 1;
+    }
+    let md = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+        [31,29,31,30,31,30,31,31,30,31,30,31]
+    } else { [31,28,31,30,31,30,31,31,30,31,30,31] };
+    let mut m = 0u32;
+    for d in &md { if remaining < *d as i64 { break; } remaining -= *d as i64; m += 1; }
+    (y as u32, m + 1, remaining as u32 + 1)
+}
+
+fn trading_month_name(m: u32) -> &'static str {
+    match m { 1=>"Jan",2=>"Feb",3=>"Mar",4=>"Apr",5=>"May",6=>"Jun",7=>"Jul",8=>"Aug",9=>"Sep",10=>"Oct",11=>"Nov",12=>"Dec",_=>"" }
+}
+
+fn dte_label(dte: i32) -> String {
+    if dte == 0 { return "0DTE Today".into(); }
+    let (_, m, d) = trading_date(dte);
+    format!("{}DTE {} {}", dte, trading_month_name(m), d)
+}
+
 fn bar_to_time(bar: f32, timestamps: &[i64]) -> i64 {
     let idx = bar as usize;
     if timestamps.is_empty() { return 0; }
@@ -3500,16 +3537,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 fetch_chain_background(sym, ns, far_dte, chain_price);
                             }
 
+                            // Trading day functions: trading_date(), trading_month_name(), dte_label() — defined at module level
+
                             // DTE dropdown
-                            let dte_labels = [(1,"1DTE"),(2,"2DTE"),(3,"3DTE"),(5,"5DTE"),(7,"7DTE"),(10,"10DTE")];
-                            let cur_label = dte_labels.iter().find(|(d,_)| *d == watchlist.chain_far_dte).map(|(_,l)| *l).unwrap_or("1DTE");
-                            egui::ComboBox::from_id_salt("far_dte").selected_text(egui::RichText::new(cur_label).monospace().size(9.0).color(t.dim)).width(60.0)
+                            let dte_values = [1, 2, 3, 5, 7, 10];
+                            let cur_label = dte_label(watchlist.chain_far_dte);
+                            egui::ComboBox::from_id_salt("far_dte").selected_text(egui::RichText::new(&cur_label).monospace().size(9.0).color(t.dim)).width(100.0)
                                 .show_ui(ui, |ui| {
-                                    for (d, label) in &dte_labels {
-                                        if ui.selectable_value(&mut watchlist.chain_far_dte, *d, *label).changed() {
+                                    for &d in &dte_values {
+                                        let label = dte_label(d);
+                                        if ui.selectable_value(&mut watchlist.chain_far_dte, d, &label).changed() {
                                             let sym = watchlist.chain_symbol.clone();
                                             watchlist.chain_loading = true;
-                                            fetch_chain_background(sym, watchlist.chain_num_strikes, *d, chain_price);
+                                            fetch_chain_background(sym, watchlist.chain_num_strikes, d, chain_price);
                                         }
                                     }
                                 });
@@ -3701,10 +3741,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // ── Helper to render one expiry block ──
                         let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, _price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                             let exp_label = format!("{}DTE", dte);
+                            let date_str = if dte == 0 {
+                                "Today".to_string()
+                            } else {
+                                let (_, m, d) = trading_date(dte);
+                                format!("{} {}", trading_month_name(m), d)
+                            };
                             // Expiry header
                             ui.horizontal(|ui| {
                                 ui.set_min_width(w);
                                 ui.label(egui::RichText::new(&exp_label).monospace().size(12.0).strong().color(t.accent));
+                                ui.label(egui::RichText::new(&date_str).monospace().size(11.0).color(t.dim.gamma_multiply(0.6)));
                             });
                             ui.add_space(2.0);
 
