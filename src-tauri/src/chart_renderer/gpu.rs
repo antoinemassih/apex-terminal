@@ -6566,7 +6566,7 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::builder()
             .user_agent("apex-native")
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(15))
             .build()
             .unwrap_or_else(|_| reqwest::blocking::Client::new());
 
@@ -6597,9 +6597,16 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
                                 let ask = row.get("ask").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                                 let vol = row.get("volume").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                                 let oi = row.get("openInterest").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                                let iv = row.get("impliedVolatility").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                let iv = row.get("iv").and_then(|v| v.as_f64())
+                                    .or_else(|| row.get("impliedVolatility").and_then(|v| v.as_f64()))
+                                    .unwrap_or(0.0) as f32;
                                 let itm = row.get("inTheMoney").and_then(|v| v.as_bool()).unwrap_or(false);
-                                let contract = row.get("contractSymbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                let contract = row.get("contractSymbol").and_then(|v| v.as_str())
+                                    .or_else(|| row.get("conId").and_then(|v| v.as_i64()).map(|_| ""))
+                                    .unwrap_or("").to_string();
+                                let contract = if contract.is_empty() {
+                                    row.get("conId").and_then(|v| v.as_i64()).map(|id| format!("{}", id)).unwrap_or_default()
+                                } else { contract };
                                 Some((strike, last, bid, ask, vol, oi, iv, itm, contract))
                             }).collect()
                         }).unwrap_or_default()
