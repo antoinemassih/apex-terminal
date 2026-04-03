@@ -3806,28 +3806,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // The offset shifts the center. The price badge always shows real price.
                             // We select num_strikes above the shifted center and num_strikes below.
                             if all_strikes.is_empty() {
-                                // No strikes available — skip rendering
                                 ui.label(egui::RichText::new("No strikes available").monospace().size(10.0).color(t.dim.gamma_multiply(0.4)));
                                 return;
                             }
-                            let max_idx = (all_strikes.len() as i32 - 1).max(0);
-                            let shifted_center_idx = (atm_idx as i32 + chain_center_offset).clamp(0, max_idx) as usize;
-                            let start = shifted_center_idx.saturating_sub(num_strikes);
-                            let end = (shifted_center_idx + num_strikes).min(all_strikes.len());
-                            let visible_strikes: Vec<f32> = all_strikes[start..end].to_vec();
-                            let split_price = all_strikes[shifted_center_idx];
 
-                            // Split: calls = visible strikes above split, puts = visible strikes at/below split
+                            // Window: offset shifts which strikes are visible, but divider stays at real price
+                            let max_idx = (all_strikes.len() as i32 - 1).max(0);
+                            let window_center = (atm_idx as i32 + chain_center_offset).clamp(0, max_idx) as usize;
+                            let start = window_center.saturating_sub(num_strikes);
+                            let end = (window_center + num_strikes).min(all_strikes.len());
+                            let visible_strikes: Vec<f32> = all_strikes[start..end].to_vec();
+
+                            // ALWAYS split at the real price — divider never moves with arrows
+                            // Calls: visible strikes ABOVE the real price
                             let sorted_calls: Vec<&OptionRow> = {
                                 let mut v: Vec<&OptionRow> = calls.iter()
-                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike > split_price)
+                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike > price)
                                     .collect();
                                 v.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
                                 v
                             };
+                            // Puts: visible strikes AT or BELOW the real price
                             let sorted_puts: Vec<&OptionRow> = {
                                 let mut v: Vec<&OptionRow> = puts.iter()
-                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike <= split_price)
+                                    .filter(|r| visible_strikes.contains(&r.strike) && r.strike <= price)
                                     .collect();
                                 v.sort_by(|a, b| b.strike.partial_cmp(&a.strike).unwrap_or(std::cmp::Ordering::Equal));
                                 v
