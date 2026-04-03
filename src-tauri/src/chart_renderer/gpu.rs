@@ -6776,20 +6776,27 @@ fn apexib_client() -> &'static reqwest::blocking::Client {
         reqwest::blocking::Client::builder()
             .user_agent("apex-native")
             .timeout(std::time::Duration::from_secs(10))
-            .pool_max_idle_per_host(2)
+            .pool_max_idle_per_host(4)
             .build()
             .unwrap_or_else(|_| reqwest::blocking::Client::new())
     })
 }
 
+/// Fast API fetch using curl subprocess — bypasses reqwest TLS issues on Windows
+fn apexib_curl(path: &str) -> Option<serde_json::Value> {
+    let url = format!("{}{}", APEXIB_URL, path);
+    let output = std::process::Command::new("curl")
+        .args(&["-sL", "--max-time", "10", &url])
+        .output().ok()?;
+    if output.status.success() {
+        serde_json::from_slice(&output.stdout).ok()
+    } else { None }
+}
+
 fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlying_price: f32) {
     std::thread::spawn(move || {
-        let client = apexib_client();
-
-        // Build expiration query param: for 0DTE use today, otherwise offset by dte days
-        // Request as many strikes as the API allows (IB typically caps at ~25 per side)
-        let api_strikes = 50; // request 50, API will return what it can
-        let url = format!("{}/options/{}?strikeCount={}&dte={}", APEXIB_URL, symbol, api_strikes, dte);
+        let api_strikes = 50;
+        let path = format!("/options/{}?strikeCount={}&dte={}", symbol, api_strikes, dte);
 
         let send_chain = |calls: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
                           puts: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
@@ -6804,10 +6811,8 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
             crate::send_to_native_chart(cmd);
         };
 
-        match client.get(&url).send() {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(json) = resp.json::<serde_json::Value>() {
-                    // Extract underlying price from API response
+        // Use curl for fast TLS (reqwest's native-tls is slow on this machine)
+        if let Some(json) = apexib_curl(&path) {
                     let api_price = json.get("underlying").and_then(|u| u.get("price")).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                     let parse_rows = |key: &str| -> Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)> {
                         json.get(key).and_then(|v| v.as_array()).map(|arr| {
@@ -6842,14 +6847,8 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
                         send_chain(calls, puts, final_price);
                         return;
                     }
-                }
-            }
-            Ok(resp) => {
-                eprintln!("[apexib] Chain fetch for {} dte={} returned status {}", symbol, dte, resp.status());
-            }
-            Err(e) => {
-                eprintln!("[apexib] Chain fetch for {} dte={} failed: {}", symbol, dte, e);
-            }
+        } else {
+            eprintln!("[apexib] Chain fetch for {} dte={} failed (curl)", symbol, dte);
         }
 
         // Fallback: use simulated chain
