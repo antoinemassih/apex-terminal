@@ -3601,7 +3601,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 }
                                 // Up/down arrows (only when frozen)
                                 if watchlist.chain_frozen {
-                                    let max_offset = 20i32; // reasonable limit
+                                    let max_offset = 50i32;
+                                    let needs_refetch = |wl: &Watchlist| -> bool {
+                                        // Check if we're near the edge of loaded data
+                                        let calls = &wl.chain_0dte.0;
+                                        let puts = &wl.chain_0dte.1;
+                                        let total = calls.len() + puts.len();
+                                        let offset_abs = wl.chain_center_offset.unsigned_abs() as usize;
+                                        total > 0 && offset_abs + wl.chain_num_strikes >= total / 2
+                                    };
                                     if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(10.0).color(t.dim))
                                         .fill(color_alpha(t.toolbar_border, 15)).corner_radius(2.0).min_size(egui::vec2(16.0, 16.0))).clicked() {
                                         watchlist.chain_center_offset = (watchlist.chain_center_offset + 1).min(max_offset);
@@ -3609,6 +3617,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(10.0).color(t.dim))
                                         .fill(color_alpha(t.toolbar_border, 15)).corner_radius(2.0).min_size(egui::vec2(16.0, 16.0))).clicked() {
                                         watchlist.chain_center_offset = (watchlist.chain_center_offset - 1).max(-max_offset);
+                                    }
+                                    // Show current offset
+                                    if watchlist.chain_center_offset != 0 {
+                                        ui.label(egui::RichText::new(format!("{:+}", watchlist.chain_center_offset)).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
                                     }
                                 }
                             }
@@ -6757,8 +6769,8 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
         let client = apexib_client();
 
         // Build expiration query param: for 0DTE use today, otherwise offset by dte days
-        // Request plenty of strikes — client-side filtering handles the window
-        let api_strikes = (num_strikes * 3).max(30); // always request at least 30
+        // Request as many strikes as the API allows (IB typically caps at ~25 per side)
+        let api_strikes = 50; // request 50, API will return what it can
         let url = format!("{}/options/{}?strikeCount={}&dte={}", APEXIB_URL, symbol, api_strikes, dte);
 
         let send_chain = |calls: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
