@@ -3509,7 +3509,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
                                 .unwrap_or(0.0)
                         };
-                        if chain_price > 0.0 && watchlist.chain_0dte.0.is_empty() && !watchlist.chain_loading {
+                        if watchlist.chain_0dte.0.is_empty() && !watchlist.chain_loading {
                             let ns = watchlist.chain_num_strikes;
                             let sym = watchlist.chain_symbol.clone();
                             let far_dte = watchlist.chain_far_dte;
@@ -3636,7 +3636,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 // Also fire ApexIB search in background
                                 fetch_search_background(watchlist.chain_sym_input.clone(), "chain".to_string());
                             }
-                            if sym_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain_sym_input.is_empty() {
+                            if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain_sym_input.is_empty() {
                                 watchlist.chain_symbol = watchlist.chain_sym_input.trim().to_uppercase();
                                 watchlist.chain_sym_input.clear();
                                 watchlist.search_results.clear();
