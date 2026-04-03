@@ -2529,8 +2529,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // Search bar with inline options toggle
                         let search_id = egui::Id::new("wl_search_input");
                         let search_resp = ui.horizontal(|ui| {
-                            // Options toggle chevron (always clickable)
-                            let opt_icon = if watchlist.options_visible { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
+                            // Options toggle (circle icon)
+                            let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
                             let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
                             let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(11.0).color(opt_color))
                                 .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)));
@@ -3106,23 +3106,34 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // ── Draggable divider + Options scroll ──
                         if show_opts {
                             // Divider bar — allocate a draggable strip
+                            // Divider — paint a bar and handle drag via raw pointer delta
+                            ui.add_space(2.0);
                             let div_r = ui.available_rect_before_wrap();
-                            let (div_alloc_rect, div_resp) = ui.allocate_exact_size(
-                                egui::vec2(div_r.width(), 8.0), egui::Sense::click_and_drag());
-                            // Paint the 3px bar centered in the 8px strip
-                            let bar_y = div_alloc_rect.center().y - 1.5;
+                            let div_y = ui.cursor().min.y;
+                            let div_rect = egui::Rect::from_min_max(
+                                egui::pos2(div_r.left(), div_y),
+                                egui::pos2(div_r.right(), div_y + 6.0));
                             ui.painter().rect_filled(
                                 egui::Rect::from_min_max(
-                                    egui::pos2(div_alloc_rect.left(), bar_y),
-                                    egui::pos2(div_alloc_rect.right(), bar_y + 3.0)),
+                                    egui::pos2(div_r.left(), div_y + 1.0),
+                                    egui::pos2(div_r.right(), div_y + 4.0)),
                                 0.0, color_alpha(t.toolbar_border, 160));
-                            if div_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical); }
-                            if div_resp.dragged() {
-                                let delta = div_resp.drag_delta().y;
-                                if total_avail > 100.0 {
-                                    watchlist.options_split = (watchlist.options_split + delta / total_avail).clamp(0.15, 0.85);
+                            // Use raw pointer for drag — avoids scroll/panel interference
+                            let pointer = ui.input(|i| i.pointer.hover_pos());
+                            let pointer_down = ui.input(|i| i.pointer.primary_down());
+                            let pointer_delta = ui.input(|i| i.pointer.delta());
+                            if let Some(pos) = pointer {
+                                if div_rect.expand(4.0).contains(pos) {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                                    if pointer_down && pointer_delta.y.abs() > 0.1 {
+                                        let delta = pointer_delta.y;
+                                        if total_avail > 100.0 {
+                                            watchlist.options_split = (watchlist.options_split + delta / total_avail).clamp(0.15, 0.85);
+                                        }
+                                    }
                                 }
                             }
+                            ui.add_space(6.0);
 
                             // OPTIONS label
                             ui.horizontal(|ui| {
@@ -3135,10 +3146,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 }
                             });
                             ui.add_space(2.0);
-
-                            // Options scroll area with subtle tinted background
-                            let opts_rect = ui.available_rect_before_wrap();
-                            ui.painter().rect_filled(opts_rect, 0.0, color_alpha(t.accent, 8));
 
                             egui::ScrollArea::vertical().id_salt("wl_options").show(ui, |ui| {
                                 let active_sym = panes[ap].symbol.clone();

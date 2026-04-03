@@ -59,6 +59,8 @@ impl Icon {
     pub const CROSSHAIR: &'static str = ph::CROSSHAIR;
     pub const LIGHTNING: &'static str = ph::LIGHTNING;
     pub const RADIO_BUTTON: &'static str = ph::RADIO_BUTTON;
+    pub const DOT: &'static str = ph::DOT_OUTLINE;
+    pub const CIRCLE: &'static str = ph::CIRCLE;
     pub const CURRENCY_DOLLAR: &'static str = ph::CURRENCY_DOLLAR;
     pub const GIT_DIFF: &'static str = ph::GIT_DIFF;
     pub const ARTICLE: &'static str = ph::ARTICLE;
