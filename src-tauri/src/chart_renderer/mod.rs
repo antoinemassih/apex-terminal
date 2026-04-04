@@ -62,6 +62,22 @@ pub enum DrawingKind {
     Channel { price0: f32, time0: i64, price1: f32, time1: i64, offset: f32 },
     /// Fibonacci channel — same anchors as channel, internal lines at fib ratios.
     FibChannel { price0: f32, time0: i64, price1: f32, time1: i64, offset: f32 },
+    /// Pitchfork — pivot + two reaction points. variant: 0=Standard, 1=Schiff, 2=Modified Schiff
+    Pitchfork { price0: f32, time0: i64, price1: f32, time1: i64, price2: f32, time2: i64 },
+    /// Gann Fan — origin + scale point defines 1x1 angle, radiating lines
+    GannFan { price0: f32, time0: i64, price1: f32, time1: i64 },
+    /// Regression Channel — time range, regression + σ bands computed from bars
+    RegressionChannel { time0: i64, time1: i64 },
+    /// XABCD Harmonic pattern — 5 points stored as (time, price) pairs
+    XABCD { points: Vec<(i64, f32)> },
+    /// Elliott Wave — labeled wave points, wave_type: 0=impulse(5pt), 1=corrective(3pt)
+    ElliottWave { points: Vec<(i64, f32)>, wave_type: u8 },
+    /// Anchored VWAP — single anchor timestamp, line computed from bars
+    AnchoredVWAP { time: i64 },
+    /// Price Range — persistent measurement rectangle
+    PriceRange { price0: f32, time0: i64, price1: f32, time1: i64 },
+    /// Risk/Reward — entry + stop + target
+    RiskReward { entry_price: f32, entry_time: i64, stop_price: f32, target_price: f32 },
 }
 
 /// Commands sent from Tauri/WebView to the native chart renderer
