@@ -4689,16 +4689,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let x1 = bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps));
                     let xl = x0.min(x1); let xr = x0.max(x1);
                     let range = *price1 - *price0;
-                    let fib_levels = [0.0_f32, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
-                    for &lv in &fib_levels {
+                    // Retracement levels (solid) + extension levels (dashed, dimmer)
+                    let retrace: &[(f32, bool)] = &[
+                        (0.0, true), (0.236, true), (0.382, true), (0.5, true),
+                        (0.618, true), (0.786, true), (1.0, true),
+                    ];
+                    let extensions: &[(f32, bool)] = &[
+                        (-0.272, false), (-0.618, false),
+                        (1.272, false), (1.414, false), (1.618, false),
+                        (2.0, false), (2.618, false), (3.146, false),
+                    ];
+                    for &(lv, is_retrace) in retrace.iter().chain(extensions.iter()) {
                         let lp = *price0 + range * lv;
                         let y = py(lp);
                         if y.is_finite() && y.abs() < 50000.0 {
-                            let alpha = if lv == 0.0 || lv == 1.0 { 1.0 } else { 0.6 };
-                            let lsc = egui::Stroke::new(if is_sel { d.thickness + 0.5 } else { d.thickness * 0.7 }, color_alpha(dc, (alpha * 255.0) as u8));
-                            dashed_line(&painter, egui::pos2(xl, y), egui::pos2(xr, y), lsc, ls);
+                            let alpha = if lv == 0.0 || lv == 1.0 { 255 }
+                                else if is_retrace { 160 }
+                                else { 100 }; // extensions dimmer
+                            let thick = if is_retrace { d.thickness * 0.7 } else { d.thickness * 0.5 };
+                            let lsc = egui::Stroke::new(if is_sel { thick + 0.5 } else { thick }, color_alpha(dc, alpha as u8));
+                            let line_style = if is_retrace { ls } else { LineStyle::Dashed };
+                            dashed_line(&painter, egui::pos2(xl, y), egui::pos2(xr, y), lsc, line_style);
+                            let label_alpha = if is_retrace { 200 } else { 130 };
                             painter.text(egui::pos2(xr + 4.0, y), egui::Align2::LEFT_CENTER,
-                                &format!("{:.1}%  {:.2}", lv * 100.0, lp), egui::FontId::monospace(8.0), color_alpha(dc, 200));
+                                &format!("{:.1}%  {:.2}", lv * 100.0, lp), egui::FontId::monospace(8.0), color_alpha(dc, label_alpha));
                         }
                     }
                     // Shaded golden zone (38.2%-61.8%)
@@ -4709,6 +4723,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             egui::pos2(xl, y382.min(y618)), egui::pos2(xr, y382.max(y618))),
                             0.0, hex_to_color(&d.color, d.opacity * 0.08));
                     }
+                    // Shaded extension zone (161.8%-261.8%) — lighter
+                    let y1618 = py(*price0 + range * 1.618);
+                    let y2618 = py(*price0 + range * 2.618);
+                    if y1618.is_finite() && y2618.is_finite() && y1618.abs() < 50000.0 && y2618.abs() < 50000.0 {
+                        painter.rect_filled(egui::Rect::from_min_max(
+                            egui::pos2(xl, y1618.min(y2618)), egui::pos2(xr, y1618.max(y2618))),
+                            0.0, hex_to_color(&d.color, d.opacity * 0.04));
+                    }
                     if is_sel {
                         let p0s = egui::pos2(x0, py(*price0));
                         let p1s = egui::pos2(x1, py(*price1));
@@ -4717,24 +4739,52 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
                 DrawingKind::Channel{price0,time0,price1,time1,offset}=>{
-                    let p0 = clamp_pt(egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0)));
-                    let p1 = clamp_pt(egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), py(*price1)));
+                    let b0f = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                    let b1f = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                    let p0 = clamp_pt(egui::pos2(bx(b0f), py(*price0)));
+                    let p1 = clamp_pt(egui::pos2(bx(b1f), py(*price1)));
                     let q0 = clamp_pt(egui::pos2(p0.x, py(*price0 + *offset)));
                     let q1 = clamp_pt(egui::pos2(p1.x, py(*price1 + *offset)));
                     if in_bounds(p0) && in_bounds(p1) {
-                        // Fill between the two parallel lines
+                        // Extension: project lines beyond anchor points
+                        let dx = p1.x - p0.x; let dy_base = p1.y - p0.y; let dy_par = q1.y - q0.y;
+                        let ext = 0.3; // extend 30% beyond each anchor
+                        let ext_p0 = egui::pos2(p0.x - dx * ext, p0.y - dy_base * ext);
+                        let ext_p1 = egui::pos2(p1.x + dx * ext, p1.y + dy_base * ext);
+                        let ext_q0 = egui::pos2(q0.x - dx * ext, q0.y - dy_par * ext);
+                        let ext_q1 = egui::pos2(q1.x + dx * ext, q1.y + dy_par * ext);
+                        // Extension lines (dashed, dimmer)
+                        let ext_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 80));
+                        dashed_line(&painter, ext_p0, p0, ext_sc, LineStyle::Dashed);
+                        dashed_line(&painter, p1, ext_p1, ext_sc, LineStyle::Dashed);
+                        dashed_line(&painter, ext_q0, q0, ext_sc, LineStyle::Dashed);
+                        dashed_line(&painter, q1, ext_q1, ext_sc, LineStyle::Dashed);
+                        // Fill between the two main parallel lines
                         let fill_pts = vec![p0, p1, q1, q0];
                         painter.add(egui::Shape::convex_polygon(fill_pts, hex_to_color(&d.color, d.opacity * 0.08), egui::Stroke::NONE));
-                        // Base line
+                        // Base line (solid)
                         dashed_line(&painter, p0, p1, sc, ls);
-                        // Parallel line
+                        // Parallel line (solid)
                         dashed_line(&painter, q0, q1, sc, ls);
+                        // Midline (dashed, dimmer)
+                        let m0 = egui::pos2((p0.x+q0.x)/2.0, (p0.y+q0.y)/2.0);
+                        let m1 = egui::pos2((p1.x+q1.x)/2.0, (p1.y+q1.y)/2.0);
+                        let mid_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 100));
+                        dashed_line(&painter, m0, m1, mid_sc, LineStyle::Dashed);
+                        // Quarter lines (dotted, very dim)
+                        let qt_sc = egui::Stroke::new(d.thickness * 0.3, color_alpha(dc, 50));
+                        let q25_0 = egui::pos2(p0.x + (q0.x-p0.x)*0.25, p0.y + (q0.y-p0.y)*0.25);
+                        let q25_1 = egui::pos2(p1.x + (q1.x-p1.x)*0.25, p1.y + (q1.y-p1.y)*0.25);
+                        let q75_0 = egui::pos2(p0.x + (q0.x-p0.x)*0.75, p0.y + (q0.y-p0.y)*0.75);
+                        let q75_1 = egui::pos2(p1.x + (q1.x-p1.x)*0.75, p1.y + (q1.y-p1.y)*0.75);
+                        dashed_line(&painter, q25_0, q25_1, qt_sc, LineStyle::Dotted);
+                        dashed_line(&painter, q75_0, q75_1, qt_sc, LineStyle::Dotted);
                         if is_sel {
                             painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
                             painter.circle_stroke(p0, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
                             painter.circle_filled(p1, 5.0, egui::Color32::from_rgb(74,158,255));
                             painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
-                            // Midpoint of parallel line for offset handle
+                            // Offset handle (midpoint of parallel line)
                             let qm = egui::pos2((q0.x+q1.x)/2.0, (q0.y+q1.y)/2.0);
                             painter.circle_filled(qm, 4.0, egui::Color32::from_rgb(74,158,255));
                         }
@@ -5674,15 +5724,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     1.0, egui::Stroke::new(1.0, egui::Color32::WHITE), egui::StrokeKind::Outside);
                 ui.ctx().set_cursor_icon(egui::CursorIcon::None);
             } else if chart.draw_tool == "fibonacci" {
-                // Fibonacci preview: after first click, show fib levels from anchor to cursor
+                // Fibonacci preview: retracement + extension levels
                 let fib_color = egui::Color32::from_rgb(255, 193, 37); // gold
                 if let Some((b0, p0)) = chart.pending_pt {
                     let price_cursor = min_p + (max_p - min_p) * (1.0 - (pos.y - rect.top() - pt) / ch);
                     let x0 = bx(b0); let x1 = pos.x;
                     let xl = x0.min(x1); let xr = x0.max(x1);
-                    let fib_levels = [0.0_f32, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
                     let range = price_cursor - p0;
-                    for &lv in &fib_levels {
+                    // Retracement levels
+                    let retrace = [0.0_f32, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+                    // Extension levels
+                    let extensions = [-0.272_f32, -0.618, 1.272, 1.414, 1.618, 2.0, 2.618, 3.146];
+                    for &lv in retrace.iter() {
                         let lp = p0 + range * lv;
                         let y = py(lp);
                         if y.is_finite() && y.abs() < 50000.0 {
@@ -5692,7 +5745,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 &format!("{:.1}% {:.2}", lv * 100.0, lp), egui::FontId::monospace(8.0), color_alpha(fib_color, 200));
                         }
                     }
-                    // Shaded region between 0.382 and 0.618
+                    for &lv in extensions.iter() {
+                        let lp = p0 + range * lv;
+                        let y = py(lp);
+                        if y.is_finite() && y.abs() < 50000.0 {
+                            // Extensions: dashed, dimmer
+                            let dash_len = 4.0; let gap_len = 4.0;
+                            let a = egui::pos2(xl, y); let b_pt = egui::pos2(xr, y);
+                            let dir = b_pt - a; let len = dir.length();
+                            if len > 0.0 {
+                                let norm = dir / len; let mut dd = 0.0;
+                                while dd < len {
+                                    let s = a + norm * dd;
+                                    let e = a + norm * (dd + dash_len).min(len);
+                                    painter.line_segment([s, e], egui::Stroke::new(0.5, color_alpha(fib_color, 80)));
+                                    dd += dash_len + gap_len;
+                                }
+                            }
+                            painter.text(egui::pos2(xr + 4.0, y), egui::Align2::LEFT_CENTER,
+                                &format!("{:.1}% {:.2}", lv * 100.0, lp), egui::FontId::monospace(8.0), color_alpha(fib_color, 130));
+                        }
+                    }
+                    // Shaded golden zone (38.2%-61.8%)
                     let y382 = py(p0 + range * 0.382);
                     let y618 = py(p0 + range * 0.618);
                     if y382.is_finite() && y618.is_finite() {
@@ -5853,7 +5927,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if egui::pos2(bx(SignalDrawing::time_to_bar(*time, ts_ref)),py(*price)).distance(egui::pos2(px,py_pos)) < 12.0 { return Some((d.id.clone(), -1)); }
                     }
                     DrawingKind::Fibonacci{price0,time0,price1,time1} => {
-                        // Hit on anchor points (ep 0, 1) or any fib level line (ep -1)
+                        // Hit on anchor points (ep 0, 1) or any fib/extension level line (ep -1)
                         let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, ts_ref)), py(*price0));
                         let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, ts_ref)), py(*price1));
                         if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
@@ -5861,7 +5935,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let range = *price1 - *price0;
                         let xl = p0.x.min(p1.x); let xr = p0.x.max(p1.x);
                         if px >= xl - 5.0 && px <= xr + 5.0 {
-                            for &lv in &[0.0_f32, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0] {
+                            let all_levels = [0.0_f32, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0,
+                                -0.272, -0.618, 1.272, 1.414, 1.618, 2.0, 2.618, 3.146];
+                            for &lv in &all_levels {
                                 if (py_pos - py(*price0 + range * lv)).abs() < 8.0 { return Some((d.id.clone(), -1)); }
                             }
                         }
