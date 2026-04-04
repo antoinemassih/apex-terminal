@@ -4774,12 +4774,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // Base line + parallel line (full extension)
                         dashed_line(&painter, clamp_pt(bp0), clamp_pt(bp1), sc, ls);
                         dashed_line(&painter, clamp_pt(pq0), clamp_pt(pq1), sc, ls);
-                        // Midline (dashed) — always present
-                        let m0 = egui::pos2((p0.x+q0.x)/2.0, (p0.y+q0.y)/2.0);
-                        let m1 = egui::pos2((p1.x+q1.x)/2.0, (p1.y+q1.y)/2.0);
-                        let (em0, em1) = extend_line(m0, m1);
-                        let mid_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 90));
-                        dashed_line(&painter, clamp_pt(em0), clamp_pt(em1), mid_sc, LineStyle::Dashed);
+                        // Standard channel subdivision lines (TradingView style):
+                        // -0.25, 0.25, 0.5, 0.75, 1.25 (0 and 1 are base/parallel already drawn)
+                        if !is_fib_chan {
+                            let subdivisions: &[(f32, u8, LineStyle)] = &[
+                                (-0.25, 50, LineStyle::Dashed),  // breakout extension below
+                                (0.25,  70, LineStyle::Dotted),  // quarter
+                                (0.5,   90, LineStyle::Dashed),  // midline
+                                (0.75,  70, LineStyle::Dotted),  // three-quarter
+                                (1.25,  50, LineStyle::Dashed),  // breakout extension above
+                            ];
+                            for &(ratio, alpha, sub_ls) in subdivisions {
+                                let s0 = egui::pos2(p0.x, p0.y + (q0.y - p0.y) * ratio);
+                                let s1 = egui::pos2(p1.x, p1.y + (q1.y - p1.y) * ratio);
+                                let (es0, es1) = extend_line(s0, s1);
+                                let is_ext = ratio < 0.0 || ratio > 1.0;
+                                let sub_sc = egui::Stroke::new(
+                                    d.thickness * if is_ext { 0.4 } else { 0.5 },
+                                    color_alpha(dc, alpha));
+                                dashed_line(&painter, clamp_pt(es0), clamp_pt(es1), sub_sc, sub_ls);
+                            }
+                        }
                         // Fibonacci channel: internal lines at fib ratios + extensions
                         if is_fib_chan {
                             let fib_ratios: &[(f32, u8)] = &[
