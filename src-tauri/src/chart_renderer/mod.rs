@@ -55,6 +55,11 @@ pub enum DrawingKind {
     TrendLine { price0: f32, time0: i64, price1: f32, time1: i64 },
     HZone { price0: f32, price1: f32 },
     BarMarker { time: i64, price: f32, up: bool },
+    /// Fibonacci retracement — two anchor points define the range.
+    /// Levels drawn: 0%, 23.6%, 38.2%, 50%, 61.8%, 78.6%, 100%
+    Fibonacci { price0: f32, time0: i64, price1: f32, time1: i64 },
+    /// Parallel channel — base trendline (p0→p1) + price offset for the parallel line.
+    Channel { price0: f32, time0: i64, price1: f32, time1: i64, offset: f32 },
 }
 
 /// Commands sent from Tauri/WebView to the native chart renderer

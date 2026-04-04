@@ -19,6 +19,7 @@ std::thread_local! {
     static CLOSE_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PENDING_ALERT: std::cell::RefCell<Option<(String, f32, bool)>> = const { std::cell::RefCell::new(None) };
     static PENDING_TOASTS: std::cell::RefCell<Vec<(String, f32, bool)>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TB_BTN_CLICKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CONN_PANEL_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 use crate::ui_kit::{self, icons::Icon};
@@ -652,8 +653,9 @@ struct Chart {
     history_exhausted: bool, // true if no more history available
     tick_counter: u64, last_candle_time: std::time::Instant, sim_price: f32, sim_seed: u64,
     theme_idx: usize,
-    draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker"
-    pending_pt: Option<(f32,f32)>,
+    draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker", "fibonacci", "channel"
+    pending_pt: Option<(f32,f32)>,  // first click (bar, price)
+    pending_pt2: Option<(f32,f32)>, // second click for channel (bar, price)
     selected_id: Option<String>,
     selected_ids: Vec<String>, // multi-select with shift
     dragging_drawing: Option<(String, i32)>,
@@ -751,7 +753,7 @@ impl Chart {
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
             theme_idx: 5, // Gruvbox
-            draw_tool: String::new(), pending_pt: None,
+            draw_tool: String::new(), pending_pt: None, pending_pt2: None,
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
@@ -1111,6 +1113,8 @@ fn drawing_to_db(d: &Drawing, symbol: &str, timeframe: &str) -> crate::drawing_d
         DrawingKind::TrendLine { price0, time0, price1, time1 } => ("trendline".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
         DrawingKind::HZone { price0, price1 } => ("hzone".into(), vec![(0.0, *price0 as f64), (0.0, *price1 as f64)]),
         DrawingKind::BarMarker { time, price, up } => ("barmarker".into(), vec![(*time as f64, *price as f64), (if *up { 1.0 } else { 0.0 }, 0.0)]),
+        DrawingKind::Fibonacci { price0, time0, price1, time1 } => ("fibonacci".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
+        DrawingKind::Channel { price0, time0, price1, time1, offset } => ("channel".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64), (*offset as f64, 0.0)]),
     };
     let ls = match d.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" };
     crate::drawing_db::DbDrawing {
@@ -1131,6 +1135,15 @@ fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing> {
         }
         "hzone" => DrawingKind::HZone { price0: d.points.get(0)?.1 as f32, price1: d.points.get(1)?.1 as f32 },
         "barmarker" => DrawingKind::BarMarker { time: d.points.get(0)?.0 as i64, price: d.points.get(0)?.1 as f32, up: d.points.get(1).map(|p| p.0 > 0.5).unwrap_or(true) },
+        "fibonacci" => {
+            let p0 = d.points.get(0)?; let p1 = d.points.get(1)?;
+            DrawingKind::Fibonacci { time0: p0.0 as i64, price0: p0.1 as f32, time1: p1.0 as i64, price1: p1.1 as f32 }
+        }
+        "channel" => {
+            let p0 = d.points.get(0)?; let p1 = d.points.get(1)?;
+            let offset = d.points.get(2).map(|p| p.0 as f32).unwrap_or(0.0);
+            DrawingKind::Channel { time0: p0.0 as i64, price0: p0.1 as f32, time1: p1.0 as i64, price1: p1.1 as f32, offset }
+        }
         _ => return None,
     };
     let ls = match d.line_style.as_str() { "dashed" => LineStyle::Dashed, "dotted" => LineStyle::Dotted, _ => LineStyle::Solid };
@@ -1354,8 +1367,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     span_begin("top_panel");
 
     // Toolbar button helper — matches WebView's btnStyle: 11px monospace, 3px radius, 2px 8px padding
+    // Sets TB_BTN_CLICKED flag on click so window drag doesn't fire on the same frame.
     let tb_btn = |ui: &mut egui::Ui, label: &str, active: bool, t: &Theme| -> egui::Response {
-        super::ui::style::tb_btn(ui, label, active, t.accent, t.dim, t.toolbar_bg, t.toolbar_border)
+        let resp = super::ui::style::tb_btn(ui, label, active, t.accent, t.dim, t.toolbar_bg, t.toolbar_border);
+        if resp.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
+        resp
     };
 
     egui::TopBottomPanel::top("tb")
@@ -1427,7 +1443,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let active = panes[ap].draw_tool == tool;
                 if tb_btn(ui, label, active, t).clicked() {
                     panes[ap].draw_tool = if active { String::new() } else { tool.into() };
-                    panes[ap].pending_pt = None;
+                    panes[ap].pending_pt = None; panes[ap].pending_pt2 = None;
                 }
             }
 
@@ -1536,7 +1552,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.painter().rect_filled(resp.rect, 0.0, bg);
                         ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(12.0), hover_fg);
                     }
-                    resp.clicked()
+                    let clicked = resp.clicked();
+                    if clicked { TB_BTN_CLICKED.with(|f| f.set(true)); }
+                    clicked
                 };
 
                 // Close
@@ -1699,19 +1717,22 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // ── Drag to move window ──
-    // If a click/drag starts in the toolbar zone (y < 36) and egui didn't use the pointer
-    // (no button was clicked), initiate window drag.
-    if let Some(pos) = ctx.input(|i| i.pointer.hover_pos()) {
+    // Uses a frame-local flag (tb_btn_clicked) set by the toolbar when any
+    // button was clicked. If no button consumed the click and the pointer is
+    // in the toolbar zone (y < 36), initiate a window drag.
+    // This avoids ctx.is_using_pointer() which is polluted by the chart's
+    // allocate_rect from the previous frame.
+    if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
         if pos.y < 36.0 {
-            let pointer_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
-            let egui_using = ctx.is_using_pointer();
-            if pointer_pressed && !egui_using {
-                if let Some(w) = &win_ref { let _ = w.drag_window(); }
-            }
-            // Double-click to maximize
-            let double_clicked = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
-            if double_clicked && !egui_using {
-                if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+            let btn_clicked = TB_BTN_CLICKED.with(|f| { let v = f.get(); f.set(false); v });
+            if !btn_clicked {
+                let pointer_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
+                let double_clicked = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+                if double_clicked {
+                    if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+                } else if pointer_pressed {
+                    if let Some(w) = &win_ref { let _ = w.drag_window(); }
+                }
             }
         }
     }
@@ -1740,7 +1761,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 shortcut_row(ui, "Dbl-click Y", "Reset Y zoom");
                 ui.add_space(6.0);
                 dialog_section(ui, "DRAWING", m, t.accent);
-                shortcut_row(ui, "Middle-click", "Cycle drawing tools");
+                shortcut_row(ui, "Middle-click", "Cycle: trend → hline → zone → fib → channel");
                 shortcut_row(ui, "Escape", "Cancel / deselect");
                 shortcut_row(ui, "Delete", "Delete selected drawing");
                 shortcut_row(ui, "Shift+Drag", "Measure tool");
@@ -1765,7 +1786,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                 // Per-type visibility toggles
                 dialog_section(ui, "BY TYPE", m, t.dim.gamma_multiply(0.5));
-                let types = [("trendline", "Trendlines"), ("hline", "H-Lines"), ("hzone", "Zones"), ("barmarker", "Markers")];
+                let types = [("trendline", "Trendlines"), ("hline", "H-Lines"), ("hzone", "Zones"), ("barmarker", "Markers"), ("fibonacci", "Fibonacci"), ("channel", "Channels")];
                 for (dtype, label) in &types {
                     let count = chart.drawings.iter().filter(|d| {
                         match (dtype, &d.kind) {
@@ -1773,6 +1794,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             (&"hline", DrawingKind::HLine{..}) => true,
                             (&"hzone", DrawingKind::HZone{..}) => true,
                             (&"barmarker", DrawingKind::BarMarker{..}) => true,
+                            (&"fibonacci", DrawingKind::Fibonacci{..}) => true,
+                            (&"channel", DrawingKind::Channel{..}) => true,
                             _ => false,
                         }
                     }).count();
@@ -4661,6 +4684,62 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         painter.circle_stroke(egui::pos2(x, y), 8.0, egui::Stroke::new(1.5, egui::Color32::WHITE));
                     }
                 }
+                DrawingKind::Fibonacci{price0,time0,price1,time1}=>{
+                    let x0 = bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps));
+                    let x1 = bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps));
+                    let xl = x0.min(x1); let xr = x0.max(x1);
+                    let range = *price1 - *price0;
+                    let fib_levels = [0.0_f32, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+                    for &lv in &fib_levels {
+                        let lp = *price0 + range * lv;
+                        let y = py(lp);
+                        if y.is_finite() && y.abs() < 50000.0 {
+                            let alpha = if lv == 0.0 || lv == 1.0 { 1.0 } else { 0.6 };
+                            let lsc = egui::Stroke::new(if is_sel { d.thickness + 0.5 } else { d.thickness * 0.7 }, color_alpha(dc, (alpha * 255.0) as u8));
+                            dashed_line(&painter, egui::pos2(xl, y), egui::pos2(xr, y), lsc, ls);
+                            painter.text(egui::pos2(xr + 4.0, y), egui::Align2::LEFT_CENTER,
+                                &format!("{:.1}%  {:.2}", lv * 100.0, lp), egui::FontId::monospace(8.0), color_alpha(dc, 200));
+                        }
+                    }
+                    // Shaded golden zone (38.2%-61.8%)
+                    let y382 = py(*price0 + range * 0.382);
+                    let y618 = py(*price0 + range * 0.618);
+                    if y382.is_finite() && y618.is_finite() && y382.abs() < 50000.0 && y618.abs() < 50000.0 {
+                        painter.rect_filled(egui::Rect::from_min_max(
+                            egui::pos2(xl, y382.min(y618)), egui::pos2(xr, y382.max(y618))),
+                            0.0, hex_to_color(&d.color, d.opacity * 0.08));
+                    }
+                    if is_sel {
+                        let p0s = egui::pos2(x0, py(*price0));
+                        let p1s = egui::pos2(x1, py(*price1));
+                        painter.circle_filled(p0s, 5.0, egui::Color32::from_rgb(74,158,255));
+                        painter.circle_filled(p1s, 5.0, egui::Color32::from_rgb(74,158,255));
+                    }
+                }
+                DrawingKind::Channel{price0,time0,price1,time1,offset}=>{
+                    let p0 = clamp_pt(egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0)));
+                    let p1 = clamp_pt(egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), py(*price1)));
+                    let q0 = clamp_pt(egui::pos2(p0.x, py(*price0 + *offset)));
+                    let q1 = clamp_pt(egui::pos2(p1.x, py(*price1 + *offset)));
+                    if in_bounds(p0) && in_bounds(p1) {
+                        // Fill between the two parallel lines
+                        let fill_pts = vec![p0, p1, q1, q0];
+                        painter.add(egui::Shape::convex_polygon(fill_pts, hex_to_color(&d.color, d.opacity * 0.08), egui::Stroke::NONE));
+                        // Base line
+                        dashed_line(&painter, p0, p1, sc, ls);
+                        // Parallel line
+                        dashed_line(&painter, q0, q1, sc, ls);
+                        if is_sel {
+                            painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
+                            painter.circle_stroke(p0, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                            painter.circle_filled(p1, 5.0, egui::Color32::from_rgb(74,158,255));
+                            painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                            // Midpoint of parallel line for offset handle
+                            let qm = egui::pos2((q0.x+q1.x)/2.0, (q0.y+q1.y)/2.0);
+                            painter.circle_filled(qm, 4.0, egui::Color32::from_rgb(74,158,255));
+                        }
+                    }
+                }
             }
         }
 
@@ -5525,28 +5604,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // Middle-click cycles through drawing tools
-        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) {
-            let tools = ["", "trendline", "hline", "hzone", "barmarker"];
+        // Middle-click cycles: → trendline → hline → hzone → fibonacci → channel → pointer →
+        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) && pointer_in_pane {
+            let tools = ["", "trendline", "hline", "hzone", "fibonacci", "channel"];
             let cur = tools.iter().position(|&t| t == chart.draw_tool).unwrap_or(0);
             chart.draw_tool = tools[(cur + 1) % tools.len()].to_string();
-            chart.pending_pt = None;
+            chart.pending_pt = None; chart.pending_pt2 = None;
         }
 
         // Drawing preview + custom cursors (only in hovered pane)
+        let blue = egui::Color32::from_rgb(70, 130, 255);
         if pointer_in_pane { if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-            if chart.draw_tool == "hzone" { if let Some((_b0, p0)) = chart.pending_pt {
-                let y0 = py(p0);
-                // Zone preview fill
-                painter.rect_filled(
-                    egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(pos.y)), egui::pos2(rect.left()+cw, y0.max(pos.y))),
-                    0.0, egui::Color32::from_rgba_unmultiplied(100,160,255,25));
-                // Border lines
-                painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,120)));
-                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,120)));
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-            } }
-            else if chart.draw_tool == "trendline" {
+            if chart.draw_tool == "trendline" {
+                // Accent-colored crosshair + dashed preview line from first click
                 if let Some((b0, p0)) = chart.pending_pt {
                     let start = egui::pos2(bx(b0), py(p0));
                     let dir = pos - start;
@@ -5558,20 +5628,119 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         while d < len {
                             let a = start + norm * d;
                             let b = start + norm * (d + dash_len).min(len);
-                            painter.line_segment([a, b], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,160,255,180)));
+                            painter.line_segment([a, b], egui::Stroke::new(1.5, color_alpha(t.accent, 200)));
                             d += step;
                         }
                     }
+                    painter.circle_filled(start, 3.0, t.accent);
+                    painter.circle_filled(pos, 3.0, t.accent);
                 }
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                // Accent crosshair
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, t.accent));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, t.accent));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
             } else if chart.draw_tool == "hline" {
+                // Blue horizontal line preview following mouse
                 if pos.y >= rect.top()+pt && pos.y < rect.top()+pt+ch {
                     painter.line_segment(
                         [egui::pos2(rect.left(), pos.y), egui::pos2(rect.left()+cw, pos.y)],
-                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100,180,255,120)),
+                        egui::Stroke::new(1.0, color_alpha(blue, 160)),
                     );
+                    // Price label on right edge
+                    let hp = min_p + (max_p - min_p) * (1.0 - (pos.y - rect.top() - pt) / ch);
+                    let price_label = format!("{:.2}", hp);
+                    painter.text(egui::pos2(rect.left() + cw + 3.0, pos.y), egui::Align2::LEFT_CENTER, &price_label, egui::FontId::monospace(8.5), blue);
                 }
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                // Blue crosshair
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, blue));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, blue));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "hzone" {
+                if let Some((_b0, p0)) = chart.pending_pt {
+                    // Rectangle preview from first click to cursor
+                    let y0 = py(p0);
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(pos.y)), egui::pos2(rect.left()+cw, y0.max(pos.y))),
+                        0.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 15));
+                    painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(1.0, egui::Color32::from_white_alpha(120)));
+                    painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(1.0, egui::Color32::from_white_alpha(120)));
+                }
+                // White rectangle cursor
+                let sz = 6.0;
+                painter.rect_stroke(
+                    egui::Rect::from_center_size(pos, egui::vec2(sz * 2.0, sz * 2.0)),
+                    1.0, egui::Stroke::new(1.0, egui::Color32::WHITE), egui::StrokeKind::Outside);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "fibonacci" {
+                // Fibonacci preview: after first click, show fib levels from anchor to cursor
+                let fib_color = egui::Color32::from_rgb(255, 193, 37); // gold
+                if let Some((b0, p0)) = chart.pending_pt {
+                    let price_cursor = min_p + (max_p - min_p) * (1.0 - (pos.y - rect.top() - pt) / ch);
+                    let x0 = bx(b0); let x1 = pos.x;
+                    let xl = x0.min(x1); let xr = x0.max(x1);
+                    let fib_levels = [0.0_f32, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+                    let range = price_cursor - p0;
+                    for &lv in &fib_levels {
+                        let lp = p0 + range * lv;
+                        let y = py(lp);
+                        if y.is_finite() && y.abs() < 50000.0 {
+                            painter.line_segment([egui::pos2(xl, y), egui::pos2(xr, y)],
+                                egui::Stroke::new(0.8, color_alpha(fib_color, 140)));
+                            painter.text(egui::pos2(xr + 4.0, y), egui::Align2::LEFT_CENTER,
+                                &format!("{:.1}% {:.2}", lv * 100.0, lp), egui::FontId::monospace(8.0), color_alpha(fib_color, 200));
+                        }
+                    }
+                    // Shaded region between 0.382 and 0.618
+                    let y382 = py(p0 + range * 0.382);
+                    let y618 = py(p0 + range * 0.618);
+                    if y382.is_finite() && y618.is_finite() {
+                        painter.rect_filled(egui::Rect::from_min_max(
+                            egui::pos2(xl, y382.min(y618)), egui::pos2(xr, y382.max(y618))),
+                            0.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 12));
+                    }
+                }
+                // Gold crosshair
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, fib_color));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, fib_color));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "channel" {
+                // Channel preview: accent-colored parallel lines
+                let chan_color = egui::Color32::from_rgb(130, 220, 180); // green-teal
+                if let Some((b0, p0)) = chart.pending_pt {
+                    if let Some((b1, p1)) = chart.pending_pt2 {
+                        // Phase 3: base line defined, cursor sets offset
+                        let cursor_price = min_p + (max_p - min_p) * (1.0 - (pos.y - rect.top() - pt) / ch);
+                        // Project cursor onto perpendicular of the trendline to get offset
+                        let base_mid_price = (p0 + p1) / 2.0;
+                        let offset_price = cursor_price - base_mid_price;
+                        let sx0 = bx(b0); let sx1 = bx(b1);
+                        let sy0 = py(p0); let sy1 = py(p1);
+                        // Base line
+                        painter.line_segment([egui::pos2(sx0, sy0), egui::pos2(sx1, sy1)],
+                            egui::Stroke::new(1.5, color_alpha(chan_color, 200)));
+                        // Parallel line
+                        let oy0 = py(p0 + offset_price); let oy1 = py(p1 + offset_price);
+                        painter.line_segment([egui::pos2(sx0, oy0), egui::pos2(sx1, oy1)],
+                            egui::Stroke::new(1.5, color_alpha(chan_color, 200)));
+                        // Fill between
+                        let pts = vec![egui::pos2(sx0, sy0), egui::pos2(sx1, sy1), egui::pos2(sx1, oy1), egui::pos2(sx0, oy0)];
+                        painter.add(egui::Shape::convex_polygon(pts, egui::Color32::from_rgba_unmultiplied(130, 220, 180, 15), egui::Stroke::NONE));
+                    } else {
+                        // Phase 2: first click done, drawing base trendline preview
+                        let start = egui::pos2(bx(b0), py(p0));
+                        painter.line_segment([start, pos], egui::Stroke::new(1.5, color_alpha(chan_color, 180)));
+                        painter.circle_filled(start, 3.0, chan_color);
+                        painter.circle_filled(pos, 3.0, chan_color);
+                    }
+                }
+                // Teal crosshair
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, chan_color));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, chan_color));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
             } else if chart.draw_tool == "barmarker" {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             }
@@ -5683,6 +5852,46 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     DrawingKind::BarMarker{time,price,..} => {
                         if egui::pos2(bx(SignalDrawing::time_to_bar(*time, ts_ref)),py(*price)).distance(egui::pos2(px,py_pos)) < 12.0 { return Some((d.id.clone(), -1)); }
                     }
+                    DrawingKind::Fibonacci{price0,time0,price1,time1} => {
+                        // Hit on anchor points (ep 0, 1) or any fib level line (ep -1)
+                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, ts_ref)), py(*price0));
+                        let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, ts_ref)), py(*price1));
+                        if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 1)); }
+                        let range = *price1 - *price0;
+                        let xl = p0.x.min(p1.x); let xr = p0.x.max(p1.x);
+                        if px >= xl - 5.0 && px <= xr + 5.0 {
+                            for &lv in &[0.0_f32, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0] {
+                                if (py_pos - py(*price0 + range * lv)).abs() < 8.0 { return Some((d.id.clone(), -1)); }
+                            }
+                        }
+                    }
+                    DrawingKind::Channel{price0,time0,price1,time1,offset} => {
+                        // Hit on base endpoints (0,1), or on either line body (-1), or offset handle (2)
+                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, ts_ref)), py(*price0));
+                        let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, ts_ref)), py(*price1));
+                        if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 1)); }
+                        // Offset handle (midpoint of parallel line)
+                        let qm = egui::pos2((p0.x+p1.x)/2.0, (py(*price0 + *offset) + py(*price1 + *offset))/2.0);
+                        if qm.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 2)); }
+                        // Line proximity (base line)
+                        let dx = p1.x-p0.x; let dy = p1.y-p0.y; let len2 = dx*dx+dy*dy;
+                        if len2 > 0.0 {
+                            let t = ((px-p0.x)*dx+(py_pos-p0.y)*dy)/len2;
+                            let t = t.max(0.0).min(1.0);
+                            if egui::pos2(p0.x+t*dx,p0.y+t*dy).distance(egui::pos2(px,py_pos)) < 10.0 { return Some((d.id.clone(),-1)); }
+                        }
+                        // Parallel line proximity
+                        let q0 = egui::pos2(p0.x, py(*price0 + *offset));
+                        let q1 = egui::pos2(p1.x, py(*price1 + *offset));
+                        let dx2 = q1.x-q0.x; let dy2 = q1.y-q0.y; let len22 = dx2*dx2+dy2*dy2;
+                        if len22 > 0.0 {
+                            let t = ((px-q0.x)*dx2+(py_pos-q0.y)*dy2)/len22;
+                            let t = t.max(0.0).min(1.0);
+                            if egui::pos2(q0.x+t*dx2,q0.y+t*dy2).distance(egui::pos2(px,py_pos)) < 10.0 { return Some((d.id.clone(),-1)); }
+                        }
+                    }
                 }
             }
             None
@@ -5775,6 +5984,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     let b = SignalDrawing::time_to_bar(*time, &chart.timestamps) + db;
                                     *time = bar_to_time(b, &chart.timestamps);
                                     *price += dp;
+                                },
+                                DrawingKind::Fibonacci{price0,time0,price1,time1} => match ep {
+                                    0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
+                                    1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
+                                    _ => {
+                                        *price0 += dp; *price1 += dp;
+                                        let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
+                                        let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
+                                        *time0 = bar_to_time(b0, &chart.timestamps);
+                                        *time1 = bar_to_time(b1, &chart.timestamps);
+                                    }
+                                },
+                                DrawingKind::Channel{price0,time0,price1,time1,offset} => match ep {
+                                    0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
+                                    1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
+                                    2 => { *offset += dp; } // drag offset handle
+                                    _ => {
+                                        *price0 += dp; *price1 += dp;
+                                        let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
+                                        let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
+                                        *time0 = bar_to_time(b0, &chart.timestamps);
+                                        *time1 = bar_to_time(b1, &chart.timestamps);
+                                    }
                                 },
                             }
                         }
@@ -6012,6 +6244,36 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 chart.drawings.push(d); chart.draw_tool.clear();
                             }
                         }
+                        "fibonacci" => {
+                            // 2-click: first click = anchor, second = end
+                            if let Some((b0, p0)) = chart.pending_pt {
+                                let t0 = bar_to_time(b0, &chart.timestamps);
+                                let t1 = bar_to_time(bar, &chart.timestamps);
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::Fibonacci { price0: p0, time0: t0, price1: price, time1: t1 });
+                                d.color = "#ffc125".into(); // gold
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
+                            } else { chart.pending_pt = Some((bar, price)); }
+                        }
+                        "channel" => {
+                            // 3-click: first two define trendline, third defines offset
+                            if let Some((b0, p0)) = chart.pending_pt {
+                                if let Some((b1, p1)) = chart.pending_pt2 {
+                                    // Third click: offset from base midpoint
+                                    let base_mid = (p0 + p1) / 2.0;
+                                    let offset = price - base_mid;
+                                    let t0 = bar_to_time(b0, &chart.timestamps);
+                                    let t1 = bar_to_time(b1, &chart.timestamps);
+                                    let mut d = Drawing::new(new_uuid(), DrawingKind::Channel { price0: p0, time0: t0, price1: p1, time1: t1, offset });
+                                    d.color = "#82dcb4".into(); // teal
+                                    crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                    chart.drawings.push(d); chart.pending_pt = None; chart.pending_pt2 = None; chart.draw_tool.clear();
+                                } else {
+                                    // Second click: end of base trendline
+                                    chart.pending_pt2 = Some((bar, price));
+                                }
+                            } else { chart.pending_pt = Some((bar, price)); }
+                        }
                         _ => {}
                     }
                 }
@@ -6240,10 +6502,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             ui.separator();
             ui.label(egui::RichText::new("DRAWING TOOLS").small().color(t.dim));
-            if ui.button("Draw HLine").clicked() { chart.draw_tool="hline".into(); chart.pending_pt=None; ui.close_menu(); }
-            if ui.button("Draw Trendline").clicked() { chart.draw_tool="trendline".into(); chart.pending_pt=None; ui.close_menu(); }
-            if ui.button("Draw Zone").clicked() { chart.draw_tool="hzone".into(); chart.pending_pt=None; ui.close_menu(); }
-            if ui.button("Place Marker").clicked() { chart.draw_tool="barmarker".into(); chart.pending_pt=None; ui.close_menu(); }
+            if ui.button("Draw HLine").clicked() { chart.draw_tool="hline".into(); chart.pending_pt=None; chart.pending_pt2=None; ui.close_menu(); }
+            if ui.button("Draw Trendline").clicked() { chart.draw_tool="trendline".into(); chart.pending_pt=None; chart.pending_pt2=None; ui.close_menu(); }
+            if ui.button("Draw Zone").clicked() { chart.draw_tool="hzone".into(); chart.pending_pt=None; chart.pending_pt2=None; ui.close_menu(); }
+            if ui.button("Fibonacci").clicked() { chart.draw_tool="fibonacci".into(); chart.pending_pt=None; chart.pending_pt2=None; ui.close_menu(); }
+            if ui.button("Channel").clicked() { chart.draw_tool="channel".into(); chart.pending_pt=None; chart.pending_pt2=None; ui.close_menu(); }
+            if ui.button("Place Marker").clicked() { chart.draw_tool="barmarker".into(); chart.pending_pt=None; chart.pending_pt2=None; ui.close_menu(); }
             ui.separator();
             if ui.button(format!("{} Drag Zoom", Icon::MAGNIFYING_GLASS_PLUS)).clicked() { chart.zoom_selecting=true; chart.zoom_start=egui::Pos2::ZERO; ui.close_menu(); }
             if ui.button(format!("{} Measure (Shift+Drag)", Icon::RULER)).clicked() { chart.measure_active=true; chart.measure_start=None; ui.close_menu(); }
@@ -6348,7 +6612,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         });
 
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None; }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.pending_pt2 = None; chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None; }
 
         span_end(); // interaction
         } // end for pane_idx
