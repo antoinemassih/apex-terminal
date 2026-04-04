@@ -31,11 +31,14 @@ pub struct Drawing {
     pub line_style: LineStyle,
     pub thickness: f32,     // pixels
     pub group_id: String,   // "default" or group UUID
+    pub extend_left: bool,  // extend trendline/ray to left chart edge
+    pub extend_right: bool, // extend trendline/ray to right chart edge
+    pub locked: bool,       // prevent accidental moves
 }
 
 impl Drawing {
     pub fn new(id: String, kind: DrawingKind) -> Self {
-        Self { id, kind, color: "#4a9eff".into(), opacity: 1.0, line_style: LineStyle::Solid, thickness: 1.5, group_id: "default".into() }
+        Self { id, kind, color: "#4a9eff".into(), opacity: 1.0, line_style: LineStyle::Solid, thickness: 1.5, group_id: "default".into(), extend_left: false, extend_right: false, locked: false }
     }
 }
 

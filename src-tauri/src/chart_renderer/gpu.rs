@@ -4787,15 +4787,42 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
                 DrawingKind::TrendLine{price0,time0,price1,time1}=>{
-                    let p0=clamp_pt(egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)),py(*price0)));
-                    let p1=clamp_pt(egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)),py(*price1)));
-                    if in_bounds(p0) && in_bounds(p1) {
-                        dashed_line(&painter, p0, p1, sc, ls);
+                    let p0=egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)),py(*price0));
+                    let p1=egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)),py(*price1));
+                    if p0.x.is_finite() && p1.x.is_finite() && p0.y.is_finite() && p1.y.is_finite() {
+                        let chart_left = rect.left();
+                        let chart_right = rect.left() + cw;
+                        let dx = p1.x - p0.x;
+                        let (mut draw_a, mut draw_b) = (p0, p1);
+                        if dx.abs() > 0.001 {
+                            let slope = (p1.y - p0.y) / dx;
+                            if d.extend_left {
+                                let left_y = p0.y + slope * (chart_left - p0.x);
+                                draw_a = egui::pos2(chart_left, left_y);
+                            }
+                            if d.extend_right {
+                                let right_y = p0.y + slope * (chart_right - p0.x);
+                                draw_b = egui::pos2(chart_right, right_y);
+                            }
+                        }
+                        dashed_line(&painter, clamp_pt(draw_a), clamp_pt(draw_b), sc, ls);
                         if is_sel {
-                            painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
-                            painter.circle_stroke(p0, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
-                            painter.circle_filled(p1, 5.0, egui::Color32::from_rgb(74,158,255));
-                            painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                            painter.circle_filled(clamp_pt(p0), 5.0, egui::Color32::from_rgb(74,158,255));
+                            painter.circle_stroke(clamp_pt(p0), 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                            painter.circle_filled(clamp_pt(p1), 5.0, egui::Color32::from_rgb(74,158,255));
+                            painter.circle_stroke(clamp_pt(p1), 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                            // Info label
+                            let mid = egui::pos2((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
+                            let dp = *price1 - *price0;
+                            let pct = if *price0 != 0.0 { dp / *price0 * 100.0 } else { 0.0 };
+                            let b0f = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                            let b1f = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                            let bars = (b1f - b0f).abs().round() as i32;
+                            let info = format!("{:+.2} ({:+.1}%) {} bars", dp, pct, bars);
+                            let ig = painter.layout_no_wrap(info.clone(), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(180));
+                            let info_rect = egui::Rect::from_center_size(mid - egui::vec2(0.0, 12.0), ig.size() + egui::vec2(8.0, 4.0));
+                            painter.rect_filled(info_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 210));
+                            painter.text(mid - egui::vec2(0.0, 12.0), egui::Align2::CENTER_CENTER, &info, egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(180));
                         }
                     }
                 }
@@ -5253,16 +5280,22 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0));
                     let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), py(*price1));
                     if p0.x.is_finite() && p1.x.is_finite() {
-                        dashed_line(&painter, clamp_pt(p0), clamp_pt(p1), sc, ls);
-                        // Extend from p1 to right edge
+                        let chart_left = rect.left();
                         let chart_right = rect.left() + cw;
                         let dx = p1.x - p0.x;
+                        let (mut draw_a, mut draw_b) = (p0, p1);
                         if dx.abs() > 0.001 {
                             let slope = (p1.y - p0.y) / dx;
-                            let ext_y = p1.y + slope * (chart_right - p1.x);
-                            let ext_sc = egui::Stroke::new(d.thickness, color_alpha(dc, 160));
-                            dashed_line(&painter, clamp_pt(p1), clamp_pt(egui::pos2(chart_right, ext_y)), ext_sc, ls);
+                            if d.extend_left {
+                                let left_y = p0.y + slope * (chart_left - p0.x);
+                                draw_a = egui::pos2(chart_left, left_y);
+                            }
+                            if d.extend_right {
+                                let right_y = p0.y + slope * (chart_right - p0.x);
+                                draw_b = egui::pos2(chart_right, right_y);
+                            }
                         }
+                        dashed_line(&painter, clamp_pt(draw_a), clamp_pt(draw_b), sc, ls);
                         if is_sel {
                             painter.circle_filled(clamp_pt(p0), 5.0, egui::Color32::from_rgb(74,158,255));
                             painter.circle_filled(clamp_pt(p1), 5.0, egui::Color32::from_rgb(74,158,255));
@@ -7913,6 +7946,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let t1 = bar_to_time(bar, &chart.timestamps);
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::Ray { price0: p0, time0: t0, price1: price, time1: t1 });
                                 d.color = chart.draw_color.clone();
+                                d.extend_right = true;
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
                                 if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                                 chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
@@ -8047,11 +8081,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             chart.dragging_order = Some(oid);
                             event_consumed = true;
                         } else if let Some((ref id, ep)) = hover_hit {
-                            chart.dragging_drawing = Some((id.clone(), ep));
-                            chart.drag_start_price = pos_to_price(pos);
-                            chart.drag_start_bar = pos_to_bar(pos);
-                            chart.drag_drawing_snapshot = chart.drawings.iter().find(|d| d.id == *id).cloned();
-                            event_consumed = true;
+                            let is_locked = chart.drawings.iter().find(|d| d.id == *id).map_or(false, |d| d.locked);
+                            if !is_locked {
+                                let ctrl = ui.input(|i| i.modifiers.command);
+                                if ctrl && ep < 0 {
+                                    // Parallel copy: clone the drawing, drag the copy
+                                    if let Some(src) = chart.drawings.iter().find(|d| d.id == *id).cloned() {
+                                        let mut copy = src;
+                                        copy.id = new_uuid();
+                                        crate::drawing_db::save(&drawing_to_db(&copy, &chart.symbol, &chart.timeframe));
+                                        if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                        chart.undo_stack.push(DrawingAction::Add(copy.clone()));
+                                        chart.redo_stack.clear();
+                                        chart.drag_start_price = pos_to_price(pos);
+                                        chart.drag_start_bar = pos_to_bar(pos);
+                                        chart.drag_drawing_snapshot = Some(copy.clone());
+                                        chart.dragging_drawing = Some((copy.id.clone(), ep));
+                                        chart.drawings.push(copy);
+                                    }
+                                } else {
+                                    chart.dragging_drawing = Some((id.clone(), ep));
+                                    chart.drag_start_price = pos_to_price(pos);
+                                    chart.drag_start_bar = pos_to_bar(pos);
+                                    chart.drag_drawing_snapshot = chart.drawings.iter().find(|d| d.id == *id).cloned();
+                                }
+                                event_consumed = true;
+                            }
                         }
                         // else: fall through to pan (handled below)
                     }
@@ -8198,14 +8253,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // ── Keyboard shortcuts ───────────────────────────────────────────────
         if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
-            if let Some(id) = chart.selected_id.take() {
-                if let Some(old) = chart.drawings.iter().find(|d| d.id == id).cloned() {
+            if !chart.selected_ids.is_empty() {
+                for id in &chart.selected_ids {
+                    if let Some(d) = chart.drawings.iter().find(|d| d.id == *id) {
+                        if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                        chart.undo_stack.push(DrawingAction::Remove(d.clone()));
+                    }
+                    crate::drawing_db::remove(id);
+                }
+                let ids = chart.selected_ids.clone();
+                chart.drawings.retain(|d| !ids.contains(&d.id));
+                chart.redo_stack.clear();
+                chart.selected_ids.clear();
+                chart.selected_id = None;
+            } else if let Some(id) = chart.selected_id.take() {
+                if let Some(d) = chart.drawings.iter().find(|d| d.id == id) {
                     if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
-                    chart.undo_stack.push(DrawingAction::Remove(old));
-                    chart.redo_stack.clear();
+                    chart.undo_stack.push(DrawingAction::Remove(d.clone()));
                 }
                 crate::drawing_db::remove(&id);
                 chart.drawings.retain(|d| d.id != id);
+                chart.redo_stack.clear();
             }
         }
         // Ctrl+Z: Undo
@@ -8565,6 +8633,48 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 d.thickness = thick;
                                                 crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
                                             }
+                                        }
+                                    }
+                                    // Extension toggles (TrendLine / Ray)
+                                    let is_tl_or_ray = matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..});
+                                    if is_tl_or_ray {
+                                        ui.add(egui::Separator::default().spacing(4.0));
+                                        let ext_l_resp = ui.add(egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(10.0).color(if sel_draw.extend_left { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 16.0)));
+                                        if ext_l_resp.clicked() {
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
+                                                d.extend_left = !d.extend_left;
+                                            }
+                                        }
+                                        let ext_r_resp = ui.add(egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(10.0).color(if sel_draw.extend_right { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 16.0)));
+                                        if ext_r_resp.clicked() {
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
+                                                d.extend_right = !d.extend_right;
+                                            }
+                                        }
+                                    }
+                                    // Opacity presets
+                                    ui.add(egui::Separator::default().spacing(4.0));
+                                    for &op in &[0.3_f32, 0.5, 0.7, 1.0] {
+                                        let active = (sel_draw.opacity - op).abs() < 0.05;
+                                        let label = format!("{}%", (op * 100.0) as i32);
+                                        let resp = ui.add(egui::Button::new(egui::RichText::new(&label).monospace().size(8.0).color(if active { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(22.0, 16.0)));
+                                        if resp.clicked() {
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
+                                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                                chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                chart.redo_stack.clear();
+                                                d.opacity = op;
+                                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                                            }
+                                        }
+                                    }
+                                    // Lock toggle
+                                    ui.add(egui::Separator::default().spacing(4.0));
+                                    let lock_label = if sel_draw.locked { "LOCK" } else { "lock" };
+                                    let lock_resp = ui.add(egui::Button::new(egui::RichText::new(lock_label).monospace().size(8.0).color(if sel_draw.locked { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(24.0, 16.0)));
+                                    if lock_resp.clicked() {
+                                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
+                                            d.locked = !d.locked;
                                         }
                                     }
                                 });
