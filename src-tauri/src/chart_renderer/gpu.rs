@@ -5697,10 +5697,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             None
         };
 
-        // Track which zone the drag started in (for axis drags vs chart drags)
-        // We store this as an integer in drag_start_bar's sign bit would be hacky,
-        // so we use the existing dragging_* fields plus a new axis-drag detection approach:
-        // If drag started in xaxis/yaxis zone AND no drawing/order was hit, it's an axis drag.
+        // Pre-compute hover hit once per frame (avoids redundant linear scans)
+        let hover_hit: Option<(String, i32)> = if in_chart_body {
+            hover_pos.and_then(|pos| hit_drawing(pos.x, pos.y, &chart.drawings))
+        } else { None };
+        let hover_order: Option<u32> = if in_chart_body {
+            hover_pos.and_then(|pos| hit_order_line(pos, &chart.orders))
+        } else { None };
+
+        // Safety valve: clear stale drag state if no pointer button is held.
+        // Catches edge cases like alt-tab mid-drag or lost pointer events.
+        let any_button_down = ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary));
+        if !any_button_down {
+            if chart.axis_drag_mode != 0 { chart.axis_drag_mode = 0; }
+            if chart.dragging_order.is_some() { chart.dragging_order = None; }
+            if chart.dragging_drawing.is_some() {
+                // Save before clearing — the drag may have moved the drawing
+                if let Some((ref did, _)) = chart.dragging_drawing {
+                    if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
+                        crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                    }
+                }
+                chart.dragging_drawing = None;
+            }
+        }
 
         // ── PRIORITY 1: Active drags (always finish, never interrupted) ──────
         let mut event_consumed = false;
@@ -6012,11 +6032,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                     Zone::ChartBody => {
                         // Priority: order lines > drawings > pan
-                        if let Some(oid) = hit_order_line(pos, &chart.orders) {
+                        // Use cached hover hits (same frame, same pointer position)
+                        if let Some(oid) = hover_order {
                             chart.dragging_order = Some(oid);
                             event_consumed = true;
-                        } else if let Some((id, ep)) = hit_drawing(pos.x, pos.y, &chart.drawings) {
-                            chart.dragging_drawing = Some((id, ep));
+                        } else if let Some((ref id, ep)) = hover_hit {
+                            chart.dragging_drawing = Some((id.clone(), ep));
                             chart.drag_start_price = pos_to_price(pos);
                             chart.drag_start_bar = pos_to_bar(pos);
                             event_consumed = true;
@@ -6067,16 +6088,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         }
                     } else {
-                        // 5b: Drawing selection / deselection
+                        // 5b: Drawing selection / deselection (use cached hover_hit)
                         let shift = shift_held;
-                        if let Some((id, _)) = hit_drawing(pos.x, pos.y, &chart.drawings) {
+                        if let Some((ref id, _)) = hover_hit {
                             if shift {
-                                if chart.selected_ids.contains(&id) { chart.selected_ids.retain(|x| x != &id); }
+                                if chart.selected_ids.contains(id) { chart.selected_ids.retain(|x| x != id); }
                                 else { chart.selected_ids.push(id.clone()); }
                             } else {
                                 chart.selected_ids = vec![id.clone()];
                             }
-                            chart.selected_id = Some(id);
+                            chart.selected_id = Some(id.clone());
                         } else {
                             chart.selected_id = None;
                             chart.selected_ids.clear();
@@ -6140,20 +6161,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // ── PRIORITY 7: Hover cursors ────────────────────────────────────────
+        // ── PRIORITY 7: Hover cursors (uses cached hover_hit / hover_order) ──
         if !event_consumed && pointer_in_pane && chart.draw_tool.is_empty() {
             if in_xaxis {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
             } else if in_yaxis {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
             } else if in_chart_body {
-                if let Some(pos) = hover_pos {
-                    // Drawing hover
-                    if let Some((_, ep)) = hit_drawing(pos.x, pos.y, &chart.drawings) {
-                        ui.ctx().set_cursor_icon(if ep >= 0 { egui::CursorIcon::Grab } else { egui::CursorIcon::Move });
-                    } else if hit_order_line(pos, &chart.orders).is_some() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                    }
+                if let Some((_, ep)) = &hover_hit {
+                    ui.ctx().set_cursor_icon(if *ep >= 0 { egui::CursorIcon::Grab } else { egui::CursorIcon::Move });
+                } else if hover_order.is_some() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                 }
             }
         }
