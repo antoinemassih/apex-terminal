@@ -6297,8 +6297,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         if magnet_active {
             if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                 let raw_bar = (pos.x - rect.left() + off - bs*0.5) / bs + vs;
-                let bar_idx = raw_bar.round() as usize;
-                if let Some(bar_data) = chart.bars.get(bar_idx) {
+                let bar_idx = if raw_bar < 0.0 { 0 } else { (raw_bar.round() as usize).min(chart.bars.len().saturating_sub(1)) };
+                if !chart.bars.is_empty() { if let Some(bar_data) = chart.bars.get(bar_idx) {
                     let ohlc = [bar_data.open, bar_data.high, bar_data.low, bar_data.close];
                     let bar_x = bx(bar_idx as f32);
                     let magnet_radius = 20.0_f32; // pixels
@@ -6336,7 +6336,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
                     }
                 }
-            }
+            } }
         }
 
         // Drawing preview + custom cursors (only in hovered pane)
