@@ -1578,6 +1578,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if tb_btn(ui, "MAG", panes[ap].magnet, t).clicked() {
                 panes[ap].magnet = !panes[ap].magnet;
             }
+            // Drawing count badge
+            let draw_count = panes[ap].drawings.len();
+            if draw_count > 0 {
+                ui.label(egui::RichText::new(format!("{}", draw_count)).monospace().size(9.0).color(t.dim));
+            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -6330,6 +6335,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let sy = py(best_price);
                         painter.circle_filled(egui::pos2(bar_x, sy), 4.5, t.accent);
                         painter.circle_stroke(egui::pos2(bar_x, sy), 4.5, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                        // Label which OHLC level
+                        let ohlc_labels = ["O", "H", "L", "C"];
+                        let snapped_idx = ohlc.iter().position(|&p| (p - best_price).abs() < 0.0001).unwrap_or(0);
+                        let label = ohlc_labels[snapped_idx];
+                        painter.text(egui::pos2(bar_x + 8.0, sy - 1.0), egui::Align2::LEFT_CENTER, label, egui::FontId::monospace(8.0), t.accent);
                         // Horizontal guide line
                         painter.line_segment(
                             [egui::pos2(rect.left(), sy), egui::pos2(rect.left() + cw, sy)],
@@ -6342,6 +6352,40 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         // Drawing preview + custom cursors (only in hovered pane)
         let blue = egui::Color32::from_rgb(70, 130, 255);
         if pointer_in_pane { if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+            // Tool status indicator — floating label at top of chart
+            if !chart.draw_tool.is_empty() {
+                let tool_name = match chart.draw_tool.as_str() {
+                    "trendline" => "Trendline — click 2 points",
+                    "hline" => "H-Line — click to place",
+                    "hzone" => "Zone — click 2 prices",
+                    "fibonacci" => "Fibonacci — click start then end",
+                    "channel" => "Channel — click 2 points then offset",
+                    "fibchannel" => "Fib Channel — click 2 points then offset",
+                    "pitchfork" => "Pitchfork — click pivot then 2 reactions",
+                    "gannfan" => "Gann Fan — click origin then scale point",
+                    "regression" => "Regression — click start then end",
+                    "xabcd" => "XABCD — click 5 points (X,A,B,C,D)",
+                    "vline" => "Vertical Line — click to place",
+                    "ray" => "Ray — click 2 points",
+                    "fibext" => "Fib Extension — click A, B, then C",
+                    "fibtimezone" => "Fib Time Zones — click anchor",
+                    "fibarc" => "Fib Arcs — click 2 points",
+                    "gannbox" => "Gann Box — click 2 corners",
+                    "pricerange" => "Price Range — click 2 corners",
+                    "riskreward" => "Risk/Reward — click entry, stop, target",
+                    "textnote" => "Text Note — click to place",
+                    s if s.starts_with("elliott") => "Elliott Wave — click wave points",
+                    _ => "",
+                };
+                if !tool_name.is_empty() {
+                    let status_text = format!("{}  [ESC cancel] [M magnet {}]", tool_name, if chart.magnet { "ON" } else { "OFF" });
+                    let galley = painter.layout_no_wrap(status_text.clone(), egui::FontId::monospace(9.0), egui::Color32::from_white_alpha(180));
+                    let status_pos = egui::pos2(rect.left() + (cw - galley.size().x) / 2.0, rect.top() + pt + 6.0);
+                    let bg_rect = egui::Rect::from_min_size(status_pos - egui::vec2(6.0, 3.0), galley.size() + egui::vec2(12.0, 6.0));
+                    painter.rect_filled(bg_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 200));
+                    painter.text(status_pos + egui::vec2(galley.size().x / 2.0, galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &status_text, egui::FontId::monospace(9.0), egui::Color32::from_white_alpha(180));
+                }
+            }
             if chart.draw_tool == "trendline" {
                 // Accent-colored crosshair + dashed preview line from first click
                 if let Some((b0, p0)) = chart.pending_pt {
@@ -6832,6 +6876,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let d = if hp>=10.0{2}else{4};
                     chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", hp, d);
                     painter.text(egui::pos2(rect.left()+cw+3.0,pos.y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),egui::Color32::WHITE);
+                    // Time label at crosshair X position (bottom of chart)
+                    let bar_idx_f = (pos.x - rect.left() + off - bs * 0.5) / bs + vs;
+                    let bar_idx = bar_idx_f.round() as usize;
+                    if let Some(&ts) = chart.timestamps.get(bar_idx) {
+                        let dt = chrono::NaiveDateTime::from_timestamp_opt(ts, 0);
+                        if let Some(dt) = dt {
+                            let time_str = dt.format("%m/%d %H:%M").to_string();
+                            let time_galley = painter.layout_no_wrap(time_str.clone(), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(160));
+                            let time_x = pos.x - time_galley.size().x / 2.0;
+                            let time_y = rect.top() + pt + ch + 2.0;
+                            let time_bg = egui::Rect::from_min_size(egui::pos2(time_x - 3.0, time_y - 1.0), time_galley.size() + egui::vec2(6.0, 2.0));
+                            painter.rect_filled(time_bg, 2.0, t.toolbar_bg);
+                            painter.text(egui::pos2(pos.x, time_y + time_galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &time_str, egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(160));
+                        }
+                    }
                 }
             }
         }
