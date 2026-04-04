@@ -1900,6 +1900,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 dialog_section(ui, "DRAWING", m, t.accent);
                 shortcut_row(ui, "Middle-click", "Cycle: trend → hline → zone → fib → channel");
                 shortcut_row(ui, "M", "Toggle magnet (snap to OHLC)");
+                shortcut_row(ui, "T/H/F/C/V/R/Z", "Trend/HLine/Fib/Chan/VLine/Ray/Zone");
+                shortcut_row(ui, "P/G/X/N", "Pitchfork/Gann/FibExt/TextNote");
+                shortcut_row(ui, "Ctrl+D", "Duplicate selected drawing");
+                shortcut_row(ui, "Ctrl+Z / Ctrl+Y", "Undo / Redo");
                 shortcut_row(ui, "Escape", "Cancel / deselect");
                 shortcut_row(ui, "Delete", "Delete selected drawing");
                 shortcut_row(ui, "Shift+Drag", "Measure tool");
@@ -5422,6 +5426,50 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
+        // ── Price labels at selected drawing anchors ─────────────────────────
+        if let Some(ref sel_id) = chart.selected_id {
+            if let Some(d) = chart.drawings.iter().find(|d| &d.id == sel_id) {
+                let label_col = egui::Color32::from_white_alpha(200);
+                let label_bg = egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220);
+                let font = egui::FontId::monospace(8.0);
+                // Collect anchor prices to label
+                let mut anchors: Vec<(f32, f32)> = vec![]; // (screen_x, price)
+                match &d.kind {
+                    DrawingKind::HLine { price } => { anchors.push((rect.left() + cw, *price)); }
+                    DrawingKind::TrendLine { price0, time0, price1, time1 } | DrawingKind::Ray { price0, time0, price1, time1 } => {
+                        anchors.push((bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), *price0));
+                        anchors.push((bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), *price1));
+                    }
+                    DrawingKind::Fibonacci { price0, time0, price1, time1 } => {
+                        anchors.push((bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), *price0));
+                        anchors.push((bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), *price1));
+                    }
+                    DrawingKind::Channel { price0, time0, price1, time1, offset } | DrawingKind::FibChannel { price0, time0, price1, time1, offset } => {
+                        anchors.push((bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), *price0));
+                        anchors.push((bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), *price1));
+                        anchors.push((bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), *price0 + *offset));
+                    }
+                    DrawingKind::HZone { price0, price1 } => {
+                        anchors.push((rect.left() + cw, *price0));
+                        anchors.push((rect.left() + cw, *price1));
+                    }
+                    _ => {} // Other types: skip for now
+                }
+                for (sx, price) in &anchors {
+                    let sy = py(*price);
+                    if sy.is_finite() && sy.abs() < 50000.0 {
+                        let d = if *price >= 10.0 { 2 } else { 4 };
+                        let label = format!("{:.1$}", price, d);
+                        let galley = painter.layout_no_wrap(label.clone(), font.clone(), label_col);
+                        let lx = sx + 6.0;
+                        let ly = sy - galley.size().y / 2.0;
+                        painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 3.0, ly - 1.0), galley.size() + egui::vec2(6.0, 2.0)), 2.0, label_bg);
+                        painter.text(egui::pos2(lx + galley.size().x / 2.0, sy), egui::Align2::CENTER_CENTER, &label, font.clone(), label_col);
+                    }
+                }
+            }
+        }
+
         // ── Oscillator sub-panel (RSI, MACD, Stochastic) ─────────────────────
         if has_oscillators && osc_h > 10.0 {
             let osc_top = rect.top() + pt + ch + 2.0;
@@ -8567,6 +8615,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         // M key toggles magnet mode
         if ui.input(|i| i.key_pressed(egui::Key::M)) && !ctx.wants_keyboard_input() {
             chart.magnet = !chart.magnet;
+        }
+
+        // ── Keyboard shortcuts for drawing tools ─────────────────────────────
+        // Single-key activates tools instantly (only when no tool active and no text input)
+        if !ctx.wants_keyboard_input() && chart.draw_tool.is_empty() {
+            let new_tool: Option<&str> = ui.input(|i| {
+                if i.key_pressed(egui::Key::T) { Some("trendline") }
+                else if i.key_pressed(egui::Key::H) { Some("hline") }
+                else if i.key_pressed(egui::Key::F) { Some("fibonacci") }
+                else if i.key_pressed(egui::Key::C) && !i.modifiers.command { Some("channel") }
+                else if i.key_pressed(egui::Key::V) && !i.modifiers.command { Some("vline") }
+                else if i.key_pressed(egui::Key::R) { Some("ray") }
+                else if i.key_pressed(egui::Key::Z) && !i.modifiers.command { Some("hzone") }
+                else if i.key_pressed(egui::Key::P) { Some("pitchfork") }
+                else if i.key_pressed(egui::Key::G) { Some("gannfan") }
+                else if i.key_pressed(egui::Key::X) { Some("fibext") }
+                else if i.key_pressed(egui::Key::N) { Some("textnote") }
+                else { None }
+            });
+            if let Some(tool) = new_tool {
+                chart.draw_tool = tool.into();
+                chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
+            }
         }
 
         span_end(); // interaction
