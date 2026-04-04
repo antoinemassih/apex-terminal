@@ -726,6 +726,13 @@ struct Chart {
     // Cached formatted strings — updated only when data changes, not every frame
     #[allow(dead_code)] cached_ohlc: String,
     #[allow(dead_code)] cached_ohlc_bar_count: usize,
+    // Undo/redo
+    undo_stack: Vec<DrawingAction>,
+    redo_stack: Vec<DrawingAction>,
+    drag_drawing_snapshot: Option<Drawing>,
+    // Text annotation editing
+    text_edit_id: Option<String>,
+    text_edit_buf: String,
     // Reusable buffers to avoid per-frame allocations
     indicator_pts_buf: Vec<egui::Pos2>,
     fmt_buf: String, // reusable format buffer
@@ -777,6 +784,8 @@ impl Chart {
             measuring: false, measure_start: None, measure_active: false,
             pending_symbol_change: None, pending_timeframe_change: None,
             cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
+            undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
+            text_edit_id: None, text_edit_buf: String::new(),
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256) }
     }
     fn process(&mut self, cmd: ChartCommand) {
@@ -1024,6 +1033,37 @@ impl Chart {
 /// Run one tick of price simulation for a single pane.
 fn new_uuid() -> String { uuid::Uuid::new_v4().to_string() }
 
+/// Undo/redo action for drawing operations.
+#[derive(Clone)]
+enum DrawingAction {
+    Add(Drawing),
+    Remove(Drawing),
+    Modify(String, Drawing), // (id, old_state)
+}
+
+/// Shift all timestamp fields in a DrawingKind by dt seconds.
+fn shift_drawing_time(kind: &mut DrawingKind, dt: i64) {
+    match kind {
+        DrawingKind::TrendLine { time0, time1, .. } | DrawingKind::Ray { time0, time1, .. }
+        | DrawingKind::Fibonacci { time0, time1, .. } | DrawingKind::Channel { time0, time1, .. }
+        | DrawingKind::FibChannel { time0, time1, .. } | DrawingKind::GannFan { time0, time1, .. }
+        | DrawingKind::FibArc { time0, time1, .. } | DrawingKind::GannBox { time0, time1, .. }
+        | DrawingKind::PriceRange { time0, time1, .. } => { *time0 += dt; *time1 += dt; }
+        DrawingKind::Pitchfork { time0, time1, time2, .. }
+        | DrawingKind::FibExtension { time0, time1, time2, .. } => { *time0 += dt; *time1 += dt; *time2 += dt; }
+        DrawingKind::RegressionChannel { time0, time1 } => { *time0 += dt; *time1 += dt; }
+        DrawingKind::XABCD { points } | DrawingKind::ElliottWave { points, .. } => {
+            for (t, _) in points.iter_mut() { *t += dt; }
+        }
+        DrawingKind::AnchoredVWAP { time } | DrawingKind::VerticalLine { time }
+        | DrawingKind::FibTimeZone { time } => { *time += dt; }
+        DrawingKind::RiskReward { entry_time, .. } => { *entry_time += dt; }
+        DrawingKind::BarMarker { time, .. } => { *time += dt; }
+        DrawingKind::TextNote { time, .. } => { *time += dt; }
+        DrawingKind::HLine { .. } | DrawingKind::HZone { .. } => {}
+    }
+}
+
 /// Generate a 32x32 RGBA window icon — Apex triangle in orange on transparent bg.
 fn make_window_icon() -> Option<winit::window::Icon> {
     let s: u32 = 32;
@@ -1136,6 +1176,11 @@ fn drawing_to_db(d: &Drawing, symbol: &str, timeframe: &str) -> crate::drawing_d
         DrawingKind::FibTimeZone { time } => ("fibtimezone".into(), vec![(*time as f64, 0.0)]),
         DrawingKind::FibArc { price0, time0, price1, time1 } => ("fibarc".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
         DrawingKind::GannBox { price0, time0, price1, time1 } => ("gannbox".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
+        DrawingKind::TextNote { price, time, text, font_size } => {
+            let mut pts = vec![(*time as f64, *price as f64), (*font_size as f64, text.len() as f64)];
+            for ch in text.chars() { pts.push((ch as u32 as f64, 0.0)); }
+            ("textnote".into(), pts)
+        }
     };
     let ls = match d.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" };
     crate::drawing_db::DbDrawing {
@@ -1217,6 +1262,15 @@ fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing> {
         "gannbox" => {
             let p0 = d.points.get(0)?; let p1 = d.points.get(1)?;
             DrawingKind::GannBox { time0: p0.0 as i64, price0: p0.1 as f32, time1: p1.0 as i64, price1: p1.1 as f32 }
+        }
+        "textnote" => {
+            let p0 = d.points.get(0)?;
+            let p1 = d.points.get(1)?;
+            let font_size = p1.0 as f32;
+            let text_len = p1.1 as usize;
+            let text: String = d.points.iter().skip(2).take(text_len)
+                .map(|p| char::from_u32(p.0 as u32).unwrap_or('?')).collect();
+            DrawingKind::TextNote { time: p0.0 as i64, price: p0.1 as f32, text, font_size }
         }
         _ => return None,
     };
@@ -5347,6 +5401,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 // Partial XABCD/Elliott with < 2 pts — nothing to draw yet
                 DrawingKind::XABCD{..} | DrawingKind::ElliottWave{..} => {}
+                DrawingKind::TextNote { price, time, text, font_size } => {
+                    let x = bx(SignalDrawing::time_to_bar(*time, &chart.timestamps));
+                    let y = py(*price);
+                    if x.is_finite() && y.is_finite() && x.abs() < 50000.0 && y.abs() < 50000.0 {
+                        painter.text(egui::pos2(x, y), egui::Align2::LEFT_TOP, text,
+                            egui::FontId::proportional(*font_size), dc);
+                        if is_sel {
+                            let galley = painter.layout_no_wrap(text.clone(), egui::FontId::proportional(*font_size), dc);
+                            let text_rect = egui::Rect::from_min_size(egui::pos2(x, y), galley.size());
+                            painter.rect_stroke(text_rect, 2.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(74,158,255)), egui::StrokeKind::Outside);
+                        }
+                    }
+                }
             }
         }
 
@@ -7011,6 +7078,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let yt = p0.y.min(p1.y); let yb = p0.y.max(p1.y);
                         if px >= xl && px <= xr && py_pos >= yt && py_pos <= yb { return Some((d.id.clone(), -1)); }
                     }
+                    DrawingKind::TextNote{price,time,text,font_size} => {
+                        let x = bx(SignalDrawing::time_to_bar(*time, ts_ref));
+                        let y = py(*price);
+                        let w = text.len() as f32 * font_size * 0.5;
+                        let h = font_size * 1.3;
+                        if px >= x - 5.0 && px <= x + w + 5.0 && py_pos >= y - 5.0 && py_pos <= y + h + 5.0 {
+                            return Some((d.id.clone(), -1));
+                        }
+                    }
                 }
             }
             None
@@ -7045,6 +7121,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if let Some((ref did, _)) = chart.dragging_drawing {
                     if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
                         crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                        if let Some(snap) = chart.drag_drawing_snapshot.take() {
+                            if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                            chart.undo_stack.push(DrawingAction::Modify(did.clone(), snap));
+                            chart.redo_stack.clear();
+                        }
                     }
                 }
                 chart.dragging_drawing = None;
@@ -7260,6 +7341,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         *time1 = bar_to_time(b1, &chart.timestamps);
                                     }
                                 },
+                                DrawingKind::TextNote{price,time,..} => {
+                                    let b = SignalDrawing::time_to_bar(*time, &chart.timestamps) + db;
+                                    *time = bar_to_time(b, &chart.timestamps);
+                                    *price += dp;
+                                }
                             }
                         }
                         chart.drag_start_price = new_p;
@@ -7268,9 +7354,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 }
                 if resp.drag_stopped() {
-                    if let Some((ref did, _)) = chart.dragging_drawing {
+                    if let Some((ref did, _)) = chart.dragging_drawing.clone() {
                         if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
                             crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                            if let Some(snap) = chart.drag_drawing_snapshot.take() {
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Modify(did.clone(), snap));
+                                chart.redo_stack.clear();
+                            }
                         }
                     }
                     chart.dragging_drawing = None;
@@ -7464,6 +7555,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let mut d = Drawing::new(new_uuid(), DrawingKind::HLine { price });
                             d.color = chart.draw_color.clone(); d.line_style = LineStyle::Dashed;
                             crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                            chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                             chart.drawings.push(d); chart.draw_tool.clear();
                         }
                         "trendline" => {
@@ -7473,6 +7566,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::TrendLine { price0: p0, time0: t0, price1: price, time1: t1 });
                                 d.color = chart.draw_color.clone();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7481,6 +7576,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::HZone { price0: p0, price1: price });
                                 d.color = chart.draw_color.clone();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7494,6 +7591,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::BarMarker { time: ts, price: snap_price, up });
                                 d.color = chart.draw_color.clone();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.draw_tool.clear();
                             }
                         }
@@ -7505,6 +7604,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::Fibonacci { price0: p0, time0: t0, price1: price, time1: t1 });
                                 d.color = "#ffc125".into(); // gold
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7520,6 +7621,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     let mut d = Drawing::new(new_uuid(), DrawingKind::Channel { price0: p0, time0: t0, price1: p1, time1: t1, offset });
                                     d.color = "#82dcb4".into(); // teal
                                     crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                    if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                    chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                     chart.drawings.push(d); chart.pending_pt = None; chart.pending_pt2 = None; chart.draw_tool.clear();
                                 } else {
                                     // Second click: end of base trendline
@@ -7538,6 +7641,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     let mut d = Drawing::new(new_uuid(), DrawingKind::FibChannel { price0: p0, time0: t0, price1: p1, time1: t1, offset });
                                     d.color = "#c4a35a".into(); // warm gold
                                     crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                    if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                    chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                     chart.drawings.push(d); chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                                 } else {
                                     chart.pending_pt2 = Some((bar, price));
@@ -7558,6 +7663,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 });
                                 d.color = "#7ecfcf".into(); // teal
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7570,6 +7677,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 });
                                 d.color = "#e8c96b".into(); // gold
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7580,6 +7689,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::RegressionChannel { time0: t0, time1: t1 });
                                 d.color = "#b480e8".into(); // purple
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7592,6 +7703,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::XABCD { points });
                                 d.color = "#ff9f43".into(); // orange
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7605,6 +7718,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 0 });
                                 d.color = "#4ecdc4".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7618,6 +7733,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 1 });
                                 d.color = "#4ecdc4".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7629,6 +7746,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 2 });
                                 d.color = "#4ecdc4".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7640,6 +7759,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 3 });
                                 d.color = "#4ecdc4".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7651,6 +7772,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 4 });
                                 d.color = "#4ecdc4".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7662,6 +7785,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 5 });
                                 d.color = "#4ecdc4".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7671,6 +7796,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let mut d = Drawing::new(new_uuid(), DrawingKind::VerticalLine { time: t });
                             d.color = chart.draw_color.clone(); d.line_style = LineStyle::Dashed;
                             crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                            chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                             chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                         }
                         "ray" => {
@@ -7680,6 +7807,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::Ray { price0: p0, time0: t0, price1: price, time1: t1 });
                                 d.color = chart.draw_color.clone();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7697,6 +7826,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 });
                                 d.color = "#ffd700".into(); // gold
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
@@ -7706,6 +7837,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let mut d = Drawing::new(new_uuid(), DrawingKind::FibTimeZone { time: t });
                             d.color = "#ffc125".into();
                             crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                            chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                             chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                         }
                         "fibarc" => {
@@ -7715,6 +7848,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::FibArc { price0: p0, time0: t0, price1: price, time1: t1 });
                                 d.color = "#ffc125".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7725,6 +7860,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::GannBox { price0: p0, time0: t0, price1: price, time1: t1 });
                                 d.color = "#e8c96b".into(); // gold
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7734,6 +7871,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let mut d = Drawing::new(new_uuid(), DrawingKind::AnchoredVWAP { time: t });
                             d.color = "#b480e8".into();
                             crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                            chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                             chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                         }
                         "pricerange" => {
@@ -7743,6 +7882,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::PriceRange { price0: p0, time0: t0, price1: price, time1: t1 });
                                 d.color = "#74b9ff".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             } else { chart.pending_pt = Some((bar, price)); }
                         }
@@ -7757,9 +7898,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut d = Drawing::new(new_uuid(), DrawingKind::RiskReward { entry_price, entry_time, stop_price, target_price });
                                 d.color = "#2ecc71".into();
                                 crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                chart.undo_stack.push(DrawingAction::Add(d.clone())); chart.redo_stack.clear();
                                 chart.drawings.push(d);
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
+                        }
+                        "textnote" => {
+                            let t = bar_to_time(bar, &chart.timestamps);
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::TextNote { price, time: t, text: String::new(), font_size: 13.0 });
+                            d.color = chart.draw_color.clone();
+                            chart.text_edit_id = Some(d.id.clone());
+                            chart.text_edit_buf = String::new();
+                            chart.drawings.push(d);
+                            chart.draw_tool.clear();
                         }
                         _ => {}
                     }
@@ -7791,6 +7943,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             chart.dragging_drawing = Some((id.clone(), ep));
                             chart.drag_start_price = pos_to_price(pos);
                             chart.drag_start_bar = pos_to_bar(pos);
+                            chart.drag_drawing_snapshot = chart.drawings.iter().find(|d| d.id == *id).cloned();
                             event_consumed = true;
                         }
                         // else: fall through to pan (handled below)
@@ -7879,6 +8032,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     // Double-click Y-axis to reset price zoom
                     chart.price_lock = None;
                 } else if zone == Zone::ChartBody && chart.editing_order.is_none() {
+                    // Double-click TextNote to edit
+                    if let Some((ref id, _)) = hover_hit.clone() {
+                        if let Some(d) = chart.drawings.iter().find(|d| d.id == *id) {
+                            if let DrawingKind::TextNote { text, .. } = &d.kind {
+                                chart.text_edit_id = Some(id.clone());
+                                chart.text_edit_buf = text.clone();
+                            }
+                        }
+                    }
                     // Double-click order line to edit
                     let mut found_order = false;
                     for order in &chart.orders {
@@ -7930,8 +8092,85 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         // ── Keyboard shortcuts ───────────────────────────────────────────────
         if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             if let Some(id) = chart.selected_id.take() {
+                if let Some(old) = chart.drawings.iter().find(|d| d.id == id).cloned() {
+                    if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                    chart.undo_stack.push(DrawingAction::Remove(old));
+                    chart.redo_stack.clear();
+                }
                 crate::drawing_db::remove(&id);
                 chart.drawings.retain(|d| d.id != id);
+            }
+        }
+        // Ctrl+Z: Undo
+        if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift) {
+            if let Some(action) = chart.undo_stack.pop() {
+                let redo_action = match &action {
+                    DrawingAction::Add(d) => {
+                        chart.drawings.retain(|x| x.id != d.id);
+                        crate::drawing_db::remove(&d.id);
+                        DrawingAction::Remove(d.clone())
+                    }
+                    DrawingAction::Remove(d) => {
+                        crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                        chart.drawings.push(d.clone());
+                        DrawingAction::Add(d.clone())
+                    }
+                    DrawingAction::Modify(id, old) => {
+                        let current = chart.drawings.iter().find(|d| d.id == *id).cloned();
+                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
+                            *d = old.clone();
+                            crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                        }
+                        DrawingAction::Modify(id.clone(), current.unwrap_or_else(|| old.clone()))
+                    }
+                };
+                if chart.redo_stack.len() >= 50 { chart.redo_stack.remove(0); }
+                chart.redo_stack.push(redo_action);
+            }
+        }
+        // Ctrl+Shift+Z or Ctrl+Y: Redo
+        if ui.input(|i| (i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z)) || (i.modifiers.command && i.key_pressed(egui::Key::Y))) {
+            if let Some(action) = chart.redo_stack.pop() {
+                let undo_action = match &action {
+                    DrawingAction::Add(d) => {
+                        crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                        chart.drawings.push(d.clone());
+                        DrawingAction::Remove(d.clone())
+                    }
+                    DrawingAction::Remove(d) => {
+                        chart.drawings.retain(|x| x.id != d.id);
+                        crate::drawing_db::remove(&d.id);
+                        DrawingAction::Add(d.clone())
+                    }
+                    DrawingAction::Modify(id, restored) => {
+                        let current = chart.drawings.iter().find(|d| d.id == *id).cloned();
+                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
+                            *d = restored.clone();
+                            crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                        }
+                        DrawingAction::Modify(id.clone(), current.unwrap_or_else(|| restored.clone()))
+                    }
+                };
+                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                chart.undo_stack.push(undo_action);
+            }
+        }
+        // Ctrl+D: Duplicate selected drawing
+        if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::D)) {
+            if let Some(ref sel_id) = chart.selected_id.clone() {
+                if let Some(src) = chart.drawings.iter().find(|d| d.id == *sel_id).cloned() {
+                    let mut dup = src;
+                    dup.id = new_uuid();
+                    let bar_shift = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]) * 5 } else { 1500 };
+                    shift_drawing_time(&mut dup.kind, bar_shift);
+                    crate::drawing_db::save(&drawing_to_db(&dup, &chart.symbol, &chart.timeframe));
+                    if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                    chart.undo_stack.push(DrawingAction::Add(dup.clone()));
+                    chart.redo_stack.clear();
+                    chart.selected_id = Some(dup.id.clone());
+                    chart.selected_ids = vec![dup.id.clone()];
+                    chart.drawings.push(dup);
+                }
             }
         }
 
@@ -8031,6 +8270,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             ui.menu_button("Markers \u{25BA}", |ui| {
                 if ui.button("Bar Marker").clicked() { _new_tool = Some("barmarker"); ui.close_menu(); }
             });
+            ui.menu_button("Annotations \u{25BA}", |ui| {
+                if ui.button("Text Note").clicked() { _new_tool = Some("textnote"); ui.close_menu(); }
+            });
             if let Some(tool) = _new_tool {
                 chart.draw_tool = tool.into();
                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
@@ -8117,6 +8359,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if !chart.selected_ids.is_empty() {
                 if ui.button(egui::RichText::new(format!("{} Delete Selected", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                     let ids = chart.selected_ids.clone();
+                    for d in chart.drawings.iter().filter(|d| ids.contains(&d.id)) {
+                        if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                        chart.undo_stack.push(DrawingAction::Remove(d.clone()));
+                    }
+                    chart.redo_stack.clear();
                     for id in &ids { crate::drawing_db::remove(id); }
                     chart.drawings.retain(|d| !ids.contains(&d.id));
                     chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
@@ -8124,6 +8371,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             if !chart.drawings.is_empty() {
                 if ui.button(egui::RichText::new(format!("{} Delete All Drawings", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                    for d in &chart.drawings {
+                        if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                        chart.undo_stack.push(DrawingAction::Remove(d.clone()));
+                    }
+                    chart.redo_stack.clear();
                     for d in &chart.drawings { crate::drawing_db::remove(&d.id); }
                     chart.drawings.clear(); chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
                 }
@@ -8139,7 +8391,119 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         });
 
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None; }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            chart.draw_tool.clear(); chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
+            chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None;
+            if let Some(ref edit_id) = chart.text_edit_id.clone() {
+                chart.drawings.retain(|d| d.id != *edit_id);
+                crate::drawing_db::remove(edit_id);
+                chart.text_edit_id = None; chart.text_edit_buf.clear();
+            }
+        }
+
+        // ── Drawing properties panel (shown when a drawing is selected) ────────
+        if let Some(ref sel_id) = chart.selected_id.clone() {
+            if let Some(sel_draw) = chart.drawings.iter().find(|d| d.id == *sel_id).cloned() {
+                let panel_pos = egui::pos2(rect.left() + 10.0, rect.top() + pt + 10.0);
+                egui::Area::new(egui::Id::new(format!("draw_props_{}", pane_idx)))
+                    .fixed_pos(panel_pos)
+                    .order(egui::Order::Foreground)
+                    .show(ctx, |ui| {
+                        egui::Frame::popup(&ctx.style())
+                            .fill(t.toolbar_bg)
+                            .stroke(egui::Stroke::new(0.5, t.toolbar_border))
+                            .inner_margin(6.0)
+                            .corner_radius(4.0)
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 4.0;
+                                    let colors = ["#4a9eff","#ff6b6b","#51cf66","#ffc125","#cc5de8","#ff922b","#ffffff","#82dcb4"];
+                                    for hex in &colors {
+                                        let c = hex_to_color(hex, 1.0);
+                                        let resp = ui.add(egui::Button::new("").fill(c).min_size(egui::vec2(16.0, 16.0)).corner_radius(2.0));
+                                        if resp.clicked() {
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
+                                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                                chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                chart.redo_stack.clear();
+                                                d.color = hex.to_string();
+                                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                                            }
+                                        }
+                                    }
+                                    ui.add(egui::Separator::default().spacing(4.0));
+                                    for (ls, label) in [(LineStyle::Solid, "\u{2501}"), (LineStyle::Dashed, "\u{254C}"), (LineStyle::Dotted, "\u{2504}")] {
+                                        let active = sel_draw.line_style == ls;
+                                        let resp = ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(11.0).color(if active { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 16.0)));
+                                        if resp.clicked() {
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
+                                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                                chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                chart.redo_stack.clear();
+                                                d.line_style = ls;
+                                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                                            }
+                                        }
+                                    }
+                                    ui.add(egui::Separator::default().spacing(4.0));
+                                    for &thick in &[0.5_f32, 1.0, 1.5, 2.5] {
+                                        let active = (sel_draw.thickness - thick).abs() < 0.1;
+                                        let label = format!("{:.0}", thick * 2.0);
+                                        let resp = ui.add(egui::Button::new(egui::RichText::new(&label).monospace().size(9.0).color(if active { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0)));
+                                        if resp.clicked() {
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
+                                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                                chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                chart.redo_stack.clear();
+                                                d.thickness = thick;
+                                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                                            }
+                                        }
+                                    }
+                                });
+                            });
+                    });
+            }
+        }
+
+        // ── Text note editing ─────────────────────────────────────────────────
+        if let Some(ref edit_id) = chart.text_edit_id.clone() {
+            let draw_info = chart.drawings.iter().find(|d| d.id == *edit_id).and_then(|d| {
+                if let DrawingKind::TextNote { price, time, font_size, .. } = &d.kind {
+                    Some((*price, *time, *font_size))
+                } else { None }
+            });
+            if let Some((price, time, font_size)) = draw_info {
+                let x = bx(SignalDrawing::time_to_bar(time, &chart.timestamps));
+                let y = py(price);
+                egui::Area::new(egui::Id::new(format!("text_edit_note_{}", pane_idx)))
+                    .fixed_pos(egui::pos2(x, y))
+                    .order(egui::Order::Foreground)
+                    .show(ctx, |ui| {
+                        let resp = ui.add(egui::TextEdit::singleline(&mut chart.text_edit_buf)
+                            .font(egui::FontId::proportional(font_size))
+                            .desired_width(200.0)
+                            .text_color(egui::Color32::WHITE));
+                        resp.request_focus();
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            let text = chart.text_edit_buf.clone();
+                            if text.is_empty() {
+                                chart.drawings.retain(|d| d.id != *edit_id);
+                                crate::drawing_db::remove(edit_id);
+                            } else {
+                                if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *edit_id) {
+                                    if let DrawingKind::TextNote { text: ref mut t, .. } = &mut d.kind { *t = text; }
+                                    if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                    chart.undo_stack.push(DrawingAction::Add(d.clone()));
+                                    chart.redo_stack.clear();
+                                    crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                                }
+                            }
+                            chart.text_edit_id = None; chart.text_edit_buf.clear();
+                        }
+                    });
+            }
+        }
 
         // M key toggles magnet mode
         if ui.input(|i| i.key_pressed(egui::Key::M)) && !ctx.wants_keyboard_input() {

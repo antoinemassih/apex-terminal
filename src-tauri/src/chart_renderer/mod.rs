@@ -90,6 +90,8 @@ pub enum DrawingKind {
     FibArc { price0: f32, time0: i64, price1: f32, time1: i64 },
     /// Gann Box — price/time grid with diagonal angles
     GannBox { price0: f32, time0: i64, price1: f32, time1: i64 },
+    /// Text annotation — placed at a price/time coordinate
+    TextNote { price: f32, time: i64, text: String, font_size: f32 },
 }
 
 /// Commands sent from Tauri/WebView to the native chart renderer
