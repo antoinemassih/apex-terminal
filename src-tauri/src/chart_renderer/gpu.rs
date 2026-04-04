@@ -657,6 +657,7 @@ struct Chart {
     pending_pt: Option<(f32,f32)>,  // first click (bar, price)
     pending_pt2: Option<(f32,f32)>, // second click for channel (bar, price)
     pending_pts: Vec<(f32,f32)>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
+    magnet: bool,                   // snap to OHLC when placing drawings
     selected_id: Option<String>,
     selected_ids: Vec<String>, // multi-select with shift
     dragging_drawing: Option<(String, i32)>,
@@ -754,7 +755,7 @@ impl Chart {
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
             theme_idx: 5, // Gruvbox
-            draw_tool: String::new(), pending_pt: None, pending_pt2: None, pending_pts: vec![],
+            draw_tool: String::new(), pending_pt: None, pending_pt2: None, pending_pts: vec![], magnet: true,
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
@@ -1519,6 +1520,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     panes[ap].pending_pt = None; panes[ap].pending_pt2 = None; panes[ap].pending_pts.clear();
                 }
             }
+            // Magnet toggle (snap to OHLC)
+            if tb_btn(ui, "MAG", panes[ap].magnet, t).clicked() {
+                panes[ap].magnet = !panes[ap].magnet;
+            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -1835,6 +1840,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.add_space(6.0);
                 dialog_section(ui, "DRAWING", m, t.accent);
                 shortcut_row(ui, "Middle-click", "Cycle: trend → hline → zone → fib → channel");
+                shortcut_row(ui, "M", "Toggle magnet (snap to OHLC)");
                 shortcut_row(ui, "Escape", "Cancel / deselect");
                 shortcut_row(ui, "Delete", "Delete selected drawing");
                 shortcut_row(ui, "Shift+Drag", "Measure tool");
@@ -6213,6 +6219,57 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
         }
 
+        // ── OHLC Magnet snap ─────────────────────────────────────────────────
+        // When a drawing tool is active and magnet is on, snap cursor to nearest
+        // Open/High/Low/Close of the bar under the cursor. Used by both preview
+        // and placement. The snap_price/snap_bar are stored for the placement code.
+        let mut snap_bar: Option<f32> = None;
+        let mut snap_price: Option<f32> = None;
+        if !chart.draw_tool.is_empty() && chart.magnet && pointer_in_pane {
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                let raw_bar = (pos.x - rect.left() + off - bs*0.5) / bs + vs;
+                let bar_idx = raw_bar.round() as usize;
+                if let Some(bar_data) = chart.bars.get(bar_idx) {
+                    let ohlc = [bar_data.open, bar_data.high, bar_data.low, bar_data.close];
+                    let bar_x = bx(bar_idx as f32);
+                    let magnet_radius = 20.0_f32; // pixels
+
+                    // Draw small dots at all 4 OHLC levels
+                    for &p in &ohlc {
+                        let y = py(p);
+                        if y.is_finite() && y.abs() < 50000.0 {
+                            painter.circle_filled(egui::pos2(bar_x, y), 2.0, egui::Color32::from_white_alpha(60));
+                        }
+                    }
+
+                    // Find nearest OHLC to cursor y
+                    let mut best_dist = f32::MAX;
+                    let mut best_price = 0.0_f32;
+                    for &p in &ohlc {
+                        let y = py(p);
+                        let dist = (pos.y - y).abs();
+                        if dist < best_dist {
+                            best_dist = dist;
+                            best_price = p;
+                        }
+                    }
+
+                    if best_dist < magnet_radius {
+                        snap_bar = Some(bar_idx as f32);
+                        snap_price = Some(best_price);
+                        // Highlight the snapped level
+                        let sy = py(best_price);
+                        painter.circle_filled(egui::pos2(bar_x, sy), 4.5, t.accent);
+                        painter.circle_stroke(egui::pos2(bar_x, sy), 4.5, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                        // Horizontal guide line
+                        painter.line_segment(
+                            [egui::pos2(rect.left(), sy), egui::pos2(rect.left() + cw, sy)],
+                            egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
+                    }
+                }
+            }
+        }
+
         // Drawing preview + custom cursors (only in hovered pane)
         let blue = egui::Color32::from_rgb(70, 130, 255);
         if pointer_in_pane { if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
@@ -7394,8 +7451,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         if !event_consumed && !chart.draw_tool.is_empty() {
             if resp.clicked() && in_chart_body {
                 if let Some(pos) = resp.interact_pointer_pos() {
-                    let bar = pos_to_bar(pos);
-                    let price = pos_to_price(pos);
+                    // Use magnet-snapped coordinates if available, otherwise raw
+                    let bar = snap_bar.unwrap_or_else(|| pos_to_bar(pos));
+                    let price = snap_price.unwrap_or_else(|| pos_to_price(pos));
                     let sym = chart.symbol.clone();
                     let tf = chart.timeframe.clone();
                     match chart.draw_tool.as_str() {
@@ -8079,6 +8137,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         });
 
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None; }
+
+        // M key toggles magnet mode
+        if ui.input(|i| i.key_pressed(egui::Key::M)) && !ctx.wants_keyboard_input() {
+            chart.magnet = !chart.magnet;
+        }
 
         span_end(); // interaction
         } // end for pane_idx
