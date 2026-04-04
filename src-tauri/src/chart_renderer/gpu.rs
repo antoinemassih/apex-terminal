@@ -6220,12 +6220,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── OHLC Magnet snap ─────────────────────────────────────────────────
-        // When a drawing tool is active and magnet is on, snap cursor to nearest
-        // Open/High/Low/Close of the bar under the cursor. Used by both preview
-        // and placement. The snap_price/snap_bar are stored for the placement code.
+        // When magnet is on and we're either placing or dragging a drawing,
+        // snap to the nearest Open/High/Low/Close of the bar under the cursor.
+        // snap_bar/snap_price are available for both preview and placement.
         let mut snap_bar: Option<f32> = None;
         let mut snap_price: Option<f32> = None;
-        if !chart.draw_tool.is_empty() && chart.magnet && pointer_in_pane {
+        let magnet_active = chart.magnet && pointer_in_pane
+            && (!chart.draw_tool.is_empty() || chart.dragging_drawing.is_some());
+        if magnet_active {
             if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                 let raw_bar = (pos.x - rect.left() + off - bs*0.5) / bs + vs;
                 let bar_idx = raw_bar.round() as usize;
@@ -7074,8 +7076,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 event_consumed = true;
                 if resp.dragged_by(egui::PointerButton::Primary) {
                     if let Some(pos) = hover_pos {
-                        let new_p = pos_to_price(pos);
-                        let new_b = pos_to_bar(pos);
+                        // For endpoint drags (ep >= 0), use magnet snap if available
+                        let new_p = if ep >= 0 { snap_price.unwrap_or_else(|| pos_to_price(pos)) } else { pos_to_price(pos) };
+                        let new_b = if ep >= 0 { snap_bar.unwrap_or_else(|| pos_to_bar(pos)) } else { pos_to_bar(pos) };
                         let dp = new_p - chart.drag_start_price;
                         let db = new_b - chart.drag_start_bar;
                         if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
