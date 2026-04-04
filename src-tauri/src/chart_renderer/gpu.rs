@@ -670,6 +670,7 @@ struct Chart {
     show_oscillators: bool, // toggle oscillator sub-panel
     draw_color: String, // current drawing color
     zoom_selecting: bool, zoom_start: egui::Pos2,
+    axis_drag_mode: u8, // 0=none, 1=xaxis, 2=yaxis
     // Symbol picker
     picker_open: bool, picker_query: String,
     picker_results: Vec<(String, String, String)>, // (symbol, name, exchange/type)
@@ -757,7 +758,7 @@ impl Chart {
             hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true,
             signal_drawings: vec![], hide_signal_drawings: false, last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
             draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
-            zoom_selecting: false, zoom_start: egui::Pos2::ZERO,
+            zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
@@ -5592,161 +5593,72 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         span_end(); // pane_render
 
-        // ── Interaction ───────────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // UNIFIED INTERACTION DISPATCH
+        //
+        // Design: ONE allocate_rect for the whole pane interaction area.
+        // Pointer events are classified into zones, then dispatched through a
+        // strict priority chain. No overlapping rects, no event stealing.
+        //
+        // Zone layout:
+        //   ┌──────────────────┬────┐
+        //   │                  │ Y  │  YAxis: right price strip (pr wide)
+        //   │   ChartBody      │Axis│
+        //   │                  │    │
+        //   ├──────────────────┤    │
+        //   │     XAxis        │    │  XAxis: bottom 18px of chart body
+        //   └──────────────────┴────┘
+        //
+        // Priority (highest first):
+        //   1. Active drags (drawing, order, xaxis, yaxis) — always finish
+        //   2. Modal tools (measure, zoom-select, trigger-pick)
+        //   3. Drawing tools (hline, trendline, hzone, barmarker)
+        //   4. New drag detection (order line → drawing → xaxis → yaxis → pan)
+        //   5. Click dispatch (submit buttons, drawing select/deselect)
+        //   6. Scroll zoom
+        //   7. Hover cursors
+        // ══════════════════════════════════════════════════════════════════════
         span_begin("interaction");
-        // Chart interaction area — only the chart body, not the axis strips
-        let chart_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top()+pt), egui::vec2(cw, ch));
-        let resp = ui.allocate_rect(chart_rect, egui::Sense::click_and_drag());
+
+        // Single interaction rect covering chart body + axis strips
+        let interact_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.top() + pt),
+            egui::vec2(cw + pr, ch),
+        );
+        let resp = ui.allocate_rect(interact_rect, egui::Sense::click_and_drag());
+
+        // Zone geometry (no allocate_rect — just math)
+        let xaxis_y_top = rect.top() + pt + ch - 18.0;
+        let yaxis_x_left = rect.left() + cw;
+
+        // Classify pointer zone
+        #[derive(PartialEq, Clone, Copy)]
+        enum Zone { ChartBody, XAxis, YAxis }
+        let pointer_zone = |pos: egui::Pos2| -> Zone {
+            if pos.x >= yaxis_x_left { Zone::YAxis }
+            else if pos.y >= xaxis_y_top { Zone::XAxis }
+            else { Zone::ChartBody }
+        };
+
+        // Read pointer state once — avoid redundant input reads
+        let hover_pos = ui.input(|i| i.pointer.hover_pos());
+        let current_zone = hover_pos.map(|p| pointer_zone(p));
+        let in_chart_body = current_zone == Some(Zone::ChartBody);
+        let in_xaxis = current_zone == Some(Zone::XAxis);
+        let in_yaxis = current_zone == Some(Zone::YAxis);
+        let shift_held = ui.input(|i| i.modifiers.shift);
 
         // Activate pane on any interaction
         if visible_count > 1 && (resp.clicked() || resp.drag_started()) {
             *active_pane = pane_idx;
         }
 
-        // Check for submit button clicks on draft order badges
-        if resp.clicked() && chart.draw_tool.is_empty() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                let mut submitted = Vec::new();
-                for order in &chart.orders {
-                    if order.status != OrderStatus::Draft { continue; }
-                    let oy = py(order.price);
-                    // Submit button is at badge right side
-                    let status_tag = " DRAFT";
-                    let label = format!("{} x{} @ {:.2} {}{}", order.label(), order.qty, order.price, fmt_notional(order.notional()), status_tag);
-                    let badge_w = label.len() as f32 * 5.8 + 16.0 + 50.0;
-                    let btn_left = rect.left() + 6.0 + badge_w - 46.0;
-                    let btn_top = oy - 10.0 + 2.0;
-                    let btn_rect = egui::Rect::from_min_size(egui::pos2(btn_left, btn_top), egui::vec2(42.0, 16.0));
-                    if btn_rect.contains(pos) {
-                        submitted.push(order.id);
-                    }
-                }
-                for id in &submitted {
-                    // Submit this order and its pair
-                    if let Some(o) = chart.orders.iter_mut().find(|o| o.id == *id) {
-                        o.status = OrderStatus::Placed;
-                        if let Some(pid) = o.pair_id {
-                            if let Some(p) = chart.orders.iter_mut().find(|o| o.id == pid && o.status == OrderStatus::Draft) {
-                                p.status = OrderStatus::Placed;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         let pos_to_bar = |pos: egui::Pos2| -> f32 { (pos.x - rect.left() + off - bs*0.5) / bs + vs };
         let pos_to_price = |pos: egui::Pos2| -> f32 { min_p + (max_p-min_p) * (1.0 - (pos.y - rect.top() - pt) / ch) };
 
-        // ── Measure tool (shift+drag or context menu) ────────────────────────
-        let shift_held = ui.input(|i| i.modifiers.shift);
-        if (shift_held || chart.measure_active) && pointer_in_pane && chart.draw_tool.is_empty() {
-            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                let bar_f = pos_to_bar(pos);
-                let price_f = pos_to_price(pos);
-
-                if ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
-                    chart.measure_start = Some((bar_f, price_f));
-                    chart.measuring = true;
-                }
-
-                if chart.measuring {
-                    if let Some((sb, sp)) = chart.measure_start {
-                        let start_pos = egui::pos2(bx(sb), py(sp));
-
-                        // Dashed line
-                        let dir = pos - start_pos;
-                        let len = dir.length();
-                        if len > 2.0 {
-                            let norm = dir / len;
-                            let mut dd = 0.0;
-                            while dd < len {
-                                let a = start_pos + norm * dd;
-                                let b_pt = start_pos + norm * (dd + 4.0).min(len);
-                                painter.line_segment([a, b_pt], egui::Stroke::new(1.0, t.accent));
-                                dd += 7.0;
-                            }
-                        }
-
-                        painter.circle_filled(start_pos, 3.0, t.accent);
-                        painter.circle_filled(pos, 3.0, t.accent);
-
-                        // Measurement label
-                        let price_diff = price_f - sp;
-                        let bar_diff = (bar_f - sb).abs();
-                        let pct = if sp != 0.0 { (price_diff / sp) * 100.0 } else { 0.0 };
-                        let candle_sec = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]).max(60) } else { 300 };
-                        let time_secs = (bar_diff * candle_sec as f32) as i64;
-                        let time_str = if time_secs >= 86400 { format!("{}d {}h", time_secs / 86400, (time_secs % 86400) / 3600) }
-                            else if time_secs >= 3600 { format!("{}h {}m", time_secs / 3600, (time_secs % 3600) / 60) }
-                            else { format!("{}m", time_secs / 60) };
-
-                        let label = format!("{:+.2} ({:+.2}%)  {} bars  {}", price_diff, pct, bar_diff.round() as i32, time_str);
-                        let label_pos = egui::pos2((start_pos.x + pos.x) / 2.0, (start_pos.y + pos.y) / 2.0 - 14.0);
-                        let label_color = if price_diff >= 0.0 { t.bull } else { t.bear };
-
-                        let galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(10.0), label_color);
-                        let label_rect = egui::Rect::from_center_size(label_pos, galley.size() + egui::vec2(8.0, 4.0));
-                        painter.rect_filled(label_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-                        painter.text(label_pos, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(10.0), label_color);
-                    }
-
-                    if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-                        chart.measuring = false;
-                        chart.measure_start = None;
-                        chart.measure_active = false;
-                    }
-                }
-
-                if pointer_in_pane { ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair); }
-            }
-        }
-
-        // Pre-compute hit test (generous radii for easy interaction)
-        let hover_hit: Option<(String, i32)> = ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
-            for d in chart.drawings.iter().rev() {
-                match &d.kind {
-                    DrawingKind::HLine{price} => {
-                        if (pos.y - py(*price)).abs() < 12.0 && pos.x < rect.left()+cw { return Some((d.id.clone(), -1)); }
-                    }
-                    DrawingKind::TrendLine{price0,time0,price1,time1} => {
-                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0)); let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), py(*price1));
-                        if p0.distance(pos) < 14.0 { return Some((d.id.clone(), 0)); }
-                        if p1.distance(pos) < 14.0 { return Some((d.id.clone(), 1)); }
-                        let dx=p1.x-p0.x; let dy=p1.y-p0.y; let len2=dx*dx+dy*dy;
-                        if len2>0.0 { let t=((pos.x-p0.x)*dx+(pos.y-p0.y)*dy)/len2; let t=t.max(0.0).min(1.0);
-                            if egui::pos2(p0.x+t*dx,p0.y+t*dy).distance(pos)<10.0 { return Some((d.id.clone(),-1)); }
-                        }
-                    }
-                    DrawingKind::HZone{price0,price1} => {
-                        if (pos.y-py(*price0)).abs()<10.0 { return Some((d.id.clone(),0)); }
-                        if (pos.y-py(*price1)).abs()<10.0 { return Some((d.id.clone(),1)); }
-                    }
-                    DrawingKind::BarMarker{time,price,..} => {
-                        if egui::pos2(bx(SignalDrawing::time_to_bar(*time, &chart.timestamps)),py(*price)).distance(pos) < 12.0 { return Some((d.id.clone(), -1)); }
-                    }
-                }
-            }
-            None
-        });
-        // Show move/grab cursor when hovering over a drawing or order line (only in this pane)
-        if pointer_in_pane && chart.draw_tool.is_empty() {
-            if let Some((_, ep)) = &hover_hit {
-                ui.ctx().set_cursor_icon(if *ep >= 0 { egui::CursorIcon::Grab } else { egui::CursorIcon::Move });
-            } else if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                // Check if hovering over an order line
-                for order in &chart.orders {
-                    if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
-                    if (pos.y - py(order.price)).abs() < 18.0 && pos.x < rect.left() + cw {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                        break;
-                    }
-                }
-            }
-        }
-
+        // Hit-test helpers (used for hover cursors, click selection, drag initiation)
         let ts_ref = &chart.timestamps;
-        let hit_at = |px: f32, py_pos: f32, drawings: &[Drawing]| -> Option<(String, i32)> {
+        let hit_drawing = |px: f32, py_pos: f32, drawings: &[Drawing]| -> Option<(String, i32)> {
             for d in drawings.iter().rev() {
                 match &d.kind {
                     DrawingKind::HLine{price} => {
@@ -5758,7 +5670,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
                         if p1.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 1)); }
                         let dx = p1.x-p0.x; let dy = p1.y-p0.y; let len2 = dx*dx+dy*dy;
-                        if len2 > 0.0 { let t = ((px-p0.x)*dx+(py_pos-p0.y)*dy)/len2;
+                        if len2 > 0.0 {
+                            let t = ((px-p0.x)*dx+(py_pos-p0.y)*dy)/len2;
                             let t = t.max(0.0).min(1.0);
                             if egui::pos2(p0.x+t*dx, p0.y+t*dy).distance(egui::pos2(px, py_pos)) < 10.0 { return Some((d.id.clone(), -1)); }
                         }
@@ -5774,283 +5687,206 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             None
         };
+        let hit_order_line = |pos: egui::Pos2, orders: &[OrderLevel]| -> Option<u32> {
+            for order in orders {
+                if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
+                if (pos.y - py(order.price)).abs() < 18.0 && pos.x < yaxis_x_left {
+                    return Some(order.id);
+                }
+            }
+            None
+        };
 
-        // Drawing tool: click to place
-        if !chart.draw_tool.is_empty() && resp.clicked() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                let bar = pos_to_bar(pos);
-                let price = pos_to_price(pos);
-                let sym = chart.symbol.clone();
-                let tf = chart.timeframe.clone();
-                match chart.draw_tool.as_str() {
-                    "hline" => {
-                        let mut d = Drawing::new(new_uuid(), DrawingKind::HLine { price });
-                        d.color = chart.draw_color.clone(); d.line_style = LineStyle::Dashed;
-                        crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
-                        chart.drawings.push(d); chart.draw_tool.clear();
-                    }
-                    "trendline" => {
-                        if let Some((b0, p0)) = chart.pending_pt {
-                            let t0 = bar_to_time(b0, &chart.timestamps);
-                            let t1 = bar_to_time(bar, &chart.timestamps);
-                            let mut d = Drawing::new(new_uuid(), DrawingKind::TrendLine { price0: p0, time0: t0, price1: price, time1: t1 });
-                            d.color = chart.draw_color.clone();
-                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
-                            chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
-                        } else { chart.pending_pt = Some((bar, price)); }
-                    }
-                    "hzone" => {
-                        if let Some((_b0, p0)) = chart.pending_pt {
-                            let mut d = Drawing::new(new_uuid(), DrawingKind::HZone { price0: p0, price1: price });
-                            d.color = chart.draw_color.clone();
-                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
-                            chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
-                        } else { chart.pending_pt = Some((bar, price)); }
-                    }
-                    "barmarker" => {
-                        let bar_idx = bar.round() as usize;
-                        if let Some(b) = chart.bars.get(bar_idx) {
-                            let mid = (b.open + b.close) / 2.0;
-                            let up = price > mid;
-                            let snap_price = if up { b.high } else { b.low };
-                            let ts = chart.timestamps.get(bar_idx).copied().unwrap_or(0);
-                            let mut d = Drawing::new(new_uuid(), DrawingKind::BarMarker { time: ts, price: snap_price, up });
-                            d.color = chart.draw_color.clone();
-                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
-                            chart.drawings.push(d); chart.draw_tool.clear();
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        // No tool: click selects drawing (shift for multi-select), or deselects
-        // Skip if egui is using pointer (style popup, dropdown, etc.)
-        else if chart.draw_tool.is_empty() && resp.clicked() && !ctx.is_using_pointer() && !ctx.is_pointer_over_area() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                let shift = ui.input(|i| i.modifiers.shift);
-                if let Some((id, _)) = hit_at(pos.x, pos.y, &chart.drawings) {
-                    if shift {
-                        if chart.selected_ids.contains(&id) { chart.selected_ids.retain(|x| x != &id); }
-                        else { chart.selected_ids.push(id.clone()); }
-                    } else {
-                        chart.selected_ids = vec![id.clone()];
-                    }
-                    chart.selected_id = Some(id);
-                } else {
-                    chart.selected_id = None;
-                    chart.selected_ids.clear();
-                }
-            }
-        }
+        // Track which zone the drag started in (for axis drags vs chart drags)
+        // We store this as an integer in drag_start_bar's sign bit would be hacky,
+        // so we use the existing dragging_* fields plus a new axis-drag detection approach:
+        // If drag started in xaxis/yaxis zone AND no drawing/order was hit, it's an axis drag.
 
-        // Drag: pan chart OR move drawing OR move order
-        if chart.draw_tool.is_empty() && resp.drag_started_by(egui::PointerButton::Primary) {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                // Check order lines first
-                let mut hit_order = false;
-                for order in &chart.orders {
-                    if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
-                    if (pos.y - py(order.price)).abs() < 18.0 && pos.x < rect.left() + cw {
-                        chart.dragging_order = Some(order.id);
-                        hit_order = true;
-                        break;
-                    }
-                }
-                if !hit_order {
-                    if let Some((id, ep)) = hit_at(pos.x, pos.y, &chart.drawings) {
-                        chart.dragging_drawing = Some((id, ep));
-                        chart.drag_start_price = pos_to_price(pos);
-                        chart.drag_start_bar = pos_to_bar(pos);
-                    }
-                }
-            }
-        }
-        // Order dragging
+        // ── PRIORITY 1: Active drags (always finish, never interrupted) ──────
+        let mut event_consumed = false;
+
+        // 1a: Order line drag (in progress)
         if let Some(order_id) = chart.dragging_order {
+            event_consumed = true;
             if resp.dragged_by(egui::PointerButton::Primary) {
-                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                if let Some(pos) = hover_pos {
                     let new_price = pos_to_price(pos);
                     if let Some(o) = chart.orders.iter_mut().find(|o| o.id == order_id) {
                         o.price = new_price;
                     }
                 }
-                if pointer_in_pane { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical); }
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
             }
             if resp.drag_stopped() { chart.dragging_order = None; }
         }
-        if let Some((ref id, ep)) = chart.dragging_drawing.clone() {
-            if resp.dragged_by(egui::PointerButton::Primary) {
-                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                    let new_p = pos_to_price(pos);
-                    let new_b = pos_to_bar(pos);
-                    let dp = new_p - chart.drag_start_price;
-                    let db = new_b - chart.drag_start_bar;
-                    if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
-                        match &mut d.kind {
-                            DrawingKind::HLine{price} => *price += dp,
-                            DrawingKind::TrendLine{price0,time0,price1,time1} => match ep {
-                                0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
-                                1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
-                                _ => {
-                                    *price0 += dp; *price1 += dp;
-                                    let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
-                                    let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
-                                    *time0 = bar_to_time(b0, &chart.timestamps);
-                                    *time1 = bar_to_time(b1, &chart.timestamps);
-                                }
-                            },
-                            DrawingKind::HZone{price0,price1} => match ep {
-                                0 => *price0 = new_p,
-                                1 => *price1 = new_p,
-                                _ => { *price0 += dp; *price1 += dp; }
-                            },
-                            DrawingKind::BarMarker{time,price,..} => {
-                                let b = SignalDrawing::time_to_bar(*time, &chart.timestamps) + db;
-                                *time = bar_to_time(b, &chart.timestamps);
-                                *price += dp;
-                            },
+
+        // 1b: Drawing drag (in progress)
+        if !event_consumed {
+            if let Some((ref id, ep)) = chart.dragging_drawing.clone() {
+                event_consumed = true;
+                if resp.dragged_by(egui::PointerButton::Primary) {
+                    if let Some(pos) = hover_pos {
+                        let new_p = pos_to_price(pos);
+                        let new_b = pos_to_bar(pos);
+                        let dp = new_p - chart.drag_start_price;
+                        let db = new_b - chart.drag_start_bar;
+                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
+                            match &mut d.kind {
+                                DrawingKind::HLine{price} => *price += dp,
+                                DrawingKind::TrendLine{price0,time0,price1,time1} => match ep {
+                                    0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
+                                    1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
+                                    _ => {
+                                        *price0 += dp; *price1 += dp;
+                                        let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
+                                        let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
+                                        *time0 = bar_to_time(b0, &chart.timestamps);
+                                        *time1 = bar_to_time(b1, &chart.timestamps);
+                                    }
+                                },
+                                DrawingKind::HZone{price0,price1} => match ep {
+                                    0 => *price0 = new_p,
+                                    1 => *price1 = new_p,
+                                    _ => { *price0 += dp; *price1 += dp; }
+                                },
+                                DrawingKind::BarMarker{time,price,..} => {
+                                    let b = SignalDrawing::time_to_bar(*time, &chart.timestamps) + db;
+                                    *time = bar_to_time(b, &chart.timestamps);
+                                    *price += dp;
+                                },
+                            }
+                        }
+                        chart.drag_start_price = new_p;
+                        chart.drag_start_bar = new_b;
+                    }
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
+                if resp.drag_stopped() {
+                    if let Some((ref did, _)) = chart.dragging_drawing {
+                        if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
+                            crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
                         }
                     }
-                    chart.drag_start_price = new_p;
-                    chart.drag_start_bar = new_b;
-                }
-            }
-            if resp.drag_stopped() {
-                // Save the dragged drawing to DB
-                if let Some((ref did, _)) = chart.dragging_drawing {
-                    if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
-                        crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
-                    }
-                }
-                chart.dragging_drawing = None;
-            }
-        }
-        // Trigger order crosshair mode — click to place ONE trigger level
-        else if chart.trigger_setup.phase == TriggerPhase::Picking {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-            if let Some(mouse) = ui.input(|i| i.pointer.hover_pos()) {
-                if rect.contains(mouse) {
-                    let price_at_mouse = py_inv(mouse.y);
-                    let is_buy = chart.trigger_setup.pending_side == OrderSide::Buy;
-                    let line_color = if is_buy { t.bull } else { t.bear };
-                    let side_label = if is_buy { "BUY" } else { "SELL" };
-                    let opt_label = &chart.trigger_setup.option_type;
-                    // Horizontal line at cursor
-                    painter.line_segment(
-                        [egui::pos2(rect.left(), mouse.y), egui::pos2(rect.left() + cw, mouse.y)],
-                        egui::Stroke::new(1.5, color_alpha(line_color, 200)));
-                    // Label
-                    painter.text(egui::pos2(rect.left() + cw - 120.0, mouse.y - 14.0), egui::Align2::LEFT_BOTTOM,
-                        &format!("{} {} {} @ {:.2}", Icon::LIGHTNING, side_label, opt_label, price_at_mouse),
-                        egui::FontId::monospace(10.0), line_color);
-                    // Click to place
-                    if resp.clicked() {
-                        let id = chart.next_trigger_id; chart.next_trigger_id += 1;
-                        let above = price_at_mouse > last_price;
-                        chart.trigger_levels.push(TriggerLevel {
-                            id, side: chart.trigger_setup.pending_side.clone(),
-                            trigger_price: price_at_mouse, above,
-                            symbol: chart.symbol.clone(),
-                            option_type: chart.trigger_setup.option_type.clone(),
-                            strike: chart.trigger_setup.strike,
-                            expiry: chart.trigger_setup.expiry.clone(),
-                            qty: chart.trigger_setup.qty,
-                            submitted: false,
-                        });
-                        chart.trigger_setup.phase = TriggerPhase::Idle;
-                    }
-                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        chart.trigger_setup.phase = TriggerPhase::Idle;
-                    }
+                    chart.dragging_drawing = None;
                 }
             }
         }
-        // Pan chart (only when not dragging a drawing and no tool active)
-        else if chart.draw_tool.is_empty() && resp.dragged_by(egui::PointerButton::Primary) {
-            let d = resp.drag_delta();
-            chart.vs = (chart.vs - d.x/bs).max(0.0).min(n as f32 + 200.0);
-            chart.auto_scroll = false;
-            chart.last_input = std::time::Instant::now();
-        }
 
-        // Scroll zoom — horizontal only, centered on cursor
-        let scroll = ui.input(|i| i.raw_scroll_delta.y);
-        if scroll != 0.0 && resp.hovered() {
-            let f = if scroll > 0.0 { 0.9 } else { 1.1 };
-            let old_vc = chart.vc;
-            let new_vc = ((old_vc as f32 * f).round() as u32).max(20).min(n as u32);
-            let center = chart.vs + old_vc as f32 * 0.5;
-            chart.vc = new_vc;
-            chart.vs = (center - new_vc as f32 * 0.5).max(0.0);
-            chart.auto_scroll = false;
-            chart.last_input = std::time::Instant::now();
-        }
-
-        // X-axis drag (bottom 18px overlay strip) — horizontal zoom
-        let xaxis_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top()+pt+ch-18.0), egui::vec2(cw, 18.0));
-        let xaxis_resp = ui.allocate_rect(xaxis_rect, egui::Sense::click_and_drag());
-        if xaxis_resp.dragged_by(egui::PointerButton::Primary) {
-            let dx = xaxis_resp.drag_delta().x;
-            if dx.abs() > 1.0 {
-                let f = if dx > 0.0 { 1.05_f32 } else { 0.95 };
-                let old = chart.vc;
-                let nw = ((old as f32*f).round() as u32).max(20).min(n as u32);
-                let d = (old as i32 - nw as i32) / 2;
-                chart.vc = nw; chart.vs = (chart.vs + d as f32).max(0.0);
-                chart.auto_scroll = false; chart.last_input = std::time::Instant::now();
+        // 1c: X-axis drag (in progress) — detected via drag_start zone
+        if !event_consumed && chart.axis_drag_mode == 1 {
+            event_consumed = true;
+            if resp.dragged_by(egui::PointerButton::Primary) {
+                let dx = resp.drag_delta().x;
+                if dx.abs() > 1.0 {
+                    let f = if dx > 0.0 { 1.05_f32 } else { 0.95 };
+                    let old = chart.vc;
+                    let nw = ((old as f32*f).round() as u32).max(20).min(n as u32);
+                    let d = (old as i32 - nw as i32) / 2;
+                    chart.vc = nw; chart.vs = (chart.vs + d as f32).max(0.0);
+                    chart.auto_scroll = false; chart.last_input = std::time::Instant::now();
+                }
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
             }
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-        } else if xaxis_resp.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            if resp.drag_stopped() { chart.axis_drag_mode = 0; }
         }
 
-        // Y-axis drag (right strip) — vertical zoom
-        let yaxis_rect = egui::Rect::from_min_size(egui::pos2(rect.left()+cw, rect.top()+pt), egui::vec2(pr, ch));
-        let yaxis_resp = ui.allocate_rect(yaxis_rect, egui::Sense::click_and_drag());
-        if yaxis_resp.dragged_by(egui::PointerButton::Primary) {
-            let dy = yaxis_resp.drag_delta().y;
-            if dy.abs() > 1.0 {
-                let f = if dy > 0.0 { 1.05_f32 } else { 0.95 };
-                let (lo, hi) = chart.price_range();
-                let center = (lo + hi) / 2.0;
-                let half = ((hi - lo) / 2.0) * f;
-                chart.price_lock = Some((center - half, center + half));
-                chart.auto_scroll = false; chart.last_input = std::time::Instant::now();
+        // 1d: Y-axis drag (in progress)
+        if !event_consumed && chart.axis_drag_mode == 2 {
+            event_consumed = true;
+            if resp.dragged_by(egui::PointerButton::Primary) {
+                let dy = resp.drag_delta().y;
+                if dy.abs() > 1.0 {
+                    let f = if dy > 0.0 { 1.05_f32 } else { 0.95 };
+                    let (lo, hi) = chart.price_range();
+                    let center = (lo + hi) / 2.0;
+                    let half = ((hi - lo) / 2.0) * f;
+                    chart.price_lock = Some((center - half, center + half));
+                    chart.auto_scroll = false; chart.last_input = std::time::Instant::now();
+                }
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
             }
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-        } else if yaxis_resp.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            if resp.drag_stopped() { chart.axis_drag_mode = 0; }
         }
-        // Double-click Y-axis to reset price zoom
-        if yaxis_resp.double_clicked() { chart.price_lock = None; }
 
-        // Zoom selection — two phases:
-        // Phase 1: zoom_start == ZERO → show magnifier cursor, wait for first click
-        // Phase 2: zoom_start set → draw selection rect, complete on second click/drag-stop
-        if chart.zoom_selecting {
+        // ── PRIORITY 2: Modal tools ─────────────────────────────────────────
+
+        // 2a: Measure tool (shift+drag or context menu)
+        if !event_consumed && (shift_held || chart.measure_active) && pointer_in_pane && chart.draw_tool.is_empty() {
+            if let Some(pos) = hover_pos {
+                let bar_f = pos_to_bar(pos);
+                let price_f = pos_to_price(pos);
+
+                if ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) && in_chart_body {
+                    chart.measure_start = Some((bar_f, price_f));
+                    chart.measuring = true;
+                }
+
+                if chart.measuring {
+                    event_consumed = true;
+                    if let Some((sb, sp)) = chart.measure_start {
+                        let start_pos = egui::pos2(bx(sb), py(sp));
+                        let dir = pos - start_pos;
+                        let len = dir.length();
+                        if len > 2.0 {
+                            let norm = dir / len;
+                            let mut dd = 0.0;
+                            while dd < len {
+                                let a = start_pos + norm * dd;
+                                let b_pt = start_pos + norm * (dd + 4.0).min(len);
+                                painter.line_segment([a, b_pt], egui::Stroke::new(1.0, t.accent));
+                                dd += 7.0;
+                            }
+                        }
+                        painter.circle_filled(start_pos, 3.0, t.accent);
+                        painter.circle_filled(pos, 3.0, t.accent);
+
+                        let price_diff = price_f - sp;
+                        let bar_diff = (bar_f - sb).abs();
+                        let pct = if sp != 0.0 { (price_diff / sp) * 100.0 } else { 0.0 };
+                        let candle_sec = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]).max(60) } else { 300 };
+                        let time_secs = (bar_diff * candle_sec as f32) as i64;
+                        let time_str = if time_secs >= 86400 { format!("{}d {}h", time_secs / 86400, (time_secs % 86400) / 3600) }
+                            else if time_secs >= 3600 { format!("{}h {}m", time_secs / 3600, (time_secs % 3600) / 60) }
+                            else { format!("{}m", time_secs / 60) };
+
+                        let label = format!("{:+.2} ({:+.2}%)  {} bars  {}", price_diff, pct, bar_diff.round() as i32, time_str);
+                        let label_pos = egui::pos2((start_pos.x + pos.x) / 2.0, (start_pos.y + pos.y) / 2.0 - 14.0);
+                        let label_color = if price_diff >= 0.0 { t.bull } else { t.bear };
+                        let galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(10.0), label_color);
+                        let label_rect = egui::Rect::from_center_size(label_pos, galley.size() + egui::vec2(8.0, 4.0));
+                        painter.rect_filled(label_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                        painter.text(label_pos, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(10.0), label_color);
+                    }
+
+                    if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+                        chart.measuring = false;
+                        chart.measure_start = None;
+                        chart.measure_active = false;
+                    }
+                }
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
+        }
+
+        // 2b: Zoom selection
+        if !event_consumed && chart.zoom_selecting {
+            event_consumed = true;
             let has_start = chart.zoom_start != egui::Pos2::ZERO;
-
             if pointer_in_pane { ui.ctx().set_cursor_icon(egui::CursorIcon::ZoomIn); }
 
             if !has_start {
-                // Phase 1: waiting for first click to set start point
                 if resp.clicked() {
-                    if let Some(pos) = resp.interact_pointer_pos() {
-                        chart.zoom_start = pos;
-                    }
+                    if let Some(pos) = resp.interact_pointer_pos() { chart.zoom_start = pos; }
                 }
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.zoom_selecting = false; }
             } else {
-                // Phase 2: draw selection rectangle
-                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                if let Some(pos) = hover_pos {
                     let zr = egui::Rect::from_two_pos(chart.zoom_start, pos);
                     painter.rect_filled(zr, 0.0, egui::Color32::from_rgba_unmultiplied(110,190,255,20));
                     painter.rect_stroke(zr, 0.0, egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(110,190,255,180)), egui::StrokeKind::Outside);
                 }
-                // Complete on click or drag-stop
                 if resp.clicked() || resp.drag_stopped() {
-                    if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    if let Some(pos) = hover_pos {
                         let sx = chart.zoom_start.x; let sy = chart.zoom_start.y;
                         if (pos.x-sx).abs() > 10.0 && (pos.y-sy).abs() > 10.0 {
                             let b_left = pos_to_bar(egui::pos2(sx.min(pos.x), 0.0));
@@ -6069,19 +5905,271 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // Delete selected drawing
+        // 2c: Trigger order crosshair mode
+        if !event_consumed && chart.trigger_setup.phase == TriggerPhase::Picking {
+            event_consumed = true;
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            if let Some(mouse) = hover_pos {
+                if in_chart_body {
+                    let price_at_mouse = py_inv(mouse.y);
+                    let is_buy = chart.trigger_setup.pending_side == OrderSide::Buy;
+                    let line_color = if is_buy { t.bull } else { t.bear };
+                    let side_label = if is_buy { "BUY" } else { "SELL" };
+                    let opt_label = &chart.trigger_setup.option_type;
+                    painter.line_segment(
+                        [egui::pos2(rect.left(), mouse.y), egui::pos2(rect.left() + cw, mouse.y)],
+                        egui::Stroke::new(1.5, color_alpha(line_color, 200)));
+                    painter.text(egui::pos2(rect.left() + cw - 120.0, mouse.y - 14.0), egui::Align2::LEFT_BOTTOM,
+                        &format!("{} {} {} @ {:.2}", Icon::LIGHTNING, side_label, opt_label, price_at_mouse),
+                        egui::FontId::monospace(10.0), line_color);
+                    if resp.clicked() {
+                        let id = chart.next_trigger_id; chart.next_trigger_id += 1;
+                        let above = price_at_mouse > last_price;
+                        chart.trigger_levels.push(TriggerLevel {
+                            id, side: chart.trigger_setup.pending_side.clone(),
+                            trigger_price: price_at_mouse, above,
+                            symbol: chart.symbol.clone(),
+                            option_type: chart.trigger_setup.option_type.clone(),
+                            strike: chart.trigger_setup.strike,
+                            expiry: chart.trigger_setup.expiry.clone(),
+                            qty: chart.trigger_setup.qty,
+                            submitted: false,
+                        });
+                        chart.trigger_setup.phase = TriggerPhase::Idle;
+                    }
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    chart.trigger_setup.phase = TriggerPhase::Idle;
+                }
+            }
+        }
+
+        // ── PRIORITY 3: Drawing tools (click to place) ──────────────────────
+        if !event_consumed && !chart.draw_tool.is_empty() {
+            if resp.clicked() && in_chart_body {
+                if let Some(pos) = resp.interact_pointer_pos() {
+                    let bar = pos_to_bar(pos);
+                    let price = pos_to_price(pos);
+                    let sym = chart.symbol.clone();
+                    let tf = chart.timeframe.clone();
+                    match chart.draw_tool.as_str() {
+                        "hline" => {
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::HLine { price });
+                            d.color = chart.draw_color.clone(); d.line_style = LineStyle::Dashed;
+                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            chart.drawings.push(d); chart.draw_tool.clear();
+                        }
+                        "trendline" => {
+                            if let Some((b0, p0)) = chart.pending_pt {
+                                let t0 = bar_to_time(b0, &chart.timestamps);
+                                let t1 = bar_to_time(bar, &chart.timestamps);
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::TrendLine { price0: p0, time0: t0, price1: price, time1: t1 });
+                                d.color = chart.draw_color.clone();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
+                            } else { chart.pending_pt = Some((bar, price)); }
+                        }
+                        "hzone" => {
+                            if let Some((_b0, p0)) = chart.pending_pt {
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::HZone { price0: p0, price1: price });
+                                d.color = chart.draw_color.clone();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d); chart.pending_pt = None; chart.draw_tool.clear();
+                            } else { chart.pending_pt = Some((bar, price)); }
+                        }
+                        "barmarker" => {
+                            let bar_idx = bar.round() as usize;
+                            if let Some(b) = chart.bars.get(bar_idx) {
+                                let mid = (b.open + b.close) / 2.0;
+                                let up = price > mid;
+                                let snap_price = if up { b.high } else { b.low };
+                                let ts = chart.timestamps.get(bar_idx).copied().unwrap_or(0);
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::BarMarker { time: ts, price: snap_price, up });
+                                d.color = chart.draw_color.clone();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d); chart.draw_tool.clear();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            event_consumed = true; // drawing tool active = block everything below
+        }
+
+        // ── PRIORITY 4: New drag detection ──────────────────────────────────
+        if !event_consumed && chart.draw_tool.is_empty() && resp.drag_started_by(egui::PointerButton::Primary) {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                let zone = pointer_zone(pos);
+                match zone {
+                    Zone::XAxis => {
+                        chart.axis_drag_mode = 1; // x-axis zoom drag
+                        event_consumed = true;
+                    }
+                    Zone::YAxis => {
+                        chart.axis_drag_mode = 2; // y-axis zoom drag
+                        event_consumed = true;
+                    }
+                    Zone::ChartBody => {
+                        // Priority: order lines > drawings > pan
+                        if let Some(oid) = hit_order_line(pos, &chart.orders) {
+                            chart.dragging_order = Some(oid);
+                            event_consumed = true;
+                        } else if let Some((id, ep)) = hit_drawing(pos.x, pos.y, &chart.drawings) {
+                            chart.dragging_drawing = Some((id, ep));
+                            chart.drag_start_price = pos_to_price(pos);
+                            chart.drag_start_bar = pos_to_bar(pos);
+                            event_consumed = true;
+                        }
+                        // else: fall through to pan (handled below)
+                    }
+                }
+            }
+        }
+
+        // Pan chart (no tool, no active drag, dragging in chart body)
+        if !event_consumed && chart.draw_tool.is_empty() && chart.dragging_drawing.is_none()
+            && chart.dragging_order.is_none() && chart.axis_drag_mode == 0
+            && resp.dragged_by(egui::PointerButton::Primary) {
+            let d = resp.drag_delta();
+            chart.vs = (chart.vs - d.x/bs).max(0.0).min(n as f32 + 200.0);
+            chart.auto_scroll = false;
+            chart.last_input = std::time::Instant::now();
+        }
+
+        // ── PRIORITY 5: Click dispatch ──────────────────────────────────────
+        if !event_consumed && chart.draw_tool.is_empty() && resp.clicked() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                let zone = pointer_zone(pos);
+                if zone == Zone::ChartBody {
+                    // 5a: Check submit buttons on draft order badges
+                    let mut submitted = Vec::new();
+                    for order in &chart.orders {
+                        if order.status != OrderStatus::Draft { continue; }
+                        let oy = py(order.price);
+                        let status_tag = " DRAFT";
+                        let label = format!("{} x{} @ {:.2} {}{}", order.label(), order.qty, order.price, fmt_notional(order.notional()), status_tag);
+                        let badge_w = label.len() as f32 * 5.8 + 16.0 + 50.0;
+                        let btn_left = rect.left() + 6.0 + badge_w - 46.0;
+                        let btn_top = oy - 10.0 + 2.0;
+                        let btn_rect = egui::Rect::from_min_size(egui::pos2(btn_left, btn_top), egui::vec2(42.0, 16.0));
+                        if btn_rect.contains(pos) { submitted.push(order.id); }
+                    }
+                    if !submitted.is_empty() {
+                        for id in &submitted {
+                            if let Some(o) = chart.orders.iter_mut().find(|o| o.id == *id) {
+                                o.status = OrderStatus::Placed;
+                                if let Some(pid) = o.pair_id {
+                                    if let Some(p) = chart.orders.iter_mut().find(|o| o.id == pid && o.status == OrderStatus::Draft) {
+                                        p.status = OrderStatus::Placed;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // 5b: Drawing selection / deselection
+                        let shift = shift_held;
+                        if let Some((id, _)) = hit_drawing(pos.x, pos.y, &chart.drawings) {
+                            if shift {
+                                if chart.selected_ids.contains(&id) { chart.selected_ids.retain(|x| x != &id); }
+                                else { chart.selected_ids.push(id.clone()); }
+                            } else {
+                                chart.selected_ids = vec![id.clone()];
+                            }
+                            chart.selected_id = Some(id);
+                        } else {
+                            chart.selected_id = None;
+                            chart.selected_ids.clear();
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── PRIORITY 6: Scroll zoom ─────────────────────────────────────────
+        let scroll = ui.input(|i| i.raw_scroll_delta.y);
+        if scroll != 0.0 && resp.hovered() && in_chart_body {
+            let f = if scroll > 0.0 { 0.9 } else { 1.1 };
+            let old_vc = chart.vc;
+            let new_vc = ((old_vc as f32 * f).round() as u32).max(20).min(n as u32);
+            let center = chart.vs + old_vc as f32 * 0.5;
+            chart.vc = new_vc;
+            chart.vs = (center - new_vc as f32 * 0.5).max(0.0);
+            chart.auto_scroll = false;
+            chart.last_input = std::time::Instant::now();
+        }
+
+        // ── Double-click dispatch ────────────────────────────────────────────
+        if resp.double_clicked() && chart.draw_tool.is_empty() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                let zone = pointer_zone(pos);
+                if zone == Zone::YAxis {
+                    // Double-click Y-axis to reset price zoom
+                    chart.price_lock = None;
+                } else if zone == Zone::ChartBody && chart.editing_order.is_none() {
+                    // Double-click order line to edit
+                    let mut found_order = false;
+                    for order in &chart.orders {
+                        if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
+                        if (pos.y - py(order.price)).abs() < 18.0 && pos.x < yaxis_x_left {
+                            chart.editing_order = Some(order.id);
+                            chart.edit_order_price = format!("{:.2}", order.price);
+                            chart.edit_order_qty = format!("{}", order.qty);
+                            found_order = true;
+                            break;
+                        }
+                    }
+                    // Double-click indicator line to edit
+                    if !found_order {
+                        for ind in &chart.indicators {
+                            if !ind.visible { continue; }
+                            let bar_i = ((pos.x - rect.left() + off - bs * 0.5) / bs + vs) as usize;
+                            for di in 0..3 {
+                                let idx = if di == 0 { bar_i } else if di == 1 { bar_i.saturating_sub(1) } else { bar_i + 1 };
+                                if let Some(&v) = ind.values.get(idx) {
+                                    if !v.is_nan() && (pos.y - py(v)).abs() < 8.0 {
+                                        chart.editing_indicator = Some(ind.id);
+                                        break;
+                                    }
+                                }
+                            }
+                            if chart.editing_indicator.is_some() { break; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── PRIORITY 7: Hover cursors ────────────────────────────────────────
+        if !event_consumed && pointer_in_pane && chart.draw_tool.is_empty() {
+            if in_xaxis {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            } else if in_yaxis {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            } else if in_chart_body {
+                if let Some(pos) = hover_pos {
+                    // Drawing hover
+                    if let Some((_, ep)) = hit_drawing(pos.x, pos.y, &chart.drawings) {
+                        ui.ctx().set_cursor_icon(if ep >= 0 { egui::CursorIcon::Grab } else { egui::CursorIcon::Move });
+                    } else if hit_order_line(pos, &chart.orders).is_some() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                    }
+                }
+            }
+        }
+
+        // ── Keyboard shortcuts ───────────────────────────────────────────────
         if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             if let Some(id) = chart.selected_id.take() {
+                crate::drawing_db::remove(&id);
                 chart.drawings.retain(|d| d.id != id);
             }
         }
 
-        // Context menu
+        // Context menu (right-click)
         resp.context_menu(|ui| {
-            // Get price at click position for order placement
             let click_price = ui.input(|i| i.pointer.latest_pos()).map(|p| pos_to_price(p)).unwrap_or(0.0);
 
-            // Orders section
             ui.label(egui::RichText::new(format!("ORDERS @ {:.2}", click_price)).small().color(t.dim));
             if ui.button(egui::RichText::new(format!("{} Buy Order", Icon::ARROW_FAT_UP)).color(t.bull)).clicked() {
                 let id = chart.next_order_id; chart.next_order_id += 1;
@@ -6098,7 +6186,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 chart.orders.push(OrderLevel { id, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
-            // OCO Bracket (target +1%, stop -1%)
             if ui.button(egui::RichText::new(format!("\u{21C5} OCO Bracket")).color(egui::Color32::from_rgb(167,139,250))).clicked() {
                 let target_price = click_price * 1.01;
                 let stop_price = click_price * 0.99;
@@ -6108,7 +6195,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop, price: stop_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1), option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
-            // Trigger Order (buy entry at click, sell target +2%)
             if ui.button(egui::RichText::new(format!("\u{27F2} Trigger Order")).color(t.accent)).clicked() {
                 let target_price = click_price * 1.02;
                 let id1 = chart.next_order_id; chart.next_order_id += 1;
@@ -6123,10 +6209,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
             ui.separator();
-            // Alerts
             ui.label(egui::RichText::new(format!("ALERTS @ {:.2}", click_price)).small().color(t.dim));
             if ui.button(format!("{} Alert Above {:.2}", Icon::ARROW_FAT_UP, click_price)).clicked() {
-                // Need to access watchlist — use thread-local
                 PENDING_ALERT.with(|a| *a.borrow_mut() = Some((chart.symbol.clone(), click_price, true)));
                 ui.close_menu();
             }
@@ -6145,7 +6229,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if ui.button(format!("{} Measure (Shift+Drag)", Icon::RULER)).clicked() { chart.measure_active=true; chart.measure_start=None; ui.close_menu(); }
             if ui.button(format!("{} Reset View", Icon::ARROW_COUNTER_CLOCKWISE)).clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); ui.close_menu(); }
             ui.separator();
-            // Visibility toggles
             {
                 let draw_icon = if chart.hide_all_drawings { Icon::EYE_SLASH } else { Icon::EYE };
                 let draw_label = if chart.hide_all_drawings { "Show All Drawings" } else { "Hide All Drawings" };
@@ -6169,28 +6252,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let id = chart.next_indicator_id; chart.next_indicator_id += 1;
                     let color = INDICATOR_COLORS[(chart.indicators.len()) % INDICATOR_COLORS.len()];
                     chart.indicators.push(Indicator::new(id, IndicatorType::SMA, 20, color));
-                    chart.indicator_bar_count = 0; // force recompute
+                    chart.indicator_bar_count = 0;
                     chart.editing_indicator = Some(id);
                     ui.close_menu();
                 }
             }
             ui.separator();
-            // Groups
             ui.label(egui::RichText::new("GROUPS").small().color(t.dim));
             for g in chart.groups.clone() {
                 let hidden = chart.hidden_groups.contains(&g.id);
                 let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
                 let vis_icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
                 ui.horizontal(|ui| {
-                    // Toggle visibility
                     if ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(10.0).color(t.dim)).frame(false)).clicked() {
                         if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
                         else { chart.hidden_groups.push(g.id.clone()); }
                     }
-                    // Group name + count
                     ui.label(egui::RichText::new(format!("{} ({})", g.name, count)).monospace().size(10.0).color(if hidden { t.dim } else { egui::Color32::from_rgb(200,200,210) }));
                 });
-                // Assign selected drawings to this group
                 if !chart.selected_ids.is_empty() {
                     let assign_label = format!("  {} Assign {} to {}", Icon::ARROW_FAT_DOWN, chart.selected_ids.len(), g.name);
                     if ui.button(egui::RichText::new(&assign_label).monospace().size(9.0).color(t.accent)).clicked() {
@@ -6208,17 +6287,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
             }
-            // Create new group
             if ui.button(format!("{} New Group...", Icon::PLUS)).clicked() {
                 chart.group_manager_open = true;
                 ui.close_menu();
             }
-            // Delete non-default groups
             for g in chart.groups.clone() {
                 if g.id != "default" {
                     let del_label = format!("  {} Delete '{}'", Icon::TRASH, g.name);
                     if ui.button(egui::RichText::new(&del_label).monospace().size(9.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
-                        // Move drawings to default, remove group
                         for d in &mut chart.drawings { if d.group_id == g.id { d.group_id = "default".into(); } }
                         chart.groups.retain(|gg| gg.id != g.id);
                         crate::drawing_db::remove_group(&g.id);
@@ -6227,7 +6303,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
             ui.separator();
-            // Delete
             if !chart.selected_ids.is_empty() {
                 if ui.button(egui::RichText::new(format!("{} Delete Selected", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                     let ids = chart.selected_ids.clone();
@@ -6252,42 +6327,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
         });
-
-        // Double-click on order line to edit it
-        if resp.double_clicked() && chart.draw_tool.is_empty() && chart.editing_order.is_none() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                for order in &chart.orders {
-                    if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
-                    if (pos.y - py(order.price)).abs() < 18.0 && pos.x < rect.left() + cw {
-                        chart.editing_order = Some(order.id);
-                        chart.edit_order_price = format!("{:.2}", order.price);
-                        chart.edit_order_qty = format!("{}", order.qty);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Double-click on indicator line to edit it
-        if resp.double_clicked() && chart.draw_tool.is_empty() && chart.editing_order.is_none() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                for ind in &chart.indicators {
-                    if !ind.visible { continue; }
-                    // Check proximity to indicator line
-                    let bar_i = ((pos.x - rect.left() + off - bs * 0.5) / bs + vs) as usize;
-                    for di in 0..3 {
-                        let idx = if di == 0 { bar_i } else if di == 1 { bar_i.saturating_sub(1) } else { bar_i + 1 };
-                        if let Some(&v) = ind.values.get(idx) {
-                            if !v.is_nan() && (pos.y - py(v)).abs() < 8.0 {
-                                chart.editing_indicator = Some(ind.id);
-                                break;
-                            }
-                        }
-                    }
-                    if chart.editing_indicator.is_some() { break; }
-                }
-            }
-        }
 
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) { chart.draw_tool.clear(); chart.pending_pt = None; chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None; }
 
