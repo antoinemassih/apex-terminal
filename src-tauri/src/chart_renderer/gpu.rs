@@ -5705,14 +5705,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             hover_pos.and_then(|pos| hit_order_line(pos, &chart.orders))
         } else { None };
 
-        // Safety valve: clear stale drag state if no pointer button is held.
-        // Catches edge cases like alt-tab mid-drag or lost pointer events.
+        // Safety valve: clear stale drag state if pointer button is not held
+        // AND egui doesn't think a drag is active. This catches lost-focus edge
+        // cases without interfering with normal drag_stopped() handling.
         let any_button_down = ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary));
-        if !any_button_down {
+        let egui_dragging = resp.dragged() || resp.drag_stopped();
+        if !any_button_down && !egui_dragging {
             if chart.axis_drag_mode != 0 { chart.axis_drag_mode = 0; }
             if chart.dragging_order.is_some() { chart.dragging_order = None; }
             if chart.dragging_drawing.is_some() {
-                // Save before clearing — the drag may have moved the drawing
                 if let Some((ref did, _)) = chart.dragging_drawing {
                     if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
                         crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
@@ -5720,6 +5721,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 chart.dragging_drawing = None;
             }
+            if chart.measuring { chart.measuring = false; chart.measure_start = None; chart.measure_active = false; }
         }
 
         // ── PRIORITY 1: Active drags (always finish, never interrupted) ──────
