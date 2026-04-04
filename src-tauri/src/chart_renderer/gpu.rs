@@ -859,7 +859,13 @@ impl Chart {
             ChartCommand::ClearDrawings => { self.drawings.clear(); }
             ChartCommand::LoadDrawings { symbol, drawings, groups } => {
                 if symbol == self.symbol {
+                    // Merge: keep locally-created drawings not yet in DB result
+                    let db_ids: std::collections::HashSet<String> = drawings.iter().map(|d| d.id.clone()).collect();
+                    let local_extras: Vec<Drawing> = self.drawings.iter()
+                        .filter(|d| !db_ids.contains(&d.id))
+                        .cloned().collect();
                     self.drawings = drawings;
+                    self.drawings.extend(local_extras);
                     self.groups = groups.into_iter().map(|g| super::DrawingGroup { id: g.id, name: g.name, color: g.color }).collect();
                 }
             }
@@ -5968,15 +5974,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             chart.last_input = std::time::Instant::now();
         }
 
-        // Scroll zoom
+        // Scroll zoom — horizontal only, centered on cursor
         let scroll = ui.input(|i| i.raw_scroll_delta.y);
         if scroll != 0.0 && resp.hovered() {
             let f = if scroll > 0.0 { 0.9 } else { 1.1 };
-            let old = chart.vc;
-            let nw = ((old as f32*f).round() as u32).max(20).min(n as u32);
-            let d = (old as i32 - nw as i32) / 2;
-            chart.vc = nw;
-            chart.vs = (chart.vs + d as f32).max(0.0);
+            let old_vc = chart.vc;
+            let new_vc = ((old_vc as f32 * f).round() as u32).max(20).min(n as u32);
+            let center = chart.vs + old_vc as f32 * 0.5;
+            chart.vc = new_vc;
+            chart.vs = (center - new_vc as f32 * 0.5).max(0.0);
             chart.auto_scroll = false;
             chart.last_input = std::time::Instant::now();
         }
