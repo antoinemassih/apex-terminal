@@ -60,6 +60,8 @@ pub enum DrawingKind {
     Fibonacci { price0: f32, time0: i64, price1: f32, time1: i64 },
     /// Parallel channel — base trendline (p0→p1) + price offset for the parallel line.
     Channel { price0: f32, time0: i64, price1: f32, time1: i64, offset: f32 },
+    /// Fibonacci channel — same anchors as channel, internal lines at fib ratios.
+    FibChannel { price0: f32, time0: i64, price1: f32, time1: i64, offset: f32 },
 }
 
 /// Commands sent from Tauri/WebView to the native chart renderer
