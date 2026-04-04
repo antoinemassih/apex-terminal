@@ -191,3 +191,220 @@ pub fn sim_oi(underlying: f32, strike: f32, dte: i32) -> i32 {
     let noise = 1.0 + 0.3 * (strike * 17.3 + dte as f32 * 5.7).sin();
     (raw * noise).max(100.0) as i32
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Drawing Computation — headless-safe, no UI dependencies.
+//
+// These functions evaluate drawing geometry against price data. They can run
+// on the GPU renderer thread OR on a headless server for alert evaluation.
+//
+// All functions use f64 for precision (timestamps are i64, prices are f64 in DB).
+// The GPU renderer casts to f32 for rendering; the headless server uses f64 directly.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Interpolate a trendline's price at a given timestamp.
+/// Returns None if the trendline is vertical (time0 == time1).
+pub fn trendline_price_at(time0: i64, price0: f64, time1: i64, price1: f64, at_time: i64) -> Option<f64> {
+    let dt = time1 - time0;
+    if dt == 0 { return None; }
+    let t = (at_time - time0) as f64 / dt as f64;
+    Some(price0 + t * (price1 - price0))
+}
+
+/// Check if a bar's price range crosses a horizontal line.
+pub fn hline_crossed(price: f64, bar_low: f64, bar_high: f64) -> bool {
+    bar_low <= price && bar_high >= price
+}
+
+/// Check if a bar crosses a trendline (price at the bar's timestamp crosses
+/// through the bar's high-low range).
+pub fn trendline_crossed(
+    time0: i64, price0: f64, time1: i64, price1: f64,
+    bar_time: i64, bar_low: f64, bar_high: f64,
+) -> bool {
+    if let Some(line_price) = trendline_price_at(time0, price0, time1, price1, bar_time) {
+        bar_low <= line_price && bar_high >= line_price
+    } else {
+        false
+    }
+}
+
+/// Compute all fibonacci retracement + extension level prices.
+/// Returns Vec of (level_ratio, price) pairs.
+pub fn fib_levels(price0: f64, price1: f64) -> Vec<(f64, f64)> {
+    let range = price1 - price0;
+    let ratios = [
+        // Retracement
+        0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0,
+        // Extensions
+        -0.272, -0.618, 1.272, 1.414, 1.618, 2.0, 2.618, 3.146,
+    ];
+    ratios.iter().map(|&r| (r, price0 + range * r)).collect()
+}
+
+/// Check if a bar touches any fib level (within tolerance).
+/// Returns the first level crossed, or None.
+pub fn fib_level_crossed(
+    price0: f64, price1: f64,
+    bar_low: f64, bar_high: f64,
+    tolerance: f64,
+) -> Option<(f64, f64)> {
+    for (ratio, level_price) in fib_levels(price0, price1) {
+        if (bar_low - tolerance) <= level_price && (bar_high + tolerance) >= level_price {
+            return Some((ratio, level_price));
+        }
+    }
+    None
+}
+
+/// Compute channel bounds (base line price, parallel line price) at a given timestamp.
+pub fn channel_bounds_at(
+    time0: i64, price0: f64, time1: i64, price1: f64, offset: f64,
+    at_time: i64,
+) -> Option<(f64, f64)> {
+    let base = trendline_price_at(time0, price0, time1, price1, at_time)?;
+    Some((base, base + offset))
+}
+
+/// Check if a bar's price is outside the channel bounds.
+/// Returns: -1 if below channel, 0 if inside, 1 if above channel.
+pub fn channel_position(
+    time0: i64, price0: f64, time1: i64, price1: f64, offset: f64,
+    bar_time: i64, bar_close: f64,
+) -> i32 {
+    if let Some((lo, hi)) = channel_bounds_at(time0, price0, time1, price1, offset, bar_time) {
+        let (lower, upper) = if lo < hi { (lo, hi) } else { (hi, lo) };
+        if bar_close < lower { -1 } else if bar_close > upper { 1 } else { 0 }
+    } else {
+        0
+    }
+}
+
+/// Compute fib extension target prices (3-point: A→B projected from C).
+/// Returns Vec of (level_ratio, target_price) pairs.
+pub fn fib_extension_targets(
+    price_a: f64, price_b: f64, price_c: f64,
+) -> Vec<(f64, f64)> {
+    let ab_range = price_b - price_a;
+    let direction = if price_c < price_b { 1.0 } else { -1.0 }; // project in the trending direction
+    let ratios = [0.0, 0.618, 1.0, 1.272, 1.618, 2.0, 2.618];
+    ratios.iter().map(|&r| (r, price_c + direction * ab_range.abs() * r)).collect()
+}
+
+/// Linear regression over a slice of close prices.
+/// Returns (slope, intercept, sigma) where:
+///   predicted_price_at_index(i) = intercept + slope * i
+///   sigma = standard deviation of residuals
+pub fn linear_regression(closes: &[f64]) -> Option<(f64, f64, f64)> {
+    let n = closes.len();
+    if n < 2 { return None; }
+    let nf = n as f64;
+    let (mut sx, mut sy, mut sxx, mut sxy) = (0.0, 0.0, 0.0, 0.0);
+    for (i, &y) in closes.iter().enumerate() {
+        let x = i as f64;
+        sx += x; sy += y; sxx += x * x; sxy += x * y;
+    }
+    let denom = nf * sxx - sx * sx;
+    if denom.abs() < 1e-12 { return None; }
+    let slope = (nf * sxy - sx * sy) / denom;
+    let intercept = (sy - slope * sx) / nf;
+    let mut ss = 0.0;
+    for (i, &y) in closes.iter().enumerate() {
+        let predicted = intercept + slope * i as f64;
+        ss += (y - predicted).powi(2);
+    }
+    let sigma = (ss / nf).sqrt();
+    Some((slope, intercept, sigma))
+}
+
+/// Compute anchored VWAP from a starting index through a slice of bars.
+/// Returns cumulative VWAP at each bar from start_idx to end.
+pub fn anchored_vwap(
+    highs: &[f64], lows: &[f64], closes: &[f64], volumes: &[f64],
+    start_idx: usize,
+) -> Vec<(usize, f64)> {
+    let mut result = vec![];
+    let mut cum_tp_vol = 0.0;
+    let mut cum_vol = 0.0;
+    for i in start_idx..closes.len() {
+        let tp = (highs[i] + lows[i] + closes[i]) / 3.0;
+        cum_tp_vol += tp * volumes[i];
+        cum_vol += volumes[i];
+        if cum_vol > 0.0 {
+            result.push((i, cum_tp_vol / cum_vol));
+        }
+    }
+    result
+}
+
+/// Convert a timestamp to a fractional bar index using a timestamps array.
+/// Binary search for efficiency. Returns fractional index for interpolation.
+pub fn time_to_bar_index(timestamps: &[i64], time: i64) -> f64 {
+    if timestamps.is_empty() { return 0.0; }
+    if time <= timestamps[0] { return 0.0; }
+    if time >= *timestamps.last().unwrap() { return (timestamps.len() - 1) as f64; }
+    match timestamps.binary_search(&time) {
+        Ok(idx) => idx as f64,
+        Err(idx) => {
+            if idx == 0 { return 0.0; }
+            let t0 = timestamps[idx - 1];
+            let t1 = timestamps[idx];
+            let frac = if t1 != t0 { (time - t0) as f64 / (t1 - t0) as f64 } else { 0.0 };
+            (idx - 1) as f64 + frac
+        }
+    }
+}
+
+/// Evaluate all drawings for a symbol against the latest bar.
+/// Returns a list of (drawing_id, alert_type, message) for any triggered conditions.
+/// This is the main function a headless alert server would call.
+pub fn evaluate_drawings_against_bar(
+    drawings: &[(String, String, serde_json::Value)], // (id, drawing_type, params_json)
+    bar_time: i64, bar_open: f64, bar_high: f64, bar_low: f64, bar_close: f64,
+    timestamps: &[i64],
+) -> Vec<(String, String, String)> {
+    let mut alerts = vec![];
+
+    for (id, dtype, params) in drawings {
+        match dtype.as_str() {
+            "hline" => {
+                let price = params.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                if hline_crossed(price, bar_low, bar_high) {
+                    alerts.push((id.clone(), "cross".into(), format!("Price crossed H-Line at {:.2}", price)));
+                }
+            }
+            "trendline" | "ray" => {
+                let p0 = params.get("price0").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let t0 = params.get("time0").and_then(|v| v.as_i64()).unwrap_or(0);
+                let p1 = params.get("price1").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let t1 = params.get("time1").and_then(|v| v.as_i64()).unwrap_or(0);
+                if trendline_crossed(t0, p0, t1, p1, bar_time, bar_low, bar_high) {
+                    let line_p = trendline_price_at(t0, p0, t1, p1, bar_time).unwrap_or(0.0);
+                    alerts.push((id.clone(), "cross".into(), format!("Price crossed trendline at {:.2}", line_p)));
+                }
+            }
+            "fibonacci" => {
+                let p0 = params.get("price0").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let p1 = params.get("price1").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                if let Some((ratio, level)) = fib_level_crossed(p0, p1, bar_low, bar_high, 0.01) {
+                    alerts.push((id.clone(), "fib_touch".into(), format!("Price touched Fib {:.1}% at {:.2}", ratio * 100.0, level)));
+                }
+            }
+            "channel" | "fibchannel" => {
+                let p0 = params.get("price0").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let t0 = params.get("time0").and_then(|v| v.as_i64()).unwrap_or(0);
+                let p1 = params.get("price1").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let t1 = params.get("time1").and_then(|v| v.as_i64()).unwrap_or(0);
+                let offset = params.get("offset").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let pos = channel_position(t0, p0, t1, p1, offset, bar_time, bar_close);
+                if pos != 0 {
+                    let side = if pos > 0 { "above" } else { "below" };
+                    alerts.push((id.clone(), "breakout".into(), format!("Price broke {} channel at {:.2}", side, bar_close)));
+                }
+            }
+            _ => {} // Other types: no alert evaluation yet
+        }
+    }
+
+    alerts
+}
