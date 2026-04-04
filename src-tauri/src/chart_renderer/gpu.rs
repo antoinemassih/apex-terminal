@@ -1129,6 +1129,12 @@ fn drawing_to_db(d: &Drawing, symbol: &str, timeframe: &str) -> crate::drawing_d
         DrawingKind::AnchoredVWAP { time } => ("avwap".into(), vec![(*time as f64, 0.0)]),
         DrawingKind::PriceRange { price0, time0, price1, time1 } => ("pricerange".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
         DrawingKind::RiskReward { entry_price, entry_time, stop_price, target_price } => ("riskreward".into(), vec![(*entry_time as f64, *entry_price as f64), (0.0, *stop_price as f64), (0.0, *target_price as f64)]),
+        DrawingKind::VerticalLine { time } => ("vline".into(), vec![(*time as f64, 0.0)]),
+        DrawingKind::Ray { price0, time0, price1, time1 } => ("ray".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
+        DrawingKind::FibExtension { price0, time0, price1, time1, price2, time2 } => ("fibext".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64), (*time2 as f64, *price2 as f64)]),
+        DrawingKind::FibTimeZone { time } => ("fibtimezone".into(), vec![(*time as f64, 0.0)]),
+        DrawingKind::FibArc { price0, time0, price1, time1 } => ("fibarc".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
+        DrawingKind::GannBox { price0, time0, price1, time1 } => ("gannbox".into(), vec![(*time0 as f64, *price0 as f64), (*time1 as f64, *price1 as f64)]),
     };
     let ls = match d.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" };
     crate::drawing_db::DbDrawing {
@@ -1192,6 +1198,24 @@ fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing> {
         "riskreward" => {
             let p0 = d.points.get(0)?; let p1 = d.points.get(1)?; let p2 = d.points.get(2)?;
             DrawingKind::RiskReward { entry_time: p0.0 as i64, entry_price: p0.1 as f32, stop_price: p1.1 as f32, target_price: p2.1 as f32 }
+        }
+        "vline" => { let p0 = d.points.get(0)?; DrawingKind::VerticalLine { time: p0.0 as i64 } }
+        "ray" => {
+            let p0 = d.points.get(0)?; let p1 = d.points.get(1)?;
+            DrawingKind::Ray { time0: p0.0 as i64, price0: p0.1 as f32, time1: p1.0 as i64, price1: p1.1 as f32 }
+        }
+        "fibext" => {
+            let p0 = d.points.get(0)?; let p1 = d.points.get(1)?; let p2 = d.points.get(2)?;
+            DrawingKind::FibExtension { time0: p0.0 as i64, price0: p0.1 as f32, time1: p1.0 as i64, price1: p1.1 as f32, time2: p2.0 as i64, price2: p2.1 as f32 }
+        }
+        "fibtimezone" => { let p0 = d.points.get(0)?; DrawingKind::FibTimeZone { time: p0.0 as i64 } }
+        "fibarc" => {
+            let p0 = d.points.get(0)?; let p1 = d.points.get(1)?;
+            DrawingKind::FibArc { time0: p0.0 as i64, price0: p0.1 as f32, time1: p1.0 as i64, price1: p1.1 as f32 }
+        }
+        "gannbox" => {
+            let p0 = d.points.get(0)?; let p1 = d.points.get(1)?;
+            DrawingKind::GannBox { time0: p0.0 as i64, price0: p0.1 as f32, time1: p1.0 as i64, price1: p1.1 as f32 }
         }
         _ => return None,
     };
@@ -5035,7 +5059,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 DrawingKind::ElliottWave{points,wave_type} if !points.is_empty() => {
                     let impulse_labels = ["1","2","3","4","5"];
                     let corrective_labels = ["A","B","C"];
-                    let labels: &[&str] = if *wave_type == 0 { &impulse_labels } else { &corrective_labels };
+                    let wxy_labels = ["W","X","Y"];
+                    let wxyxz_labels = ["W","X","Y","X","Z"];
+                    let sub_impulse_labels = ["i","ii","iii","iv","v"];
+                    let sub_corrective_labels = ["a","b","c"];
+                    let labels: &[&str] = match *wave_type {
+                        0 => &impulse_labels,
+                        1 => &corrective_labels,
+                        2 => &wxy_labels,
+                        3 => &wxyxz_labels,
+                        4 => &sub_impulse_labels,
+                        5 => &sub_corrective_labels,
+                        _ => &corrective_labels,
+                    };
                     let pts: Vec<egui::Pos2> = points.iter().map(|&(t, p)| {
                         egui::pos2(bx(SignalDrawing::time_to_bar(t, &chart.timestamps)), py(p))
                     }).collect();
@@ -5132,6 +5168,176 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             egui::FontId::monospace(8.0), egui::Color32::from_rgb(231,76,60));
                     }
                     if is_sel { painter.circle_filled(egui::pos2(ex, ey), 5.0, egui::Color32::from_rgb(74,158,255)); }
+                }
+                DrawingKind::VerticalLine{time} => {
+                    let x = bx(SignalDrawing::time_to_bar(*time, &chart.timestamps));
+                    if x.is_finite() && x >= rect.left() && x <= rect.left() + cw {
+                        dashed_line(&painter, egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch), sc, LineStyle::Dashed);
+                        let ts_label = *time;
+                        let dt = chrono::NaiveDateTime::from_timestamp_opt(ts_label, 0).map(|d| d.format("%m/%d %H:%M").to_string()).unwrap_or_default();
+                        painter.text(egui::pos2(x + 3.0, rect.top()+pt+4.0), egui::Align2::LEFT_TOP,
+                            &dt, egui::FontId::monospace(7.5), color_alpha(dc, 180));
+                        if is_sel { painter.circle_filled(egui::pos2(x, rect.top()+pt+ch*0.5), 4.0, egui::Color32::from_rgb(74,158,255)); }
+                    }
+                }
+                DrawingKind::Ray{price0,time0,price1,time1} => {
+                    let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0));
+                    let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), py(*price1));
+                    if p0.x.is_finite() && p1.x.is_finite() {
+                        dashed_line(&painter, clamp_pt(p0), clamp_pt(p1), sc, ls);
+                        // Extend from p1 to right edge
+                        let chart_right = rect.left() + cw;
+                        let dx = p1.x - p0.x;
+                        if dx.abs() > 0.001 {
+                            let slope = (p1.y - p0.y) / dx;
+                            let ext_y = p1.y + slope * (chart_right - p1.x);
+                            let ext_sc = egui::Stroke::new(d.thickness, color_alpha(dc, 160));
+                            dashed_line(&painter, clamp_pt(p1), clamp_pt(egui::pos2(chart_right, ext_y)), ext_sc, ls);
+                        }
+                        if is_sel {
+                            painter.circle_filled(clamp_pt(p0), 5.0, egui::Color32::from_rgb(74,158,255));
+                            painter.circle_filled(clamp_pt(p1), 5.0, egui::Color32::from_rgb(74,158,255));
+                        }
+                    }
+                }
+                DrawingKind::FibExtension{price0,time0,price1,time1,price2,time2} => {
+                    let x0 = bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps));
+                    let x1 = bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps));
+                    let x2 = bx(SignalDrawing::time_to_bar(*time2, &chart.timestamps));
+                    let chart_right = rect.left() + cw;
+                    // Draw A→B and B→C construction lines
+                    let p0s = egui::pos2(x0, py(*price0));
+                    let p1s = egui::pos2(x1, py(*price1));
+                    let p2s = egui::pos2(x2, py(*price2));
+                    let con_sc = egui::Stroke::new(d.thickness * 0.6, color_alpha(dc, 100));
+                    dashed_line(&painter, clamp_pt(p0s), clamp_pt(p1s), con_sc, LineStyle::Dashed);
+                    dashed_line(&painter, clamp_pt(p1s), clamp_pt(p2s), con_sc, LineStyle::Dashed);
+                    // AB range for projection
+                    let ab_range = *price1 - *price0;
+                    // Direction: if A<B (up) and C<B (pullback), targets project up; else down
+                    let dir = if ab_range >= 0.0 { 1.0_f32 } else { -1.0_f32 };
+                    let levels: &[(f32, &str)] = &[
+                        (0.0, "0%"), (0.618, "61.8%"), (1.0, "100%"),
+                        (1.272, "127.2%"), (1.618, "161.8%"), (2.0, "200%"), (2.618, "261.8%"),
+                    ];
+                    for &(ratio, label) in levels {
+                        let lp = *price2 + dir * ratio * ab_range.abs();
+                        let y = py(lp);
+                        if y.is_finite() && y.abs() < 50000.0 {
+                            let alpha = if ratio == 0.0 || ratio == 1.0 { 220u8 } else if ratio <= 1.618 { 160 } else { 100 };
+                            let lsc = egui::Stroke::new(d.thickness * 0.7, color_alpha(dc, alpha));
+                            dashed_line(&painter, egui::pos2(x2.min(chart_right), y), egui::pos2(chart_right, y), lsc, LineStyle::Solid);
+                            painter.text(egui::pos2(chart_right + 3.0, y), egui::Align2::LEFT_CENTER,
+                                &format!("{} {:.2}", label, lp), egui::FontId::monospace(7.5), color_alpha(dc, alpha));
+                        }
+                    }
+                    if is_sel {
+                        for &pt in &[p0s, p1s, p2s] { painter.circle_filled(clamp_pt(pt), 5.0, egui::Color32::from_rgb(74,158,255)); }
+                    }
+                }
+                DrawingKind::FibTimeZone{time} => {
+                    let anchor_bar = SignalDrawing::time_to_bar(*time, &chart.timestamps);
+                    let fib_nums: &[u32] = &[1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                    let chart_right = rect.left() + cw;
+                    let mut seen_bars: std::collections::HashSet<u32> = std::collections::HashSet::new();
+                    for (idx, &fib) in fib_nums.iter().enumerate() {
+                        if seen_bars.contains(&fib) { continue; }
+                        seen_bars.insert(fib);
+                        let target_bar = anchor_bar + fib as f32;
+                        let x = bx(target_bar);
+                        if x < rect.left() || x > chart_right { continue; }
+                        let alpha = (220_u8).saturating_sub((idx as u8) * 18);
+                        let zone_sc = egui::Stroke::new(d.thickness * 0.7, color_alpha(dc, alpha));
+                        dashed_line(&painter, egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch), zone_sc, LineStyle::Dashed);
+                        painter.text(egui::pos2(x + 2.0, rect.top()+pt+4.0), egui::Align2::LEFT_TOP,
+                            &fib.to_string(), egui::FontId::monospace(7.5), color_alpha(dc, alpha));
+                    }
+                    // Anchor line
+                    let ax = bx(anchor_bar);
+                    if ax.is_finite() && ax >= rect.left() && ax <= chart_right {
+                        dashed_line(&painter, egui::pos2(ax, rect.top()+pt), egui::pos2(ax, rect.top()+pt+ch),
+                            egui::Stroke::new(d.thickness, color_alpha(dc, 200)), LineStyle::Solid);
+                    }
+                    if is_sel { painter.circle_filled(egui::pos2(ax, rect.top()+pt+ch*0.5), 4.0, egui::Color32::from_rgb(74,158,255)); }
+                }
+                DrawingKind::FibArc{price0,time0,price1,time1} => {
+                    let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0));
+                    let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), py(*price1));
+                    if !p0.x.is_finite() || !p1.x.is_finite() { continue; }
+                    let dist = p0.distance(p1);
+                    if dist < 1.0 { continue; }
+                    let ratios: &[(f32, &str)] = &[
+                        (0.236, "23.6%"), (0.382, "38.2%"), (0.5, "50%"),
+                        (0.618, "61.8%"), (0.786, "78.6%"), (1.0, "100%"),
+                    ];
+                    // Draw arcs centered at p1, curving on the left side
+                    for &(ratio, label) in ratios {
+                        let r = dist * ratio;
+                        let alpha = if ratio >= 0.618 { 200u8 } else { 120 };
+                        let arc_color = color_alpha(dc, alpha);
+                        // Approximate arc with line segments (semicircle on left half)
+                        let n_seg = 40;
+                        let mut arc_pts: Vec<egui::Pos2> = Vec::with_capacity(n_seg + 1);
+                        for k in 0..=n_seg {
+                            let angle = std::f32::consts::PI * (k as f32 / n_seg as f32) + std::f32::consts::FRAC_PI_2;
+                            let ax = p1.x + r * angle.cos();
+                            let ay = p1.y + r * angle.sin();
+                            let apt = egui::pos2(ax, ay);
+                            if apt.x >= rect.left() && apt.x <= rect.left()+cw && apt.y >= rect.top()+pt && apt.y <= rect.top()+pt+ch {
+                                arc_pts.push(clamp_pt(apt));
+                            }
+                        }
+                        if arc_pts.len() > 1 {
+                            painter.add(egui::Shape::line(arc_pts, egui::Stroke::new(d.thickness * 0.7, arc_color)));
+                        }
+                        // Label at the leftmost edge of the arc
+                        let lx = p1.x - r;
+                        let label_y = p1.y.clamp(rect.top()+pt, rect.top()+pt+ch);
+                        if lx >= rect.left() { painter.text(egui::pos2(lx - 3.0, label_y), egui::Align2::RIGHT_CENTER, label, egui::FontId::monospace(7.5), arc_color); }
+                    }
+                    if is_sel {
+                        painter.circle_filled(clamp_pt(p0), 5.0, egui::Color32::from_rgb(74,158,255));
+                        painter.circle_filled(clamp_pt(p1), 5.0, egui::Color32::from_rgb(74,158,255));
+                    }
+                }
+                DrawingKind::GannBox{price0,time0,price1,time1} => {
+                    let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0));
+                    let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps)), py(*price1));
+                    if !p0.x.is_finite() || !p1.x.is_finite() { continue; }
+                    let xl = p0.x.min(p1.x); let xr = p0.x.max(p1.x);
+                    let yt = p0.y.min(p1.y); let yb = p0.y.max(p1.y);
+                    let pw = xr - xl; let ph = yb - yt;
+                    // Outer box
+                    painter.rect_stroke(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
+                        0.0, sc, egui::StrokeKind::Outside);
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
+                        0.0, hex_to_color(&d.color, d.opacity * 0.04));
+                    let sub_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 80));
+                    let dot_sc = egui::Stroke::new(d.thickness * 0.4, color_alpha(dc, 50));
+                    // Horizontal divisions at 25%, 50%, 75%
+                    for &frac in &[0.25_f32, 0.5, 0.75] {
+                        let y = yt + ph * frac;
+                        dashed_line(&painter, egui::pos2(xl, y), egui::pos2(xr, y), if frac == 0.5 { sub_sc } else { dot_sc }, LineStyle::Dotted);
+                    }
+                    // Vertical divisions at 25%, 50%, 75%
+                    for &frac in &[0.25_f32, 0.5, 0.75] {
+                        let x = xl + pw * frac;
+                        dashed_line(&painter, egui::pos2(x, yt), egui::pos2(x, yb), if frac == 0.5 { sub_sc } else { dot_sc }, LineStyle::Dotted);
+                    }
+                    // Main diagonals
+                    let diag_sc = egui::Stroke::new(d.thickness * 0.7, color_alpha(dc, 140));
+                    dashed_line(&painter, egui::pos2(xl, yt), egui::pos2(xr, yb), diag_sc, LineStyle::Solid);
+                    dashed_line(&painter, egui::pos2(xl, yb), egui::pos2(xr, yt), diag_sc, LineStyle::Solid);
+                    // Gann angle diagonals from the starting corner (top-left if P0 is top-left)
+                    let (corner_x, corner_y) = (p0.x, p0.y);
+                    let angles_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 70));
+                    // 1x2 and 2x1 angles from corner
+                    dashed_line(&painter, clamp_pt(egui::pos2(corner_x, corner_y)), clamp_pt(egui::pos2(xr, corner_y + ph * 0.5)), angles_sc, LineStyle::Dashed);
+                    dashed_line(&painter, clamp_pt(egui::pos2(corner_x, corner_y)), clamp_pt(egui::pos2(corner_x + pw * 0.5, yb)), angles_sc, LineStyle::Dashed);
+                    if is_sel {
+                        painter.circle_filled(p0, 5.0, egui::Color32::from_rgb(74,158,255));
+                        painter.circle_filled(p1, 5.0, egui::Color32::from_rgb(74,158,255));
+                    }
                 }
                 // Partial XABCD/Elliott with < 2 pts — nothing to draw yet
                 DrawingKind::XABCD{..} | DrawingKind::ElliottWave{..} => {}
@@ -6250,11 +6456,155 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, xabcd_color));
                 painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, xabcd_color));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::None);
-            } else if chart.draw_tool == "elliott_impulse" || chart.draw_tool == "elliott_corrective" {
+            } else if chart.draw_tool == "vline" {
+                let vl_color = egui::Color32::from_rgb(100, 160, 255);
+                let x = pos.x;
+                painter.line_segment([egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch)],
+                    egui::Stroke::new(1.0, color_alpha(vl_color, 160)));
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, vl_color));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, vl_color));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "ray" {
+                let ray_color = egui::Color32::from_rgb(100, 200, 255);
+                if let Some((b0, p0)) = chart.pending_pt {
+                    let start = egui::pos2(bx(b0), py(p0));
+                    let chart_right = rect.left() + cw;
+                    painter.line_segment([start, pos], egui::Stroke::new(1.5, color_alpha(ray_color, 200)));
+                    // Extended preview
+                    let dx = pos.x - start.x;
+                    if dx.abs() > 0.001 {
+                        let slope = (pos.y - start.y) / dx;
+                        let ext_y = pos.y + slope * (chart_right - pos.x);
+                        painter.line_segment([pos, clamp_pt(egui::pos2(chart_right, ext_y))], egui::Stroke::new(1.0, color_alpha(ray_color, 120)));
+                    }
+                    painter.circle_filled(start, 3.0, ray_color);
+                    painter.circle_filled(pos, 3.0, ray_color);
+                }
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, ray_color));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, ray_color));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "fibext" {
+                let fibext_color = egui::Color32::from_rgb(255, 215, 0);
+                let n_pts = chart.pending_pts.len();
+                let labels = ["A","B","C"];
+                for i in 0..n_pts.saturating_sub(1) {
+                    let pa = egui::pos2(bx(chart.pending_pts[i].0), py(chart.pending_pts[i].1));
+                    let pb = egui::pos2(bx(chart.pending_pts[i+1].0), py(chart.pending_pts[i+1].1));
+                    painter.line_segment([pa, pb], egui::Stroke::new(1.5, color_alpha(fibext_color, 180)));
+                }
+                for (i, &(b, p)) in chart.pending_pts.iter().enumerate() {
+                    let pt = egui::pos2(bx(b), py(p));
+                    painter.circle_filled(pt, 4.0, fibext_color);
+                    painter.text(pt + egui::vec2(0.0, -10.0), egui::Align2::CENTER_CENTER, labels.get(i).copied().unwrap_or("?"), egui::FontId::monospace(9.0), fibext_color);
+                }
+                if n_pts == 2 {
+                    // Show extension levels preview
+                    let (b0, p0) = chart.pending_pts[0]; let (_, p1) = chart.pending_pts[1];
+                    let ab_range = p1 - p0;
+                    let cursor_price = min_p + (max_p - min_p) * (1.0 - (pos.y - rect.top() - pt) / ch);
+                    let dir: f32 = if ab_range >= 0.0 { 1.0 } else { -1.0 };
+                    let chart_right = rect.left() + cw;
+                    let cx = bx(chart.pending_pts[1].0.max(pos.x as f32));
+                    for &(ratio, label) in &[(0.0_f32,"0%"),(0.618,"61.8%"),(1.0,"100%"),(1.618,"161.8%"),(2.618,"261.8%")] {
+                        let lp = cursor_price + dir * ratio * ab_range.abs();
+                        let y = py(lp);
+                        if y.is_finite() && y.abs() < 50000.0 {
+                            painter.line_segment([egui::pos2(pos.x, y), egui::pos2(chart_right, y)], egui::Stroke::new(0.8, color_alpha(fibext_color, 140)));
+                            painter.text(egui::pos2(chart_right + 2.0, y), egui::Align2::LEFT_CENTER, &format!("{} {:.2}", label, lp), egui::FontId::monospace(7.5), color_alpha(fibext_color, 180));
+                        }
+                    }
+                    let _ = (b0, cx);
+                }
+                if !chart.pending_pts.is_empty() {
+                    let last = chart.pending_pts.last().unwrap();
+                    let lp = egui::pos2(bx(last.0), py(last.1));
+                    painter.line_segment([lp, pos], egui::Stroke::new(1.5, color_alpha(fibext_color, 140)));
+                }
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, fibext_color));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, fibext_color));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "fibtimezone" {
+                let ftz_color = egui::Color32::from_rgb(255, 193, 37);
+                let anchor_bar = (pos.x - rect.left() + off - bs*0.5) / bs + vs;
+                let fib_nums: &[u32] = &[1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                let chart_right = rect.left() + cw;
+                let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+                for (idx, &fib) in fib_nums.iter().enumerate() {
+                    if seen.contains(&fib) { continue; } seen.insert(fib);
+                    let x = bx(anchor_bar + fib as f32);
+                    if x < rect.left() || x > chart_right { continue; }
+                    let alpha = (180_u8).saturating_sub((idx as u8) * 16);
+                    painter.line_segment([egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch)],
+                        egui::Stroke::new(0.8, color_alpha(ftz_color, alpha)));
+                }
+                painter.line_segment([pos, egui::pos2(pos.x, rect.top()+pt+ch)], egui::Stroke::new(1.5, color_alpha(ftz_color, 200)));
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, ftz_color));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, ftz_color));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "fibarc" {
+                let farc_color = egui::Color32::from_rgb(255, 193, 37);
+                if let Some((b0, p0)) = chart.pending_pt {
+                    let center = egui::pos2(bx(b0), py(p0));
+                    let dist = center.distance(pos);
+                    for &ratio in &[0.236_f32, 0.382, 0.5, 0.618, 0.786, 1.0] {
+                        let r = dist * ratio;
+                        let alpha = if ratio >= 0.618 { 180u8 } else { 100 };
+                        let n_seg = 30;
+                        let mut arc_pts: Vec<egui::Pos2> = Vec::with_capacity(n_seg + 1);
+                        for k in 0..=n_seg {
+                            let angle = std::f32::consts::PI * (k as f32 / n_seg as f32) + std::f32::consts::FRAC_PI_2;
+                            arc_pts.push(clamp_pt(egui::pos2(pos.x + r * angle.cos(), pos.y + r * angle.sin())));
+                        }
+                        if arc_pts.len() > 1 { painter.add(egui::Shape::line(arc_pts, egui::Stroke::new(0.8, color_alpha(farc_color, alpha)))); }
+                    }
+                    painter.circle_filled(center, 3.0, farc_color);
+                    painter.line_segment([center, pos], egui::Stroke::new(0.7, color_alpha(farc_color, 100)));
+                }
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, farc_color));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, farc_color));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "gannbox" {
+                let gb_color = egui::Color32::from_rgb(232, 201, 107);
+                if let Some((_b0, _p0)) = chart.pending_pt {
+                    let start = egui::pos2(bx(_b0), py(_p0));
+                    let xl = start.x.min(pos.x); let xr = start.x.max(pos.x);
+                    let yt = start.y.min(pos.y); let yb = start.y.max(pos.y);
+                    painter.rect_stroke(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
+                        0.0, egui::Stroke::new(1.5, color_alpha(gb_color, 200)), egui::StrokeKind::Outside);
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
+                        0.0, color_alpha(gb_color, 12));
+                    // Diagonals
+                    painter.line_segment([egui::pos2(xl,yt), egui::pos2(xr,yb)], egui::Stroke::new(0.8, color_alpha(gb_color, 120)));
+                    painter.line_segment([egui::pos2(xl,yb), egui::pos2(xr,yt)], egui::Stroke::new(0.8, color_alpha(gb_color, 120)));
+                    painter.circle_filled(start, 3.0, gb_color);
+                }
+                let ch_len = 8.0;
+                painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, gb_color));
+                painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, gb_color));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            } else if chart.draw_tool == "elliott_impulse" || chart.draw_tool == "elliott_corrective"
+                   || chart.draw_tool == "elliott_wxy" || chart.draw_tool == "elliott_wxyxz"
+                   || chart.draw_tool == "elliott_sub_impulse" || chart.draw_tool == "elliott_sub_corrective" {
                 let wave_color = egui::Color32::from_rgb(78, 205, 196);
                 let impulse_labels = ["1","2","3","4","5"];
                 let corrective_labels = ["A","B","C"];
-                let labels: &[&str] = if chart.draw_tool == "elliott_impulse" { &impulse_labels } else { &corrective_labels };
+                let wxy_labels = ["W","X","Y"];
+                let wxyxz_labels = ["W","X","Y","X","Z"];
+                let sub_impulse_labels = ["i","ii","iii","iv","v"];
+                let sub_corrective_labels = ["a","b","c"];
+                let labels: &[&str] = match chart.draw_tool.as_str() {
+                    "elliott_impulse" => &impulse_labels,
+                    "elliott_wxy" => &wxy_labels,
+                    "elliott_wxyxz" => &wxyxz_labels,
+                    "elliott_sub_impulse" => &sub_impulse_labels,
+                    "elliott_sub_corrective" => &sub_corrective_labels,
+                    _ => &corrective_labels,
+                };
                 for i in 0..chart.pending_pts.len().saturating_sub(1) {
                     let pa = egui::pos2(bx(chart.pending_pts[i].0), py(chart.pending_pts[i].1));
                     let pb = egui::pos2(bx(chart.pending_pts[i+1].0), py(chart.pending_pts[i+1].1));
@@ -6551,6 +6901,57 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if egui::pos2(ex, ey).distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
                         if (py_pos - ey).abs() < 12.0 && px >= ex - 20.0 { return Some((d.id.clone(), -1)); }
                     }
+                    DrawingKind::VerticalLine{time} => {
+                        let x = bx(SignalDrawing::time_to_bar(*time, ts_ref));
+                        if (px - x).abs() < 10.0 { return Some((d.id.clone(), 0)); }
+                    }
+                    DrawingKind::Ray{price0,time0,price1,time1} => {
+                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, ts_ref)), py(*price0));
+                        let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, ts_ref)), py(*price1));
+                        if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 1)); }
+                        let dx = p1.x-p0.x; let dy = p1.y-p0.y; let len2 = dx*dx+dy*dy;
+                        if len2 > 0.0 {
+                            let t = ((px-p0.x)*dx+(py_pos-p0.y)*dy)/len2;
+                            let t = t.max(0.0);
+                            if egui::pos2(p0.x+t*dx, p0.y+t*dy).distance(egui::pos2(px, py_pos)) < 10.0 { return Some((d.id.clone(), -1)); }
+                        }
+                    }
+                    DrawingKind::FibExtension{price0,time0,price1,time1,price2,time2} => {
+                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, ts_ref)), py(*price0));
+                        let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, ts_ref)), py(*price1));
+                        let p2 = egui::pos2(bx(SignalDrawing::time_to_bar(*time2, ts_ref)), py(*price2));
+                        let c = egui::pos2(px, py_pos);
+                        if p0.distance(c) < 14.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(c) < 14.0 { return Some((d.id.clone(), 1)); }
+                        if p2.distance(c) < 14.0 { return Some((d.id.clone(), 2)); }
+                        if (py_pos - p2.y).abs() < 8.0 && px >= p2.x { return Some((d.id.clone(), -1)); }
+                    }
+                    DrawingKind::FibTimeZone{time} => {
+                        let x = bx(SignalDrawing::time_to_bar(*time, ts_ref));
+                        if (px - x).abs() < 10.0 { return Some((d.id.clone(), 0)); }
+                    }
+                    DrawingKind::FibArc{price0,time0,price1,time1} => {
+                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, ts_ref)), py(*price0));
+                        let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, ts_ref)), py(*price1));
+                        if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 1)); }
+                        let dist = p0.distance(p1);
+                        for &ratio in &[0.236_f32, 0.382, 0.5, 0.618, 0.786, 1.0] {
+                            let r = dist * ratio;
+                            let d_to_center = egui::pos2(px, py_pos).distance(p1);
+                            if (d_to_center - r).abs() < 8.0 { return Some((d.id.clone(), -1)); }
+                        }
+                    }
+                    DrawingKind::GannBox{price0,time0,price1,time1} => {
+                        let p0 = egui::pos2(bx(SignalDrawing::time_to_bar(*time0, ts_ref)), py(*price0));
+                        let p1 = egui::pos2(bx(SignalDrawing::time_to_bar(*time1, ts_ref)), py(*price1));
+                        if p0.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 0)); }
+                        if p1.distance(egui::pos2(px, py_pos)) < 14.0 { return Some((d.id.clone(), 1)); }
+                        let xl = p0.x.min(p1.x); let xr = p0.x.max(p1.x);
+                        let yt = p0.y.min(p1.y); let yb = p0.y.max(p1.y);
+                        if px >= xl && px <= xr && py_pos >= yt && py_pos <= yb { return Some((d.id.clone(), -1)); }
+                    }
                 }
             }
             None
@@ -6744,6 +7145,61 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     let b = SignalDrawing::time_to_bar(*entry_time, &chart.timestamps) + db;
                                     *entry_time = bar_to_time(b, &chart.timestamps);
                                 }
+                                DrawingKind::VerticalLine{time} => {
+                                    let b = SignalDrawing::time_to_bar(*time, &chart.timestamps) + db;
+                                    *time = bar_to_time(b, &chart.timestamps);
+                                }
+                                DrawingKind::Ray{price0,time0,price1,time1} => match ep {
+                                    0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
+                                    1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
+                                    _ => {
+                                        *price0 += dp; *price1 += dp;
+                                        let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
+                                        let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
+                                        *time0 = bar_to_time(b0, &chart.timestamps);
+                                        *time1 = bar_to_time(b1, &chart.timestamps);
+                                    }
+                                },
+                                DrawingKind::FibExtension{price0,time0,price1,time1,price2,time2} => match ep {
+                                    0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
+                                    1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
+                                    2 => { *price2 = new_p; *time2 = bar_to_time(new_b, &chart.timestamps); }
+                                    _ => {
+                                        *price0 += dp; *price1 += dp; *price2 += dp;
+                                        let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
+                                        let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
+                                        let b2 = SignalDrawing::time_to_bar(*time2, &chart.timestamps) + db;
+                                        *time0 = bar_to_time(b0, &chart.timestamps);
+                                        *time1 = bar_to_time(b1, &chart.timestamps);
+                                        *time2 = bar_to_time(b2, &chart.timestamps);
+                                    }
+                                },
+                                DrawingKind::FibTimeZone{time} => {
+                                    let b = SignalDrawing::time_to_bar(*time, &chart.timestamps) + db;
+                                    *time = bar_to_time(b, &chart.timestamps);
+                                }
+                                DrawingKind::FibArc{price0,time0,price1,time1} => match ep {
+                                    0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
+                                    1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
+                                    _ => {
+                                        *price0 += dp; *price1 += dp;
+                                        let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
+                                        let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
+                                        *time0 = bar_to_time(b0, &chart.timestamps);
+                                        *time1 = bar_to_time(b1, &chart.timestamps);
+                                    }
+                                },
+                                DrawingKind::GannBox{price0,time0,price1,time1} => match ep {
+                                    0 => { *price0 = new_p; *time0 = bar_to_time(new_b, &chart.timestamps); }
+                                    1 => { *price1 = new_p; *time1 = bar_to_time(new_b, &chart.timestamps); }
+                                    _ => {
+                                        *price0 += dp; *price1 += dp;
+                                        let b0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps) + db;
+                                        let b1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps) + db;
+                                        *time0 = bar_to_time(b0, &chart.timestamps);
+                                        *time1 = bar_to_time(b1, &chart.timestamps);
+                                    }
+                                },
                             }
                         }
                         chart.drag_start_price = new_p;
@@ -7105,6 +7561,112 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
                             }
                         }
+                        "elliott_wxy" => {
+                            chart.pending_pts.push((bar, price));
+                            if chart.pending_pts.len() == 3 {
+                                let points: Vec<(i64, f32)> = chart.pending_pts.iter().map(|&(b, p)| (bar_to_time(b, &chart.timestamps), p)).collect();
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 2 });
+                                d.color = "#4ecdc4".into();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d);
+                                chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                            }
+                        }
+                        "elliott_wxyxz" => {
+                            chart.pending_pts.push((bar, price));
+                            if chart.pending_pts.len() == 5 {
+                                let points: Vec<(i64, f32)> = chart.pending_pts.iter().map(|&(b, p)| (bar_to_time(b, &chart.timestamps), p)).collect();
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 3 });
+                                d.color = "#4ecdc4".into();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d);
+                                chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                            }
+                        }
+                        "elliott_sub_impulse" => {
+                            chart.pending_pts.push((bar, price));
+                            if chart.pending_pts.len() == 5 {
+                                let points: Vec<(i64, f32)> = chart.pending_pts.iter().map(|&(b, p)| (bar_to_time(b, &chart.timestamps), p)).collect();
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 4 });
+                                d.color = "#4ecdc4".into();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d);
+                                chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                            }
+                        }
+                        "elliott_sub_corrective" => {
+                            chart.pending_pts.push((bar, price));
+                            if chart.pending_pts.len() == 3 {
+                                let points: Vec<(i64, f32)> = chart.pending_pts.iter().map(|&(b, p)| (bar_to_time(b, &chart.timestamps), p)).collect();
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::ElliottWave { points, wave_type: 5 });
+                                d.color = "#4ecdc4".into();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d);
+                                chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                            }
+                        }
+                        "vline" => {
+                            let t = bar_to_time(bar, &chart.timestamps);
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::VerticalLine { time: t });
+                            d.color = chart.draw_color.clone(); d.line_style = LineStyle::Dashed;
+                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                        }
+                        "ray" => {
+                            if let Some((b0, p0)) = chart.pending_pt {
+                                let t0 = bar_to_time(b0, &chart.timestamps);
+                                let t1 = bar_to_time(bar, &chart.timestamps);
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::Ray { price0: p0, time0: t0, price1: price, time1: t1 });
+                                d.color = chart.draw_color.clone();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                            } else { chart.pending_pt = Some((bar, price)); }
+                        }
+                        "fibext" => {
+                            // 3-click: A B C
+                            chart.pending_pts.push((bar, price));
+                            if chart.pending_pts.len() == 3 {
+                                let (b0, p0) = chart.pending_pts[0];
+                                let (b1, p1) = chart.pending_pts[1];
+                                let (b2, p2) = chart.pending_pts[2];
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::FibExtension {
+                                    price0: p0, time0: bar_to_time(b0, &chart.timestamps),
+                                    price1: p1, time1: bar_to_time(b1, &chart.timestamps),
+                                    price2: p2, time2: bar_to_time(b2, &chart.timestamps),
+                                });
+                                d.color = "#ffd700".into(); // gold
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d);
+                                chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                            }
+                        }
+                        "fibtimezone" => {
+                            let t = bar_to_time(bar, &chart.timestamps);
+                            let mut d = Drawing::new(new_uuid(), DrawingKind::FibTimeZone { time: t });
+                            d.color = "#ffc125".into();
+                            crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                            chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                        }
+                        "fibarc" => {
+                            if let Some((b0, p0)) = chart.pending_pt {
+                                let t0 = bar_to_time(b0, &chart.timestamps);
+                                let t1 = bar_to_time(bar, &chart.timestamps);
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::FibArc { price0: p0, time0: t0, price1: price, time1: t1 });
+                                d.color = "#ffc125".into();
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                            } else { chart.pending_pt = Some((bar, price)); }
+                        }
+                        "gannbox" => {
+                            if let Some((b0, p0)) = chart.pending_pt {
+                                let t0 = bar_to_time(b0, &chart.timestamps);
+                                let t1 = bar_to_time(bar, &chart.timestamps);
+                                let mut d = Drawing::new(new_uuid(), DrawingKind::GannBox { price0: p0, time0: t0, price1: price, time1: t1 });
+                                d.color = "#e8c96b".into(); // gold
+                                crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+                                chart.drawings.push(d); chart.pending_pt = None; chart.pending_pts.clear(); chart.draw_tool.clear();
+                            } else { chart.pending_pt = Some((bar, price)); }
+                        }
                         "avwap" => {
                             // 1-click: anchor
                             let t = bar_to_time(bar, &chart.timestamps);
@@ -7369,8 +7931,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             // Two-level submenu hierarchy
             let mut _new_tool: Option<&'static str> = None;
             ui.menu_button("Lines \u{25BA}", |ui| {
-                if ui.button("Trendline").clicked()  { _new_tool = Some("trendline");  ui.close_menu(); }
-                if ui.button("H-Line").clicked()     { _new_tool = Some("hline");      ui.close_menu(); }
+                if ui.button("Trendline").clicked()    { _new_tool = Some("trendline"); ui.close_menu(); }
+                if ui.button("H-Line").clicked()       { _new_tool = Some("hline");     ui.close_menu(); }
+                if ui.button("Vertical Line").clicked(){ _new_tool = Some("vline");     ui.close_menu(); }
+                if ui.button("Ray").clicked()          { _new_tool = Some("ray");       ui.close_menu(); }
             });
             ui.menu_button("Channels \u{25BA}", |ui| {
                 if ui.button("Channel").clicked()    { _new_tool = Some("channel");    ui.close_menu(); }
@@ -7378,8 +7942,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if ui.button("Pitchfork").clicked()  { _new_tool = Some("pitchfork");  ui.close_menu(); }
             });
             ui.menu_button("Fibonacci \u{25BA}", |ui| {
-                if ui.button("Fib Retracement").clicked() { _new_tool = Some("fibonacci"); ui.close_menu(); }
-                if ui.button("Gann Fan").clicked()        { _new_tool = Some("gannfan");   ui.close_menu(); }
+                if ui.button("Fib Retracement").clicked()  { _new_tool = Some("fibonacci");   ui.close_menu(); }
+                if ui.button("Fib Extension").clicked()    { _new_tool = Some("fibext");       ui.close_menu(); }
+                if ui.button("Fib Time Zones").clicked()   { _new_tool = Some("fibtimezone"); ui.close_menu(); }
+                if ui.button("Fib Arcs").clicked()         { _new_tool = Some("fibarc");       ui.close_menu(); }
+                if ui.button("Gann Fan").clicked()         { _new_tool = Some("gannfan");      ui.close_menu(); }
+                if ui.button("Gann Box").clicked()         { _new_tool = Some("gannbox");      ui.close_menu(); }
             });
             ui.menu_button("Ranges \u{25BA}", |ui| {
                 if ui.button("H-Zone").clicked()      { _new_tool = Some("hzone");      ui.close_menu(); }
@@ -7391,9 +7959,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if ui.button("Anchored VWAP").clicked()      { _new_tool = Some("avwap");      ui.close_menu(); }
             });
             ui.menu_button("Patterns \u{25BA}", |ui| {
-                if ui.button("XABCD Harmonic").clicked()     { _new_tool = Some("xabcd");              ui.close_menu(); }
-                if ui.button("Elliott Impulse").clicked()    { _new_tool = Some("elliott_impulse");    ui.close_menu(); }
-                if ui.button("Elliott Corrective").clicked() { _new_tool = Some("elliott_corrective"); ui.close_menu(); }
+                if ui.button("XABCD Harmonic").clicked()         { _new_tool = Some("xabcd");                 ui.close_menu(); }
+                if ui.button("Elliott Impulse").clicked()        { _new_tool = Some("elliott_impulse");       ui.close_menu(); }
+                if ui.button("Elliott ABC").clicked()            { _new_tool = Some("elliott_corrective");    ui.close_menu(); }
+                if ui.button("Elliott WXY").clicked()            { _new_tool = Some("elliott_wxy");           ui.close_menu(); }
+                if ui.button("Elliott WXYXZ").clicked()          { _new_tool = Some("elliott_wxyxz");         ui.close_menu(); }
+                if ui.button("Elliott Sub-Impulse").clicked()    { _new_tool = Some("elliott_sub_impulse");   ui.close_menu(); }
+                if ui.button("Elliott Sub-Corrective").clicked() { _new_tool = Some("elliott_sub_corrective"); ui.close_menu(); }
             });
             ui.menu_button("Markers \u{25BA}", |ui| {
                 if ui.button("Bar Marker").clicked() { _new_tool = Some("barmarker"); ui.close_menu(); }

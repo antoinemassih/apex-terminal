@@ -78,6 +78,18 @@ pub enum DrawingKind {
     PriceRange { price0: f32, time0: i64, price1: f32, time1: i64 },
     /// Risk/Reward — entry + stop + target
     RiskReward { entry_price: f32, entry_time: i64, stop_price: f32, target_price: f32 },
+    /// Vertical line at a specific timestamp
+    VerticalLine { time: i64 },
+    /// Ray — trendline that extends forward from second point to chart edge
+    Ray { price0: f32, time0: i64, price1: f32, time1: i64 },
+    /// Fib Extension (3-point) — A→B move projected from C
+    FibExtension { price0: f32, time0: i64, price1: f32, time1: i64, price2: f32, time2: i64 },
+    /// Fib Time Zones — vertical lines at fibonacci bar intervals from anchor
+    FibTimeZone { time: i64 },
+    /// Fib Arcs — semicircular arcs at fib ratios between two points
+    FibArc { price0: f32, time0: i64, price1: f32, time1: i64 },
+    /// Gann Box — price/time grid with diagonal angles
+    GannBox { price0: f32, time0: i64, price1: f32, time1: i64 },
 }
 
 /// Commands sent from Tauri/WebView to the native chart renderer
