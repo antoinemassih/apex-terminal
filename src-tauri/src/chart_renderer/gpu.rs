@@ -764,6 +764,7 @@ struct Chart {
     fmt_buf: String, // reusable format buffer
     vp_mode: VolumeProfileMode,
     candle_mode: CandleMode,
+    show_footprint: bool,  // hover-activated volume footprint on individual bars
     vp_data: Option<VolumeProfileData>,
     vp_last_vs: f32,
     vp_last_vc: u32,
@@ -832,7 +833,7 @@ impl Chart {
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
             text_edit_id: None, text_edit_buf: String::new(),
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
-            vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
+            vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0 }
@@ -1652,6 +1653,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     CandleMode::Gradient => CandleMode::ViolinGradient,
                     CandleMode::ViolinGradient => CandleMode::Standard,
                 };
+            }
+            if tb_btn(ui, "FP", panes[ap].show_footprint, t).clicked() {
+                panes[ap].show_footprint = !panes[ap].show_footprint;
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -7486,7 +7490,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let line_h = 12.0;
                             let tip_h = lines.len() as f32 * line_h + 8.0;
                             let tip_w = 110.0;
-                            // Keep tooltip inside chart
                             let tx = if tooltip_x + tip_w > rect.left() + cw { pos.x - tip_w - 16.0 } else { tooltip_x };
                             let ty = tooltip_y.max(rect.top() + pt).min(rect.top() + pt + ch - tip_h);
                             let tip_rect = egui::Rect::from_min_size(egui::pos2(tx, ty), egui::vec2(tip_w, tip_h));
@@ -7495,6 +7498,119 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             for (i, line) in lines.iter().enumerate() {
                                 let col = if i == 4 { chg_col } else { egui::Color32::from_white_alpha(180) };
                                 painter.text(egui::pos2(tx + 6.0, ty + 4.0 + i as f32 * line_h + line_h / 2.0), egui::Align2::LEFT_CENTER, line, font.clone(), col);
+                            }
+                        }
+                    }
+                    // ── Volume Footprint on hover ────────────────────────────────
+                    // Shows buy/sell volume at each price level within the hovered bar.
+                    // Only visible when FP is toggled on and cursor is near a bar.
+                    if chart.show_footprint {
+                        if let Some(bar_data) = chart.bars.get(bar_idx) {
+                            let bar_x = bx(bar_idx as f32);
+                            let bar_range = bar_data.high - bar_data.low;
+                            if bar_range > 0.0 && bar_data.volume > 0.0 {
+                                let num_levels = 8;
+                                let step = bar_range / num_levels as f32;
+                                let micro = bar_micro_profile(bar_data, num_levels);
+                                let is_bull = bar_data.close >= bar_data.open;
+
+                                // Highlight the hovered bar with a subtle background
+                                let bar_top_y = py(bar_data.high);
+                                let bar_bot_y = py(bar_data.low);
+                                let highlight_w = bs.max(60.0);
+                                painter.rect_filled(
+                                    egui::Rect::from_min_max(
+                                        egui::pos2(bar_x - highlight_w / 2.0, bar_top_y),
+                                        egui::pos2(bar_x + highlight_w / 2.0, bar_bot_y)),
+                                    0.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 180));
+
+                                // Footprint panel width
+                                let fp_w = 55.0; // width per side (buy/sell)
+                                let fp_left = bar_x - fp_w - 2.0; // sell side (left)
+                                let fp_right = bar_x + 2.0;       // buy side (right)
+                                let font = egui::FontId::monospace(8.5);
+
+                                // Volume per level (distribute total volume across levels)
+                                let total_weight: f32 = micro.iter().map(|m| m.1).sum();
+
+                                for (li, (level_price, width_frac, buy_ratio)) in micro.iter().enumerate() {
+                                    let y = py(*level_price);
+                                    if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+
+                                    let level_vol = bar_data.volume * width_frac / total_weight.max(0.001);
+                                    let buy_vol = level_vol * buy_ratio;
+                                    let sell_vol = level_vol * (1.0 - buy_ratio);
+                                    let delta = buy_vol - sell_vol;
+
+                                    let row_h = ((bar_bot_y - bar_top_y) / num_levels as f32).max(10.0).min(16.0);
+                                    let row_y = y - row_h / 2.0;
+
+                                    // Sell volume (left side, right-aligned)
+                                    let sell_label = format!("{:.0}", sell_vol);
+                                    let sell_col = if sell_vol > buy_vol {
+                                        egui::Color32::from_rgba_unmultiplied(231, 100, 80, 220) // bright red
+                                    } else {
+                                        egui::Color32::from_rgba_unmultiplied(200, 140, 130, 160) // dim red
+                                    };
+                                    // Sell bar (proportional width)
+                                    let sell_frac = sell_vol / (buy_vol + sell_vol).max(0.001);
+                                    let sell_bar_w = sell_frac * fp_w * 0.8;
+                                    painter.rect_filled(
+                                        egui::Rect::from_min_size(egui::pos2(fp_left + fp_w - sell_bar_w, row_y + 1.0), egui::vec2(sell_bar_w, row_h - 2.0)),
+                                        1.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 40));
+                                    painter.text(egui::pos2(fp_left + fp_w - 3.0, y), egui::Align2::RIGHT_CENTER, &sell_label, font.clone(), sell_col);
+
+                                    // Buy volume (right side, left-aligned)
+                                    let buy_label = format!("{:.0}", buy_vol);
+                                    let buy_col = if buy_vol > sell_vol {
+                                        egui::Color32::from_rgba_unmultiplied(60, 210, 120, 220) // bright green
+                                    } else {
+                                        egui::Color32::from_rgba_unmultiplied(130, 180, 140, 160) // dim green
+                                    };
+                                    let buy_frac = buy_vol / (buy_vol + sell_vol).max(0.001);
+                                    let buy_bar_w = buy_frac * fp_w * 0.8;
+                                    painter.rect_filled(
+                                        egui::Rect::from_min_size(egui::pos2(fp_right, row_y + 1.0), egui::vec2(buy_bar_w, row_h - 2.0)),
+                                        1.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 40));
+                                    painter.text(egui::pos2(fp_right + 3.0, y), egui::Align2::LEFT_CENTER, &buy_label, font.clone(), buy_col);
+
+                                    // Delta indicator (center, between sell and buy)
+                                    let delta_col = if delta > 0.0 { t.bull } else { t.bear };
+                                    let delta_size = (delta.abs() / level_vol.max(0.001) * 4.0).min(3.0).max(1.0);
+                                    painter.circle_filled(egui::pos2(bar_x, y), delta_size, color_alpha(delta_col, 180));
+                                }
+
+                                // Price labels on the right edge for each level
+                                for (level_price, _, _) in &micro {
+                                    let y = py(*level_price);
+                                    if y.is_finite() && y >= rect.top() + pt && y <= rect.top() + pt + ch {
+                                        painter.text(egui::pos2(fp_right + fp_w + 4.0, y), egui::Align2::LEFT_CENTER,
+                                            &format!("{:.2}", level_price), egui::FontId::monospace(7.0),
+                                            egui::Color32::from_white_alpha(100));
+                                    }
+                                }
+
+                                // Header labels
+                                let header_y = bar_top_y - 12.0;
+                                if header_y > rect.top() + pt {
+                                    painter.text(egui::pos2(fp_left + fp_w / 2.0, header_y), egui::Align2::CENTER_CENTER,
+                                        "SELL", egui::FontId::monospace(7.5), egui::Color32::from_rgba_unmultiplied(231, 100, 80, 150));
+                                    painter.text(egui::pos2(fp_right + fp_w / 2.0, header_y), egui::Align2::CENTER_CENTER,
+                                        "BUY", egui::FontId::monospace(7.5), egui::Color32::from_rgba_unmultiplied(60, 210, 120, 150));
+                                }
+
+                                // Total delta at bottom
+                                let total_delta: f32 = micro.iter().map(|m| {
+                                    let lv = bar_data.volume * m.1 / total_weight.max(0.001);
+                                    lv * m.2 - lv * (1.0 - m.2)
+                                }).sum();
+                                let footer_y = bar_bot_y + 12.0;
+                                if footer_y < rect.top() + pt + ch {
+                                    let delta_label = format!("\u{0394} {:+.0}", total_delta);
+                                    let delta_col = if total_delta > 0.0 { t.bull } else { t.bear };
+                                    painter.text(egui::pos2(bar_x, footer_y), egui::Align2::CENTER_CENTER,
+                                        &delta_label, egui::FontId::monospace(8.5), delta_col);
+                                }
                             }
                         }
                     }
