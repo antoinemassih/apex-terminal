@@ -681,6 +681,34 @@ struct VolumeProfileData {
     price_step: f32,
 }
 
+// ─── Market session ───────────────────────────────────────────────────────────
+
+fn market_session() -> (&'static str, egui::Color32) {
+    use chrono::Timelike;
+    let now = chrono::Utc::now();
+    let h = now.hour(); let m = now.minute();
+    let mins = h * 60 + m;
+    if mins >= 13*60+30 && mins < 20*60 { ("OPEN", egui::Color32::from_rgb(46, 204, 113)) }
+    else if mins >= 9*60 && mins < 13*60+30 { ("PRE", egui::Color32::from_rgb(255, 193, 37)) }
+    else if mins >= 20*60 { ("POST", egui::Color32::from_rgb(100, 150, 255)) }
+    else { ("CLOSED", egui::Color32::from_rgb(100, 100, 110)) }
+}
+
+fn contracts_for_notional(notional: f32, premium: f32, multiplier: f32) -> i32 {
+    if premium <= 0.0 { return 0; }
+    let cost_per_contract = premium * multiplier;
+    (notional / cost_per_contract).floor() as i32
+}
+
+// ─── Bracket order templates ──────────────────────────────────────────────────
+
+#[derive(Clone)]
+struct BracketTemplate {
+    name: String,
+    target_pct: f32,
+    stop_pct: f32,
+}
+
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
 struct Chart {
@@ -823,6 +851,11 @@ struct Chart {
     vol_analytics_computed: usize,
     replay_mode: bool,
     replay_bar_count: usize,
+    // Notional-based order entry
+    order_notional_mode: bool,
+    order_notional_amount: String,
+    // Bracket order templates
+    bracket_templates: Vec<BracketTemplate>,
 }
 
 impl Chart {
@@ -881,7 +914,14 @@ impl Chart {
             show_gamma: false, gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
-            replay_mode: false, replay_bar_count: 0 }
+            replay_mode: false, replay_bar_count: 0,
+            order_notional_mode: false, order_notional_amount: String::new(),
+            bracket_templates: vec![
+                BracketTemplate { name: "Tight".into(),  target_pct: 1.0, stop_pct: 0.5 },
+                BracketTemplate { name: "Normal".into(), target_pct: 2.0, stop_pct: 1.0 },
+                BracketTemplate { name: "Wide".into(),   target_pct: 5.0, stop_pct: 2.0 },
+                BracketTemplate { name: "Scalp".into(),  target_pct: 0.3, stop_pct: 0.15 },
+            ] }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -2437,6 +2477,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 shortcut_row(ui, "Right-click", "Place order at price");
                 shortcut_row(ui, "Drag order", "Adjust order price");
                 shortcut_row(ui, "Dbl-click order", "Edit order details");
+                ui.add_space(6.0);
+                dialog_section(ui, "TRADING HOTKEYS", m, t.accent);
+                shortcut_row(ui, "Ctrl+B", "Buy market (last price)");
+                shortcut_row(ui, "Ctrl+Shift+B", "Sell market (last price)");
+                shortcut_row(ui, "Ctrl+Shift+Q", "Cancel all orders");
+                shortcut_row(ui, "Ctrl+Shift+F", "Flatten position");
                 ui.add_space(8.0);
             });
     }
@@ -3100,6 +3146,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
                             watchlist.open = false;
                         }
+                        // Market session badge
+                        let (session, session_col) = market_session();
+                        ui.add_space(4.0);
+                        let badge_bg = color_alpha(session_col, 30);
+                        ui.add(egui::Button::new(
+                            egui::RichText::new(session).monospace().size(8.5).strong().color(session_col))
+                            .fill(badge_bg).corner_radius(2.0).stroke(egui::Stroke::NONE)
+                            .min_size(egui::vec2(34.0, 14.0)));
                     });
                 });
                 // 1px line below tabs
@@ -7687,11 +7741,44 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.add_space(4.0);
                     }
 
+                    // Row 0: QTY / $ mode toggle
+                    ui.horizontal(|ui| {
+                        ui.add_space(pad);
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        let qty_color = if !chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
+                        let notional_color = if chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
+                        if ui.add(egui::Button::new(egui::RichText::new("QTY").monospace().size(9.0).strong().color(qty_color))
+                            .fill(if !chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+                            .min_size(egui::vec2(30.0, 16.0))).clicked() {
+                            chart.order_notional_mode = false;
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new("$").monospace().size(9.0).strong().color(notional_color))
+                            .fill(if chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+                            .min_size(egui::vec2(20.0, 16.0))).clicked() {
+                            chart.order_notional_mode = true;
+                        }
+                        if chart.order_notional_mode {
+                            ui.add_space(4.0);
+                            let ask = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                            let premium = if chart.is_option { ask } else { ask };
+                            ui.add(egui::TextEdit::singleline(&mut chart.order_notional_amount)
+                                .desired_width(70.0).font(egui::FontId::monospace(11.0)).hint_text("Amount"));
+                            let notional: f32 = chart.order_notional_amount.parse().unwrap_or(0.0);
+                            let qty = contracts_for_notional(notional, premium, if chart.is_option { 100.0 } else { 1.0 });
+                            if qty > 0 { chart.order_qty = qty as u32; }
+                            ui.label(egui::RichText::new(format!("= {} @ {:.2}", qty, premium)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                        }
+                    });
+                    ui.add_space(2.0);
+
                     // Row 1: [-] qty [+]
                     ui.horizontal(|ui| {
                         ui.add_space(pad);
                         ui.spacing_mut().item_spacing.x = 2.0;
                         let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
+                        if !chart.order_notional_mode {
                         if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0))
                             .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
                             .fill(color_alpha(t.toolbar_border, 40))).clicked() {
@@ -7704,6 +7791,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
                             .fill(color_alpha(t.toolbar_border, 40))).clicked() {
                             chart.order_qty += step;
+                        }
+                        } else {
+                        // Notional mode: show derived qty read-only
+                        let _ = ui.add(egui::TextEdit::singleline(&mut format!("{} contracts", chart.order_qty))
+                            .desired_width(100.0).font(egui::FontId::monospace(11.0))
+                            .horizontal_align(egui::Align::Center).interactive(false));
                         }
                         ui.add_space(4.0);
                         let cursor = ui.cursor().min;
@@ -10280,15 +10373,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 chart.orders.push(OrderLevel { id, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
-            if ui.button(egui::RichText::new(format!("\u{21C5} OCO Bracket")).color(egui::Color32::from_rgb(167,139,250))).clicked() {
-                let target_price = click_price * 1.01;
-                let stop_price = click_price * 0.99;
-                let id1 = chart.next_order_id; chart.next_order_id += 1;
-                let id2 = chart.next_order_id; chart.next_order_id += 1;
-                chart.orders.push(OrderLevel { id: id1, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2), option_symbol: None, option_con_id: None });
-                chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop, price: stop_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1), option_symbol: None, option_con_id: None });
-                ui.close_menu();
-            }
+            ui.menu_button(egui::RichText::new(format!("\u{21C5} Bracket Order \u{25BA}")).color(egui::Color32::from_rgb(167,139,250)), |ui| {
+                let templates = chart.bracket_templates.clone();
+                for tmpl in &templates {
+                    let label = format!("{} (+{}% / -{}%)", tmpl.name, tmpl.target_pct, tmpl.stop_pct);
+                    if ui.button(&label).clicked() {
+                        let target_price = click_price * (1.0 + tmpl.target_pct / 100.0);
+                        let stop_price   = click_price * (1.0 - tmpl.stop_pct  / 100.0);
+                        let id1 = chart.next_order_id; chart.next_order_id += 1;
+                        let id2 = chart.next_order_id; chart.next_order_id += 1;
+                        chart.orders.push(OrderLevel { id: id1, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2), option_symbol: None, option_con_id: None });
+                        chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop,   price: stop_price,   qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1), option_symbol: None, option_con_id: None });
+                        ui.close_menu();
+                    }
+                }
+            });
             if ui.button(egui::RichText::new(format!("\u{27F2} Trigger Order")).color(t.accent)).clicked() {
                 let target_price = click_price * 1.02;
                 let id1 = chart.next_order_id; chart.next_order_id += 1;
@@ -10965,6 +11064,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if let Some(tool) = new_tool {
                 chart.draw_tool = tool.into();
                 chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
+            }
+        }
+
+        // ── Trading hotkeys ───────────────────────────────────────────────────
+        if !ctx.wants_keyboard_input() {
+            // Ctrl+B: Buy market at last price
+            if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::B) && !i.modifiers.shift) {
+                let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                let id = chart.next_order_id; chart.next_order_id += 1;
+                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None });
+            }
+            // Ctrl+Shift+B: Sell market at last price
+            if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::B)) {
+                let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                let id = chart.next_order_id; chart.next_order_id += 1;
+                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None });
+            }
+            // Ctrl+Shift+Q: Cancel all orders
+            if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Q)) {
+                chart.orders.clear();
+            }
+            // Ctrl+Shift+F: Flatten — cancel all orders
+            if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::F)) {
+                chart.orders.retain(|o| o.status == OrderStatus::Executed);
             }
         }
 
