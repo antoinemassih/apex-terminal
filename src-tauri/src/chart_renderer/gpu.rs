@@ -2298,11 +2298,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.orders_panel_open = !watchlist.orders_panel_open;
                 }
 
-                // Order book panel (active/filled/cancelled)
-                if tb_btn(ui, Icon::BOOK_OPEN, watchlist.order_book_open, t).clicked() {
-                    watchlist.order_book_open = !watchlist.order_book_open;
-                }
-
                 // Order entry toggle
                 if tb_btn(ui, Icon::CURRENCY_DOLLAR, watchlist.order_entry_open, t).clicked() {
                     watchlist.order_entry_open = !watchlist.order_entry_open;
@@ -3181,7 +3176,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // ── A) Tabs at the very top with X button ──
                 let tab_row_resp = ui.horizontal(|ui| {
                     ui.set_min_height(22.0);
-                    for (tab, label) in [(WatchlistTab::Stocks, "LIST"), (WatchlistTab::Chain, "CHAIN")] {
+                    for (tab, label) in [(WatchlistTab::Stocks, "LIST"), (WatchlistTab::Chain, "CHAIN"), (WatchlistTab::Heat, "HEAT")] {
                         let active = watchlist.tab == tab;
                         let color = if active { t.accent } else { t.dim };
                         let tab_resp = ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(11.0).strong().color(color)).frame(false));
@@ -4521,8 +4516,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let oi_str = if row.oi >= 1_000_000 { format!("{:.1}M", row.oi as f32 / 1_000_000.0) }
                                 else if row.oi >= 1_000 { format!("{},{:03}", row.oi / 1000, row.oi % 1000) }
                                 else { format!("{}", row.oi) };
+                            let oi_x = x;
                             painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
                                 &oi_str, egui::FontId::monospace(12.0), t.dim.gamma_multiply(0.5));
+
+                            // IV indicator dot (positioned right-aligned in the row)
+                            if row.iv > 0.0 {
+                                let iv_color = if row.iv > 0.7 { egui::Color32::from_rgb(231, 76, 60) }
+                                    else if row.iv > 0.5 { egui::Color32::from_rgb(240, 160, 40) }
+                                    else if row.iv > 0.3 { egui::Color32::from_rgb(255, 193, 37) }
+                                    else { egui::Color32::from_rgb(46, 204, 113) };
+                                painter.circle_filled(egui::pos2(rect.right() - 14.0, y_center), 3.5, iv_color);
+                            }
+
+                            // Unusual activity: volume > OI and volume is meaningful
+                            if row.volume > row.oi && row.volume > 100 {
+                                painter.text(egui::pos2(oi_x + col_oi - 10.0, y_center), egui::Align2::RIGHT_CENTER,
+                                    "!", egui::FontId::monospace(11.0), egui::Color32::from_rgb(255, 193, 37));
+                            }
 
                             // Faint row separator
                             painter.line_segment(
@@ -4673,6 +4684,64 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if let Some((ref sym, strike, is_call, ref expiry, bid, ask)) = watchlist_add.take() {
                             watchlist.add_option_to_watchlist(sym, strike, is_call, expiry, bid, ask);
                             watchlist.persist();
+                        }
+                    }
+
+                    // ── HEAT TAB ─────────────────────────────────────────────────
+                    WatchlistTab::Heat => {
+                        // Collect all non-option stock items
+                        let items: Vec<(String, f32, f32)> = watchlist.sections.iter()
+                            .flat_map(|sec| sec.items.iter())
+                            .filter(|item| !item.is_option && item.loaded && item.price > 0.0)
+                            .map(|item| {
+                                let change_pct = if item.prev_close > 0.0 {
+                                    (item.price / item.prev_close - 1.0) * 100.0
+                                } else { 0.0 };
+                                (item.symbol.clone(), item.price, change_pct)
+                            })
+                            .collect();
+
+                        if items.is_empty() {
+                            ui.add_space(24.0);
+                            ui.centered_and_justified(|ui| {
+                                ui.label(egui::RichText::new("No data").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            });
+                        } else {
+                            let avail_width = ui.available_width();
+                            let tile_size = 60.0;
+                            let cols = ((avail_width) / tile_size).floor() as usize;
+                            if cols > 0 {
+                                let rows_needed = (items.len() + cols - 1) / cols;
+                                let total_h = rows_needed as f32 * tile_size;
+                                let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_width, total_h), egui::Sense::hover());
+                                let painter = ui.painter();
+                                let area_left = rect.left();
+                                let area_top = rect.top();
+                                for (i, (sym, _price, change_pct)) in items.iter().enumerate() {
+                                    let col = i % cols;
+                                    let row = i / cols;
+                                    let intensity = (change_pct.abs() / 5.0).min(1.0);
+                                    let color = if *change_pct >= 0.0 {
+                                        egui::Color32::from_rgba_unmultiplied(
+                                            (20.0 + 30.0 * intensity) as u8,
+                                            (80.0 + 120.0 * intensity) as u8,
+                                            (40.0 + 70.0 * intensity) as u8, 220)
+                                    } else {
+                                        egui::Color32::from_rgba_unmultiplied(
+                                            (80.0 + 140.0 * intensity) as u8,
+                                            (30.0 + 30.0 * intensity) as u8,
+                                            (30.0 + 30.0 * intensity) as u8, 220)
+                                    };
+                                    let tile_rect = egui::Rect::from_min_size(
+                                        egui::pos2(area_left + col as f32 * tile_size, area_top + row as f32 * tile_size),
+                                        egui::vec2(tile_size - 2.0, tile_size - 2.0));
+                                    painter.rect_filled(tile_rect, 3.0, color);
+                                    painter.text(tile_rect.center() - egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
+                                        sym, egui::FontId::monospace(9.0), egui::Color32::WHITE);
+                                    painter.text(tile_rect.center() + egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
+                                        &format!("{:+.1}%", change_pct), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(200));
+                                }
+                            }
                         }
                     }
 
@@ -5092,53 +5161,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if let Some(id) = remove_alert { watchlist.alerts.retain(|a| a.id != id); }
                     }
                 });
-            });
-    }
-
-    // ── Order Book panel (active / filled / cancelled) ──────────────────────
-    if watchlist.order_book_open {
-        let screen = ctx.screen_rect();
-        dialog_window_themed(ctx, "order_book", egui::pos2(screen.center().x - 180.0, 80.0), 360.0, t.toolbar_bg, t.toolbar_border, None)
-            .show(ctx, |ui| {
-                if dialog_header(ui, "ORDER BOOK", t.dim) { watchlist.order_book_open = false; }
-                ui.add_space(6.0);
-                let ib_orders = read_account_data().map(|(_, _, o)| o).unwrap_or_default();
-                if ib_orders.is_empty() {
-                    ui.add_space(16.0);
-                    ui.centered_and_justified(|ui| {
-                        ui.label(egui::RichText::new("No orders").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
-                    });
-                } else {
-                    let active: Vec<_> = ib_orders.iter().filter(|o| o.status != "filled" && o.status != "cancelled").collect();
-                    let filled: Vec<_> = ib_orders.iter().filter(|o| o.status == "filled").collect();
-                    let cancelled: Vec<_> = ib_orders.iter().filter(|o| o.status == "cancelled").collect();
-
-                    egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                        for (label, orders) in [("ACTIVE", &active), ("FILLED", &filled), ("CANCELLED", &cancelled)] {
-                            if orders.is_empty() { continue; }
-                            ui.add_space(4.0);
-                            ui.label(egui::RichText::new(label).monospace().size(9.0).color(t.dim));
-                            ui.add_space(2.0);
-                            for o in orders {
-                                let side_color = if o.side == "BUY" { t.bull } else { t.bear };
-                                let status_color = if o.status == "filled" { t.bull } else if o.status == "cancelled" { t.dim.gamma_multiply(0.4) } else { t.accent };
-                                let opt_label = if !o.option_type.is_empty() { format!(" {:.0}{}", o.strike, o.option_type) } else { String::new() };
-                                let price_str = if o.avg_fill_price > 0.0 { format!("{:.2}", o.avg_fill_price) } else if o.limit_price > 0.0 { format!("{:.2}", o.limit_price) } else { "MKT".into() };
-                                ui.horizontal(|ui| {
-                                    ui.add_space(8.0);
-                                    ui.label(egui::RichText::new(&o.side).monospace().size(9.0).strong().color(side_color));
-                                    ui.label(egui::RichText::new(format!("{}{}", o.symbol, opt_label)).monospace().size(10.0).color(egui::Color32::from_rgb(220,220,230)));
-                                    ui.label(egui::RichText::new(format!("\u{00D7}{}", o.qty)).monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        status_badge(ui, &o.status.to_uppercase(), status_color);
-                                        ui.label(egui::RichText::new(&price_str).monospace().size(10.0).color(side_color));
-                                    });
-                                });
-                            }
-                        }
-                    });
-                }
-                ui.add_space(6.0);
             });
     }
 
@@ -11498,7 +11520,7 @@ struct SavedOption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum WatchlistTab { Stocks, Chain }
+enum WatchlistTab { Stocks, Chain, Heat }
 
 struct Watchlist {
     open: bool,
@@ -11550,7 +11572,6 @@ struct Watchlist {
     #[allow(dead_code)] filter_min_rvol: f32,  // reserved for RVOL filter when data is available
     // Orders
     orders_panel_open: bool,
-    order_book_open: bool,
     order_entry_open: bool,
     selected_order_ids: Vec<(usize, u32)>, // (pane_idx, order_id) for multi-select
     // Positions
@@ -11601,7 +11622,7 @@ impl Watchlist {
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
                trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
-               orders_panel_open: false, order_book_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
+               orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
