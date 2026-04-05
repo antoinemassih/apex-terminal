@@ -6300,11 +6300,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                     if pts2.len() > 1 {
                         if ind.kind == IndicatorType::MACD {
-                            // Signal line: orange, dashed segments
-                            let orange = egui::Color32::from_rgb(230, 126, 34);
-                            for seg in pts2.windows(2) {
-                                dashed_line(&painter, seg[0], seg[1], egui::Stroke::new(1.0, orange), LineStyle::Dashed);
-                            }
+                            // Signal line: solid orange, clearly visible second line
+                            let orange = egui::Color32::from_rgb(255, 152, 56);
+                            painter.add(egui::Shape::line(pts2, egui::Stroke::new(1.2, orange)));
                         } else {
                             let c2 = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 140);
                             painter.add(egui::Shape::line(pts2, egui::Stroke::new(1.0, c2)));
