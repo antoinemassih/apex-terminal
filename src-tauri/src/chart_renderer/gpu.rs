@@ -2494,13 +2494,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     // ── Hotkey editor dialog ────────────────────────────────────────────────
     if watchlist.hotkey_editor_open {
         let screen = ctx.screen_rect();
-        dialog_window_themed(ctx, "hotkey_editor", egui::pos2(screen.center().x - 220.0, 50.0), 440.0, t.toolbar_bg, t.toolbar_border, None)
+        dialog_window_themed(ctx, "hotkey_editor", egui::pos2(screen.center().x - 280.0, 40.0), 560.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
                 if dialog_header(ui, "KEYBOARD SHORTCUTS", t.dim) { watchlist.hotkey_editor_open = false; }
                 ui.add_space(8.0);
                 let mut current_category = String::new();
                 let editing_id = watchlist.hotkey_editing_id;
-                egui::ScrollArea::vertical().max_height(500.0).show(ui, |ui| {
+                {
                     let hotkeys_snapshot: Vec<(u32, String, String, String, bool)> = watchlist.hotkeys.iter()
                         .map(|h| (h.id, h.name.clone(), h.category.clone(), h.key_name.clone(), editing_id == Some(h.id)))
                         .collect();
@@ -2530,11 +2530,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             });
                         });
                     }
-                });
-                ui.add_space(8.0);
+                }
+                ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     ui.add_space(10.0);
-                    if ui.button(egui::RichText::new("Reset Defaults").monospace().size(9.0).color(t.dim)).clicked() {
+                    if ui.button(egui::RichText::new("Reset Defaults").monospace().size(10.0).color(t.dim)).clicked() {
                         watchlist.hotkeys = default_hotkeys();
                     }
                 });
@@ -3439,30 +3439,81 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         ui.add_space(4.0);
 
-                        // ── Watchlist filter bar ──
+                        // ── Watchlist filter (on-demand) ──
+                        // Filter icon next to the add symbol area
                         ui.horizontal(|ui| {
-                            ui.add(egui::TextEdit::singleline(&mut watchlist.filter_text)
-                                .hint_text("Filter...").desired_width(80.0).font(egui::FontId::monospace(9.0)));
-                            egui::ComboBox::from_id_salt("wl_filter")
-                                .selected_text(&watchlist.filter_preset)
-                                .width(70.0)
-                                .show_ui(ui, |ui| {
-                                    for (name, min_chg, max_chg, _min_rvol) in [
-                                        ("All", -999.0f32, 999.0f32, -1.0f32),
-                                        ("Movers +2%", 2.0, 999.0, -1.0),
-                                        ("Movers -2%", -999.0, -2.0, -1.0),
-                                        ("High Vol", -999.0, 999.0, 2.0),
-                                        ("Big Move", 3.0, 999.0, -1.0),
-                                    ] {
-                                        if ui.selectable_label(watchlist.filter_preset == name, name).clicked() {
-                                            watchlist.filter_preset = name.into();
-                                            watchlist.filter_min_change = min_chg;
-                                            watchlist.filter_max_change = max_chg;
+                            let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
+                            let icon_col = if filter_active { t.accent } else { t.dim };
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::FUNNEL).size(11.0).color(icon_col))
+                                .fill(if watchlist.filter_open { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT })
+                                .min_size(egui::vec2(20.0, 18.0))).clicked() {
+                                watchlist.filter_open = !watchlist.filter_open;
+                            }
+                            if filter_active {
+                                ui.label(egui::RichText::new(&watchlist.filter_preset).monospace().size(8.0).color(t.accent));
+                            }
+                        });
+                        if watchlist.filter_open {
+                            ui.add_space(2.0);
+                            // Search
+                            ui.horizontal(|ui| {
+                                ui.add(egui::TextEdit::singleline(&mut watchlist.filter_text)
+                                    .hint_text("Search symbol...").desired_width(120.0).font(egui::FontId::monospace(9.0)));
+                                if !watchlist.filter_text.is_empty() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim)).frame(false)).clicked() {
+                                        watchlist.filter_text.clear();
+                                    }
+                                }
+                            });
+                            // Preset buttons
+                            ui.horizontal_wrapped(|ui| {
+                                ui.spacing_mut().item_spacing.x = 3.0;
+                                let presets: Vec<(&str, f32, f32)> = {
+                                    let mut p = vec![
+                                        ("All", -999.0_f32, 999.0_f32),
+                                        ("+2%", 2.0, 999.0), ("-2%", -999.0, -2.0),
+                                        ("+5%", 5.0, 999.0), ("-5%", -999.0, -5.0),
+                                        ("Big", 3.0, 999.0),
+                                    ];
+                                    for cf in &watchlist.custom_filters { p.push((&cf.0, cf.1, cf.2)); }
+                                    p
+                                };
+                                for (name, min_chg, max_chg) in &presets {
+                                    let active = watchlist.filter_preset == *name;
+                                    let col = if active { t.accent } else { t.dim };
+                                    let bg = if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
+                                    if ui.add(egui::Button::new(egui::RichText::new(*name).monospace().size(8.0).color(col))
+                                        .fill(bg).corner_radius(3.0).min_size(egui::vec2(0.0, 16.0))).clicked() {
+                                        watchlist.filter_preset = name.to_string();
+                                        watchlist.filter_min_change = *min_chg;
+                                        watchlist.filter_max_change = *max_chg;
+                                    }
+                                }
+                            });
+                            // Create custom filter (inline)
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 2.0;
+                                ui.label(egui::RichText::new("+").monospace().size(9.0).color(t.accent));
+                                // Quick create: just type a name and min% threshold
+                                static mut NEW_FILTER_NAME: String = String::new();
+                                static mut NEW_FILTER_MIN: String = String::new();
+                                unsafe {
+                                    ui.add(egui::TextEdit::singleline(&mut NEW_FILTER_NAME).hint_text("name").desired_width(50.0).font(egui::FontId::monospace(8.0)));
+                                    ui.label(egui::RichText::new(">").monospace().size(8.0).color(t.dim));
+                                    ui.add(egui::TextEdit::singleline(&mut NEW_FILTER_MIN).hint_text("%").desired_width(30.0).font(egui::FontId::monospace(8.0)));
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::CHECK).size(8.0).color(t.accent)).frame(false)).clicked() {
+                                        let name = NEW_FILTER_NAME.trim().to_string();
+                                        let min_val: f32 = NEW_FILTER_MIN.parse().unwrap_or(0.0);
+                                        if !name.is_empty() {
+                                            watchlist.custom_filters.push((name, min_val, 999.0));
+                                            NEW_FILTER_NAME.clear();
+                                            NEW_FILTER_MIN.clear();
                                         }
                                     }
-                                });
-                        });
-                        ui.add_space(2.0);
+                                }
+                            });
+                            ui.add_space(2.0);
+                        }
 
                         // Symbol list with sections and drag-and-drop
                         let active_sym = panes[ap].symbol.clone();
@@ -11490,8 +11541,10 @@ struct Watchlist {
     account_strip_open: bool, // account summary bar below toolbar
     pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
     // Watchlist filter
+    filter_open: bool,
     filter_text: String,
     filter_preset: String,
+    custom_filters: Vec<(String, f32, f32)>, // (name, min_change%, max_change%)
     filter_min_change: f32,
     filter_max_change: f32,
     #[allow(dead_code)] filter_min_rvol: f32,  // reserved for RVOL filter when data is available
@@ -11547,7 +11600,7 @@ impl Watchlist {
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
                trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
-               filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0,
+               filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
                orders_panel_open: false, order_book_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
