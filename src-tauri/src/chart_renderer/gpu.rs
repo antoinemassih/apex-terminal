@@ -4695,21 +4695,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── HEAT TAB ─────────────────────────────────────────────────
                     WatchlistTab::Heat => {
-                        // Index preset dropdown
+                        // Index preset dropdown + expand/collapse
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Index:").monospace().size(9.0).color(t.dim));
                             egui::ComboBox::from_id_salt("heat_idx")
-                                .selected_text(egui::RichText::new(&watchlist.heat_index).monospace().size(9.0))
-                                .width(90.0)
+                                .selected_text(egui::RichText::new(&watchlist.heat_index).monospace().size(10.0))
+                                .width(100.0)
                                 .show_ui(ui, |ui| {
                                     for idx in &["Watchlist", "S&P 500", "Dow 30", "Nasdaq 100"] {
                                         if ui.selectable_label(watchlist.heat_index == *idx, *idx).clicked() {
                                             watchlist.heat_index = idx.to_string();
+                                            watchlist.heat_collapsed.clear();
                                         }
                                     }
                                 });
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROWS_OUT).size(10.0).color(t.dim)).frame(false)).on_hover_text("Expand all").clicked() {
+                                watchlist.heat_collapsed.clear();
+                            }
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::MINUS).size(10.0).color(t.dim)).frame(false)).on_hover_text("Collapse all").clicked() {
+                                // Collapse all sectors — we'll populate this from the groups below
+                                watchlist.heat_collapsed.insert("__collapse_all__".into());
+                            }
                         });
-                        ui.add_space(4.0);
+                        ui.add_space(2.0);
 
                         // Sector ETF mapping for S&P
                         // TODO: Fetch constituent lists from ApexIB API for live, up-to-date data.
@@ -4819,14 +4826,40 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     }
                                     groups.last_mut().unwrap().1.push(item);
                                 }
+                                // Handle collapse-all
+                                if watchlist.heat_collapsed.contains("__collapse_all__") {
+                                    watchlist.heat_collapsed.remove("__collapse_all__");
+                                    for (s, _) in &groups { watchlist.heat_collapsed.insert(s.clone()); }
+                                }
                                 for (sector, items) in &groups {
-                                    // Sector divider
+                                    let is_collapsed = watchlist.heat_collapsed.contains(sector);
+                                    // Sector avg change
+                                    let avg_chg: f32 = if items.is_empty() { 0.0 } else {
+                                        items.iter().map(|i| i.1).sum::<f32>() / items.len() as f32
+                                    };
+                                    let sector_col = if avg_chg >= 0.0 { t.bull } else { t.bear };
+
                                     if groups.len() > 1 {
-                                        ui.add_space(2.0);
-                                        ui.label(egui::RichText::new(sector).monospace().size(8.0).color(t.dim));
+                                        ui.add_space(3.0);
+                                        // Colored sector header — clickable to expand/collapse
+                                        let header_resp = ui.horizontal(|ui| {
+                                            let caret = if is_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
+                                            ui.add(egui::Button::new(egui::RichText::new(caret).size(10.0).color(sector_col)).frame(false));
+                                            // Sector name (larger, colored)
+                                            ui.label(egui::RichText::new(sector).monospace().size(11.0).color(sector_col));
+                                            // Count + avg change
+                                            ui.label(egui::RichText::new(format!("({})", items.len())).monospace().size(9.0).color(t.dim));
+                                            ui.label(egui::RichText::new(format!("{:+.2}%", avg_chg)).monospace().size(10.0).color(sector_col));
+                                        });
+                                        if header_resp.response.clicked() {
+                                            if is_collapsed { watchlist.heat_collapsed.remove(sector); }
+                                            else { watchlist.heat_collapsed.insert(sector.clone()); }
+                                        }
                                         ui.add_space(1.0);
                                     }
-                                    render_sector_tiles(ui, items, cols, tile_w, tile_h, t);
+                                    if !is_collapsed {
+                                        render_sector_tiles(ui, items, cols, tile_w, tile_h, t);
+                                    }
                                 }
                             });
                         }
@@ -11659,6 +11692,7 @@ struct Watchlist {
     #[allow(dead_code)] filter_min_rvol: f32,  // reserved for RVOL filter when data is available
     // Heatmap
     heat_index: String,
+    heat_collapsed: std::collections::HashSet<String>,
     // Orders
     orders_panel_open: bool,
     order_entry_open: bool,
@@ -11716,7 +11750,7 @@ impl Watchlist {
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
                saved_options: vec![], dte_filter: -1,
-               heat_index: "Watchlist".into(),
+               heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(),
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new() }
     }
 
