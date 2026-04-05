@@ -8678,6 +8678,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── Drawing properties bar (horizontal, top-center of chart) ──────────
+        // Close the filter dialog when a drawing is selected to avoid two overlapping panels
+        if chart.selected_id.is_some() { watchlist.trendline_filter_open = false; }
         if let Some(ref sel_id) = chart.selected_id.clone() {
             if let Some(sel_draw) = chart.drawings.iter().find(|d| d.id == *sel_id).cloned() {
                 let bar_y = rect.top() + pt + 4.0;
