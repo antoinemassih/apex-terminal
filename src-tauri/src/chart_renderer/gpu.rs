@@ -131,7 +131,7 @@ const ALL_LAYOUTS: &[Layout] = &[Layout::One, Layout::Two, Layout::TwoH, Layout:
 // ─── Indicators ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, RSI, MACD, Stochastic }
+enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, RSI, MACD, Stochastic, ADX, CCI, WilliamsR }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum IndicatorCategory { Overlay, Oscillator }
@@ -142,15 +142,16 @@ impl IndicatorType {
             Self::SMA => "SMA", Self::EMA => "EMA", Self::WMA => "WMA",
             Self::DEMA => "DEMA", Self::TEMA => "TEMA", Self::VWAP => "VWAP",
             Self::RSI => "RSI", Self::MACD => "MACD", Self::Stochastic => "STOCH",
+            Self::ADX => "ADX", Self::CCI => "CCI", Self::WilliamsR => "%R",
         }
     }
-    fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::RSI, Self::MACD, Self::Stochastic] }
+    fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR] }
     #[allow(dead_code)]
     fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP] }
     #[allow(dead_code)]
-    fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic] }
+    fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR] }
     fn category(self) -> IndicatorCategory {
-        match self { Self::RSI | Self::MACD | Self::Stochastic => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
+        match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
     }
 
     fn compute(self, closes: &[f32], period: usize) -> Vec<f32> {
@@ -164,6 +165,7 @@ impl IndicatorType {
             Self::RSI => compute_rsi(closes, period),
             Self::MACD => compute_ema(closes, period), // primary=MACD line, signal/histogram set separately
             Self::Stochastic => vec![f32::NAN; closes.len()], // computed separately with high/low
+            Self::ADX | Self::CCI | Self::WilliamsR => vec![f32::NAN; closes.len()], // computed separately with high/low
         }
     }
 }
@@ -637,7 +639,7 @@ impl Default for TriggerSetup {
 enum VolumeProfileMode { Off, Classic, Heatmap, Strip, Clean }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum CandleMode { Standard, Violin, Gradient, ViolinGradient }
+enum CandleMode { Standard, Violin, Gradient, ViolinGradient, HeikinAshi, Line, Area }
 
 struct VolumeLevel {
     price: f32,
@@ -782,6 +784,8 @@ struct Chart {
     delta_data: Vec<f32>,
     rvol_data: Vec<f32>,
     vol_analytics_computed: usize,
+    replay_mode: bool,
+    replay_bar_count: usize,
 }
 
 impl Chart {
@@ -836,7 +840,8 @@ impl Chart {
             vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
-            cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0 }
+            cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
+            replay_mode: false, replay_bar_count: 0 }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -1009,6 +1014,81 @@ impl Chart {
                     ind.values = k;
                     ind.values2 = d;
                     ind.divergences = detect_divergences(closes, &ind.values, 5);
+                }
+                IndicatorType::ADX => {
+                    let period = ind.period;
+                    let n = chart_closes.len();
+                    if n > period + 1 {
+                        let mut plus_dm_sum = 0.0_f32;
+                        let mut minus_dm_sum = 0.0_f32;
+                        let mut tr_sum = 0.0_f32;
+                        for i in 1..=period {
+                            let hi = chart_highs[i] - chart_highs[i-1];
+                            let lo = chart_lows[i-1] - chart_lows[i];
+                            plus_dm_sum += if hi > lo && hi > 0.0 { hi } else { 0.0 };
+                            minus_dm_sum += if lo > hi && lo > 0.0 { lo } else { 0.0 };
+                            let tr = (chart_highs[i] - chart_lows[i])
+                                .max((chart_highs[i] - closes[i-1]).abs())
+                                .max((chart_lows[i] - closes[i-1]).abs());
+                            tr_sum += tr;
+                        }
+                        let mut dx_vals = vec![f32::NAN; n];
+                        let k = 1.0 / period as f32;
+                        for i in period..n {
+                            if i > period {
+                                let hi = chart_highs[i] - chart_highs[i-1];
+                                let lo = chart_lows[i-1] - chart_lows[i];
+                                let pdm = if hi > lo && hi > 0.0 { hi } else { 0.0 };
+                                let mdm = if lo > hi && lo > 0.0 { lo } else { 0.0 };
+                                let tr = (chart_highs[i] - chart_lows[i])
+                                    .max((chart_highs[i] - closes[i-1]).abs())
+                                    .max((chart_lows[i] - closes[i-1]).abs());
+                                plus_dm_sum = plus_dm_sum * (1.0 - k) + pdm;
+                                minus_dm_sum = minus_dm_sum * (1.0 - k) + mdm;
+                                tr_sum = tr_sum * (1.0 - k) + tr;
+                            }
+                            let plus_di = if tr_sum > 0.0 { plus_dm_sum / tr_sum * 100.0 } else { 0.0 };
+                            let minus_di = if tr_sum > 0.0 { minus_dm_sum / tr_sum * 100.0 } else { 0.0 };
+                            let di_sum = plus_di + minus_di;
+                            dx_vals[i] = if di_sum > 0.0 { (plus_di - minus_di).abs() / di_sum * 100.0 } else { 0.0 };
+                        }
+                        ind.values = compute_ema(&dx_vals, period);
+                    } else {
+                        ind.values = vec![f32::NAN; n];
+                    }
+                    ind.values2 = vec![]; ind.histogram = vec![];
+                }
+                IndicatorType::CCI => {
+                    let period = ind.period;
+                    let n = chart_closes.len();
+                    let mut cci = vec![f32::NAN; n];
+                    let tp: Vec<f32> = chart_highs.iter().zip(chart_lows.iter()).zip(closes.iter())
+                        .map(|((h, l), c)| (h + l + c) / 3.0).collect();
+                    if n >= period {
+                        for i in (period-1)..n {
+                            let sma: f32 = tp[i+1-period..=i].iter().sum::<f32>() / period as f32;
+                            let mean_dev: f32 = tp[i+1-period..=i].iter().map(|&v| (v - sma).abs()).sum::<f32>() / period as f32;
+                            cci[i] = if mean_dev > 0.0 { (tp[i] - sma) / (0.015 * mean_dev) } else { 0.0 };
+                        }
+                    }
+                    ind.values = cci; ind.values2 = vec![]; ind.histogram = vec![];
+                }
+                IndicatorType::WilliamsR => {
+                    let period = ind.period;
+                    let n = chart_closes.len();
+                    let mut wr = vec![f32::NAN; n];
+                    if n >= period {
+                        for i in (period-1)..n {
+                            let mut hi = f32::MIN; let mut lo = f32::MAX;
+                            for j in (i+1-period)..=i {
+                                hi = hi.max(chart_highs[j]);
+                                lo = lo.min(chart_lows[j]);
+                            }
+                            let range = hi - lo;
+                            wr[i] = if range > 0.0 { (hi - closes[i]) / range * -100.0 } else { -50.0 };
+                        }
+                    }
+                    ind.values = wr; ind.values2 = vec![]; ind.histogram = vec![];
                 }
                 _ => {
                     ind.values = ind.kind.compute(closes, ind.period);
@@ -1645,17 +1725,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 CandleMode::Violin => "VLN",
                 CandleMode::Gradient => "GRD",
                 CandleMode::ViolinGradient => "V+G",
+                CandleMode::HeikinAshi => "HA",
+                CandleMode::Line => "LINE",
+                CandleMode::Area => "AREA",
             };
             if tb_btn(ui, cm_label, panes[ap].candle_mode != CandleMode::Standard, t).clicked() {
                 panes[ap].candle_mode = match panes[ap].candle_mode {
                     CandleMode::Standard => CandleMode::Violin,
                     CandleMode::Violin => CandleMode::Gradient,
                     CandleMode::Gradient => CandleMode::ViolinGradient,
-                    CandleMode::ViolinGradient => CandleMode::Standard,
+                    CandleMode::ViolinGradient => CandleMode::HeikinAshi,
+                    CandleMode::HeikinAshi => CandleMode::Line,
+                    CandleMode::Line => CandleMode::Area,
+                    CandleMode::Area => CandleMode::Standard,
                 };
             }
             if tb_btn(ui, "FP", panes[ap].show_footprint, t).clicked() {
                 panes[ap].show_footprint = !panes[ap].show_footprint;
+            }
+            if tb_btn(ui, if panes[ap].replay_mode { "LIVE" } else { "RPL" }, panes[ap].replay_mode, t).clicked() {
+                panes[ap].replay_mode = !panes[ap].replay_mode;
+                if panes[ap].replay_mode {
+                    panes[ap].replay_bar_count = panes[ap].bars.len().saturating_sub(50);
+                }
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -1749,7 +1841,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.separator();
                 section_label(ui, "OSCILLATORS", t.accent);
                 for &kind in IndicatorType::oscillators() {
-                    let default_period = match kind { IndicatorType::RSI => 14, IndicatorType::MACD => 12, IndicatorType::Stochastic => 14, _ => 20 };
+                    let default_period = match kind { IndicatorType::RSI => 14, IndicatorType::MACD => 12, IndicatorType::Stochastic => 14, IndicatorType::ADX => 14, IndicatorType::CCI => 20, IndicatorType::WilliamsR => 14, _ => 20 };
                     if ui.button(egui::RichText::new(kind.label()).monospace().size(10.0)).clicked() {
                         let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
                         let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
@@ -4685,6 +4777,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let is_active = pane_idx == *active_pane;
         let t = &THEMES[chart.theme_idx];
         let n = chart.bars.len();
+        let n = if chart.replay_mode { chart.replay_bar_count.min(n) } else { n };
 
         // Draw pane border (highlight active pane)
         if visible_count > 1 {
@@ -5022,8 +5115,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let x=bx(i as f32); let c=if b.close>=b.open{t.bull}else{t.bear};
             let bt=py(b.open.max(b.close)); let bb=py(b.open.min(b.close));
             let wt=py(b.high); let wb=py(b.low); let bw=(bs*0.35).max(1.0);
-            // Wick always renders the same way regardless of candle mode
-            painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,c));
+            // Wick renders for standard candle modes only (not line/area)
+            if !matches!(chart.candle_mode, CandleMode::Line | CandleMode::Area | CandleMode::HeikinAshi) {
+                painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,c));
+            }
             // Body rendering depends on candle mode
             match chart.candle_mode {
                 CandleMode::Standard => {
@@ -5101,6 +5196,59 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         painter.rect_filled(
                             egui::Rect::from_min_size(egui::pos2(x - bw_g/2.0, slice_y), egui::vec2(bw_g, slice_h + 0.5)),
                             0.0, color);
+                    }
+                }
+                CandleMode::HeikinAshi => {
+                    let idx = i as usize;
+                    let ha_close = (b.open + b.high + b.low + b.close) / 4.0;
+                    let ha_open = if idx > 0 {
+                        if let Some(prev) = chart.bars.get(idx - 1) {
+                            let prev_ha_c = (prev.open + prev.high + prev.low + prev.close) / 4.0;
+                            let prev_ha_o = (prev.open + prev.close) / 2.0;
+                            (prev_ha_o + prev_ha_c) / 2.0
+                        } else { (b.open + b.close) / 2.0 }
+                    } else { (b.open + b.close) / 2.0 };
+                    let ha_high = b.high.max(ha_open).max(ha_close);
+                    let ha_low = b.low.min(ha_open).min(ha_close);
+                    let ha_bull = ha_close >= ha_open;
+                    let c = if ha_bull { t.bull } else { t.bear };
+                    let bt = py(ha_open.max(ha_close));
+                    let bb = py(ha_open.min(ha_close));
+                    let wt = py(ha_high);
+                    let wb = py(ha_low);
+                    painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,c));
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),0.0,c);
+                }
+                CandleMode::Line => {
+                    let idx = i as usize;
+                    if idx > 0 {
+                        if let Some(prev) = chart.bars.get(idx - 1) {
+                            let prev_x = bx((idx - 1) as f32);
+                            painter.line_segment(
+                                [egui::pos2(prev_x, py(prev.close)), egui::pos2(x, py(b.close))],
+                                egui::Stroke::new(1.5, t.accent));
+                        }
+                    }
+                }
+                CandleMode::Area => {
+                    let idx = i as usize;
+                    if idx > 0 {
+                        if let Some(prev) = chart.bars.get(idx - 1) {
+                            let prev_x = bx((idx - 1) as f32);
+                            let bottom_y = rect.top() + pt + ch;
+                            let pts = vec![
+                                egui::pos2(prev_x, py(prev.close)),
+                                egui::pos2(x, py(b.close)),
+                                egui::pos2(x, bottom_y),
+                                egui::pos2(prev_x, bottom_y),
+                            ];
+                            painter.add(egui::Shape::convex_polygon(pts,
+                                egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 20),
+                                egui::Stroke::NONE));
+                            painter.line_segment(
+                                [egui::pos2(prev_x, py(prev.close)), egui::pos2(x, py(b.close))],
+                                egui::Stroke::new(1.5, t.accent));
+                        }
                     }
                 }
             }
@@ -5981,6 +6129,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let (osc_min, osc_max) = match ind.kind {
                     IndicatorType::RSI => (0.0_f32, 100.0),
                     IndicatorType::Stochastic => (0.0, 100.0),
+                    IndicatorType::ADX => (0.0, 100.0),
+                    IndicatorType::WilliamsR => (-100.0, 0.0),
                     IndicatorType::MACD => {
                         let mut lo = f32::MAX; let mut hi = f32::MIN;
                         for i in (vs as u32)..end {
@@ -5988,6 +6138,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             if let Some(&v) = ind.histogram.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
                         }
                         if lo >= hi { lo -= 1.0; hi += 1.0; }
+                        let pad = (hi - lo) * 0.1;
+                        (lo - pad, hi + pad)
+                    }
+                    IndicatorType::CCI => {
+                        let mut lo = f32::MAX; let mut hi = f32::MIN;
+                        for i in (vs as u32)..end {
+                            if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
+                        }
+                        if lo >= hi { lo = -200.0; hi = 200.0; }
                         let pad = (hi - lo) * 0.1;
                         (lo - pad, hi + pad)
                     }
@@ -6011,6 +6170,64 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     painter.rect_filled(egui::Rect::from_min_max(
                         egui::pos2(rect.left(), osc_y(osc_min)), egui::pos2(rect.left() + cw, osc_y(low_ref))),
                         0.0, t.bull.gamma_multiply(0.04));
+
+                    // Enhanced RSI: gradient fill between line and 50 level
+                    if ind.kind == IndicatorType::RSI {
+                        let fifty_y = osc_y(50.0);
+                        for i in (vs as u32)..end.saturating_sub(1) {
+                            if let (Some(&v0), Some(&v1)) = (ind.values.get(i as usize), ind.values.get((i+1) as usize)) {
+                                if v0.is_nan() || v1.is_nan() { continue; }
+                                let x0 = bx(i as f32); let x1 = bx((i+1) as f32);
+                                let y0 = osc_y(v0); let y1 = osc_y(v1);
+                                let above = (v0 + v1) / 2.0 > 50.0;
+                                let dist = ((v0 + v1) / 2.0 - 50.0).abs() / 50.0;
+                                let alpha = (dist * 40.0).min(30.0) as u8;
+                                let fill_col = if above {
+                                    egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha)
+                                } else {
+                                    egui::Color32::from_rgba_unmultiplied(231, 76, 60, alpha)
+                                };
+                                let pts = vec![egui::pos2(x0, y0), egui::pos2(x1, y1), egui::pos2(x1, fifty_y), egui::pos2(x0, fifty_y)];
+                                painter.add(egui::Shape::convex_polygon(pts, fill_col, egui::Stroke::NONE));
+                            }
+                        }
+                        // RSI value label on right edge
+                        if let Some(&last_rsi) = ind.values.last() {
+                            if !last_rsi.is_nan() {
+                                let rsi_y = osc_y(last_rsi);
+                                let rsi_col = if last_rsi > 70.0 { t.bear } else if last_rsi < 30.0 { t.bull } else { color };
+                                painter.text(egui::pos2(rect.left() + cw + 3.0, rsi_y), egui::Align2::LEFT_CENTER,
+                                    &format!("{:.1}", last_rsi), egui::FontId::monospace(8.0), rsi_col);
+                            }
+                        }
+                    }
+                }
+
+                // ADX reference lines (20=no trend, 40=strong trend)
+                if ind.kind == IndicatorType::ADX {
+                    for &level in &[20.0_f32, 40.0] {
+                        let y = osc_y(level);
+                        painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
+                            egui::Stroke::new(0.3, t.dim.gamma_multiply(0.3)));
+                    }
+                }
+
+                // CCI reference lines (-100, 0, +100)
+                if ind.kind == IndicatorType::CCI {
+                    for &level in &[-100.0_f32, 0.0, 100.0] {
+                        let y = osc_y(level);
+                        painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
+                            egui::Stroke::new(0.3, t.dim.gamma_multiply(0.3)));
+                    }
+                }
+
+                // Williams %R reference lines (-80, -50, -20)
+                if ind.kind == IndicatorType::WilliamsR {
+                    for &level in &[-80.0_f32, -50.0, -20.0] {
+                        let y = osc_y(level);
+                        painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
+                            egui::Stroke::new(0.3, t.dim.gamma_multiply(0.3)));
+                    }
                 }
 
                 // Zero line for MACD
@@ -6020,33 +6237,42 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         egui::Stroke::new(0.5, t.dim.gamma_multiply(0.3)));
                 }
 
-                // MACD histogram bars
+                // MACD histogram bars — colored by direction of change
                 if ind.kind == IndicatorType::MACD && !ind.histogram.is_empty() {
                     let zero_y = osc_y(0.0);
                     for i in (vs as u32)..end {
                         if let Some(&h) = ind.histogram.get(i as usize) {
                             if !h.is_nan() {
+                                let prev_h = if i > 0 { ind.histogram.get(i as usize - 1).copied().unwrap_or(0.0) } else { 0.0 };
+                                let prev_h = if prev_h.is_nan() { 0.0 } else { prev_h };
                                 let x = bx(i as f32);
                                 let y = osc_y(h);
-                                let bw = (bs * 0.3).max(1.0);
-                                let c = if h >= 0.0 { t.bull.gamma_multiply(0.4) } else { t.bear.gamma_multiply(0.4) };
+                                let bw = (bs * 0.4).max(1.0);
+                                let c = if h >= 0.0 {
+                                    if h >= prev_h { egui::Color32::from_rgba_unmultiplied(46, 204, 113, 200) }
+                                    else { egui::Color32::from_rgba_unmultiplied(46, 204, 113, 80) }
+                                } else {
+                                    if h <= prev_h { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 200) }
+                                    else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 80) }
+                                };
                                 painter.rect_filled(egui::Rect::from_min_max(
-                                    egui::pos2(x - bw, y.min(zero_y)), egui::pos2(x + bw, y.max(zero_y))), 0.0, c);
+                                    egui::pos2(x - bw, y.min(zero_y)), egui::pos2(x + bw, y.max(zero_y))), 1.0, c);
                             }
                         }
                     }
                 }
 
-                // Primary line
+                // Primary line (thicker for MACD)
+                let primary_thickness = if ind.kind == IndicatorType::MACD { 1.5 } else { ind.thickness };
                 let mut pts = Vec::new();
                 for i in (vs as u32)..end {
                     if let Some(&v) = ind.values.get(i as usize) {
                         if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), osc_y(v))); }
                     }
                 }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness, color))); }
+                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(primary_thickness, color))); }
 
-                // Secondary line (MACD signal, Stochastic %D)
+                // Secondary line (MACD signal = orange dashed, Stochastic %D = dim)
                 if !ind.values2.is_empty() {
                     let mut pts2 = Vec::new();
                     for i in (vs as u32)..end {
@@ -6055,8 +6281,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
                     if pts2.len() > 1 {
-                        let c2 = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 140);
-                        painter.add(egui::Shape::line(pts2, egui::Stroke::new(1.0, c2)));
+                        if ind.kind == IndicatorType::MACD {
+                            // Signal line: orange, dashed segments
+                            let orange = egui::Color32::from_rgb(230, 126, 34);
+                            for seg in pts2.windows(2) {
+                                dashed_line(&painter, seg[0], seg[1], egui::Stroke::new(1.0, orange), LineStyle::Dashed);
+                            }
+                        } else {
+                            let c2 = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 140);
+                            painter.add(egui::Shape::line(pts2, egui::Stroke::new(1.0, c2)));
+                        }
                     }
                 }
 
@@ -6183,7 +6417,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if !ind.visible || ind.kind.category() != IndicatorCategory::Oscillator { continue; }
                         // Check proximity to the oscillator's primary line
                         let (osc_min, osc_max) = match ind.kind {
-                            IndicatorType::RSI | IndicatorType::Stochastic => (0.0_f32, 100.0),
+                            IndicatorType::RSI | IndicatorType::Stochastic | IndicatorType::ADX => (0.0_f32, 100.0),
+                            IndicatorType::WilliamsR => (-100.0_f32, 0.0),
                             _ => {
                                 let mut lo = f32::MAX; let mut hi = f32::MIN;
                                 for &v in &ind.values { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
@@ -9799,6 +10034,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         // M key toggles magnet mode
         if ui.input(|i| i.key_pressed(egui::Key::M)) && !ctx.wants_keyboard_input() {
             chart.magnet = !chart.magnet;
+        }
+
+        // Replay mode keyboard controls
+        if chart.replay_mode && !ctx.wants_keyboard_input() {
+            if ui.input(|i| i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::ArrowRight)) {
+                chart.replay_bar_count = (chart.replay_bar_count + 1).min(chart.bars.len());
+                chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + 8.0).max(0.0);
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
+                chart.replay_bar_count = chart.replay_bar_count.saturating_sub(1).max(1);
+                chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + 8.0).max(0.0);
+            }
         }
 
         // ── Keyboard shortcuts for drawing tools ─────────────────────────────
