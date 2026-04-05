@@ -670,6 +670,8 @@ struct Chart {
     last_signal_fetch: std::time::Instant,
     hide_all_drawings: bool,
     hide_all_indicators: bool,
+    drawing_list_open: bool,  // toggle drawing list panel (left side of pane)
+    ohlc_tooltip: bool,       // show OHLC values at crosshair
     show_volume: bool,
     show_oscillators: bool, // toggle oscillator sub-panel
     draw_color: String, // current drawing color
@@ -766,7 +768,7 @@ impl Chart {
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
-            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true,
+            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, drawing_list_open: false, ohlc_tooltip: true,
             signal_drawings: vec![], hide_signal_drawings: false, last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
             draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
@@ -1563,6 +1565,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             // ── Volume + Oscillator toggles ──
             if tb_btn(ui, "VOL", panes[ap].show_volume, t).clicked() { panes[ap].show_volume = !panes[ap].show_volume; }
             if tb_btn(ui, "OSC", panes[ap].show_oscillators, t).clicked() { panes[ap].show_oscillators = !panes[ap].show_oscillators; }
+            if tb_btn(ui, "OHLC", panes[ap].ohlc_tooltip, t).clicked() { panes[ap].ohlc_tooltip = !panes[ap].ohlc_tooltip; }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -1578,10 +1581,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if tb_btn(ui, "MAG", panes[ap].magnet, t).clicked() {
                 panes[ap].magnet = !panes[ap].magnet;
             }
-            // Drawing count badge
+            // Drawing count badge (click to toggle drawing list panel)
             let draw_count = panes[ap].drawings.len();
             if draw_count > 0 {
-                ui.label(egui::RichText::new(format!("{}", draw_count)).monospace().size(9.0).color(t.dim));
+                if tb_btn(ui, &format!("{}", draw_count), panes[ap].drawing_list_open, t).clicked() {
+                    panes[ap].drawing_list_open = !panes[ap].drawing_list_open;
+                }
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -6834,6 +6839,41 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             painter.text(egui::pos2(pos.x, time_y + time_galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &time_str, egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(160));
                         }
                     }
+                    // OHLC tooltip (togglable)
+                    if chart.ohlc_tooltip {
+                        if let Some(bar_data) = chart.bars.get(bar_idx) {
+                            let tooltip_x = pos.x + 16.0;
+                            let tooltip_y = pos.y - 50.0;
+                            let font = egui::FontId::monospace(9.0);
+                            let o = bar_data.open; let h = bar_data.high; let l = bar_data.low; let c = bar_data.close; let v = bar_data.volume;
+                            let is_bull = c >= o;
+                            let change = c - o;
+                            let pct = if o != 0.0 { change / o * 100.0 } else { 0.0 };
+                            let chg_col = if is_bull { t.bull } else { t.bear };
+
+                            let lines = [
+                                format!("O {:.2}", o),
+                                format!("H {:.2}", h),
+                                format!("L {:.2}", l),
+                                format!("C {:.2}", c),
+                                format!("{:+.2} ({:+.1}%)", change, pct),
+                                format!("V {:.0}", v),
+                            ];
+                            let line_h = 12.0;
+                            let tip_h = lines.len() as f32 * line_h + 8.0;
+                            let tip_w = 110.0;
+                            // Keep tooltip inside chart
+                            let tx = if tooltip_x + tip_w > rect.left() + cw { pos.x - tip_w - 16.0 } else { tooltip_x };
+                            let ty = tooltip_y.max(rect.top() + pt).min(rect.top() + pt + ch - tip_h);
+                            let tip_rect = egui::Rect::from_min_size(egui::pos2(tx, ty), egui::vec2(tip_w, tip_h));
+                            painter.rect_filled(tip_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
+                            painter.rect_stroke(tip_rect, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Outside);
+                            for (i, line) in lines.iter().enumerate() {
+                                let col = if i == 4 { chg_col } else { egui::Color32::from_white_alpha(180) };
+                                painter.text(egui::pos2(tx + 6.0, ty + 4.0 + i as f32 * line_h + line_h / 2.0), egui::Align2::LEFT_CENTER, line, font.clone(), col);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -8541,6 +8581,99 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // ── Drawing properties bar (horizontal, top-center of chart) ──────────
         // Close the filter dialog when a drawing is selected to avoid two overlapping panels
+        // ── Drawing list panel (left side of pane, toggled by count badge) ────
+        if chart.drawing_list_open && !chart.drawings.is_empty() {
+            let list_x = rect.left() + 4.0;
+            let list_y = rect.top() + pt + 4.0;
+            let list_w = 180.0;
+            let max_h = (ch - 12.0).min(300.0);
+            egui::Area::new(egui::Id::new(format!("draw_list_{}", pane_idx)))
+                .fixed_pos(egui::pos2(list_x, list_y))
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    egui::Frame::popup(&ctx.style())
+                        .fill(t.toolbar_bg)
+                        .stroke(egui::Stroke::new(0.5, t.toolbar_border))
+                        .inner_margin(4.0)
+                        .corner_radius(4.0)
+                        .show(ui, |ui| {
+                            ui.set_max_width(list_w);
+                            ui.set_max_height(max_h);
+                            // Header
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(format!("DRAWINGS ({})", chart.drawings.len())).monospace().size(9.0).color(t.dim));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                        chart.drawing_list_open = false;
+                                    }
+                                });
+                            });
+                            ui.add_space(2.0);
+                            // Scrollable list
+                            egui::ScrollArea::vertical().max_height(max_h - 24.0).show(ui, |ui| {
+                                let mut click_id: Option<String> = None;
+                                let mut toggle_vis_id: Option<String> = None;
+                                for d in &chart.drawings {
+                                    let is_sel = chart.selected_ids.contains(&d.id);
+                                    let is_hidden = chart.hidden_groups.contains(&d.group_id);
+                                    let type_label = match &d.kind {
+                                        DrawingKind::HLine{..} => "H-Line",
+                                        DrawingKind::TrendLine{..} => "Trend",
+                                        DrawingKind::Ray{..} => "Ray",
+                                        DrawingKind::HZone{..} => "Zone",
+                                        DrawingKind::Fibonacci{..} => "Fib",
+                                        DrawingKind::Channel{..} => "Chan",
+                                        DrawingKind::FibChannel{..} => "FibCh",
+                                        DrawingKind::Pitchfork{..} => "Fork",
+                                        DrawingKind::GannFan{..} => "Gann",
+                                        DrawingKind::GannBox{..} => "GBox",
+                                        DrawingKind::RegressionChannel{..} => "Reg",
+                                        DrawingKind::XABCD{..} => "XABCD",
+                                        DrawingKind::ElliottWave{..} => "Wave",
+                                        DrawingKind::AnchoredVWAP{..} => "AVWAP",
+                                        DrawingKind::PriceRange{..} => "Range",
+                                        DrawingKind::RiskReward{..} => "R/R",
+                                        DrawingKind::BarMarker{..} => "Mark",
+                                        DrawingKind::VerticalLine{..} => "VLine",
+                                        DrawingKind::FibExtension{..} => "FibX",
+                                        DrawingKind::FibTimeZone{..} => "FibT",
+                                        DrawingKind::FibArc{..} => "FibA",
+                                        DrawingKind::TextNote{..} => "Text",
+                                    };
+                                    let dc = hex_to_color(&d.color, if is_hidden { 0.3 } else { 1.0 });
+                                    let bg = if is_sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                                    ui.horizontal(|ui| {
+                                        // Color dot
+                                        let (dot_r, _) = ui.allocate_exact_size(egui::vec2(10.0, 14.0), egui::Sense::hover());
+                                        ui.painter().circle_filled(dot_r.center(), 4.0, dc);
+                                        // Type + short label — clickable
+                                        let row_resp = ui.add(egui::Button::new(
+                                            egui::RichText::new(type_label).monospace().size(9.0)
+                                                .color(if is_sel { egui::Color32::WHITE } else { t.dim })
+                                        ).fill(bg).min_size(egui::vec2(list_w - 40.0, 14.0)).corner_radius(2.0));
+                                        if row_resp.clicked() { click_id = Some(d.id.clone()); }
+                                        // Lock indicator
+                                        if d.locked {
+                                            ui.label(egui::RichText::new("L").monospace().size(7.0).color(t.dim));
+                                        }
+                                    });
+                                }
+                                // Process clicks after iteration (avoids borrow conflict)
+                                if let Some(id) = click_id {
+                                    chart.selected_id = Some(id.clone());
+                                    chart.selected_ids = vec![id];
+                                }
+                                if let Some(id) = toggle_vis_id {
+                                    // Could toggle individual drawing visibility here
+                                    let _ = id;
+                                }
+                            });
+                        });
+                });
+        }
+
         if chart.selected_id.is_some() { watchlist.trendline_filter_open = false; }
         if let Some(ref sel_id) = chart.selected_id.clone() {
             if let Some(sel_draw) = chart.drawings.iter().find(|d| d.id == *sel_id).cloned() {
