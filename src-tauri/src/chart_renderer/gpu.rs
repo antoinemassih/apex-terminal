@@ -2293,6 +2293,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.orders_panel_open = !watchlist.orders_panel_open;
                 }
 
+                // Order book panel (active/filled/cancelled)
+                if tb_btn(ui, Icon::BOOK_OPEN, watchlist.order_book_open, t).clicked() {
+                    watchlist.order_book_open = !watchlist.order_book_open;
+                }
+
                 // Order entry toggle
                 if tb_btn(ui, Icon::CURRENCY_DOLLAR, watchlist.order_entry_open, t).clicked() {
                     watchlist.order_entry_open = !watchlist.order_entry_open;
@@ -2308,9 +2313,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                 ui.add(egui::Separator::default().spacing(4.0));
 
-                // Keyboard shortcuts help
-                if tb_btn(ui, Icon::QUESTION, watchlist.shortcuts_open, t).clicked() {
-                    watchlist.shortcuts_open = !watchlist.shortcuts_open;
+                // Keyboard shortcuts / hotkey editor
+                if tb_btn(ui, Icon::QUESTION, watchlist.hotkey_editor_open, t).clicked() {
+                    watchlist.hotkey_editor_open = !watchlist.hotkey_editor_open;
                 }
 
                 // New window
@@ -2438,52 +2443,96 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
     }
 
-    // ── Keyboard shortcuts help panel ──────────────────────────────────────
-    if watchlist.shortcuts_open {
-        dialog_window_themed(ctx, "shortcuts_help", egui::pos2(ctx.screen_rect().center().x - 150.0, 50.0), 300.0, t.toolbar_bg, t.toolbar_border, None)
+    // ── Hotkey editor: key capture (runs before dialog rendering) ──────────
+    if let Some(edit_id) = watchlist.hotkey_editing_id {
+        let input = ctx.input(|i| {
+            let ctrl = i.modifiers.command;
+            let shift = i.modifiers.shift;
+            let alt = i.modifiers.alt;
+            let keys = [
+                (egui::Key::A, "A"), (egui::Key::B, "B"), (egui::Key::C, "C"), (egui::Key::D, "D"),
+                (egui::Key::E, "E"), (egui::Key::F, "F"), (egui::Key::G, "G"), (egui::Key::H, "H"),
+                (egui::Key::I, "I"), (egui::Key::J, "J"), (egui::Key::K, "K"), (egui::Key::L, "L"),
+                (egui::Key::M, "M"), (egui::Key::N, "N"), (egui::Key::O, "O"), (egui::Key::P, "P"),
+                (egui::Key::Q, "Q"), (egui::Key::R, "R"), (egui::Key::S, "S"), (egui::Key::T, "T"),
+                (egui::Key::U, "U"), (egui::Key::V, "V"), (egui::Key::W, "W"), (egui::Key::X, "X"),
+                (egui::Key::Y, "Y"), (egui::Key::Z, "Z"),
+                (egui::Key::F1, "F1"), (egui::Key::F2, "F2"), (egui::Key::F3, "F3"), (egui::Key::F4, "F4"),
+                (egui::Key::F5, "F5"), (egui::Key::F6, "F6"), (egui::Key::F7, "F7"), (egui::Key::F8, "F8"),
+                (egui::Key::Delete, "Del"), (egui::Key::Backspace, "Bksp"),
+            ];
+            for (key, name) in keys {
+                if i.key_pressed(key) {
+                    let mut display = String::new();
+                    if ctrl { display.push_str("Ctrl+"); }
+                    if shift { display.push_str("Shift+"); }
+                    if alt { display.push_str("Alt+"); }
+                    display.push_str(name);
+                    return Some((key, ctrl, shift, alt, display));
+                }
+            }
+            if i.key_pressed(egui::Key::Escape) { return Some((egui::Key::Escape, false, false, false, String::new())); }
+            None
+        });
+        if let Some((key, ctrl, shift, alt, display)) = input {
+            if key == egui::Key::Escape {
+                watchlist.hotkey_editing_id = None;
+            } else {
+                if let Some(hk) = watchlist.hotkeys.iter_mut().find(|h| h.id == edit_id) {
+                    hk.key = key; hk.ctrl = ctrl; hk.shift = shift; hk.alt = alt; hk.key_name = display;
+                }
+                watchlist.hotkey_editing_id = None;
+            }
+        }
+    }
+
+    // ── Hotkey editor dialog ────────────────────────────────────────────────
+    if watchlist.hotkey_editor_open {
+        let screen = ctx.screen_rect();
+        dialog_window_themed(ctx, "hotkey_editor", egui::pos2(screen.center().x - 220.0, 50.0), 440.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
-                if dialog_header(ui, "KEYBOARD SHORTCUTS", t.dim) { watchlist.shortcuts_open = false; }
+                if dialog_header(ui, "KEYBOARD SHORTCUTS", t.dim) { watchlist.hotkey_editor_open = false; }
                 ui.add_space(8.0);
-                let m = 10.0;
-                let shortcut_row = |ui: &mut egui::Ui, key: &str, desc: &str| {
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.allocate_ui(egui::vec2(90.0, 16.0), |ui| {
-                            ui.label(egui::RichText::new(key).monospace().size(9.0).strong().color(egui::Color32::from_rgb(200,200,210)));
+                let mut current_category = String::new();
+                let editing_id = watchlist.hotkey_editing_id;
+                egui::ScrollArea::vertical().max_height(500.0).show(ui, |ui| {
+                    let hotkeys_snapshot: Vec<(u32, String, String, String, bool)> = watchlist.hotkeys.iter()
+                        .map(|h| (h.id, h.name.clone(), h.category.clone(), h.key_name.clone(), editing_id == Some(h.id)))
+                        .collect();
+                    for (hk_id, hk_name, hk_cat, hk_key_name, is_editing) in &hotkeys_snapshot {
+                        if *hk_cat != current_category {
+                            if !current_category.is_empty() { ui.add_space(6.0); }
+                            current_category = hk_cat.clone();
+                            ui.add_space(2.0);
+                            ui.label(egui::RichText::new(hk_cat.to_uppercase()).monospace().size(9.0).color(t.dim));
+                            ui.add_space(2.0);
+                        }
+                        ui.horizontal(|ui| {
+                            ui.add_space(10.0);
+                            ui.label(egui::RichText::new(hk_name.as_str()).monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if *is_editing {
+                                    ui.label(egui::RichText::new("Press a key...").monospace().size(9.0).color(t.accent));
+                                } else {
+                                    if ui.add(egui::Button::new(egui::RichText::new("Edit").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
+                                        watchlist.hotkey_editing_id = Some(*hk_id);
+                                    }
+                                }
+                                let key_bg = if *is_editing { color_alpha(t.accent, 30) } else { color_alpha(t.toolbar_border, 30) };
+                                let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
+                                ui.add(egui::Button::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(10.0).color(key_fg))
+                                    .fill(key_bg).corner_radius(3.0).min_size(egui::vec2(80.0, 18.0)));
+                            });
                         });
-                        ui.label(egui::RichText::new(desc).monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
-                    });
-                };
-                dialog_section(ui, "NAVIGATION", m, t.accent);
-                shortcut_row(ui, "Scroll", "Zoom in/out");
-                shortcut_row(ui, "Drag", "Pan chart");
-                shortcut_row(ui, "Drag Y-axis", "Vertical zoom");
-                shortcut_row(ui, "Drag X-axis", "Horizontal zoom");
-                shortcut_row(ui, "Dbl-click Y", "Reset Y zoom");
-                ui.add_space(6.0);
-                dialog_section(ui, "DRAWING", m, t.accent);
-                shortcut_row(ui, "Middle-click", "Cycle: trend → hline → zone → fib → channel");
-                shortcut_row(ui, "M", "Toggle magnet (snap to OHLC)");
-                shortcut_row(ui, "T/H/F/C/V/R/Z", "Trend/HLine/Fib/Chan/VLine/Ray/Zone");
-                shortcut_row(ui, "P/G/X/N", "Pitchfork/Gann/FibExt/TextNote");
-                shortcut_row(ui, "Ctrl+D", "Duplicate selected drawing");
-                shortcut_row(ui, "Ctrl+Z / Ctrl+Y", "Undo / Redo");
-                shortcut_row(ui, "Escape", "Cancel / deselect");
-                shortcut_row(ui, "Delete", "Delete selected drawing");
-                shortcut_row(ui, "Shift+Drag", "Measure tool");
-                shortcut_row(ui, "Dbl-click line", "Edit indicator/order");
-                ui.add_space(6.0);
-                dialog_section(ui, "ORDERS", m, t.accent);
-                shortcut_row(ui, "Right-click", "Place order at price");
-                shortcut_row(ui, "Drag order", "Adjust order price");
-                shortcut_row(ui, "Dbl-click order", "Edit order details");
-                ui.add_space(6.0);
-                dialog_section(ui, "TRADING HOTKEYS", m, t.accent);
-                shortcut_row(ui, "Ctrl+B", "Buy market (last price)");
-                shortcut_row(ui, "Ctrl+Shift+B", "Sell market (last price)");
-                shortcut_row(ui, "Ctrl+Shift+Q", "Cancel all orders");
-                shortcut_row(ui, "Ctrl+Shift+F", "Flatten position");
+                    }
+                });
                 ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(10.0);
+                    if ui.button(egui::RichText::new("Reset Defaults").monospace().size(9.0).color(t.dim)).clicked() {
+                        watchlist.hotkeys = default_hotkeys();
+                    }
+                });
             });
     }
 
@@ -3385,6 +3434,31 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         ui.add_space(4.0);
 
+                        // ── Watchlist filter bar ──
+                        ui.horizontal(|ui| {
+                            ui.add(egui::TextEdit::singleline(&mut watchlist.filter_text)
+                                .hint_text("Filter...").desired_width(80.0).font(egui::FontId::monospace(9.0)));
+                            egui::ComboBox::from_id_salt("wl_filter")
+                                .selected_text(&watchlist.filter_preset)
+                                .width(70.0)
+                                .show_ui(ui, |ui| {
+                                    for (name, min_chg, max_chg, _min_rvol) in [
+                                        ("All", -999.0f32, 999.0f32, -1.0f32),
+                                        ("Movers +2%", 2.0, 999.0, -1.0),
+                                        ("Movers -2%", -999.0, -2.0, -1.0),
+                                        ("High Vol", -999.0, 999.0, 2.0),
+                                        ("Big Move", 3.0, 999.0, -1.0),
+                                    ] {
+                                        if ui.selectable_label(watchlist.filter_preset == name, name).clicked() {
+                                            watchlist.filter_preset = name.into();
+                                            watchlist.filter_min_change = min_chg;
+                                            watchlist.filter_max_change = max_chg;
+                                        }
+                                    }
+                                });
+                        });
+                        ui.add_space(2.0);
+
                         // Symbol list with sections and drag-and-drop
                         let active_sym = panes[ap].symbol.clone();
                         let pointer_pos = ui.ctx().input(|i| i.pointer.hover_pos());
@@ -3575,6 +3649,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             let placeholder = ui.allocate_space(egui::vec2(full_w, 24.0));
                                             row_rects.push((si, ii, placeholder.1));
                                             continue;
+                                        }
+
+                                        // ── Watchlist filter ──
+                                        if !item_is_option {
+                                            let ft = &watchlist.filter_text;
+                                            if !ft.is_empty() && !item_sym.to_uppercase().contains(&ft.to_uppercase()) {
+                                                continue;
+                                            }
+                                            if watchlist.filter_min_change > -999.0 || watchlist.filter_max_change < 999.0 {
+                                                if item_prev_close > 0.0 {
+                                                    let chg = (item_price / item_prev_close - 1.0) * 100.0;
+                                                    if watchlist.filter_min_change > -999.0 && chg < watchlist.filter_min_change { continue; }
+                                                    if watchlist.filter_max_change < 999.0 && chg > watchlist.filter_max_change { continue; }
+                                                } else {
+                                                    // price not loaded yet — only skip if a strict filter is active
+                                                    if watchlist.filter_min_change > -999.0 || watchlist.filter_max_change < 999.0 { continue; }
+                                                }
+                                            }
                                         }
 
                                         let is_active = item_sym == active_sym;
@@ -4944,6 +5036,53 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if let Some(id) = remove_alert { watchlist.alerts.retain(|a| a.id != id); }
                     }
                 });
+            });
+    }
+
+    // ── Order Book panel (active / filled / cancelled) ──────────────────────
+    if watchlist.order_book_open {
+        let screen = ctx.screen_rect();
+        dialog_window_themed(ctx, "order_book", egui::pos2(screen.center().x - 180.0, 80.0), 360.0, t.toolbar_bg, t.toolbar_border, None)
+            .show(ctx, |ui| {
+                if dialog_header(ui, "ORDER BOOK", t.dim) { watchlist.order_book_open = false; }
+                ui.add_space(6.0);
+                let ib_orders = read_account_data().map(|(_, _, o)| o).unwrap_or_default();
+                if ib_orders.is_empty() {
+                    ui.add_space(16.0);
+                    ui.centered_and_justified(|ui| {
+                        ui.label(egui::RichText::new("No orders").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                    });
+                } else {
+                    let active: Vec<_> = ib_orders.iter().filter(|o| o.status != "filled" && o.status != "cancelled").collect();
+                    let filled: Vec<_> = ib_orders.iter().filter(|o| o.status == "filled").collect();
+                    let cancelled: Vec<_> = ib_orders.iter().filter(|o| o.status == "cancelled").collect();
+
+                    egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                        for (label, orders) in [("ACTIVE", &active), ("FILLED", &filled), ("CANCELLED", &cancelled)] {
+                            if orders.is_empty() { continue; }
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new(label).monospace().size(9.0).color(t.dim));
+                            ui.add_space(2.0);
+                            for o in orders {
+                                let side_color = if o.side == "BUY" { t.bull } else { t.bear };
+                                let status_color = if o.status == "filled" { t.bull } else if o.status == "cancelled" { t.dim.gamma_multiply(0.4) } else { t.accent };
+                                let opt_label = if !o.option_type.is_empty() { format!(" {:.0}{}", o.strike, o.option_type) } else { String::new() };
+                                let price_str = if o.avg_fill_price > 0.0 { format!("{:.2}", o.avg_fill_price) } else if o.limit_price > 0.0 { format!("{:.2}", o.limit_price) } else { "MKT".into() };
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    ui.label(egui::RichText::new(&o.side).monospace().size(9.0).strong().color(side_color));
+                                    ui.label(egui::RichText::new(format!("{}{}", o.symbol, opt_label)).monospace().size(10.0).color(egui::Color32::from_rgb(220,220,230)));
+                                    ui.label(egui::RichText::new(format!("\u{00D7}{}", o.qty)).monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        status_badge(ui, &o.status.to_uppercase(), status_color);
+                                        ui.label(egui::RichText::new(&price_str).monospace().size(10.0).color(side_color));
+                                    });
+                                });
+                            }
+                        }
+                    });
+                }
+                ui.add_space(6.0);
             });
     }
 
@@ -11188,6 +11327,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 // ─── Watchlist ───────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
+struct HotKey {
+    id: u32,
+    name: String,
+    category: String,
+    action: String,
+    key_name: String,
+    key: egui::Key,
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+}
+
+#[derive(Clone)]
 struct WatchlistItem {
     symbol: String,
     price: f32,
@@ -11282,12 +11434,22 @@ struct Watchlist {
     color_picking_section: Option<u32>,      // section id picking color
     // Toolbar
     #[allow(dead_code)] toolbar_scroll: f32,
-    shortcuts_open: bool, // keyboard shortcuts help panel
+    #[allow(dead_code)] shortcuts_open: bool, // superseded by hotkey_editor_open
+    hotkey_editor_open: bool,
+    hotkey_editing_id: Option<u32>,
+    hotkeys: Vec<HotKey>,
     trendline_filter_open: bool, // trendline filter dropdown
     account_strip_open: bool, // account summary bar below toolbar
     pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
+    // Watchlist filter
+    filter_text: String,
+    filter_preset: String,
+    filter_min_change: f32,
+    filter_max_change: f32,
+    #[allow(dead_code)] filter_min_rvol: f32,  // reserved for RVOL filter when data is available
     // Orders
     orders_panel_open: bool,
+    order_book_open: bool,
     order_entry_open: bool,
     selected_order_ids: Vec<(usize, u32)>, // (pane_idx, order_id) for multi-select
     // Positions
@@ -11334,8 +11496,11 @@ impl Watchlist {
                options_visible: true, options_split: 0.6, divider_dragging: false, divider_y: 0.0, divider_total_h: 0.0,
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
-               toolbar_scroll: 0.0, shortcuts_open: false, trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
-               orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
+               toolbar_scroll: 0.0, shortcuts_open: false,
+               hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
+               trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
+               filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0,
+               orders_panel_open: false, order_book_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
@@ -11545,6 +11710,38 @@ impl Watchlist {
 }
 
 // Black-Scholes, strike_interval, atm_strike, get_iv, sim_oi — now in compute.rs
+
+fn default_hotkeys() -> Vec<HotKey> {
+    let mut id = 1u32;
+    let mut hk = |name: &str, cat: &str, action: &str, key: egui::Key, ctrl: bool, shift: bool, key_name: &str| -> HotKey {
+        let h = HotKey { id, name: name.into(), category: cat.into(), action: action.into(), key_name: key_name.into(), key, ctrl, shift, alt: false };
+        id += 1; h
+    };
+    vec![
+        hk("Buy Market",         "Trading", "buy_market",     egui::Key::B,      true,  false, "Ctrl+B"),
+        hk("Sell Market",        "Trading", "sell_market",    egui::Key::B,      true,  true,  "Ctrl+Shift+B"),
+        hk("Cancel All Orders",  "Trading", "cancel_all",     egui::Key::Q,      true,  true,  "Ctrl+Shift+Q"),
+        hk("Flatten Position",   "Trading", "flatten",        egui::Key::F,      true,  true,  "Ctrl+Shift+F"),
+        hk("Trendline",          "Drawing", "tool_trendline", egui::Key::T,      false, false, "T"),
+        hk("H-Line",             "Drawing", "tool_hline",     egui::Key::H,      false, false, "H"),
+        hk("Fibonacci",          "Drawing", "tool_fibonacci", egui::Key::F,      false, false, "F"),
+        hk("Channel",            "Drawing", "tool_channel",   egui::Key::C,      false, false, "C"),
+        hk("Vertical Line",      "Drawing", "tool_vline",     egui::Key::V,      false, false, "V"),
+        hk("Ray",                "Drawing", "tool_ray",       egui::Key::R,      false, false, "R"),
+        hk("Zone",               "Drawing", "tool_hzone",     egui::Key::Z,      false, false, "Z"),
+        hk("Pitchfork",          "Drawing", "tool_pitchfork", egui::Key::P,      false, false, "P"),
+        hk("Gann Fan",           "Drawing", "tool_gannfan",   egui::Key::G,      false, false, "G"),
+        hk("Fib Extension",      "Drawing", "tool_fibext",    egui::Key::X,      false, false, "X"),
+        hk("Text Note",          "Drawing", "tool_textnote",  egui::Key::N,      false, false, "N"),
+        hk("Toggle Magnet",      "Drawing", "toggle_magnet",  egui::Key::M,      false, false, "M"),
+        hk("Undo",               "General", "undo",           egui::Key::Z,      true,  false, "Ctrl+Z"),
+        hk("Redo",               "General", "redo",           egui::Key::Y,      true,  false, "Ctrl+Y"),
+        hk("Duplicate",          "General", "duplicate",      egui::Key::D,      true,  false, "Ctrl+D"),
+        hk("Screenshot",         "General", "screenshot",     egui::Key::S,      true,  true,  "Ctrl+Shift+S"),
+        hk("Delete",             "General", "delete",         egui::Key::Delete, false, false, "Delete"),
+        hk("Cancel / Deselect",  "General", "escape",         egui::Key::Escape, false, false, "Escape"),
+    ]
+}
 
 fn build_chain(underlying: f32, num_strikes: usize, dte: i32) -> (Vec<OptionRow>, Vec<OptionRow>) {
     let r = 0.05_f32;
