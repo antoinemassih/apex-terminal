@@ -6877,10 +6877,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         };
                         let osc_y = |v: f32| -> f32 { osc_top + (osc_max - v) / (osc_max - osc_min) * osc_height };
                         let bar_at_x = ((pos.x - rect.left() + off - bs * 0.5) / bs + vs) as usize;
-                        for di in 0..3 {
-                            let idx = if di == 0 { bar_at_x } else if di == 1 { bar_at_x.saturating_sub(1) } else { bar_at_x + 1 };
+                        for di in 0..7 {
+                            let idx = match di { 0 => bar_at_x, 1 => bar_at_x.saturating_sub(1), 2 => bar_at_x + 1, 3 => bar_at_x.saturating_sub(2), 4 => bar_at_x + 2, 5 => bar_at_x.saturating_sub(3), _ => bar_at_x + 3 };
                             if let Some(&v) = ind.values.get(idx) {
-                                if !v.is_nan() && (pos.y - osc_y(v)).abs() < 10.0 {
+                                if !v.is_nan() && (pos.y - osc_y(v)).abs() < 18.0 {
                                     chart.editing_indicator = Some(ind.id);
                                     break;
                                 }
@@ -9721,12 +9721,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     // Double-click indicator line to edit
                     if !found_order {
                         for ind in &chart.indicators {
-                            if !ind.visible { continue; }
+                            if !ind.visible || ind.kind.category() != IndicatorCategory::Overlay { continue; }
                             let bar_i = ((pos.x - rect.left() + off - bs * 0.5) / bs + vs) as usize;
-                            for di in 0..3 {
-                                let idx = if di == 0 { bar_i } else if di == 1 { bar_i.saturating_sub(1) } else { bar_i + 1 };
+                            // Check 7 bars around cursor for generous hit detection
+                            for di in 0..7 {
+                                let idx = match di { 0 => bar_i, 1 => bar_i.saturating_sub(1), 2 => bar_i + 1, 3 => bar_i.saturating_sub(2), 4 => bar_i + 2, 5 => bar_i.saturating_sub(3), _ => bar_i + 3 };
                                 if let Some(&v) = ind.values.get(idx) {
-                                    if !v.is_nan() && (pos.y - py(v)).abs() < 8.0 {
+                                    if !v.is_nan() && (pos.y - py(v)).abs() < 18.0 {
+                                        chart.editing_indicator = Some(ind.id);
+                                        break;
+                                    }
+                                }
+                                // Also check values2 (Bollinger upper/lower, Keltner, etc.)
+                                if let Some(&v2) = ind.values2.get(idx) {
+                                    if !v2.is_nan() && (pos.y - py(v2)).abs() < 18.0 {
+                                        chart.editing_indicator = Some(ind.id);
+                                        break;
+                                    }
+                                }
+                                if let Some(&v3) = ind.values3.get(idx) {
+                                    if !v3.is_nan() && (pos.y - py(v3)).abs() < 18.0 {
                                         chart.editing_indicator = Some(ind.id);
                                         break;
                                     }
