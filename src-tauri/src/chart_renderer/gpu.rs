@@ -11483,6 +11483,8 @@ struct ChartWindow {
     toasts: Vec<(String, f32, std::time::Instant, bool)>, // (message, price, created, is_buy)
     // Connection panel
     conn_panel_open: bool,
+    // Auto-save timer
+    last_save: Option<std::time::Instant>,
 }
 
 /// Request to spawn a new window (sent from Tauri command thread).
@@ -11710,7 +11712,7 @@ impl App {
         let (panes, layout) = load_state();
         let wl = Watchlist::new();
         let wl_syms: Vec<String> = wl.all_symbols();
-        let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false };
+        let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false, last_save: None };
         // Fetch prices for default watchlist symbols
         fetch_watchlist_prices(wl_syms);
         if let Some(cmd) = initial_cmd {
@@ -11828,6 +11830,15 @@ impl ApplicationHandler for App {
                 CURRENT_WINDOW.with(|w| *w.borrow_mut() = None);
                 if CLOSE_REQUESTED.with(|f| f.get()) {
                     cw.close_requested = true;
+                }
+                // Auto-save state every 30 seconds
+                {
+                    let now = std::time::Instant::now();
+                    let should_save = cw.last_save.map_or(true, |t| now.duration_since(t).as_secs() >= 30);
+                    if should_save {
+                        save_state(&cw.panes, cw.layout);
+                        cw.last_save = Some(now);
+                    }
                 }
                 // Process pending alerts from context menu
                 if let Some((sym, price, above)) = PENDING_ALERT.with(|a| a.borrow_mut().take()) {
@@ -12171,11 +12182,39 @@ fn state_path() -> std::path::PathBuf {
 }
 
 fn save_state(panes: &[Chart], layout: Layout) {
-    // Don't persist option chart panes — they use placeholder data
-    let pane_data: Vec<serde_json::Value> = panes.iter().filter(|p| !p.is_option).map(|p| serde_json::json!({
-        "symbol": p.symbol, "timeframe": p.timeframe,
-    })).collect();
+    let pane_data: Vec<serde_json::Value> = panes.iter().filter(|p| !p.is_option).map(|p| {
+        // Serialize indicators
+        let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
+            "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
+            "visible": ind.visible, "thickness": ind.thickness,
+        })).collect();
+        serde_json::json!({
+            "symbol": p.symbol, "timeframe": p.timeframe,
+            // Toggles
+            "show_volume": p.show_volume, "show_oscillators": p.show_oscillators,
+            "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet,
+            "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
+            "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
+            "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
+            "show_auto_sr": p.show_auto_sr, "show_footprint": p.show_footprint,
+            "show_gamma": p.show_gamma,
+            // Modes
+            "candle_mode": match p.candle_mode {
+                CandleMode::Standard => "std", CandleMode::Violin => "vln",
+                CandleMode::Gradient => "grd", CandleMode::ViolinGradient => "vg",
+                CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
+            },
+            "vp_mode": match p.vp_mode {
+                VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
+                VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
+                VolumeProfileMode::Clean => "clean",
+            },
+            // Indicators
+            "indicators": indicators,
+        })
+    }).collect();
     let state = serde_json::json!({
+        "version": 2,
         "layout": layout.label(),
         "theme_idx": panes.first().map(|p| p.theme_idx).unwrap_or(5),
         "panes": pane_data,
@@ -12217,6 +12256,54 @@ fn load_state() -> (Vec<Chart>, Layout) {
             chart.theme_idx = theme_idx;
             chart.recent_symbols = recents.clone();
             chart.pending_symbol_change = Some(sym.to_string());
+
+            // Restore toggle states
+            let gb = |key: &str, def: bool| -> bool { p.get(key).and_then(|v| v.as_bool()).unwrap_or(def) };
+            chart.show_volume = gb("show_volume", true);
+            chart.show_oscillators = gb("show_oscillators", true);
+            chart.ohlc_tooltip = gb("ohlc_tooltip", true);
+            chart.magnet = gb("magnet", true);
+            chart.show_vwap_bands = gb("show_vwap_bands", true);
+            chart.show_cvd = gb("show_cvd", false);
+            chart.show_delta_volume = gb("show_delta_volume", false);
+            chart.show_rvol = gb("show_rvol", true);
+            chart.show_ma_ribbon = gb("show_ma_ribbon", false);
+            chart.show_prev_close = gb("show_prev_close", true);
+            chart.show_auto_sr = gb("show_auto_sr", false);
+            chart.show_footprint = gb("show_footprint", false);
+            chart.show_gamma = gb("show_gamma", false);
+
+            // Restore candle mode
+            chart.candle_mode = match p.get("candle_mode").and_then(|v| v.as_str()).unwrap_or("std") {
+                "vln" => CandleMode::Violin, "grd" => CandleMode::Gradient, "vg" => CandleMode::ViolinGradient,
+                "ha" => CandleMode::HeikinAshi, "line" => CandleMode::Line, "area" => CandleMode::Area,
+                _ => CandleMode::Standard,
+            };
+            // Restore volume profile mode
+            chart.vp_mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
+                "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
+                "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
+                _ => VolumeProfileMode::Off,
+            };
+
+            // Restore indicators
+            if let Some(inds) = p.get("indicators").and_then(|v| v.as_array()) {
+                chart.indicators.clear();
+                for (idx, ind_json) in inds.iter().enumerate() {
+                    let kind_label = ind_json.get("kind").and_then(|v| v.as_str()).unwrap_or("SMA");
+                    let kind = IndicatorType::all().iter().find(|t| t.label() == kind_label).copied().unwrap_or(IndicatorType::SMA);
+                    let period = ind_json.get("period").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+                    let color = ind_json.get("color").and_then(|v| v.as_str()).unwrap_or(INDICATOR_COLORS[idx % INDICATOR_COLORS.len()]);
+                    let visible = ind_json.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
+                    let thickness = ind_json.get("thickness").and_then(|v| v.as_f64()).unwrap_or(1.5) as f32;
+                    let id = chart.next_indicator_id; chart.next_indicator_id += 1;
+                    let mut ind = Indicator::new(id, kind, period, color);
+                    ind.visible = visible;
+                    ind.thickness = thickness;
+                    chart.indicators.push(ind);
+                }
+            }
+
             panes.push(chart);
         }
     }
