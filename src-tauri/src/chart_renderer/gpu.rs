@@ -4708,11 +4708,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
                                     }
                                 });
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROWS_OUT).size(10.0).color(t.dim)).frame(false)).on_hover_text("Expand all").clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new("Expand").monospace().size(8.0).color(t.dim))).clicked() {
                                 watchlist.heat_collapsed.clear();
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::MINUS).size(10.0).color(t.dim)).frame(false)).on_hover_text("Collapse all").clicked() {
-                                // Collapse all sectors — we'll populate this from the groups below
+                            if ui.add(egui::Button::new(egui::RichText::new("Collapse").monospace().size(8.0).color(t.dim))).clicked() {
                                 watchlist.heat_collapsed.insert("__collapse_all__".into());
                             }
                         });
@@ -4841,17 +4840,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                     if groups.len() > 1 {
                                         ui.add_space(3.0);
-                                        // Colored sector header — clickable to expand/collapse
-                                        let header_resp = ui.horizontal(|ui| {
-                                            let caret = if is_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                            ui.add(egui::Button::new(egui::RichText::new(caret).size(10.0).color(sector_col)).frame(false));
-                                            // Sector name (larger, colored)
-                                            ui.label(egui::RichText::new(sector).monospace().size(11.0).color(sector_col));
-                                            // Count + avg change
-                                            ui.label(egui::RichText::new(format!("({})", items.len())).monospace().size(9.0).color(t.dim));
-                                            ui.label(egui::RichText::new(format!("{:+.2}%", avg_chg)).monospace().size(10.0).color(sector_col));
-                                        });
-                                        if header_resp.response.clicked() {
+                                        // Colored sector header — single clickable button
+                                        let caret = if is_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
+                                        let header_text = format!("{} {}  ({})  {:+.2}%", caret, sector, items.len(), avg_chg);
+                                        let header_btn = ui.add(egui::Button::new(
+                                            egui::RichText::new(&header_text).monospace().size(11.0).color(sector_col)
+                                        ).fill(color_alpha(sector_col, 10)).corner_radius(3.0).min_size(egui::vec2(ui.available_width(), 22.0)));
+                                        if header_btn.clicked() {
                                             if is_collapsed { watchlist.heat_collapsed.remove(sector); }
                                             else { watchlist.heat_collapsed.insert(sector.clone()); }
                                         }
