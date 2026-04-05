@@ -631,6 +631,27 @@ impl Default for TriggerSetup {
     }
 }
 
+// ─── Volume Profile ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum VolumeProfileMode { Off, Classic, Heatmap, Strip, Clean }
+
+struct VolumeLevel {
+    price: f32,
+    total_vol: f32,
+    buy_vol: f32,
+    sell_vol: f32,
+}
+
+struct VolumeProfileData {
+    levels: Vec<VolumeLevel>,
+    poc_price: f32,
+    vah: f32,
+    val: f32,
+    max_vol: f32,
+    price_step: f32,
+}
+
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
 struct Chart {
@@ -738,6 +759,10 @@ struct Chart {
     // Reusable buffers to avoid per-frame allocations
     indicator_pts_buf: Vec<egui::Pos2>,
     fmt_buf: String, // reusable format buffer
+    vp_mode: VolumeProfileMode,
+    vp_data: Option<VolumeProfileData>,
+    vp_last_vs: f32,
+    vp_last_vc: u32,
 }
 
 impl Chart {
@@ -788,7 +813,8 @@ impl Chart {
             cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
             text_edit_id: None, text_edit_buf: String::new(),
-            indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256) }
+            indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
+            vp_mode: VolumeProfileMode::Off, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0 }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -1566,6 +1592,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if tb_btn(ui, "VOL", panes[ap].show_volume, t).clicked() { panes[ap].show_volume = !panes[ap].show_volume; }
             if tb_btn(ui, "OSC", panes[ap].show_oscillators, t).clicked() { panes[ap].show_oscillators = !panes[ap].show_oscillators; }
             if tb_btn(ui, "OHLC", panes[ap].ohlc_tooltip, t).clicked() { panes[ap].ohlc_tooltip = !panes[ap].ohlc_tooltip; }
+            let vp_label = match panes[ap].vp_mode {
+                VolumeProfileMode::Off => "VP",
+                VolumeProfileMode::Classic => "VP:C",
+                VolumeProfileMode::Heatmap => "VP:H",
+                VolumeProfileMode::Strip => "VP:S",
+                VolumeProfileMode::Clean => "VP:L",
+            };
+            if tb_btn(ui, vp_label, panes[ap].vp_mode != VolumeProfileMode::Off, t).clicked() {
+                panes[ap].vp_mode = match panes[ap].vp_mode {
+                    VolumeProfileMode::Off => VolumeProfileMode::Classic,
+                    VolumeProfileMode::Classic => VolumeProfileMode::Heatmap,
+                    VolumeProfileMode::Heatmap => VolumeProfileMode::Strip,
+                    VolumeProfileMode::Strip => VolumeProfileMode::Clean,
+                    VolumeProfileMode::Clean => VolumeProfileMode::Off,
+                };
+                panes[ap].vp_data = None;
+            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -4402,6 +4445,55 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     span_begin("chart_panes");
+
+    fn compute_volume_profile(bars: &[Bar], start: usize, end: usize, num_levels: usize) -> Option<VolumeProfileData> {
+        if start >= end || end > bars.len() || num_levels < 2 { return None; }
+        let mut min_price = f32::MAX;
+        let mut max_price = f32::MIN;
+        for b in &bars[start..end] { min_price = min_price.min(b.low); max_price = max_price.max(b.high); }
+        if max_price <= min_price { return None; }
+        let price_step = (max_price - min_price) / num_levels as f32;
+        let mut levels: Vec<VolumeLevel> = (0..num_levels).map(|i| VolumeLevel {
+            price: min_price + (i as f32 + 0.5) * price_step, total_vol: 0.0, buy_vol: 0.0, sell_vol: 0.0,
+        }).collect();
+        for b in &bars[start..end] {
+            let bar_range = b.high - b.low;
+            if bar_range <= 0.0 { continue; }
+            let buy_ratio = (b.close - b.low) / bar_range;
+            let sell_ratio = 1.0 - buy_ratio;
+            let lo_idx = ((b.low - min_price) / price_step) as usize;
+            let hi_idx = ((b.high - min_price) / price_step).ceil() as usize;
+            let lo_idx = lo_idx.min(num_levels - 1);
+            let hi_idx = hi_idx.min(num_levels);
+            let span = (hi_idx - lo_idx).max(1) as f32;
+            let vol_per_level = b.volume / span;
+            for i in lo_idx..hi_idx {
+                levels[i].total_vol += vol_per_level;
+                levels[i].buy_vol += vol_per_level * buy_ratio;
+                levels[i].sell_vol += vol_per_level * sell_ratio;
+            }
+        }
+        let max_vol = levels.iter().map(|l| l.total_vol).fold(0.0_f32, f32::max);
+        let poc_price = levels.iter().max_by(|a, b| a.total_vol.partial_cmp(&b.total_vol).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|l| l.price).unwrap_or(min_price);
+        let total_vol: f32 = levels.iter().map(|l| l.total_vol).sum();
+        let va_target = total_vol * 0.70;
+        let poc_idx = levels.iter().position(|l| l.price == poc_price).unwrap_or(0);
+        let mut va_vol = levels[poc_idx].total_vol;
+        let mut va_lo = poc_idx;
+        let mut va_hi = poc_idx;
+        while va_vol < va_target && (va_lo > 0 || va_hi < levels.len() - 1) {
+            let lo_vol = if va_lo > 0 { levels[va_lo - 1].total_vol } else { 0.0 };
+            let hi_vol = if va_hi < levels.len() - 1 { levels[va_hi + 1].total_vol } else { 0.0 };
+            if lo_vol >= hi_vol && va_lo > 0 { va_lo -= 1; va_vol += levels[va_lo].total_vol; }
+            else if va_hi < levels.len() - 1 { va_hi += 1; va_vol += levels[va_hi].total_vol; }
+            else { break; }
+        }
+        let val = levels[va_lo].price - price_step / 2.0;
+        let vah = levels[va_hi].price + price_step / 2.0;
+        Some(VolumeProfileData { levels, poc_price, vah, val, max_vol, price_step })
+    }
+
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.bg)).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
         let visible_count = layout.max_panes().min(panes.len());
@@ -4554,6 +4646,146 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let bw = (bs * 0.4).max(1.0);
                 painter.rect_filled(egui::Rect::from_min_max(egui::pos2(x-bw, rect.top()+pt+ch-vh), egui::pos2(x+bw, rect.top()+pt+ch)), 0.0, c);
             }}
+        }
+
+        // Volume Profile — cache recompute + rendering (behind candles)
+        if chart.vp_mode != VolumeProfileMode::Off {
+            if chart.vp_data.is_none() || chart.vp_last_vs != chart.vs || chart.vp_last_vc != chart.vc {
+                let start = chart.vs.max(0.0) as usize;
+                let end_vp = (start + chart.vc as usize + 8).min(chart.bars.len());
+                chart.vp_data = compute_volume_profile(&chart.bars, start, end_vp, 60);
+                chart.vp_last_vs = chart.vs;
+                chart.vp_last_vc = chart.vc;
+            }
+        }
+
+        if chart.vp_mode == VolumeProfileMode::Classic {
+            if let Some(ref vp) = chart.vp_data {
+                let max_bar_width = cw * 0.25;
+                for level in &vp.levels {
+                    let y = py(level.price);
+                    let h = (py(level.price - vp.price_step / 2.0) - py(level.price + vp.price_step / 2.0)).abs().max(1.0);
+                    if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+                    let norm = if vp.max_vol > 0.0 { level.total_vol / vp.max_vol } else { 0.0 };
+                    let bar_w = norm * max_bar_width;
+                    let buy_w = bar_w * (level.buy_vol / level.total_vol.max(0.001));
+                    let sell_w = bar_w - buy_w;
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left(), y - h/2.0), egui::vec2(sell_w, h)),
+                        0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 40));
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left() + sell_w, y - h/2.0), egui::vec2(buy_w, h)),
+                        0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 40));
+                }
+                let poc_y = py(vp.poc_price);
+                if poc_y.is_finite() {
+                    painter.line_segment([egui::pos2(rect.left(), poc_y), egui::pos2(rect.left()+cw, poc_y)],
+                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 180)));
+                }
+            }
+        }
+
+        if chart.vp_mode == VolumeProfileMode::Heatmap {
+            if let Some(ref vp) = chart.vp_data {
+                for level in &vp.levels {
+                    let y_top = py(level.price + vp.price_step / 2.0);
+                    let y_bot = py(level.price - vp.price_step / 2.0);
+                    if !y_top.is_finite() || !y_bot.is_finite() { continue; }
+                    let h = (y_bot - y_top).abs().max(1.0);
+                    let y = y_top.min(y_bot);
+                    if y > rect.top() + pt + ch || y + h < rect.top() + pt { continue; }
+                    let norm = if vp.max_vol > 0.0 { level.total_vol / vp.max_vol } else { 0.0 };
+                    let alpha = (norm * 60.0) as u8;
+                    let delta = level.buy_vol - level.sell_vol;
+                    let color = if delta >= 0.0 { egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha) }
+                                else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, alpha) };
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left(), y), egui::vec2(cw, h)), 0.0, color);
+                }
+                let poc_y = py(vp.poc_price);
+                if poc_y.is_finite() {
+                    painter.line_segment([egui::pos2(rect.left(), poc_y), egui::pos2(rect.left()+cw, poc_y)],
+                        egui::Stroke::new(1.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 160)));
+                }
+                let vah_y = py(vp.vah); let val_y = py(vp.val);
+                if vah_y.is_finite() && val_y.is_finite() {
+                    let va_rect = egui::Rect::from_min_max(
+                        egui::pos2(rect.left(), vah_y.min(val_y)), egui::pos2(rect.left()+cw, vah_y.max(val_y)));
+                    painter.rect_stroke(va_rect, 0.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 60)), egui::StrokeKind::Outside);
+                }
+            }
+        }
+
+        if chart.vp_mode == VolumeProfileMode::Strip {
+            if let Some(ref vp) = chart.vp_data {
+                let strip_w = 50.0_f32;
+                let strip_x = rect.left() + cw - strip_w;
+                for level in &vp.levels {
+                    let y_top = py(level.price + vp.price_step / 2.0);
+                    let y_bot = py(level.price - vp.price_step / 2.0);
+                    if !y_top.is_finite() || !y_bot.is_finite() { continue; }
+                    let h = (y_bot - y_top).abs().max(1.0);
+                    let y = y_top.min(y_bot);
+                    if y > rect.top() + pt + ch || y + h < rect.top() + pt { continue; }
+                    let norm = if vp.max_vol > 0.0 { level.total_vol / vp.max_vol } else { 0.0 };
+                    let bar_w = norm * strip_w;
+                    let buy_frac = level.buy_vol / level.total_vol.max(0.001);
+                    let buy_w = bar_w * buy_frac;
+                    let sell_w = bar_w - buy_w;
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(strip_x + strip_w - bar_w, y), egui::vec2(sell_w, h)),
+                        0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 100));
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(strip_x + strip_w - buy_w, y), egui::vec2(buy_w, h)),
+                        0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 100));
+                }
+                let poc_y = py(vp.poc_price);
+                if poc_y.is_finite() {
+                    painter.line_segment([egui::pos2(strip_x, poc_y), egui::pos2(strip_x+strip_w, poc_y)],
+                        egui::Stroke::new(1.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 200)));
+                    painter.text(egui::pos2(strip_x - 2.0, poc_y), egui::Align2::RIGHT_CENTER, "POC",
+                        egui::FontId::monospace(7.0), egui::Color32::from_rgba_unmultiplied(255, 193, 37, 180));
+                }
+                for (price, label) in [(vp.vah, "VAH"), (vp.val, "VAL")] {
+                    let y = py(price);
+                    if y.is_finite() {
+                        painter.line_segment([egui::pos2(strip_x, y), egui::pos2(strip_x+strip_w, y)],
+                            egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 80)));
+                        painter.text(egui::pos2(strip_x - 2.0, y), egui::Align2::RIGHT_CENTER, label,
+                            egui::FontId::monospace(7.0), egui::Color32::from_rgba_unmultiplied(255, 193, 37, 100));
+                    }
+                }
+            }
+        }
+
+        if chart.vp_mode == VolumeProfileMode::Clean {
+            if let Some(ref vp) = chart.vp_data {
+                let gold = egui::Color32::from_rgb(255, 193, 37);
+                let vah_y = py(vp.vah); let val_y = py(vp.val);
+                if vah_y.is_finite() && val_y.is_finite() {
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(egui::pos2(rect.left(), vah_y.min(val_y)), egui::pos2(rect.left()+cw, vah_y.max(val_y))),
+                        0.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 10));
+                    dashed_line(&painter, egui::pos2(rect.left(), vah_y), egui::pos2(rect.left()+cw, vah_y),
+                        egui::Stroke::new(0.5, color_alpha(gold, 60)), LineStyle::Dashed);
+                    dashed_line(&painter, egui::pos2(rect.left(), val_y), egui::pos2(rect.left()+cw, val_y),
+                        egui::Stroke::new(0.5, color_alpha(gold, 60)), LineStyle::Dashed);
+                    painter.text(egui::pos2(rect.left()+cw+3.0, vah_y), egui::Align2::LEFT_CENTER, "VAH", egui::FontId::monospace(7.0), color_alpha(gold, 140));
+                    painter.text(egui::pos2(rect.left()+cw+3.0, val_y), egui::Align2::LEFT_CENTER, "VAL", egui::FontId::monospace(7.0), color_alpha(gold, 140));
+                }
+                let poc_y = py(vp.poc_price);
+                if poc_y.is_finite() {
+                    painter.line_segment([egui::pos2(rect.left(), poc_y), egui::pos2(rect.left()+cw, poc_y)],
+                        egui::Stroke::new(1.5, color_alpha(gold, 180)));
+                    painter.text(egui::pos2(rect.left()+cw+3.0, poc_y), egui::Align2::LEFT_CENTER,
+                        &format!("POC {:.2}", vp.poc_price), egui::FontId::monospace(7.5), color_alpha(gold, 200));
+                }
+                let avg_vol = vp.levels.iter().map(|l| l.total_vol).sum::<f32>() / vp.levels.len().max(1) as f32;
+                for level in &vp.levels {
+                    let y = py(level.price);
+                    if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+                    if level.total_vol > avg_vol * 1.5 {
+                        painter.circle_filled(egui::pos2(rect.left()+cw+2.0, y), 2.5, color_alpha(gold, 120));
+                    } else if level.total_vol < avg_vol * 0.3 {
+                        painter.circle_filled(egui::pos2(rect.left()+cw+2.0, y), 1.5, color_alpha(egui::Color32::from_rgb(150, 150, 180), 60));
+                    }
+                }
+            }
         }
 
         // Candles — no rounding (0.0) for fast tessellation
