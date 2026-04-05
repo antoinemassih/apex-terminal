@@ -2081,15 +2081,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
                     if !ws_names.is_empty() { ui.separator(); }
-                    if ui.button(egui::RichText::new("Save Current").monospace().size(10.0)).clicked() {
-                        save_workspace(&watchlist.active_workspace, panes, *layout);
-                        ui.close_menu();
+                    // Save current workspace
+                    if !watchlist.active_workspace.is_empty() && watchlist.active_workspace != "Default" {
+                        if ui.button(egui::RichText::new(format!("Save \"{}\"", watchlist.active_workspace)).monospace().size(10.0)).clicked() {
+                            save_workspace(&watchlist.active_workspace, panes, *layout);
+                            ui.close_menu();
+                        }
                     }
-                    if ui.button(egui::RichText::new("Save as \"Default\"").monospace().size(10.0)).clicked() {
-                        watchlist.active_workspace = "Default".into();
-                        save_workspace("Default", panes, *layout);
-                        ui.close_menu();
-                    }
+                    ui.separator();
+                    // Save as new name
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Name:").monospace().size(9.0).color(t.dim));
+                        ui.add(egui::TextEdit::singleline(&mut watchlist.workspace_save_name)
+                            .hint_text("Workspace name")
+                            .desired_width(100.0)
+                            .font(egui::FontId::monospace(10.0)));
+                        let can_save = !watchlist.workspace_save_name.trim().is_empty();
+                        if ui.add_enabled(can_save, egui::Button::new(egui::RichText::new("Save").monospace().size(10.0).color(t.accent))).clicked() {
+                            let name = watchlist.workspace_save_name.trim().to_string();
+                            save_workspace(&name, panes, *layout);
+                            watchlist.active_workspace = name;
+                            watchlist.workspace_save_name.clear();
+                            ui.close_menu();
+                        }
+                    });
                 });
             }
 
@@ -11177,6 +11192,7 @@ struct Watchlist {
     dte_filter: i32,
     // Workspaces
     active_workspace: String,
+    workspace_save_name: String,
     pending_workspace_load: Option<String>,
 }
 
@@ -11201,7 +11217,7 @@ impl Watchlist {
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
                saved_options: vec![], dte_filter: -1,
-               active_workspace: "Default".into(), pending_workspace_load: None }
+               active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new() }
     }
 
     /// Add symbol to the last section (creates one if none exist).
