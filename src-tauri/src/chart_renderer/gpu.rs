@@ -802,6 +802,12 @@ struct Chart {
     show_ma_ribbon: bool,
     show_prev_close: bool,
     show_auto_sr: bool,
+    show_gamma: bool,
+    gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
+    gamma_call_wall: f32,
+    gamma_put_wall: f32,
+    gamma_zero: f32,
+    gamma_hvl: f32,
     vwap_data: Vec<f32>,
     vwap_upper1: Vec<f32>,
     vwap_lower1: Vec<f32>,
@@ -867,6 +873,7 @@ impl Chart {
             vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false,
+            show_gamma: false, gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
             replay_mode: false, replay_bar_count: 0 }
@@ -1963,6 +1970,45 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
                                 panes[ap].indicator_bar_count = 0;
                             }
+                        }
+                    }
+                }
+                ui.separator();
+                // Gamma Levels
+                let gamma = panes[ap].show_gamma;
+                if ui.selectable_label(gamma, egui::RichText::new(format!("{} Gamma Levels (GEX)", check(gamma))).monospace().size(10.0)).clicked() {
+                    panes[ap].show_gamma = !panes[ap].show_gamma;
+                    // Generate placeholder data if empty
+                    if panes[ap].show_gamma && panes[ap].gamma_levels.is_empty() {
+                        if let Some(last_bar) = panes[ap].bars.last() {
+                            let price = last_bar.close;
+                            let step = if price > 200.0 { 5.0 } else if price > 50.0 { 2.5 } else { 1.0 };
+                            let mut levels = vec![];
+                            // Generate realistic gamma curve: positive near ATM, negative at extremes
+                            for i in -15..=15_i32 {
+                                let level_price = (price / step).round() * step + i as f32 * step;
+                                let dist = i.abs() as f32;
+                                // Gaussian positive gamma near center, negative at wings
+                                let gex = if dist < 5.0 {
+                                    (500.0 - dist * 80.0) * (1.0 + 0.3 * (level_price * 7.3).sin())
+                                } else {
+                                    (-100.0 - (dist - 5.0) * 50.0) * (1.0 + 0.2 * (level_price * 3.1).sin())
+                                };
+                                levels.push((level_price, gex));
+                            }
+                            // Find key levels
+                            let max_pos = levels.iter().filter(|(_, g)| *g > 0.0).max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                            let max_neg = levels.iter().filter(|(_, g)| *g < 0.0).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                            panes[ap].gamma_call_wall = max_pos.map_or(price + 10.0 * step, |l| l.0);
+                            panes[ap].gamma_put_wall = max_neg.map_or(price - 10.0 * step, |l| l.0);
+                            // Zero gamma = where it crosses from positive to negative
+                            let mut zero = price;
+                            for w in levels.windows(2) {
+                                if w[0].1 >= 0.0 && w[1].1 < 0.0 { zero = (w[0].0 + w[1].0) / 2.0; break; }
+                            }
+                            panes[ap].gamma_zero = zero;
+                            panes[ap].gamma_hvl = max_pos.map_or(price, |l| l.0);
+                            panes[ap].gamma_levels = levels;
                         }
                     }
                 }
@@ -5587,6 +5633,117 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── Auto Support/Resistance ───────────────────────────────────────────
+        // ── Gamma Levels Overlay (GEX) ────────────────────────────────────────
+        if chart.show_gamma && !chart.gamma_levels.is_empty() {
+            let max_gex = chart.gamma_levels.iter().map(|(_, g)| g.abs()).fold(0.0_f32, f32::max).max(1.0);
+            let max_bar_w = cw * 0.12; // max band width as fraction of chart width
+
+            // Zone gradient: tint the area between zero gamma and current price
+            let last_price = chart.bars.last().map_or(0.0, |b| b.close);
+            let zero_y = py(chart.gamma_zero);
+            let price_y = py(last_price);
+            if zero_y.is_finite() && price_y.is_finite() {
+                let above_zero = last_price > chart.gamma_zero;
+                let zone_color = if above_zero {
+                    egui::Color32::from_rgba_unmultiplied(40, 180, 220, 8) // cyan = stable territory
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(240, 160, 40, 8) // amber = volatile territory
+                };
+                let zy_top = zero_y.min(price_y);
+                let zy_bot = zero_y.max(price_y);
+                painter.rect_filled(egui::Rect::from_min_max(
+                    egui::pos2(rect.left(), zy_top), egui::pos2(rect.left() + cw, zy_bot)),
+                    0.0, zone_color);
+            }
+
+            // Gamma bands at each level
+            for &(price, gex) in &chart.gamma_levels {
+                let y = py(price);
+                if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+                let norm = gex.abs() / max_gex;
+                let band_w = norm * max_bar_w;
+                let band_h = 3.0 + norm * 4.0; // thicker bands for stronger levels
+
+                let (color, glow_color) = if gex > 0.0 {
+                    // Positive gamma: cyan/blue — stabilizing, magnetic
+                    let alpha = (30.0 + norm * 80.0) as u8;
+                    let glow_alpha = (10.0 + norm * 30.0) as u8;
+                    (egui::Color32::from_rgba_unmultiplied(40, 180, 220, alpha),
+                     egui::Color32::from_rgba_unmultiplied(40, 180, 220, glow_alpha))
+                } else {
+                    // Negative gamma: amber/orange — accelerating, volatile
+                    let alpha = (30.0 + norm * 80.0) as u8;
+                    let glow_alpha = (10.0 + norm * 30.0) as u8;
+                    (egui::Color32::from_rgba_unmultiplied(240, 160, 40, alpha),
+                     egui::Color32::from_rgba_unmultiplied(240, 160, 40, glow_alpha))
+                };
+
+                // Glow/aura (wider, more transparent)
+                if norm > 0.2 {
+                    painter.rect_filled(egui::Rect::from_center_size(
+                        egui::pos2(rect.left() + band_w / 2.0, y), egui::vec2(band_w * 1.5, band_h * 2.5)),
+                        band_h, glow_color);
+                }
+                // Main band (from left edge, width proportional to magnitude)
+                painter.rect_filled(egui::Rect::from_min_size(
+                    egui::pos2(rect.left(), y - band_h / 2.0), egui::vec2(band_w, band_h)),
+                    2.0, color);
+            }
+
+            // Key levels: Call Wall (prominent cyan line)
+            let cw_y = py(chart.gamma_call_wall);
+            if cw_y.is_finite() && cw_y > rect.top() + pt && cw_y < rect.top() + pt + ch {
+                let cyan = egui::Color32::from_rgb(40, 200, 230);
+                painter.line_segment([egui::pos2(rect.left(), cw_y), egui::pos2(rect.left() + cw, cw_y)],
+                    egui::Stroke::new(1.5, color_alpha(cyan, 140)));
+                // Label
+                let cw_label = format!("CALL WALL {:.2}", chart.gamma_call_wall);
+                let galley = painter.layout_no_wrap(cw_label.clone(), egui::FontId::monospace(8.5), cyan);
+                let lx = rect.left() + cw - galley.size().x - 6.0;
+                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 4.0, cw_y - galley.size().y / 2.0 - 2.0), galley.size() + egui::vec2(8.0, 4.0)),
+                    3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                painter.text(egui::pos2(lx, cw_y), egui::Align2::LEFT_CENTER, &cw_label, egui::FontId::monospace(8.5), cyan);
+            }
+
+            // Put Wall (prominent amber line)
+            let pw_y = py(chart.gamma_put_wall);
+            if pw_y.is_finite() && pw_y > rect.top() + pt && pw_y < rect.top() + pt + ch {
+                let amber = egui::Color32::from_rgb(240, 160, 40);
+                painter.line_segment([egui::pos2(rect.left(), pw_y), egui::pos2(rect.left() + cw, pw_y)],
+                    egui::Stroke::new(1.5, color_alpha(amber, 140)));
+                let pw_label = format!("PUT WALL {:.2}", chart.gamma_put_wall);
+                let galley = painter.layout_no_wrap(pw_label.clone(), egui::FontId::monospace(8.5), amber);
+                let lx = rect.left() + cw - galley.size().x - 6.0;
+                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 4.0, pw_y - galley.size().y / 2.0 - 2.0), galley.size() + egui::vec2(8.0, 4.0)),
+                    3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                painter.text(egui::pos2(lx, pw_y), egui::Align2::LEFT_CENTER, &pw_label, egui::FontId::monospace(8.5), amber);
+            }
+
+            // Zero Gamma line (dashed white)
+            if zero_y.is_finite() && zero_y > rect.top() + pt && zero_y < rect.top() + pt + ch {
+                dashed_line(&painter, egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y),
+                    egui::Stroke::new(1.0, egui::Color32::from_white_alpha(60)), LineStyle::Dashed);
+                painter.text(egui::pos2(rect.left() + 4.0, zero_y - 8.0), egui::Align2::LEFT_BOTTOM,
+                    "ZERO GAMMA", egui::FontId::monospace(7.5), egui::Color32::from_white_alpha(80));
+            }
+
+            // HVL — Highest Volume Level (gold diamond marker)
+            let hvl_y = py(chart.gamma_hvl);
+            if hvl_y.is_finite() && hvl_y > rect.top() + pt && hvl_y < rect.top() + pt + ch {
+                let gold = egui::Color32::from_rgb(255, 193, 37);
+                let sz = 5.0;
+                let diamond = vec![
+                    egui::pos2(rect.left() + cw - 14.0, hvl_y - sz),
+                    egui::pos2(rect.left() + cw - 14.0 + sz, hvl_y),
+                    egui::pos2(rect.left() + cw - 14.0, hvl_y + sz),
+                    egui::pos2(rect.left() + cw - 14.0 - sz, hvl_y),
+                ];
+                painter.add(egui::Shape::convex_polygon(diamond, gold, egui::Stroke::NONE));
+                painter.text(egui::pos2(rect.left() + cw - 22.0, hvl_y), egui::Align2::RIGHT_CENTER,
+                    &format!("HVL {:.2}", chart.gamma_hvl), egui::FontId::monospace(7.5), gold);
+            }
+        }
+
         if chart.show_auto_sr && n > 20 {
             let lookback = 10;
             let mut levels: Vec<(f32, bool)> = vec![];
