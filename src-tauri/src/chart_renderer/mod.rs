@@ -34,11 +34,12 @@ pub struct Drawing {
     pub extend_left: bool,  // extend trendline/ray to left chart edge
     pub extend_right: bool, // extend trendline/ray to right chart edge
     pub locked: bool,       // prevent accidental moves
+    pub alert_enabled: bool, // show alert bell indicator
 }
 
 impl Drawing {
     pub fn new(id: String, kind: DrawingKind) -> Self {
-        Self { id, kind, color: "#4a9eff".into(), opacity: 1.0, line_style: LineStyle::Solid, thickness: 1.5, group_id: "default".into(), extend_left: false, extend_right: false, locked: false }
+        Self { id, kind, color: "#4a9eff".into(), opacity: 1.0, line_style: LineStyle::Solid, thickness: 1.5, group_id: "default".into(), extend_left: false, extend_right: false, locked: false, alert_enabled: false }
     }
 }
 

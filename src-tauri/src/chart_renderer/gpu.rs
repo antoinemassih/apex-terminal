@@ -3,6 +3,8 @@
 
 use std::sync::{mpsc, Arc, Mutex};
 use std::fmt::Write as FmtWrite;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -21,6 +23,7 @@ std::thread_local! {
     static PENDING_TOASTS: std::cell::RefCell<Vec<(String, f32, bool)>> = const { std::cell::RefCell::new(Vec::new()) };
     static TB_BTN_CLICKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CONN_PANEL_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static CROSSHAIR_SYNC_TIME: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
 }
 use crate::ui_kit::{self, icons::Icon};
 
@@ -4585,6 +4588,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     span_begin("chart_panes");
+    CROSSHAIR_SYNC_TIME.with(|t| t.set(0));
 
     fn compute_volume_profile(bars: &[Bar], start: usize, end: usize, num_levels: usize) -> Option<VolumeProfileData> {
         if start >= end || end > bars.len() || num_levels < 2 { return None; }
@@ -6062,6 +6066,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let text_rect = egui::Rect::from_min_size(egui::pos2(x, y), galley.size());
                             painter.rect_stroke(text_rect, 2.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(74,158,255)), egui::StrokeKind::Outside);
                         }
+                    }
+                }
+            }
+            // Alert bell dot indicator
+            if d.alert_enabled {
+                let bell_pos = match &d.kind {
+                    DrawingKind::HLine { price } => Some(egui::pos2(rect.left() + 12.0, py(*price))),
+                    DrawingKind::TrendLine { time0, price0, .. } => Some(egui::pos2(bx(SignalDrawing::time_to_bar(*time0, &chart.timestamps)), py(*price0))),
+                    DrawingKind::HZone { price0, .. } => Some(egui::pos2(rect.left() + 12.0, py(*price0))),
+                    _ => None,
+                };
+                if let Some(bp) = bell_pos {
+                    if bp.x.is_finite() && bp.y.is_finite() && bp.x.abs() < 50000.0 && bp.y.abs() < 50000.0 {
+                        painter.circle_filled(bp + egui::vec2(-8.0, -8.0), 3.0, egui::Color32::from_rgb(255, 193, 37));
                     }
                 }
             }
@@ -7691,6 +7709,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let bar_idx_f = (pos.x - rect.left() + off - bs * 0.5) / bs + vs;
                     let bar_idx = bar_idx_f.round() as usize;
                     if let Some(&ts) = chart.timestamps.get(bar_idx) {
+                        CROSSHAIR_SYNC_TIME.with(|c| c.set(ts));
                         let dt = chrono::NaiveDateTime::from_timestamp_opt(ts, 0);
                         if let Some(dt) = dt {
                             let time_str = dt.format("%m/%d %H:%M").to_string();
@@ -8011,6 +8030,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Synced crosshair from other panes
+        if !pointer_in_pane && !chart.timestamps.is_empty() {
+            let sync_ts = CROSSHAIR_SYNC_TIME.with(|t| t.get());
+            if sync_ts > 0 {
+                let sync_bar = SignalDrawing::time_to_bar(sync_ts, &chart.timestamps);
+                let sync_x = bx(sync_bar);
+                if sync_x >= rect.left() && sync_x <= rect.left() + cw {
+                    painter.line_segment(
+                        [egui::pos2(sync_x, rect.top()+pt), egui::pos2(sync_x, rect.top()+pt+ch)],
+                        egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
                 }
             }
         }
@@ -9388,6 +9421,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
+        // Ctrl+Shift+S: Screenshot — open Windows Snip tool
+        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::S)) {
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("cmd")
+                    .args(["/C", "start", "ms-screenclip:"])
+                    .creation_flags(0x08000000)
+                    .spawn();
+            }
+        }
+
         // Context menu (right-click)
         resp.context_menu(|ui| {
             let click_price = ui.input(|i| i.pointer.latest_pos()).map(|p| pos_to_price(p)).unwrap_or(0.0);
@@ -9985,6 +10029,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         chart.redo_stack.clear();
                                         chart.selected_id = None;
                                         chart.selected_ids.clear();
+                                    }
+
+                                    // Alert bell toggle
+                                    ui.add(egui::Separator::default().spacing(4.0));
+                                    let has_alert = sel_draw.alert_enabled;
+                                    let bell_col = if has_alert { egui::Color32::from_rgb(255, 193, 37) } else { dim };
+                                    let bell_label = if has_alert { "\u{1F514} ON" } else { "\u{1F514}" };
+                                    if ui.add(egui::Button::new(egui::RichText::new(bell_label).monospace().size(10.0).color(bell_col)).fill(egui::Color32::TRANSPARENT)).clicked() {
+                                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                                            d.alert_enabled = !d.alert_enabled;
+                                            let drawing_id = d.id.clone();
+                                            let new_state = d.alert_enabled;
+                                            std::thread::spawn(move || {
+                                                let url = format!("http://localhost:8100/drawings/{}/alert", drawing_id);
+                                                let body = format!("{{\"alert_enabled\":{}}}", new_state);
+                                                #[cfg(target_os = "windows")]
+                                                let _ = std::process::Command::new("curl")
+                                                    .args(["-s", "-X", "PATCH", &url, "-H", "Content-Type: application/json", "-d", &body])
+                                                    .creation_flags(0x08000000)
+                                                    .output();
+                                                #[cfg(not(target_os = "windows"))]
+                                                let _ = std::process::Command::new("curl")
+                                                    .args(["-s", "-X", "PATCH", &url, "-H", "Content-Type: application/json", "-d", &body])
+                                                    .output();
+                                            });
+                                        }
                                     }
                                 });
                             });
