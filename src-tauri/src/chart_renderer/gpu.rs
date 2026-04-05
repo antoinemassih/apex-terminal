@@ -1624,11 +1624,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             tb_btn(ui, "triangulator", false, t);
             tb_btn(ui, "auto target", false, t);
 
-            // Trendline filter button
-            if tb_btn(ui, &format!("{} filters", Icon::FUNNEL), watchlist.trendline_filter_open, t).clicked() {
-                watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
-            }
-
             ui.add(egui::Separator::default().spacing(4.0));
 
             // Indicator dropdown (add new indicator from toolbar)
@@ -1918,78 +1913,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // ── Trendline filter dropdown ────────────────────────────────────────────
-    if watchlist.trendline_filter_open {
-        dialog_window_themed(ctx, "trendline_filter", egui::pos2(300.0, 40.0), 210.0, t.toolbar_bg, t.toolbar_border, None)
-            .show(ctx, |ui| {
-                if dialog_header(ui, "DRAWING FILTERS", t.dim) { watchlist.trendline_filter_open = false; }
-                ui.add_space(8.0);
-                let m = 10.0;
-                let chart = &mut panes[ap];
-
-                // Per-type visibility toggles
-                dialog_section(ui, "BY TYPE", m, t.dim.gamma_multiply(0.5));
-                let types = [("trendline", "Trendlines"), ("hline", "H-Lines"), ("hzone", "Zones"), ("barmarker", "Markers"), ("fibonacci", "Fibonacci"), ("channel", "Channels"), ("fibchannel", "Fib Channels")];
-                for (dtype, label) in &types {
-                    let count = chart.drawings.iter().filter(|d| {
-                        match (dtype, &d.kind) {
-                            (&"trendline", DrawingKind::TrendLine{..}) => true,
-                            (&"hline", DrawingKind::HLine{..}) => true,
-                            (&"hzone", DrawingKind::HZone{..}) => true,
-                            (&"barmarker", DrawingKind::BarMarker{..}) => true,
-                            (&"fibonacci", DrawingKind::Fibonacci{..}) => true,
-                            (&"channel", DrawingKind::Channel{..}) => true,
-                            (&"fibchannel", DrawingKind::FibChannel{..}) => true,
-                            _ => false,
-                        }
-                    }).count();
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.label(egui::RichText::new(format!("{} ({})", label, count)).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
-                    });
-                }
-
-                ui.add_space(8.0);
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
-                ui.add_space(8.0);
-
-                // Visibility toggles
-                dialog_section(ui, "VISIBILITY", m, t.dim.gamma_multiply(0.5));
-                let vis_btn = |ui: &mut egui::Ui, hidden: bool, label: &str, count: usize| -> bool {
-                    let icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
-                    let fg = if hidden { t.dim.gamma_multiply(0.4) } else { t.dim };
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.add(egui::Button::new(egui::RichText::new(format!("{} {} ({})", icon, label, count))
-                            .monospace().size(9.0).color(fg)).frame(false))
-                            .clicked()
-                    }).inner
-                };
-                let sig_count = chart.signal_drawings.len();
-                if vis_btn(ui, chart.hide_signal_drawings, "Signals", sig_count) {
-                    chart.hide_signal_drawings = !chart.hide_signal_drawings;
-                }
-                if vis_btn(ui, chart.hide_all_drawings, "All Drawings", chart.drawings.len()) {
-                    chart.hide_all_drawings = !chart.hide_all_drawings;
-                }
-
-                // Groups
-                if !chart.groups.is_empty() {
-                    ui.add_space(8.0);
-                    dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
-                    ui.add_space(8.0);
-                    dialog_section(ui, "GROUPS", m, t.dim.gamma_multiply(0.5));
-                    for g in chart.groups.clone() {
-                        let hidden = chart.hidden_groups.contains(&g.id);
-                        let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
-                        if vis_btn(ui, hidden, &g.name, count) {
-                            if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
-                            else { chart.hidden_groups.push(g.id.clone()); }
-                        }
-                    }
-                }
-                ui.add_space(8.0);
-            });
-    }
+    // Drawing filters panel removed — use context menu for visibility/group management
 
     // Symbol picker popup — render for any pane that has it open
     span_begin("symbol_picker");
@@ -8680,12 +8604,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         // ── Drawing properties bar (horizontal, top-center of chart) ──────────
         if let Some(ref sel_id) = chart.selected_id.clone() {
             if let Some(sel_draw) = chart.drawings.iter().find(|d| d.id == *sel_id).cloned() {
+                // Center the bar horizontally in the pane
                 let bar_y = rect.top() + pt + 4.0;
-                let bar_x = rect.left() + 8.0;
+                let bar_center_x = rect.left() + cw / 2.0;
+                // Estimate bar width (~550px) to center it
+                let est_w = 520.0;
+                let bar_x = (bar_center_x - est_w / 2.0).max(rect.left() + 4.0);
                 egui::Area::new(egui::Id::new(format!("draw_props_{}", pane_idx)))
                     .fixed_pos(egui::pos2(bar_x, bar_y))
                     .order(egui::Order::Foreground)
                     .show(ctx, |ui| {
+                        // Theme the combo box popups
+                        ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                        ui.style_mut().visuals.widgets.hovered.bg_fill = color_alpha(t.toolbar_border, 80);
+                        ui.style_mut().visuals.widgets.active.bg_fill = color_alpha(t.accent, 40);
+                        ui.style_mut().visuals.selection.bg_fill = color_alpha(t.accent, 50);
+                        ui.style_mut().visuals.popup_shadow = egui::epaint::Shadow::NONE;
+                        ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                        ui.style_mut().visuals.extreme_bg_color = t.toolbar_bg;
                         egui::Frame::popup(&ctx.style())
                             .fill(t.toolbar_bg)
                             .stroke(egui::Stroke::new(0.5, t.toolbar_border))
@@ -8795,6 +8731,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                         crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                                                     }
                                                 }
+                                            }
+                                            ui.separator();
+                                            if ui.selectable_label(false, egui::RichText::new(format!("{} New Group...", Icon::PLUS)).monospace().size(10.0).color(t.accent)).clicked() {
+                                                chart.group_manager_open = true;
                                             }
                                         });
 
