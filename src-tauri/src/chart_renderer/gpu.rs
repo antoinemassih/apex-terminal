@@ -636,6 +636,9 @@ impl Default for TriggerSetup {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum VolumeProfileMode { Off, Classic, Heatmap, Strip, Clean }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CandleMode { Standard, Violin, Gradient, ViolinGradient }
+
 struct VolumeLevel {
     price: f32,
     total_vol: f32,
@@ -760,6 +763,7 @@ struct Chart {
     indicator_pts_buf: Vec<egui::Pos2>,
     fmt_buf: String, // reusable format buffer
     vp_mode: VolumeProfileMode,
+    candle_mode: CandleMode,
     vp_data: Option<VolumeProfileData>,
     vp_last_vs: f32,
     vp_last_vc: u32,
@@ -828,7 +832,7 @@ impl Chart {
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
             text_edit_id: None, text_edit_buf: String::new(),
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
-            vp_mode: VolumeProfileMode::Off, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
+            vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0 }
@@ -1633,6 +1637,22 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if tb_btn(ui, "CVD", panes[ap].show_cvd, t).clicked() { panes[ap].show_cvd = !panes[ap].show_cvd; }
             if tb_btn(ui, "DVol", panes[ap].show_delta_volume, t).clicked() { panes[ap].show_delta_volume = !panes[ap].show_delta_volume; }
             if tb_btn(ui, "RVol", panes[ap].show_rvol, t).clicked() { panes[ap].show_rvol = !panes[ap].show_rvol; }
+
+            // Candle mode cycle
+            let cm_label = match panes[ap].candle_mode {
+                CandleMode::Standard => "STD",
+                CandleMode::Violin => "VLN",
+                CandleMode::Gradient => "GRD",
+                CandleMode::ViolinGradient => "V+G",
+            };
+            if tb_btn(ui, cm_label, panes[ap].candle_mode != CandleMode::Standard, t).clicked() {
+                panes[ap].candle_mode = match panes[ap].candle_mode {
+                    CandleMode::Standard => CandleMode::Violin,
+                    CandleMode::Violin => CandleMode::Gradient,
+                    CandleMode::Gradient => CandleMode::ViolinGradient,
+                    CandleMode::ViolinGradient => CandleMode::Standard,
+                };
+            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -4518,6 +4538,59 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         Some(VolumeProfileData { levels, poc_price, vah, val, max_vol, price_step })
     }
 
+    /// Compute micro volume profile for a single bar (levels within the bar's range).
+    /// Returns: Vec of (price, width_fraction, buy_ratio) for each level.
+    fn bar_micro_profile(bar: &Bar, levels: usize) -> Vec<(f32, f32, f32)> {
+        let range = bar.high - bar.low;
+        if range <= 0.0 || levels == 0 { return vec![(bar.close, 1.0, 0.5)]; }
+
+        let step = range / levels as f32;
+        let mut result = Vec::with_capacity(levels);
+
+        // Heuristic: volume concentrates near the close price
+        // Use a gaussian-like distribution centered on the close
+        let close_pos = (bar.close - bar.low) / range; // 0-1 position of close
+        let open_pos = (bar.open - bar.low) / range;   // 0-1 position of open
+
+        let mut total_weight = 0.0_f32;
+        let mut weights = Vec::with_capacity(levels);
+
+        for i in 0..levels {
+            let level_price = bar.low + (i as f32 + 0.5) * step;
+            let level_pos = (level_price - bar.low) / range; // 0-1
+
+            // Volume weight: gaussian centered on close, with wider spread near open
+            let dist_to_close = (level_pos - close_pos).abs();
+            let dist_to_open = (level_pos - open_pos).abs();
+            let weight = (-dist_to_close * dist_to_close * 4.0).exp() * 0.7
+                + (-dist_to_open * dist_to_open * 4.0).exp() * 0.3;
+            weights.push(weight);
+            total_weight += weight;
+        }
+
+        // Normalize weights and compute buy ratio per level
+        for i in 0..levels {
+            let level_price = bar.low + (i as f32 + 0.5) * step;
+            let level_pos = (level_price - bar.low) / range;
+            let width_frac = if total_weight > 0.0 { weights[i] / total_weight * levels as f32 } else { 1.0 };
+            let width_frac = width_frac.clamp(0.2, 2.5);
+
+            // Buy ratio varies within the bar:
+            // Bullish: buying pressure increases toward the top
+            // Bearish: selling pressure increases toward the top
+            let is_bull = bar.close >= bar.open;
+            let buy_ratio = if is_bull {
+                0.3 + 0.5 * level_pos
+            } else {
+                0.7 - 0.5 * level_pos
+            };
+
+            result.push((level_price, width_frac, buy_ratio));
+        }
+
+        result
+    }
+
     fn compute_volume_analytics(chart: &mut Chart) {
         let n = chart.bars.len();
         if n == 0 || chart.vol_analytics_computed == n { return; }
@@ -4945,8 +5018,85 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let x=bx(i as f32); let c=if b.close>=b.open{t.bull}else{t.bear};
             let bt=py(b.open.max(b.close)); let bb=py(b.open.min(b.close));
             let wt=py(b.high); let wb=py(b.low); let bw=(bs*0.35).max(1.0);
+            // Wick always renders the same way regardless of candle mode
             painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,c));
-            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),0.0,c);
+            // Body rendering depends on candle mode
+            match chart.candle_mode {
+                CandleMode::Standard => {
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),0.0,c);
+                }
+                CandleMode::Violin | CandleMode::ViolinGradient => {
+                    let micro = bar_micro_profile(b, 10);
+                    let is_bull = b.close >= b.open;
+                    let base_w = (bs * 0.7).max(1.0);
+                    let body_top = py(b.open.max(b.close));
+                    let body_bot = py(b.open.min(b.close));
+
+                    for (level_price, width_frac, buy_ratio) in &micro {
+                        let y = py(*level_price);
+                        let slice_h = ((b.high - b.low) / 10.0 * ch / (max_p - min_p)).abs().max(0.5);
+                        let y_top = y - slice_h / 2.0;
+                        let _ = y_top; // used implicitly via y + slice_h geometry
+
+                        // Only render within or near the body range
+                        let in_body = y >= body_top && y <= body_bot;
+                        let near_body = y >= body_top - slice_h && y <= body_bot + slice_h;
+                        if !near_body { continue; }
+
+                        let w = base_w * width_frac;
+
+                        let color = if chart.candle_mode == CandleMode::ViolinGradient {
+                            // Gradient: blend green/red based on buy_ratio
+                            let r = ((1.0 - buy_ratio) * 231.0) as u8;
+                            let g = (buy_ratio * 204.0) as u8;
+                            let b_val = ((1.0 - buy_ratio) * 60.0 + buy_ratio * 113.0) as u8;
+                            let alpha = if in_body { 200u8 } else { 80 };
+                            egui::Color32::from_rgba_unmultiplied(r, g, b_val, alpha)
+                        } else {
+                            // Pure violin: standard bull/bear color, varying width
+                            let alpha = if in_body { 200u8 } else { 60 };
+                            let base = if is_bull { t.bull } else { t.bear };
+                            egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
+                        };
+
+                        painter.rect_filled(
+                            egui::Rect::from_center_size(egui::pos2(x, y), egui::vec2(w, slice_h)),
+                            0.0, color);
+                    }
+                }
+                CandleMode::Gradient => {
+                    let micro = bar_micro_profile(b, 10);
+                    let body_top = py(b.open.max(b.close));
+                    let body_bot = py(b.open.min(b.close));
+                    let body_h = (body_bot - body_top).max(1.0);
+                    let bw_g = (bs * 0.7).max(1.0);
+
+                    // Render body as horizontal slices with gradient color
+                    let num_slices = 10;
+                    let slice_h = body_h / num_slices as f32;
+
+                    for si in 0..num_slices {
+                        let slice_y = body_top + si as f32 * slice_h;
+                        // Map slice position to price (0=top of body, 1=bottom)
+                        let frac = si as f32 / num_slices as f32;
+
+                        // Find the closest micro-profile level's buy_ratio
+                        let buy_ratio = micro.get(
+                            ((1.0 - frac) * (micro.len() as f32 - 1.0)).round() as usize
+                        ).map(|m| m.2).unwrap_or(0.5);
+
+                        // Color: green=buy, red=sell
+                        let r = ((1.0 - buy_ratio) * 231.0) as u8;
+                        let g = (buy_ratio * 204.0) as u8;
+                        let b_val = ((1.0 - buy_ratio) * 60.0 + buy_ratio * 113.0) as u8;
+                        let color = egui::Color32::from_rgba_unmultiplied(r, g, b_val, 200);
+
+                        painter.rect_filled(
+                            egui::Rect::from_min_size(egui::pos2(x - bw_g/2.0, slice_y), egui::vec2(bw_g, slice_h + 0.5)),
+                            0.0, color);
+                    }
+                }
+            }
         }}
 
         // Session VWAP + standard deviation bands
