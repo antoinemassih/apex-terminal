@@ -5642,29 +5642,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let zero_y = py(chart.gamma_zero);
             let price_y = py(last_price);
 
-            // Edge stripe: narrow vertical bar on the left edge between zero gamma and price
-            if zero_y.is_finite() && price_y.is_finite() {
+            // Gamma territory label (top-left of pane)
+            if chart.gamma_zero > 0.0 && last_price > 0.0 {
                 let above_zero = last_price > chart.gamma_zero;
-                let stripe_color = if above_zero {
-                    egui::Color32::from_rgba_unmultiplied(40, 200, 230, 60) // cyan = stable
+                let dist = (last_price - chart.gamma_zero).abs();
+                let pct = dist / chart.gamma_zero * 100.0;
+                let (label, col) = if above_zero {
+                    ("STABLE", egui::Color32::from_rgb(40, 200, 230))
                 } else {
-                    egui::Color32::from_rgba_unmultiplied(240, 160, 40, 60) // amber = volatile
+                    ("VOLATILE", egui::Color32::from_rgb(240, 160, 40))
                 };
-                let zy_top = zero_y.min(price_y).max(rect.top() + pt);
-                let zy_bot = zero_y.max(price_y).min(rect.top() + pt + ch);
-                // 5px stripe on the left edge
-                painter.rect_filled(egui::Rect::from_min_max(
-                    egui::pos2(rect.left(), zy_top), egui::pos2(rect.left() + 5.0, zy_bot)),
-                    0.0, stripe_color);
-                // Gradient fade: a wider but more transparent strip next to it
-                let fade_color = if above_zero {
-                    egui::Color32::from_rgba_unmultiplied(40, 200, 230, 12)
-                } else {
-                    egui::Color32::from_rgba_unmultiplied(240, 160, 40, 12)
-                };
-                painter.rect_filled(egui::Rect::from_min_max(
-                    egui::pos2(rect.left() + 5.0, zy_top), egui::pos2(rect.left() + 20.0, zy_bot)),
-                    0.0, fade_color);
+                let arrow = if above_zero { "\u{2191}" } else { "\u{2193}" };
+                let info = format!("{} {}  {:.2} ({:.2}%) to 0\u{03B3}", arrow, label, dist, pct);
+                let font = egui::FontId::monospace(10.0);
+                let galley = painter.layout_no_wrap(info.clone(), font.clone(), col);
+                let lx = rect.left() + 8.0;
+                let ly = rect.top() + pt + 8.0;
+                painter.rect_filled(egui::Rect::from_min_size(
+                    egui::pos2(lx - 5.0, ly - 3.0), galley.size() + egui::vec2(10.0, 6.0)),
+                    4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                painter.rect_stroke(egui::Rect::from_min_size(
+                    egui::pos2(lx - 5.0, ly - 3.0), galley.size() + egui::vec2(10.0, 6.0)),
+                    4.0, egui::Stroke::new(0.5, color_alpha(col, 60)), egui::StrokeKind::Outside);
+                painter.text(egui::pos2(lx, ly + galley.size().y / 2.0), egui::Align2::LEFT_CENTER, &info, font, col);
             }
 
             // Gamma bands at each level
@@ -5731,30 +5731,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 painter.text(egui::pos2(lx, pw_y), egui::Align2::LEFT_CENTER, &pw_label, label_font.clone(), amber);
             }
 
-            // Zero Gamma line (dashed white) + territory label
+            // Zero Gamma line (dashed white)
             if zero_y.is_finite() && zero_y > rect.top() + pt && zero_y < rect.top() + pt + ch {
                 dashed_line(&painter, egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y),
                     egui::Stroke::new(1.0, egui::Color32::from_white_alpha(70)), LineStyle::Dashed);
                 painter.text(egui::pos2(rect.left() + 8.0, zero_y - 10.0), egui::Align2::LEFT_BOTTOM,
                     "ZERO GAMMA", egui::FontId::monospace(10.0), egui::Color32::from_white_alpha(100));
-
-                // Territory badge: shows which side price is on
-                let above_zero = last_price > chart.gamma_zero;
-                let (badge_text, badge_color, arrow) = if above_zero {
-                    ("STABLE", egui::Color32::from_rgb(40, 200, 230), "\u{2191}") // ↑
-                } else {
-                    ("VOLATILE", egui::Color32::from_rgb(240, 160, 40), "\u{2193}") // ↓
-                };
-                let badge_label = format!("{} {}", arrow, badge_text);
-                let badge_font = egui::FontId::monospace(9.0);
-                let badge_galley = painter.layout_no_wrap(badge_label.clone(), badge_font.clone(), badge_color);
-                let badge_x = rect.left() + 8.0;
-                let badge_y = if above_zero { zero_y + 4.0 } else { zero_y - badge_galley.size().y - 14.0 };
-                painter.rect_filled(egui::Rect::from_min_size(
-                    egui::pos2(badge_x - 4.0, badge_y - 1.0), badge_galley.size() + egui::vec2(8.0, 2.0)),
-                    3.0, egui::Color32::from_rgba_unmultiplied(badge_color.r(), badge_color.g(), badge_color.b(), 20));
-                painter.text(egui::pos2(badge_x, badge_y + badge_galley.size().y / 2.0), egui::Align2::LEFT_CENTER,
-                    &badge_label, badge_font, badge_color);
             }
 
             // HVL — Highest Volume Level (gold diamond marker)
