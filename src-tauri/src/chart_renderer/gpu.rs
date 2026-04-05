@@ -5638,23 +5638,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let max_gex = chart.gamma_levels.iter().map(|(_, g)| g.abs()).fold(0.0_f32, f32::max).max(1.0);
             let max_bar_w = cw * 0.12; // max band width as fraction of chart width
 
-            // Zone gradient: tint the area between zero gamma and current price
             let last_price = chart.bars.last().map_or(0.0, |b| b.close);
             let zero_y = py(chart.gamma_zero);
-            let price_y = py(last_price);
-            if zero_y.is_finite() && price_y.is_finite() {
-                let above_zero = last_price > chart.gamma_zero;
-                let zone_color = if above_zero {
-                    egui::Color32::from_rgba_unmultiplied(40, 180, 220, 8) // cyan = stable territory
-                } else {
-                    egui::Color32::from_rgba_unmultiplied(240, 160, 40, 8) // amber = volatile territory
-                };
-                let zy_top = zero_y.min(price_y);
-                let zy_bot = zero_y.max(price_y);
-                painter.rect_filled(egui::Rect::from_min_max(
-                    egui::pos2(rect.left(), zy_top), egui::pos2(rect.left() + cw, zy_bot)),
-                    0.0, zone_color);
-            }
 
             // Gamma bands at each level
             for &(price, gex) in &chart.gamma_levels {
@@ -5694,53 +5679,54 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let cw_y = py(chart.gamma_call_wall);
             if cw_y.is_finite() && cw_y > rect.top() + pt && cw_y < rect.top() + pt + ch {
                 let cyan = egui::Color32::from_rgb(40, 200, 230);
+                let label_font = egui::FontId::monospace(12.0);
                 painter.line_segment([egui::pos2(rect.left(), cw_y), egui::pos2(rect.left() + cw, cw_y)],
-                    egui::Stroke::new(1.5, color_alpha(cyan, 140)));
-                // Label
-                let cw_label = format!("CALL WALL {:.2}", chart.gamma_call_wall);
-                let galley = painter.layout_no_wrap(cw_label.clone(), egui::FontId::monospace(8.5), cyan);
-                let lx = rect.left() + cw - galley.size().x - 6.0;
-                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 4.0, cw_y - galley.size().y / 2.0 - 2.0), galley.size() + egui::vec2(8.0, 4.0)),
-                    3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-                painter.text(egui::pos2(lx, cw_y), egui::Align2::LEFT_CENTER, &cw_label, egui::FontId::monospace(8.5), cyan);
+                    egui::Stroke::new(2.0, color_alpha(cyan, 160)));
+                let cw_label = format!("CALL WALL  {:.2}", chart.gamma_call_wall);
+                let galley = painter.layout_no_wrap(cw_label.clone(), label_font.clone(), cyan);
+                let lx = rect.left() + cw - galley.size().x - 8.0;
+                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 6.0, cw_y - galley.size().y / 2.0 - 3.0), galley.size() + egui::vec2(12.0, 6.0)),
+                    4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
+                painter.text(egui::pos2(lx, cw_y), egui::Align2::LEFT_CENTER, &cw_label, label_font.clone(), cyan);
             }
 
             // Put Wall (prominent amber line)
             let pw_y = py(chart.gamma_put_wall);
             if pw_y.is_finite() && pw_y > rect.top() + pt && pw_y < rect.top() + pt + ch {
                 let amber = egui::Color32::from_rgb(240, 160, 40);
+                let label_font = egui::FontId::monospace(12.0);
                 painter.line_segment([egui::pos2(rect.left(), pw_y), egui::pos2(rect.left() + cw, pw_y)],
-                    egui::Stroke::new(1.5, color_alpha(amber, 140)));
-                let pw_label = format!("PUT WALL {:.2}", chart.gamma_put_wall);
-                let galley = painter.layout_no_wrap(pw_label.clone(), egui::FontId::monospace(8.5), amber);
-                let lx = rect.left() + cw - galley.size().x - 6.0;
-                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 4.0, pw_y - galley.size().y / 2.0 - 2.0), galley.size() + egui::vec2(8.0, 4.0)),
-                    3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-                painter.text(egui::pos2(lx, pw_y), egui::Align2::LEFT_CENTER, &pw_label, egui::FontId::monospace(8.5), amber);
+                    egui::Stroke::new(2.0, color_alpha(amber, 160)));
+                let pw_label = format!("PUT WALL  {:.2}", chart.gamma_put_wall);
+                let galley = painter.layout_no_wrap(pw_label.clone(), label_font.clone(), amber);
+                let lx = rect.left() + cw - galley.size().x - 8.0;
+                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 6.0, pw_y - galley.size().y / 2.0 - 3.0), galley.size() + egui::vec2(12.0, 6.0)),
+                    4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
+                painter.text(egui::pos2(lx, pw_y), egui::Align2::LEFT_CENTER, &pw_label, label_font.clone(), amber);
             }
 
             // Zero Gamma line (dashed white)
             if zero_y.is_finite() && zero_y > rect.top() + pt && zero_y < rect.top() + pt + ch {
                 dashed_line(&painter, egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y),
-                    egui::Stroke::new(1.0, egui::Color32::from_white_alpha(60)), LineStyle::Dashed);
-                painter.text(egui::pos2(rect.left() + 4.0, zero_y - 8.0), egui::Align2::LEFT_BOTTOM,
-                    "ZERO GAMMA", egui::FontId::monospace(7.5), egui::Color32::from_white_alpha(80));
+                    egui::Stroke::new(1.0, egui::Color32::from_white_alpha(70)), LineStyle::Dashed);
+                painter.text(egui::pos2(rect.left() + 4.0, zero_y - 10.0), egui::Align2::LEFT_BOTTOM,
+                    "ZERO GAMMA", egui::FontId::monospace(10.0), egui::Color32::from_white_alpha(100));
             }
 
             // HVL — Highest Volume Level (gold diamond marker)
             let hvl_y = py(chart.gamma_hvl);
             if hvl_y.is_finite() && hvl_y > rect.top() + pt && hvl_y < rect.top() + pt + ch {
                 let gold = egui::Color32::from_rgb(255, 193, 37);
-                let sz = 5.0;
+                let sz = 6.0;
                 let diamond = vec![
-                    egui::pos2(rect.left() + cw - 14.0, hvl_y - sz),
-                    egui::pos2(rect.left() + cw - 14.0 + sz, hvl_y),
-                    egui::pos2(rect.left() + cw - 14.0, hvl_y + sz),
-                    egui::pos2(rect.left() + cw - 14.0 - sz, hvl_y),
+                    egui::pos2(rect.left() + cw - 16.0, hvl_y - sz),
+                    egui::pos2(rect.left() + cw - 16.0 + sz, hvl_y),
+                    egui::pos2(rect.left() + cw - 16.0, hvl_y + sz),
+                    egui::pos2(rect.left() + cw - 16.0 - sz, hvl_y),
                 ];
                 painter.add(egui::Shape::convex_polygon(diamond, gold, egui::Stroke::NONE));
-                painter.text(egui::pos2(rect.left() + cw - 22.0, hvl_y), egui::Align2::RIGHT_CENTER,
-                    &format!("HVL {:.2}", chart.gamma_hvl), egui::FontId::monospace(7.5), gold);
+                painter.text(egui::pos2(rect.left() + cw - 26.0, hvl_y), egui::Align2::RIGHT_CENTER,
+                    &format!("HVL {:.2}", chart.gamma_hvl), egui::FontId::monospace(10.0), gold);
             }
         }
 
