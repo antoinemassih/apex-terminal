@@ -4520,19 +4520,25 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
                                 &oi_str, egui::FontId::monospace(12.0), t.dim.gamma_multiply(0.5));
 
-                            // IV indicator dot (positioned right-aligned in the row)
+                            // IV indicator — left edge strip on the row
                             if row.iv > 0.0 {
-                                let iv_color = if row.iv > 0.7 { egui::Color32::from_rgb(231, 76, 60) }
-                                    else if row.iv > 0.5 { egui::Color32::from_rgb(240, 160, 40) }
-                                    else if row.iv > 0.3 { egui::Color32::from_rgb(255, 193, 37) }
-                                    else { egui::Color32::from_rgb(46, 204, 113) };
-                                painter.circle_filled(egui::pos2(rect.right() - 14.0, y_center), 3.5, iv_color);
+                                let iv_color = if row.iv > 0.7 { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 180) }
+                                    else if row.iv > 0.5 { egui::Color32::from_rgba_unmultiplied(240, 160, 40, 140) }
+                                    else if row.iv > 0.3 { egui::Color32::from_rgba_unmultiplied(255, 193, 37, 100) }
+                                    else { egui::Color32::from_rgba_unmultiplied(46, 204, 113, 100) };
+                                painter.rect_filled(egui::Rect::from_min_size(
+                                    egui::pos2(rect.left(), rect.top()), egui::vec2(3.0, rect.height())),
+                                    0.0, iv_color);
                             }
 
-                            // Unusual activity: volume > OI and volume is meaningful
-                            if row.volume > row.oi && row.volume > 100 {
-                                painter.text(egui::pos2(oi_x + col_oi - 10.0, y_center), egui::Align2::RIGHT_CENTER,
-                                    "!", egui::FontId::monospace(11.0), egui::Color32::from_rgb(255, 193, 37));
+                            // Unusual activity — badge background around OI number
+                            let is_unusual = row.volume > row.oi && row.volume > 100;
+                            if is_unusual {
+                                // Highlight the OI text area with a gold badge background
+                                let oi_badge_rect = egui::Rect::from_min_size(
+                                    egui::pos2(oi_x - 2.0, rect.top() + 1.0), egui::vec2(col_oi + 4.0, rect.height() - 2.0));
+                                painter.rect_filled(oi_badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 30));
+                                painter.rect_stroke(oi_badge_rect, 3.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 80)), egui::StrokeKind::Outside);
                             }
 
                             // Faint row separator
@@ -4689,59 +4695,127 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── HEAT TAB ─────────────────────────────────────────────────
                     WatchlistTab::Heat => {
-                        // Collect all non-option stock items
-                        let items: Vec<(String, f32, f32)> = watchlist.sections.iter()
-                            .flat_map(|sec| sec.items.iter())
-                            .filter(|item| !item.is_option && item.loaded && item.price > 0.0)
-                            .map(|item| {
-                                let change_pct = if item.prev_close > 0.0 {
-                                    (item.price / item.prev_close - 1.0) * 100.0
-                                } else { 0.0 };
-                                (item.symbol.clone(), item.price, change_pct)
-                            })
-                            .collect();
+                        // Index preset dropdown
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Index:").monospace().size(9.0).color(t.dim));
+                            egui::ComboBox::from_id_salt("heat_idx")
+                                .selected_text(egui::RichText::new(&watchlist.heat_index).monospace().size(9.0))
+                                .width(90.0)
+                                .show_ui(ui, |ui| {
+                                    for idx in &["Watchlist", "S&P 500", "Dow 30", "Nasdaq 100"] {
+                                        if ui.selectable_label(watchlist.heat_index == *idx, *idx).clicked() {
+                                            watchlist.heat_index = idx.to_string();
+                                        }
+                                    }
+                                });
+                        });
+                        ui.add_space(4.0);
 
-                        if items.is_empty() {
-                            ui.add_space(24.0);
-                            ui.centered_and_justified(|ui| {
-                                ui.label(egui::RichText::new("No data").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
-                            });
+                        // Sector ETF mapping for S&P
+                        let sp500_sectors: &[(&str, &[&str])] = &[
+                            ("XLK Tech", &["AAPL","MSFT","NVDA","AVGO","CRM","ADBE","AMD","INTC","CSCO","ORCL"]),
+                            ("XLF Finance", &["BRK.B","JPM","V","MA","BAC","WFC","GS","MS","AXP","BLK"]),
+                            ("XLV Health", &["UNH","JNJ","LLY","PFE","ABT","TMO","MRK","ABBV","DHR","BMY"]),
+                            ("XLY Discr.", &["AMZN","TSLA","HD","MCD","NKE","SBUX","LOW","TJX","BKNG","CMG"]),
+                            ("XLC Comms", &["META","GOOGL","GOOG","DIS","NFLX","CMCSA","T","VZ","TMUS","CHTR"]),
+                            ("XLI Indust.", &["GE","CAT","UNP","HON","UPS","RTX","BA","LMT","DE","MMM"]),
+                            ("XLE Energy", &["XOM","CVX","COP","SLB","EOG","MPC","PSX","VLO","OXY","HES"]),
+                            ("XLP Staples", &["PG","KO","PEP","COST","WMT","PM","MO","CL","MDLZ","KHC"]),
+                            ("XLU Utility", &["NEE","DUK","SO","D","AEP","SRE","EXC","XEL","ED","WEC"]),
+                            ("XLRE Real E.", &["PLD","AMT","CCI","EQIX","PSA","SPG","O","WELL","DLR","AVB"]),
+                            ("XLB Material", &["LIN","APD","SHW","ECL","FCX","NEM","NUE","DOW","DD","VMC"]),
+                        ];
+                        let dow30: &[&str] = &["AAPL","MSFT","UNH","GS","HD","AMGN","MCD","V","CAT","BA","HON","JPM","TRV","IBM","AXP","JNJ","WMT","PG","CVX","MRK","DIS","NKE","MMM","KO","DOW","CSCO","CRM","INTC","VZ","WBA"];
+                        let qqq100: &[&str] = &["AAPL","MSFT","AMZN","NVDA","META","GOOGL","GOOG","TSLA","AVGO","COST","PEP","ADBE","NFLX","CMCSA","AMD","INTC","CSCO","TXN","QCOM","AMGN","ISRG","INTU","AMAT","BKNG","SBUX","MDLZ","PYPL","REGN","ADI","LRCX"];
+
+                        // Pre-build price lookup from watchlist
+                        type HeatItem = (String, f32, String); // (symbol, change%, sector)
+                        let price_map: std::collections::HashMap<String, f32> = watchlist.sections.iter()
+                            .flat_map(|sec| sec.items.iter())
+                            .filter(|i| i.price > 0.0 && i.prev_close > 0.0)
+                            .map(|i| (i.symbol.clone(), (i.price / i.prev_close - 1.0) * 100.0))
+                            .collect();
+                        let lookup = |s: &str| -> f32 { price_map.get(s).copied().unwrap_or(0.0) };
+
+                        let heat_items: Vec<HeatItem> = if watchlist.heat_index == "S&P 500" {
+                            sp500_sectors.iter().flat_map(|(sector, syms)| {
+                                syms.iter().map(|s| (s.to_string(), lookup(s), sector.to_string())).collect::<Vec<_>>()
+                            }).collect()
+                        } else if watchlist.heat_index == "Dow 30" {
+                            dow30.iter().map(|s| (s.to_string(), lookup(s), "Dow".into())).collect()
+                        } else if watchlist.heat_index == "Nasdaq 100" {
+                            qqq100.iter().map(|s| (s.to_string(), lookup(s), "QQQ".into())).collect()
                         } else {
-                            let avail_width = ui.available_width();
-                            let tile_size = 60.0;
-                            let cols = ((avail_width) / tile_size).floor() as usize;
-                            if cols > 0 {
-                                let rows_needed = (items.len() + cols - 1) / cols;
-                                let total_h = rows_needed as f32 * tile_size;
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_width, total_h), egui::Sense::hover());
-                                let painter = ui.painter();
-                                let area_left = rect.left();
-                                let area_top = rect.top();
-                                for (i, (sym, _price, change_pct)) in items.iter().enumerate() {
-                                    let col = i % cols;
-                                    let row = i / cols;
-                                    let intensity = (change_pct.abs() / 5.0).min(1.0);
-                                    let color = if *change_pct >= 0.0 {
-                                        egui::Color32::from_rgba_unmultiplied(
-                                            (20.0 + 30.0 * intensity) as u8,
-                                            (80.0 + 120.0 * intensity) as u8,
-                                            (40.0 + 70.0 * intensity) as u8, 220)
-                                    } else {
-                                        egui::Color32::from_rgba_unmultiplied(
-                                            (80.0 + 140.0 * intensity) as u8,
-                                            (30.0 + 30.0 * intensity) as u8,
-                                            (30.0 + 30.0 * intensity) as u8, 220)
-                                    };
-                                    let tile_rect = egui::Rect::from_min_size(
-                                        egui::pos2(area_left + col as f32 * tile_size, area_top + row as f32 * tile_size),
-                                        egui::vec2(tile_size - 2.0, tile_size - 2.0));
-                                    painter.rect_filled(tile_rect, 3.0, color);
-                                    painter.text(tile_rect.center() - egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
-                                        sym, egui::FontId::monospace(9.0), egui::Color32::WHITE);
-                                    painter.text(tile_rect.center() + egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
-                                        &format!("{:+.1}%", change_pct), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(200));
+                            watchlist.sections.iter().flat_map(|sec| sec.items.iter())
+                                .filter(|i| !i.is_option && i.loaded && i.price > 0.0)
+                                .map(|i| {
+                                    let chg = if i.prev_close > 0.0 { (i.price / i.prev_close - 1.0) * 100.0 } else { 0.0 };
+                                    (i.symbol.clone(), chg, "Watchlist".into())
+                                }).collect()
+                        };
+
+                        if heat_items.is_empty() {
+                            ui.add_space(24.0);
+                            ui.label(egui::RichText::new("No data — add symbols to watchlist").monospace().size(10.0).color(t.dim));
+                        } else {
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                let avail_width = ui.available_width();
+                                let tile_w = 80.0;
+                                let tile_h = 50.0;
+                                let cols = ((avail_width) / tile_w).floor().max(1.0) as usize;
+
+                                // Group by sector and render with dividers
+                                let mut current_sector = String::new();
+                                let mut tile_idx = 0;
+                                let mut sector_items: Vec<&HeatItem> = vec![];
+
+                                let render_sector_tiles = |ui: &mut egui::Ui, items: &[&HeatItem], cols: usize, tile_w: f32, tile_h: f32, t: &Theme| {
+                                    let rows_needed = (items.len() + cols - 1) / cols;
+                                    let total_h = rows_needed as f32 * tile_h;
+                                    let (rect, _) = ui.allocate_exact_size(egui::vec2(cols as f32 * tile_w, total_h), egui::Sense::hover());
+                                    let painter = ui.painter();
+                                    for (i, item) in items.iter().enumerate() {
+                                        let col = i % cols;
+                                        let row = i / cols;
+                                        let intensity = (item.1.abs() / 5.0).min(1.0);
+                                        let color = if item.1 >= 0.0 {
+                                            egui::Color32::from_rgba_unmultiplied(
+                                                (15.0 + 25.0 * intensity) as u8, (60.0 + 140.0 * intensity) as u8,
+                                                (30.0 + 80.0 * intensity) as u8, 230)
+                                        } else {
+                                            egui::Color32::from_rgba_unmultiplied(
+                                                (60.0 + 170.0 * intensity) as u8, (25.0 + 25.0 * intensity) as u8,
+                                                (25.0 + 25.0 * intensity) as u8, 230)
+                                        };
+                                        let tr = egui::Rect::from_min_size(
+                                            egui::pos2(rect.left() + col as f32 * tile_w, rect.top() + row as f32 * tile_h),
+                                            egui::vec2(tile_w - 2.0, tile_h - 2.0));
+                                        painter.rect_filled(tr, 3.0, color);
+                                        painter.text(tr.center() - egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
+                                            &item.0, egui::FontId::monospace(11.0), egui::Color32::WHITE);
+                                        painter.text(tr.center() + egui::vec2(0.0, 9.0), egui::Align2::CENTER_CENTER,
+                                            &format!("{:+.1}%", item.1), egui::FontId::monospace(10.0), egui::Color32::from_white_alpha(210));
+                                    }
+                                };
+
+                                // Render grouped by sector
+                                let mut groups: Vec<(String, Vec<&HeatItem>)> = vec![];
+                                for item in &heat_items {
+                                    if groups.last().map_or(true, |(s, _)| *s != item.2) {
+                                        groups.push((item.2.clone(), vec![]));
+                                    }
+                                    groups.last_mut().unwrap().1.push(item);
                                 }
-                            }
+                                for (sector, items) in &groups {
+                                    // Sector divider
+                                    if groups.len() > 1 {
+                                        ui.add_space(2.0);
+                                        ui.label(egui::RichText::new(sector).monospace().size(8.0).color(t.dim));
+                                        ui.add_space(1.0);
+                                    }
+                                    render_sector_tiles(ui, items, cols, tile_w, tile_h, t);
+                                }
+                            });
                         }
                     }
 
@@ -11570,6 +11644,8 @@ struct Watchlist {
     filter_min_change: f32,
     filter_max_change: f32,
     #[allow(dead_code)] filter_min_rvol: f32,  // reserved for RVOL filter when data is available
+    // Heatmap
+    heat_index: String,
     // Orders
     orders_panel_open: bool,
     order_entry_open: bool,
@@ -11627,6 +11703,7 @@ impl Watchlist {
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
                saved_options: vec![], dte_filter: -1,
+               heat_index: "Watchlist".into(),
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new() }
     }
 
