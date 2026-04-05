@@ -7577,8 +7577,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let rvol = if bar_idx < chart.rvol_data.len() { chart.rvol_data[bar_idx] } else { 1.0 };
 
                                 // ── Header insights panel (across the top) ──
-                                let header_h = 52.0;
-                                let dim_w = 440.0;
+                                let header_h = 68.0;
+                                let dim_w = 520.0;
                                 let dim_x = (bar_x - dim_w / 2.0).max(rect.left());
                                 let header_y = (bar_top_y - header_h - 16.0).max(rect.top() + pt + 2.0);
                                 let dim_top = header_y;
@@ -7595,44 +7595,63 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let dir_col = if is_bull { t.bull } else { t.bear };
                                 painter.rect_stroke(hdr_rect, 4.0, egui::Stroke::new(1.0, color_alpha(dir_col, 80)), egui::StrokeKind::Outside);
 
-                                let hx = hdr_rect.left() + 8.0;
+                                let hx = hdr_rect.left() + 10.0;
                                 let hy = hdr_rect.top();
-                                let hdr_font = egui::FontId::monospace(9.5);
-                                let hdr_sm = egui::FontId::monospace(8.0);
-                                let hdr_tag = egui::FontId::monospace(7.5);
+                                let hdr_font = egui::FontId::monospace(13.0);
+                                let hdr_med = egui::FontId::monospace(11.0);
+                                let hdr_sm = egui::FontId::monospace(10.0);
 
                                 // Row 1: Direction + Delta + Buy/Sell split + Conviction + RVOL
                                 let dir_label = if is_bull { "BULL" } else { "BEAR" };
-                                painter.text(egui::pos2(hx, hy + 10.0), egui::Align2::LEFT_CENTER, dir_label, hdr_font.clone(), dir_col);
-                                painter.text(egui::pos2(hx + 38.0, hy + 10.0), egui::Align2::LEFT_CENTER,
-                                    &format!("\u{0394}{:+.0}", total_delta), hdr_font.clone(), dir_col);
-                                painter.text(egui::pos2(hx + 105.0, hy + 10.0), egui::Align2::LEFT_CENTER,
-                                    &format!("Buy {:.0}%  Sell {:.0}%", buy_pct, 100.0 - buy_pct), hdr_sm.clone(), egui::Color32::from_white_alpha(160));
-                                painter.text(egui::pos2(hx + 250.0, hy + 10.0), egui::Align2::LEFT_CENTER,
-                                    &format!("Conviction {:.0}%", conviction), hdr_sm.clone(),
-                                    if conviction > 60.0 { dir_col } else if conviction > 30.0 { t.dim } else { egui::Color32::from_white_alpha(80) });
+                                painter.text(egui::pos2(hx, hy + 14.0), egui::Align2::LEFT_CENTER, dir_label, hdr_font.clone(), dir_col);
+                                painter.text(egui::pos2(hx + 50.0, hy + 14.0), egui::Align2::LEFT_CENTER,
+                                    &format!("\u{0394} {:+.0}", total_delta), hdr_font.clone(), dir_col);
+                                painter.text(egui::pos2(hx + 150.0, hy + 14.0), egui::Align2::LEFT_CENTER,
+                                    &format!("Buy {:.0}%  Sell {:.0}%", buy_pct, 100.0 - buy_pct), hdr_med.clone(), egui::Color32::from_white_alpha(180));
+                                // Conviction bar (visual)
+                                let conv_x = hx + 320.0;
+                                let conv_w = 80.0;
+                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w, 12.0)),
+                                    3.0, egui::Color32::from_white_alpha(15));
+                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w * conviction / 100.0, 12.0)),
+                                    3.0, color_alpha(dir_col, if conviction > 60.0 { 150 } else { 60 }));
+                                painter.text(egui::pos2(conv_x + conv_w + 6.0, hy + 14.0), egui::Align2::LEFT_CENTER,
+                                    &format!("{:.0}%", conviction), hdr_sm.clone(),
+                                    if conviction > 60.0 { dir_col } else { t.dim });
                                 if rvol > 1.5 {
-                                    painter.text(egui::pos2(hdr_rect.right() - 8.0, hy + 10.0), egui::Align2::RIGHT_CENTER,
-                                        &format!("{:.1}x vol", rvol), hdr_sm.clone(),
-                                        if rvol > 2.5 { egui::Color32::from_rgb(255, 193, 37) } else { egui::Color32::from_white_alpha(140) });
+                                    painter.text(egui::pos2(hdr_rect.right() - 10.0, hy + 14.0), egui::Align2::RIGHT_CENTER,
+                                        &format!("{:.1}x vol", rvol), hdr_med.clone(),
+                                        if rvol > 2.5 { egui::Color32::from_rgb(255, 193, 37) } else { egui::Color32::from_white_alpha(160) });
                                 }
 
-                                // Row 2: Volume concentration + POC price + Insights
-                                let conc_label = format!("Upper {:.0}%  Lower {:.0}%", upper_pct, 100.0 - upper_pct);
-                                painter.text(egui::pos2(hx, hy + 26.0), egui::Align2::LEFT_CENTER, &conc_label, hdr_sm.clone(), egui::Color32::from_white_alpha(120));
-                                painter.text(egui::pos2(hx + 150.0, hy + 26.0), egui::Align2::LEFT_CENTER,
-                                    &format!("POC {:.2}", fp_levels[poc_idx].price), hdr_sm.clone(), egui::Color32::from_rgb(255, 193, 37));
+                                // Row 2: Volume concentration (visual bar) + POC price
+                                let conc_bar_x = hx;
+                                let conc_bar_w = 120.0;
+                                let conc_y = hy + 32.0;
+                                let upper_w = conc_bar_w * upper_pct / 100.0;
+                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conc_bar_x, conc_y), egui::vec2(upper_w, 10.0)),
+                                    2.0, egui::Color32::from_rgba_unmultiplied(100, 180, 255, 80));
+                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conc_bar_x + upper_w, conc_y), egui::vec2(conc_bar_w - upper_w, 10.0)),
+                                    2.0, egui::Color32::from_rgba_unmultiplied(180, 130, 255, 80));
+                                painter.text(egui::pos2(conc_bar_x + conc_bar_w + 6.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
+                                    &format!("Upper {:.0}%  Lower {:.0}%", upper_pct, 100.0 - upper_pct), hdr_sm.clone(), egui::Color32::from_white_alpha(130));
+                                painter.text(egui::pos2(hx + 320.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
+                                    &format!("POC {:.2}", fp_levels[poc_idx].price), hdr_med.clone(), egui::Color32::from_rgb(255, 193, 37));
 
-                                // Row 3: Insight tags
+                                // Row 3: Insight tags (larger, pill-shaped)
                                 let mut tag_x = hx;
-                                let tag_y = hy + 40.0;
+                                let tag_y = hy + 52.0;
                                 let draw_tag = |painter: &egui::Painter, x: &mut f32, label: &str, col: egui::Color32| {
-                                    let galley = painter.layout_no_wrap(label.to_string(), egui::FontId::monospace(7.5), col);
-                                    let tw = galley.size().x + 8.0;
-                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(*x, tag_y - 6.0), egui::vec2(tw, 12.0)),
-                                        3.0, egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 25));
-                                    painter.text(egui::pos2(*x + tw / 2.0, tag_y), egui::Align2::CENTER_CENTER, label, egui::FontId::monospace(7.5), col);
-                                    *x += tw + 4.0;
+                                    let tag_font = egui::FontId::monospace(9.5);
+                                    let galley = painter.layout_no_wrap(label.to_string(), tag_font.clone(), col);
+                                    let tw = galley.size().x + 14.0;
+                                    let th = 16.0;
+                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(*x, tag_y - th / 2.0), egui::vec2(tw, th)),
+                                        th / 2.0, egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 30));
+                                    painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(*x, tag_y - th / 2.0), egui::vec2(tw, th)),
+                                        th / 2.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 60)), egui::StrokeKind::Outside);
+                                    painter.text(egui::pos2(*x + tw / 2.0, tag_y), egui::Align2::CENTER_CENTER, label, tag_font, col);
+                                    *x += tw + 6.0;
                                 };
                                 if exhaustion { draw_tag(&painter, &mut tag_x, "EXHAUSTION", egui::Color32::from_rgb(255, 160, 50)); }
                                 if trapped { draw_tag(&painter, &mut tag_x, "TRAPPED", egui::Color32::from_rgb(200, 100, 200)); }
@@ -7654,9 +7673,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     egui::pos2(bar_x + candle_w, bar_bot_y + 2.0)),
                                     2.0, egui::Stroke::new(1.5, egui::Color32::from_white_alpha(100)), egui::StrokeKind::Outside);
 
-                                let card_w = 150.0;
-                                let card_h = 36.0;
-                                let arm_len = 80.0; // callout line length
+                                let card_w = 200.0;
+                                let card_h = 48.0;
+                                let arm_len = 110.0;
 
                                 for (li, info) in fp_levels.iter().enumerate() {
                                     let y = py(info.price);
@@ -7669,10 +7688,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     let arm_end_x = if go_left { card_x + card_w } else { card_x };
 
                                     // Callout line: horizontal from candle edge to card
-                                    let line_col = egui::Color32::from_white_alpha(50);
-                                    painter.line_segment([egui::pos2(elbow_x, y), egui::pos2(arm_end_x, y)], egui::Stroke::new(0.5, line_col));
-                                    // Small dot at the candle connection point
-                                    painter.circle_filled(egui::pos2(elbow_x, y), 2.0, egui::Color32::from_white_alpha(80));
+                                    let line_col = egui::Color32::from_white_alpha(60);
+                                    painter.line_segment([egui::pos2(elbow_x, y), egui::pos2(arm_end_x, y)], egui::Stroke::new(1.0, line_col));
+                                    // Dot at the candle connection point
+                                    painter.circle_filled(egui::pos2(elbow_x, y), 3.5, egui::Color32::from_white_alpha(100));
+                                    painter.circle_stroke(egui::pos2(elbow_x, y), 3.5, egui::Stroke::new(0.5, egui::Color32::from_white_alpha(40)));
 
                                     // Card background
                                     let card_rect = egui::Rect::from_min_size(egui::pos2(card_x, y - card_h / 2.0), egui::vec2(card_w, card_h));
@@ -7688,54 +7708,68 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     } else {
                                         color_alpha(t.toolbar_border, 40)
                                     };
-                                    painter.rect_filled(card_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 240));
-                                    painter.rect_stroke(card_rect, 4.0, egui::Stroke::new(if is_poc { 1.5 } else { 0.5 }, card_border), egui::StrokeKind::Outside);
+                                    painter.rect_filled(card_rect, 6.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 245));
+                                    painter.rect_stroke(card_rect, 6.0, egui::Stroke::new(if is_poc { 2.0 } else { 1.0 }, card_border), egui::StrokeKind::Outside);
 
-                                    // Card content — line 1: price + volume
-                                    let font_main = egui::FontId::monospace(9.5);
-                                    let font_sm = egui::FontId::monospace(8.0);
-                                    let cx = card_x + 6.0;
-                                    let cy = y - card_h / 2.0 + 4.0;
+                                    // Card content — bigger, more visual
+                                    let font_price = egui::FontId::monospace(13.0);
+                                    let font_vol = egui::FontId::monospace(11.0);
+                                    let font_delta = egui::FontId::monospace(12.0);
+                                    let font_tag = egui::FontId::monospace(9.0);
+                                    let cx = card_x + 8.0;
+                                    let cy = y - card_h / 2.0;
 
-                                    painter.text(egui::pos2(cx, cy + 6.0), egui::Align2::LEFT_CENTER,
-                                        &format!("{:.2}", info.price), font_main.clone(), egui::Color32::from_white_alpha(200));
-                                    painter.text(egui::pos2(card_x + card_w - 6.0, cy + 6.0), egui::Align2::RIGHT_CENTER,
-                                        &format!("vol {:.0}", info.vol), font_sm.clone(), egui::Color32::from_white_alpha(100));
+                                    // Line 1: Price (large, bright) + Tag
+                                    painter.text(egui::pos2(cx, cy + 13.0), egui::Align2::LEFT_CENTER,
+                                        &format!("{:.2}", info.price), font_price.clone(), egui::Color32::WHITE);
 
-                                    // Card content — line 2: buy/sell bar + delta
-                                    let bar_y = cy + 18.0;
-                                    let bar_total_w = card_w - 60.0;
-                                    let buy_frac = info.buy_ratio;
-                                    let buy_bar_w = bar_total_w * buy_frac;
-                                    let sell_bar_w = bar_total_w * (1.0 - buy_frac);
-                                    // Sell bar (left portion)
-                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, bar_y), egui::vec2(sell_bar_w, 8.0)),
-                                        2.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 120));
-                                    // Buy bar (right portion)
-                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx + sell_bar_w, bar_y), egui::vec2(buy_bar_w, 8.0)),
-                                        2.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 120));
-                                    // Delta label
-                                    let delta_col = if info.delta > 0.0 { t.bull } else { t.bear };
-                                    painter.text(egui::pos2(card_x + card_w - 6.0, bar_y + 4.0), egui::Align2::RIGHT_CENTER,
-                                        &format!("{:+.0}", info.delta), font_sm.clone(), delta_col);
-
-                                    // Insight tag (special levels only)
-                                    if is_poc {
-                                        painter.text(egui::pos2(cx + bar_total_w + 2.0, cy + 6.0), egui::Align2::LEFT_CENTER,
-                                            "POC", egui::FontId::monospace(7.0), egui::Color32::from_rgb(255, 193, 37));
-                                    } else if is_max_buy {
-                                        painter.text(egui::pos2(cx + bar_total_w + 2.0, cy + 6.0), egui::Align2::LEFT_CENTER,
-                                            "BUY", egui::FontId::monospace(7.0), t.bull);
-                                    } else if is_max_sell {
-                                        painter.text(egui::pos2(cx + bar_total_w + 2.0, cy + 6.0), egui::Align2::LEFT_CENTER,
-                                            "SELL", egui::FontId::monospace(7.0), t.bear);
-                                    }
-                                    // Absorption detection: high volume but low delta
+                                    // Tag badge (POC / BUY / SELL / ABS) — right-aligned on line 1
                                     let absorption = info.vol > bar_data.volume / num_levels as f32 * 1.3 && info.delta.abs() < info.vol * 0.15;
-                                    if absorption && !is_poc {
-                                        painter.text(egui::pos2(cx + bar_total_w + 2.0, cy + 6.0), egui::Align2::LEFT_CENTER,
-                                            "ABS", egui::FontId::monospace(7.0), egui::Color32::from_rgb(180, 160, 220));
+                                    let (tag_text, tag_col) = if is_poc {
+                                        ("POC", egui::Color32::from_rgb(255, 193, 37))
+                                    } else if is_max_buy && info.delta > 0.0 {
+                                        ("BUY", t.bull)
+                                    } else if is_max_sell && info.delta < 0.0 {
+                                        ("SELL", t.bear)
+                                    } else if absorption {
+                                        ("ABS", egui::Color32::from_rgb(180, 160, 220))
+                                    } else {
+                                        ("", egui::Color32::TRANSPARENT)
+                                    };
+                                    if !tag_text.is_empty() {
+                                        let tag_galley = painter.layout_no_wrap(tag_text.to_string(), font_tag.clone(), tag_col);
+                                        let tw = tag_galley.size().x + 10.0;
+                                        let tag_x = card_x + card_w - tw - 6.0;
+                                        painter.rect_filled(egui::Rect::from_min_size(egui::pos2(tag_x, cy + 5.0), egui::vec2(tw, 16.0)),
+                                            4.0, egui::Color32::from_rgba_unmultiplied(tag_col.r(), tag_col.g(), tag_col.b(), 30));
+                                        painter.text(egui::pos2(tag_x + tw / 2.0, cy + 13.0), egui::Align2::CENTER_CENTER,
+                                            tag_text, font_tag.clone(), tag_col);
                                     }
+
+                                    // Line 2: Buy/Sell bar (tall, clear) + Delta (large)
+                                    let bar_y = cy + 28.0;
+                                    let bar_h = 12.0;
+                                    let bar_total_w = card_w - 80.0;
+                                    let buy_frac = info.buy_ratio;
+                                    let sell_bar_w = bar_total_w * (1.0 - buy_frac);
+                                    let buy_bar_w = bar_total_w * buy_frac;
+                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, bar_y), egui::vec2(sell_bar_w, bar_h)),
+                                        3.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 150));
+                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx + sell_bar_w, bar_y), egui::vec2(buy_bar_w, bar_h)),
+                                        3.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 150));
+                                    // Sell/Buy labels inside the bars (if wide enough)
+                                    if sell_bar_w > 30.0 {
+                                        painter.text(egui::pos2(cx + sell_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
+                                            &format!("{:.0}", info.sell), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(200));
+                                    }
+                                    if buy_bar_w > 30.0 {
+                                        painter.text(egui::pos2(cx + sell_bar_w + buy_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
+                                            &format!("{:.0}", info.buy), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(200));
+                                    }
+                                    // Delta — large, right side
+                                    let delta_col = if info.delta > 0.0 { t.bull } else { t.bear };
+                                    painter.text(egui::pos2(card_x + card_w - 8.0, bar_y + bar_h / 2.0), egui::Align2::RIGHT_CENTER,
+                                        &format!("{:+.0}", info.delta), font_delta.clone(), delta_col);
                                 }
 
                                 // (Summary moved to header panel above)
