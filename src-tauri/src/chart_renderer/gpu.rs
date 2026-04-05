@@ -1763,17 +1763,35 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             ui.add(egui::Separator::default().spacing(4.0));
 
+            // ── Drawing tools + MAG + count (always visible, before dropdowns) ──
+            for (tool, label) in [("trendline", "/"), ("hline", "—"), ("hzone", "□")] {
+                let active = panes[ap].draw_tool == tool;
+                if tb_btn(ui, label, active, t).clicked() {
+                    panes[ap].draw_tool = if active { String::new() } else { tool.into() };
+                    panes[ap].pending_pt = None; panes[ap].pending_pt2 = None; panes[ap].pending_pts.clear();
+                }
+            }
+            if tb_btn(ui, "MAG", panes[ap].magnet, t).clicked() { panes[ap].magnet = !panes[ap].magnet; }
+            let draw_count = panes[ap].drawings.len();
+            if draw_count > 0 {
+                if tb_btn(ui, &format!("{}", draw_count), panes[ap].drawing_list_open, t).clicked() {
+                    panes[ap].drawing_list_open = !panes[ap].drawing_list_open;
+                }
+            }
+
+            ui.add(egui::Separator::default().spacing(4.0));
+
             // ── Organized dropdown menus ──
             let menu_font = egui::FontId::monospace(10.0);
             let check = |active: bool| if active { Icon::CHECK } else { "  " };
 
             // Chart Type dropdown (single-select)
             let cm_label = match panes[ap].candle_mode {
-                CandleMode::Standard => "Candle", CandleMode::Violin => "Violin",
-                CandleMode::Gradient => "Gradient", CandleMode::ViolinGradient => "V+G",
-                CandleMode::HeikinAshi => "Heikin", CandleMode::Line => "Line", CandleMode::Area => "Area",
+                CandleMode::Standard => "STD", CandleMode::Violin => "VLN",
+                CandleMode::Gradient => "GRD", CandleMode::ViolinGradient => "V+G",
+                CandleMode::HeikinAshi => "HA", CandleMode::Line => "LN", CandleMode::Area => "AR",
             };
-            ui.menu_button(egui::RichText::new(format!("Chart: {}", cm_label)).monospace().size(10.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new(cm_label).monospace().size(10.0).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 for (mode, label) in [
@@ -1923,28 +1941,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let osc = panes[ap].show_oscillators;
                 if ui.selectable_label(osc, egui::RichText::new(format!("{} Show Oscillators", check(osc))).monospace().size(10.0)).clicked() { panes[ap].show_oscillators = !panes[ap].show_oscillators; }
             });
-
-            ui.add(egui::Separator::default().spacing(4.0));
-
-            // ── Drawing tools ──
-            for (tool, label) in [("trendline", "trend"), ("hline", "hline"), ("hzone", "zone"), ("barmarker", "mark")] {
-                let active = panes[ap].draw_tool == tool;
-                if tb_btn(ui, label, active, t).clicked() {
-                    panes[ap].draw_tool = if active { String::new() } else { tool.into() };
-                    panes[ap].pending_pt = None; panes[ap].pending_pt2 = None; panes[ap].pending_pts.clear();
-                }
-            }
-            // Magnet toggle (snap to OHLC)
-            if tb_btn(ui, "MAG", panes[ap].magnet, t).clicked() {
-                panes[ap].magnet = !panes[ap].magnet;
-            }
-            // Drawing count badge (click to toggle drawing list panel)
-            let draw_count = panes[ap].drawings.len();
-            if draw_count > 0 {
-                if tb_btn(ui, &format!("{}", draw_count), panes[ap].drawing_list_open, t).clicked() {
-                    panes[ap].drawing_list_open = !panes[ap].drawing_list_open;
-                }
-            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
