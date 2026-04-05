@@ -1763,15 +1763,62 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // ── Drawing tools + MAG + count (always visible, before dropdowns) ──
-            for (tool, label) in [("trendline", "/"), ("hline", "—"), ("hzone", "□")] {
-                let active = panes[ap].draw_tool == tool;
-                if tb_btn(ui, label, active, t).clicked() {
-                    panes[ap].draw_tool = if active { String::new() } else { tool.into() };
+            // ── Draw dropdown + magnet + count ─���
+            {
+                let draw_label = match panes[ap].draw_tool.as_str() {
+                    "trendline" => "Trend", "hline" => "HLine", "hzone" => "Zone",
+                    "fibonacci" => "Fib", "channel" => "Chan", "ray" => "Ray",
+                    "vline" => "VLine", "pitchfork" => "Fork", "fibext" => "FibX",
+                    "fibchannel" => "FibCh", "gannfan" => "Gann", "gannbox" => "GBox",
+                    "textnote" => "Text", "pricerange" => "Range", "riskreward" => "R/R",
+                    "fibtimezone" => "FibT", "fibarc" => "FibA", "regression" => "Reg",
+                    "xabcd" => "XABCD", "barmarker" => "Mark",
+                    s if s.starts_with("elliott") => "Wave",
+                    _ => Icon::PENCIL_LINE,
+                };
+                let has_tool = !panes[ap].draw_tool.is_empty();
+                let cur_tool = panes[ap].draw_tool.clone();
+                let mut new_tool: Option<String> = None;
+                ui.menu_button(egui::RichText::new(draw_label).monospace().size(10.0).color(if has_tool { t.accent } else { t.dim }), |ui| {
+                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    let cur = cur_tool.as_str();
+                    let sections: &[(&str, &[(&str, &str)])] = &[
+                        ("LINES", &[("trendline", "Trendline"), ("hline", "Horizontal Line"), ("vline", "Vertical Line"), ("ray", "Ray")]),
+                        ("CHANNELS", &[("channel", "Parallel Channel"), ("fibchannel", "Fib Channel"), ("pitchfork", "Pitchfork")]),
+                        ("FIBONACCI", &[("fibonacci", "Fib Retracement"), ("fibext", "Fib Extension"), ("fibtimezone", "Fib Time Zones"), ("fibarc", "Fib Arcs")]),
+                        ("GANN", &[("gannfan", "Gann Fan"), ("gannbox", "Gann Box")]),
+                        ("RANGES", &[("hzone", "Zone / Rectangle"), ("pricerange", "Price Range"), ("riskreward", "Risk / Reward")]),
+                        ("COMPUTED", &[("regression", "Regression Channel"), ("avwap", "Anchored VWAP")]),
+                        ("PATTERNS", &[("xabcd", "XABCD Harmonic"), ("elliott_impulse", "Elliott Impulse"), ("elliott_corrective", "Elliott ABC"),
+                            ("elliott_wxy", "Elliott WXY"), ("elliott_sub_impulse", "Sub Impulse"), ("elliott_sub_corrective", "Sub Corrective")]),
+                        ("OTHER", &[("barmarker", "Bar Marker"), ("textnote", "Text Note")]),
+                    ];
+                    for (si, (section, tools)) in sections.iter().enumerate() {
+                        if si > 0 { ui.separator(); }
+                        ui.label(egui::RichText::new(*section).monospace().size(8.0).color(t.dim));
+                        for (tool, label) in *tools {
+                            if ui.selectable_label(cur == *tool, egui::RichText::new(*label).monospace().size(10.0)).clicked() {
+                                new_tool = Some(tool.to_string());
+                            }
+                        }
+                    }
+                    if !cur.is_empty() {
+                        ui.separator();
+                        if ui.selectable_label(false, egui::RichText::new("Cancel Tool").monospace().size(10.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                            new_tool = Some(String::new());
+                        }
+                    }
+                });
+                if let Some(tool) = new_tool {
+                    panes[ap].draw_tool = tool;
                     panes[ap].pending_pt = None; panes[ap].pending_pt2 = None; panes[ap].pending_pts.clear();
                 }
+                TB_BTN_CLICKED.with(|f| f.set(true));
             }
-            if tb_btn(ui, "MAG", panes[ap].magnet, t).clicked() { panes[ap].magnet = !panes[ap].magnet; }
+            // Magnet (crosshair icon)
+            if tb_btn(ui, Icon::CROSSHAIR, panes[ap].magnet, t).clicked() { panes[ap].magnet = !panes[ap].magnet; }
+            // Drawing count badge
             let draw_count = panes[ap].drawings.len();
             if draw_count > 0 {
                 if tb_btn(ui, &format!("{}", draw_count), panes[ap].drawing_list_open, t).clicked() {
