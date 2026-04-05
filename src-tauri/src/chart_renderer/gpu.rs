@@ -763,6 +763,20 @@ struct Chart {
     vp_data: Option<VolumeProfileData>,
     vp_last_vs: f32,
     vp_last_vc: u32,
+    // Volume analytics
+    show_vwap_bands: bool,
+    show_cvd: bool,
+    show_delta_volume: bool,
+    show_rvol: bool,
+    vwap_data: Vec<f32>,
+    vwap_upper1: Vec<f32>,
+    vwap_lower1: Vec<f32>,
+    vwap_upper2: Vec<f32>,
+    vwap_lower2: Vec<f32>,
+    cvd_data: Vec<f32>,
+    delta_data: Vec<f32>,
+    rvol_data: Vec<f32>,
+    vol_analytics_computed: usize,
 }
 
 impl Chart {
@@ -814,7 +828,10 @@ impl Chart {
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
             text_edit_id: None, text_edit_buf: String::new(),
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
-            vp_mode: VolumeProfileMode::Off, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0 }
+            vp_mode: VolumeProfileMode::Off, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
+            show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
+            vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
+            cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0 }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -828,6 +845,7 @@ impl Chart {
                 self.sim_price = 0.0;
                 self.last_candle_time = std::time::Instant::now();
                 self.indicator_bar_count = 0; // force recompute
+                self.vol_analytics_computed = 0; // force vol analytics recompute
                 // Drawings: fetch asynchronously via single worker thread
                 if is_new_symbol { self.drawings_requested = false; self.drawings.clear(); }
                 if !self.drawings_requested {
@@ -873,6 +891,7 @@ impl Chart {
                             self.timestamps = new_ts;
                             self.vs += new_count as f32;
                             self.indicator_bar_count = 0;
+                            self.vol_analytics_computed = 0;
                             eprintln!("[history] prepended {} bars for {} {} (total: {})", new_count, symbol, timeframe, self.bars.len());
                         }
                     }
@@ -1609,6 +1628,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 };
                 panes[ap].vp_data = None;
             }
+            ui.add(egui::Separator::default().spacing(4.0));
+            if tb_btn(ui, "VWAP", panes[ap].show_vwap_bands, t).clicked() { panes[ap].show_vwap_bands = !panes[ap].show_vwap_bands; }
+            if tb_btn(ui, "CVD", panes[ap].show_cvd, t).clicked() { panes[ap].show_cvd = !panes[ap].show_cvd; }
+            if tb_btn(ui, "DVol", panes[ap].show_delta_volume, t).clicked() { panes[ap].show_delta_volume = !panes[ap].show_delta_volume; }
+            if tb_btn(ui, "RVol", panes[ap].show_rvol, t).clicked() { panes[ap].show_rvol = !panes[ap].show_rvol; }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -4494,6 +4518,85 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         Some(VolumeProfileData { levels, poc_price, vah, val, max_vol, price_step })
     }
 
+    fn compute_volume_analytics(chart: &mut Chart) {
+        let n = chart.bars.len();
+        if n == 0 || chart.vol_analytics_computed == n { return; }
+
+        chart.vwap_data.resize(n, f32::NAN);
+        chart.vwap_upper1.resize(n, f32::NAN);
+        chart.vwap_lower1.resize(n, f32::NAN);
+        chart.vwap_upper2.resize(n, f32::NAN);
+        chart.vwap_lower2.resize(n, f32::NAN);
+        chart.cvd_data.resize(n, 0.0);
+        chart.delta_data.resize(n, 0.0);
+        chart.rvol_data.resize(n, 1.0);
+
+        // Per-bar delta (buy - sell heuristic via close position in range)
+        for i in 0..n {
+            let b = &chart.bars[i];
+            let range = b.high - b.low;
+            if range > 0.0 {
+                let buy_ratio = (b.close - b.low) / range;
+                chart.delta_data[i] = b.volume * buy_ratio - b.volume * (1.0 - buy_ratio);
+            } else {
+                chart.delta_data[i] = 0.0;
+            }
+        }
+
+        // CVD — cumulative sum of delta
+        let mut cum = 0.0_f32;
+        for i in 0..n {
+            cum += chart.delta_data[i];
+            chart.cvd_data[i] = cum;
+        }
+
+        // Session VWAP + σ bands (session boundary = gap > 4 hours between bars)
+        let mut cum_tp_vol = 0.0_f64;
+        let mut cum_vol = 0.0_f64;
+        let mut cum_tp2_vol = 0.0_f64;
+        for i in 0..n {
+            let new_session = if i == 0 { true } else {
+                let gap = chart.timestamps.get(i).unwrap_or(&0) - chart.timestamps.get(i-1).unwrap_or(&0);
+                gap > 14400
+            };
+            if new_session {
+                cum_tp_vol = 0.0;
+                cum_vol = 0.0;
+                cum_tp2_vol = 0.0;
+            }
+            let b = &chart.bars[i];
+            let tp = ((b.high + b.low + b.close) / 3.0) as f64;
+            let vol = b.volume as f64;
+            cum_tp_vol += tp * vol;
+            cum_vol += vol;
+            cum_tp2_vol += tp * tp * vol;
+            if cum_vol > 0.0 {
+                let vwap = (cum_tp_vol / cum_vol) as f32;
+                chart.vwap_data[i] = vwap;
+                let mean_sq = cum_tp2_vol / cum_vol;
+                let sq_mean = (cum_tp_vol / cum_vol).powi(2);
+                let sigma = ((mean_sq - sq_mean).max(0.0)).sqrt() as f32;
+                chart.vwap_upper1[i] = vwap + sigma;
+                chart.vwap_lower1[i] = vwap - sigma;
+                chart.vwap_upper2[i] = vwap + sigma * 2.0;
+                chart.vwap_lower2[i] = vwap - sigma * 2.0;
+            }
+        }
+
+        // RVOL — compare bar volume to 20-bar moving average
+        let rvol_period = 20_usize;
+        for i in 0..n {
+            if i < rvol_period {
+                chart.rvol_data[i] = 1.0;
+            } else {
+                let avg: f32 = chart.bars[i-rvol_period..i].iter().map(|b| b.volume).sum::<f32>() / rvol_period as f32;
+                chart.rvol_data[i] = if avg > 0.0 { chart.bars[i].volume / avg } else { 1.0 };
+            }
+        }
+
+        chart.vol_analytics_computed = n;
+    }
+
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.bg)).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
         let visible_count = layout.max_panes().min(panes.len());
@@ -4559,14 +4662,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         );
         let (w,h) = (rect.width(), rect.height());
         let (pr,pt,pb) = (42.0_f32, 4.0_f32, 0.0_f32);
-        // Reserve space for oscillator sub-panel if any oscillator indicators are active
+        // Reserve space for oscillator sub-panel if any oscillator indicators or CVD is active
         let has_oscillators = chart.show_oscillators && chart.indicators.iter().any(|i| i.visible && i.kind.category() == IndicatorCategory::Oscillator);
-        let osc_h = if has_oscillators { (h * 0.22).min(120.0) } else { 0.0 };
+        let needs_osc_panel = has_oscillators || chart.show_cvd;
+        let osc_h = if needs_osc_panel { (h * 0.22).min(120.0) } else { 0.0 };
         let (cw,ch) = (w-pr, h-pt-pb-osc_h);
         if n==0 || cw<=0.0 || ch<=0.0 { continue; }
 
         // Only set cursors for the pane the pointer is actually over
         let pointer_in_pane = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| pane_rect.contains(p));
+
+        compute_volume_analytics(chart);
 
         let (min_p,max_p) = chart.price_range();
         let total = chart.vc+8;
@@ -4637,15 +4743,61 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // Volume bars (gated by show_volume)
         if chart.show_volume {
-            let mut mv: f32 = 0.0;
-            for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) { mv = mv.max(b.volume); } }
-            if mv == 0.0 { mv = 1.0; }
-            for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) {
-                let x = bx(i as f32); let vh = (b.volume / mv) * ch * 0.2;
-                let c = if b.close >= b.open { t.bull.gamma_multiply(0.2) } else { t.bear.gamma_multiply(0.2) };
-                let bw = (bs * 0.4).max(1.0);
-                painter.rect_filled(egui::Rect::from_min_max(egui::pos2(x-bw, rect.top()+pt+ch-vh), egui::pos2(x+bw, rect.top()+pt+ch)), 0.0, c);
-            }}
+            let vol_top = rect.top() + pt + ch * 0.8;
+            let vol_bottom = rect.top() + pt + ch;
+            let vol_h = vol_bottom - vol_top;
+
+            if chart.show_delta_volume && chart.delta_data.len() == n {
+                // Delta volume bars — positive above midline, negative below
+                let start_d = vs as usize;
+                let end_d = (start_d + chart.vc as usize + 8).min(n);
+                let max_delta = chart.delta_data[start_d..end_d].iter()
+                    .map(|d| d.abs()).fold(0.0_f32, f32::max).max(1.0);
+                let zero_y = vol_top + vol_h / 2.0;
+                painter.line_segment(
+                    [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
+                    egui::Stroke::new(0.5, egui::Color32::from_white_alpha(25)));
+                for i in start_d..end_d {
+                    let x = bx(i as f32);
+                    let delta = chart.delta_data[i];
+                    let norm = delta / max_delta;
+                    let bar_h = norm.abs() * vol_h / 2.0;
+                    let (color, bar_top) = if delta >= 0.0 {
+                        (egui::Color32::from_rgba_unmultiplied(46, 204, 113, 140), zero_y - bar_h)
+                    } else {
+                        (egui::Color32::from_rgba_unmultiplied(231, 76, 60, 140), zero_y)
+                    };
+                    let bw = (bs * 0.7).max(1.0);
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(egui::pos2(x - bw/2.0, bar_top), egui::vec2(bw, bar_h)),
+                        0.0, color);
+                }
+            } else {
+                // Standard volume bars with optional RVOL intensity
+                let mut mv: f32 = 0.0;
+                for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) { mv = mv.max(b.volume); } }
+                if mv == 0.0 { mv = 1.0; }
+                for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) {
+                    let idx = i as usize;
+                    let x = bx(i as f32);
+                    let vh = (b.volume / mv) * vol_h;
+                    let bw = (bs * 0.7).max(1.0);
+                    let is_bull = b.close >= b.open;
+                    let rvol = if chart.show_rvol && idx < chart.rvol_data.len() { chart.rvol_data[idx] } else { 1.0_f32 };
+                    let intensity = if chart.show_rvol { (rvol / 3.0_f32).min(1.0_f32) } else { 0.4_f32 };
+                    let base_color = if is_bull { t.bull } else { t.bear };
+                    let alpha = (40.0_f32 + intensity * 160.0_f32) as u8;
+                    let bar_color = egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(), alpha);
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(egui::pos2(x-bw/2.0, vol_bottom-vh), egui::pos2(x+bw/2.0, vol_bottom)),
+                        0.0, bar_color);
+                    if chart.show_rvol && rvol > 2.5_f32 {
+                        painter.text(egui::pos2(x, vol_bottom - vh - 2.0), egui::Align2::CENTER_BOTTOM,
+                            &format!("{:.1}x", rvol), egui::FontId::monospace(7.0),
+                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 150));
+                    }
+                }}
+            }
         }
 
         // Volume Profile — cache recompute + rendering (behind candles)
@@ -4796,6 +4948,58 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,c));
             painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),0.0,c);
         }}
+
+        // Session VWAP + standard deviation bands
+        if chart.show_vwap_bands && chart.vwap_data.len() == n {
+            let start_v = vs.floor() as usize;
+            let end_v = (start_v + chart.vc as usize + 8).min(n);
+            let vwap_color = egui::Color32::from_rgb(33, 150, 243);
+            let band1_color = egui::Color32::from_rgba_unmultiplied(33, 150, 243, 30);
+            let band2_color = egui::Color32::from_rgba_unmultiplied(33, 150, 243, 15);
+            // ±2σ fill
+            for i in start_v..end_v.saturating_sub(1) {
+                if chart.vwap_upper2[i].is_nan() || chart.vwap_upper2[i+1].is_nan() { continue; }
+                let x0 = bx(i as f32); let x1 = bx((i+1) as f32);
+                let pts = vec![
+                    egui::pos2(x0, py(chart.vwap_upper2[i])), egui::pos2(x1, py(chart.vwap_upper2[i+1])),
+                    egui::pos2(x1, py(chart.vwap_lower2[i+1])), egui::pos2(x0, py(chart.vwap_lower2[i])),
+                ];
+                painter.add(egui::Shape::convex_polygon(pts, band2_color, egui::Stroke::NONE));
+            }
+            // ±1σ fill
+            for i in start_v..end_v.saturating_sub(1) {
+                if chart.vwap_upper1[i].is_nan() || chart.vwap_upper1[i+1].is_nan() { continue; }
+                let x0 = bx(i as f32); let x1 = bx((i+1) as f32);
+                let pts = vec![
+                    egui::pos2(x0, py(chart.vwap_upper1[i])), egui::pos2(x1, py(chart.vwap_upper1[i+1])),
+                    egui::pos2(x1, py(chart.vwap_lower1[i+1])), egui::pos2(x0, py(chart.vwap_lower1[i])),
+                ];
+                painter.add(egui::Shape::convex_polygon(pts, band1_color, egui::Stroke::NONE));
+            }
+            // VWAP line
+            for i in start_v..end_v.saturating_sub(1) {
+                if chart.vwap_data[i].is_nan() || chart.vwap_data[i+1].is_nan() { continue; }
+                painter.line_segment(
+                    [egui::pos2(bx(i as f32), py(chart.vwap_data[i])), egui::pos2(bx((i+1) as f32), py(chart.vwap_data[i+1]))],
+                    egui::Stroke::new(1.5, vwap_color));
+            }
+            // ±1σ and ±2σ band lines
+            for (data, alpha) in [(&chart.vwap_upper1, 50u8), (&chart.vwap_lower1, 50u8), (&chart.vwap_upper2, 30u8), (&chart.vwap_lower2, 30u8)] {
+                for i in start_v..end_v.saturating_sub(1) {
+                    if data[i].is_nan() || data[i+1].is_nan() { continue; }
+                    painter.line_segment(
+                        [egui::pos2(bx(i as f32), py(data[i])), egui::pos2(bx((i+1) as f32), py(data[i+1]))],
+                        egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(33, 150, 243, alpha)));
+                }
+            }
+            // Label at right edge
+            if let Some(&last_vwap) = chart.vwap_data.last() {
+                if !last_vwap.is_nan() {
+                    painter.text(egui::pos2(rect.left()+cw+3.0, py(last_vwap)), egui::Align2::LEFT_CENTER,
+                        &format!("VWAP {:.2}", last_vwap), egui::FontId::monospace(7.5), vwap_color);
+                }
+            }
+        }
 
         // Indicators
         if !chart.hide_all_indicators {
@@ -5602,8 +5806,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // ── Oscillator sub-panel (RSI, MACD, Stochastic) ─────────────────────
-        if has_oscillators && osc_h > 10.0 {
+        // ── Oscillator sub-panel (RSI, MACD, Stochastic, CVD) ───────────────
+        if needs_osc_panel && osc_h > 10.0 {
             let osc_top = rect.top() + pt + ch + 2.0;
             let osc_bottom = osc_top + osc_h - 4.0;
             let osc_height = osc_bottom - osc_top;
@@ -5741,6 +5945,41 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, Icon::X,
                         egui::FontId::proportional(8.0), t.bear);
                 }
+            }
+
+            // CVD (Cumulative Volume Delta) in oscillator panel
+            if chart.show_cvd && chart.cvd_data.len() == n {
+                let start_c = vs.floor() as usize;
+                let end_c = (start_c + chart.vc as usize + 8).min(n);
+                let mut cvd_min = f32::MAX;
+                let mut cvd_max = f32::MIN;
+                for i in start_c..end_c {
+                    let v = chart.cvd_data[i];
+                    if cvd_min > v { cvd_min = v; }
+                    if cvd_max < v { cvd_max = v; }
+                }
+                if cvd_max <= cvd_min { cvd_max = cvd_min + 1.0; }
+                let cvd_range = cvd_max - cvd_min;
+                let cvd_py = |v: f32| -> f32 { osc_bottom - (v - cvd_min) / cvd_range * (osc_bottom - osc_top) };
+                let zero_y = cvd_py(0.0_f32);
+                if zero_y >= osc_top && zero_y <= osc_bottom {
+                    painter.line_segment([egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
+                        egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
+                }
+                for i in start_c..end_c.saturating_sub(1) {
+                    let y0 = cvd_py(chart.cvd_data[i]);
+                    let y1 = cvd_py(chart.cvd_data[i+1]);
+                    let rising = chart.cvd_data[i+1] > chart.cvd_data[i];
+                    let color = if rising {
+                        egui::Color32::from_rgba_unmultiplied(46, 204, 113, 200)
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(231, 76, 60, 200)
+                    };
+                    painter.line_segment([egui::pos2(bx(i as f32), y0), egui::pos2(bx((i+1) as f32), y1)],
+                        egui::Stroke::new(1.5, color));
+                }
+                painter.text(egui::pos2(rect.left() + 4.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
+                    "CVD", egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(120));
             }
 
             // Oscillator click interaction — allocate rect over the whole panel
