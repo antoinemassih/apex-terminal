@@ -157,6 +157,15 @@ impl IndicatorType {
     fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels] }
     #[allow(dead_code)]
     fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
+    fn default_period(self) -> usize {
+        match self {
+            Self::SMA | Self::EMA | Self::WMA | Self::DEMA | Self::TEMA => 20,
+            Self::RSI | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => 14,
+            Self::MACD => 12, Self::VWAP => 1,
+            Self::BollingerBands | Self::KeltnerChannels => 20,
+            Self::Ichimoku => 9, Self::ParabolicSAR => 1, Self::Supertrend => 10,
+        }
+    }
     fn category(self) -> IndicatorCategory {
         match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
     }
@@ -1754,66 +1763,166 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // ── Volume + Oscillator toggles ──
-            if tb_btn(ui, "VOL", panes[ap].show_volume, t).clicked() { panes[ap].show_volume = !panes[ap].show_volume; }
-            if tb_btn(ui, "OSC", panes[ap].show_oscillators, t).clicked() { panes[ap].show_oscillators = !panes[ap].show_oscillators; }
-            if tb_btn(ui, "OHLC", panes[ap].ohlc_tooltip, t).clicked() { panes[ap].ohlc_tooltip = !panes[ap].ohlc_tooltip; }
-            let vp_label = match panes[ap].vp_mode {
-                VolumeProfileMode::Off => "VP",
-                VolumeProfileMode::Classic => "VP:C",
-                VolumeProfileMode::Heatmap => "VP:H",
-                VolumeProfileMode::Strip => "VP:S",
-                VolumeProfileMode::Clean => "VP:L",
-            };
-            if tb_btn(ui, vp_label, panes[ap].vp_mode != VolumeProfileMode::Off, t).clicked() {
-                panes[ap].vp_mode = match panes[ap].vp_mode {
-                    VolumeProfileMode::Off => VolumeProfileMode::Classic,
-                    VolumeProfileMode::Classic => VolumeProfileMode::Heatmap,
-                    VolumeProfileMode::Heatmap => VolumeProfileMode::Strip,
-                    VolumeProfileMode::Strip => VolumeProfileMode::Clean,
-                    VolumeProfileMode::Clean => VolumeProfileMode::Off,
-                };
-                panes[ap].vp_data = None;
-            }
-            ui.add(egui::Separator::default().spacing(4.0));
-            if tb_btn(ui, "VWAP", panes[ap].show_vwap_bands, t).clicked() { panes[ap].show_vwap_bands = !panes[ap].show_vwap_bands; }
-            if tb_btn(ui, "CVD", panes[ap].show_cvd, t).clicked() { panes[ap].show_cvd = !panes[ap].show_cvd; }
-            if tb_btn(ui, "DVol", panes[ap].show_delta_volume, t).clicked() { panes[ap].show_delta_volume = !panes[ap].show_delta_volume; }
-            if tb_btn(ui, "RVol", panes[ap].show_rvol, t).clicked() { panes[ap].show_rvol = !panes[ap].show_rvol; }
-            if tb_btn(ui, "RBN", panes[ap].show_ma_ribbon, t).clicked() { panes[ap].show_ma_ribbon = !panes[ap].show_ma_ribbon; }
-            if tb_btn(ui, "PC", panes[ap].show_prev_close, t).clicked() { panes[ap].show_prev_close = !panes[ap].show_prev_close; }
-            if tb_btn(ui, "S/R", panes[ap].show_auto_sr, t).clicked() { panes[ap].show_auto_sr = !panes[ap].show_auto_sr; }
+            // ── Organized dropdown menus ──
+            let menu_font = egui::FontId::monospace(10.0);
+            let check = |active: bool| if active { Icon::CHECK } else { "  " };
 
-            // Candle mode cycle
+            // Chart Type dropdown (single-select)
             let cm_label = match panes[ap].candle_mode {
-                CandleMode::Standard => "STD",
-                CandleMode::Violin => "VLN",
-                CandleMode::Gradient => "GRD",
-                CandleMode::ViolinGradient => "V+G",
-                CandleMode::HeikinAshi => "HA",
-                CandleMode::Line => "LINE",
-                CandleMode::Area => "AREA",
+                CandleMode::Standard => "Candle", CandleMode::Violin => "Violin",
+                CandleMode::Gradient => "Gradient", CandleMode::ViolinGradient => "V+G",
+                CandleMode::HeikinAshi => "Heikin", CandleMode::Line => "Line", CandleMode::Area => "Area",
             };
-            if tb_btn(ui, cm_label, panes[ap].candle_mode != CandleMode::Standard, t).clicked() {
-                panes[ap].candle_mode = match panes[ap].candle_mode {
-                    CandleMode::Standard => CandleMode::Violin,
-                    CandleMode::Violin => CandleMode::Gradient,
-                    CandleMode::Gradient => CandleMode::ViolinGradient,
-                    CandleMode::ViolinGradient => CandleMode::HeikinAshi,
-                    CandleMode::HeikinAshi => CandleMode::Line,
-                    CandleMode::Line => CandleMode::Area,
-                    CandleMode::Area => CandleMode::Standard,
-                };
-            }
-            if tb_btn(ui, "FP", panes[ap].show_footprint, t).clicked() {
-                panes[ap].show_footprint = !panes[ap].show_footprint;
-            }
-            if tb_btn(ui, if panes[ap].replay_mode { "LIVE" } else { "RPL" }, panes[ap].replay_mode, t).clicked() {
-                panes[ap].replay_mode = !panes[ap].replay_mode;
-                if panes[ap].replay_mode {
-                    panes[ap].replay_bar_count = panes[ap].bars.len().saturating_sub(50);
+            ui.menu_button(egui::RichText::new(format!("Chart: {}", cm_label)).monospace().size(10.0).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                for (mode, label) in [
+                    (CandleMode::Standard, "Candlestick"), (CandleMode::HeikinAshi, "Heikin Ashi"),
+                    (CandleMode::Line, "Line"), (CandleMode::Area, "Area"),
+                    (CandleMode::Violin, "Violin"), (CandleMode::Gradient, "Gradient"),
+                    (CandleMode::ViolinGradient, "Violin + Gradient"),
+                ] {
+                    let active = panes[ap].candle_mode == mode;
+                    if ui.selectable_label(active, egui::RichText::new(format!("{} {}", check(active), label)).monospace().size(10.0)).clicked() {
+                        panes[ap].candle_mode = mode;
+                    }
                 }
-            }
+            });
+            TB_BTN_CLICKED.with(|f| f.set(true)); // prevent window drag
+
+            // Moving Averages dropdown (multi-select — adds/removes indicators)
+            ui.menu_button(egui::RichText::new("MAs").monospace().size(10.0).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
+                    (IndicatorType::DEMA, "DEMA"), (IndicatorType::TEMA, "TEMA"), (IndicatorType::VWAP, "VWAP")];
+                for (itype, label) in ma_types {
+                    let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
+                    if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(10.0)).clicked() {
+                        if has {
+                            // Hide it
+                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
+                        } else {
+                            // Show existing or create new
+                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
+                            else {
+                                let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                                let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                                panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                                panes[ap].indicator_bar_count = 0;
+                            }
+                        }
+                    }
+                }
+                ui.separator();
+                let ribbon_active = panes[ap].show_ma_ribbon;
+                if ui.selectable_label(ribbon_active, egui::RichText::new(format!("{} MA Ribbon (8-89)", check(ribbon_active))).monospace().size(10.0)).clicked() {
+                    panes[ap].show_ma_ribbon = !panes[ap].show_ma_ribbon;
+                }
+            });
+
+            // Oscillators dropdown (multi-select)
+            ui.menu_button(egui::RichText::new("Osc").monospace().size(10.0).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                let osc_types = [(IndicatorType::RSI, "RSI"), (IndicatorType::MACD, "MACD"),
+                    (IndicatorType::Stochastic, "Stochastic"), (IndicatorType::CCI, "CCI"),
+                    (IndicatorType::WilliamsR, "Williams %R"), (IndicatorType::ADX, "ADX"), (IndicatorType::ATR, "ATR")];
+                for (itype, label) in osc_types {
+                    let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
+                    if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(10.0)).clicked() {
+                        if has {
+                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
+                        } else {
+                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
+                            else {
+                                let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                                let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                                panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                                panes[ap].indicator_bar_count = 0;
+                            }
+                        }
+                    }
+                }
+                ui.separator();
+                let cvd = panes[ap].show_cvd;
+                if ui.selectable_label(cvd, egui::RichText::new(format!("{} CVD", check(cvd))).monospace().size(10.0)).clicked() {
+                    panes[ap].show_cvd = !panes[ap].show_cvd;
+                }
+            });
+
+            // Volume dropdown
+            ui.menu_button(egui::RichText::new("Vol").monospace().size(10.0).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                let vol = panes[ap].show_volume;
+                if ui.selectable_label(vol, egui::RichText::new(format!("{} Volume Bars", check(vol))).monospace().size(10.0)).clicked() { panes[ap].show_volume = !panes[ap].show_volume; }
+                let dvol = panes[ap].show_delta_volume;
+                if ui.selectable_label(dvol, egui::RichText::new(format!("{} Delta Volume", check(dvol))).monospace().size(10.0)).clicked() { panes[ap].show_delta_volume = !panes[ap].show_delta_volume; }
+                let rvol = panes[ap].show_rvol;
+                if ui.selectable_label(rvol, egui::RichText::new(format!("{} Relative Volume", check(rvol))).monospace().size(10.0)).clicked() { panes[ap].show_rvol = !panes[ap].show_rvol; }
+                let vwap = panes[ap].show_vwap_bands;
+                if ui.selectable_label(vwap, egui::RichText::new(format!("{} VWAP + Bands", check(vwap))).monospace().size(10.0)).clicked() { panes[ap].show_vwap_bands = !panes[ap].show_vwap_bands; }
+                let fp = panes[ap].show_footprint;
+                if ui.selectable_label(fp, egui::RichText::new(format!("{} Footprint (hover)", check(fp))).monospace().size(10.0)).clicked() { panes[ap].show_footprint = !panes[ap].show_footprint; }
+                ui.separator();
+                ui.label(egui::RichText::new("Volume Profile").monospace().size(9.0).color(t.dim));
+                for (mode, label) in [
+                    (VolumeProfileMode::Off, "Off"), (VolumeProfileMode::Classic, "Classic"),
+                    (VolumeProfileMode::Heatmap, "Heatmap"), (VolumeProfileMode::Strip, "Strip"),
+                    (VolumeProfileMode::Clean, "Clean (POC/VA)"),
+                ] {
+                    let active = panes[ap].vp_mode == mode;
+                    if ui.selectable_label(active, egui::RichText::new(format!("{} {}", check(active), label)).monospace().size(10.0)).clicked() {
+                        panes[ap].vp_mode = mode; panes[ap].vp_data = None;
+                    }
+                }
+            });
+
+            // Overlays dropdown
+            ui.menu_button(egui::RichText::new("Overlay").monospace().size(10.0).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                let overlay_types = [(IndicatorType::BollingerBands, "Bollinger Bands"), (IndicatorType::KeltnerChannels, "Keltner Channels"),
+                    (IndicatorType::Ichimoku, "Ichimoku Cloud"), (IndicatorType::Supertrend, "Supertrend"),
+                    (IndicatorType::ParabolicSAR, "Parabolic SAR")];
+                for (itype, label) in overlay_types {
+                    let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
+                    if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(10.0)).clicked() {
+                        if has {
+                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
+                        } else {
+                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
+                            else {
+                                let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                                let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                                panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                                panes[ap].indicator_bar_count = 0;
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Tools dropdown
+            ui.menu_button(egui::RichText::new("Tools").monospace().size(10.0).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                let ohlc = panes[ap].ohlc_tooltip;
+                if ui.selectable_label(ohlc, egui::RichText::new(format!("{} OHLC Tooltip", check(ohlc))).monospace().size(10.0)).clicked() { panes[ap].ohlc_tooltip = !panes[ap].ohlc_tooltip; }
+                let pc = panes[ap].show_prev_close;
+                if ui.selectable_label(pc, egui::RichText::new(format!("{} Prev Close / Open", check(pc))).monospace().size(10.0)).clicked() { panes[ap].show_prev_close = !panes[ap].show_prev_close; }
+                let sr = panes[ap].show_auto_sr;
+                if ui.selectable_label(sr, egui::RichText::new(format!("{} Auto S/R Levels", check(sr))).monospace().size(10.0)).clicked() { panes[ap].show_auto_sr = !panes[ap].show_auto_sr; }
+                ui.separator();
+                let rpl = panes[ap].replay_mode;
+                if ui.selectable_label(rpl, egui::RichText::new(format!("{} Replay Mode", check(rpl))).monospace().size(10.0)).clicked() {
+                    panes[ap].replay_mode = !panes[ap].replay_mode;
+                    if panes[ap].replay_mode { panes[ap].replay_bar_count = panes[ap].bars.len().saturating_sub(50); }
+                }
+                let osc = panes[ap].show_oscillators;
+                if ui.selectable_label(osc, egui::RichText::new(format!("{} Show Oscillators", check(osc))).monospace().size(10.0)).clicked() { panes[ap].show_oscillators = !panes[ap].show_oscillators; }
+            });
 
             ui.add(egui::Separator::default().spacing(4.0));
 
