@@ -191,5 +191,11 @@ pub enum ChartCommand {
         results: Vec<(String, String)>, // (symbol, name)
         source: String, // "watchlist" or "chain"
     },
+    /// Overlay bars for a secondary symbol overlay
+    OverlayBars {
+        symbol: String,
+        bars: Vec<Bar>,
+        timestamps: Vec<i64>,
+    },
 }
 

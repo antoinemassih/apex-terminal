@@ -802,6 +802,10 @@ struct Chart {
     show_ma_ribbon: bool,
     show_prev_close: bool,
     show_auto_sr: bool,
+    overlay_symbol: String,
+    overlay_bars: Vec<Bar>,
+    overlay_timestamps: Vec<i64>,
+    overlay_loading: bool,
     show_gamma: bool,
     gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
     gamma_call_wall: f32,
@@ -873,6 +877,7 @@ impl Chart {
             vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false,
+            overlay_symbol: String::new(), overlay_bars: vec![], overlay_timestamps: vec![], overlay_loading: false,
             show_gamma: false, gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
@@ -1006,6 +1011,13 @@ impl Chart {
                     ind.source_timestamps = timestamps;
                     ind.source_loaded = true;
                     self.indicator_bar_count = 0; // force recompute
+                }
+            }
+            ChartCommand::OverlayBars { symbol, bars, timestamps } => {
+                if self.overlay_symbol == symbol {
+                    self.overlay_bars = bars;
+                    self.overlay_timestamps = timestamps;
+                    self.overlay_loading = false;
                 }
             }
             _ => {}
@@ -1657,6 +1669,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
             }
+            // Overlay bars: route to all panes that have this overlay symbol
+            ChartCommand::OverlayBars { symbol, .. } => {
+                let s = symbol.clone();
+                for p in panes.iter_mut() { if p.overlay_symbol == s { p.process(cmd.clone()); } }
+            }
             // Everything else goes to active pane
             _ => {
                 if let Some(p) = panes.get_mut(*active_pane) { p.process(cmd); }
@@ -2032,7 +2049,49 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 let osc = panes[ap].show_oscillators;
                 if ui.selectable_label(osc, egui::RichText::new(format!("{} Show Oscillators", check(osc))).monospace().size(10.0)).clicked() { panes[ap].show_oscillators = !panes[ap].show_oscillators; }
+                ui.separator();
+                ui.label(egui::RichText::new("OVERLAY").monospace().size(8.0).color(t.dim));
+                let has_overlay = !panes[ap].overlay_symbol.is_empty();
+                if ui.selectable_label(has_overlay, egui::RichText::new(format!("{} Symbol Overlay (QQQ)", check(has_overlay))).monospace().size(10.0)).clicked() {
+                    if has_overlay {
+                        panes[ap].overlay_symbol.clear();
+                        panes[ap].overlay_bars.clear();
+                        panes[ap].overlay_timestamps.clear();
+                    } else {
+                        panes[ap].overlay_symbol = "QQQ".into();
+                        panes[ap].overlay_loading = true;
+                        fetch_overlay_bars_background(panes[ap].overlay_symbol.clone(), panes[ap].timeframe.clone());
+                    }
+                }
             });
+
+            // ── Workspace ──
+            {
+                let ws_names = list_workspaces();
+                let btn_label = egui::RichText::new(format!("W:{}", &watchlist.active_workspace)).monospace().size(10.0).color(t.dim);
+                ui.menu_button(btn_label, |ui| {
+                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    for name in &ws_names {
+                        if ui.selectable_label(*name == watchlist.active_workspace,
+                            egui::RichText::new(name).monospace().size(10.0)).clicked() {
+                            watchlist.active_workspace = name.clone();
+                            watchlist.pending_workspace_load = Some(name.clone());
+                            ui.close_menu();
+                        }
+                    }
+                    if !ws_names.is_empty() { ui.separator(); }
+                    if ui.button(egui::RichText::new("Save Current").monospace().size(10.0)).clicked() {
+                        save_workspace(&watchlist.active_workspace, panes, *layout);
+                        ui.close_menu();
+                    }
+                    if ui.button(egui::RichText::new("Save as \"Default\"").monospace().size(10.0)).clicked() {
+                        watchlist.active_workspace = "Default".into();
+                        save_workspace("Default", panes, *layout);
+                        ui.close_menu();
+                    }
+                });
+            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -5171,6 +5230,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
+        // Extended hours helper — true when timestamp is outside regular US market hours (9:30-16:00 ET = 13:30-20:00 UTC)
+        let is_extended_hour = |ts: i64| -> bool {
+            let secs_in_day = ((ts % 86400) + 86400) % 86400;
+            let rth_start = 13 * 3600 + 30 * 60;
+            let rth_end   = 20 * 3600;
+            secs_in_day < rth_start || secs_in_day >= rth_end
+        };
+
         // Volume + candles + indicators + oscillators + drawings
         span_begin("pane_render");
 
@@ -5219,7 +5286,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let rvol = if chart.show_rvol && idx < chart.rvol_data.len() { chart.rvol_data[idx] } else { 1.0_f32 };
                     let intensity = if chart.show_rvol { (rvol / 3.0_f32).min(1.0_f32) } else { 0.4_f32 };
                     let base_color = if is_bull { t.bull } else { t.bear };
-                    let alpha = (40.0_f32 + intensity * 160.0_f32) as u8;
+                    let vol_extended = chart.timestamps.get(idx).map_or(false, |&ts| is_extended_hour(ts));
+                    let alpha_base = (40.0_f32 + intensity * 160.0_f32) as u8;
+                    let alpha = if vol_extended { (alpha_base as f32 * 0.4) as u8 } else { alpha_base };
                     let bar_color = egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(), alpha);
                     painter.rect_filled(
                         egui::Rect::from_min_max(egui::pos2(x-bw/2.0, vol_bottom-vh), egui::pos2(x+bw/2.0, vol_bottom)),
@@ -5378,14 +5447,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let x=bx(i as f32); let c=if b.close>=b.open{t.bull}else{t.bear};
             let bt=py(b.open.max(b.close)); let bb=py(b.open.min(b.close));
             let wt=py(b.high); let wb=py(b.low); let bw=(bs*0.35).max(1.0);
+            let extended = chart.timestamps.get(i as usize).map_or(false, |&ts| is_extended_hour(ts));
+            // Session boundary line
+            if i > vs as u32 {
+                if let (Some(&ts_prev), Some(&ts_cur)) = (chart.timestamps.get((i-1) as usize), chart.timestamps.get(i as usize)) {
+                    let prev_ext = is_extended_hour(ts_prev);
+                    if prev_ext != extended || (ts_cur - ts_prev) > 1800 {
+                        let sx = bx(i as f32) - bs / 2.0;
+                        painter.line_segment(
+                            [egui::pos2(sx, rect.top()+pt), egui::pos2(sx, rect.top()+pt+ch)],
+                            egui::Stroke::new(0.5, egui::Color32::from_white_alpha(15)));
+                    }
+                }
+            }
             // Wick renders for standard candle modes only (not line/area)
             if !matches!(chart.candle_mode, CandleMode::Line | CandleMode::Area | CandleMode::HeikinAshi) {
-                painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,c));
+                let wick_c = if extended { color_alpha(c, 80) } else { c };
+                painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,wick_c));
             }
             // Body rendering depends on candle mode
             match chart.candle_mode {
                 CandleMode::Standard => {
-                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),0.0,c);
+                    let c_final = if extended { color_alpha(c, 80) } else { c };
+                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),0.0,c_final);
                 }
                 CandleMode::Violin | CandleMode::ViolinGradient => {
                     let micro = bar_micro_profile(b, 10);
@@ -5516,6 +5600,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
         }}
+
+        // ── Multi-symbol overlay ──────────────────────────────────────────────
+        if !chart.overlay_symbol.is_empty() && !chart.overlay_bars.is_empty() {
+            let start_idx = vs.floor() as usize;
+            let end_idx = end as usize;
+            let main_base = chart.bars.get(start_idx).map(|b| b.close).unwrap_or(1.0);
+            let overlay_base = chart.overlay_bars.get(start_idx).map(|b| b.close).unwrap_or(1.0);
+            if main_base > 0.0 && overlay_base > 0.0 {
+                let overlay_color = egui::Color32::from_rgb(255, 140, 60);
+                for i in start_idx..end_idx.saturating_sub(1) {
+                    if let (Some(ob0), Some(ob1)) = (chart.overlay_bars.get(i), chart.overlay_bars.get(i+1)) {
+                        let pct0 = (ob0.close / overlay_base - 1.0) * main_base + main_base;
+                        let pct1 = (ob1.close / overlay_base - 1.0) * main_base + main_base;
+                        let y0 = py(pct0); let y1 = py(pct1);
+                        if y0.is_finite() && y1.is_finite() {
+                            painter.line_segment(
+                                [egui::pos2(bx(i as f32), y0), egui::pos2(bx((i+1) as f32), y1)],
+                                egui::Stroke::new(1.5, overlay_color));
+                        }
+                    }
+                }
+                painter.text(egui::pos2(rect.left() + cw + 3.0, py(main_base)),
+                    egui::Align2::LEFT_CENTER, &chart.overlay_symbol,
+                    egui::FontId::monospace(8.0), overlay_color);
+            }
+        }
 
         // Session VWAP + standard deviation bands
         if chart.show_vwap_bands && chart.vwap_data.len() == n {
@@ -7162,6 +7272,52 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         if chart.last_signal_fetch.elapsed().as_secs() >= 30 {
             chart.last_signal_fetch = std::time::Instant::now();
             fetch_signal_drawings(chart.symbol.clone());
+        }
+
+        // ── Position overlay — open IB positions on chart ─────────────────────
+        if let Some((_acct, positions, _orders)) = read_account_data() {
+            for pos in &positions {
+                if pos.symbol != chart.symbol || pos.qty == 0 { continue; }
+                let entry_price = pos.avg_price;
+                let entry_y = py(entry_price);
+                if !entry_y.is_finite() || entry_y < rect.top() + pt || entry_y > rect.top() + pt + ch { continue; }
+                let is_long = pos.qty > 0;
+                let pos_color = if is_long { t.bull } else { t.bear };
+                let last = chart.bars.last().map(|b| b.close).unwrap_or(entry_price);
+                let pnl = (last - entry_price) * pos.qty as f32;
+                let pnl_pct = if entry_price > 0.0 { (last / entry_price - 1.0) * 100.0 } else { 0.0 };
+                // Dashed entry line
+                dashed_line(&painter, egui::pos2(rect.left(), entry_y), egui::pos2(rect.left() + cw, entry_y),
+                    egui::Stroke::new(1.5, color_alpha(pos_color, 120)), LineStyle::Dashed);
+                // P&L fill zone
+                let current_y = py(last);
+                if current_y.is_finite() {
+                    let profit = (is_long && last > entry_price) || (!is_long && last < entry_price);
+                    let fill_col = if profit {
+                        egui::Color32::from_rgba_unmultiplied(46, 204, 113, 10)
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(231, 76, 60, 10)
+                    };
+                    painter.rect_filled(egui::Rect::from_min_max(
+                        egui::pos2(rect.left(), entry_y.min(current_y)),
+                        egui::pos2(rect.left() + cw, entry_y.max(current_y))), 0.0, fill_col);
+                }
+                // Position badge
+                let side = if is_long { "LONG" } else { "SHORT" };
+                let badge = format!("{} {} x{}  {:.2}  {:+.2} ({:+.1}%)", side, pos.symbol, pos.qty.abs(), entry_price, pnl, pnl_pct);
+                let badge_font = egui::FontId::monospace(9.0);
+                let galley = painter.layout_no_wrap(badge.clone(), badge_font.clone(), pos_color);
+                let bx_pos = rect.left() + 8.0;
+                let by_pos = entry_y - galley.size().y / 2.0;
+                let bg = t.toolbar_bg;
+                painter.rect_filled(
+                    egui::Rect::from_min_size(egui::pos2(bx_pos - 4.0, by_pos - 2.0), galley.size() + egui::vec2(8.0, 4.0)),
+                    4.0, egui::Color32::from_rgba_unmultiplied(bg.r(), bg.g(), bg.b(), 230));
+                painter.rect_stroke(
+                    egui::Rect::from_min_size(egui::pos2(bx_pos - 4.0, by_pos - 2.0), galley.size() + egui::vec2(8.0, 4.0)),
+                    4.0, egui::Stroke::new(1.0, color_alpha(pos_color, 80)), egui::StrokeKind::Outside);
+                painter.text(egui::pos2(bx_pos, entry_y), egui::Align2::LEFT_CENTER, &badge, badge_font, pos_color);
+            }
         }
 
         // ── OCO/Trigger bracket bands ─────────────────────────────────────────
@@ -11019,6 +11175,9 @@ struct Watchlist {
     // Saved options
     saved_options: Vec<SavedOption>,
     dte_filter: i32,
+    // Workspaces
+    active_workspace: String,
+    pending_workspace_load: Option<String>,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -11041,7 +11200,8 @@ impl Watchlist {
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
-               saved_options: vec![], dte_filter: -1 }
+               saved_options: vec![], dte_filter: -1,
+               active_workspace: "Default".into(), pending_workspace_load: None }
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -11804,6 +11964,7 @@ impl ApplicationHandler for App {
                     let sym = match &cmd {
                         ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
                         ChartCommand::IndicatorSourceBars { .. } => None,
+                        ChartCommand::OverlayBars { symbol, .. } => { let s = symbol.clone(); for p in cw.panes.iter_mut() { if p.overlay_symbol == s { p.process(cmd.clone()); } } continue; }
                         _ => None,
                     };
                     if let Some(s) = sym {
@@ -11838,6 +11999,84 @@ impl ApplicationHandler for App {
                     if should_save {
                         save_state(&cw.panes, cw.layout);
                         cw.last_save = Some(now);
+                    }
+                }
+                // Process pending workspace load
+                if let Some(ws_name) = cw.watchlist.pending_workspace_load.take() {
+                    let path = workspace_dir().join(format!("{}.json", ws_name));
+                    if let Ok(data) = std::fs::read_to_string(&path) {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
+                            let (new_panes, new_layout) = {
+                                let layout = match json.get("layout").and_then(|v| v.as_str()).unwrap_or("1") {
+                                    "2" => Layout::Two, "2H" => Layout::TwoH, "3" => Layout::Three, "4" => Layout::Four,
+                                    "6" => Layout::Six, "6H" => Layout::SixH, "9" => Layout::Nine, _ => Layout::One,
+                                };
+                                let theme_idx = json.get("theme_idx").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+                                let recents: Vec<(String, String)> = json.get("recent_symbols").and_then(|v| v.as_array()).map(|arr| {
+                                    arr.iter().filter_map(|v| {
+                                        let a = v.as_array()?;
+                                        Some((a.first()?.as_str()?.to_string(), a.get(1)?.as_str()?.to_string()))
+                                    }).collect()
+                                }).unwrap_or_default();
+                                let mut panes: Vec<Chart> = Vec::new();
+                                if let Some(arr) = json.get("panes").and_then(|v| v.as_array()) {
+                                    for p in arr {
+                                        let sym = p.get("symbol").and_then(|v| v.as_str()).unwrap_or("AAPL");
+                                        let tf = p.get("timeframe").and_then(|v| v.as_str()).unwrap_or("5m");
+                                        let mut chart = Chart::new_with(sym, tf);
+                                        chart.theme_idx = theme_idx;
+                                        chart.recent_symbols = recents.clone();
+                                        chart.pending_symbol_change = Some(sym.to_string());
+                                        let gb = |key: &str, def: bool| -> bool { p.get(key).and_then(|v| v.as_bool()).unwrap_or(def) };
+                                        chart.show_volume = gb("show_volume", true);
+                                        chart.show_oscillators = gb("show_oscillators", true);
+                                        chart.ohlc_tooltip = gb("ohlc_tooltip", true);
+                                        chart.magnet = gb("magnet", true);
+                                        chart.show_vwap_bands = gb("show_vwap_bands", true);
+                                        chart.show_cvd = gb("show_cvd", false);
+                                        chart.show_delta_volume = gb("show_delta_volume", false);
+                                        chart.show_rvol = gb("show_rvol", true);
+                                        chart.show_ma_ribbon = gb("show_ma_ribbon", false);
+                                        chart.show_prev_close = gb("show_prev_close", true);
+                                        chart.show_auto_sr = gb("show_auto_sr", false);
+                                        chart.show_footprint = gb("show_footprint", false);
+                                        chart.show_gamma = gb("show_gamma", false);
+                                        chart.candle_mode = match p.get("candle_mode").and_then(|v| v.as_str()).unwrap_or("std") {
+                                            "vln" => CandleMode::Violin, "grd" => CandleMode::Gradient, "vg" => CandleMode::ViolinGradient,
+                                            "ha" => CandleMode::HeikinAshi, "line" => CandleMode::Line, "area" => CandleMode::Area,
+                                            _ => CandleMode::Standard,
+                                        };
+                                        chart.vp_mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
+                                            "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
+                                            "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
+                                            _ => VolumeProfileMode::Off,
+                                        };
+                                        if let Some(inds) = p.get("indicators").and_then(|v| v.as_array()) {
+                                            chart.indicators.clear();
+                                            for (idx, ind_json) in inds.iter().enumerate() {
+                                                let kind_label = ind_json.get("kind").and_then(|v| v.as_str()).unwrap_or("SMA");
+                                                let kind = IndicatorType::all().iter().find(|t| t.label() == kind_label).copied().unwrap_or(IndicatorType::SMA);
+                                                let period = ind_json.get("period").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+                                                let color = ind_json.get("color").and_then(|v| v.as_str()).unwrap_or(INDICATOR_COLORS[idx % INDICATOR_COLORS.len()]);
+                                                let visible = ind_json.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
+                                                let thickness = ind_json.get("thickness").and_then(|v| v.as_f64()).unwrap_or(1.5) as f32;
+                                                let id = chart.next_indicator_id; chart.next_indicator_id += 1;
+                                                let mut ind = Indicator::new(id, kind, period, color);
+                                                ind.visible = visible; ind.thickness = thickness;
+                                                chart.indicators.push(ind);
+                                            }
+                                        }
+                                        panes.push(chart);
+                                    }
+                                }
+                                if panes.is_empty() { panes.push(Chart::new()); }
+                                panes.truncate(layout.max_panes());
+                                (panes, layout)
+                            };
+                            cw.panes = new_panes;
+                            cw.layout = new_layout;
+                            cw.active_pane = 0;
+                        }
                     }
                 }
                 // Process pending alerts from context menu
@@ -12171,6 +12410,45 @@ fn fetch_bars_background(sym: String, tf: String) {
     });
 }
 
+fn fetch_overlay_bars_background(sym: String, tf: String) {
+    let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+        let (yf_interval, yf_range) = match tf.as_str() {
+            "1m" => ("1m","5d"), "2m" => ("2m","5d"), "5m" => ("5m","5d"),
+            "15m" => ("15m","60d"), "30m" => ("30m","60d"), "1h" => ("60m","60d"),
+            "4h" => ("1h","730d"), "1d" => ("1d","5y"), "1wk" => ("1wk","10y"),
+            _ => ("5m","5d"),
+        };
+        let fetch = |url: &str| -> Option<Vec<crate::data::Bar>> {
+            let resp = client.get(url).timeout(std::time::Duration::from_secs(5)).send().ok()?;
+            resp.json::<Vec<crate::data::Bar>>().ok()
+        };
+        let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", sym, tf);
+        if let Some(bars) = fetch(&ococo_url).filter(|b| !b.is_empty()) {
+            let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar { open: b.open as f32, high: b.high as f32, low: b.low as f32, close: b.close as f32, volume: b.volume as f32, _pad: 0.0 }).collect();
+            let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
+            let cmd = ChartCommand::OverlayBars { symbol: sym.clone(), bars: gpu_bars, timestamps };
+            for tx in &txs { let _ = tx.send(cmd.clone()); }
+            return;
+        }
+        let yahoo_url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}", sym, yf_interval, yf_range);
+        if let Ok(resp) = client.get(&yahoo_url).timeout(std::time::Duration::from_secs(5)).send() {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
+                    let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar { open: b.open as f32, high: b.high as f32, low: b.low as f32, close: b.close as f32, volume: b.volume as f32, _pad: 0.0 }).collect();
+                    let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
+                    let cmd = ChartCommand::OverlayBars { symbol: sym.clone(), bars: gpu_bars, timestamps };
+                    for tx in &txs { let _ = tx.send(cmd.clone()); }
+                }
+            }
+        }
+    });
+}
+
 // ─── State persistence ───────────────────────────────────────────────────────
 
 fn state_path() -> std::path::PathBuf {
@@ -12179,6 +12457,67 @@ fn state_path() -> std::path::PathBuf {
     let _ = std::fs::create_dir_all(&p);
     p.push("native-chart-state.json");
     p
+}
+
+fn workspace_dir() -> std::path::PathBuf {
+    let mut p = state_path(); p.pop(); p.push("workspaces"); let _ = std::fs::create_dir_all(&p); p
+}
+
+fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
+    let pane_data: Vec<serde_json::Value> = panes.iter().filter(|p| !p.is_option).map(|p| {
+        let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
+            "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
+            "visible": ind.visible, "thickness": ind.thickness,
+        })).collect();
+        serde_json::json!({
+            "symbol": p.symbol, "timeframe": p.timeframe,
+            "show_volume": p.show_volume, "show_oscillators": p.show_oscillators,
+            "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet,
+            "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
+            "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
+            "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
+            "show_auto_sr": p.show_auto_sr, "show_footprint": p.show_footprint,
+            "show_gamma": p.show_gamma,
+            "candle_mode": match p.candle_mode {
+                CandleMode::Standard => "std", CandleMode::Violin => "vln",
+                CandleMode::Gradient => "grd", CandleMode::ViolinGradient => "vg",
+                CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
+            },
+            "vp_mode": match p.vp_mode {
+                VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
+                VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
+                VolumeProfileMode::Clean => "clean",
+            },
+            "indicators": indicators,
+        })
+    }).collect();
+    let state = serde_json::json!({
+        "version": 2,
+        "layout": layout.label(),
+        "theme_idx": panes.first().map(|p| p.theme_idx).unwrap_or(5),
+        "panes": pane_data,
+        "recent_symbols": panes.first().map(|p| &p.recent_symbols).cloned().unwrap_or_default(),
+    });
+    serde_json::to_string_pretty(&state).unwrap_or_default()
+}
+
+fn save_workspace(name: &str, panes: &[Chart], layout: Layout) {
+    let json = workspace_to_json(panes, layout);
+    let safe_name: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
+    let path = workspace_dir().join(format!("{}.json", safe_name));
+    let _ = std::fs::write(path, json);
+}
+
+fn list_workspaces() -> Vec<String> {
+    let dir = workspace_dir();
+    let mut names: Vec<String> = std::fs::read_dir(dir).ok().map(|entries| {
+        entries.filter_map(|e| {
+            let name = e.ok()?.file_name().to_string_lossy().to_string();
+            if name.ends_with(".json") { Some(name.trim_end_matches(".json").to_string()) } else { None }
+        }).collect()
+    }).unwrap_or_default();
+    names.sort();
+    names
 }
 
 fn save_state(panes: &[Chart], layout: Layout) {
