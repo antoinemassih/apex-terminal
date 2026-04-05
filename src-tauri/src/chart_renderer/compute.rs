@@ -16,10 +16,22 @@ pub fn compute_ema(data: &[f32], period: usize) -> Vec<f32> {
     let mut r = vec![f32::NAN; data.len()];
     if data.len() < period { return r; }
     let k = 2.0 / (period as f32 + 1.0);
-    let sma: f32 = data[..period].iter().sum::<f32>() / period as f32;
-    r[period-1] = sma;
+    // Find the first run of `period` non-NaN values to seed the SMA
+    let mut start = 0;
+    while start + period <= data.len() {
+        let valid = data[start..start+period].iter().all(|v| !v.is_nan());
+        if valid { break; }
+        start += 1;
+    }
+    if start + period > data.len() { return r; }
+    let sma: f32 = data[start..start+period].iter().sum::<f32>() / period as f32;
+    r[start+period-1] = sma;
     let mut prev = sma;
-    for i in period..data.len() { let v = data[i] * k + prev * (1.0 - k); r[i] = v; prev = v; }
+    for i in (start+period)..data.len() {
+        if data[i].is_nan() { continue; }
+        let v = data[i] * k + prev * (1.0 - k);
+        r[i] = v; prev = v;
+    }
     r
 }
 
