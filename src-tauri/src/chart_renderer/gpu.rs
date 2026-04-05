@@ -856,6 +856,9 @@ struct Chart {
     order_notional_amount: String,
     // Bracket order templates
     bracket_templates: Vec<BracketTemplate>,
+    new_bracket_name: String,
+    new_bracket_target: String,
+    new_bracket_stop: String,
 }
 
 impl Chart {
@@ -921,7 +924,9 @@ impl Chart {
                 BracketTemplate { name: "Normal".into(), target_pct: 2.0, stop_pct: 1.0 },
                 BracketTemplate { name: "Wide".into(),   target_pct: 5.0, stop_pct: 2.0 },
                 BracketTemplate { name: "Scalp".into(),  target_pct: 0.3, stop_pct: 0.15 },
-            ] }
+            ],
+            new_bracket_name: String::new(), new_bracket_target: String::new(), new_bracket_stop: String::new(),
+        }
     }
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
@@ -10512,19 +10517,62 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 chart.orders.push(OrderLevel { id, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                 ui.close_menu();
             }
-            ui.menu_button(egui::RichText::new(format!("\u{21C5} Bracket Order \u{25BA}")).color(egui::Color32::from_rgb(167,139,250)), |ui| {
+            // OCO Bracket (simple)
+            if ui.button(egui::RichText::new(format!("\u{21C5} OCO Bracket")).color(egui::Color32::from_rgb(167,139,250))).clicked() {
+                let target_price = click_price * 1.01;
+                let stop_price = click_price * 0.99;
+                let id1 = chart.next_order_id; chart.next_order_id += 1;
+                let id2 = chart.next_order_id; chart.next_order_id += 1;
+                chart.orders.push(OrderLevel { id: id1, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2), option_symbol: None, option_con_id: None });
+                chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop, price: stop_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1), option_symbol: None, option_con_id: None });
+                ui.close_menu();
+            }
+            // Bracket presets submenu
+            ui.menu_button(egui::RichText::new(format!("\u{21C5} Bracket Presets \u{25BA}")).color(egui::Color32::from_rgb(167,139,250)), |ui| {
                 let templates = chart.bracket_templates.clone();
-                for tmpl in &templates {
-                    let label = format!("{} (+{}% / -{}%)", tmpl.name, tmpl.target_pct, tmpl.stop_pct);
-                    if ui.button(&label).clicked() {
-                        let target_price = click_price * (1.0 + tmpl.target_pct / 100.0);
-                        let stop_price   = click_price * (1.0 - tmpl.stop_pct  / 100.0);
-                        let id1 = chart.next_order_id; chart.next_order_id += 1;
-                        let id2 = chart.next_order_id; chart.next_order_id += 1;
-                        chart.orders.push(OrderLevel { id: id1, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2), option_symbol: None, option_con_id: None });
-                        chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop,   price: stop_price,   qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1), option_symbol: None, option_con_id: None });
-                        ui.close_menu();
-                    }
+                let mut delete_idx: Option<usize> = None;
+                for (ti, tmpl) in templates.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        if ui.button(egui::RichText::new(format!("{} (+{}% / -{}%)", tmpl.name, tmpl.target_pct, tmpl.stop_pct)).monospace().size(10.0)).clicked() {
+                            let target_price = click_price * (1.0 + tmpl.target_pct / 100.0);
+                            let stop_price   = click_price * (1.0 - tmpl.stop_pct  / 100.0);
+                            let id1 = chart.next_order_id; chart.next_order_id += 1;
+                            let id2 = chart.next_order_id; chart.next_order_id += 1;
+                            chart.orders.push(OrderLevel { id: id1, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id2), option_symbol: None, option_con_id: None });
+                            chart.orders.push(OrderLevel { id: id2, side: OrderSide::OcoStop,   price: stop_price,   qty: chart.order_qty, status: OrderStatus::Draft, pair_id: Some(id1), option_symbol: None, option_con_id: None });
+                            ui.close_menu();
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim)).frame(false)).clicked() {
+                            delete_idx = Some(ti);
+                        }
+                    });
+                }
+                if let Some(idx) = delete_idx { chart.bracket_templates.remove(idx); }
+                ui.separator();
+                // Create new preset inline
+                ui.label(egui::RichText::new("NEW PRESET").monospace().size(8.0).color(t.dim));
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Name").monospace().size(9.0).color(t.dim));
+                    ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_name).desired_width(60.0).font(egui::FontId::monospace(9.0)));
+                });
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Target %").monospace().size(9.0).color(t.dim));
+                    ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_target).desired_width(40.0).font(egui::FontId::monospace(9.0)));
+                    ui.label(egui::RichText::new("Stop %").monospace().size(9.0).color(t.dim));
+                    ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_stop).desired_width(40.0).font(egui::FontId::monospace(9.0)));
+                });
+                let can_create = !chart.new_bracket_name.trim().is_empty()
+                    && chart.new_bracket_target.parse::<f32>().is_ok()
+                    && chart.new_bracket_stop.parse::<f32>().is_ok();
+                if ui.add_enabled(can_create, egui::Button::new(egui::RichText::new(format!("{} Create", Icon::PLUS)).monospace().size(10.0).color(t.accent))).clicked() {
+                    chart.bracket_templates.push(BracketTemplate {
+                        name: chart.new_bracket_name.trim().to_string(),
+                        target_pct: chart.new_bracket_target.parse().unwrap_or(1.0),
+                        stop_pct: chart.new_bracket_stop.parse().unwrap_or(0.5),
+                    });
+                    chart.new_bracket_name.clear();
+                    chart.new_bracket_target.clear();
+                    chart.new_bracket_stop.clear();
                 }
             });
             if ui.button(egui::RichText::new(format!("\u{27F2} Trigger Order")).color(t.accent)).clicked() {
