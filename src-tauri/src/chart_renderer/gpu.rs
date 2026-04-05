@@ -8677,106 +8677,167 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // ── Drawing properties panel (shown when a drawing is selected) ────────
+        // ── Drawing properties bar (horizontal, top-center of chart) ──────────
         if let Some(ref sel_id) = chart.selected_id.clone() {
             if let Some(sel_draw) = chart.drawings.iter().find(|d| d.id == *sel_id).cloned() {
-                let panel_pos = egui::pos2(rect.left() + 10.0, rect.top() + pt + 10.0);
+                let bar_y = rect.top() + pt + 4.0;
+                let bar_x = rect.left() + 8.0;
                 egui::Area::new(egui::Id::new(format!("draw_props_{}", pane_idx)))
-                    .fixed_pos(panel_pos)
+                    .fixed_pos(egui::pos2(bar_x, bar_y))
                     .order(egui::Order::Foreground)
                     .show(ctx, |ui| {
                         egui::Frame::popup(&ctx.style())
                             .fill(t.toolbar_bg)
                             .stroke(egui::Stroke::new(0.5, t.toolbar_border))
-                            .inner_margin(6.0)
+                            .inner_margin(egui::Margin { left: 8, right: 8, top: 4, bottom: 4 })
                             .corner_radius(4.0)
                             .show(ui, |ui| {
+                                let sel_id = sel_id.clone();
+                                let sym = chart.symbol.clone();
+                                let tf = chart.timeframe.clone();
+                                let dim = t.dim;
                                 ui.horizontal(|ui| {
                                     ui.spacing_mut().item_spacing.x = 4.0;
-                                    let colors = ["#4a9eff","#ff6b6b","#51cf66","#ffc125","#cc5de8","#ff922b","#ffffff","#82dcb4"];
-                                    for hex in &colors {
+
+                                    // Color swatches
+                                    for hex in &["#4a9eff","#ff6b6b","#51cf66","#ffc125","#cc5de8","#ff922b","#ffffff","#82dcb4"] {
                                         let c = hex_to_color(hex, 1.0);
-                                        let resp = ui.add(egui::Button::new("").fill(c).min_size(egui::vec2(16.0, 16.0)).corner_radius(2.0));
+                                        let is_cur = sel_draw.color == *hex;
+                                        let resp = ui.add(egui::Button::new("").fill(c).min_size(egui::vec2(18.0, 18.0)).corner_radius(3.0)
+                                            .stroke(if is_cur { egui::Stroke::new(1.5, egui::Color32::WHITE) } else { egui::Stroke::NONE }));
                                         if resp.clicked() {
-                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
-                                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                                                 chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                                                 chart.redo_stack.clear();
                                                 d.color = hex.to_string();
-                                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                                                crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                                             }
                                         }
                                     }
-                                    ui.add(egui::Separator::default().spacing(4.0));
-                                    for (ls, label) in [(LineStyle::Solid, "\u{2501}"), (LineStyle::Dashed, "\u{254C}"), (LineStyle::Dotted, "\u{2504}")] {
-                                        let active = sel_draw.line_style == ls;
-                                        let resp = ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(11.0).color(if active { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 16.0)));
-                                        if resp.clicked() {
-                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
-                                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+
+                                    ui.add(egui::Separator::default().spacing(6.0));
+
+                                    // Style dropdown
+                                    let style_label = match sel_draw.line_style { LineStyle::Solid => "Solid", LineStyle::Dashed => "Dashed", LineStyle::Dotted => "Dotted" };
+                                    egui::ComboBox::from_id_salt(format!("style_{}", pane_idx))
+                                        .selected_text(egui::RichText::new(style_label).monospace().size(10.0))
+                                        .width(65.0)
+                                        .show_ui(ui, |ui| {
+                                            for (ls, label) in [(LineStyle::Solid, "Solid"), (LineStyle::Dashed, "Dashed"), (LineStyle::Dotted, "Dotted")] {
+                                                if ui.selectable_label(sel_draw.line_style == ls, egui::RichText::new(label).monospace().size(10.0)).clicked() {
+                                                    if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                                                        chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                        chart.redo_stack.clear();
+                                                        d.line_style = ls;
+                                                        crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                                    }
+                                                }
+                                            }
+                                        });
+
+                                    // Thickness dropdown
+                                    egui::ComboBox::from_id_salt(format!("thick_{}", pane_idx))
+                                        .selected_text(egui::RichText::new(format!("{:.1}px", sel_draw.thickness)).monospace().size(10.0))
+                                        .width(55.0)
+                                        .show_ui(ui, |ui| {
+                                            for &thick in &[0.5_f32, 1.0, 1.5, 2.0, 3.0, 4.0] {
+                                                if ui.selectable_label((sel_draw.thickness - thick).abs() < 0.05, egui::RichText::new(format!("{:.1}px", thick)).monospace().size(10.0)).clicked() {
+                                                    if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                                                        chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                        chart.redo_stack.clear();
+                                                        d.thickness = thick;
+                                                        crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                                    }
+                                                }
+                                            }
+                                        });
+
+                                    // Opacity dropdown
+                                    egui::ComboBox::from_id_salt(format!("opacity_{}", pane_idx))
+                                        .selected_text(egui::RichText::new(format!("{}%", (sel_draw.opacity * 100.0) as i32)).monospace().size(10.0))
+                                        .width(50.0)
+                                        .show_ui(ui, |ui| {
+                                            for &op in &[0.2_f32, 0.3, 0.5, 0.7, 0.85, 1.0] {
+                                                if ui.selectable_label((sel_draw.opacity - op).abs() < 0.05, egui::RichText::new(format!("{}%", (op * 100.0) as i32)).monospace().size(10.0)).clicked() {
+                                                    if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                                                        chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                        chart.redo_stack.clear();
+                                                        d.opacity = op;
+                                                        crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                                    }
+                                                }
+                                            }
+                                        });
+
+                                    ui.add(egui::Separator::default().spacing(6.0));
+
+                                    // Group dropdown
+                                    let group_label = chart.groups.iter().find(|g| g.id == sel_draw.group_id).map_or("default".to_string(), |g| g.name.clone());
+                                    egui::ComboBox::from_id_salt(format!("group_{}", pane_idx))
+                                        .selected_text(egui::RichText::new(&group_label).monospace().size(10.0))
+                                        .width(80.0)
+                                        .show_ui(ui, |ui| {
+                                            if ui.selectable_label(sel_draw.group_id == "default", egui::RichText::new("default").monospace().size(10.0)).clicked() {
+                                                if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                                                    chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                    chart.redo_stack.clear();
+                                                    d.group_id = "default".into();
+                                                    crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                                }
+                                            }
+                                            for g in &chart.groups {
+                                                if g.id == "default" { continue; }
+                                                if ui.selectable_label(sel_draw.group_id == g.id, egui::RichText::new(&g.name).monospace().size(10.0)).clicked() {
+                                                    if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                                                        chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                                        chart.redo_stack.clear();
+                                                        d.group_id = g.id.clone();
+                                                        crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                                    }
+                                                }
+                                            }
+                                        });
+
+                                    ui.add(egui::Separator::default().spacing(6.0));
+
+                                    // Extension toggles (lines only)
+                                    if matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..}) {
+                                        if ui.add(egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(12.0).color(if sel_draw.extend_left { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                                                 chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                                                 chart.redo_stack.clear();
-                                                d.line_style = ls;
-                                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
-                                            }
-                                        }
-                                    }
-                                    ui.add(egui::Separator::default().spacing(4.0));
-                                    for &thick in &[0.5_f32, 1.0, 1.5, 2.5] {
-                                        let active = (sel_draw.thickness - thick).abs() < 0.1;
-                                        let label = format!("{:.0}", thick * 2.0);
-                                        let resp = ui.add(egui::Button::new(egui::RichText::new(&label).monospace().size(9.0).color(if active { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0)));
-                                        if resp.clicked() {
-                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
-                                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
-                                                chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
-                                                chart.redo_stack.clear();
-                                                d.thickness = thick;
-                                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
-                                            }
-                                        }
-                                    }
-                                    // Extension toggles (TrendLine / Ray)
-                                    let is_tl_or_ray = matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..});
-                                    if is_tl_or_ray {
-                                        ui.add(egui::Separator::default().spacing(4.0));
-                                        let ext_l_resp = ui.add(egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(10.0).color(if sel_draw.extend_left { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 16.0)));
-                                        if ext_l_resp.clicked() {
-                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
                                                 d.extend_left = !d.extend_left;
+                                                crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                                             }
                                         }
-                                        let ext_r_resp = ui.add(egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(10.0).color(if sel_draw.extend_right { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 16.0)));
-                                        if ext_r_resp.clicked() {
-                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
-                                                d.extend_right = !d.extend_right;
-                                            }
-                                        }
-                                    }
-                                    // Opacity presets
-                                    ui.add(egui::Separator::default().spacing(4.0));
-                                    for &op in &[0.3_f32, 0.5, 0.7, 1.0] {
-                                        let active = (sel_draw.opacity - op).abs() < 0.05;
-                                        let label = format!("{}%", (op * 100.0) as i32);
-                                        let resp = ui.add(egui::Button::new(egui::RichText::new(&label).monospace().size(8.0).color(if active { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(22.0, 16.0)));
-                                        if resp.clicked() {
-                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
-                                                if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                                        if ui.add(egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(12.0).color(if sel_draw.extend_right { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                                                 chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                                                 chart.redo_stack.clear();
-                                                d.opacity = op;
-                                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                                                d.extend_right = !d.extend_right;
+                                                crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                                             }
                                         }
+                                        ui.add(egui::Separator::default().spacing(4.0));
                                     }
-                                    // Lock toggle
-                                    ui.add(egui::Separator::default().spacing(4.0));
-                                    let lock_label = if sel_draw.locked { "LOCK" } else { "lock" };
-                                    let lock_resp = ui.add(egui::Button::new(egui::RichText::new(lock_label).monospace().size(8.0).color(if sel_draw.locked { t.accent } else { t.dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(24.0, 16.0)));
-                                    if lock_resp.clicked() {
-                                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *sel_id) {
-                                            d.locked = !d.locked;
+
+                                    // Lock
+                                    if ui.add(egui::Button::new(egui::RichText::new(if sel_draw.locked { "Locked" } else { "Lock" }).monospace().size(10.0).color(if sel_draw.locked { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT)).clicked() {
+                                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) { d.locked = !d.locked; }
+                                    }
+
+                                    ui.add(egui::Separator::default().spacing(6.0));
+
+                                    // Delete
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(11.0).color(egui::Color32::from_rgb(224,85,96))).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                                        if let Some(d) = chart.drawings.iter().find(|d| d.id == sel_id) {
+                                            chart.undo_stack.push(DrawingAction::Remove(d.clone()));
                                         }
+                                        crate::drawing_db::remove(&sel_id);
+                                        chart.drawings.retain(|d| d.id != sel_id);
+                                        chart.redo_stack.clear();
+                                        chart.selected_id = None;
+                                        chart.selected_ids.clear();
                                     }
                                 });
                             });
