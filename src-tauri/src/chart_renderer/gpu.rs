@@ -1818,12 +1818,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Magnet (crosshair icon)
             if tb_btn(ui, Icon::CROSSHAIR, panes[ap].magnet, t).clicked() { panes[ap].magnet = !panes[ap].magnet; }
-            // Drawing count badge
+            // Drawing list toggle (always visible)
             let draw_count = panes[ap].drawings.len();
-            if draw_count > 0 {
-                if tb_btn(ui, &format!("{}", draw_count), panes[ap].drawing_list_open, t).clicked() {
-                    panes[ap].drawing_list_open = !panes[ap].drawing_list_open;
-                }
+            let list_label = if draw_count > 0 { format!("{} {}", Icon::LIST, draw_count) } else { Icon::LIST.to_string() };
+            if tb_btn(ui, &list_label, panes[ap].drawing_list_open, t).clicked() {
+                panes[ap].drawing_list_open = !panes[ap].drawing_list_open;
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -10150,93 +10149,193 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // ── Drawing properties bar (horizontal, top-center of chart) ──────────
         // Close the filter dialog when a drawing is selected to avoid two overlapping panels
-        // ── Drawing list panel (left side of pane, toggled by count badge) ────
-        if chart.drawing_list_open && !chart.drawings.is_empty() {
+        // ── Drawing Management Panel (left side of pane) ──────────────────────
+        if chart.drawing_list_open {
             let list_x = rect.left() + 4.0;
             let list_y = rect.top() + pt + 4.0;
-            let list_w = 180.0;
-            let max_h = (ch - 12.0).min(300.0);
+            let list_w = 220.0;
+            let max_h = (ch - 12.0).min(400.0);
             egui::Area::new(egui::Id::new(format!("draw_list_{}", pane_idx)))
                 .fixed_pos(egui::pos2(list_x, list_y))
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                    ui.style_mut().visuals.widgets.hovered.bg_fill = color_alpha(t.toolbar_border, 80);
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    ui.style_mut().visuals.selection.bg_fill = color_alpha(t.accent, 50);
                     egui::Frame::popup(&ctx.style())
                         .fill(t.toolbar_bg)
                         .stroke(egui::Stroke::new(0.5, t.toolbar_border))
-                        .inner_margin(4.0)
+                        .inner_margin(6.0)
                         .corner_radius(4.0)
                         .show(ui, |ui| {
                             ui.set_max_width(list_w);
                             ui.set_max_height(max_h);
-                            // Header
+
+                            // Header with actions
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(format!("DRAWINGS ({})", chart.drawings.len())).monospace().size(9.0).color(t.dim));
+                                ui.label(egui::RichText::new(format!("DRAWINGS ({})", chart.drawings.len())).monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim)).frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
                                         chart.drawing_list_open = false;
+                                    }
+                                    // Select all
+                                    if !chart.drawings.is_empty() {
+                                        if ui.add(egui::Button::new(egui::RichText::new("All").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
+                                            chart.selected_ids = chart.drawings.iter().map(|d| d.id.clone()).collect();
+                                            chart.selected_id = chart.drawings.first().map(|d| d.id.clone());
+                                        }
                                     }
                                 });
                             });
-                            ui.add_space(2.0);
-                            // Scrollable list
-                            egui::ScrollArea::vertical().max_height(max_h - 24.0).show(ui, |ui| {
-                                let mut click_id: Option<String> = None;
-                                let mut toggle_vis_id: Option<String> = None;
-                                for d in &chart.drawings {
-                                    let is_sel = chart.selected_ids.contains(&d.id);
-                                    let is_hidden = chart.hidden_groups.contains(&d.group_id);
-                                    let type_label = match &d.kind {
-                                        DrawingKind::HLine{..} => "H-Line",
-                                        DrawingKind::TrendLine{..} => "Trend",
-                                        DrawingKind::Ray{..} => "Ray",
-                                        DrawingKind::HZone{..} => "Zone",
-                                        DrawingKind::Fibonacci{..} => "Fib",
-                                        DrawingKind::Channel{..} => "Chan",
-                                        DrawingKind::FibChannel{..} => "FibCh",
-                                        DrawingKind::Pitchfork{..} => "Fork",
-                                        DrawingKind::GannFan{..} => "Gann",
-                                        DrawingKind::GannBox{..} => "GBox",
-                                        DrawingKind::RegressionChannel{..} => "Reg",
-                                        DrawingKind::XABCD{..} => "XABCD",
-                                        DrawingKind::ElliottWave{..} => "Wave",
-                                        DrawingKind::AnchoredVWAP{..} => "AVWAP",
-                                        DrawingKind::PriceRange{..} => "Range",
-                                        DrawingKind::RiskReward{..} => "R/R",
-                                        DrawingKind::BarMarker{..} => "Mark",
-                                        DrawingKind::VerticalLine{..} => "VLine",
-                                        DrawingKind::FibExtension{..} => "FibX",
-                                        DrawingKind::FibTimeZone{..} => "FibT",
-                                        DrawingKind::FibArc{..} => "FibA",
-                                        DrawingKind::TextNote{..} => "Text",
+
+                            // Bulk actions (when multiple selected)
+                            if chart.selected_ids.len() > 1 {
+                                ui.add_space(2.0);
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 4.0;
+                                    ui.label(egui::RichText::new(format!("{} selected", chart.selected_ids.len())).monospace().size(8.0).color(t.accent));
+                                    // Group assign dropdown
+                                    let groups_snap: Vec<(String, String)> = {
+                                        let mut gs = vec![("default".into(), "default".into())];
+                                        for g in &chart.groups { if g.id != "default" { gs.push((g.id.clone(), g.name.clone())); } }
+                                        gs
                                     };
-                                    let dc = hex_to_color(&d.color, if is_hidden { 0.3 } else { 1.0 });
-                                    let bg = if is_sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
-                                    ui.horizontal(|ui| {
-                                        // Color dot
-                                        let (dot_r, _) = ui.allocate_exact_size(egui::vec2(10.0, 14.0), egui::Sense::hover());
-                                        ui.painter().circle_filled(dot_r.center(), 4.0, dc);
-                                        // Type + short label — clickable
-                                        let row_resp = ui.add(egui::Button::new(
-                                            egui::RichText::new(type_label).monospace().size(9.0)
-                                                .color(if is_sel { egui::Color32::WHITE } else { t.dim })
-                                        ).fill(bg).min_size(egui::vec2(list_w - 40.0, 14.0)).corner_radius(2.0));
-                                        if row_resp.clicked() { click_id = Some(d.id.clone()); }
-                                        // Lock indicator
-                                        if d.locked {
-                                            ui.label(egui::RichText::new("L").monospace().size(7.0).color(t.dim));
+                                    let sel_ids = chart.selected_ids.clone();
+                                    let sym = chart.symbol.clone(); let tf = chart.timeframe.clone();
+                                    egui::ComboBox::from_id_salt(format!("bulk_grp_{}", pane_idx))
+                                        .selected_text(egui::RichText::new(Icon::FOLDER).monospace().size(9.0))
+                                        .width(60.0)
+                                        .show_ui(ui, |ui| {
+                                            for (gid, gname) in &groups_snap {
+                                                if ui.selectable_label(false, egui::RichText::new(gname).monospace().size(9.0)).clicked() {
+                                                    for d in &mut chart.drawings {
+                                                        if sel_ids.contains(&d.id) {
+                                                            d.group_id = gid.clone();
+                                                            crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    // Bulk delete
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(9.0).color(egui::Color32::from_rgb(224,85,96))).frame(false)).clicked() {
+                                        let ids = chart.selected_ids.clone();
+                                        for id in &ids {
+                                            if let Some(d) = chart.drawings.iter().find(|d| d.id == *id) {
+                                                chart.undo_stack.push(DrawingAction::Remove(d.clone()));
+                                            }
+                                            crate::drawing_db::remove(id);
                                         }
-                                    });
+                                        chart.drawings.retain(|d| !ids.contains(&d.id));
+                                        chart.redo_stack.clear();
+                                        chart.selected_ids.clear(); chart.selected_id = None;
+                                    }
+                                });
+                            }
+
+                            ui.add_space(3.0);
+                            // Scrollable drawing list
+                            egui::ScrollArea::vertical().max_height(max_h - 60.0).show(ui, |ui| {
+                                let mut click_id: Option<String> = None;
+                                let mut shift_click_id: Option<String> = None;
+                                let mut delete_id: Option<String> = None;
+                                let shift = ui.input(|i| i.modifiers.shift);
+
+                                // Group drawings by group_id
+                                let mut groups_order: Vec<String> = vec!["default".into()];
+                                for g in &chart.groups {
+                                    if g.id != "default" && !groups_order.contains(&g.id) { groups_order.push(g.id.clone()); }
                                 }
-                                // Process clicks after iteration (avoids borrow conflict)
+                                // Add any group_ids from drawings not in groups list
+                                for d in &chart.drawings {
+                                    if !groups_order.contains(&d.group_id) { groups_order.push(d.group_id.clone()); }
+                                }
+
+                                for group_id in &groups_order {
+                                    let group_drawings: Vec<&Drawing> = chart.drawings.iter().filter(|d| d.group_id == *group_id).collect();
+                                    if group_drawings.is_empty() { continue; }
+
+                                    let group_name = chart.groups.iter().find(|g| g.id == *group_id)
+                                        .map_or(group_id.as_str(), |g| g.name.as_str());
+                                    let is_hidden = chart.hidden_groups.contains(group_id);
+
+                                    // Group header
+                                    ui.horizontal(|ui| {
+                                        let vis_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
+                                        let vis_col = if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim };
+                                        if ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(8.0).color(vis_col)).frame(false)).clicked() {
+                                            if is_hidden { chart.hidden_groups.retain(|x| x != group_id); }
+                                            else { chart.hidden_groups.push(group_id.clone()); }
+                                        }
+                                        ui.label(egui::RichText::new(format!("{} ({})", group_name, group_drawings.len()))
+                                            .monospace().size(8.0).color(if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim }));
+                                    });
+
+                                    // Drawings in this group
+                                    for d in &group_drawings {
+                                        let is_sel = chart.selected_ids.contains(&d.id);
+                                        let dc = hex_to_color(&d.color, if is_hidden { 0.3 } else { 1.0 });
+                                        let bg = if is_sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                                        let type_label = match &d.kind {
+                                            DrawingKind::HLine{..} => "H-Line", DrawingKind::TrendLine{..} => "Trend",
+                                            DrawingKind::Ray{..} => "Ray", DrawingKind::HZone{..} => "Zone",
+                                            DrawingKind::Fibonacci{..} => "Fib", DrawingKind::Channel{..} => "Chan",
+                                            DrawingKind::FibChannel{..} => "FibCh", DrawingKind::Pitchfork{..} => "Fork",
+                                            DrawingKind::GannFan{..} => "Gann", DrawingKind::GannBox{..} => "GBox",
+                                            DrawingKind::RegressionChannel{..} => "Reg", DrawingKind::XABCD{..} => "XABCD",
+                                            DrawingKind::ElliottWave{..} => "Wave", DrawingKind::AnchoredVWAP{..} => "AVWAP",
+                                            DrawingKind::PriceRange{..} => "Range", DrawingKind::RiskReward{..} => "R/R",
+                                            DrawingKind::BarMarker{..} => "Mark", DrawingKind::VerticalLine{..} => "VLine",
+                                            DrawingKind::FibExtension{..} => "FibX", DrawingKind::FibTimeZone{..} => "FibT",
+                                            DrawingKind::FibArc{..} => "FibA", DrawingKind::TextNote{..} => "Text",
+                                        };
+                                        ui.horizontal(|ui| {
+                                            ui.add_space(12.0); // indent under group
+                                            // Color dot
+                                            let (dot_r, _) = ui.allocate_exact_size(egui::vec2(10.0, 18.0), egui::Sense::hover());
+                                            ui.painter().circle_filled(dot_r.center(), 4.0, dc);
+                                            // Type label — click to select, shift+click to multi-select
+                                            let label_text = format!("{}{}{}", type_label,
+                                                if d.locked { " L" } else { "" },
+                                                if d.alert_enabled { " !" } else { "" });
+                                            let row_resp = ui.add(egui::Button::new(
+                                                egui::RichText::new(&label_text).monospace().size(9.5)
+                                                    .color(if is_sel { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(160) })
+                                            ).fill(bg).min_size(egui::vec2(list_w - 70.0, 18.0)).corner_radius(2.0));
+                                            if row_resp.clicked() {
+                                                if shift { shift_click_id = Some(d.id.clone()); }
+                                                else { click_id = Some(d.id.clone()); }
+                                            }
+                                            // Delete button (small, on hover)
+                                            if row_resp.hovered() || is_sel {
+                                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim)).frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                                    delete_id = Some(d.id.clone());
+                                                }
+                                            }
+                                        });
+                                    }
+                                    ui.add_space(2.0);
+                                }
+
+                                // Process deferred actions
                                 if let Some(id) = click_id {
                                     chart.selected_id = Some(id.clone());
                                     chart.selected_ids = vec![id];
                                 }
-                                if let Some(id) = toggle_vis_id {
-                                    // Could toggle individual drawing visibility here
-                                    let _ = id;
+                                if let Some(id) = shift_click_id {
+                                    if chart.selected_ids.contains(&id) { chart.selected_ids.retain(|x| x != &id); }
+                                    else { chart.selected_ids.push(id.clone()); chart.selected_id = Some(id); }
+                                }
+                                if let Some(id) = delete_id {
+                                    if let Some(d) = chart.drawings.iter().find(|d| d.id == id) {
+                                        chart.undo_stack.push(DrawingAction::Remove(d.clone()));
+                                    }
+                                    crate::drawing_db::remove(&id);
+                                    chart.drawings.retain(|d| d.id != id);
+                                    chart.redo_stack.clear();
+                                    chart.selected_ids.retain(|x| x != &id);
+                                    if chart.selected_id.as_deref() == Some(&id) { chart.selected_id = None; }
                                 }
                             });
                         });
