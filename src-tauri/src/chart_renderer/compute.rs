@@ -62,6 +62,138 @@ pub fn compute_tema(closes: &[f32], period: usize) -> Vec<f32> {
         .collect()
 }
 
+// ─── Volatility / Trend Overlays ─────────────────────────────────────────────
+
+pub fn compute_atr(highs: &[f32], lows: &[f32], closes: &[f32], period: usize) -> Vec<f32> {
+    let n = closes.len();
+    let mut atr = vec![f32::NAN; n];
+    if n < period + 1 { return atr; }
+    let mut sum = 0.0_f32;
+    for i in 1..=period {
+        let tr = (highs[i] - lows[i]).max((highs[i] - closes[i-1]).abs()).max((lows[i] - closes[i-1]).abs());
+        sum += tr;
+    }
+    atr[period] = sum / period as f32;
+    for i in (period+1)..n {
+        let tr = (highs[i] - lows[i]).max((highs[i] - closes[i-1]).abs()).max((lows[i] - closes[i-1]).abs());
+        atr[i] = (atr[i-1] * (period as f32 - 1.0) + tr) / period as f32;
+    }
+    atr
+}
+
+pub fn compute_bollinger(closes: &[f32], period: usize, num_std: f32) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+    let sma = compute_sma(closes, period);
+    let n = closes.len();
+    let mut upper = vec![f32::NAN; n];
+    let mut lower = vec![f32::NAN; n];
+    for i in (period-1)..n {
+        if sma[i].is_nan() { continue; }
+        let mut sum_sq = 0.0_f32;
+        for j in (i+1-period)..=i { sum_sq += (closes[j] - sma[i]).powi(2); }
+        let std_dev = (sum_sq / period as f32).sqrt();
+        upper[i] = sma[i] + num_std * std_dev;
+        lower[i] = sma[i] - num_std * std_dev;
+    }
+    (sma, upper, lower)
+}
+
+pub fn compute_ichimoku(highs: &[f32], lows: &[f32], closes: &[f32], tenkan: usize, kijun: usize, senkou_b: usize) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+    let n = closes.len();
+    let period_hl = |h: &[f32], l: &[f32], period: usize| -> Vec<f32> {
+        let mut r = vec![f32::NAN; n];
+        for i in (period-1)..n {
+            let mut hi = f32::MIN; let mut lo = f32::MAX;
+            for j in (i+1-period)..=i { hi = hi.max(h[j]); lo = lo.min(l[j]); }
+            r[i] = (hi + lo) / 2.0;
+        }
+        r
+    };
+    let tenkan_sen = period_hl(highs, lows, tenkan);
+    let kijun_sen = period_hl(highs, lows, kijun);
+    let mut senkou_a = vec![f32::NAN; n + kijun];
+    for i in 0..n { if !tenkan_sen[i].is_nan() && !kijun_sen[i].is_nan() { senkou_a[i + kijun] = (tenkan_sen[i] + kijun_sen[i]) / 2.0; } }
+    let span_b_raw = period_hl(highs, lows, senkou_b);
+    let mut senkou_b_vals = vec![f32::NAN; n + kijun];
+    for i in 0..n { if !span_b_raw[i].is_nan() { senkou_b_vals[i + kijun] = span_b_raw[i]; } }
+    let mut chikou = vec![f32::NAN; n];
+    for i in kijun..n { chikou[i - kijun] = closes[i]; }
+    senkou_a.truncate(n); senkou_b_vals.truncate(n);
+    (tenkan_sen, kijun_sen, senkou_a, senkou_b_vals, chikou)
+}
+
+pub fn compute_psar(highs: &[f32], lows: &[f32], af_start: f32, af_step: f32, af_max: f32) -> Vec<f32> {
+    let n = highs.len();
+    if n < 2 { return vec![f32::NAN; n]; }
+    let mut sar = vec![f32::NAN; n];
+    let mut is_long = true;
+    let mut af = af_start;
+    let mut ep = highs[0];
+    sar[0] = lows[0];
+    for i in 1..n {
+        sar[i] = sar[i-1] + af * (ep - sar[i-1]);
+        if is_long {
+            if lows[i] < sar[i] {
+                is_long = false; sar[i] = ep; ep = lows[i]; af = af_start;
+            } else {
+                if highs[i] > ep { ep = highs[i]; af = (af + af_step).min(af_max); }
+                sar[i] = sar[i].min(lows[i-1]);
+                if i > 1 { sar[i] = sar[i].min(lows[i-2]); }
+            }
+        } else {
+            if highs[i] > sar[i] {
+                is_long = true; sar[i] = ep; ep = highs[i]; af = af_start;
+            } else {
+                if lows[i] < ep { ep = lows[i]; af = (af + af_step).min(af_max); }
+                sar[i] = sar[i].max(highs[i-1]);
+                if i > 1 { sar[i] = sar[i].max(highs[i-2]); }
+            }
+        }
+    }
+    sar
+}
+
+/// Returns (supertrend_line, is_bullish) per bar.
+pub fn compute_supertrend(highs: &[f32], lows: &[f32], closes: &[f32], period: usize, multiplier: f32) -> (Vec<f32>, Vec<bool>) {
+    let n = closes.len();
+    let atr = compute_atr(highs, lows, closes, period);
+    let mut st = vec![f32::NAN; n];
+    let mut direction = vec![true; n];
+    for i in period..n {
+        if atr[i].is_nan() { continue; }
+        let hl2 = (highs[i] + lows[i]) / 2.0;
+        let upper = hl2 + multiplier * atr[i];
+        let lower = hl2 - multiplier * atr[i];
+        if i == period { st[i] = lower; direction[i] = true; continue; }
+        let prev_st = st[i-1];
+        if prev_st.is_nan() { st[i] = lower; direction[i] = true; continue; }
+        if direction[i-1] {
+            let new_lower = lower.max(prev_st);
+            if closes[i] < new_lower { st[i] = upper; direction[i] = false; }
+            else { st[i] = new_lower; direction[i] = true; }
+        } else {
+            let new_upper = upper.min(prev_st);
+            if closes[i] > new_upper { st[i] = lower; direction[i] = true; }
+            else { st[i] = new_upper; direction[i] = false; }
+        }
+    }
+    (st, direction)
+}
+
+pub fn compute_keltner(highs: &[f32], lows: &[f32], closes: &[f32], period: usize, multiplier: f32) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+    let mid = compute_ema(closes, period);
+    let atr = compute_atr(highs, lows, closes, period);
+    let n = closes.len();
+    let mut upper = vec![f32::NAN; n];
+    let mut lower = vec![f32::NAN; n];
+    for i in 0..n {
+        if !mid[i].is_nan() && !atr[i].is_nan() {
+            upper[i] = mid[i] + multiplier * atr[i];
+            lower[i] = mid[i] - multiplier * atr[i];
+        }
+    }
+    (mid, upper, lower)
+}
+
 // ─── Oscillators ─────────────────────────────────────────────────────────────
 
 pub fn compute_rsi(closes: &[f32], period: usize) -> Vec<f32> {

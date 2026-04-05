@@ -67,7 +67,7 @@ const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
 use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section};
-use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi};
+use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner};
 
 // compute_sma, compute_ema — now in compute.rs
 
@@ -134,7 +134,7 @@ const ALL_LAYOUTS: &[Layout] = &[Layout::One, Layout::Two, Layout::TwoH, Layout:
 // ─── Indicators ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, RSI, MACD, Stochastic, ADX, CCI, WilliamsR }
+enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR, Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum IndicatorCategory { Overlay, Oscillator }
@@ -144,17 +144,21 @@ impl IndicatorType {
         match self {
             Self::SMA => "SMA", Self::EMA => "EMA", Self::WMA => "WMA",
             Self::DEMA => "DEMA", Self::TEMA => "TEMA", Self::VWAP => "VWAP",
+            Self::BollingerBands => "BB", Self::Ichimoku => "ICHI",
+            Self::ParabolicSAR => "PSAR", Self::Supertrend => "ST",
+            Self::KeltnerChannels => "KC",
             Self::RSI => "RSI", Self::MACD => "MACD", Self::Stochastic => "STOCH",
             Self::ADX => "ADX", Self::CCI => "CCI", Self::WilliamsR => "%R",
+            Self::ATR => "ATR",
         }
     }
-    fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR] }
+    fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
     #[allow(dead_code)]
-    fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP] }
+    fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels] }
     #[allow(dead_code)]
-    fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR] }
+    fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
     fn category(self) -> IndicatorCategory {
-        match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
+        match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
     }
 
     fn compute(self, closes: &[f32], period: usize) -> Vec<f32> {
@@ -164,11 +168,12 @@ impl IndicatorType {
             Self::WMA => super::compute::compute_wma(closes, period),
             Self::DEMA => super::compute::compute_dema(closes, period),
             Self::TEMA => super::compute::compute_tema(closes, period),
-            Self::VWAP => vec![f32::NAN; closes.len()], // computed separately with volume
+            Self::VWAP | Self::BollingerBands | Self::Ichimoku | Self::ParabolicSAR
+            | Self::Supertrend | Self::KeltnerChannels => vec![f32::NAN; closes.len()], // computed separately
             Self::RSI => compute_rsi(closes, period),
-            Self::MACD => compute_ema(closes, period), // primary=MACD line, signal/histogram set separately
-            Self::Stochastic => vec![f32::NAN; closes.len()], // computed separately with high/low
-            Self::ADX | Self::CCI | Self::WilliamsR => vec![f32::NAN; closes.len()], // computed separately with high/low
+            Self::MACD => compute_ema(closes, period),
+            Self::Stochastic => vec![f32::NAN; closes.len()],
+            Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => vec![f32::NAN; closes.len()],
         }
     }
 }
@@ -184,7 +189,11 @@ struct Indicator {
     line_style: LineStyle,
     visible: bool,
     values: Vec<f32>,         // primary line (same length as chart bars)
-    values2: Vec<f32>,        // secondary line: MACD signal, Stochastic %D
+    values2: Vec<f32>,        // secondary line: MACD signal, Stochastic %D, BB upper, KC upper, Ichi kijun
+    values3: Vec<f32>,        // BB lower, KC lower, Ichi senkou_a
+    values4: Vec<f32>,        // Ichi senkou_b
+    values5: Vec<f32>,        // Ichi chikou
+    supertrend_dir: Vec<bool>, // Supertrend: true=bullish
     histogram: Vec<f32>,      // MACD histogram
     divergences: Vec<i8>,     // 1=bullish divergence, -1=bearish, 0=none
     // Cross-timeframe state
@@ -199,7 +208,10 @@ const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m", "1h", "4h"
 impl Indicator {
     fn new(id: u32, kind: IndicatorType, period: usize, color: &str) -> Self {
         Self { id, kind, period, source_tf: String::new(), color: color.into(), thickness: 1.2,
-               line_style: LineStyle::Solid, visible: true, values: vec![], values2: vec![], histogram: vec![], divergences: vec![],
+               line_style: LineStyle::Solid, visible: true,
+               values: vec![], values2: vec![], values3: vec![], values4: vec![], values5: vec![],
+               supertrend_dir: vec![],
+               histogram: vec![], divergences: vec![],
                source_bars: vec![], source_timestamps: vec![], source_loaded: false }
     }
     fn display_name(&self) -> String {
@@ -778,6 +790,9 @@ struct Chart {
     show_cvd: bool,
     show_delta_volume: bool,
     show_rvol: bool,
+    show_ma_ribbon: bool,
+    show_prev_close: bool,
+    show_auto_sr: bool,
     vwap_data: Vec<f32>,
     vwap_upper1: Vec<f32>,
     vwap_lower1: Vec<f32>,
@@ -842,6 +857,7 @@ impl Chart {
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
             vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
+            show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
             replay_mode: false, replay_bar_count: 0 }
@@ -992,7 +1008,7 @@ impl Chart {
                 &chart_closes
             } else {
                 ind.values = vec![f32::NAN; self.bars.len()];
-                ind.values2 = vec![];
+                ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                 ind.histogram = vec![];
                 continue;
             };
@@ -1093,9 +1109,52 @@ impl Chart {
                     }
                     ind.values = wr; ind.values2 = vec![]; ind.histogram = vec![];
                 }
+                IndicatorType::BollingerBands => {
+                    let (mid, upper, lower) = compute_bollinger(closes, ind.period, 2.0);
+                    ind.values = mid;
+                    ind.values2 = upper;
+                    ind.values3 = lower;
+                    ind.values4 = vec![]; ind.values5 = vec![];
+                    ind.histogram = vec![];
+                }
+                IndicatorType::Ichimoku => {
+                    let (tenkan, kijun, sa, sb, chikou) = compute_ichimoku(&chart_highs, &chart_lows, closes, 9, 26, 52);
+                    ind.values = tenkan;
+                    ind.values2 = kijun;
+                    ind.values3 = sa;
+                    ind.values4 = sb;
+                    ind.values5 = chikou;
+                    ind.histogram = vec![];
+                }
+                IndicatorType::ParabolicSAR => {
+                    ind.values = compute_psar(&chart_highs, &chart_lows, 0.02, 0.02, 0.2);
+                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
+                    ind.histogram = vec![];
+                }
+                IndicatorType::Supertrend => {
+                    let (st, dir) = compute_supertrend(&chart_highs, &chart_lows, closes, ind.period, 3.0);
+                    ind.values = st;
+                    ind.supertrend_dir = dir;
+                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
+                    ind.histogram = vec![];
+                }
+                IndicatorType::KeltnerChannels => {
+                    let (mid, upper, lower) = compute_keltner(&chart_highs, &chart_lows, closes, ind.period, 2.0);
+                    ind.values = mid;
+                    ind.values2 = upper;
+                    ind.values3 = lower;
+                    ind.values4 = vec![]; ind.values5 = vec![];
+                    ind.histogram = vec![];
+                }
+                IndicatorType::ATR => {
+                    ind.values = compute_atr(&chart_highs, &chart_lows, closes, ind.period);
+                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
+                    ind.histogram = vec![];
+                }
                 _ => {
                     ind.values = ind.kind.compute(closes, ind.period);
                     ind.values2 = vec![];
+                    ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                     ind.histogram = vec![];
                 }
             }
@@ -1721,6 +1780,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if tb_btn(ui, "CVD", panes[ap].show_cvd, t).clicked() { panes[ap].show_cvd = !panes[ap].show_cvd; }
             if tb_btn(ui, "DVol", panes[ap].show_delta_volume, t).clicked() { panes[ap].show_delta_volume = !panes[ap].show_delta_volume; }
             if tb_btn(ui, "RVol", panes[ap].show_rvol, t).clicked() { panes[ap].show_rvol = !panes[ap].show_rvol; }
+            if tb_btn(ui, "RBN", panes[ap].show_ma_ribbon, t).clicked() { panes[ap].show_ma_ribbon = !panes[ap].show_ma_ribbon; }
+            if tb_btn(ui, "PC", panes[ap].show_prev_close, t).clicked() { panes[ap].show_prev_close = !panes[ap].show_prev_close; }
+            if tb_btn(ui, "S/R", panes[ap].show_auto_sr, t).clicked() { panes[ap].show_auto_sr = !panes[ap].show_auto_sr; }
 
             // Candle mode cycle
             let cm_label = match panes[ap].candle_mode {
@@ -1844,7 +1906,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.separator();
                 section_label(ui, "OSCILLATORS", t.accent);
                 for &kind in IndicatorType::oscillators() {
-                    let default_period = match kind { IndicatorType::RSI => 14, IndicatorType::MACD => 12, IndicatorType::Stochastic => 14, IndicatorType::ADX => 14, IndicatorType::CCI => 20, IndicatorType::WilliamsR => 14, _ => 20 };
+                    let default_period = match kind { IndicatorType::RSI => 14, IndicatorType::MACD => 12, IndicatorType::Stochastic => 14, IndicatorType::ADX => 14, IndicatorType::CCI => 20, IndicatorType::WilliamsR => 14, IndicatorType::ATR => 14, IndicatorType::Supertrend => 10, _ => 20 };
                     if ui.button(egui::RichText::new(kind.label()).monospace().size(10.0)).clicked() {
                         let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
                         let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
@@ -5310,18 +5372,269 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // Indicators
+        // ── MA Ribbon (6 EMAs) ───────────────────────────────────────────────
+        if chart.show_ma_ribbon && !chart.hide_all_indicators {
+            let ribbon_periods = [8_usize, 13, 21, 34, 55, 89];
+            let closes_v: Vec<f32> = chart.bars.iter().map(|b| b.close).collect();
+            let emas: Vec<Vec<f32>> = ribbon_periods.iter().map(|&p| compute_ema(&closes_v, p)).collect();
+            let start = vs.floor() as usize;
+            let end_idx = (start + chart.vc as usize + 8).min(n);
+            for k in 0..emas.len().saturating_sub(1) {
+                for i in start..end_idx.saturating_sub(1) {
+                    let v0a = emas[k].get(i).copied().unwrap_or(f32::NAN);
+                    let v0b = emas[k+1].get(i).copied().unwrap_or(f32::NAN);
+                    let v1a = emas[k].get(i+1).copied().unwrap_or(f32::NAN);
+                    let v1b = emas[k+1].get(i+1).copied().unwrap_or(f32::NAN);
+                    if v0a.is_nan() || v0b.is_nan() || v1a.is_nan() || v1b.is_nan() { continue; }
+                    let bullish = v0a > v0b;
+                    let alpha = 15 + k as u8 * 5;
+                    let color = if bullish {
+                        egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha)
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(231, 76, 60, alpha)
+                    };
+                    let pts = vec![
+                        egui::pos2(bx(i as f32), py(v0a)), egui::pos2(bx((i+1) as f32), py(v1a)),
+                        egui::pos2(bx((i+1) as f32), py(v1b)), egui::pos2(bx(i as f32), py(v0b)),
+                    ];
+                    painter.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
+                }
+            }
+        }
+
+        // ── Prev Close / Session Open lines ──────────────────────────────────
+        if chart.show_prev_close && !chart.timestamps.is_empty() {
+            let mut prev_close: Option<f32> = None;
+            let mut session_open: Option<f32> = None;
+            for i in (1..chart.bars.len()).rev() {
+                if i >= chart.timestamps.len() { continue; }
+                let gap = chart.timestamps[i] - chart.timestamps[i-1];
+                if gap > 14400 {
+                    prev_close = Some(chart.bars[i-1].close);
+                    session_open = Some(chart.bars[i].open);
+                    break;
+                }
+            }
+            if let Some(pc) = prev_close {
+                let y = py(pc);
+                if y.is_finite() {
+                    dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+                        egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(200, 200, 200, 80)), LineStyle::Dashed);
+                    painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
+                        &format!("PC {:.2}", pc), egui::FontId::monospace(7.0), egui::Color32::from_white_alpha(80));
+                }
+            }
+            if let Some(so) = session_open {
+                let y = py(so);
+                if y.is_finite() {
+                    dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+                        egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(100, 180, 255, 60)), LineStyle::Dotted);
+                    painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
+                        &format!("SO {:.2}", so), egui::FontId::monospace(7.0), egui::Color32::from_rgba_unmultiplied(100, 180, 255, 60));
+                }
+            }
+        }
+
+        // ── Auto Support/Resistance ───────────────────────────────────────────
+        if chart.show_auto_sr && n > 20 {
+            let lookback = 10;
+            let mut levels: Vec<(f32, bool)> = vec![];
+            for i in lookback..n.saturating_sub(lookback) {
+                let is_pivot_high = (1..=lookback).all(|j| chart.bars[i].high >= chart.bars[i-j].high && chart.bars[i].high >= chart.bars[i+j].high);
+                let is_pivot_low = (1..=lookback).all(|j| chart.bars[i].low <= chart.bars[i-j].low && chart.bars[i].low <= chart.bars[i+j].low);
+                if is_pivot_high { levels.push((chart.bars[i].high, true)); }
+                if is_pivot_low { levels.push((chart.bars[i].low, false)); }
+            }
+            levels.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            let mut clustered: Vec<(f32, usize, bool)> = vec![];
+            for (price, is_res) in &levels {
+                let merged = clustered.iter_mut().find(|(p, _, _)| (*price - *p).abs() / p.max(0.001) < 0.003);
+                if let Some(existing) = merged {
+                    existing.0 = (existing.0 * existing.1 as f32 + *price) / (existing.1 + 1) as f32;
+                    existing.1 += 1;
+                } else {
+                    clustered.push((*price, 1, *is_res));
+                }
+            }
+            for (price, touches, is_res) in &clustered {
+                if *touches < 2 { continue; }
+                let y = py(*price);
+                if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+                let alpha = (40 + (*touches as u8).min(6) * 15).min(120);
+                let col = if *is_res {
+                    egui::Color32::from_rgba_unmultiplied(231, 76, 60, alpha)
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha)
+                };
+                dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+                    egui::Stroke::new(0.5, col), LineStyle::Dotted);
+                painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
+                    &format!("{}{:.2} ({}x)", if *is_res { "R " } else { "S " }, price, touches),
+                    egui::FontId::monospace(7.0), col);
+            }
+        }
+
+        // Indicators (overlay only)
         if !chart.hide_all_indicators {
             for ind in &chart.indicators {
-                if !ind.visible { continue; }
+                if !ind.visible || ind.kind.category() != IndicatorCategory::Overlay { continue; }
+                let color = hex_to_color(&ind.color, 1.0);
+                let dim_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 120);
+                let fill_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 18);
+                let start_i = vs as u32;
+
+                // ── Bollinger Bands ──
+                if ind.kind == IndicatorType::BollingerBands {
+                    // Fill between upper and lower
+                    for i in start_i..end.saturating_sub(1) {
+                        let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let l0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let u1 = ind.values2.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        let l1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
+                        let pts = vec![egui::pos2(bx(i as f32), py(u0)), egui::pos2(bx((i+1) as f32), py(u1)),
+                            egui::pos2(bx((i+1) as f32), py(l1)), egui::pos2(bx(i as f32), py(l0))];
+                        painter.add(egui::Shape::convex_polygon(pts, fill_color, egui::Stroke::NONE));
+                    }
+                    // Upper band
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values2.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
+                    // Middle (SMA)
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness, color))); }
+                    // Lower band
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values3.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
+                    // Value label
+                    if let Some(&last_val) = ind.values.iter().rev().find(|v| !v.is_nan()) {
+                        let label_y = py(last_val);
+                        if label_y.is_finite() && label_y > rect.top() + pt && label_y < rect.top() + pt + ch {
+                            painter.text(egui::pos2(rect.left()+cw+3.0, label_y), egui::Align2::LEFT_CENTER,
+                                &format!("BB {:.2}", last_val), egui::FontId::monospace(8.0), color);
+                        }
+                    }
+                    continue;
+                }
+
+                // ── Keltner Channels ──
+                if ind.kind == IndicatorType::KeltnerChannels {
+                    for i in start_i..end.saturating_sub(1) {
+                        let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let l0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let u1 = ind.values2.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        let l1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
+                        let pts = vec![egui::pos2(bx(i as f32), py(u0)), egui::pos2(bx((i+1) as f32), py(u1)),
+                            egui::pos2(bx((i+1) as f32), py(l1)), egui::pos2(bx(i as f32), py(l0))];
+                        painter.add(egui::Shape::convex_polygon(pts, fill_color, egui::Stroke::NONE));
+                    }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values2.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness, color))); }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values3.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
+                    if let Some(&last_val) = ind.values.iter().rev().find(|v| !v.is_nan()) {
+                        let label_y = py(last_val);
+                        if label_y.is_finite() && label_y > rect.top() + pt && label_y < rect.top() + pt + ch {
+                            painter.text(egui::pos2(rect.left()+cw+3.0, label_y), egui::Align2::LEFT_CENTER,
+                                &format!("KC {:.2}", last_val), egui::FontId::monospace(8.0), color);
+                        }
+                    }
+                    continue;
+                }
+
+                // ── Ichimoku Cloud ──
+                if ind.kind == IndicatorType::Ichimoku {
+                    // Cloud fill (senkou_a vs senkou_b)
+                    for i in start_i..end.saturating_sub(1) {
+                        let sa0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let sb0 = ind.values4.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let sa1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        let sb1 = ind.values4.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        if sa0.is_nan() || sb0.is_nan() || sa1.is_nan() || sb1.is_nan() { continue; }
+                        let bullish = sa0 > sb0;
+                        let cloud_col = if bullish {
+                            egui::Color32::from_rgba_unmultiplied(46, 204, 113, 22)
+                        } else {
+                            egui::Color32::from_rgba_unmultiplied(231, 76, 60, 22)
+                        };
+                        let pts = vec![egui::pos2(bx(i as f32), py(sa0)), egui::pos2(bx((i+1) as f32), py(sa1)),
+                            egui::pos2(bx((i+1) as f32), py(sb1)), egui::pos2(bx(i as f32), py(sb0))];
+                        painter.add(egui::Shape::convex_polygon(pts, cloud_col, egui::Stroke::NONE));
+                    }
+                    // Tenkan (thin)
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.8, egui::Color32::from_rgba_unmultiplied(230, 100, 100, 220)))); }
+                    // Kijun (thicker)
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values2.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 1.2, egui::Color32::from_rgba_unmultiplied(100, 140, 230, 220)))); }
+                    // Chikou (dotted)
+                    let mut prev_pt: Option<egui::Pos2> = None;
+                    for i in start_i..end {
+                        if let Some(&v) = ind.values5.get(i as usize) {
+                            if !v.is_nan() {
+                                let p = egui::pos2(bx(i as f32), py(v));
+                                if let Some(pp) = prev_pt {
+                                    let dir = p - pp; let len = dir.length();
+                                    if len > 1.0 { let norm = dir / len; let mut d = 0.0;
+                                        while d < len { let a = pp + norm * d; let b = pp + norm * (d + 2.0).min(len);
+                                            painter.line_segment([a, b], egui::Stroke::new(0.8, egui::Color32::from_rgba_unmultiplied(180, 230, 100, 160))); d += 4.0; }
+                                    }
+                                }
+                                prev_pt = Some(p);
+                            } else { prev_pt = None; }
+                        }
+                    }
+                    continue;
+                }
+
+                // ── Parabolic SAR (dots) ──
+                if ind.kind == IndicatorType::ParabolicSAR {
+                    for i in start_i..end {
+                        if let Some(&v) = ind.values.get(i as usize) {
+                            if v.is_nan() { continue; }
+                            let x = bx(i as f32); let y = py(v);
+                            if !y.is_finite() { continue; }
+                            let bar_close = chart.bars.get(i as usize).map(|b| b.close).unwrap_or(v);
+                            let is_below = v < bar_close; // below price = uptrend
+                            let dot_col = if is_below { egui::Color32::from_rgb(46, 204, 113) } else { egui::Color32::from_rgb(231, 76, 60) };
+                            painter.circle_filled(egui::pos2(x, y), 2.0, dot_col);
+                        }
+                    }
+                    continue;
+                }
+
+                // ── Supertrend (colored line) ──
+                if ind.kind == IndicatorType::Supertrend {
+                    for i in start_i..end.saturating_sub(1) {
+                        let v0 = ind.values.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let v1 = ind.values.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        if v0.is_nan() || v1.is_nan() { continue; }
+                        let bullish = ind.supertrend_dir.get(i as usize).copied().unwrap_or(true);
+                        let st_col = if bullish { egui::Color32::from_rgb(46, 204, 113) } else { egui::Color32::from_rgb(231, 76, 60) };
+                        painter.line_segment([egui::pos2(bx(i as f32), py(v0)), egui::pos2(bx((i+1) as f32), py(v1))],
+                            egui::Stroke::new(ind.thickness, st_col));
+                    }
+                    continue;
+                }
+
+                // ── Generic overlay (SMA, EMA, WMA, DEMA, TEMA, VWAP) ──
                 chart.indicator_pts_buf.clear();
-                for i in (vs as u32)..end {
+                for i in start_i..end {
                     if let Some(&v) = ind.values.get(i as usize) {
                         if !v.is_nan() { chart.indicator_pts_buf.push(egui::pos2(bx(i as f32), py(v))); }
                     }
                 }
                 if chart.indicator_pts_buf.len() > 1 {
-                    let color = hex_to_color(&ind.color, 1.0);
                     let stroke = egui::Stroke::new(ind.thickness, color);
                     match ind.line_style {
                         LineStyle::Solid => { painter.add(egui::Shape::line(chart.indicator_pts_buf.clone(), stroke)); }
@@ -5331,8 +5644,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let a = w[0]; let b = w[1];
                                 let dir = b - a; let len = dir.length();
                                 if len < 1.0 { continue; }
-                                let norm = dir / len;
-                                let mut d = 0.0;
+                                let norm = dir / len; let mut d = 0.0;
                                 while d < len {
                                     let p0 = a + norm * d;
                                     let p1 = a + norm * (d + dash).min(len);
@@ -5341,6 +5653,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 }
                             }
                         }
+                    }
+                }
+                // Value label on right edge
+                if let Some(&last_val) = ind.values.iter().rev().find(|v| !v.is_nan()) {
+                    let label_y = py(last_val);
+                    if label_y.is_finite() && label_y > rect.top() + pt && label_y < rect.top() + pt + ch {
+                        let label = format!("{} {:.2}", ind.display_name(), last_val);
+                        let galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(8.0), color);
+                        let lx = rect.left() + cw + 3.0;
+                        let bg = egui::Rect::from_min_size(egui::pos2(lx - 2.0, label_y - galley.size().y / 2.0 - 1.0), galley.size() + egui::vec2(4.0, 2.0));
+                        painter.rect_filled(bg, 2.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 200));
+                        painter.text(egui::pos2(lx, label_y), egui::Align2::LEFT_CENTER, &label, egui::FontId::monospace(8.0), color);
                     }
                 }
             }
@@ -6159,12 +6483,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let pad = (hi - lo) * 0.1;
                         (lo - pad, hi + pad)
                     }
-                    IndicatorType::CCI => {
+                    IndicatorType::CCI | IndicatorType::ATR => {
                         let mut lo = f32::MAX; let mut hi = f32::MIN;
                         for i in (vs as u32)..end {
                             if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
                         }
-                        if lo >= hi { lo = -200.0; hi = 200.0; }
+                        if lo >= hi { lo = if ind.kind == IndicatorType::ATR { 0.0 } else { -200.0 }; hi = hi.max(lo + 1.0); }
                         let pad = (hi - lo) * 0.1;
                         (lo - pad, hi + pad)
                     }
