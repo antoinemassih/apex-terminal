@@ -4712,21 +4712,34 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.add_space(4.0);
 
                         // Sector ETF mapping for S&P
+                        // TODO: Fetch constituent lists from ApexIB API for live, up-to-date data.
+                        // These are static approximations of index holdings as of early 2025.
                         let sp500_sectors: &[(&str, &[&str])] = &[
-                            ("XLK Tech", &["AAPL","MSFT","NVDA","AVGO","CRM","ADBE","AMD","INTC","CSCO","ORCL"]),
-                            ("XLF Finance", &["BRK.B","JPM","V","MA","BAC","WFC","GS","MS","AXP","BLK"]),
-                            ("XLV Health", &["UNH","JNJ","LLY","PFE","ABT","TMO","MRK","ABBV","DHR","BMY"]),
-                            ("XLY Discr.", &["AMZN","TSLA","HD","MCD","NKE","SBUX","LOW","TJX","BKNG","CMG"]),
-                            ("XLC Comms", &["META","GOOGL","GOOG","DIS","NFLX","CMCSA","T","VZ","TMUS","CHTR"]),
-                            ("XLI Indust.", &["GE","CAT","UNP","HON","UPS","RTX","BA","LMT","DE","MMM"]),
-                            ("XLE Energy", &["XOM","CVX","COP","SLB","EOG","MPC","PSX","VLO","OXY","HES"]),
-                            ("XLP Staples", &["PG","KO","PEP","COST","WMT","PM","MO","CL","MDLZ","KHC"]),
-                            ("XLU Utility", &["NEE","DUK","SO","D","AEP","SRE","EXC","XEL","ED","WEC"]),
-                            ("XLRE Real E.", &["PLD","AMT","CCI","EQIX","PSA","SPG","O","WELL","DLR","AVB"]),
-                            ("XLB Material", &["LIN","APD","SHW","ECL","FCX","NEM","NUE","DOW","DD","VMC"]),
+                            ("XLK Technology", &["AAPL","MSFT","NVDA","AVGO","CRM","ADBE","AMD","INTC","CSCO","ORCL","ACN","IBM","NOW","QCOM","TXN","AMAT","INTU","ADI","LRCX","MU","SNPS","CDNS","KLAC","MCHP","FTNT","MSI","ANSS","NXPI","KEYS","GEN"]),
+                            ("XLF Financials", &["BRK.B","JPM","V","MA","BAC","WFC","GS","MS","AXP","BLK","SCHW","SPGI","C","CB","MMC","PGR","ICE","CME","AON","MET","AIG","TFC","USB","PNC","MCO","MSCI","AJG","AFL","FIS","TROW"]),
+                            ("XLV Healthcare", &["UNH","JNJ","LLY","PFE","ABT","TMO","MRK","ABBV","DHR","BMY","AMGN","MDT","ELV","CI","ISRG","SYK","GILD","VRTX","REGN","ZTS","BDX","BSX","HCA","IDXX","IQV","EW","A","DXCM","MTD","ALGN"]),
+                            ("XLY Consumer Disc.", &["AMZN","TSLA","HD","MCD","NKE","SBUX","LOW","TJX","BKNG","CMG","ORLY","AZO","ROST","MAR","HLT","DHI","LEN","GM","F","EBAY","POOL","ULTA","GPC","DRI","BBY","MGM","WYNN","LVS","YUM","DPZ"]),
+                            ("XLC Communication", &["META","GOOGL","GOOG","DIS","NFLX","CMCSA","T","VZ","TMUS","CHTR","EA","TTWO","WBD","PARA","OMC","IPG","MTCH","LYV","FOXA","FOX","NWSA","NWS","LUMN","DISH"]),
+                            ("XLI Industrials", &["GE","CAT","UNP","HON","UPS","RTX","BA","LMT","DE","MMM","ETN","ITW","EMR","WM","RSG","CSX","NSC","FDX","GD","NOC","TDG","CARR","OTIS","JCI","PCAR","CTAS","ROK","FAST","GWW","IR"]),
+                            ("XLE Energy", &["XOM","CVX","COP","SLB","EOG","MPC","PSX","VLO","OXY","HES","WMB","KMI","DVN","HAL","FANG","BKR","TRGP","MRO","APA","CTRA","OVV","EQT","MTDR","PR","DINO"]),
+                            ("XLP Consumer Staples", &["PG","KO","PEP","COST","WMT","PM","MO","CL","MDLZ","KHC","GIS","SYY","STZ","KMB","HSY","K","MKC","TSN","HRL","CAG","SJM","CLX","CHD","TAP","CPB","BG","ADM","EL","KDP","MNST"]),
+                            ("XLU Utilities", &["NEE","DUK","SO","D","AEP","SRE","EXC","XEL","ED","WEC","ES","AWK","DTE","CMS","FE","AES","ATO","NI","PNW","LNT","EVRG","CNP","PPL","NRG","CEG"]),
+                            ("XLRE Real Estate", &["PLD","AMT","CCI","EQIX","PSA","SPG","O","WELL","DLR","AVB","EQR","VTR","ARE","MAA","UDR","PEAK","ESS","CPT","REG","HST","KIM","BXP","SLG","VNO","CBRE","IRM","WY","INVH","SUI","ELS"]),
+                            ("XLB Materials", &["LIN","APD","SHW","ECL","FCX","NEM","NUE","DOW","DD","VMC","MLM","PPG","CE","CF","IFF","ALB","BALL","PKG","IP","EMN","AVY","FMC","MOS","SEE","WRK"]),
                         ];
-                        let dow30: &[&str] = &["AAPL","MSFT","UNH","GS","HD","AMGN","MCD","V","CAT","BA","HON","JPM","TRV","IBM","AXP","JNJ","WMT","PG","CVX","MRK","DIS","NKE","MMM","KO","DOW","CSCO","CRM","INTC","VZ","WBA"];
-                        let qqq100: &[&str] = &["AAPL","MSFT","AMZN","NVDA","META","GOOGL","GOOG","TSLA","AVGO","COST","PEP","ADBE","NFLX","CMCSA","AMD","INTC","CSCO","TXN","QCOM","AMGN","ISRG","INTU","AMAT","BKNG","SBUX","MDLZ","PYPL","REGN","ADI","LRCX"];
+                        let dow30: &[&str] = &["AAPL","AMGN","AXP","BA","CAT","CRM","CSCO","CVX","DIS","DOW","GS","HD","HON","IBM","INTC","JNJ","JPM","KO","MCD","MMM","MRK","MSFT","NKE","PG","TRV","UNH","V","VZ","WBA","WMT"];
+                        let qqq100: &[&str] = &[
+                            "AAPL","ABNB","ADBE","ADI","ADP","ADSK","AEP","AMAT","AMGN","AMZN",
+                            "ANSS","ARM","ASML","AVGO","AZN","BIIB","BKNG","BKR","CDNS","CDW",
+                            "CEG","CHTR","CMCSA","COST","CPRT","CRWD","CSCO","CSGP","CSX","CTAS",
+                            "CTSH","DASH","DDOG","DLTR","DXCM","EA","EXC","FANG","FAST","FTNT",
+                            "GEHC","GFS","GILD","GOOG","GOOGL","HON","IDXX","ILMN","INTC","INTU",
+                            "ISRG","KDP","KHC","KLAC","LRCX","LULU","MAR","MCHP","MDB","MDLZ",
+                            "MELI","META","MNST","MRNA","MRVL","MSFT","MU","NFLX","NVDA","NXPI",
+                            "ODFL","ON","ORLY","PANW","PAYX","PCAR","PDD","PEP","PYPL","QCOM",
+                            "REGN","RIVN","ROST","SBUX","SNPS","SPLK","TEAM","TMUS","TSLA","TTD",
+                            "TTWO","TXN","VRSK","VRTX","WBA","WBD","WDAY","XEL","ZM","ZS",
+                        ];
 
                         // Pre-build price lookup from watchlist
                         type HeatItem = (String, f32, String); // (symbol, change%, sector)
