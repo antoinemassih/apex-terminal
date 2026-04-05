@@ -5028,6 +5028,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 CandleMode::Violin | CandleMode::ViolinGradient => {
                     let micro = bar_micro_profile(b, 10);
                     let is_bull = b.close >= b.open;
+                    let base_color = if is_bull { t.bull } else { t.bear };
                     let base_w = (bs * 0.7).max(1.0);
                     let body_top = py(b.open.max(b.close));
                     let body_bot = py(b.open.min(b.close));
@@ -5035,10 +5036,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     for (level_price, width_frac, buy_ratio) in &micro {
                         let y = py(*level_price);
                         let slice_h = ((b.high - b.low) / 10.0 * ch / (max_p - min_p)).abs().max(0.5);
-                        let y_top = y - slice_h / 2.0;
-                        let _ = y_top; // used implicitly via y + slice_h geometry
 
-                        // Only render within or near the body range
                         let in_body = y >= body_top && y <= body_bot;
                         let near_body = y >= body_top - slice_h && y <= body_bot + slice_h;
                         if !near_body { continue; }
@@ -5046,17 +5044,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let w = base_w * width_frac;
 
                         let color = if chart.candle_mode == CandleMode::ViolinGradient {
-                            // Gradient: blend green/red based on buy_ratio
-                            let r = ((1.0 - buy_ratio) * 231.0) as u8;
-                            let g = (buy_ratio * 204.0) as u8;
-                            let b_val = ((1.0 - buy_ratio) * 60.0 + buy_ratio * 113.0) as u8;
-                            let alpha = if in_body { 200u8 } else { 80 };
-                            egui::Color32::from_rgba_unmultiplied(r, g, b_val, alpha)
+                            // Shade-based: base hue stays, brightness varies by alignment
+                            // "aligned" = buy_ratio high on bull candle, low on bear candle
+                            let alignment = if is_bull { *buy_ratio } else { 1.0 - *buy_ratio };
+                            // alignment 1.0 = bright (volume aligned with candle direction)
+                            // alignment 0.0 = dark (volume against candle direction)
+                            let brightness = 0.35 + alignment * 0.65; // range 0.35 to 1.0
+                            let r = (base_color.r() as f32 * brightness) as u8;
+                            let g = (base_color.g() as f32 * brightness) as u8;
+                            let bv = (base_color.b() as f32 * brightness) as u8;
+                            let alpha = if in_body { 220u8 } else { 80 };
+                            egui::Color32::from_rgba_unmultiplied(r, g, bv, alpha)
                         } else {
-                            // Pure violin: standard bull/bear color, varying width
-                            let alpha = if in_body { 200u8 } else { 60 };
-                            let base = if is_bull { t.bull } else { t.bear };
-                            egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
+                            // Pure violin: standard bull/bear color, varying width only
+                            let alpha = if in_body { 210u8 } else { 60 };
+                            egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(), alpha)
                         };
 
                         painter.rect_filled(
@@ -5066,30 +5068,31 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 CandleMode::Gradient => {
                     let micro = bar_micro_profile(b, 10);
+                    let is_bull = b.close >= b.open;
+                    let base_color = if is_bull { t.bull } else { t.bear };
                     let body_top = py(b.open.max(b.close));
                     let body_bot = py(b.open.min(b.close));
                     let body_h = (body_bot - body_top).max(1.0);
                     let bw_g = (bs * 0.7).max(1.0);
 
-                    // Render body as horizontal slices with gradient color
                     let num_slices = 10;
                     let slice_h = body_h / num_slices as f32;
 
                     for si in 0..num_slices {
                         let slice_y = body_top + si as f32 * slice_h;
-                        // Map slice position to price (0=top of body, 1=bottom)
                         let frac = si as f32 / num_slices as f32;
 
-                        // Find the closest micro-profile level's buy_ratio
                         let buy_ratio = micro.get(
                             ((1.0 - frac) * (micro.len() as f32 - 1.0)).round() as usize
                         ).map(|m| m.2).unwrap_or(0.5);
 
-                        // Color: green=buy, red=sell
-                        let r = ((1.0 - buy_ratio) * 231.0) as u8;
-                        let g = (buy_ratio * 204.0) as u8;
-                        let b_val = ((1.0 - buy_ratio) * 60.0 + buy_ratio * 113.0) as u8;
-                        let color = egui::Color32::from_rgba_unmultiplied(r, g, b_val, 200);
+                        // Shade-based: base hue maintained, brightness shows alignment
+                        let alignment = if is_bull { buy_ratio } else { 1.0 - buy_ratio };
+                        let brightness = 0.3 + alignment * 0.7; // range 0.3 to 1.0
+                        let r = (base_color.r() as f32 * brightness) as u8;
+                        let g = (base_color.g() as f32 * brightness) as u8;
+                        let bv = (base_color.b() as f32 * brightness) as u8;
+                        let color = egui::Color32::from_rgba_unmultiplied(r, g, bv, 220);
 
                         painter.rect_filled(
                             egui::Rect::from_min_size(egui::pos2(x - bw_g/2.0, slice_y), egui::vec2(bw_g, slice_h + 0.5)),
