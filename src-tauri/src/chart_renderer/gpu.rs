@@ -24,7 +24,18 @@ std::thread_local! {
     static TB_BTN_CLICKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CONN_PANEL_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CROSSHAIR_SYNC_TIME: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+    static PENDING_WL_TOOLTIP: std::cell::RefCell<Option<WlTooltipData>> = const { std::cell::RefCell::new(None) };
 }
+
+#[derive(Clone)]
+struct WlTooltipData {
+    sym: String, price: f32, prev_close: f32,
+    day_high: f32, day_low: f32, high_52wk: f32, low_52wk: f32,
+    atr: f32, rvol: f32, avg_range: f32, earnings_days: i32,
+    tags: Vec<String>, alert_triggered: bool,
+    anchor_y: f32, sidebar_left: f32,
+}
+
 use crate::ui_kit::{self, icons::Icon};
 
 // ─── Themes ───────────────────────────────────────────────────────────────────
@@ -4049,113 +4060,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             }
 
-                                            // ── Rich tooltip — fixed position to the left of sidebar ──
+                                            // ── Rich tooltip — deferred to render outside panel ──
                                             if row_hovered && !drag_confirmed {
-                                                let sidebar_left = rect.left() - 10.0; // rough sidebar left edge
-                                                // Position: to the left of the sidebar, vertically centered on this row
-                                                let tip_w = 220.0;
-                                                let tip_x = (sidebar_left - tip_w - 8.0).max(4.0);
-                                                let tip_y = y_c - 60.0; // center-ish on the row
-                                                egui::Window::new(format!("wl_tip_{}", item_sym))
-                                                    .fixed_pos(egui::pos2(tip_x, tip_y))
-                                                    .fixed_size(egui::vec2(tip_w, 0.0))
-                                                    .title_bar(false)
-                                                    .collapsible(false)
-                                                    .interactable(false)
-                                                    .frame(egui::Frame::popup(&ui.ctx().style())
-                                                        .fill(t.toolbar_bg)
-                                                        .stroke(egui::Stroke::new(0.5, t.toolbar_border))
-                                                        .inner_margin(8.0)
-                                                        .corner_radius(6.0))
-                                                    .show(ui.ctx(), |ui| {
-                                                        {
-                                                                ui.set_max_width(tip_w);
-                                                                let dim = t.dim;
-                                                                let chg_col = if item_price >= item_prev_close { t.bull } else { t.bear };
-                                                                // Header: symbol + price
-                                                                ui.label(egui::RichText::new(&item_sym).monospace().size(16.0).color(egui::Color32::WHITE));
-                                                                ui.horizontal(|ui| {
-                                                                    ui.label(egui::RichText::new(format!("${:.2}", item_price)).monospace().size(13.0).color(egui::Color32::from_white_alpha(220)));
-                                                                    ui.label(egui::RichText::new(format!("{:+.2}%", change_pct)).monospace().size(13.0).color(chg_col));
-                                                                });
-                                                                ui.add_space(4.0);
-                                                                ui.separator();
-                                                                ui.add_space(4.0);
-                                                                // Day Range with visual bar
-                                                                if item_day_high > item_day_low {
-                                                                    ui.horizontal(|ui| {
-                                                                        ui.label(egui::RichText::new("Day").monospace().size(9.0).color(dim));
-                                                                        ui.label(egui::RichText::new(format!("{:.2}", item_day_low)).monospace().size(9.0).color(dim));
-                                                                        // Mini range bar
-                                                                        let bar_w = 60.0;
-                                                                        let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                                                                        let p = ui.painter();
-                                                                        p.rect_filled(bar_rect, 2.0, egui::Color32::from_white_alpha(15));
-                                                                        let range = item_day_high - item_day_low;
-                                                                        if range > 0.0 {
-                                                                            let pos = ((item_price - item_day_low) / range).clamp(0.0, 1.0);
-                                                                            let dot_x = bar_rect.left() + pos * bar_w;
-                                                                            p.circle_filled(egui::pos2(dot_x, bar_rect.center().y), 3.0, chg_col);
-                                                                        }
-                                                                        ui.label(egui::RichText::new(format!("{:.2}", item_day_high)).monospace().size(9.0).color(dim));
-                                                                    });
-                                                                }
-                                                                // 52-week Range with visual bar
-                                                                if item_high_52wk > item_low_52wk {
-                                                                    ui.horizontal(|ui| {
-                                                                        ui.label(egui::RichText::new("52w").monospace().size(9.0).color(dim));
-                                                                        ui.label(egui::RichText::new(format!("{:.0}", item_low_52wk)).monospace().size(9.0).color(dim));
-                                                                        let bar_w = 60.0;
-                                                                        let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                                                                        let p = ui.painter();
-                                                                        p.rect_filled(bar_rect, 2.0, egui::Color32::from_white_alpha(15));
-                                                                        let range = item_high_52wk - item_low_52wk;
-                                                                        if range > 0.0 {
-                                                                            let pos = ((item_price - item_low_52wk) / range).clamp(0.0, 1.0);
-                                                                            let dot_x = bar_rect.left() + pos * bar_w;
-                                                                            p.circle_filled(egui::pos2(dot_x, bar_rect.center().y), 3.0, t.accent);
-                                                                        }
-                                                                        ui.label(egui::RichText::new(format!("{:.0}", item_high_52wk)).monospace().size(9.0).color(dim));
-                                                                    });
-                                                                }
-                                                                ui.add_space(2.0);
-                                                                // Stats grid
-                                                                ui.horizontal(|ui| {
-                                                                    ui.label(egui::RichText::new(format!("ATR {:.2}", item_atr)).monospace().size(9.0).color(dim));
-                                                                    ui.label(egui::RichText::new(format!("RVOL {:.1}x", item_rvol)).monospace().size(9.0).color(
-                                                                        if item_rvol > 2.0 { egui::Color32::from_rgb(240, 160, 40) } else { dim }));
-                                                                });
-                                                                ui.horizontal(|ui| {
-                                                                    ui.label(egui::RichText::new(format!("Avg Move {:.1}%", item_avg_daily_range)).monospace().size(9.0).color(dim));
-                                                                    if change_pct.abs() > item_avg_daily_range * 1.5 {
-                                                                        ui.label(egui::RichText::new("EXTREME").monospace().size(8.0).color(chg_col));
-                                                                    }
-                                                                });
-                                                                // Earnings
-                                                                if item_earnings_days >= 0 && item_earnings_days <= 14 {
-                                                                    ui.add_space(2.0);
-                                                                    ui.label(egui::RichText::new(format!("{} Earnings in {} days", Icon::LIGHTNING, item_earnings_days)).monospace().size(10.0).color(egui::Color32::from_rgb(255, 193, 37)));
-                                                                }
-                                                                // Tags
-                                                                if !item_tags.is_empty() {
-                                                                    ui.add_space(2.0);
-                                                                    ui.horizontal_wrapped(|ui| {
-                                                                        for tag in &item_tags {
-                                                                            let tg = painter.layout_no_wrap(tag.clone(), egui::FontId::monospace(8.0), t.accent);
-                                                                            let tw = tg.size().x + 8.0;
-                                                                            ui.add(egui::Button::new(egui::RichText::new(tag).monospace().size(8.0).color(t.accent))
-                                                                                .fill(color_alpha(t.accent, 15)).corner_radius(3.0));
-                                                                        }
-                                                                    });
-                                                                }
-                                                                // Alerts
-                                                                if item_alert_triggered {
-                                                                    ui.add_space(2.0);
-                                                                    ui.label(egui::RichText::new(format!("{} Alert triggered", Icon::LIGHTNING)).monospace().size(9.0).color(egui::Color32::from_rgb(231, 76, 60)));
-                                                                }
-                                                        }
-                                                    });
+                                                // Store tooltip data for deferred rendering after the panel
+                                                PENDING_WL_TOOLTIP.with(|t| *t.borrow_mut() = Some(WlTooltipData {
+                                                    sym: item_sym.clone(), price: item_price, prev_close: item_prev_close,
+                                                    day_high: item_day_high, day_low: item_day_low,
+                                                    high_52wk: item_high_52wk, low_52wk: item_low_52wk,
+                                                    atr: item_atr, rvol: item_rvol, avg_range: item_avg_daily_range,
+                                                    earnings_days: item_earnings_days, tags: item_tags.clone(),
+                                                    alert_triggered: item_alert_triggered,
+                                                    anchor_y: y_c, sidebar_left: rect.left() - 10.0,
+                                                }));
                                             }
+                                            // (tooltip rendered outside panel via PENDING_WL_TOOLTIP)
 
                                             let row_rect = rect;
                                             row_rects.push((si, ii, row_rect));
@@ -5667,6 +5585,81 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
         }
+    }
+
+    // ── Deferred watchlist tooltip (rendered OUTSIDE the panel) ──
+    if let Some(tip) = PENDING_WL_TOOLTIP.with(|t| t.borrow_mut().take()) {
+        let tip_w = 220.0;
+        let tip_x = (tip.sidebar_left - tip_w - 8.0).max(4.0);
+        let tip_y = tip.anchor_y - 60.0;
+        let change_pct = if tip.prev_close > 0.0 { (tip.price / tip.prev_close - 1.0) * 100.0 } else { 0.0 };
+        let chg_col = if change_pct >= 0.0 { t.bull } else { t.bear };
+        let dim = t.dim;
+        egui::Area::new(egui::Id::new("wl_tooltip_deferred"))
+            .fixed_pos(egui::pos2(tip_x, tip_y))
+            .order(egui::Order::Tooltip)
+            .show(ctx, |ui| {
+                egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).stroke(egui::Stroke::new(0.5, t.toolbar_border))
+                    .inner_margin(8.0).corner_radius(6.0).show(ui, |ui| {
+                    ui.set_max_width(tip_w);
+                    ui.label(egui::RichText::new(&tip.sym).monospace().size(16.0).color(egui::Color32::WHITE));
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("${:.2}", tip.price)).monospace().size(13.0).color(egui::Color32::from_white_alpha(220)));
+                        ui.label(egui::RichText::new(format!("{:+.2}%", change_pct)).monospace().size(13.0).color(chg_col));
+                    });
+                    ui.add_space(4.0); ui.separator(); ui.add_space(4.0);
+                    if tip.day_high > tip.day_low {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Day").monospace().size(9.0).color(dim));
+                            ui.label(egui::RichText::new(format!("{:.2}", tip.day_low)).monospace().size(9.0).color(dim));
+                            let bar_w = 60.0;
+                            let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
+                            ui.painter().rect_filled(bar_rect, 2.0, egui::Color32::from_white_alpha(15));
+                            let range = tip.day_high - tip.day_low;
+                            if range > 0.0 {
+                                let pos = ((tip.price - tip.day_low) / range).clamp(0.0, 1.0);
+                                ui.painter().circle_filled(egui::pos2(bar_rect.left() + pos * bar_w, bar_rect.center().y), 3.0, chg_col);
+                            }
+                            ui.label(egui::RichText::new(format!("{:.2}", tip.day_high)).monospace().size(9.0).color(dim));
+                        });
+                    }
+                    if tip.high_52wk > tip.low_52wk {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("52w").monospace().size(9.0).color(dim));
+                            ui.label(egui::RichText::new(format!("{:.0}", tip.low_52wk)).monospace().size(9.0).color(dim));
+                            let bar_w = 60.0;
+                            let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
+                            ui.painter().rect_filled(bar_rect, 2.0, egui::Color32::from_white_alpha(15));
+                            let range = tip.high_52wk - tip.low_52wk;
+                            if range > 0.0 {
+                                let pos = ((tip.price - tip.low_52wk) / range).clamp(0.0, 1.0);
+                                ui.painter().circle_filled(egui::pos2(bar_rect.left() + pos * bar_w, bar_rect.center().y), 3.0, t.accent);
+                            }
+                            ui.label(egui::RichText::new(format!("{:.0}", tip.high_52wk)).monospace().size(9.0).color(dim));
+                        });
+                    }
+                    ui.add_space(2.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("ATR {:.2}", tip.atr)).monospace().size(9.0).color(dim));
+                        ui.label(egui::RichText::new(format!("RVOL {:.1}x", tip.rvol)).monospace().size(9.0).color(
+                            if tip.rvol > 2.0 { egui::Color32::from_rgb(240, 160, 40) } else { dim }));
+                    });
+                    if change_pct.abs() > tip.avg_range * 1.5 {
+                        ui.label(egui::RichText::new("EXTREME MOVE").monospace().size(8.0).color(chg_col));
+                    }
+                    if tip.earnings_days >= 0 && tip.earnings_days <= 14 {
+                        ui.add_space(2.0);
+                        ui.label(egui::RichText::new(format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days)).monospace().size(10.0).color(egui::Color32::from_rgb(255, 193, 37)));
+                    }
+                    if !tip.tags.is_empty() {
+                        ui.add_space(2.0);
+                        ui.horizontal_wrapped(|ui| { for tag in &tip.tags { ui.label(egui::RichText::new(tag).monospace().size(8.0).color(t.accent)); } });
+                    }
+                    if tip.alert_triggered {
+                        ui.label(egui::RichText::new(format!("{} Alert triggered", Icon::LIGHTNING)).monospace().size(9.0).color(egui::Color32::from_rgb(231, 76, 60)));
+                    }
+                });
+            });
     }
 
     span_begin("chart_panes");
