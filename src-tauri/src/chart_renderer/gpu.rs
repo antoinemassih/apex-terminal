@@ -3825,13 +3825,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                             // Background
                                             painter.rect_filled(rect, 0.0, row_bg);
-                                            // Pinned row: subtle bevel/distinct styling
+                                            // Pinned row: very subtle darker tint
                                             if item_pinned {
-                                                // Top highlight line (bevel effect)
-                                                painter.line_segment([egui::pos2(rect.left(), rect.top() + 0.5), egui::pos2(rect.right(), rect.top() + 0.5)],
-                                                    egui::Stroke::new(0.5, egui::Color32::from_white_alpha(12)));
-                                                // Subtle warm tint
-                                                painter.rect_filled(rect, 0.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 6));
+                                                painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(4));
                                             }
 
                                             // Extreme movement background tint (only when move > avg)
@@ -3875,19 +3871,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             painter.text(egui::pos2(left + 6.0, y_c), egui::Align2::LEFT_CENTER,
                                                 Icon::DOTS_SIX_VERTICAL, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.2));
 
-                                            // ── Earnings countdown badge (circle left of symbol) ──
-                                            let sym_left = left + 18.0;
-                                            if item_earnings_days >= 0 && item_earnings_days <= 14 {
-                                                let e_text = format!("{}", item_earnings_days);
-                                                let e_x = sym_left - 1.0;
-                                                painter.circle_filled(egui::pos2(e_x, y_c), 7.0,
-                                                    egui::Color32::from_rgba_unmultiplied(255, 193, 37, 180));
-                                                painter.text(egui::pos2(e_x, y_c), egui::Align2::CENTER_CENTER,
-                                                    &e_text, egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                                            // Star pin (left of ticker, visible on hover or when pinned)
+                                            let row_hovered = resp.hovered();
+                                            let star_x = left + 16.0;
+                                            if row_hovered || item_pinned {
+                                                let star_col = if item_pinned { egui::Color32::from_rgb(255, 193, 37) } else { t.dim.gamma_multiply(0.3) };
+                                                painter.text(egui::pos2(star_x, y_c), egui::Align2::CENTER_CENTER,
+                                                    Icon::SPARKLE, egui::FontId::proportional(9.0), star_col);
                                             }
 
-                                            // Symbol (left-aligned)
-                                            let sym_x = if item_earnings_days >= 0 && item_earnings_days <= 14 { sym_left + 10.0 } else { sym_left };
+                                            // Symbol (shifts right when star is showing)
+                                            let sym_x = if row_hovered || item_pinned { star_x + 10.0 } else { left + 18.0 };
                                             let sym_color = if is_active { egui::Color32::from_rgb(245, 245, 250) } else { egui::Color32::from_rgb(225, 225, 235) };
                                             painter.text(egui::pos2(sym_x, y_c), egui::Align2::LEFT_CENTER,
                                                 &item_sym, egui::FontId::monospace(sym_font_sz), sym_color);
@@ -3934,23 +3928,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                             let is_hovered = resp.hovered();
 
-                                            // Hover actions: star (pin) + X (remove) — detected from row click position
-                                            if is_hovered {
-                                                // Draw star and X icons
-                                                let star_icon = if item_pinned { Icon::SPARKLE } else { Icon::CIRCLE };
-                                                let star_col = if item_pinned { egui::Color32::from_rgb(255, 193, 37) } else { t.dim.gamma_multiply(0.5) };
-                                                painter.text(egui::pos2(rect.right() - 24.0, y_c), egui::Align2::CENTER_CENTER,
-                                                    star_icon, egui::FontId::proportional(11.0), star_col);
+                                            // Hover actions: X (remove) on right, star click on left
+                                            if row_hovered {
+                                                // X button (far right)
                                                 painter.text(egui::pos2(rect.right() - 8.0, y_c), egui::Align2::CENTER_CENTER,
                                                     Icon::X, egui::FontId::proportional(10.0), t.dim.gamma_multiply(0.5));
-                                                // Detect click position on the row
+                                                // Detect click position
                                                 if resp.clicked() {
                                                     if let Some(pos) = resp.interact_pointer_pos() {
                                                         if pos.x > rect.right() - 16.0 {
-                                                            // X zone — remove
                                                             remove_sym = Some(item_sym.clone());
-                                                        } else if pos.x > rect.right() - 32.0 {
-                                                            // Star zone — toggle pin
+                                                        } else if pos.x < left + 26.0 {
+                                                            // Star zone (left side) — toggle pin
                                                             if let Some(sec) = watchlist.sections.get_mut(si) {
                                                                 if let Some(item) = sec.items.get_mut(ii) { item.pinned = !item.pinned; }
                                                             }
@@ -3958,20 +3947,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                     }
                                                 }
                                             }
-                                            // Always show star if pinned (even when not hovered)
-                                            if item_pinned && !is_hovered {
-                                                painter.text(egui::pos2(rect.right() - 24.0, y_c), egui::Align2::CENTER_CENTER,
-                                                    Icon::SPARKLE, egui::FontId::proportional(11.0), egui::Color32::from_rgba_unmultiplied(255, 193, 37, 140));
-                                            }
 
                                             // Hover highlight
-                                            if is_hovered && !is_active {
+                                            if row_hovered && !is_active {
                                                 painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 20));
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             }
 
                                             // ── Rich tooltip — fixed position to the left of sidebar ──
-                                            if is_hovered && !drag_confirmed {
+                                            if row_hovered && !drag_confirmed {
                                                 let sidebar_left = rect.left() - 10.0; // rough sidebar left edge
                                                 // Position: to the left of the sidebar, vertically centered on this row
                                                 let tip_w = 220.0;
