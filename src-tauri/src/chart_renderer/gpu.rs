@@ -3163,10 +3163,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     if watchlist.open {
         egui::SidePanel::right("watchlist")
             .default_width(260.0)
-            .min_width(200.0)
-            .max_width(400.0)
+            .min_width(140.0)
+            .max_width(500.0)
+            .resizable(true)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
             .show(ctx, |ui| {
+                ui.set_min_width(0.0); // allow shrinking
                 let mut wl_switch_to: Option<usize> = None;
                 let mut wl_fetch_syms: Vec<String> = Vec::new();
                 let mut wl_rename_idx: Option<usize> = None;
