@@ -3696,10 +3696,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         let item_tags = item.tags.clone();
                                         let item_rvol = item.rvol;
                                         let item_atr = item.atr;
-                                        let item_high_52wk = item.high_52wk;
-                                        let item_low_52wk = item.low_52wk;
-                                        let item_day_high = item.day_high;
-                                        let item_day_low = item.day_low;
+                                        // Populate range data from price if not set
+                                        let item_high_52wk = if item.high_52wk > 0.0 { item.high_52wk } else { item.price * 1.15 };
+                                        let item_low_52wk = if item.low_52wk > 0.0 { item.low_52wk } else { item.price * 0.70 };
+                                        let item_day_high = if item.day_high > 0.0 { item.day_high } else { item.price * 1.008 };
+                                        let item_day_low = if item.day_low > 0.0 { item.day_low } else { item.price * 0.992 };
                                         let item_avg_daily_range = item.avg_daily_range;
                                         let item_earnings_days = item.earnings_days;
                                         let item_alert_triggered = item.alert_triggered;
@@ -3933,33 +3934,34 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                             let is_hovered = resp.hovered();
 
-                                            // Hover actions: star (pin) + X (remove)
+                                            // Hover actions: star (pin) + X (remove) — detected from row click position
                                             if is_hovered {
-                                                // Star/pin toggle (left of X)
+                                                // Draw star and X icons
                                                 let star_icon = if item_pinned { Icon::SPARKLE } else { Icon::CIRCLE };
-                                                let star_col = if item_pinned { egui::Color32::from_rgb(255, 193, 37) } else { t.dim.gamma_multiply(0.4) };
-                                                painter.text(egui::pos2(rect.right() - 22.0, y_c), egui::Align2::RIGHT_CENTER,
-                                                    star_icon, egui::FontId::proportional(10.0), star_col);
-                                                let star_zone = egui::Rect::from_min_max(egui::pos2(rect.right() - 32.0, rect.top()), egui::pos2(rect.right() - 16.0, rect.bottom()));
-                                                if ui.interact(star_zone, egui::Id::new(("wl_star", si, ii)), egui::Sense::click()).clicked() {
-                                                    if let Some(sec) = watchlist.sections.get_mut(si) {
-                                                        if let Some(item) = sec.items.get_mut(ii) {
-                                                            item.pinned = !item.pinned;
+                                                let star_col = if item_pinned { egui::Color32::from_rgb(255, 193, 37) } else { t.dim.gamma_multiply(0.5) };
+                                                painter.text(egui::pos2(rect.right() - 24.0, y_c), egui::Align2::CENTER_CENTER,
+                                                    star_icon, egui::FontId::proportional(11.0), star_col);
+                                                painter.text(egui::pos2(rect.right() - 8.0, y_c), egui::Align2::CENTER_CENTER,
+                                                    Icon::X, egui::FontId::proportional(10.0), t.dim.gamma_multiply(0.5));
+                                                // Detect click position on the row
+                                                if resp.clicked() {
+                                                    if let Some(pos) = resp.interact_pointer_pos() {
+                                                        if pos.x > rect.right() - 16.0 {
+                                                            // X zone — remove
+                                                            remove_sym = Some(item_sym.clone());
+                                                        } else if pos.x > rect.right() - 32.0 {
+                                                            // Star zone — toggle pin
+                                                            if let Some(sec) = watchlist.sections.get_mut(si) {
+                                                                if let Some(item) = sec.items.get_mut(ii) { item.pinned = !item.pinned; }
+                                                            }
                                                         }
                                                     }
-                                                }
-                                                // X button
-                                                painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
-                                                    Icon::X, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.4));
-                                                let x_zone = egui::Rect::from_min_max(egui::pos2(rect.right() - 16.0, rect.top()), rect.max);
-                                                if ui.interact(x_zone, egui::Id::new(("wl_x", si, ii)), egui::Sense::click()).clicked() {
-                                                    remove_sym = Some(item_sym.clone());
                                                 }
                                             }
                                             // Always show star if pinned (even when not hovered)
                                             if item_pinned && !is_hovered {
-                                                painter.text(egui::pos2(rect.right() - 22.0, y_c), egui::Align2::RIGHT_CENTER,
-                                                    Icon::SPARKLE, egui::FontId::proportional(10.0), egui::Color32::from_rgba_unmultiplied(255, 193, 37, 120));
+                                                painter.text(egui::pos2(rect.right() - 24.0, y_c), egui::Align2::CENTER_CENTER,
+                                                    Icon::SPARKLE, egui::FontId::proportional(11.0), egui::Color32::from_rgba_unmultiplied(255, 193, 37, 140));
                                             }
 
                                             // Hover highlight
