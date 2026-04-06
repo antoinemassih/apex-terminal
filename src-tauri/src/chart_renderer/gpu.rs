@@ -3342,20 +3342,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         ui.add_space(2.0);
 
-                        // ── C) Search field ──
+                        // ── C) Search field + filter toggle inline ──
                         let search_id = egui::Id::new("wl_search_input");
                         let has_focus = ui.ctx().memory(|m| m.has_focus(search_id));
-                        let search_bg = if has_focus {
-                            egui::Color32::TRANSPARENT // normal background on focus (frame default)
-                        } else {
-                            color_alpha(t.toolbar_border, 15) // subtle background normally
-                        };
-                        let search_resp = egui::Frame::NONE.fill(search_bg).corner_radius(3.0).show(ui, |ui| {
-                            ui.add(
-                                egui::TextEdit::singleline(&mut watchlist.search_query)
-                                    .id(search_id)
-                                    .hint_text("Add symbol...").desired_width(ui.available_width()).font(egui::FontId::monospace(11.0))
-                            )
+                        let search_bar_bg = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 25); // darker than sidebar
+                        let search_resp = egui::Frame::NONE.fill(search_bar_bg).corner_radius(4.0).inner_margin(egui::Margin { left: 4, right: 2, top: 2, bottom: 2 }).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let resp = ui.add(
+                                    egui::TextEdit::singleline(&mut watchlist.search_query)
+                                        .id(search_id)
+                                        .hint_text("Add symbol...").desired_width(ui.available_width() - 24.0).font(egui::FontId::monospace(11.0))
+                                );
+                                // Filter toggle inline
+                                let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
+                                let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.5) };
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::FUNNEL).size(11.0).color(icon_col))
+                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                                    watchlist.filter_open = !watchlist.filter_open;
+                                }
+                                resp
+                            }).inner
                         }).inner;
                         // Refocus after adding a symbol
                         if watchlist.search_refocus {
@@ -3434,20 +3440,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         ui.add_space(4.0);
 
-                        // ── Watchlist filter (on-demand) ──
-                        // Filter icon next to the add symbol area
-                        ui.horizontal(|ui| {
-                            let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
-                            let icon_col = if filter_active { t.accent } else { t.dim };
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::FUNNEL).size(11.0).color(icon_col))
-                                .fill(if watchlist.filter_open { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT })
-                                .min_size(egui::vec2(20.0, 18.0))).clicked() {
-                                watchlist.filter_open = !watchlist.filter_open;
-                            }
-                            if filter_active {
-                                ui.label(egui::RichText::new(&watchlist.filter_preset).monospace().size(8.0).color(t.accent));
-                            }
-                        });
+                        // Filter indicator (show active preset name if filtering)
+                        if watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(4.0);
+                                ui.label(egui::RichText::new(format!("{} {}", Icon::FUNNEL, watchlist.filter_preset)).monospace().size(8.0).color(t.accent));
+                            });
+                        }
                         if watchlist.filter_open {
                             ui.add_space(2.0);
                             // Search
