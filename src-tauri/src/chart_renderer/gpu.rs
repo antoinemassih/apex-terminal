@@ -4056,16 +4056,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 let tip_w = 220.0;
                                                 let tip_x = (sidebar_left - tip_w - 8.0).max(4.0);
                                                 let tip_y = y_c - 60.0; // center-ish on the row
-                                                egui::Area::new(egui::Id::new(format!("wl_tip_{}", item_sym)))
+                                                egui::Window::new(format!("wl_tip_{}", item_sym))
                                                     .fixed_pos(egui::pos2(tip_x, tip_y))
-                                                    .order(egui::Order::Tooltip)
+                                                    .fixed_size(egui::vec2(tip_w, 0.0))
+                                                    .title_bar(false)
+                                                    .collapsible(false)
+                                                    .interactable(false)
+                                                    .frame(egui::Frame::popup(&ui.ctx().style())
+                                                        .fill(t.toolbar_bg)
+                                                        .stroke(egui::Stroke::new(0.5, t.toolbar_border))
+                                                        .inner_margin(8.0)
+                                                        .corner_radius(6.0))
                                                     .show(ui.ctx(), |ui| {
-                                                        egui::Frame::popup(&ui.ctx().style())
-                                                            .fill(t.toolbar_bg)
-                                                            .stroke(egui::Stroke::new(0.5, t.toolbar_border))
-                                                            .inner_margin(8.0)
-                                                            .corner_radius(6.0)
-                                                            .show(ui, |ui| {
+                                                        {
                                                                 ui.set_max_width(tip_w);
                                                                 let dim = t.dim;
                                                                 let chg_col = if item_price >= item_prev_close { t.bull } else { t.bear };
@@ -4150,7 +4153,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                                     ui.add_space(2.0);
                                                                     ui.label(egui::RichText::new(format!("{} Alert triggered", Icon::LIGHTNING)).monospace().size(9.0).color(egui::Color32::from_rgb(231, 76, 60)));
                                                                 }
-                                                            });
+                                                        }
                                                     });
                                             }
 
