@@ -3815,13 +3815,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             } else {
                                                 egui::Color32::TRANSPARENT
                                             };
-                                            let row_h = 28.0;
+                                            let row_h = if item_pinned { 34.0 } else { 28.0 };
+                                            let sym_font_sz = if item_pinned { 15.0 } else { 14.0 };
+                                            let chg_font_sz = if item_pinned { 15.0 } else { 14.0 };
 
                                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, row_h), egui::Sense::click_and_drag());
                                             let painter = ui.painter();
 
                                             // Background
                                             painter.rect_filled(rect, 0.0, row_bg);
+                                            // Pinned row: subtle bevel/distinct styling
+                                            if item_pinned {
+                                                // Top highlight line (bevel effect)
+                                                painter.line_segment([egui::pos2(rect.left(), rect.top() + 0.5), egui::pos2(rect.right(), rect.top() + 0.5)],
+                                                    egui::Stroke::new(0.5, egui::Color32::from_white_alpha(12)));
+                                                // Subtle warm tint
+                                                painter.rect_filled(rect, 0.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 6));
+                                            }
 
                                             // Extreme movement background tint (only when move > avg)
                                             if item_prev_close > 0.0 && change_pct.abs() > item_avg_daily_range * 1.5 {
@@ -3879,7 +3889,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             let sym_x = if item_earnings_days >= 0 && item_earnings_days <= 14 { sym_left + 10.0 } else { sym_left };
                                             let sym_color = if is_active { egui::Color32::from_rgb(245, 245, 250) } else { egui::Color32::from_rgb(225, 225, 235) };
                                             painter.text(egui::pos2(sym_x, y_c), egui::Align2::LEFT_CENTER,
-                                                &item_sym, egui::FontId::monospace(14.0), sym_color);
+                                                &item_sym, egui::FontId::monospace(sym_font_sz), sym_color);
 
                                             // ── Indicator column (right of ticker name) ──
                                             let mut ind_x = sym_x + item_sym.len() as f32 * 8.5 + 6.0; // after symbol text
@@ -3894,22 +3904,22 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                     &e_text, egui::FontId::monospace(7.0), egui::Color32::BLACK);
                                                 ind_x += pw + 3.0;
                                             }
-                                            // Glyph circles (overlapping, different colors)
-                                            let mut glyphs: Vec<(&str, egui::Color32)> = vec![];
-                                            if item_rvol > 2.0 { glyphs.push(("V", egui::Color32::from_rgb(240, 160, 40))); }
-                                            if item_alert_triggered { glyphs.push(("!", egui::Color32::from_rgb(231, 76, 60))); }
-                                            if item_pinned { glyphs.push(("P", egui::Color32::from_rgb(100, 160, 255))); }
-                                            for (gi, &(ch, col)) in glyphs.iter().enumerate() {
-                                                let gx = ind_x + gi as f32 * 11.0;
-                                                painter.circle_filled(egui::pos2(gx + 5.0, y_c), 5.5, col);
-                                                painter.text(egui::pos2(gx + 5.0, y_c), egui::Align2::CENTER_CENTER,
-                                                    ch, egui::FontId::monospace(6.5), egui::Color32::BLACK);
+                                            // Alert bell (red)
+                                            if item_alert_triggered {
+                                                painter.circle_filled(egui::pos2(ind_x + 5.0, y_c), 5.5, egui::Color32::from_rgb(231, 76, 60));
+                                                painter.text(egui::pos2(ind_x + 5.0, y_c), egui::Align2::CENTER_CENTER,
+                                                    Icon::LIGHTNING, egui::FontId::proportional(6.0), egui::Color32::WHITE);
+                                                ind_x += 14.0;
                                             }
+                                            // Correlation dot (placeholder — green=with market, red=diverging)
+                                            // TODO: compute real correlation from price data
+                                            // For now show a dim neutral dot
+                                            // painter.circle_filled(egui::pos2(ind_x + 5.0, y_c), 3.0, egui::Color32::from_white_alpha(30));
 
                                             // Change % (center-left, prominent)
                                             let mid_x = rect.left() + full_w * 0.45;
                                             painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
-                                                &change_str, egui::FontId::monospace(14.0), color);
+                                                &change_str, egui::FontId::monospace(chg_font_sz), color);
 
                                             // Price (right-aligned, leave room for X button)
                                             let price_x = rect.right() - 24.0;
@@ -3923,14 +3933,33 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                             let is_hovered = resp.hovered();
 
-                                            // X button zone (far right)
+                                            // Hover actions: star (pin) + X (remove)
                                             if is_hovered {
+                                                // Star/pin toggle (left of X)
+                                                let star_icon = if item_pinned { Icon::SPARKLE } else { Icon::CIRCLE };
+                                                let star_col = if item_pinned { egui::Color32::from_rgb(255, 193, 37) } else { t.dim.gamma_multiply(0.4) };
+                                                painter.text(egui::pos2(rect.right() - 22.0, y_c), egui::Align2::RIGHT_CENTER,
+                                                    star_icon, egui::FontId::proportional(10.0), star_col);
+                                                let star_zone = egui::Rect::from_min_max(egui::pos2(rect.right() - 32.0, rect.top()), egui::pos2(rect.right() - 16.0, rect.bottom()));
+                                                if ui.interact(star_zone, egui::Id::new(("wl_star", si, ii)), egui::Sense::click()).clicked() {
+                                                    if let Some(sec) = watchlist.sections.get_mut(si) {
+                                                        if let Some(item) = sec.items.get_mut(ii) {
+                                                            item.pinned = !item.pinned;
+                                                        }
+                                                    }
+                                                }
+                                                // X button
                                                 painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
                                                     Icon::X, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.4));
                                                 let x_zone = egui::Rect::from_min_max(egui::pos2(rect.right() - 16.0, rect.top()), rect.max);
                                                 if ui.interact(x_zone, egui::Id::new(("wl_x", si, ii)), egui::Sense::click()).clicked() {
                                                     remove_sym = Some(item_sym.clone());
                                                 }
+                                            }
+                                            // Always show star if pinned (even when not hovered)
+                                            if item_pinned && !is_hovered {
+                                                painter.text(egui::pos2(rect.right() - 22.0, y_c), egui::Align2::RIGHT_CENTER,
+                                                    Icon::SPARKLE, egui::FontId::proportional(10.0), egui::Color32::from_rgba_unmultiplied(255, 193, 37, 120));
                                             }
 
                                             // Hover highlight
