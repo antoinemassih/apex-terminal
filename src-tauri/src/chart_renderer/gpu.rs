@@ -4785,48 +4785,50 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut sector_items: Vec<&HeatItem> = vec![];
 
                                 // Render items as full-width rows with magnitude bars
-                                let render_sector_items = |ui: &mut egui::Ui, items: &[&HeatItem], t: &Theme, price_map: &std::collections::HashMap<String, f32>| {
+                                // Two-column layout with bigger font
+                                let render_sector_items = |ui: &mut egui::Ui, items: &[&HeatItem], t: &Theme, _price_map: &std::collections::HashMap<String, f32>| {
                                     let avail_w = ui.available_width();
-                                    let row_h = 22.0;
+                                    let col_w = (avail_w - 4.0) / 2.0; // two columns with 4px gap
+                                    let cell_h = 28.0;
                                     let max_pct = items.iter().map(|i| i.1.abs()).fold(1.0_f32, f32::max);
-                                    let total_h = items.len() as f32 * row_h;
+                                    let rows = (items.len() + 1) / 2; // ceil div
+                                    let total_h = rows as f32 * cell_h;
                                     let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, total_h), egui::Sense::hover());
                                     let painter = ui.painter();
                                     for (i, item) in items.iter().enumerate() {
-                                        let ry = rect.top() + i as f32 * row_h;
+                                        let col = i % 2;
+                                        let row = i / 2;
+                                        let cx = rect.left() + col as f32 * (col_w + 4.0);
+                                        let cy = rect.top() + row as f32 * cell_h;
                                         let intensity = (item.1.abs() / 5.0).min(1.0);
                                         let is_up = item.1 >= 0.0;
-                                        // Background bar — width proportional to change magnitude
+                                        // Background bar
                                         let bar_frac = if max_pct > 0.0 { item.1.abs() / max_pct } else { 0.0 };
-                                        let bar_w = bar_frac * avail_w * 0.5;
+                                        let bar_w = bar_frac * col_w * 0.6;
                                         let bar_col = if is_up {
-                                            egui::Color32::from_rgba_unmultiplied(46, 204, 113, (30.0 + intensity * 60.0) as u8)
+                                            egui::Color32::from_rgba_unmultiplied(46, 204, 113, (25.0 + intensity * 55.0) as u8)
                                         } else {
-                                            egui::Color32::from_rgba_unmultiplied(231, 76, 60, (30.0 + intensity * 60.0) as u8)
+                                            egui::Color32::from_rgba_unmultiplied(231, 76, 60, (25.0 + intensity * 55.0) as u8)
                                         };
-                                        // Bar grows from right for positive, from left for negative (or just from left always)
                                         painter.rect_filled(egui::Rect::from_min_size(
-                                            egui::pos2(rect.left(), ry + 1.0), egui::vec2(bar_w, row_h - 2.0)),
+                                            egui::pos2(cx, cy + 1.0), egui::vec2(bar_w, cell_h - 2.0)),
                                             2.0, bar_col);
-                                        // Left edge color strip (3px)
+                                        // Left edge strip
                                         let edge_col = if is_up {
-                                            egui::Color32::from_rgba_unmultiplied(46, 204, 113, (100.0 + intensity * 155.0) as u8)
+                                            egui::Color32::from_rgba_unmultiplied(46, 204, 113, (120.0 + intensity * 135.0) as u8)
                                         } else {
-                                            egui::Color32::from_rgba_unmultiplied(231, 76, 60, (100.0 + intensity * 155.0) as u8)
+                                            egui::Color32::from_rgba_unmultiplied(231, 76, 60, (120.0 + intensity * 135.0) as u8)
                                         };
                                         painter.rect_filled(egui::Rect::from_min_size(
-                                            egui::pos2(rect.left(), ry + 1.0), egui::vec2(3.0, row_h - 2.0)),
+                                            egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)),
                                             0.0, edge_col);
-                                        // Symbol name (left, large)
-                                        painter.text(egui::pos2(rect.left() + 8.0, ry + row_h / 2.0), egui::Align2::LEFT_CENTER,
-                                            &item.0, egui::FontId::monospace(11.0), egui::Color32::WHITE);
-                                        // Change% (right-aligned, colored, prominent)
+                                        // Symbol (left, big)
+                                        painter.text(egui::pos2(cx + 7.0, cy + cell_h / 2.0), egui::Align2::LEFT_CENTER,
+                                            &item.0, egui::FontId::monospace(12.0), egui::Color32::WHITE);
+                                        // Change% (right, colored, big)
                                         let chg_col = if is_up { t.bull } else { t.bear };
-                                        painter.text(egui::pos2(rect.right() - 4.0, ry + row_h / 2.0), egui::Align2::RIGHT_CENTER,
-                                            &format!("{:+.2}%", item.1), egui::FontId::monospace(11.0), chg_col);
-                                        // Subtle row separator
-                                        painter.line_segment([egui::pos2(rect.left(), ry + row_h - 1.0), egui::pos2(rect.right(), ry + row_h - 1.0)],
-                                            egui::Stroke::new(0.5, egui::Color32::from_white_alpha(8)));
+                                        painter.text(egui::pos2(cx + col_w - 3.0, cy + cell_h / 2.0), egui::Align2::RIGHT_CENTER,
+                                            &format!("{:+.1}%", item.1), egui::FontId::monospace(12.0), chg_col);
                                     }
                                 };
 
