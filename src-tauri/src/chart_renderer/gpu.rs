@@ -3564,7 +3564,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let section_h = pinned_items.len() as f32 * 30.0 + 6.0;
                                 let (sec_rect, _) = ui.allocate_exact_size(egui::vec2(full_w, section_h), egui::Sense::hover());
                                 let p = ui.painter();
-                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 20)); // darker than sidebar
+                                // Darker section background + inset bevel
+                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 50));
+                                // Inset effect: dark line at top, light line at bottom
+                                p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top()), egui::pos2(sec_rect.right(), sec_rect.top())],
+                                    egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 60)));
+                                p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
+                                    egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 30)));
+                                p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
+                                    egui::Stroke::new(1.0, egui::Color32::from_white_alpha(10)));
+                                p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
+                                    egui::Stroke::new(0.5, egui::Color32::from_white_alpha(5)));
                                 // Render each pinned row
                                 for (idx, (si, ii, pin_sym, pin_price, pin_prev, pin_loaded, avg_range)) in pinned_items.iter().enumerate() {
                                     let row_y = sec_rect.top() + 3.0 + idx as f32 * 30.0;
@@ -3625,10 +3635,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
                                     }
                                 }
-                                // Bottom divider
-                                let (div_rect, _) = ui.allocate_exact_size(egui::vec2(full_w, 4.0), egui::Sense::hover());
-                                ui.painter().line_segment([egui::pos2(div_rect.left() + 4.0, div_rect.center().y), egui::pos2(div_rect.right() - 4.0, div_rect.center().y)],
-                                    egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 40)));
+                                // Small spacer after the inset section
+                                ui.allocate_exact_size(egui::vec2(full_w, 3.0), egui::Sense::hover());
                             }
                             for si in 0..section_count {
                                 let sec_id = watchlist.sections[si].id;
