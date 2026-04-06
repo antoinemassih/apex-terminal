@@ -4708,11 +4708,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
                                     }
                                 });
-                            if ui.add(egui::Button::new(egui::RichText::new("Expand").monospace().size(8.0).color(t.dim))).clicked() {
+                            // Expand / Collapse
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROWS_OUT).size(9.0).color(t.dim)).frame(false).min_size(egui::vec2(16.0, 16.0))).on_hover_text("Expand all").clicked() {
                                 watchlist.heat_collapsed.clear();
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new("Collapse").monospace().size(8.0).color(t.dim))).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::MINUS).size(9.0).color(t.dim)).frame(false).min_size(egui::vec2(16.0, 16.0))).on_hover_text("Collapse all").clicked() {
                                 watchlist.heat_collapsed.insert("__collapse_all__".into());
+                            }
+                            // Column count toggle
+                            let col_label = format!("{}c", watchlist.heat_cols);
+                            if ui.add(egui::Button::new(egui::RichText::new(&col_label).monospace().size(9.0).color(t.dim)).min_size(egui::vec2(18.0, 16.0))).on_hover_text("Toggle columns").clicked() {
+                                watchlist.heat_cols = match watchlist.heat_cols { 1 => 2, 2 => 3, _ => 1 };
+                            }
+                            // Sort toggle
+                            let sort_icon = match watchlist.heat_sort { 1 => Icon::ARROW_FAT_UP, -1 => Icon::ARROW_FAT_DOWN, _ => Icon::DOTS_THREE };
+                            let sort_col = if watchlist.heat_sort != 0 { t.accent } else { t.dim };
+                            if ui.add(egui::Button::new(egui::RichText::new(sort_icon).size(9.0).color(sort_col)).frame(false).min_size(egui::vec2(16.0, 16.0))).on_hover_text("Sort: gainers/losers/default").clicked() {
+                                watchlist.heat_sort = match watchlist.heat_sort { 0 => 1, 1 => -1, _ => 0 };
                             }
                         });
                         ui.add_space(2.0);
@@ -4777,6 +4789,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.add_space(24.0);
                             ui.label(egui::RichText::new("No data — add symbols to watchlist").monospace().size(10.0).color(t.dim));
                         } else {
+                            let mut heat_click_sym_outer: Option<String> = None;
                             egui::ScrollArea::vertical().show(ui, |ui| {
 
                                 // Group by sector and render with dividers
@@ -4784,25 +4797,39 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let mut tile_idx = 0;
                                 let mut sector_items: Vec<&HeatItem> = vec![];
 
-                                // Render items as full-width rows with magnitude bars
-                                // Two-column layout with bigger font
-                                let render_sector_items = |ui: &mut egui::Ui, items: &[&HeatItem], t: &Theme, _price_map: &std::collections::HashMap<String, f32>| {
+                                // Configurable N-column layout with click-to-chart
+                                let num_cols = watchlist.heat_cols.max(1) as usize;
+                                let heat_sort = watchlist.heat_sort;
+                                let render_sector_items = |ui: &mut egui::Ui, items_unsorted: &[&HeatItem], t: &Theme, _pm: &std::collections::HashMap<String, f32>, num_cols: usize, sort: i8, click_sym: &mut Option<String>| {
+                                    let mut items: Vec<&HeatItem> = items_unsorted.to_vec();
+                                    if sort == 1 { items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)); }
+                                    else if sort == -1 { items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)); }
                                     let avail_w = ui.available_width();
-                                    let col_w = (avail_w - 4.0) / 2.0; // two columns with 4px gap
-                                    let cell_h = 28.0;
+                                    let gap = 3.0;
+                                    let col_w = (avail_w - gap * (num_cols - 1) as f32) / num_cols as f32;
+                                    let cell_h = if num_cols == 1 { 26.0 } else { 28.0 };
+                                    let font_sz = if num_cols >= 3 { 10.0 } else { 12.0 };
                                     let max_pct = items.iter().map(|i| i.1.abs()).fold(1.0_f32, f32::max);
-                                    let rows = (items.len() + 1) / 2; // ceil div
+                                    let rows = (items.len() + num_cols - 1) / num_cols;
                                     let total_h = rows as f32 * cell_h;
-                                    let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, total_h), egui::Sense::hover());
+                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(avail_w, total_h), egui::Sense::click());
                                     let painter = ui.painter();
+                                    // Click detection
+                                    if resp.clicked() {
+                                        if let Some(pos) = resp.interact_pointer_pos() {
+                                            let col = ((pos.x - rect.left()) / (col_w + gap)).floor() as usize;
+                                            let row = ((pos.y - rect.top()) / cell_h).floor() as usize;
+                                            let idx = row * num_cols + col;
+                                            if let Some(item) = items.get(idx) { *click_sym = Some(item.0.clone()); }
+                                        }
+                                    }
                                     for (i, item) in items.iter().enumerate() {
-                                        let col = i % 2;
-                                        let row = i / 2;
-                                        let cx = rect.left() + col as f32 * (col_w + 4.0);
+                                        let col = i % num_cols;
+                                        let row = i / num_cols;
+                                        let cx = rect.left() + col as f32 * (col_w + gap);
                                         let cy = rect.top() + row as f32 * cell_h;
                                         let intensity = (item.1.abs() / 5.0).min(1.0);
                                         let is_up = item.1 >= 0.0;
-                                        // Background bar
                                         let bar_frac = if max_pct > 0.0 { item.1.abs() / max_pct } else { 0.0 };
                                         let bar_w = bar_frac * col_w * 0.6;
                                         let bar_col = if is_up {
@@ -4810,25 +4837,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         } else {
                                             egui::Color32::from_rgba_unmultiplied(231, 76, 60, (25.0 + intensity * 55.0) as u8)
                                         };
-                                        painter.rect_filled(egui::Rect::from_min_size(
-                                            egui::pos2(cx, cy + 1.0), egui::vec2(bar_w, cell_h - 2.0)),
-                                            2.0, bar_col);
-                                        // Left edge strip
-                                        let edge_col = if is_up {
-                                            egui::Color32::from_rgba_unmultiplied(46, 204, 113, (120.0 + intensity * 135.0) as u8)
-                                        } else {
-                                            egui::Color32::from_rgba_unmultiplied(231, 76, 60, (120.0 + intensity * 135.0) as u8)
-                                        };
-                                        painter.rect_filled(egui::Rect::from_min_size(
-                                            egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)),
-                                            0.0, edge_col);
-                                        // Symbol (left, big)
+                                        painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(bar_w, cell_h - 2.0)), 2.0, bar_col);
+                                        // Edge strip
+                                        let edge_a = (120.0 + intensity * 135.0) as u8;
+                                        let edge_col = if is_up { egui::Color32::from_rgba_unmultiplied(46, 204, 113, edge_a) } else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, edge_a) };
+                                        painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)), 0.0, edge_col);
+                                        // Symbol
                                         painter.text(egui::pos2(cx + 7.0, cy + cell_h / 2.0), egui::Align2::LEFT_CENTER,
-                                            &item.0, egui::FontId::monospace(12.0), egui::Color32::WHITE);
-                                        // Change% (right, colored, big)
+                                            &item.0, egui::FontId::monospace(font_sz), egui::Color32::WHITE);
+                                        // Change%
                                         let chg_col = if is_up { t.bull } else { t.bear };
                                         painter.text(egui::pos2(cx + col_w - 3.0, cy + cell_h / 2.0), egui::Align2::RIGHT_CENTER,
-                                            &format!("{:+.1}%", item.1), egui::FontId::monospace(12.0), chg_col);
+                                            &format!("{:+.1}%", item.1), egui::FontId::monospace(font_sz), chg_col);
                                     }
                                 };
 
@@ -4868,10 +4888,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         ui.add_space(1.0);
                                     }
                                     if !is_collapsed {
-                                        render_sector_items(ui, items, t, &price_map);
+                                        render_sector_items(ui, items, t, &price_map, num_cols, heat_sort, &mut heat_click_sym_outer);
                                     }
                                 }
                             });
+                            // Handle click-to-chart
+                            if let Some(sym) = heat_click_sym_outer {
+                                panes[ap].pending_symbol_change = Some(sym);
+                            }
                         }
                     }
 
@@ -11703,6 +11727,8 @@ struct Watchlist {
     // Heatmap
     heat_index: String,
     heat_collapsed: std::collections::HashSet<String>,
+    heat_cols: u8,  // 1, 2, or 3 columns
+    heat_sort: i8,  // 0=default, 1=gainers first, -1=losers first
     // Orders
     orders_panel_open: bool,
     order_entry_open: bool,
@@ -11760,7 +11786,7 @@ impl Watchlist {
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
                saved_options: vec![], dte_filter: -1,
-               heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(),
+               heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new() }
     }
 
