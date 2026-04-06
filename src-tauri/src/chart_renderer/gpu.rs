@@ -4708,24 +4708,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
                                     }
                                 });
-                            // Expand / Collapse
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROWS_OUT).size(9.0).color(t.dim)).frame(false).min_size(egui::vec2(16.0, 16.0))).on_hover_text("Expand all").clicked() {
-                                watchlist.heat_collapsed.clear();
-                            }
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::MINUS).size(9.0).color(t.dim)).frame(false).min_size(egui::vec2(16.0, 16.0))).on_hover_text("Collapse all").clicked() {
-                                watchlist.heat_collapsed.insert("__collapse_all__".into());
-                            }
-                            // Column count toggle
+                            // Expand / Collapse / Columns / Sort — all with hover cursor
+                            let hbtn = |ui: &mut egui::Ui, label: &str, col: egui::Color32, tip: &str| -> bool {
+                                let resp = ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(10.0).color(col))
+                                    .min_size(egui::vec2(20.0, 18.0)).corner_radius(3.0));
+                                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                                resp.on_hover_text(tip).clicked()
+                            };
+                            if hbtn(ui, Icon::PLUS, t.dim, "Expand all") { watchlist.heat_collapsed.clear(); }
+                            if hbtn(ui, Icon::MINUS, t.dim, "Collapse all") { watchlist.heat_collapsed.insert("__collapse_all__".into()); }
                             let col_label = format!("{}c", watchlist.heat_cols);
-                            if ui.add(egui::Button::new(egui::RichText::new(&col_label).monospace().size(9.0).color(t.dim)).min_size(egui::vec2(18.0, 16.0))).on_hover_text("Toggle columns").clicked() {
-                                watchlist.heat_cols = match watchlist.heat_cols { 1 => 2, 2 => 3, _ => 1 };
-                            }
-                            // Sort toggle
-                            let sort_icon = match watchlist.heat_sort { 1 => Icon::ARROW_FAT_UP, -1 => Icon::ARROW_FAT_DOWN, _ => Icon::DOTS_THREE };
+                            if hbtn(ui, &col_label, t.dim, "Toggle 1/2/3 columns") { watchlist.heat_cols = match watchlist.heat_cols { 1 => 2, 2 => 3, _ => 1 }; }
+                            let sort_label = match watchlist.heat_sort { 1 => Icon::ARROW_FAT_UP, -1 => Icon::ARROW_FAT_DOWN, _ => Icon::DOTS_THREE };
                             let sort_col = if watchlist.heat_sort != 0 { t.accent } else { t.dim };
-                            if ui.add(egui::Button::new(egui::RichText::new(sort_icon).size(9.0).color(sort_col)).frame(false).min_size(egui::vec2(16.0, 16.0))).on_hover_text("Sort: gainers/losers/default").clicked() {
-                                watchlist.heat_sort = match watchlist.heat_sort { 0 => 1, 1 => -1, _ => 0 };
-                            }
+                            if hbtn(ui, sort_label, sort_col, "Sort: gainers / losers / default") { watchlist.heat_sort = match watchlist.heat_sort { 0 => 1, 1 => -1, _ => 0 }; }
                         });
                         ui.add_space(2.0);
 
@@ -4800,7 +4796,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 // Configurable N-column layout with click-to-chart
                                 let num_cols = watchlist.heat_cols.max(1) as usize;
                                 let heat_sort = watchlist.heat_sort;
-                                let render_sector_items = |ui: &mut egui::Ui, items_unsorted: &[&HeatItem], t: &Theme, _pm: &std::collections::HashMap<String, f32>, num_cols: usize, sort: i8, click_sym: &mut Option<String>| {
+                                let active_sym = panes[ap].symbol.clone();
+                                let render_sector_items = |ui: &mut egui::Ui, items_unsorted: &[&HeatItem], t: &Theme, _pm: &std::collections::HashMap<String, f32>, num_cols: usize, sort: i8, click_sym: &mut Option<String>, active_sym: &str| {
                                     let mut items: Vec<&HeatItem> = items_unsorted.to_vec();
                                     if sort == 1 { items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)); }
                                     else if sort == -1 { items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)); }
@@ -4814,6 +4811,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     let total_h = rows as f32 * cell_h;
                                     let (rect, resp) = ui.allocate_exact_size(egui::vec2(avail_w, total_h), egui::Sense::click());
                                     let painter = ui.painter();
+                                    // Hover detection — find which cell the mouse is over
+                                    let hover_idx: Option<usize> = ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
+                                        if !rect.contains(pos) { return None; }
+                                        let col = ((pos.x - rect.left()) / (col_w + gap)).floor() as usize;
+                                        let row = ((pos.y - rect.top()) / cell_h).floor() as usize;
+                                        let idx = row * num_cols + col;
+                                        if idx < items.len() { Some(idx) } else { None }
+                                    });
+                                    if hover_idx.is_some() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                                     // Click detection
                                     if resp.clicked() {
                                         if let Some(pos) = resp.interact_pointer_pos() {
@@ -4830,6 +4836,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         let cy = rect.top() + row as f32 * cell_h;
                                         let intensity = (item.1.abs() / 5.0).min(1.0);
                                         let is_up = item.1 >= 0.0;
+                                        let is_active = item.0 == active_sym;
+                                        let is_hovered = hover_idx == Some(i);
+                                        // Hover highlight
+                                        if is_hovered {
+                                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(col_w, cell_h)),
+                                                2.0, egui::Color32::from_white_alpha(12));
+                                        }
+                                        // Active symbol border
+                                        if is_active {
+                                            painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(col_w, cell_h - 2.0)),
+                                                2.0, egui::Stroke::new(1.5, t.accent), egui::StrokeKind::Outside);
+                                        }
+                                        // Background bar
                                         let bar_frac = if max_pct > 0.0 { item.1.abs() / max_pct } else { 0.0 };
                                         let bar_w = bar_frac * col_w * 0.6;
                                         let bar_col = if is_up {
@@ -4842,9 +4861,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         let edge_a = (120.0 + intensity * 135.0) as u8;
                                         let edge_col = if is_up { egui::Color32::from_rgba_unmultiplied(46, 204, 113, edge_a) } else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, edge_a) };
                                         painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)), 0.0, edge_col);
-                                        // Symbol
+                                        // Symbol (bright white for active, slightly dimmer for others)
+                                        let sym_col = if is_active { egui::Color32::WHITE } else if is_hovered { egui::Color32::from_white_alpha(230) } else { egui::Color32::from_white_alpha(190) };
                                         painter.text(egui::pos2(cx + 7.0, cy + cell_h / 2.0), egui::Align2::LEFT_CENTER,
-                                            &item.0, egui::FontId::monospace(font_sz), egui::Color32::WHITE);
+                                            &item.0, egui::FontId::monospace(font_sz), sym_col);
                                         // Change%
                                         let chg_col = if is_up { t.bull } else { t.bear };
                                         painter.text(egui::pos2(cx + col_w - 3.0, cy + cell_h / 2.0), egui::Align2::RIGHT_CENTER,
@@ -4888,7 +4908,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         ui.add_space(1.0);
                                     }
                                     if !is_collapsed {
-                                        render_sector_items(ui, items, t, &price_map, num_cols, heat_sort, &mut heat_click_sym_outer);
+                                        render_sector_items(ui, items, t, &price_map, num_cols, heat_sort, &mut heat_click_sym_outer, &active_sym);
                                     }
                                 }
                             });
