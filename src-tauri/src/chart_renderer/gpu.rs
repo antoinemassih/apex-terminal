@@ -3881,28 +3881,38 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             painter.text(egui::pos2(sym_x, y_c), egui::Align2::LEFT_CENTER,
                                                 &item_sym, egui::FontId::monospace(14.0), sym_color);
 
-                                            // ── Indicator glyph circles (overlapping, right side) ──
-                                            let mut glyphs: Vec<(char, egui::Color32)> = vec![];
-                                            if item_rvol > 2.0 { glyphs.push(('V', egui::Color32::from_rgb(240, 160, 40))); }
-                                            if item_earnings_days >= 0 && item_earnings_days <= 7 { glyphs.push(('E', egui::Color32::from_rgb(255, 193, 37))); }
-                                            if item_alert_triggered { glyphs.push(('!', egui::Color32::from_rgb(231, 76, 60))); }
-                                            if item_pinned { glyphs.push(('P', t.accent)); }
-                                            let price_x = rect.right() - 24.0;
-                                            let glyph_area_right = price_x - 4.0;
-                                            let glyph_start_x = glyph_area_right - glyphs.len() as f32 * 10.0;
+                                            // ── Indicator column (right of ticker name) ──
+                                            let mut ind_x = sym_x + item_sym.len() as f32 * 8.5 + 6.0; // after symbol text
+                                            // Earnings pill: "E:5"
+                                            if item_earnings_days >= 0 && item_earnings_days <= 14 {
+                                                let e_text = format!("E:{}", item_earnings_days);
+                                                let e_galley = painter.layout_no_wrap(e_text.clone(), egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                                                let pw = e_galley.size().x + 6.0;
+                                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(ind_x, y_c - 6.0), egui::vec2(pw, 12.0)),
+                                                    6.0, egui::Color32::from_rgb(255, 193, 37));
+                                                painter.text(egui::pos2(ind_x + pw / 2.0, y_c), egui::Align2::CENTER_CENTER,
+                                                    &e_text, egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                                                ind_x += pw + 3.0;
+                                            }
+                                            // Glyph circles (overlapping, different colors)
+                                            let mut glyphs: Vec<(&str, egui::Color32)> = vec![];
+                                            if item_rvol > 2.0 { glyphs.push(("V", egui::Color32::from_rgb(240, 160, 40))); }
+                                            if item_alert_triggered { glyphs.push(("!", egui::Color32::from_rgb(231, 76, 60))); }
+                                            if item_pinned { glyphs.push(("P", egui::Color32::from_rgb(100, 160, 255))); }
                                             for (gi, &(ch, col)) in glyphs.iter().enumerate() {
-                                                let gx = glyph_start_x + gi as f32 * 10.0;
-                                                painter.circle_filled(egui::pos2(gx, y_c), 6.0, col);
-                                                painter.text(egui::pos2(gx, y_c), egui::Align2::CENTER_CENTER,
-                                                    &ch.to_string(), egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                                                let gx = ind_x + gi as f32 * 11.0;
+                                                painter.circle_filled(egui::pos2(gx + 5.0, y_c), 5.5, col);
+                                                painter.text(egui::pos2(gx + 5.0, y_c), egui::Align2::CENTER_CENTER,
+                                                    ch, egui::FontId::monospace(6.5), egui::Color32::BLACK);
                                             }
 
                                             // Change % (center-left, prominent)
-                                            let mid_x = rect.left() + full_w * 0.38;
+                                            let mid_x = rect.left() + full_w * 0.45;
                                             painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
                                                 &change_str, egui::FontId::monospace(14.0), color);
 
                                             // Price (right-aligned, leave room for X button)
+                                            let price_x = rect.right() - 24.0;
                                             painter.text(egui::pos2(price_x, y_c), egui::Align2::RIGHT_CENTER,
                                                 &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.6));
 
@@ -3929,42 +3939,109 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             }
 
-                                            // ── Rich tooltip on hover ──
+                                            // ── Rich tooltip — fixed position to the left of sidebar ──
                                             if is_hovered && !drag_confirmed {
-                                                let dim = t.dim;
-                                                egui::show_tooltip_at_pointer(ui.ctx(), egui::layers::LayerId::new(egui::Order::Tooltip, egui::Id::new(format!("wl_tip_{}", item_sym))), egui::Id::new(format!("wl_tip_{}", item_sym)), |ui| {
-                                                    ui.set_max_width(200.0);
-                                                    ui.label(egui::RichText::new(&item_sym).monospace().size(14.0).color(egui::Color32::WHITE));
-                                                    let disp_pct = if item_loaded { format!("${:.2}  {:+.2}%", item_price, change_pct) } else { format!("${:.2}", item_price) };
-                                                    ui.label(egui::RichText::new(disp_pct).monospace().size(11.0));
-                                                    ui.separator();
-                                                    if item_day_high > item_day_low {
-                                                        ui.horizontal(|ui| {
-                                                            ui.label(egui::RichText::new("Day:").monospace().size(9.0).color(dim));
-                                                            ui.label(egui::RichText::new(format!("{:.2} - {:.2}", item_day_low, item_day_high)).monospace().size(9.0));
-                                                        });
-                                                    }
-                                                    if item_high_52wk > item_low_52wk {
-                                                        ui.horizontal(|ui| {
-                                                            ui.label(egui::RichText::new("52wk:").monospace().size(9.0).color(dim));
-                                                            ui.label(egui::RichText::new(format!("{:.2} - {:.2}", item_low_52wk, item_high_52wk)).monospace().size(9.0));
-                                                        });
-                                                    }
-                                                    if item_atr > 0.0 {
-                                                        ui.label(egui::RichText::new(format!("ATR: {:.2}", item_atr)).monospace().size(9.0));
-                                                    }
-                                                    ui.label(egui::RichText::new(format!("RVOL: {:.1}x", item_rvol)).monospace().size(9.0));
-                                                    if item_earnings_days >= 0 {
-                                                        ui.label(egui::RichText::new(format!("Earnings in {} days", item_earnings_days)).monospace().size(9.0).color(egui::Color32::from_rgb(255, 193, 37)));
-                                                    }
-                                                    if !item_tags.is_empty() {
-                                                        ui.horizontal_wrapped(|ui| {
-                                                            for tag in &item_tags {
-                                                                ui.label(egui::RichText::new(tag).monospace().size(8.0).color(t.accent));
-                                                            }
-                                                        });
-                                                    }
-                                                });
+                                                let sidebar_left = rect.left() - 10.0; // rough sidebar left edge
+                                                // Position: to the left of the sidebar, vertically centered on this row
+                                                let tip_w = 220.0;
+                                                let tip_x = (sidebar_left - tip_w - 8.0).max(4.0);
+                                                let tip_y = y_c - 60.0; // center-ish on the row
+                                                egui::Area::new(egui::Id::new(format!("wl_tip_{}", item_sym)))
+                                                    .fixed_pos(egui::pos2(tip_x, tip_y))
+                                                    .order(egui::Order::Tooltip)
+                                                    .show(ui.ctx(), |ui| {
+                                                        egui::Frame::popup(&ui.ctx().style())
+                                                            .fill(t.toolbar_bg)
+                                                            .stroke(egui::Stroke::new(0.5, t.toolbar_border))
+                                                            .inner_margin(8.0)
+                                                            .corner_radius(6.0)
+                                                            .show(ui, |ui| {
+                                                                ui.set_max_width(tip_w);
+                                                                let dim = t.dim;
+                                                                let chg_col = if item_price >= item_prev_close { t.bull } else { t.bear };
+                                                                // Header: symbol + price
+                                                                ui.label(egui::RichText::new(&item_sym).monospace().size(16.0).color(egui::Color32::WHITE));
+                                                                ui.horizontal(|ui| {
+                                                                    ui.label(egui::RichText::new(format!("${:.2}", item_price)).monospace().size(13.0).color(egui::Color32::from_white_alpha(220)));
+                                                                    ui.label(egui::RichText::new(format!("{:+.2}%", change_pct)).monospace().size(13.0).color(chg_col));
+                                                                });
+                                                                ui.add_space(4.0);
+                                                                ui.separator();
+                                                                ui.add_space(4.0);
+                                                                // Day Range with visual bar
+                                                                if item_day_high > item_day_low {
+                                                                    ui.horizontal(|ui| {
+                                                                        ui.label(egui::RichText::new("Day").monospace().size(9.0).color(dim));
+                                                                        ui.label(egui::RichText::new(format!("{:.2}", item_day_low)).monospace().size(9.0).color(dim));
+                                                                        // Mini range bar
+                                                                        let bar_w = 60.0;
+                                                                        let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
+                                                                        let p = ui.painter();
+                                                                        p.rect_filled(bar_rect, 2.0, egui::Color32::from_white_alpha(15));
+                                                                        let range = item_day_high - item_day_low;
+                                                                        if range > 0.0 {
+                                                                            let pos = ((item_price - item_day_low) / range).clamp(0.0, 1.0);
+                                                                            let dot_x = bar_rect.left() + pos * bar_w;
+                                                                            p.circle_filled(egui::pos2(dot_x, bar_rect.center().y), 3.0, chg_col);
+                                                                        }
+                                                                        ui.label(egui::RichText::new(format!("{:.2}", item_day_high)).monospace().size(9.0).color(dim));
+                                                                    });
+                                                                }
+                                                                // 52-week Range with visual bar
+                                                                if item_high_52wk > item_low_52wk {
+                                                                    ui.horizontal(|ui| {
+                                                                        ui.label(egui::RichText::new("52w").monospace().size(9.0).color(dim));
+                                                                        ui.label(egui::RichText::new(format!("{:.0}", item_low_52wk)).monospace().size(9.0).color(dim));
+                                                                        let bar_w = 60.0;
+                                                                        let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
+                                                                        let p = ui.painter();
+                                                                        p.rect_filled(bar_rect, 2.0, egui::Color32::from_white_alpha(15));
+                                                                        let range = item_high_52wk - item_low_52wk;
+                                                                        if range > 0.0 {
+                                                                            let pos = ((item_price - item_low_52wk) / range).clamp(0.0, 1.0);
+                                                                            let dot_x = bar_rect.left() + pos * bar_w;
+                                                                            p.circle_filled(egui::pos2(dot_x, bar_rect.center().y), 3.0, t.accent);
+                                                                        }
+                                                                        ui.label(egui::RichText::new(format!("{:.0}", item_high_52wk)).monospace().size(9.0).color(dim));
+                                                                    });
+                                                                }
+                                                                ui.add_space(2.0);
+                                                                // Stats grid
+                                                                ui.horizontal(|ui| {
+                                                                    ui.label(egui::RichText::new(format!("ATR {:.2}", item_atr)).monospace().size(9.0).color(dim));
+                                                                    ui.label(egui::RichText::new(format!("RVOL {:.1}x", item_rvol)).monospace().size(9.0).color(
+                                                                        if item_rvol > 2.0 { egui::Color32::from_rgb(240, 160, 40) } else { dim }));
+                                                                });
+                                                                ui.horizontal(|ui| {
+                                                                    ui.label(egui::RichText::new(format!("Avg Move {:.1}%", item_avg_daily_range)).monospace().size(9.0).color(dim));
+                                                                    if change_pct.abs() > item_avg_daily_range * 1.5 {
+                                                                        ui.label(egui::RichText::new("EXTREME").monospace().size(8.0).color(chg_col));
+                                                                    }
+                                                                });
+                                                                // Earnings
+                                                                if item_earnings_days >= 0 && item_earnings_days <= 14 {
+                                                                    ui.add_space(2.0);
+                                                                    ui.label(egui::RichText::new(format!("{} Earnings in {} days", Icon::LIGHTNING, item_earnings_days)).monospace().size(10.0).color(egui::Color32::from_rgb(255, 193, 37)));
+                                                                }
+                                                                // Tags
+                                                                if !item_tags.is_empty() {
+                                                                    ui.add_space(2.0);
+                                                                    ui.horizontal_wrapped(|ui| {
+                                                                        for tag in &item_tags {
+                                                                            let tg = painter.layout_no_wrap(tag.clone(), egui::FontId::monospace(8.0), t.accent);
+                                                                            let tw = tg.size().x + 8.0;
+                                                                            ui.add(egui::Button::new(egui::RichText::new(tag).monospace().size(8.0).color(t.accent))
+                                                                                .fill(color_alpha(t.accent, 15)).corner_radius(3.0));
+                                                                        }
+                                                                    });
+                                                                }
+                                                                // Alerts
+                                                                if item_alert_triggered {
+                                                                    ui.add_space(2.0);
+                                                                    ui.label(egui::RichText::new(format!("{} Alert triggered", Icon::LIGHTNING)).monospace().size(9.0).color(egui::Color32::from_rgb(231, 76, 60)));
+                                                                }
+                                                            });
+                                                    });
                                             }
 
                                             let row_rect = rect;
