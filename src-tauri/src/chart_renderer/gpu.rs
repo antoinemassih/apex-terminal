@@ -3546,6 +3546,79 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let color_presets = ["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
 
+                            let mut active_sym_change: Option<String> = None;
+                            // ── PINNED section at the top ──
+                            let has_pinned = watchlist.sections.iter().any(|s| s.items.iter().any(|i| i.pinned));
+                            if has_pinned {
+                                // Header
+                                let (hdr_rect, _) = ui.allocate_exact_size(egui::vec2(full_w, 18.0), egui::Sense::hover());
+                                let p = ui.painter();
+                                p.rect_filled(hdr_rect, 0.0, egui::Color32::from_white_alpha(6));
+                                p.text(egui::pos2(hdr_rect.left() + 8.0, hdr_rect.center().y), egui::Align2::LEFT_CENTER,
+                                    format!("{} PINNED", Icon::SPARKLE), egui::FontId::monospace(9.0), egui::Color32::from_rgb(255, 193, 37));
+                                // Render pinned items
+                                for si in 0..watchlist.sections.len() {
+                                    for ii in 0..watchlist.sections[si].items.len() {
+                                        let item = &watchlist.sections[si].items[ii];
+                                        if !item.pinned || item.is_option { continue; }
+                                        let pin_sym = item.symbol.clone();
+                                        let pin_price = item.price;
+                                        let pin_prev = item.prev_close;
+                                        let pin_loaded = item.loaded;
+                                        let is_active = pin_sym == active_sym;
+                                        let row_h = 32.0;
+                                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, row_h), egui::Sense::click());
+                                        let p = ui.painter();
+                                        // Subtle bevel background
+                                        p.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(5));
+                                        p.line_segment([egui::pos2(rect.left(), rect.top()), egui::pos2(rect.right(), rect.top())],
+                                            egui::Stroke::new(0.5, egui::Color32::from_white_alpha(8)));
+                                        if is_active {
+                                            p.rect_filled(egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 2.5, rect.max.y)), 1.0, t.accent);
+                                        }
+                                        let yc = rect.center().y;
+                                        // Gold star
+                                        p.text(egui::pos2(rect.left() + 10.0, yc), egui::Align2::CENTER_CENTER,
+                                            Icon::SPARKLE, egui::FontId::proportional(10.0), egui::Color32::from_rgb(255, 193, 37));
+                                        // Symbol (bigger)
+                                        p.text(egui::pos2(rect.left() + 24.0, yc), egui::Align2::LEFT_CENTER,
+                                            &pin_sym, egui::FontId::monospace(15.0), if is_active { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(235) });
+                                        // Change + Price
+                                        if pin_loaded && pin_prev > 0.0 {
+                                            let chg = (pin_price / pin_prev - 1.0) * 100.0;
+                                            let col = if chg >= 0.0 { t.bull } else { t.bear };
+                                            p.text(egui::pos2(rect.left() + full_w * 0.5, yc), egui::Align2::LEFT_CENTER,
+                                                &format!("{:+.2}%", chg), egui::FontId::monospace(14.0), col);
+                                            p.text(egui::pos2(rect.right() - 8.0, yc), egui::Align2::RIGHT_CENTER,
+                                                &format!("{:.2}", pin_price), egui::FontId::monospace(13.0), col.gamma_multiply(0.6));
+                                        }
+                                        // Hover + click
+                                        if resp.hovered() {
+                                            p.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 15));
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                        }
+                                        if resp.clicked() {
+                                            if let Some(pos) = resp.interact_pointer_pos() {
+                                                if pos.x < rect.left() + 20.0 {
+                                                    // Unpin
+                                                    if let Some(sec) = watchlist.sections.get_mut(si) {
+                                                        if let Some(item) = sec.items.get_mut(ii) { item.pinned = false; }
+                                                    }
+                                                } else {
+                                                    active_sym_change = Some(pin_sym.clone());
+                                                }
+                                            }
+                                        }
+                                        // Separator
+                                        p.line_segment([egui::pos2(rect.left() + 20.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
+                                            egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 30)));
+                                    }
+                                }
+                                // Bottom divider for pinned section
+                                let (div_rect, _) = ui.allocate_exact_size(egui::vec2(full_w, 4.0), egui::Sense::hover());
+                                ui.painter().line_segment([egui::pos2(div_rect.left() + 4.0, div_rect.center().y), egui::pos2(div_rect.right() - 4.0, div_rect.center().y)],
+                                    egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 40)));
+                            }
                             for si in 0..section_count {
                                 let sec_id = watchlist.sections[si].id;
                                 let is_option_section = option_section_ids.contains(&sec_id);
@@ -3693,6 +3766,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         let item_bid = item.bid;
                                         let item_ask = item.ask;
                                         let item_pinned = item.pinned;
+                                        // Skip pinned items in normal sections — they render in the PINNED section above
+                                        if item_pinned && has_pinned { continue; }
                                         let item_tags = item.tags.clone();
                                         let item_rvol = item.rvol;
                                         let item_atr = item.atr;
