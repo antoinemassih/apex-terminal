@@ -3692,6 +3692,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         let item_expiry = item.expiry.clone();
                                         let item_bid = item.bid;
                                         let item_ask = item.ask;
+                                        let item_pinned = item.pinned;
+                                        let item_tags = item.tags.clone();
+                                        let item_rvol = item.rvol;
+                                        let item_atr = item.atr;
+                                        let item_high_52wk = item.high_52wk;
+                                        let item_low_52wk = item.low_52wk;
+                                        let item_day_high = item.day_high;
+                                        let item_day_low = item.day_low;
+                                        let item_avg_daily_range = item.avg_daily_range;
+                                        let item_earnings_days = item.earnings_days;
+                                        let item_alert_triggered = item.alert_triggered;
                                         let is_dragged = drag_confirmed && dragging == Some((si, ii));
 
                                         // Skip rendering the dragged item in-place (it's shown as floating)
@@ -3796,7 +3807,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
                                             let change_str = if item_loaded { format!("{:+.2}%", change_pct) } else { "".into() };
 
-                                            let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
+                                            // Pinned section: slightly distinct background tint
+                                            let row_bg = if is_active {
+                                                color_alpha(t.accent, 18)
+                                            } else if item_pinned {
+                                                egui::Color32::from_rgba_unmultiplied(80, 120, 200, 12)
+                                            } else {
+                                                egui::Color32::TRANSPARENT
+                                            };
                                             let row_h = 28.0;
 
                                             let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, row_h), egui::Sense::click_and_drag());
@@ -3804,6 +3822,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                             // Background
                                             painter.rect_filled(rect, 0.0, row_bg);
+
+                                            // Extreme movement background tint (only when move > avg)
+                                            if item_prev_close > 0.0 && change_pct.abs() > item_avg_daily_range * 1.5 {
+                                                let extreme_bg = if item_price >= item_prev_close {
+                                                    egui::Color32::from_rgba_unmultiplied(46, 204, 113, 15)
+                                                } else {
+                                                    egui::Color32::from_rgba_unmultiplied(231, 76, 60, 15)
+                                                };
+                                                painter.rect_filled(rect, 0.0, extreme_bg);
+                                            }
+
                                             // Active indicator bar
                                             if is_active {
                                                 painter.rect_filled(
@@ -3813,15 +3842,60 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                             let y_c = rect.center().y;
                                             let left = rect.left();
+                                            let row_left = left;
+                                            let row_y = rect.top();
+                                            let row_h_val = rect.height();
+
+                                            // ── RVOL left border strip ──
+                                            let (rvol_color, rvol_width) = if item_rvol > 3.0 {
+                                                (egui::Color32::from_rgba_unmultiplied(240, 160, 40, 220), 4.0_f32)
+                                            } else if item_rvol > 2.0 {
+                                                (egui::Color32::from_rgba_unmultiplied(240, 160, 40, 160), 3.0_f32)
+                                            } else if item_rvol > 0.8 {
+                                                (egui::Color32::from_rgba_unmultiplied(46, 204, 113, 100), 2.0_f32)
+                                            } else {
+                                                (egui::Color32::from_rgba_unmultiplied(100, 150, 255, 80), 2.0_f32)
+                                            };
+                                            painter.rect_filled(
+                                                egui::Rect::from_min_size(egui::pos2(row_left, row_y), egui::vec2(rvol_width, row_h_val)),
+                                                0.0, rvol_color);
 
                                             // Grip dots
                                             painter.text(egui::pos2(left + 6.0, y_c), egui::Align2::LEFT_CENTER,
                                                 Icon::DOTS_SIX_VERTICAL, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.2));
 
+                                            // ── Earnings countdown badge (circle left of symbol) ──
+                                            let sym_left = left + 18.0;
+                                            if item_earnings_days >= 0 && item_earnings_days <= 14 {
+                                                let e_text = format!("{}", item_earnings_days);
+                                                let e_x = sym_left - 1.0;
+                                                painter.circle_filled(egui::pos2(e_x, y_c), 7.0,
+                                                    egui::Color32::from_rgba_unmultiplied(255, 193, 37, 180));
+                                                painter.text(egui::pos2(e_x, y_c), egui::Align2::CENTER_CENTER,
+                                                    &e_text, egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                                            }
+
                                             // Symbol (left-aligned)
+                                            let sym_x = if item_earnings_days >= 0 && item_earnings_days <= 14 { sym_left + 10.0 } else { sym_left };
                                             let sym_color = if is_active { egui::Color32::from_rgb(245, 245, 250) } else { egui::Color32::from_rgb(225, 225, 235) };
-                                            painter.text(egui::pos2(left + 18.0, y_c), egui::Align2::LEFT_CENTER,
+                                            painter.text(egui::pos2(sym_x, y_c), egui::Align2::LEFT_CENTER,
                                                 &item_sym, egui::FontId::monospace(14.0), sym_color);
+
+                                            // ── Indicator glyph circles (overlapping, right side) ──
+                                            let mut glyphs: Vec<(char, egui::Color32)> = vec![];
+                                            if item_rvol > 2.0 { glyphs.push(('V', egui::Color32::from_rgb(240, 160, 40))); }
+                                            if item_earnings_days >= 0 && item_earnings_days <= 7 { glyphs.push(('E', egui::Color32::from_rgb(255, 193, 37))); }
+                                            if item_alert_triggered { glyphs.push(('!', egui::Color32::from_rgb(231, 76, 60))); }
+                                            if item_pinned { glyphs.push(('P', t.accent)); }
+                                            let price_x = rect.right() - 24.0;
+                                            let glyph_area_right = price_x - 4.0;
+                                            let glyph_start_x = glyph_area_right - glyphs.len() as f32 * 10.0;
+                                            for (gi, &(ch, col)) in glyphs.iter().enumerate() {
+                                                let gx = glyph_start_x + gi as f32 * 10.0;
+                                                painter.circle_filled(egui::pos2(gx, y_c), 6.0, col);
+                                                painter.text(egui::pos2(gx, y_c), egui::Align2::CENTER_CENTER,
+                                                    &ch.to_string(), egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                                            }
 
                                             // Change % (center-left, prominent)
                                             let mid_x = rect.left() + full_w * 0.38;
@@ -3829,7 +3903,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 &change_str, egui::FontId::monospace(14.0), color);
 
                                             // Price (right-aligned, leave room for X button)
-                                            painter.text(egui::pos2(rect.right() - 24.0, y_c), egui::Align2::RIGHT_CENTER,
+                                            painter.text(egui::pos2(price_x, y_c), egui::Align2::RIGHT_CENTER,
                                                 &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.6));
 
                                             // Faint row separator line
@@ -3837,8 +3911,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 [egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
                                                 egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 40)));
 
+                                            let is_hovered = resp.hovered();
+
                                             // X button zone (far right)
-                                            if resp.hovered() {
+                                            if is_hovered {
                                                 painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
                                                     Icon::X, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.4));
                                                 let x_zone = egui::Rect::from_min_max(egui::pos2(rect.right() - 16.0, rect.top()), rect.max);
@@ -3848,9 +3924,47 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             }
 
                                             // Hover highlight
-                                            if resp.hovered() && !is_active {
+                                            if is_hovered && !is_active {
                                                 painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 20));
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                            }
+
+                                            // ── Rich tooltip on hover ──
+                                            if is_hovered && !drag_confirmed {
+                                                let dim = t.dim;
+                                                egui::show_tooltip_at_pointer(ui.ctx(), egui::layers::LayerId::new(egui::Order::Tooltip, egui::Id::new(format!("wl_tip_{}", item_sym))), egui::Id::new(format!("wl_tip_{}", item_sym)), |ui| {
+                                                    ui.set_max_width(200.0);
+                                                    ui.label(egui::RichText::new(&item_sym).monospace().size(14.0).color(egui::Color32::WHITE));
+                                                    let disp_pct = if item_loaded { format!("${:.2}  {:+.2}%", item_price, change_pct) } else { format!("${:.2}", item_price) };
+                                                    ui.label(egui::RichText::new(disp_pct).monospace().size(11.0));
+                                                    ui.separator();
+                                                    if item_day_high > item_day_low {
+                                                        ui.horizontal(|ui| {
+                                                            ui.label(egui::RichText::new("Day:").monospace().size(9.0).color(dim));
+                                                            ui.label(egui::RichText::new(format!("{:.2} - {:.2}", item_day_low, item_day_high)).monospace().size(9.0));
+                                                        });
+                                                    }
+                                                    if item_high_52wk > item_low_52wk {
+                                                        ui.horizontal(|ui| {
+                                                            ui.label(egui::RichText::new("52wk:").monospace().size(9.0).color(dim));
+                                                            ui.label(egui::RichText::new(format!("{:.2} - {:.2}", item_low_52wk, item_high_52wk)).monospace().size(9.0));
+                                                        });
+                                                    }
+                                                    if item_atr > 0.0 {
+                                                        ui.label(egui::RichText::new(format!("ATR: {:.2}", item_atr)).monospace().size(9.0));
+                                                    }
+                                                    ui.label(egui::RichText::new(format!("RVOL: {:.1}x", item_rvol)).monospace().size(9.0));
+                                                    if item_earnings_days >= 0 {
+                                                        ui.label(egui::RichText::new(format!("Earnings in {} days", item_earnings_days)).monospace().size(9.0).color(egui::Color32::from_rgb(255, 193, 37)));
+                                                    }
+                                                    if !item_tags.is_empty() {
+                                                        ui.horizontal_wrapped(|ui| {
+                                                            for tag in &item_tags {
+                                                                ui.label(egui::RichText::new(tag).monospace().size(8.0).color(t.accent));
+                                                            }
+                                                        });
+                                                    }
+                                                });
                                             }
 
                                             let row_rect = rect;
@@ -11648,6 +11762,18 @@ struct WatchlistItem {
     expiry: String,        // "0DTE", "5DTE" etc.
     bid: f32,
     ask: f32,
+    // Watchlist enhancement fields
+    pinned: bool,
+    tags: Vec<String>,
+    rvol: f32,           // relative volume (1.0 = average)
+    atr: f32,            // average true range
+    high_52wk: f32,
+    low_52wk: f32,
+    day_high: f32,
+    day_low: f32,
+    avg_daily_range: f32, // average daily move % for extreme detection
+    earnings_days: i32,   // days until earnings (-1 = unknown)
+    alert_triggered: bool,
 }
 
 #[derive(Clone)]
@@ -11824,7 +11950,16 @@ impl Watchlist {
             self.sections.insert(0, WatchlistSection { id, title: String::new(), color: None, collapsed: false, items: vec![] });
             0
         };
-        self.sections[target_idx].items.push(WatchlistItem { symbol: s, price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0 });
+        // Use symbol hash for a pseudo-random rvol so rows look varied in dev
+        let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+        let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1; // 0.5..4.5
+        self.sections[target_idx].items.push(WatchlistItem {
+            symbol: s, price: 0.0, prev_close: 0.0, loaded: false,
+            is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
+            pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
+            high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
+            avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false,
+        });
     }
 
     /// Remove symbol from all sections.
@@ -11905,6 +12040,9 @@ impl Watchlist {
         self.sections[sec_idx].items.push(WatchlistItem {
             symbol: opt_sym, price: 0.0, prev_close: 0.0, loaded: false,
             is_option: true, underlying: underlying.to_string(), option_type: type_str.to_string(), strike, expiry: expiry.to_string(), bid, ask,
+            pinned: false, tags: vec![], rvol: 1.0, atr: 0.0,
+            high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
+            avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false,
         });
         true
     }
@@ -13369,7 +13507,15 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
                             let expiry = item_val.get("expiry").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let bid = item_val.get("bid").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                             let ask = item_val.get("ask").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                            items.push(WatchlistItem { symbol, price: 0.0, prev_close: 0.0, loaded: false, is_option, underlying, option_type, strike, expiry, bid, ask });
+                            let sym_hash = symbol.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+                            let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1;
+                            items.push(WatchlistItem {
+                                symbol, price: 0.0, prev_close: 0.0, loaded: false,
+                                is_option, underlying, option_type, strike, expiry, bid, ask,
+                                pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
+                                high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
+                                avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false,
+                            });
                         }
                     }
                 }
@@ -13384,8 +13530,16 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
 }
 
 fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
-    let items: Vec<WatchlistItem> = DEFAULT_WATCHLIST.iter().map(|&s| WatchlistItem {
-        symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false, is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
+    let items: Vec<WatchlistItem> = DEFAULT_WATCHLIST.iter().map(|&s| {
+        let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+        let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1;
+        WatchlistItem {
+            symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
+            is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
+            pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
+            high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
+            avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false,
+        }
     }).collect();
     let default_section = WatchlistSection {
         id: 1, title: String::new(), color: None, collapsed: false, items,
