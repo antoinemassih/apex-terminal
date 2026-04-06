@@ -4778,42 +4778,55 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.label(egui::RichText::new("No data — add symbols to watchlist").monospace().size(10.0).color(t.dim));
                         } else {
                             egui::ScrollArea::vertical().show(ui, |ui| {
-                                let avail_width = ui.available_width();
-                                let tile_w = 80.0;
-                                let tile_h = 50.0;
-                                let cols = ((avail_width) / tile_w).floor().max(1.0) as usize;
 
                                 // Group by sector and render with dividers
                                 let mut current_sector = String::new();
                                 let mut tile_idx = 0;
                                 let mut sector_items: Vec<&HeatItem> = vec![];
 
-                                let render_sector_tiles = |ui: &mut egui::Ui, items: &[&HeatItem], cols: usize, tile_w: f32, tile_h: f32, t: &Theme| {
-                                    let rows_needed = (items.len() + cols - 1) / cols;
-                                    let total_h = rows_needed as f32 * tile_h;
-                                    let (rect, _) = ui.allocate_exact_size(egui::vec2(cols as f32 * tile_w, total_h), egui::Sense::hover());
+                                // Render items as full-width rows with magnitude bars
+                                let render_sector_items = |ui: &mut egui::Ui, items: &[&HeatItem], t: &Theme, price_map: &std::collections::HashMap<String, f32>| {
+                                    let avail_w = ui.available_width();
+                                    let row_h = 22.0;
+                                    let max_pct = items.iter().map(|i| i.1.abs()).fold(1.0_f32, f32::max);
+                                    let total_h = items.len() as f32 * row_h;
+                                    let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, total_h), egui::Sense::hover());
                                     let painter = ui.painter();
                                     for (i, item) in items.iter().enumerate() {
-                                        let col = i % cols;
-                                        let row = i / cols;
+                                        let ry = rect.top() + i as f32 * row_h;
                                         let intensity = (item.1.abs() / 5.0).min(1.0);
-                                        let color = if item.1 >= 0.0 {
-                                            egui::Color32::from_rgba_unmultiplied(
-                                                (15.0 + 25.0 * intensity) as u8, (60.0 + 140.0 * intensity) as u8,
-                                                (30.0 + 80.0 * intensity) as u8, 230)
+                                        let is_up = item.1 >= 0.0;
+                                        // Background bar — width proportional to change magnitude
+                                        let bar_frac = if max_pct > 0.0 { item.1.abs() / max_pct } else { 0.0 };
+                                        let bar_w = bar_frac * avail_w * 0.5;
+                                        let bar_col = if is_up {
+                                            egui::Color32::from_rgba_unmultiplied(46, 204, 113, (30.0 + intensity * 60.0) as u8)
                                         } else {
-                                            egui::Color32::from_rgba_unmultiplied(
-                                                (60.0 + 170.0 * intensity) as u8, (25.0 + 25.0 * intensity) as u8,
-                                                (25.0 + 25.0 * intensity) as u8, 230)
+                                            egui::Color32::from_rgba_unmultiplied(231, 76, 60, (30.0 + intensity * 60.0) as u8)
                                         };
-                                        let tr = egui::Rect::from_min_size(
-                                            egui::pos2(rect.left() + col as f32 * tile_w, rect.top() + row as f32 * tile_h),
-                                            egui::vec2(tile_w - 2.0, tile_h - 2.0));
-                                        painter.rect_filled(tr, 3.0, color);
-                                        painter.text(tr.center() - egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
+                                        // Bar grows from right for positive, from left for negative (or just from left always)
+                                        painter.rect_filled(egui::Rect::from_min_size(
+                                            egui::pos2(rect.left(), ry + 1.0), egui::vec2(bar_w, row_h - 2.0)),
+                                            2.0, bar_col);
+                                        // Left edge color strip (3px)
+                                        let edge_col = if is_up {
+                                            egui::Color32::from_rgba_unmultiplied(46, 204, 113, (100.0 + intensity * 155.0) as u8)
+                                        } else {
+                                            egui::Color32::from_rgba_unmultiplied(231, 76, 60, (100.0 + intensity * 155.0) as u8)
+                                        };
+                                        painter.rect_filled(egui::Rect::from_min_size(
+                                            egui::pos2(rect.left(), ry + 1.0), egui::vec2(3.0, row_h - 2.0)),
+                                            0.0, edge_col);
+                                        // Symbol name (left, large)
+                                        painter.text(egui::pos2(rect.left() + 8.0, ry + row_h / 2.0), egui::Align2::LEFT_CENTER,
                                             &item.0, egui::FontId::monospace(11.0), egui::Color32::WHITE);
-                                        painter.text(tr.center() + egui::vec2(0.0, 9.0), egui::Align2::CENTER_CENTER,
-                                            &format!("{:+.1}%", item.1), egui::FontId::monospace(10.0), egui::Color32::from_white_alpha(210));
+                                        // Change% (right-aligned, colored, prominent)
+                                        let chg_col = if is_up { t.bull } else { t.bear };
+                                        painter.text(egui::pos2(rect.right() - 4.0, ry + row_h / 2.0), egui::Align2::RIGHT_CENTER,
+                                            &format!("{:+.2}%", item.1), egui::FontId::monospace(11.0), chg_col);
+                                        // Subtle row separator
+                                        painter.line_segment([egui::pos2(rect.left(), ry + row_h - 1.0), egui::pos2(rect.right(), ry + row_h - 1.0)],
+                                            egui::Stroke::new(0.5, egui::Color32::from_white_alpha(8)));
                                     }
                                 };
 
@@ -4853,7 +4866,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         ui.add_space(1.0);
                                     }
                                     if !is_collapsed {
-                                        render_sector_tiles(ui, items, cols, tile_w, tile_h, t);
+                                        render_sector_items(ui, items, t, &price_map);
                                     }
                                 }
                             });
