@@ -3547,74 +3547,85 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
 
                             let mut active_sym_change: Option<String> = None;
-                            // ── PINNED section at the top ──
+                            // ── PINNED section at the top (no title, darker background) ──
                             let has_pinned = watchlist.sections.iter().any(|s| s.items.iter().any(|i| i.pinned));
                             if has_pinned {
-                                // Header
-                                let (hdr_rect, _) = ui.allocate_exact_size(egui::vec2(full_w, 18.0), egui::Sense::hover());
-                                let p = ui.painter();
-                                p.rect_filled(hdr_rect, 0.0, egui::Color32::from_white_alpha(6));
-                                p.text(egui::pos2(hdr_rect.left() + 8.0, hdr_rect.center().y), egui::Align2::LEFT_CENTER,
-                                    format!("{} PINNED", Icon::SPARKLE), egui::FontId::monospace(9.0), egui::Color32::from_rgb(255, 193, 37));
-                                // Render pinned items
+                                // Collect pinned items first
+                                let mut pinned_items: Vec<(usize, usize, String, f32, f32, bool, f32)> = vec![]; // (si, ii, sym, price, prev, loaded, avg_range)
                                 for si in 0..watchlist.sections.len() {
                                     for ii in 0..watchlist.sections[si].items.len() {
                                         let item = &watchlist.sections[si].items[ii];
-                                        if !item.pinned || item.is_option { continue; }
-                                        let pin_sym = item.symbol.clone();
-                                        let pin_price = item.price;
-                                        let pin_prev = item.prev_close;
-                                        let pin_loaded = item.loaded;
-                                        let is_active = pin_sym == active_sym;
-                                        let row_h = 32.0;
-                                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, row_h), egui::Sense::click());
-                                        let p = ui.painter();
-                                        // Subtle bevel background
-                                        p.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(5));
-                                        p.line_segment([egui::pos2(rect.left(), rect.top()), egui::pos2(rect.right(), rect.top())],
-                                            egui::Stroke::new(0.5, egui::Color32::from_white_alpha(8)));
-                                        if is_active {
-                                            p.rect_filled(egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 2.5, rect.max.y)), 1.0, t.accent);
+                                        if item.pinned && !item.is_option {
+                                            pinned_items.push((si, ii, item.symbol.clone(), item.price, item.prev_close, item.loaded, item.avg_daily_range));
                                         }
-                                        let yc = rect.center().y;
-                                        // Gold star
-                                        p.text(egui::pos2(rect.left() + 10.0, yc), egui::Align2::CENTER_CENTER,
-                                            Icon::SPARKLE, egui::FontId::proportional(10.0), egui::Color32::from_rgb(255, 193, 37));
-                                        // Symbol (bigger)
-                                        p.text(egui::pos2(rect.left() + 24.0, yc), egui::Align2::LEFT_CENTER,
-                                            &pin_sym, egui::FontId::monospace(15.0), if is_active { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(235) });
-                                        // Change + Price
-                                        if pin_loaded && pin_prev > 0.0 {
-                                            let chg = (pin_price / pin_prev - 1.0) * 100.0;
-                                            let col = if chg >= 0.0 { t.bull } else { t.bear };
-                                            p.text(egui::pos2(rect.left() + full_w * 0.5, yc), egui::Align2::LEFT_CENTER,
-                                                &format!("{:+.2}%", chg), egui::FontId::monospace(14.0), col);
-                                            p.text(egui::pos2(rect.right() - 8.0, yc), egui::Align2::RIGHT_CENTER,
-                                                &format!("{:.2}", pin_price), egui::FontId::monospace(13.0), col.gamma_multiply(0.6));
-                                        }
-                                        // Hover + click
-                                        if resp.hovered() {
-                                            p.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 15));
+                                    }
+                                }
+                                // Darker section background
+                                let section_h = pinned_items.len() as f32 * 30.0 + 6.0;
+                                let (sec_rect, _) = ui.allocate_exact_size(egui::vec2(full_w, section_h), egui::Sense::hover());
+                                let p = ui.painter();
+                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 20)); // darker than sidebar
+                                // Render each pinned row
+                                for (idx, (si, ii, pin_sym, pin_price, pin_prev, pin_loaded, avg_range)) in pinned_items.iter().enumerate() {
+                                    let row_y = sec_rect.top() + 3.0 + idx as f32 * 30.0;
+                                    let row_rect = egui::Rect::from_min_size(egui::pos2(sec_rect.left(), row_y), egui::vec2(full_w, 28.0));
+                                    let yc = row_rect.center().y;
+                                    let is_active = *pin_sym == active_sym;
+                                    let change_pct = if *pin_prev > 0.0 { (*pin_price / *pin_prev - 1.0) * 100.0 } else { 0.0 };
+                                    let col = if change_pct >= 0.0 { t.bull } else { t.bear };
+                                    // Extreme movement background
+                                    if change_pct.abs() > *avg_range * 1.5 {
+                                        let extreme_bg = if change_pct >= 0.0 { egui::Color32::from_rgba_unmultiplied(46, 204, 113, 15) }
+                                            else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 15) };
+                                        p.rect_filled(row_rect, 0.0, extreme_bg);
+                                    }
+                                    // Active indicator
+                                    if is_active {
+                                        p.rect_filled(egui::Rect::from_min_max(row_rect.min, egui::pos2(row_rect.min.x + 2.5, row_rect.max.y)), 1.0, t.accent);
+                                    }
+                                    // Gold star (always visible for pinned)
+                                    p.text(egui::pos2(row_rect.left() + 10.0, yc), egui::Align2::CENTER_CENTER,
+                                        Icon::SPARKLE, egui::FontId::proportional(9.0), egui::Color32::from_rgb(255, 193, 37));
+                                    // Symbol
+                                    let sym_col = if is_active { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(230) };
+                                    p.text(egui::pos2(row_rect.left() + 22.0, yc), egui::Align2::LEFT_CENTER,
+                                        pin_sym, egui::FontId::monospace(14.0), sym_col);
+                                    // Change %
+                                    p.text(egui::pos2(row_rect.left() + full_w * 0.45, yc), egui::Align2::LEFT_CENTER,
+                                        &format!("{:+.2}%", change_pct), egui::FontId::monospace(14.0), col);
+                                    // Price
+                                    p.text(egui::pos2(row_rect.right() - 8.0, yc), egui::Align2::RIGHT_CENTER,
+                                        &format!("{:.2}", pin_price), egui::FontId::monospace(14.0), col.gamma_multiply(0.6));
+                                    // Row separator
+                                    p.line_segment([egui::pos2(row_rect.left() + 18.0, row_rect.bottom() - 0.5), egui::pos2(row_rect.right() - 4.0, row_rect.bottom() - 0.5)],
+                                        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 30)));
+                                }
+                                // Hover + click detection over the entire pinned section
+                                if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+                                    if sec_rect.contains(hover_pos) {
+                                        let row_idx = ((hover_pos.y - sec_rect.top() - 3.0) / 30.0).floor() as usize;
+                                        if row_idx < pinned_items.len() {
+                                            let row_y = sec_rect.top() + 3.0 + row_idx as f32 * 30.0;
+                                            let row_rect = egui::Rect::from_min_size(egui::pos2(sec_rect.left(), row_y), egui::vec2(full_w, 28.0));
+                                            p.rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, 15));
                                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                         }
-                                        if resp.clicked() {
-                                            if let Some(pos) = resp.interact_pointer_pos() {
-                                                if pos.x < rect.left() + 20.0 {
+                                        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                                            if row_idx < pinned_items.len() {
+                                                let (si, ii, ref sym, ..) = pinned_items[row_idx];
+                                                if hover_pos.x < sec_rect.left() + 20.0 {
                                                     // Unpin
                                                     if let Some(sec) = watchlist.sections.get_mut(si) {
                                                         if let Some(item) = sec.items.get_mut(ii) { item.pinned = false; }
                                                     }
                                                 } else {
-                                                    active_sym_change = Some(pin_sym.clone());
+                                                    active_sym_change = Some(sym.clone());
                                                 }
                                             }
                                         }
-                                        // Separator
-                                        p.line_segment([egui::pos2(rect.left() + 20.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
-                                            egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 30)));
                                     }
                                 }
-                                // Bottom divider for pinned section
+                                // Bottom divider
                                 let (div_rect, _) = ui.allocate_exact_size(egui::vec2(full_w, 4.0), egui::Sense::hover());
                                 ui.painter().line_segment([egui::pos2(div_rect.left() + 4.0, div_rect.center().y), egui::pos2(div_rect.right() - 4.0, div_rect.center().y)],
                                     egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 40)));
