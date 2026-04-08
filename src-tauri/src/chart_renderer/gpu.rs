@@ -2160,6 +2160,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     let theme_idx = panes[*active_pane].theme_idx;
     let t = &THEMES[theme_idx];
     let ap = *active_pane;
+    // Cache account data once per frame (avoid repeated Mutex lock + clone)
+    let account_data_cached = read_account_data();
     // Store window ref for drag/minimize/maximize/close
     let win_ref: Option<Arc<Window>> = {
         // Find the window that's currently rendering (first visible window)
@@ -2764,7 +2766,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Account summary strip (below toolbar) ──
     if watchlist.account_strip_open {
-        let account_data = read_account_data();
+        let account_data = account_data_cached.clone();
         egui::TopBottomPanel::top("account_strip")
             .exact_height(32.0)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
@@ -3522,20 +3524,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     // ── PARAMETERS section ──
                     dialog_section(ui, "PARAMETERS", m, t.dim.gamma_multiply(0.5));
 
-                    // Helper: labeled drag value row
-                    macro_rules! param_row {
-                        ($ui:expr, $label:expr, $val:expr, $range:expr, $speed:expr, $fmt:expr) => {{
-                            $ui.horizontal(|ui| {
-                                ui.add_space(m);
-                                ui.label(egui::RichText::new($label).monospace().size(9.0).color(t.dim));
-                                ui.add_space(4.0);
-                                let changed = ui.add(egui::DragValue::new($val).range($range).speed($speed)
-                                    .custom_formatter(|v, _| format!($fmt, v))).changed();
-                                changed
-                            }).inner
-                        }};
-                    }
-
                     // Period (for most types except VWAP)
                     if !matches!(ind.kind, IndicatorType::VWAP) {
                         let period_label = match ind.kind {
@@ -3916,7 +3904,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 };
 
                 let redis_ok = crate::bar_cache::get("__ping_test", "").is_none();
-                let ib_ok = read_account_data().map(|(a, _, _)| a.connected).unwrap_or(false);
+                let ib_ok = account_data_cached.as_ref().map(|(a, _, _)| a.connected).unwrap_or(false);
                 svc_row(ui, "ApexIB", if ib_ok { "OK" } else { "OFF" }, ib_ok, APEXIB_URL);
                 svc_row(ui, "Redis Cache", if redis_ok { "OK" } else { "OFF" }, redis_ok, "192.168.1.89:6379");
                 svc_row(ui, "GPU Engine", "DX12", true, "wgpu + egui");
@@ -6049,7 +6037,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // ── POSITIONS SECTION (top half of book) ──
                 // ══════════════════════════════════════════════════════
                 {
-                    let (ib_positions, ib_orders) = read_account_data().map(|(_, p, o)| (p, o)).unwrap_or_default();
+                    let (ib_positions, ib_orders) = account_data_cached.as_ref().map(|(_, p, o)| (p.clone(), o.clone())).unwrap_or_default();
                     let has_positions = !ib_positions.is_empty();
 
                     // Header + Close All
@@ -6357,7 +6345,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     // Positions are now shown above orders via ApexIB live data
 
                     // ── IB Order History ──
-                    let ib_orders = read_account_data().map(|(_, _, o)| o).unwrap_or_default();
+                    let ib_orders = account_data_cached.as_ref().map(|(_, _, o)| o.clone()).unwrap_or_default();
                     if !ib_orders.is_empty() {
                         ui.add_space(4.0);
                         separator(ui, color_alpha(t.toolbar_border, 40));
@@ -7728,7 +7716,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // Title
                             ui.label(egui::RichText::new(&pane.title).monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.7)));
                             // Position indicator
-                            if let Some((_, positions, _)) = read_account_data() {
+                            if let Some((_, ref positions, _)) = account_data_cached {
                                 if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
                                     let pos_color = if pos.qty > 0 { t.bull } else { t.bear };
                                     let pos_text = if pos.qty > 0 { format!("+{}", pos.qty) } else { format!("{}", pos.qty) };
@@ -7776,8 +7764,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
         // ── Order fill markers on chart ──────────────────────────────────────
         // Plot buy/sell arrows at the bar where the fill occurred
-        if let Some((_, _, ib_orders)) = read_account_data() {
-            for order in &ib_orders {
+        if let Some((_, _, ref ib_orders)) = account_data_cached {
+            for order in ib_orders {
                 if order.symbol != chart.symbol || order.avg_fill_price <= 0.0 || order.status != "filled" { continue; }
                 // Find bar closest to fill time
                 let fill_ts = order.submitted_at / 1000; // ms → sec
@@ -9244,8 +9232,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── Position overlay — open IB positions on chart ─────────────────────
-        if let Some((_acct, positions, _orders)) = read_account_data() {
-            for pos in &positions {
+        if let Some((ref _acct, ref positions, ref _orders)) = account_data_cached {
+            for pos in positions {
                 if pos.symbol != chart.symbol || pos.qty == 0 { continue; }
                 let entry_price = pos.avg_price;
                 let entry_y = py(entry_price);
@@ -9559,7 +9547,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // Label
                         ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
                         // Position indicator
-                        if let Some((_, positions, _)) = read_account_data() {
+                        if let Some((_, ref positions, _)) = account_data_cached {
                             if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
                                 let pos_color = if pos.qty > 0 { t.bull } else { t.bear };
                                 let pos_text = if pos.qty > 0 { format!("+{}", pos.qty) } else { format!("{}", pos.qty) };
@@ -11735,8 +11723,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let d = resp.drag_delta();
             // Horizontal pan
             chart.vs = (chart.vs - d.x/bs).max(0.0).min(n as f32 + 200.0);
-            // Vertical pan — shift price range
-            if d.y.abs() > 0.5 {
+            // Vertical pan — shift price range (only when vertical movement dominates)
+            if d.y.abs() > 1.0 && d.y.abs() > d.x.abs() * 1.5 {
                 let (lo, hi) = chart.price_range();
                 let price_per_px = (hi - lo) / ch;
                 let shift = d.y * price_per_px;
