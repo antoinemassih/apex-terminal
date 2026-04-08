@@ -12539,7 +12539,7 @@ fn apexib_curl(path: &str) -> Option<serde_json::Value> {
 
 fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlying_price: f32) {
     std::thread::spawn(move || {
-        let api_strikes = 50;
+        let api_strikes = 150; // request many strikes to cover Near/Mid/Far at $1 intervals
         let path = format!("/options/{}?strikeCount={}&dte={}", symbol, api_strikes, dte);
 
         let send_chain = |calls: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
