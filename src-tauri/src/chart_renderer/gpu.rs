@@ -6721,17 +6721,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── Strikes overlay toggle button (floating circle, top-right) ─────────
+        // Rendered visually here; click detected from raw pointer (not ui.interact
+        // which gets eaten by the chart's allocate_rect)
         {
             let btn_x = rect.left() + cw - 18.0;
             let btn_y = rect.top() + pt + 8.0;
             let btn_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.3) };
-            let btn_r = egui::Rect::from_center_size(egui::pos2(btn_x, btn_y), egui::vec2(16.0, 16.0));
-            painter.circle_filled(egui::pos2(btn_x, btn_y), 8.0, color_alpha(t.toolbar_bg, 200));
-            painter.circle_stroke(egui::pos2(btn_x, btn_y), 8.0, egui::Stroke::new(1.0, btn_col));
-            painter.text(egui::pos2(btn_x, btn_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(8.0), btn_col);
-            let btn_resp = ui.interact(btn_r, egui::Id::new(format!("strikes_toggle_{}", pane_idx)), egui::Sense::click());
-            if btn_resp.clicked() { chart.show_strikes_overlay = !chart.show_strikes_overlay; }
-            if btn_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            painter.circle_filled(egui::pos2(btn_x, btn_y), 9.0, color_alpha(t.toolbar_bg, 220));
+            painter.circle_stroke(egui::pos2(btn_x, btn_y), 9.0, egui::Stroke::new(1.0, btn_col));
+            painter.text(egui::pos2(btn_x, btn_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(9.0), btn_col);
+            // Click detection via raw pointer
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                if egui::pos2(btn_x, btn_y).distance(pos) < 10.0 {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                        chart.show_strikes_overlay = !chart.show_strikes_overlay;
+                    }
+                }
+            }
         }
 
         // ── Options strikes overlay on chart ─────────────────────────────────
