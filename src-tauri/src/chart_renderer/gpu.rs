@@ -4776,43 +4776,57 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                             // Window: offset shifts which strikes are visible, but divider stays at real price
                             let max_idx = (all_strikes.len() as i32 - 1).max(0);
-                            // Apply Near/Mid/Far as a center point shift
                             // σ approximated as 1.5% of price until real HV data
                             let sigma = price * 0.015;
-                            let nmf_shift = match nmf {
-                                1 => { // Mid: find strike ~1σ above ATM
-                                    let target = price + sigma;
-                                    all_strikes.iter().enumerate().min_by(|(_, a), (_, b)| {
-                                        (*a - target).abs().partial_cmp(&(*b - target).abs()).unwrap_or(std::cmp::Ordering::Equal)
-                                    }).map(|(i, _)| i as i32 - atm_idx as i32).unwrap_or(0)
-                                }
-                                2 => { // Far: find strike ~2σ above ATM
-                                    let target = price + sigma * 2.0;
-                                    all_strikes.iter().enumerate().min_by(|(_, a), (_, b)| {
-                                        (*a - target).abs().partial_cmp(&(*b - target).abs()).unwrap_or(std::cmp::Ordering::Equal)
-                                    }).map(|(i, _)| i as i32 - atm_idx as i32).unwrap_or(0)
-                                }
-                                _ => 0, // Near: ATM
-                            };
-                            let effective_offset = center_offset + nmf_shift;
 
-                            // Filter strikes based on the selected mode
+                            // Near/Mid/Far: determines where calls and puts START
+                            // Near (0): calls/puts start right at ATM
+                            // Mid (1): calls start from price+1σ upward, puts from price-1σ downward
+                            // Far (2): calls start from price+2σ upward, puts from price-2σ downward
+                            let nmf_sigma = nmf as f32; // 0, 1, or 2
+                            let call_start_price = price + nmf_sigma * sigma;
+                            let put_start_price = price - nmf_sigma * sigma;
+
+                            // Find the strike indices for call/put start points
+                            let call_start_idx = all_strikes.iter().position(|&s| s >= call_start_price).unwrap_or(all_strikes.len());
+                            let put_start_idx = all_strikes.iter().rposition(|&s| s <= put_start_price).unwrap_or(0);
+
+                            // Apply center_offset (manual arrow shift)
+                            let call_start = (call_start_idx as i32 + center_offset).clamp(0, all_strikes.len() as i32) as usize;
+                            let put_start = (put_start_idx as i32 - center_offset).clamp(0, all_strikes.len() as i32 - 1) as usize;
+
+                            // Filter strikes based on mode
                             let visible_strikes: Vec<f32> = match strike_mode {
                                 StrikeMode::Count => {
-                                    let window_center = (atm_idx as i32 + effective_offset).clamp(0, max_idx) as usize;
-                                    let start = window_center.saturating_sub(num_strikes);
-                                    let end = (window_center + num_strikes).min(all_strikes.len());
-                                    all_strikes[start..end].to_vec()
+                                    // Calls: num_strikes upward from call_start
+                                    let call_end = (call_start + num_strikes).min(all_strikes.len());
+                                    // Puts: num_strikes downward from put_start
+                                    let put_begin = put_start.saturating_sub(num_strikes - 1);
+                                    let mut strikes = Vec::new();
+                                    // Add put strikes (below)
+                                    for i in put_begin..=put_start.min(all_strikes.len() - 1) {
+                                        if !strikes.contains(&all_strikes[i]) { strikes.push(all_strikes[i]); }
+                                    }
+                                    // Add call strikes (above)
+                                    for i in call_start..call_end {
+                                        if !strikes.contains(&all_strikes[i]) { strikes.push(all_strikes[i]); }
+                                    }
+                                    strikes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                                    strikes
                                 }
                                 StrikeMode::Pct(pct_idx) => {
                                     let pct = PCT_OPTIONS.get(pct_idx as usize).copied().unwrap_or(1.0) / 100.0;
-                                    let center_price = all_strikes.get((atm_idx as i32 + effective_offset).clamp(0, max_idx) as usize).copied().unwrap_or(price);
-                                    all_strikes.iter().filter(|&&s| (s - center_price).abs() / price <= pct).copied().collect()
+                                    all_strikes.iter().filter(|&&s| {
+                                        if s >= price { (s - call_start_price).abs() / price <= pct }
+                                        else { (put_start_price - s).abs() / price <= pct }
+                                    }).copied().collect()
                                 }
                                 StrikeMode::StdDev => {
-                                    let window_center = (atm_idx as i32 + effective_offset).clamp(0, max_idx) as usize;
-                                    let center = all_strikes.get(window_center).copied().unwrap_or(price);
-                                    all_strikes.iter().filter(|&&s| (s - center).abs() <= sigma * 2.0).copied().collect()
+                                    // Show strikes within 1σ from the NMF start points
+                                    all_strikes.iter().filter(|&&s| {
+                                        if s >= price { s >= call_start_price && s <= call_start_price + sigma }
+                                        else { s <= put_start_price && s >= put_start_price - sigma }
+                                    }).copied().collect()
                                 }
                             };
 
