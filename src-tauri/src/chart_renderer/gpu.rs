@@ -3357,24 +3357,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                         // ── C) Search field + filter toggle inline ──
                         let search_id = egui::Id::new("wl_search_input");
-                        let has_focus = ui.ctx().memory(|m| m.has_focus(search_id));
-                        let search_bar_bg = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 25); // darker than sidebar
-                        let search_resp = egui::Frame::NONE.fill(search_bar_bg).corner_radius(4.0).inner_margin(egui::Margin { left: 4, right: 2, top: 2, bottom: 2 }).show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let resp = ui.add(
-                                    egui::TextEdit::singleline(&mut watchlist.search_query)
-                                        .id(search_id)
-                                        .hint_text("Add symbol...").desired_width(ui.available_width() - 24.0).font(egui::FontId::monospace(11.0))
-                                );
-                                // Filter toggle inline
-                                let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
-                                let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.5) };
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::FUNNEL).size(11.0).color(icon_col))
-                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
-                                    watchlist.filter_open = !watchlist.filter_open;
-                                }
-                                resp
-                            }).inner
+                        let search_resp = ui.horizontal(|ui| {
+                            let resp = ui.add(
+                                egui::TextEdit::singleline(&mut watchlist.search_query)
+                                    .id(search_id)
+                                    .hint_text("Add symbol...").desired_width(ui.available_width() - 24.0).font(egui::FontId::monospace(11.0))
+                            );
+                            let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
+                            let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.5) };
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::FUNNEL).size(11.0).color(icon_col))
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                                watchlist.filter_open = !watchlist.filter_open;
+                            }
+                            resp
                         }).inner;
                         // Refocus after adding a symbol
                         if watchlist.search_refocus {
@@ -3465,7 +3460,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // Search
                             ui.horizontal(|ui| {
                                 ui.add(egui::TextEdit::singleline(&mut watchlist.filter_text)
-                                    .hint_text("Search symbol...").desired_width(120.0).font(egui::FontId::monospace(9.0)));
+                                    .hint_text("Search...").desired_width((ui.available_width() - 30.0).max(40.0)).font(egui::FontId::monospace(9.0)));
                                 if !watchlist.filter_text.is_empty() {
                                     if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim)).frame(false)).clicked() {
                                         watchlist.filter_text.clear();
@@ -3766,7 +3761,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false));
 
                                         let te = ui.add(egui::TextEdit::singleline(&mut watchlist.rename_buf)
-                                            .desired_width(full_w - 40.0).font(egui::FontId::monospace(9.0)));
+                                            .desired_width((ui.available_width() - 10.0).max(40.0)).font(egui::FontId::monospace(9.0)));
                                         if te.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                             if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                 sec.title = watchlist.rename_buf.clone();
