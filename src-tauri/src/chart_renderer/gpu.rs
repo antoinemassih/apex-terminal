@@ -6742,104 +6742,132 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── Options strikes overlay on chart ─────────────────────────────────
-        // Shows regardless of whether chain tab is open — uses whatever chain data is loaded
         if chart.show_strikes_overlay {
-            // Use chain data if symbol matches, otherwise empty
             let has_chain = chart.symbol == watchlist.chain_symbol;
             let calls = if has_chain { &watchlist.chain_0dte.0 } else { &vec![] as &Vec<OptionRow> };
             let puts = if has_chain { &watchlist.chain_0dte.1 } else { &vec![] as &Vec<OptionRow> };
             let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
 
-            if !calls.is_empty() || !puts.is_empty() {
-                let pill_w = 105.0;
+            if (!calls.is_empty() || !puts.is_empty()) && last_price > 0.0 {
+                let pill_w = 110.0;
                 let pill_h = 20.0;
-                let pill_x = rect.left() + cw - pill_w - 28.0;
+                let min_gap = 2.0; // minimum pixels between pills
+                let pill_right = rect.left() + cw - 26.0; // right edge of pills
+                let pill_left = pill_right - pill_w;
+                let measure_x = pill_left - 40.0; // measurement arrow X position
                 let hover_pos = ui.input(|i| i.pointer.hover_pos());
-                let mut hovered_info: Option<(f32, bool, egui::Rect)> = None;
+                let price_y = py(last_price);
 
-                // Collect all options: calls above price, puts below
-                let all_opts: Vec<(&OptionRow, bool)> = calls.iter().map(|r| (r, true))
-                    .chain(puts.iter().map(|r| (r, false))).collect();
+                // Collect visible strikes with their natural Y positions
+                struct StrikeInfo { strike: f32, bid: f32, ask: f32, is_call: bool, natural_y: f32, display_y: f32 }
+                let mut strikes: Vec<StrikeInfo> = Vec::new();
+                for (row, is_call) in calls.iter().map(|r| (r, true)).chain(puts.iter().map(|r| (r, false))) {
+                    let sy = py(row.strike);
+                    if !sy.is_finite() || sy < rect.top() + pt + 5.0 || sy > rect.top() + pt + ch - 5.0 { continue; }
+                    if is_call && row.strike <= last_price { continue; }
+                    if !is_call && row.strike > last_price { continue; }
+                    strikes.push(StrikeInfo { strike: row.strike, bid: row.bid, ask: row.ask, is_call, natural_y: sy, display_y: sy });
+                }
+                // Sort by natural_y (top to bottom)
+                strikes.sort_by(|a, b| a.natural_y.partial_cmp(&b.natural_y).unwrap_or(std::cmp::Ordering::Equal));
 
-                for (row, is_call) in &all_opts {
-                    let strike_y = py(row.strike);
-                    if !strike_y.is_finite() || strike_y < rect.top() + pt + 5.0 || strike_y > rect.top() + pt + ch - 5.0 { continue; }
-                    if *is_call && row.strike <= last_price { continue; }
-                    if !*is_call && row.strike > last_price { continue; }
+                // Deconflict overlapping pills — push apart with minimum gap
+                for i in 1..strikes.len() {
+                    let prev_bottom = strikes[i - 1].display_y + pill_h / 2.0 + min_gap;
+                    let cur_top = strikes[i].display_y - pill_h / 2.0;
+                    if cur_top < prev_bottom {
+                        strikes[i].display_y = prev_bottom + pill_h / 2.0;
+                    }
+                }
 
-                    let base_col = if *is_call { t.bull } else { t.bear };
+                // Render each strike
+                for si in &strikes {
+                    let base_col = if si.is_call { t.bull } else { t.bear };
+                    let displaced = (si.display_y - si.natural_y).abs() > 2.0;
+                    let pill_rect = egui::Rect::from_min_size(egui::pos2(pill_left, si.display_y - pill_h / 2.0), egui::vec2(pill_w, pill_h));
                     let is_hovered = hover_pos.map_or(false, |p| {
-                        let pr = egui::Rect::from_min_size(egui::pos2(pill_x, strike_y - pill_h / 2.0), egui::vec2(pill_w + 60.0, pill_h));
-                        pr.contains(p)
+                        egui::Rect::from_min_size(egui::pos2(pill_left - 55.0, si.display_y - pill_h / 2.0), egui::vec2(pill_w + 60.0, pill_h)).contains(p)
                     });
 
-                    // Pill: solid background, bigger, 12px font
-                    let expanded_w = if is_hovered { pill_w + 55.0 } else { pill_w };
-                    let pr = egui::Rect::from_min_size(egui::pos2(pill_x, strike_y - pill_h / 2.0), egui::vec2(expanded_w, pill_h));
-                    painter.rect_filled(pr, pill_h / 2.0, color_alpha(base_col, if is_hovered { 35 } else { 22 }));
-                    painter.rect_stroke(pr, pill_h / 2.0, egui::Stroke::new(0.5, color_alpha(base_col, 60)), egui::StrokeKind::Outside);
+                    // Leader line: curved line from pill to actual price level (when displaced)
+                    if displaced {
+                        let from = egui::pos2(pill_right, si.display_y);
+                        let to = egui::pos2(pill_right + 8.0, si.natural_y);
+                        painter.line_segment([from, egui::pos2(pill_right + 4.0, si.display_y)], egui::Stroke::new(0.5, color_alpha(base_col, 40)));
+                        painter.line_segment([egui::pos2(pill_right + 4.0, si.display_y), egui::pos2(pill_right + 8.0, si.natural_y)], egui::Stroke::new(0.5, color_alpha(base_col, 40)));
+                        painter.circle_filled(to, 1.5, color_alpha(base_col, 60));
+                    }
 
-                    // Strike + bid×ask
-                    let label = format!("{:.0}  {:.2}×{:.2}", row.strike, row.bid, row.ask);
-                    painter.text(egui::pos2(pill_x + 6.0, strike_y), egui::Align2::LEFT_CENTER,
-                        &label, egui::FontId::monospace(10.0), color_alpha(base_col, 220));
+                    // Pill background
+                    painter.rect_filled(pill_rect, pill_h / 2.0, color_alpha(base_col, if is_hovered { 40 } else { 22 }));
+                    painter.rect_stroke(pill_rect, pill_h / 2.0, egui::Stroke::new(0.5, color_alpha(base_col, 60)), egui::StrokeKind::Outside);
+
+                    // Text: strike + bid×ask
+                    painter.text(egui::pos2(pill_left + 6.0, si.display_y), egui::Align2::LEFT_CENTER,
+                        &format!("{:.0}  {:.2}×{:.2}", si.strike, si.bid, si.ask),
+                        egui::FontId::monospace(10.0), color_alpha(base_col, 220));
 
                     if is_hovered {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        hovered_info = Some((row.strike, *is_call, pr));
 
-                        // Slide-open: Chart and Order buttons on the right
-                        let btn_x = pill_x + pill_w + 4.0;
-                        // Chart button
-                        let chart_rect = egui::Rect::from_min_size(egui::pos2(btn_x, strike_y - pill_h / 2.0), egui::vec2(24.0, pill_h));
-                        painter.rect_filled(chart_rect, 3.0, color_alpha(t.accent, 30));
-                        painter.text(chart_rect.center(), egui::Align2::CENTER_CENTER, Icon::CHART_LINE, egui::FontId::proportional(10.0), t.accent);
-                        // Order button
-                        let order_rect = egui::Rect::from_min_size(egui::pos2(btn_x + 26.0, strike_y - pill_h / 2.0), egui::vec2(24.0, pill_h));
-                        painter.rect_filled(order_rect, 3.0, color_alpha(t.bull, 30));
-                        painter.text(order_rect.center(), egui::Align2::CENTER_CENTER, Icon::CURRENCY_DOLLAR, egui::FontId::proportional(10.0), t.bull);
+                        // Slide-open buttons to the LEFT
+                        let btn_y = si.display_y - pill_h / 2.0;
+                        let chart_rect = egui::Rect::from_min_size(egui::pos2(pill_left - 52.0, btn_y), egui::vec2(24.0, pill_h));
+                        painter.rect_filled(chart_rect, 3.0, color_alpha(t.accent, 35));
+                        painter.text(chart_rect.center(), egui::Align2::CENTER_CENTER, Icon::CHART_LINE, egui::FontId::proportional(11.0), t.accent);
+                        let order_rect = egui::Rect::from_min_size(egui::pos2(pill_left - 26.0, btn_y), egui::vec2(24.0, pill_h));
+                        painter.rect_filled(order_rect, 3.0, color_alpha(t.bull, 35));
+                        painter.text(order_rect.center(), egui::Align2::CENTER_CENTER, Icon::CURRENCY_DOLLAR, egui::FontId::proportional(11.0), t.bull);
 
-                        // Click detection
                         if let Some(pos) = hover_pos {
                             if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                                 if chart_rect.contains(pos) {
-                                    watchlist.pending_opt_chart = Some((chart.symbol.clone(), row.strike, *is_call, String::new()));
+                                    watchlist.pending_opt_chart = Some((chart.symbol.clone(), si.strike, si.is_call, String::new()));
                                 }
                             }
                         }
 
-                        // Distance arrow + % (only for hovered strike)
-                        let price_y = py(last_price);
+                        // Measurement: horizontal lines + dashed vertical arrow + % label
                         if price_y.is_finite() {
-                            let dist_pct = ((row.strike - last_price) / last_price * 100.0).abs();
-                            let arrow_x = rect.left() + cw + 1.0;
-                            let mid_y = (strike_y + price_y) / 2.0;
-                            painter.line_segment([egui::pos2(arrow_x, strike_y), egui::pos2(arrow_x, price_y)],
-                                egui::Stroke::new(1.0, color_alpha(base_col, 100)));
-                            // Arrow tips
-                            let dir = if strike_y < price_y { 1.0 } else { -1.0 };
-                            painter.line_segment([egui::pos2(arrow_x - 3.0, strike_y + dir * 4.0), egui::pos2(arrow_x, strike_y)],
-                                egui::Stroke::new(1.0, color_alpha(base_col, 100)));
-                            painter.line_segment([egui::pos2(arrow_x + 3.0, strike_y + dir * 4.0), egui::pos2(arrow_x, strike_y)],
-                                egui::Stroke::new(1.0, color_alpha(base_col, 100)));
-                            // Dot at price end
-                            painter.circle_filled(egui::pos2(arrow_x, price_y), 2.0, color_alpha(base_col, 100));
-                            // % label
+                            let strike_screen_y = si.natural_y; // use actual price level, not displaced
+                            let dist_pct = ((si.strike - last_price) / last_price * 100.0).abs();
+                            // Horizontal faint line from strike level
+                            painter.line_segment([egui::pos2(measure_x - 10.0, strike_screen_y), egui::pos2(pill_left - 2.0, strike_screen_y)],
+                                egui::Stroke::new(0.5, color_alpha(base_col, 40)));
+                            // Horizontal faint line from current price level
+                            painter.line_segment([egui::pos2(measure_x - 10.0, price_y), egui::pos2(measure_x + 10.0, price_y)],
+                                egui::Stroke::new(0.5, color_alpha(base_col, 40)));
+                            // Dashed vertical arrow between them
+                            let top_y = strike_screen_y.min(price_y);
+                            let bot_y = strike_screen_y.max(price_y);
+                            let mid_y = (top_y + bot_y) / 2.0;
+                            let dash_len = 3.0; let gap = 3.0;
+                            let mut dy = top_y;
+                            while dy < bot_y {
+                                let end = (dy + dash_len).min(bot_y);
+                                painter.line_segment([egui::pos2(measure_x, dy), egui::pos2(measure_x, end)],
+                                    egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                                dy += dash_len + gap;
+                            }
+                            // Arrow tips at both ends
+                            painter.line_segment([egui::pos2(measure_x - 3.0, top_y + 4.0), egui::pos2(measure_x, top_y)], egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                            painter.line_segment([egui::pos2(measure_x + 3.0, top_y + 4.0), egui::pos2(measure_x, top_y)], egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                            painter.line_segment([egui::pos2(measure_x - 3.0, bot_y - 4.0), egui::pos2(measure_x, bot_y)], egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                            painter.line_segment([egui::pos2(measure_x + 3.0, bot_y - 4.0), egui::pos2(measure_x, bot_y)], egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                            // % label (14px, with background)
                             if dist_pct > 0.01 {
-                                let pct_galley = painter.layout_no_wrap(format!("{:.2}%", dist_pct), egui::FontId::monospace(9.0), base_col);
-                                let pct_bg = egui::Rect::from_center_size(egui::pos2(arrow_x + 16.0, mid_y), pct_galley.size() + egui::vec2(6.0, 2.0));
-                                painter.rect_filled(pct_bg, 3.0, color_alpha(t.toolbar_bg, 220));
-                                painter.text(egui::pos2(arrow_x + 16.0, mid_y), egui::Align2::CENTER_CENTER,
-                                    &format!("{:.2}%", dist_pct), egui::FontId::monospace(9.0), base_col);
+                                let pct_text = format!("{:.2}%", dist_pct);
+                                let pct_galley = painter.layout_no_wrap(pct_text.clone(), egui::FontId::monospace(14.0), base_col);
+                                let pct_rect = egui::Rect::from_center_size(egui::pos2(measure_x, mid_y), pct_galley.size() + egui::vec2(8.0, 4.0));
+                                painter.rect_filled(pct_rect, 4.0, color_alpha(t.toolbar_bg, 230));
+                                painter.text(egui::pos2(measure_x, mid_y), egui::Align2::CENTER_CENTER, &pct_text, egui::FontId::monospace(14.0), base_col);
                             }
                         }
                     }
                 }
             } else if !has_chain {
-                // No chain data — show a hint
-                let hint_x = rect.left() + cw - 120.0;
-                let hint_y = rect.top() + pt + 24.0;
-                painter.text(egui::pos2(hint_x, hint_y), egui::Align2::LEFT_CENTER,
+                let hint_x = rect.left() + cw - 130.0;
+                painter.text(egui::pos2(hint_x, rect.top() + pt + 24.0), egui::Align2::LEFT_CENTER,
                     "Load chain in sidebar", egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.3));
             }
         }
