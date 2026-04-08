@@ -1059,6 +1059,17 @@ struct BracketTemplate {
     stop_pct: f32,
 }
 
+// ─── Price Alert (per-pane) ──────────────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+struct PriceAlert {
+    id: u32,
+    price: f32,
+    above: bool,  // true = alert when price goes above, false = below
+    triggered: bool,
+    symbol: String,
+}
+
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
 struct Chart {
@@ -1215,6 +1226,14 @@ struct Chart {
     new_bracket_name: String,
     new_bracket_target: String,
     new_bracket_stop: String,
+    // ── Linked pane groups ──
+    link_group: u8, // 0=unlinked, 1-4 = link group (blue, green, orange, purple)
+    // ── Per-pane price alerts (rendered on chart) ──
+    price_alerts: Vec<PriceAlert>,
+    next_alert_id: u32,
+    alert_input_price: String,
+    // ── P&L equity curve ──
+    show_pnl_curve: bool,
 }
 
 impl Chart {
@@ -1282,6 +1301,9 @@ impl Chart {
                 BracketTemplate { name: "Scalp".into(),  target_pct: 0.3, stop_pct: 0.15 },
             ],
             new_bracket_name: String::new(), new_bracket_target: String::new(), new_bracket_stop: String::new(),
+            link_group: 0,
+            price_alerts: vec![], next_alert_id: 1, alert_input_price: String::new(),
+            show_pnl_curve: false,
         }
     }
     fn process(&mut self, cmd: ChartCommand) {
@@ -2006,6 +2028,20 @@ fn tick_simulation(chart: &mut Chart) {
         chart.auto_scroll = true; chart.price_lock = None;
         chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
     }
+
+    // ── Per-pane price alert checking ──
+    if let Some(last_bar) = chart.bars.last() {
+        let price = last_bar.close;
+        for alert in &mut chart.price_alerts {
+            if alert.triggered || alert.symbol != chart.symbol { continue; }
+            if (alert.above && price >= alert.price) || (!alert.above && price <= alert.price) {
+                alert.triggered = true;
+                let dir = if alert.above { "above" } else { "below" };
+                let msg = format!("{} alert: price {} {:.2}", chart.symbol, dir, alert.price);
+                PENDING_TOASTS.with(|ts| ts.borrow_mut().push((msg, alert.price, alert.above)));
+            }
+        }
+    }
 }
 
 fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
@@ -2228,11 +2264,49 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             ui.spacing_mut().item_spacing.x = 6.0;
 
             // ── Timeframes ──
+            // ── Interval buttons (candle size) — adjusts vc to maintain same time range ──
+            let tf_to_secs = |tf: &str| -> u32 { match tf {
+                "1m" => 60, "5m" => 300, "15m" => 900, "30m" => 1800,
+                "1h" => 3600, "4h" => 14400, "1d" => 86400, "1wk" => 604800, _ => 300,
+            }};
             for &tf in &["1m","5m","15m","30m","1h","4h","1d","1wk"] {
                 let is_active_tf = panes[ap].timeframe == tf;
                 if tb_btn(ui, tf, is_active_tf, t).clicked() && !is_active_tf {
+                    // Preserve visible time range: adjust vc proportionally
+                    let old_secs = tf_to_secs(&panes[ap].timeframe);
+                    let new_secs = tf_to_secs(tf);
+                    let time_span = panes[ap].vc as u64 * old_secs as u64;
+                    let new_vc = (time_span / new_secs as u64).max(20).min(2000) as u32;
+                    panes[ap].vc = new_vc;
                     panes[ap].pending_timeframe_change = Some(tf.to_string());
                 }
+            }
+            ui.add_space(2.0);
+            // ── Range dropdown (sets interval + visible bars) ──
+            {
+                let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(10.0).color(t.dim), |ui| {
+                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    ui.label(egui::RichText::new("RANGE").monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                    let presets: &[(&str, &str, u32)] = &[
+                        ("1 Day",    "5m",  78),
+                        ("2 Days",   "5m",  156),
+                        ("3 Days",   "5m",  234),
+                        ("5 Days",   "15m", 130),
+                        ("2 Weeks",  "30m", 130),
+                        ("1 Month",  "1h",  130),
+                        ("3 Months", "1d",  63),
+                        ("1 Year",   "1d",  252),
+                    ];
+                    for &(label, tf, vc_target) in presets {
+                        if ui.selectable_label(false, egui::RichText::new(label).monospace().size(10.0)).clicked() {
+                            panes[ap].pending_timeframe_change = Some(tf.to_string());
+                            panes[ap].vc = vc_target;
+                            ui.close_menu();
+                        }
+                    }
+                });
+                if range_resp.response.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -2511,6 +2585,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if ui.selectable_label(pc, egui::RichText::new(format!("{} Prev Close / Open", check(pc))).monospace().size(10.0)).clicked() { panes[ap].show_prev_close = !panes[ap].show_prev_close; }
                 let sr = panes[ap].show_auto_sr;
                 if ui.selectable_label(sr, egui::RichText::new(format!("{} Auto S/R Levels", check(sr))).monospace().size(10.0)).clicked() { panes[ap].show_auto_sr = !panes[ap].show_auto_sr; }
+                let pnl = panes[ap].show_pnl_curve;
+                if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(10.0)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
                 ui.separator();
                 let rpl = panes[ap].replay_mode;
                 if ui.selectable_label(rpl, egui::RichText::new(format!("{} Replay Mode", check(rpl))).monospace().size(10.0)).clicked() {
@@ -2872,11 +2948,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // ── Drag to move window ──
-    // Uses a frame-local flag (tb_btn_clicked) set by the toolbar when any
-    // button was clicked. If no button consumed the click and the pointer is
-    // in the toolbar zone (y < 36), initiate a window drag.
-    // This avoids ctx.is_using_pointer() which is polluted by the chart's
-    // allocate_rect from the previous frame.
+    // The toolbar zone (y < 36) allows window drag when no widget consumed the click.
+    // TB_BTN_CLICKED is set by tb_btn() and explicit toolbar interactions.
     if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
         if pos.y < 36.0 {
             let btn_clicked = TB_BTN_CLICKED.with(|f| { let v = f.get(); f.set(false); v });
@@ -2889,6 +2962,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if let Some(w) = &win_ref { let _ = w.drag_window(); }
                 }
             }
+        } else {
+            // Clear flag even when not in toolbar zone
+            TB_BTN_CLICKED.with(|f| f.set(false));
         }
     }
 
@@ -6736,15 +6812,37 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let header_painter = ui.painter_at(header_rect);
             header_painter.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(1.2));
 
+            // Link group colored dot button
+            let link_dot_size = 10.0;
+            let link_dot_x = header_rect.left() + 4.0;
+            let link_dot_center = egui::pos2(link_dot_x + link_dot_size / 2.0, header_rect.center().y);
+            let link_dot_rect = egui::Rect::from_center_size(link_dot_center, egui::vec2(link_dot_size + 4.0, pane_top_offset));
+            let link_resp = ui.allocate_rect(link_dot_rect, egui::Sense::click());
+            let link_colors: [egui::Color32; 4] = [
+                egui::Color32::from_rgb(70, 130, 255),  // 1=blue
+                egui::Color32::from_rgb(80, 200, 120),  // 2=green
+                egui::Color32::from_rgb(255, 160, 60),  // 3=orange
+                egui::Color32::from_rgb(180, 100, 255), // 4=purple
+            ];
+            if chart.link_group > 0 && chart.link_group <= 4 {
+                header_painter.circle_filled(link_dot_center, link_dot_size / 2.0, link_colors[(chart.link_group - 1) as usize]);
+            } else {
+                header_painter.circle_stroke(link_dot_center, link_dot_size / 2.0 - 0.5, egui::Stroke::new(1.0, t.dim.gamma_multiply(0.4)));
+            }
+            if link_resp.clicked() {
+                chart.link_group = (chart.link_group + 1) % 5; // 0→1→2→3→4→0
+            }
+
+            let sym_label_x = link_dot_x + link_dot_size + 6.0;
             // Clickable symbol — opens this pane's picker
             let sym_rect = egui::Rect::from_min_size(
-                egui::pos2(header_rect.left() + 2.0, header_rect.top()),
-                egui::vec2(header_rect.width() * 0.5, pane_top_offset),
+                egui::pos2(sym_label_x, header_rect.top()),
+                egui::vec2(header_rect.right() - sym_label_x - header_rect.width() * 0.5, pane_top_offset),
             );
             let sym_resp = ui.allocate_rect(sym_rect, egui::Sense::click());
             let label_color = if is_active { t.bull } else { egui::Color32::from_rgb(180,180,190) };
             header_painter.text(
-                egui::pos2(header_rect.left() + 6.0, header_rect.center().y),
+                egui::pos2(sym_label_x + 2.0, header_rect.center().y),
                 egui::Align2::LEFT_CENTER,
                 format!("{} {}", chart.symbol, chart.timeframe),
                 egui::FontId::monospace(10.0),
@@ -6854,6 +6952,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
         }
+
+        // (Timeframe quick selector moved to toolbar dropdown)
 
         // Extended hours helper — true when timestamp is outside regular US market hours (9:30-16:00 ET = 13:30-20:00 UTC)
         let is_extended_hour = |ts: i64| -> bool {
@@ -9007,9 +9107,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         egui::Stroke::new(0.5, t.dim.gamma_multiply(0.3)));
                 }
 
-                // MACD histogram bars — colored by direction of change
+                // MACD histogram bars — GPU mesh batched (colored by direction of change)
                 if ind.kind == IndicatorType::MACD && !ind.histogram.is_empty() {
                     let zero_y = osc_y(0.0);
+                    let mut mesh = egui::Mesh::default();
                     for i in (vs as u32)..end {
                         if let Some(&h) = ind.histogram.get(i as usize) {
                             if !h.is_nan() {
@@ -9025,10 +9126,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     if h <= prev_h { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 200) }
                                     else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 80) }
                                 };
-                                painter.rect_filled(egui::Rect::from_min_max(
-                                    egui::pos2(x - bw, y.min(zero_y)), egui::pos2(x + bw, y.max(zero_y))), 1.0, c);
+                                let top = y.min(zero_y);
+                                let bot = y.max(zero_y);
+                                let left = x - bw;
+                                let right = x + bw;
+                                let idx = mesh.vertices.len() as u32;
+                                mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(left, top), uv: egui::epaint::WHITE_UV, color: c });
+                                mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(right, top), uv: egui::epaint::WHITE_UV, color: c });
+                                mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(right, bot), uv: egui::epaint::WHITE_UV, color: c });
+                                mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(left, bot), uv: egui::epaint::WHITE_UV, color: c });
+                                mesh.indices.extend_from_slice(&[idx, idx+1, idx+2, idx, idx+2, idx+3]);
                             }
                         }
+                    }
+                    if !mesh.vertices.is_empty() {
+                        painter.add(egui::Shape::mesh(mesh));
                     }
                 }
 
@@ -9395,6 +9507,76 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", order.price, d);
                     &chart.fmt_buf
                 }, egui::FontId::monospace(8.5), color);
+        }
+
+        // ── Price alert lines on chart (draggable) ────────────────────────
+        {
+            let alert_color = egui::Color32::from_rgb(255, 191, 0); // amber/yellow
+            let mut delete_alert_id: Option<u32> = None;
+            let mut drag_alert: Option<(u32, f32)> = None; // (id, new_price)
+            let alert_ids: Vec<u32> = chart.price_alerts.iter()
+                .filter(|a| !a.triggered && a.symbol == chart.symbol)
+                .map(|a| a.id).collect();
+            for &aid in &alert_ids {
+                let alert = chart.price_alerts.iter().find(|a| a.id == aid).unwrap();
+                let y = py(alert.price);
+                if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+                // Drag zone: full-width strip at alert price
+                let drag_rect = egui::Rect::from_min_size(
+                    egui::pos2(rect.left(), y - 6.0), egui::vec2(cw, 12.0));
+                let drag_resp = ui.interact(drag_rect, egui::Id::new(("alert_drag", aid)), egui::Sense::click_and_drag());
+                if drag_resp.dragged() {
+                    if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                        let new_price = py_inv(pos.y);
+                        drag_alert = Some((aid, new_price));
+                    }
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                } else if drag_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                }
+                // Dashed amber line
+                let dash_col = egui::Color32::from_rgba_unmultiplied(255, 191, 0, if drag_resp.hovered() || drag_resp.dragged() { 255 } else { 180 });
+                let mut dx = rect.left();
+                while dx < rect.left() + cw {
+                    let end_x = (dx + 5.0).min(rect.left() + cw);
+                    painter.line_segment([egui::pos2(dx, y), egui::pos2(end_x, y)], egui::Stroke::new(if drag_resp.hovered() { 1.5 } else { 1.0 }, dash_col));
+                    dx += 9.0;
+                }
+                // Label on right side
+                let dir_arrow = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
+                let d = if alert.price >= 10.0 { 2 } else { 4 };
+                let label_text = format!("Alert {} {:.prec$}", dir_arrow, alert.price, prec = d);
+                let label_font = egui::FontId::monospace(9.0);
+                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), alert_color);
+                let lx = rect.left() + cw - galley.size().x - 24.0;
+                let badge_rect = egui::Rect::from_min_size(
+                    egui::pos2(lx - 4.0, y - galley.size().y / 2.0 - 2.0),
+                    egui::vec2(galley.size().x + 24.0, galley.size().y + 4.0));
+                painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(0.5, alert_color), egui::StrokeKind::Outside);
+                painter.text(egui::pos2(lx, y), egui::Align2::LEFT_CENTER, &label_text, label_font, alert_color);
+                // X delete button
+                let x_rect = egui::Rect::from_min_size(
+                    egui::pos2(badge_rect.right() - 16.0, badge_rect.top() + 2.0),
+                    egui::vec2(14.0, badge_rect.height() - 4.0));
+                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    if x_rect.contains(pos) && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                        delete_alert_id = Some(aid);
+                    }
+                    if x_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                }
+                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(10.0),
+                    alert_color.gamma_multiply(0.6));
+            }
+            if let Some(id) = delete_alert_id {
+                chart.price_alerts.retain(|a| a.id != id);
+            }
+            if let Some((id, new_price)) = drag_alert {
+                if let Some(a) = chart.price_alerts.iter_mut().find(|a| a.id == id) {
+                    a.price = new_price;
+                    a.above = new_price > chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                }
+            }
         }
 
         // ── Order edit popup (double-click) ──────────────────────────────────
@@ -10616,6 +10798,65 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         [egui::pos2(sync_x, rect.top()+pt), egui::pos2(sync_x, rect.top()+pt+ch)],
                         egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
                 }
+            }
+        }
+
+        // ── P&L equity curve (mini overlay) ──────────────────────────────────
+        if chart.show_pnl_curve {
+            let pnl_h = 60.0_f32;
+            let pnl_top = rect.top() + pt + ch - pnl_h;
+            let pnl_bottom = rect.top() + pt + ch;
+            let pnl_rect = egui::Rect::from_min_max(
+                egui::pos2(rect.left(), pnl_top),
+                egui::pos2(rect.left() + cw, pnl_bottom),
+            );
+            // Subtle background
+            painter.rect_filled(pnl_rect, 0.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 180));
+            painter.line_segment(
+                [egui::pos2(rect.left(), pnl_top), egui::pos2(rect.left() + cw, pnl_top)],
+                egui::Stroke::new(0.5, t.dim.gamma_multiply(0.3)));
+
+            // TODO: accumulate P&L snapshots over session for a real curve
+            // For now show unrealized P&L as a single value label from account_data_cached
+            if let Some((ref acct, _, _)) = account_data_cached {
+                let daily = acct.daily_pnl;
+                let unr = acct.unrealized_pnl;
+                let pnl_color = if daily >= 0.0 { t.bull } else { t.bear };
+                let unr_color = if unr >= 0.0 { t.bull } else { t.bear };
+                painter.text(
+                    egui::pos2(rect.left() + 8.0, pnl_top + 14.0),
+                    egui::Align2::LEFT_CENTER,
+                    "P&L",
+                    egui::FontId::monospace(9.0),
+                    t.dim.gamma_multiply(0.5),
+                );
+                painter.text(
+                    egui::pos2(rect.left() + 36.0, pnl_top + 14.0),
+                    egui::Align2::LEFT_CENTER,
+                    &format!("Day {:+.0}", daily),
+                    egui::FontId::monospace(10.0),
+                    pnl_color,
+                );
+                painter.text(
+                    egui::pos2(rect.left() + 110.0, pnl_top + 14.0),
+                    egui::Align2::LEFT_CENTER,
+                    &format!("Unr {:+.0}", unr),
+                    egui::FontId::monospace(10.0),
+                    unr_color,
+                );
+                // Zero line
+                let zero_y = pnl_top + pnl_h / 2.0;
+                painter.line_segment(
+                    [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y)],
+                    egui::Stroke::new(0.3, t.dim.gamma_multiply(0.2)));
+            } else {
+                painter.text(
+                    egui::pos2(pnl_rect.center().x, pnl_rect.center().y),
+                    egui::Align2::CENTER_CENTER,
+                    "P&L — no IB data",
+                    egui::FontId::monospace(9.0),
+                    t.dim.gamma_multiply(0.4),
+                );
             }
         }
 
@@ -12121,10 +12362,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             ui.label(egui::RichText::new(format!("ALERTS @ {:.2}", click_price)).small().color(t.dim));
             if ui.button(format!("{} Alert Above {:.2}", Icon::ARROW_FAT_UP, click_price)).clicked() {
                 PENDING_ALERT.with(|a| *a.borrow_mut() = Some((chart.symbol.clone(), click_price, true)));
+                // Also add per-pane price alert (rendered on chart)
+                let id = chart.next_alert_id; chart.next_alert_id += 1;
+                chart.price_alerts.push(PriceAlert { id, price: click_price, above: true, triggered: false, symbol: chart.symbol.clone() });
                 ui.close_menu();
             }
             if ui.button(format!("{} Alert Below {:.2}", Icon::ARROW_FAT_DOWN, click_price)).clicked() {
                 PENDING_ALERT.with(|a| *a.borrow_mut() = Some((chart.symbol.clone(), click_price, false)));
+                // Also add per-pane price alert (rendered on chart)
+                let id = chart.next_alert_id; chart.next_alert_id += 1;
+                chart.price_alerts.push(PriceAlert { id, price: click_price, above: false, triggered: false, symbol: chart.symbol.clone() });
                 ui.close_menu();
             }
             ui.separator();
@@ -14076,6 +14323,8 @@ impl ApplicationHandler for App {
                                         chart.show_auto_sr = gb("show_auto_sr", false);
                                         chart.show_footprint = gb("show_footprint", false);
                                         chart.show_gamma = gb("show_gamma", false);
+                                        chart.show_pnl_curve = gb("show_pnl_curve", false);
+                                        chart.link_group = p.get("link_group").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
                                         chart.candle_mode = match p.get("candle_mode").and_then(|v| v.as_str()).unwrap_or("std") {
                                             "vln" => CandleMode::Violin, "grd" => CandleMode::Gradient, "vg" => CandleMode::ViolinGradient,
                                             "ha" => CandleMode::HeikinAshi, "line" => CandleMode::Line, "area" => CandleMode::Area,
@@ -14175,6 +14424,38 @@ impl ApplicationHandler for App {
                     }
 
                     fetch_bars_background(sym, tf);
+                }
+            }
+
+            // ── Linked pane groups: propagate symbol changes across linked panes ──
+            // Detect which panes just changed symbol (had pending_symbol_change processed above)
+            // by checking which panes have empty bars + link_group > 0
+            let mut link_changes: Vec<(u8, String)> = Vec::new();
+            for pane in &cw.panes {
+                if pane.link_group > 0 && pane.bars.is_empty() && !pane.symbol.is_empty() {
+                    let already = link_changes.iter().any(|(g, _)| *g == pane.link_group);
+                    if !already {
+                        link_changes.push((pane.link_group, pane.symbol.clone()));
+                    }
+                }
+            }
+            // For linked panes: ONLY change symbol + fetch bars. Preserve timeframe, indicators, drawings.
+            for (group, sym) in &link_changes {
+                for pane in &mut cw.panes {
+                    if pane.link_group == *group && pane.symbol != *sym && !pane.bars.is_empty() {
+                        let tf = pane.timeframe.clone();
+                        pane.symbol = sym.clone();
+                        pane.bars.clear();
+                        pane.timestamps.clear();
+                        pane.indicator_bar_count = 0; // force indicator recompute with new bars
+                        pane.vol_analytics_computed = 0;
+                        pane.history_loading = false;
+                        pane.history_exhausted = false;
+                        pane.drawings_requested = false;
+                        pane.drawings.clear();
+                        // DO NOT clear indicators, timeframe, or other pane settings
+                        fetch_bars_background(sym.clone(), tf);
+                    }
                 }
             }
 
@@ -14503,6 +14784,11 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
             "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
             "visible": ind.visible, "thickness": ind.thickness,
+            "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
+            "source": ind.source, "offset": ind.offset,
+            "ob_level": ind.ob_level, "os_level": ind.os_level,
+            "source_tf": ind.source_tf,
+            "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
         })).collect();
         serde_json::json!({
             "symbol": p.symbol, "timeframe": p.timeframe,
@@ -14513,6 +14799,8 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
             "show_auto_sr": p.show_auto_sr, "show_footprint": p.show_footprint,
             "show_gamma": p.show_gamma,
+            "show_pnl_curve": p.show_pnl_curve,
+            "link_group": p.link_group,
             "candle_mode": match p.candle_mode {
                 CandleMode::Standard => "std", CandleMode::Violin => "vln",
                 CandleMode::Gradient => "grd", CandleMode::ViolinGradient => "vg",
@@ -14561,6 +14849,11 @@ fn save_state(panes: &[Chart], layout: Layout) {
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
             "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
             "visible": ind.visible, "thickness": ind.thickness,
+            "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
+            "source": ind.source, "offset": ind.offset,
+            "ob_level": ind.ob_level, "os_level": ind.os_level,
+            "source_tf": ind.source_tf,
+            "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
         })).collect();
         serde_json::json!({
             "symbol": p.symbol, "timeframe": p.timeframe,
@@ -14572,6 +14865,8 @@ fn save_state(panes: &[Chart], layout: Layout) {
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
             "show_auto_sr": p.show_auto_sr, "show_footprint": p.show_footprint,
             "show_gamma": p.show_gamma,
+            "show_pnl_curve": p.show_pnl_curve,
+            "link_group": p.link_group,
             // Modes
             "candle_mode": match p.candle_mode {
                 CandleMode::Standard => "std", CandleMode::Violin => "vln",
@@ -14646,6 +14941,8 @@ fn load_state() -> (Vec<Chart>, Layout) {
             chart.show_auto_sr = gb("show_auto_sr", false);
             chart.show_footprint = gb("show_footprint", false);
             chart.show_gamma = gb("show_gamma", false);
+            chart.show_pnl_curve = gb("show_pnl_curve", false);
+            chart.link_group = p.get("link_group").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
 
             // Restore candle mode
             chart.candle_mode = match p.get("candle_mode").and_then(|v| v.as_str()).unwrap_or("std") {
@@ -14674,6 +14971,17 @@ fn load_state() -> (Vec<Chart>, Layout) {
                     let mut ind = Indicator::new(id, kind, period, color);
                     ind.visible = visible;
                     ind.thickness = thickness;
+                    ind.param2 = ind_json.get("param2").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    ind.param3 = ind_json.get("param3").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    ind.param4 = ind_json.get("param4").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    ind.source = ind_json.get("source").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+                    ind.offset = ind_json.get("offset").and_then(|v| v.as_i64()).unwrap_or(0) as i16;
+                    ind.ob_level = ind_json.get("ob_level").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    ind.os_level = ind_json.get("os_level").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    ind.source_tf = ind_json.get("source_tf").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    ind.line_style = match ind_json.get("line_style").and_then(|v| v.as_str()).unwrap_or("solid") {
+                        "dashed" => LineStyle::Dashed, "dotted" => LineStyle::Dotted, _ => LineStyle::Solid,
+                    };
                     chart.indicators.push(ind);
                 }
             }
