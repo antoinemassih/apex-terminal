@@ -723,6 +723,17 @@ fn contracts_for_notional(notional: f32, premium: f32, multiplier: f32) -> i32 {
 // ─── Bracket order templates ──────────────────────────────────────────────────
 
 #[derive(Clone)]
+struct FloatingOrderPane {
+    id: u32,
+    title: String,      // e.g. "SPY 600C 0DTE"
+    symbol: String,      // underlying
+    strike: f32,
+    is_call: bool,
+    qty: u32,
+    pos: egui::Pos2,     // window position (relative to pane)
+}
+
+#[derive(Clone)]
 struct BracketTemplate {
     name: String,
     target_pct: f32,
@@ -856,6 +867,7 @@ struct Chart {
     overlay_loading: bool,
     show_gamma: bool,
     show_strikes_overlay: bool, // show option strikes on the chart
+    floating_order_panes: Vec<FloatingOrderPane>, // floating order entry windows
     gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
     gamma_call_wall: f32,
     gamma_put_wall: f32,
@@ -935,7 +947,7 @@ impl Chart {
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false,
             overlay_symbol: String::new(), overlay_bars: vec![], overlay_timestamps: vec![], overlay_loading: false,
-            show_gamma: false, show_strikes_overlay: false, gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
+            show_gamma: false, show_strikes_overlay: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
             replay_mode: false, replay_bar_count: 0,
@@ -6823,6 +6835,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                                 if chart_rect.contains(pos) {
                                     watchlist.pending_opt_chart = Some((chart.symbol.clone(), si.strike, si.is_call, String::new()));
+                                } else if order_rect.contains(pos) {
+                                    // Open floating order pane
+                                    let opt_type = if si.is_call { "C" } else { "P" };
+                                    let title = format!("{} {:.0}{}", chart.symbol, si.strike, opt_type);
+                                    let fid = chart.floating_order_panes.len() as u32 + 1;
+                                    chart.floating_order_panes.push(FloatingOrderPane {
+                                        id: fid, title: title.clone(), symbol: chart.symbol.clone(),
+                                        strike: si.strike, is_call: si.is_call, qty: 1,
+                                        pos: egui::pos2(rect.left() + cw * 0.3, rect.top() + pt + ch * 0.3),
+                                    });
                                 }
                             }
                         }
@@ -6869,6 +6891,65 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let hint_x = rect.left() + cw - 130.0;
                 painter.text(egui::pos2(hint_x, rect.top() + pt + 24.0), egui::Align2::LEFT_CENTER,
                     "Load chain in sidebar", egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.3));
+            }
+        }
+
+        // ── Floating order panes ──────────────────────────────────────────────
+        {
+            let mut close_id: Option<u32> = None;
+            for fop in &chart.floating_order_panes {
+                let win_w = 200.0;
+                let win_h = 120.0;
+                let opt_type = if fop.is_call { "CALL" } else { "PUT" };
+                let title_col = if fop.is_call { t.bull } else { t.bear };
+
+                egui::Window::new(format!("order_{}", fop.id))
+                    .fixed_pos(fop.pos)
+                    .fixed_size(egui::vec2(win_w, win_h))
+                    .title_bar(false)
+                    .frame(egui::Frame::popup(&ctx.style())
+                        .fill(t.toolbar_bg)
+                        .stroke(egui::Stroke::new(1.0, color_alpha(title_col, 80)))
+                        .inner_margin(8.0)
+                        .corner_radius(6.0))
+                    .show(ctx, |ui| {
+                        // Title bar with close button
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(&fop.title).monospace().size(12.0).color(title_col));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
+                                    close_id = Some(fop.id);
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+
+                        // Order type label
+                        ui.label(egui::RichText::new(format!("{} {} @ ${:.0}", opt_type, fop.symbol, fop.strike)).monospace().size(10.0).color(t.dim));
+                        ui.add_space(4.0);
+
+                        // Qty controls
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Qty:").monospace().size(10.0).color(t.dim));
+                            ui.label(egui::RichText::new(format!("{}", fop.qty)).monospace().size(12.0).color(egui::Color32::WHITE));
+                        });
+                        ui.add_space(6.0);
+
+                        // Buy / Sell buttons
+                        ui.horizontal(|ui| {
+                            let buy_btn = ui.add(egui::Button::new(egui::RichText::new("BUY").monospace().size(11.0).color(egui::Color32::WHITE))
+                                .fill(color_alpha(t.bull, 180)).min_size(egui::vec2(80.0, 24.0)).corner_radius(4.0));
+                            if buy_btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                            let sell_btn = ui.add(egui::Button::new(egui::RichText::new("SELL").monospace().size(11.0).color(egui::Color32::WHITE))
+                                .fill(color_alpha(t.bear, 180)).min_size(egui::vec2(80.0, 24.0)).corner_radius(4.0));
+                            if sell_btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                        });
+                    });
+            }
+            if let Some(id) = close_id {
+                chart.floating_order_panes.retain(|f| f.id != id);
             }
         }
 
@@ -12083,8 +12164,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
         // Open in a new/second pane, not the active one
         let target = if panes.len() <= 1 {
-            // Single pane — switch to 2-pane layout, create new pane
-            *layout = Layout::Two;
+            // Single pane — switch to 2H (horizontal split) layout, create new pane
+            *layout = Layout::TwoH;
             let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
             p.theme_idx = panes[ap].theme_idx;
             p.recent_symbols = panes[ap].recent_symbols.clone();
