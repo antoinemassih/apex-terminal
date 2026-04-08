@@ -3358,22 +3358,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         ui.add_space(2.0);
 
-                        // ── C) Search field + filter toggle inline ──
+                        // ── C) Search field (full width, filter icon overlaid) ──
                         let search_id = egui::Id::new("wl_search_input");
-                        let search_resp = ui.horizontal(|ui| {
-                            let resp = ui.add(
-                                egui::TextEdit::singleline(&mut watchlist.search_query)
-                                    .id(search_id)
-                                    .hint_text("Add symbol...").desired_width(ui.available_width() - 24.0).font(egui::FontId::monospace(11.0))
-                            );
+                        let search_resp = ui.add(
+                            egui::TextEdit::singleline(&mut watchlist.search_query)
+                                .id(search_id)
+                                .hint_text("Add symbol...").desired_width(ui.available_width()).font(egui::FontId::monospace(11.0))
+                        );
+                        // Filter toggle — paint over the right edge of the search bar
+                        {
+                            let sr = search_resp.rect;
                             let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
-                            let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.5) };
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::FUNNEL).size(11.0).color(icon_col))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                            let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            let funnel_rect = egui::Rect::from_min_size(egui::pos2(sr.right() - 20.0, sr.top()), egui::vec2(20.0, sr.height()));
+                            ui.painter().text(funnel_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(11.0), icon_col);
+                            if ui.interact(funnel_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click()).clicked() {
                                 watchlist.filter_open = !watchlist.filter_open;
                             }
-                            resp
-                        }).inner;
+                        }
                         // Refocus after adding a symbol
                         if watchlist.search_refocus {
                             watchlist.search_refocus = false;
