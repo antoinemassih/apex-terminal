@@ -3179,7 +3179,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             .resizable(true)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
             .show(ctx, |ui| {
-                ui.set_min_width(0.0); // allow shrinking
+                // Force content to never exceed the panel's actual width
+                let panel_w = ui.available_width();
+                ui.set_min_width(0.0);
+                ui.set_max_width(panel_w);
                 let mut wl_switch_to: Option<usize> = None;
                 let mut wl_fetch_syms: Vec<String> = Vec::new();
                 let mut wl_rename_idx: Option<usize> = None;
