@@ -95,12 +95,30 @@ impl Layout {
     fn label(self) -> &'static str { match self { Layout::One=>"1", Layout::Two=>"2", Layout::TwoH=>"2H", Layout::Three=>"3", Layout::Four=>"4", Layout::Six=>"6", Layout::SixH=>"6H", Layout::Nine=>"9" } }
     /// Returns (col, row) grid dimensions for each pane in the layout, given the total rect.
     /// For Layout::Three, returns a custom arrangement: 1 full-width top (60%) + 2 bottom (40%).
-    fn pane_rects(self, rect: egui::Rect, count: usize) -> Vec<egui::Rect> {
+    fn pane_rects(self, rect: egui::Rect, count: usize, split_h: f32, split_v: f32) -> Vec<egui::Rect> {
         if count == 0 { return vec![]; }
         let gap = 1.0;
         match self {
+            Layout::Two if count >= 2 => {
+                // Two side-by-side panes with adjustable horizontal split
+                let left_w = (rect.width() - gap) * split_h.clamp(0.15, 0.85);
+                let right_w = rect.width() - gap - left_w;
+                vec![
+                    egui::Rect::from_min_size(rect.min, egui::vec2(left_w, rect.height())),
+                    egui::Rect::from_min_size(egui::pos2(rect.left() + left_w + gap, rect.top()), egui::vec2(right_w, rect.height())),
+                ]
+            }
+            Layout::TwoH if count >= 2 => {
+                // Two stacked panes with adjustable vertical split
+                let top_h = (rect.height() - gap) * split_v.clamp(0.15, 0.85);
+                let bot_h = rect.height() - gap - top_h;
+                vec![
+                    egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), top_h)),
+                    egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + top_h + gap), egui::vec2(rect.width(), bot_h)),
+                ]
+            }
             Layout::Three if count >= 2 => {
-                let top_h = (rect.height() * 0.6) - gap * 0.5;
+                let top_h = (rect.height() * split_v.clamp(0.2, 0.8)) - gap * 0.5;
                 let bot_h = rect.height() - top_h - gap;
                 let top = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), top_h));
                 let bot_count = (count - 1).min(2);
@@ -119,7 +137,7 @@ impl Layout {
                     Layout::One => (1, 1),
                     Layout::Two => (2, 1),
                     Layout::TwoH => (1, 2),
-                    Layout::Three => (2, 2), // fallback if count < 2
+                    Layout::Three => (2, 2),
                     Layout::Four => (2, 2),
                     Layout::Six => (3, 2),
                     Layout::SixH => (2, 3),
@@ -6513,7 +6531,52 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.bg)).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
         let visible_count = layout.max_panes().min(panes.len());
-        let pane_rects = layout.pane_rects(full_rect, visible_count);
+        let pane_rects = layout.pane_rects(full_rect, visible_count, watchlist.pane_split_h, watchlist.pane_split_v);
+
+        // ── Pane divider drag handles ──
+        if visible_count > 1 {
+            for i in 0..visible_count - 1 {
+                let r0 = &pane_rects[i];
+                let r1 = &pane_rects[i + 1];
+                // Detect if divider is horizontal (panes side by side) or vertical (stacked)
+                let is_horizontal = (r0.right() - r1.left()).abs() < 10.0; // side by side = vertical divider line
+                let is_vertical = (r0.bottom() - r1.top()).abs() < 10.0;   // stacked = horizontal divider line
+
+                if is_horizontal {
+                    let div_x = (r0.right() + r1.left()) / 2.0;
+                    let div_rect = egui::Rect::from_min_size(
+                        egui::pos2(div_x - 3.0, full_rect.top()),
+                        egui::vec2(6.0, full_rect.height()));
+                    let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", i)), egui::Sense::drag());
+                    if div_resp.hovered() || div_resp.dragged() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                    }
+                    if div_resp.dragged() {
+                        let dx = div_resp.drag_delta().x;
+                        let ratio = dx / full_rect.width();
+                        watchlist.pane_split_h = (watchlist.pane_split_h + ratio).clamp(0.15, 0.85);
+                        watchlist.pane_divider_dragging = true;
+                    }
+                    if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
+                } else if is_vertical {
+                    let div_y = (r0.bottom() + r1.top()) / 2.0;
+                    let div_rect = egui::Rect::from_min_size(
+                        egui::pos2(full_rect.left(), div_y - 3.0),
+                        egui::vec2(full_rect.width(), 6.0));
+                    let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", i)), egui::Sense::drag());
+                    if div_resp.hovered() || div_resp.dragged() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                    }
+                    if div_resp.dragged() {
+                        let dy = div_resp.drag_delta().y;
+                        let ratio = dy / full_rect.height();
+                        watchlist.pane_split_v = (watchlist.pane_split_v + ratio).clamp(0.15, 0.85);
+                        watchlist.pane_divider_dragging = true;
+                    }
+                    if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
+                }
+            }
+        }
 
         for pane_idx in 0..visible_count {
         let pane_rect = pane_rects[pane_idx];
@@ -13351,6 +13414,10 @@ struct Watchlist {
     active_workspace: String,
     workspace_save_name: String,
     pending_workspace_load: Option<String>,
+    // Pane split ratios (for resizable panes)
+    pane_split_h: f32, // horizontal split ratio (0.0-1.0) for Two/TwoH layouts. 0.5 = equal.
+    pane_split_v: f32, // vertical split ratio for TwoH layout
+    pane_divider_dragging: bool,
     // Command palette
     cmd_palette_open: bool,
     cmd_palette_query: String,
@@ -13386,6 +13453,7 @@ impl Watchlist {
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
+               pane_split_h: 0.5, pane_split_v: 0.5, pane_divider_dragging: false,
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1 }
     }
 
