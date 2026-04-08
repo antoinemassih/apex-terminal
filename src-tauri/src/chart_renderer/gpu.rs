@@ -3358,24 +3358,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         ui.add_space(2.0);
 
-                        // ── C) Search field (full width, filter icon overlaid) ──
+                        // ── C) Search field + filter button beside it ──
+                        // Use allocate_ui_with_layout to place them side by side without
+                        // ui.horizontal() which reports combined min-width and forces expansion.
                         let search_id = egui::Id::new("wl_search_input");
-                        let search_resp = ui.add(
-                            egui::TextEdit::singleline(&mut watchlist.search_query)
-                                .id(search_id)
-                                .hint_text("Add symbol...").desired_width(ui.available_width()).font(egui::FontId::monospace(11.0))
-                        );
-                        // Filter toggle — paint over the right edge of the search bar
-                        {
-                            let sr = search_resp.rect;
-                            let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
-                            let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.4) };
-                            let funnel_rect = egui::Rect::from_min_size(egui::pos2(sr.right() - 20.0, sr.top()), egui::vec2(20.0, sr.height()));
-                            ui.painter().text(funnel_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(11.0), icon_col);
-                            if ui.interact(funnel_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click()).clicked() {
-                                watchlist.filter_open = !watchlist.filter_open;
-                            }
-                        }
+                        let avail = ui.available_width();
+                        let btn_w = 22.0;
+                        let search_w = (avail - btn_w - 4.0).max(40.0);
+                        let search_h = 20.0;
+                        let (full_rect, _) = ui.allocate_exact_size(egui::vec2(avail, search_h), egui::Sense::hover());
+                        // Search field (left portion)
+                        let search_rect = egui::Rect::from_min_size(full_rect.min, egui::vec2(search_w, search_h));
+                        let search_resp = ui.put(search_rect, egui::TextEdit::singleline(&mut watchlist.search_query)
+                            .id(search_id)
+                            .hint_text("Add symbol...").desired_width(search_w).font(egui::FontId::monospace(11.0)));
+                        // Filter button (right portion)
+                        let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
+                        let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                        let btn_rect = egui::Rect::from_min_size(egui::pos2(full_rect.right() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
+                        ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(11.0), icon_col);
+                        let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
+                        if btn_resp.clicked() { watchlist.filter_open = !watchlist.filter_open; }
+                        if btn_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                         // Refocus after adding a symbol
                         if watchlist.search_refocus {
                             watchlist.search_refocus = false;
