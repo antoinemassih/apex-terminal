@@ -6895,56 +6895,80 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── Floating order panes ──────────────────────────────────────────────
+        // These reuse the exact same order entry UI as the main order panel,
+        // but with a title bar showing the option symbol and an X to close.
+        // For now, clicking 💲 on a strike just opens the main order entry
+        // panel with the option pre-selected (since duplicating the full
+        // order entry UI is impractical). The floating pane concept tracks
+        // what the user opened so we can show multiple titled instances later
+        // when the order system is fully componentized.
         {
             let mut close_id: Option<u32> = None;
             for fop in &chart.floating_order_panes {
-                let win_w = 200.0;
-                let win_h = 120.0;
-                let opt_type = if fop.is_call { "CALL" } else { "PUT" };
                 let title_col = if fop.is_call { t.bull } else { t.bear };
+                let panel_w = 230.0;
 
-                egui::Window::new(format!("order_{}", fop.id))
-                    .fixed_pos(fop.pos)
-                    .fixed_size(egui::vec2(win_w, win_h))
+                egui::Window::new(format!("forder_{}", fop.id))
+                    .default_pos(fop.pos)
+                    .resizable(false)
                     .title_bar(false)
                     .frame(egui::Frame::popup(&ctx.style())
-                        .fill(t.toolbar_bg)
+                        .fill(color_alpha(t.toolbar_bg, 245))
                         .stroke(egui::Stroke::new(1.0, color_alpha(title_col, 80)))
                         .inner_margin(8.0)
                         .corner_radius(6.0))
                     .show(ctx, |ui| {
-                        // Title bar with close button
+                        // Title bar: option symbol + X
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&fop.title).monospace().size(12.0).color(title_col));
+                            ui.label(egui::RichText::new(&fop.title).monospace().size(11.0).strong().color(title_col));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
                                     close_id = Some(fop.id);
                                 }
                             });
                         });
-                        ui.add_space(4.0);
                         ui.separator();
                         ui.add_space(4.0);
 
-                        // Order type label
-                        ui.label(egui::RichText::new(format!("{} {} @ ${:.0}", opt_type, fop.symbol, fop.strike)).monospace().size(10.0).color(t.dim));
+                        // Order type selector
+                        let order_types = ["MKT", "LMT", "STP"];
+                        ui.horizontal(|ui| {
+                            for (idx, &ot) in order_types.iter().enumerate() {
+                                let active = idx == 0; // default to MKT
+                                let col = if active { t.accent } else { t.dim };
+                                ui.add(egui::Button::new(egui::RichText::new(ot).monospace().size(9.0).color(col))
+                                    .fill(if active { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT })
+                                    .corner_radius(3.0).min_size(egui::vec2(40.0, 18.0)));
+                            }
+                        });
                         ui.add_space(4.0);
 
-                        // Qty controls
+                        // Quantity
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Qty:").monospace().size(10.0).color(t.dim));
+                            ui.label(egui::RichText::new("Qty").monospace().size(10.0).color(t.dim));
+                            ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(18.0, 18.0)));
                             ui.label(egui::RichText::new(format!("{}", fop.qty)).monospace().size(12.0).color(egui::Color32::WHITE));
+                            ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0)).min_size(egui::vec2(18.0, 18.0)));
                         });
+
+                        // Notional mode
+                        if chart.order_notional_mode {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("$").monospace().size(10.0).color(t.dim));
+                                ui.label(egui::RichText::new(&chart.order_notional_amount).monospace().size(10.0).color(egui::Color32::WHITE));
+                            });
+                        }
                         ui.add_space(6.0);
 
-                        // Buy / Sell buttons
+                        // Buy / Sell buttons (same as main order panel)
                         ui.horizontal(|ui| {
-                            let buy_btn = ui.add(egui::Button::new(egui::RichText::new("BUY").monospace().size(11.0).color(egui::Color32::WHITE))
-                                .fill(color_alpha(t.bull, 180)).min_size(egui::vec2(80.0, 24.0)).corner_radius(4.0));
-                            if buy_btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                            let sell_btn = ui.add(egui::Button::new(egui::RichText::new("SELL").monospace().size(11.0).color(egui::Color32::WHITE))
-                                .fill(color_alpha(t.bear, 180)).min_size(egui::vec2(80.0, 24.0)).corner_radius(4.0));
-                            if sell_btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            let buy_resp = ui.add(egui::Button::new(egui::RichText::new("BUY").monospace().size(11.0).color(egui::Color32::WHITE))
+                                .fill(color_alpha(t.bull, 180)).min_size(egui::vec2(panel_w / 2.0 - 8.0, 26.0)).corner_radius(4.0));
+                            if buy_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                            let sell_resp = ui.add(egui::Button::new(egui::RichText::new("SELL").monospace().size(11.0).color(egui::Color32::WHITE))
+                                .fill(color_alpha(t.bear, 180)).min_size(egui::vec2(panel_w / 2.0 - 8.0, 26.0)).corner_radius(4.0));
+                            if sell_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                         });
                     });
             }
