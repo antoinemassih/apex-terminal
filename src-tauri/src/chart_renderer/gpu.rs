@@ -676,6 +676,15 @@ enum VolumeProfileMode { Off, Classic, Heatmap, Strip, Clean }
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CandleMode { Standard, Violin, Gradient, ViolinGradient, HeikinAshi, Line, Area }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum StrikeMode {
+    Count,      // N strikes above/below ATM
+    Pct(u8),    // strikes within X% of underlying (index into PCT_OPTIONS)
+    StdDev,     // strikes within N std deviations
+    NearMidFar(u8), // 0=near (ATM), 1=mid (1σ), 2=far (2σ) as starting point
+}
+const PCT_OPTIONS: [f32; 5] = [0.6, 1.0, 1.25, 1.5, 2.0];
+
 struct VolumeLevel {
     price: f32,
     total_vol: f32,
@@ -4501,34 +4510,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             fetch_chain_background(sym, ns, far_dte, chain_price);
                         }
 
-                        // ── Controls FIRST: strikes ± | DTE selector | sel toggle ──
+                        // ── Controls: DTE selector | sel toggle ──
                         ui.horizontal(|ui| {
-                            dim_label(ui, "strikes", t.dim);
-                            if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                watchlist.chain_num_strikes = watchlist.chain_num_strikes.saturating_sub(1).max(1);
-                                let sym = watchlist.chain_symbol.clone();
-                                let ns = watchlist.chain_num_strikes;
-                                let far_dte = watchlist.chain_far_dte;
-                                watchlist.chain_loading = true;
-                                fetch_chain_background(sym.clone(), ns, 0, chain_price);
-                                fetch_chain_background(sym, ns, far_dte, chain_price);
-                            }
-                            ui.label(egui::RichText::new(format!("{}", watchlist.chain_num_strikes)).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
-                            if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0)).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                watchlist.chain_num_strikes += 1;
-                                let sym = watchlist.chain_symbol.clone();
-                                let ns = watchlist.chain_num_strikes;
-                                let far_dte = watchlist.chain_far_dte;
-                                watchlist.chain_loading = true;
-                                fetch_chain_background(sym.clone(), ns, 0, chain_price);
-                                fetch_chain_background(sym, ns, far_dte, chain_price);
-                            }
-
-                            // Trading day functions: trading_date(), trading_month_name(), dte_label() — defined at module level
-
                             // DTE dropdown
                             let dte_values = [1, 2, 3, 5, 7, 10];
                             let cur_label = dte_label(watchlist.chain_far_dte);
+                            dim_label(ui, "DTE", t.dim);
                             egui::ComboBox::from_id_salt("far_dte").selected_text(egui::RichText::new(&cur_label).monospace().size(9.0).color(t.dim)).width(100.0)
                                 .show_ui(ui, |ui| {
                                     for &d in &dte_values {
@@ -4540,11 +4527,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         }
                                     }
                                 });
-
                             // Select mode toggle
-                            let sel_label = if watchlist.chain_select_mode { format!("{} sel", Icon::CHECK) } else { "sel".to_string() };
                             let sel_active = watchlist.chain_select_mode;
-                            if ui.add(egui::Button::new(egui::RichText::new(sel_label).monospace().size(9.0)
+                            if ui.add(egui::Button::new(egui::RichText::new(if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() }).monospace().size(9.0)
                                 .color(if sel_active { t.accent } else { t.dim }))
                                 .fill(if sel_active { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),51) } else { t.toolbar_bg })
                                 .stroke(egui::Stroke::new(1.0, if sel_active { t.accent } else { t.toolbar_border }))
@@ -4573,43 +4558,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
                                     display_text, egui::FontId::monospace(14.0), t.accent);
                             }
-                            // Price + freeze toggle + arrows
+                            // Price display
                             if chain_price > 0.0 {
                                 ui.add_space(6.0);
                                 ui.label(egui::RichText::new(format!("${:.2}", chain_price)).monospace().size(14.0).color(egui::Color32::from_rgb(220, 220, 230)));
-                                ui.add_space(4.0);
-                                // Freeze toggle
-                                let freeze_icon = if watchlist.chain_frozen { Icon::PAUSE } else { Icon::PLAY };
-                                let freeze_color = if watchlist.chain_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
-                                if ui.add(egui::Button::new(egui::RichText::new(freeze_icon).size(10.0).color(freeze_color))
-                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
-                                    watchlist.chain_frozen = !watchlist.chain_frozen;
-                                    if !watchlist.chain_frozen { watchlist.chain_center_offset = 0; }
-                                }
-                                // Up/down arrows (only when frozen)
-                                if watchlist.chain_frozen {
-                                    let max_offset = 50i32;
-                                    let needs_refetch = |wl: &Watchlist| -> bool {
-                                        // Check if we're near the edge of loaded data
-                                        let calls = &wl.chain_0dte.0;
-                                        let puts = &wl.chain_0dte.1;
-                                        let total = calls.len() + puts.len();
-                                        let offset_abs = wl.chain_center_offset.unsigned_abs() as usize;
-                                        total > 0 && offset_abs + wl.chain_num_strikes >= total / 2
-                                    };
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(10.0).color(t.dim))
-                                        .fill(color_alpha(t.toolbar_border, 15)).corner_radius(2.0).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                        watchlist.chain_center_offset = (watchlist.chain_center_offset + 1).min(max_offset);
-                                    }
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(10.0).color(t.dim))
-                                        .fill(color_alpha(t.toolbar_border, 15)).corner_radius(2.0).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                        watchlist.chain_center_offset = (watchlist.chain_center_offset - 1).max(-max_offset);
-                                    }
-                                    // Show current offset
-                                    if watchlist.chain_center_offset != 0 {
-                                        ui.label(egui::RichText::new(format!("{:+}", watchlist.chain_center_offset)).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                                    }
-                                }
                             }
                             // Search — static immediate + ApexIB background
                             if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
@@ -4900,13 +4852,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // Per-chain controls: 0DTE
                             ui.horizontal(|ui| {
                                 dim_label(ui, "0DTE", t.dim);
-                                if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() {
-                                    watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1);
+                                // Strike mode dropdown
+                                let mode_label = match watchlist.chain_0_strike_mode {
+                                    StrikeMode::Count => format!("{}x", watchlist.chain_0_num_strikes),
+                                    StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
+                                    StrikeMode::StdDev => "σ".into(),
+                                    StrikeMode::NearMidFar(0) => "Near".into(),
+                                    StrikeMode::NearMidFar(1) => "Mid".into(),
+                                    StrikeMode::NearMidFar(_) => "Far".into(),
+                                };
+                                egui::ComboBox::from_id_salt("sm_0").selected_text(egui::RichText::new(&mode_label).monospace().size(8.0)).width(45.0).show_ui(ui, |ui| {
+                                    if ui.selectable_label(matches!(watchlist.chain_0_strike_mode, StrikeMode::Count), "Count").clicked() { watchlist.chain_0_strike_mode = StrikeMode::Count; }
+                                    for (pi, &pct) in PCT_OPTIONS.iter().enumerate() {
+                                        if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::Pct(pi as u8), format!("{}%", pct)).clicked() { watchlist.chain_0_strike_mode = StrikeMode::Pct(pi as u8); }
+                                    }
+                                    if ui.selectable_label(matches!(watchlist.chain_0_strike_mode, StrikeMode::StdDev), "Std Dev").clicked() { watchlist.chain_0_strike_mode = StrikeMode::StdDev; }
+                                    ui.separator();
+                                    if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::NearMidFar(0), "Near (ATM)").clicked() { watchlist.chain_0_strike_mode = StrikeMode::NearMidFar(0); }
+                                    if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::NearMidFar(1), "Mid (1σ)").clicked() { watchlist.chain_0_strike_mode = StrikeMode::NearMidFar(1); }
+                                    if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::NearMidFar(2), "Far (2σ)").clicked() { watchlist.chain_0_strike_mode = StrikeMode::NearMidFar(2); }
+                                });
+                                // Count ± (only in Count mode)
+                                if matches!(watchlist.chain_0_strike_mode, StrikeMode::Count) {
+                                    if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
+                                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes += 1; }
                                 }
-                                ui.label(egui::RichText::new(format!("{}", watchlist.chain_0_num_strikes)).monospace().size(9.0).color(t.dim));
-                                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() {
-                                    watchlist.chain_0_num_strikes += 1;
-                                }
+                                // Freeze + arrows
                                 let fr_col = if watchlist.chain_0_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
                                 if ui.add(egui::Button::new(egui::RichText::new(if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY }).size(9.0).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
                                     watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
@@ -4931,12 +4902,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // Per-chain controls: far DTE
                             ui.horizontal(|ui| {
                                 dim_label(ui, &format!("{}DTE", far_dte), t.dim);
-                                if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() {
-                                    watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1);
-                                }
-                                ui.label(egui::RichText::new(format!("{}", watchlist.chain_far_num_strikes)).monospace().size(9.0).color(t.dim));
-                                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() {
-                                    watchlist.chain_far_num_strikes += 1;
+                                let mode_label = match watchlist.chain_far_strike_mode {
+                                    StrikeMode::Count => format!("{}x", watchlist.chain_far_num_strikes),
+                                    StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
+                                    StrikeMode::StdDev => "σ".into(),
+                                    StrikeMode::NearMidFar(0) => "Near".into(),
+                                    StrikeMode::NearMidFar(1) => "Mid".into(),
+                                    StrikeMode::NearMidFar(_) => "Far".into(),
+                                };
+                                egui::ComboBox::from_id_salt("sm_f").selected_text(egui::RichText::new(&mode_label).monospace().size(8.0)).width(45.0).show_ui(ui, |ui| {
+                                    if ui.selectable_label(matches!(watchlist.chain_far_strike_mode, StrikeMode::Count), "Count").clicked() { watchlist.chain_far_strike_mode = StrikeMode::Count; }
+                                    for (pi, &pct) in PCT_OPTIONS.iter().enumerate() {
+                                        if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::Pct(pi as u8), format!("{}%", pct)).clicked() { watchlist.chain_far_strike_mode = StrikeMode::Pct(pi as u8); }
+                                    }
+                                    if ui.selectable_label(matches!(watchlist.chain_far_strike_mode, StrikeMode::StdDev), "Std Dev").clicked() { watchlist.chain_far_strike_mode = StrikeMode::StdDev; }
+                                    ui.separator();
+                                    if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::NearMidFar(0), "Near (ATM)").clicked() { watchlist.chain_far_strike_mode = StrikeMode::NearMidFar(0); }
+                                    if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::NearMidFar(1), "Mid (1σ)").clicked() { watchlist.chain_far_strike_mode = StrikeMode::NearMidFar(1); }
+                                    if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::NearMidFar(2), "Far (2σ)").clicked() { watchlist.chain_far_strike_mode = StrikeMode::NearMidFar(2); }
+                                });
+                                if matches!(watchlist.chain_far_strike_mode, StrikeMode::Count) {
+                                    if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
+                                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
                                 }
                                 let fr_col = if watchlist.chain_far_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
                                 if ui.add(egui::Button::new(egui::RichText::new(if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY }).size(9.0).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
@@ -12133,9 +12120,11 @@ struct Watchlist {
     chain_0_num_strikes: usize,
     chain_0_frozen: bool,
     chain_0_offset: i32,
+    chain_0_strike_mode: StrikeMode,
     chain_far_num_strikes: usize,
     chain_far_frozen: bool,
     chain_far_offset: i32,
+    chain_far_strike_mode: StrikeMode,
     chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
     // Saved options
     saved_options: Vec<SavedOption>,
@@ -12169,8 +12158,8 @@ impl Watchlist {
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
-               chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0,
-               chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0,
+               chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0, chain_0_strike_mode: StrikeMode::Count,
+               chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0, chain_far_strike_mode: StrikeMode::Count,
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new() }
