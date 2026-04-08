@@ -4740,7 +4740,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let chain_frozen = watchlist.chain_frozen;
                         // Per-chain controls passed as parameters to render_block
 
-                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32, num_strikes: usize, center_offset: i32| {
+                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32, num_strikes: usize, center_offset: i32, strike_mode: StrikeMode| {
                             let exp_label = format!("{}DTE", dte);
                             let date_str = if dte == 0 {
                                 "Today".to_string()
@@ -4776,10 +4776,45 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                             // Window: offset shifts which strikes are visible, but divider stays at real price
                             let max_idx = (all_strikes.len() as i32 - 1).max(0);
-                            let window_center = (atm_idx as i32 + center_offset).clamp(0, max_idx) as usize;
-                            let start = window_center.saturating_sub(num_strikes);
-                            let end = (window_center + num_strikes).min(all_strikes.len());
-                            let visible_strikes: Vec<f32> = all_strikes[start..end].to_vec();
+                            // Filter strikes based on the selected mode
+                            let visible_strikes: Vec<f32> = match strike_mode {
+                                StrikeMode::Count => {
+                                    let window_center = (atm_idx as i32 + center_offset).clamp(0, max_idx) as usize;
+                                    let start = window_center.saturating_sub(num_strikes);
+                                    let end = (window_center + num_strikes).min(all_strikes.len());
+                                    all_strikes[start..end].to_vec()
+                                }
+                                StrikeMode::Pct(pct_idx) => {
+                                    let pct = PCT_OPTIONS.get(pct_idx as usize).copied().unwrap_or(1.0) / 100.0;
+                                    all_strikes.iter().filter(|&&s| {
+                                        let dist = (s - price).abs() / price;
+                                        dist <= pct
+                                    }).copied().collect()
+                                }
+                                StrikeMode::StdDev => {
+                                    // Approximate 1 std dev as 1.5% of price (placeholder until real HV data)
+                                    let sigma = price * 0.015;
+                                    let window_center = (atm_idx as i32 + center_offset).clamp(0, max_idx) as usize;
+                                    all_strikes.iter().filter(|&&s| (s - all_strikes[window_center]).abs() <= sigma * 2.0).copied().collect()
+                                }
+                                StrikeMode::NearMidFar(level) => {
+                                    // Approximate sigma as 1.5% of price
+                                    let sigma = price * 0.015;
+                                    let offset_sigma = level as f32; // 0=ATM, 1=1σ, 2=2σ
+                                    let center_price = price + (offset_sigma * sigma * center_offset.signum() as f32);
+                                    // Find strikes around the offset center
+                                    let center_strike = all_strikes.iter().min_by(|a, b| {
+                                        let da = ((**a) - price - offset_sigma * sigma).abs();
+                                        let db = ((**b) - price - offset_sigma * sigma).abs();
+                                        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                                    }).copied().unwrap_or(price);
+                                    let ci = all_strikes.iter().position(|&s| s == center_strike).unwrap_or(atm_idx);
+                                    let ci = (ci as i32 + center_offset).clamp(0, max_idx) as usize;
+                                    let start = ci.saturating_sub(num_strikes);
+                                    let end = (ci + num_strikes).min(all_strikes.len());
+                                    all_strikes[start..end].to_vec()
+                                }
+                            };
 
                             // ALWAYS split at the real price — divider never moves with arrows
                             // Calls: visible strikes ABOVE the real price
@@ -4890,7 +4925,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             });
                             let ns_0 = watchlist.chain_0_num_strikes;
                             let off_0 = watchlist.chain_0_offset;
-                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_0, off_0);
+                            let sm_0 = watchlist.chain_0_strike_mode;
+                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_0, off_0, sm_0);
 
                             ui.add_space(6.0);
                             let sep_r = ui.available_rect_before_wrap();
@@ -4937,7 +4973,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             });
                             let ns_f = watchlist.chain_far_num_strikes;
                             let off_f = watchlist.chain_far_offset;
-                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f);
+                            let sm_f = watchlist.chain_far_strike_mode;
+                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f, sm_f);
                         });
                         // Normal click: just open option chart (no watchlist add)
                         if let Some(info) = clicked_contract.take() {
