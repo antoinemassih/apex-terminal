@@ -4787,46 +4787,55 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let call_start_price = price + nmf_sigma * sigma;
                             let put_start_price = price - nmf_sigma * sigma;
 
-                            // Find the strike indices for call/put start points
-                            let call_start_idx = all_strikes.iter().position(|&s| s >= call_start_price).unwrap_or(all_strikes.len());
-                            let put_start_idx = all_strikes.iter().rposition(|&s| s <= put_start_price).unwrap_or(0);
-
-                            // Apply center_offset (manual arrow shift)
-                            let call_start = (call_start_idx as i32 + center_offset).clamp(0, all_strikes.len() as i32) as usize;
-                            let put_start = (put_start_idx as i32 - center_offset).clamp(0, all_strikes.len() as i32 - 1) as usize;
-
-                            // Filter strikes based on mode
-                            let visible_strikes: Vec<f32> = match strike_mode {
-                                StrikeMode::Count => {
-                                    // Calls: num_strikes upward from call_start
-                                    let call_end = (call_start + num_strikes).min(all_strikes.len());
-                                    // Puts: num_strikes downward from put_start
-                                    let put_begin = put_start.saturating_sub(num_strikes - 1);
-                                    let mut strikes = Vec::new();
-                                    // Add put strikes (below)
-                                    for i in put_begin..=put_start.min(all_strikes.len() - 1) {
-                                        if !strikes.contains(&all_strikes[i]) { strikes.push(all_strikes[i]); }
+                            // For Near: single symmetric window (classic behavior)
+                            // For Mid/Far: calls start from +Nσ, puts from -Nσ
+                            let visible_strikes: Vec<f32> = if nmf == 0 {
+                                // NEAR: symmetric window centered on ATM, same as original
+                                match strike_mode {
+                                    StrikeMode::Count => {
+                                        let window_center = (atm_idx as i32 + center_offset).clamp(0, max_idx) as usize;
+                                        let start = window_center.saturating_sub(num_strikes);
+                                        let end = (window_center + num_strikes).min(all_strikes.len());
+                                        all_strikes[start..end].to_vec()
                                     }
-                                    // Add call strikes (above)
-                                    for i in call_start..call_end {
-                                        if !strikes.contains(&all_strikes[i]) { strikes.push(all_strikes[i]); }
+                                    StrikeMode::Pct(pct_idx) => {
+                                        let pct = PCT_OPTIONS.get(pct_idx as usize).copied().unwrap_or(1.0) / 100.0;
+                                        all_strikes.iter().filter(|&&s| (s - price).abs() / price <= pct).copied().collect()
                                     }
-                                    strikes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                                    strikes
+                                    StrikeMode::StdDev => {
+                                        all_strikes.iter().filter(|&&s| (s - price).abs() <= sigma * 2.0).copied().collect()
+                                    }
                                 }
-                                StrikeMode::Pct(pct_idx) => {
-                                    let pct = PCT_OPTIONS.get(pct_idx as usize).copied().unwrap_or(1.0) / 100.0;
-                                    all_strikes.iter().filter(|&&s| {
-                                        if s >= price { (s - call_start_price).abs() / price <= pct }
-                                        else { (put_start_price - s).abs() / price <= pct }
-                                    }).copied().collect()
-                                }
-                                StrikeMode::StdDev => {
-                                    // Show strikes within 1σ from the NMF start points
-                                    all_strikes.iter().filter(|&&s| {
-                                        if s >= price { s >= call_start_price && s <= call_start_price + sigma }
-                                        else { s <= put_start_price && s >= put_start_price - sigma }
-                                    }).copied().collect()
+                            } else {
+                                // MID/FAR: calls start from +Nσ, puts from -Nσ
+                                let call_start_idx = all_strikes.iter().position(|&s| s >= call_start_price).unwrap_or(all_strikes.len());
+                                let put_end_idx = all_strikes.iter().rposition(|&s| s <= put_start_price).unwrap_or(0);
+                                // Arrow offset shifts both in the same direction
+                                let call_start = (call_start_idx as i32 + center_offset).clamp(0, all_strikes.len() as i32) as usize;
+                                let put_end = (put_end_idx as i32 + center_offset).clamp(0, max_idx) as usize;
+                                match strike_mode {
+                                    StrikeMode::Count => {
+                                        let call_end = (call_start + num_strikes).min(all_strikes.len());
+                                        let put_begin = put_end.saturating_sub(num_strikes.saturating_sub(1));
+                                        let mut strikes = Vec::new();
+                                        for i in put_begin..=put_end.min(all_strikes.len().saturating_sub(1)) { strikes.push(all_strikes[i]); }
+                                        for i in call_start..call_end { if !strikes.contains(&all_strikes[i]) { strikes.push(all_strikes[i]); } }
+                                        strikes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                                        strikes
+                                    }
+                                    StrikeMode::Pct(pct_idx) => {
+                                        let pct = PCT_OPTIONS.get(pct_idx as usize).copied().unwrap_or(1.0) / 100.0;
+                                        all_strikes.iter().filter(|&&s| {
+                                            if s >= price { s >= call_start_price && (s - call_start_price) / price <= pct }
+                                            else { s <= put_start_price && (put_start_price - s) / price <= pct }
+                                        }).copied().collect()
+                                    }
+                                    StrikeMode::StdDev => {
+                                        all_strikes.iter().filter(|&&s| {
+                                            if s >= price { s >= call_start_price && s <= call_start_price + sigma }
+                                            else { s <= put_start_price && s >= put_start_price - sigma }
+                                        }).copied().collect()
+                                    }
                                 }
                             };
 
