@@ -185,6 +185,12 @@ pub enum ChartCommand {
         calls: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>, // strike, last, bid, ask, vol, oi, iv, itm, contract
         puts: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
     },
+    /// Options chain data for the chart overlay (independent of sidebar chain tab)
+    OverlayChainData {
+        symbol: String,
+        calls: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
+        puts: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
+    },
     /// Symbol search results from ApexIB
     SearchResults {
         query: String,

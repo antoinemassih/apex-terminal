@@ -73,6 +73,7 @@ const SIM_VOL_BASE: f32 = 1000.0;         // Minimum volume per tick
 const SIM_VOL_RANGE: f32 = 8000.0;        // Random volume range above base
 const SIM_DEFAULT_INTERVAL: i64 = 300;    // Default bar interval (5 min) when no timestamps
 const AUTO_SCROLL_RESUME_SECS: u64 = 5;   // Resume auto-scroll after N seconds of inactivity
+const CHART_RIGHT_PAD: u32 = 20;           // Empty bars of space to the right of latest bar
 const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent symbols list
 const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
@@ -220,6 +221,14 @@ struct Indicator {
     source_bars: Vec<Bar>,
     source_timestamps: Vec<i64>,
     source_loaded: bool,
+    // Extended parameters (0.0 = use default)
+    param2: f32,   // BB stddev, KC mult, ST mult, MACD slow, Stoch D, Ichi kijun, SAR step
+    param3: f32,   // MACD signal, Ichi senkou_b, SAR max
+    param4: f32,   // SAR start, Ichi displacement
+    source: u8,    // 0=Close, 1=Open, 2=High, 3=Low, 4=HL2, 5=OHLC4
+    offset: i16,   // shift line forward/backward N bars
+    ob_level: f32, // overbought level (RSI 70, Stoch 80, CCI 100, WR -20)
+    os_level: f32, // oversold level (RSI 30, Stoch 20, CCI -100, WR -80)
 }
 
 const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1wk"];
@@ -232,11 +241,28 @@ impl Indicator {
                values: vec![], values2: vec![], values3: vec![], values4: vec![], values5: vec![],
                supertrend_dir: vec![],
                histogram: vec![], divergences: vec![],
-               source_bars: vec![], source_timestamps: vec![], source_loaded: false }
+               source_bars: vec![], source_timestamps: vec![], source_loaded: false,
+               param2: 0.0, param3: 0.0, param4: 0.0, source: 0, offset: 0, ob_level: 0.0, os_level: 0.0 }
     }
     fn display_name(&self) -> String {
         let tf = if self.source_tf.is_empty() { "Chart" } else { &self.source_tf };
-        format!("{} {} ({})", self.kind.label(), self.period, tf)
+        match self.kind {
+            IndicatorType::MACD => {
+                let fast = self.period;
+                let slow = if self.param2 > 0.0 { self.param2 as usize } else { 26 };
+                let sig = if self.param3 > 0.0 { self.param3 as usize } else { 9 };
+                format!("MACD {}/{}/{} ({})", fast, slow, sig, tf)
+            }
+            IndicatorType::BollingerBands => {
+                let std = if self.param2 > 0.0 { self.param2 } else { 2.0 };
+                format!("BB {} {:.1}σ ({})", self.period, std, tf)
+            }
+            IndicatorType::Ichimoku => {
+                let kijun = if self.param2 > 0.0 { self.param2 as usize } else { 26 };
+                format!("Ichimoku {}/{} ({})", self.period, kijun, tf)
+            }
+            _ => format!("{} {} ({})", self.kind.label(), self.period, tf)
+        }
     }
     fn source_label(&self) -> &str {
         if self.source_tf.is_empty() { "Chart" } else { &self.source_tf }
@@ -271,7 +297,13 @@ impl SignalDrawing {
         // Binary search for the closest bar
         let pos = timestamps.partition_point(|&t| t < ts);
         if pos == 0 { return 0.0; }
-        if pos >= timestamps.len() { return timestamps.len() as f32 - 1.0; }
+        // Extrapolate into future if timestamp is beyond last bar
+        if pos >= timestamps.len() {
+            let candle_sec = if timestamps.len() > 1 { timestamps[1] - timestamps[0] } else { 300 };
+            let last_ts = *timestamps.last().unwrap_or(&0);
+            let beyond = ts - last_ts;
+            return (timestamps.len() - 1) as f32 + beyond as f32 / candle_sec as f32;
+        }
         // Interpolate between bars
         let t0 = timestamps[pos - 1];
         let t1 = timestamps[pos];
@@ -322,7 +354,13 @@ fn dte_label(dte: i32) -> String {
 fn bar_to_time(bar: f32, timestamps: &[i64]) -> i64 {
     let idx = bar as usize;
     if timestamps.is_empty() { return 0; }
-    if idx >= timestamps.len() { return *timestamps.last().unwrap_or(&0); }
+    // Extrapolate into the future if bar index is beyond available data
+    if idx >= timestamps.len() {
+        let candle_sec = if timestamps.len() > 1 { timestamps[1] - timestamps[0] } else { 300 };
+        let last_ts = *timestamps.last().unwrap_or(&0);
+        let bars_beyond = bar - (timestamps.len() - 1) as f32;
+        return last_ts + (bars_beyond * candle_sec as f32) as i64;
+    }
     let frac = bar - idx as f32;
     if frac < 0.01 || idx + 1 >= timestamps.len() { return timestamps[idx]; }
     // Interpolate
@@ -720,6 +758,287 @@ fn contracts_for_notional(notional: f32, premium: f32, multiplier: f32) -> i32 {
     (notional / cost_per_contract).floor() as i32
 }
 
+/// Shared order entry body — renders qty controls, price fields, and BUY/SELL buttons.
+/// Called from both the main order panel and floating strike-order panes.
+/// `id_salt`: unique value to differentiate egui widget IDs between instances.
+fn render_order_entry_body(
+    ui: &mut egui::Ui,
+    chart: &mut Chart,
+    t: &Theme,
+    _id_salt: u64,
+    panel_w: f32,
+) {
+    let adv = chart.order_advanced;
+    let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+    let spread = (last_price * 0.0001).max(0.01);
+    let order_types: Vec<&str> = if chart.is_option {
+        vec!["MKT", "LMT", "STP", "STP-LMT", "TRAIL", "UND"]
+    } else {
+        vec!["MKT", "LMT", "STP", "STP-LMT", "TRAIL"]
+    };
+    let tifs = ["DAY", "GTC", "IOC"];
+    let pad = 8.0;
+    ui.add_space(4.0);
+
+    // Advanced: Order type + TIF selectors
+    if adv {
+        ui.horizontal(|ui| {
+            ui.add_space(pad);
+            ui.spacing_mut().item_spacing.x = 0.0;
+            for (i, &ot) in order_types.iter().enumerate() {
+                let sel = chart.order_type_idx == i;
+                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                let rounding = if i == 0 {
+                    egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
+                } else if i == order_types.len() - 1 {
+                    egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
+                } else { egui::CornerRadius::ZERO };
+                if ui.add(egui::Button::new(egui::RichText::new(ot).monospace().size(8.0).color(fg))
+                    .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 18.0))
+                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
+                    .clicked() {
+                    chart.order_type_idx = i;
+                    chart.order_market = i == 0;
+                }
+            }
+            ui.add_space(8.0);
+            // TIF
+            for (i, &tf) in tifs.iter().enumerate() {
+                let sel = chart.order_tif_idx == i;
+                let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
+                if ui.add(egui::Button::new(egui::RichText::new(tf).monospace().size(8.0).color(fg))
+                    .frame(false).min_size(egui::vec2(24.0, 18.0))).clicked() {
+                    chart.order_tif_idx = i;
+                }
+            }
+        });
+        ui.add_space(4.0);
+    }
+
+    // Row 0: QTY / $ mode toggle
+    ui.horizontal(|ui| {
+        ui.add_space(pad);
+        ui.spacing_mut().item_spacing.x = 2.0;
+        let qty_color = if !chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
+        let notional_color = if chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
+        if ui.add(egui::Button::new(egui::RichText::new("QTY").monospace().size(9.0).strong().color(qty_color))
+            .fill(if !chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+            .min_size(egui::vec2(30.0, 16.0))).clicked() {
+            chart.order_notional_mode = false;
+        }
+        if ui.add(egui::Button::new(egui::RichText::new("$").monospace().size(9.0).strong().color(notional_color))
+            .fill(if chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+            .min_size(egui::vec2(20.0, 16.0))).clicked() {
+            chart.order_notional_mode = true;
+        }
+        if chart.order_notional_mode {
+            ui.add_space(4.0);
+            let ask = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+            let premium = if chart.is_option { ask } else { ask };
+            ui.add(egui::TextEdit::singleline(&mut chart.order_notional_amount)
+                .desired_width(70.0).font(egui::FontId::monospace(11.0)).hint_text("Amount"));
+            let notional: f32 = chart.order_notional_amount.parse().unwrap_or(0.0);
+            let qty = contracts_for_notional(notional, premium, if chart.is_option { 100.0 } else { 1.0 });
+            if qty > 0 { chart.order_qty = qty as u32; }
+            ui.label(egui::RichText::new(format!("= {} @ {:.2}", qty, premium)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+        }
+    });
+    ui.add_space(2.0);
+
+    // Row 1: [-] qty [+]
+    ui.horizontal(|ui| {
+        ui.add_space(pad);
+        ui.spacing_mut().item_spacing.x = 2.0;
+        let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
+        if !chart.order_notional_mode {
+        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0))
+            .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
+            .fill(color_alpha(t.toolbar_border, 40))).clicked() {
+            chart.order_qty = chart.order_qty.saturating_sub(step).max(1);
+        }
+        let _ = ui.add(egui::TextEdit::singleline(&mut format!("{}", chart.order_qty))
+            .desired_width(44.0).font(egui::FontId::monospace(12.0))
+            .horizontal_align(egui::Align::Center).interactive(false));
+        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0))
+            .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
+            .fill(color_alpha(t.toolbar_border, 40))).clicked() {
+            chart.order_qty += step;
+        }
+        } else {
+        // Notional mode: show derived qty read-only
+        let _ = ui.add(egui::TextEdit::singleline(&mut format!("{} contracts", chart.order_qty))
+            .desired_width(100.0).font(egui::FontId::monospace(11.0))
+            .horizontal_align(egui::Align::Center).interactive(false));
+        }
+        ui.add_space(4.0);
+        let cursor = ui.cursor().min;
+        ui.painter().line_segment(
+            [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
+            egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
+        ui.add_space(6.0);
+
+        if !adv {
+            // Compact mode: single price + MKT/LMT toggle
+            if chart.order_market {
+                ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(12.0).color(t.dim));
+            } else {
+                ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
+                    .desired_width(68.0).font(egui::FontId::monospace(12.0)).hint_text("Price")
+                    .horizontal_align(egui::Align::RIGHT));
+            }
+            ui.add_space(2.0);
+            let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
+            if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(9.0).strong()
+                .color(if chart.order_market { t.accent } else { t.dim }))
+                .fill(if chart.order_market { color_alpha(t.accent, 35) } else { t.toolbar_bg })
+                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 90))).corner_radius(2.0)
+                .min_size(egui::vec2(30.0, 20.0))).clicked() {
+                chart.order_market = !chart.order_market;
+                if !chart.order_market && chart.order_limit_price.is_empty() {
+                    chart.order_limit_price = format!("{:.2}", last_price);
+                }
+            }
+        } else {
+            // Advanced: show last price as reference
+            ui.label(egui::RichText::new(format!("Last {:.2}", last_price)).monospace().size(10.0).color(t.dim.gamma_multiply(0.6)));
+        }
+    });
+
+    // Advanced: price fields per order type
+    if adv {
+        let oti = chart.order_type_idx;
+        ui.add_space(2.0);
+        // LMT, STP-LMT: Limit price
+        if oti == 1 || oti == 3 {
+            ui.horizontal(|ui| {
+                ui.add_space(pad);
+                ui.label(egui::RichText::new("Limit").monospace().size(9.0).color(t.dim));
+                ui.add_space(4.0);
+                ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
+                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Limit price")
+                    .horizontal_align(egui::Align::RIGHT));
+            });
+        }
+        // STP, STP-LMT: Stop price
+        if oti == 2 || oti == 3 {
+            ui.horizontal(|ui| {
+                ui.add_space(pad);
+                ui.label(egui::RichText::new("Stop ").monospace().size(9.0).color(t.bear));
+                ui.add_space(4.0);
+                ui.add(egui::TextEdit::singleline(&mut chart.order_stop_price)
+                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Stop price")
+                    .horizontal_align(egui::Align::RIGHT));
+            });
+        }
+        // TRAIL: Trailing amount
+        if oti == 4 {
+            ui.horizontal(|ui| {
+                ui.add_space(pad);
+                ui.label(egui::RichText::new("Trail").monospace().size(9.0).color(t.accent));
+                ui.add_space(4.0);
+                ui.add(egui::TextEdit::singleline(&mut chart.order_trail_amt)
+                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Trail amt")
+                    .horizontal_align(egui::Align::RIGHT));
+            });
+        }
+    }
+
+    // Advanced: Bracket mode (TP + SL)
+    if adv {
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.add_space(pad);
+            let brk_color = if chart.order_bracket { t.accent } else { t.dim.gamma_multiply(0.5) };
+            if ui.add(egui::Button::new(egui::RichText::new("Bracket").monospace().size(9.0).color(brk_color))
+                .fill(if chart.order_bracket { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+                .min_size(egui::vec2(0.0, 18.0))).clicked() {
+                chart.order_bracket = !chart.order_bracket;
+            }
+            if chart.order_bracket {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("TP").monospace().size(9.0).color(t.bull));
+                ui.add(egui::TextEdit::singleline(&mut chart.order_tp_price)
+                    .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Take")
+                    .horizontal_align(egui::Align::RIGHT));
+                ui.label(egui::RichText::new("SL").monospace().size(9.0).color(t.bear));
+                ui.add(egui::TextEdit::singleline(&mut chart.order_sl_price)
+                    .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Stop")
+                    .horizontal_align(egui::Align::RIGHT));
+            }
+        });
+    }
+
+    ui.add_space(4.0);
+
+    // Row 2: BUY | SELL
+    let buy_price = if chart.order_market { last_price + spread } else {
+        chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
+    };
+    let sell_price = if chart.order_market { last_price - spread } else {
+        chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
+    };
+
+    ui.horizontal(|ui| {
+        ui.add_space(pad);
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let btn_w = (panel_w - pad * 2.0 - 8.0) / 2.0;
+        let is_und = adv && chart.order_type_idx == 5 && chart.is_option;
+        let buy_label = if is_und { format!("BUY {} on UND", chart.option_type) } else { format!("BUY {:.2}", buy_price) };
+        let sell_label = if is_und { format!("SELL {} on UND", chart.option_type) } else { format!("SELL {:.2}", sell_price) };
+        // BUY
+        if trade_btn(ui, &buy_label, t.bull, btn_w) {
+            if is_und {
+                chart.pending_und_order = Some(OrderSide::TriggerBuy);
+            } else if chart.armed && adv {
+                let sym = chart.symbol.clone();
+                let qty = chart.order_qty;
+                let ot_idx = chart.order_type_idx;
+                let tif_idx = chart.order_tif_idx;
+                let price = buy_price;
+                let bracket = chart.order_bracket;
+                let tp = chart.order_tp_price.parse::<f32>().ok();
+                let sl = chart.order_sl_price.parse::<f32>().ok();
+                std::thread::spawn(move || {
+                    submit_ib_order(&sym, "BUY", qty, ot_idx, tif_idx, price, bracket, tp, sl);
+                });
+            } else {
+                let id = chart.next_order_id; chart.next_order_id += 1;
+                let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
+                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None, option_symbol: None, option_con_id: None });
+                if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
+            }
+        }
+        // SELL
+        if trade_btn(ui, &sell_label, t.bear, btn_w) {
+            if is_und {
+                chart.pending_und_order = Some(OrderSide::TriggerSell);
+            } else if chart.armed && adv {
+                let sym = chart.symbol.clone();
+                let qty = chart.order_qty;
+                let ot_idx = chart.order_type_idx;
+                let tif_idx = chart.order_tif_idx;
+                let price = sell_price;
+                let bracket = chart.order_bracket;
+                let tp = chart.order_tp_price.parse::<f32>().ok();
+                let sl = chart.order_sl_price.parse::<f32>().ok();
+                std::thread::spawn(move || {
+                    submit_ib_order(&sym, "SELL", qty, ot_idx, tif_idx, price, bracket, tp, sl);
+                });
+            } else {
+                let id = chart.next_order_id; chart.next_order_id += 1;
+                let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
+                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None, option_symbol: None, option_con_id: None });
+                if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
+            }
+        }
+    });
+    ui.add_space(6.0);
+}
+
 // ─── Bracket order templates ──────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -867,6 +1186,10 @@ struct Chart {
     overlay_loading: bool,
     show_gamma: bool,
     show_strikes_overlay: bool, // show option strikes on the chart
+    overlay_calls: Vec<OptionRow>, // independent chain data for strikes overlay
+    overlay_puts: Vec<OptionRow>,
+    overlay_chain_symbol: String, // symbol for which overlay data is loaded
+    overlay_chain_loading: bool,
     floating_order_panes: Vec<FloatingOrderPane>, // floating order entry windows
     gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
     gamma_call_wall: f32,
@@ -947,7 +1270,7 @@ impl Chart {
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false,
             overlay_symbol: String::new(), overlay_bars: vec![], overlay_timestamps: vec![], overlay_loading: false,
-            show_gamma: false, show_strikes_overlay: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
+            show_gamma: false, show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
             replay_mode: false, replay_bar_count: 0,
@@ -969,7 +1292,7 @@ impl Chart {
                 let is_new_symbol = self.symbol != symbol;
                 self.symbol = symbol; self.timeframe = timeframe;
                 self.bars = bars; self.timestamps = timestamps;
-                self.vs = (self.bars.len() as f32 - self.vc as f32 + 8.0).max(0.0);
+                self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
                 self.sim_price = 0.0;
                 self.last_candle_time = std::time::Instant::now();
                 self.indicator_bar_count = 0; // force recompute
@@ -1027,7 +1350,7 @@ impl Chart {
             }
             ChartCommand::AppendBar { bar, timestamp, .. } => {
                 self.bars.push(bar); self.timestamps.push(timestamp);
-                if self.auto_scroll { self.vs = (self.bars.len() as f32 - self.vc as f32 + 8.0).max(0.0); }
+                if self.auto_scroll { self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0); }
             }
             ChartCommand::UpdateLastBar { symbol, bar, .. } => {
                 // Only update if tick is for the currently displayed symbol
@@ -1104,19 +1427,30 @@ impl Chart {
     /// Recompute all indicator values from bar data.
     fn recompute_indicators(&mut self) {
         let chart_closes: Vec<f32> = self.bars.iter().map(|b| b.close).collect();
+        let chart_opens: Vec<f32> = self.bars.iter().map(|b| b.open).collect();
         let chart_highs: Vec<f32> = self.bars.iter().map(|b| b.high).collect();
         let chart_lows: Vec<f32> = self.bars.iter().map(|b| b.low).collect();
         let chart_volumes: Vec<f32> = self.bars.iter().map(|b| b.volume).collect();
+        let chart_hl2: Vec<f32> = chart_highs.iter().zip(chart_lows.iter()).map(|(h, l)| (h + l) / 2.0).collect();
+        let chart_ohlc4: Vec<f32> = self.bars.iter().map(|b| (b.open + b.high + b.low + b.close) / 4.0).collect();
 
         for ind in &mut self.indicators {
-            let closes = if ind.source_tf.is_empty() { &chart_closes } else if ind.source_loaded && !ind.source_bars.is_empty() {
-                // For cross-timeframe, we'd need to map — for now use chart closes
+            let base_source = if ind.source_tf.is_empty() { &chart_closes } else if ind.source_loaded && !ind.source_bars.is_empty() {
                 &chart_closes
             } else {
                 ind.values = vec![f32::NAN; self.bars.len()];
                 ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                 ind.histogram = vec![];
                 continue;
+            };
+            // Select source based on ind.source
+            let closes = match ind.source {
+                1 => &chart_opens,
+                2 => &chart_highs,
+                3 => &chart_lows,
+                4 => &chart_hl2,
+                5 => &chart_ohlc4,
+                _ => base_source,
             };
 
             match ind.kind {
@@ -1128,14 +1462,18 @@ impl Chart {
                     ind.divergences = detect_divergences(closes, &ind.values, 5);
                 }
                 IndicatorType::MACD => {
-                    let (macd, signal, hist) = compute_macd(closes, 12, 26, 9);
+                    let fast = ind.period;
+                    let slow = if ind.param2 > 0.0 { ind.param2 as usize } else { 26 };
+                    let signal = if ind.param3 > 0.0 { ind.param3 as usize } else { 9 };
+                    let (macd, sig, hist) = compute_macd(closes, fast, slow, signal);
                     ind.values = macd;
-                    ind.values2 = signal;
+                    ind.values2 = sig;
                     ind.histogram = hist;
                     ind.divergences = detect_divergences(closes, &ind.values, 5);
                 }
                 IndicatorType::Stochastic => {
-                    let (k, d) = compute_stochastic(&chart_highs, &chart_lows, closes, ind.period.max(2), 3);
+                    let d_period = if ind.param2 > 0.0 { ind.param2 as usize } else { 3 };
+                    let (k, d) = compute_stochastic(&chart_highs, &chart_lows, closes, ind.period.max(2), d_period);
                     ind.values = k;
                     ind.values2 = d;
                     ind.divergences = detect_divergences(closes, &ind.values, 5);
@@ -1159,6 +1497,8 @@ impl Chart {
                         }
                         let mut dx_vals = vec![f32::NAN; n];
                         let k = 1.0 / period as f32;
+                        let mut plus_di_vals = vec![f32::NAN; n];
+                        let mut minus_di_vals = vec![f32::NAN; n];
                         for i in period..n {
                             if i > period {
                                 let hi = chart_highs[i] - chart_highs[i-1];
@@ -1174,14 +1514,18 @@ impl Chart {
                             }
                             let plus_di = if tr_sum > 0.0 { plus_dm_sum / tr_sum * 100.0 } else { 0.0 };
                             let minus_di = if tr_sum > 0.0 { minus_dm_sum / tr_sum * 100.0 } else { 0.0 };
+                            plus_di_vals[i] = plus_di;
+                            minus_di_vals[i] = minus_di;
                             let di_sum = plus_di + minus_di;
                             dx_vals[i] = if di_sum > 0.0 { (plus_di - minus_di).abs() / di_sum * 100.0 } else { 0.0 };
                         }
                         ind.values = compute_ema(&dx_vals, period);
+                        ind.values2 = plus_di_vals;  // +DI line
+                        ind.values3 = minus_di_vals;  // -DI line
                     } else {
                         ind.values = vec![f32::NAN; n];
                     }
-                    ind.values2 = vec![]; ind.histogram = vec![];
+                    ind.histogram = vec![];
                 }
                 IndicatorType::CCI => {
                     let period = ind.period;
@@ -1216,7 +1560,8 @@ impl Chart {
                     ind.values = wr; ind.values2 = vec![]; ind.histogram = vec![];
                 }
                 IndicatorType::BollingerBands => {
-                    let (mid, upper, lower) = compute_bollinger(closes, ind.period, 2.0);
+                    let std_dev = if ind.param2 > 0.0 { ind.param2 } else { 2.0 };
+                    let (mid, upper, lower) = compute_bollinger(closes, ind.period, std_dev);
                     ind.values = mid;
                     ind.values2 = upper;
                     ind.values3 = lower;
@@ -1224,28 +1569,36 @@ impl Chart {
                     ind.histogram = vec![];
                 }
                 IndicatorType::Ichimoku => {
-                    let (tenkan, kijun, sa, sb, chikou) = compute_ichimoku(&chart_highs, &chart_lows, closes, 9, 26, 52);
-                    ind.values = tenkan;
-                    ind.values2 = kijun;
+                    let tenkan = ind.period;
+                    let kijun = if ind.param2 > 0.0 { ind.param2 as usize } else { 26 };
+                    let senkou_b = if ind.param3 > 0.0 { ind.param3 as usize } else { 52 };
+                    let (tenkan_v, kijun_v, sa, sb, chikou) = compute_ichimoku(&chart_highs, &chart_lows, closes, tenkan, kijun, senkou_b);
+                    ind.values = tenkan_v;
+                    ind.values2 = kijun_v;
                     ind.values3 = sa;
                     ind.values4 = sb;
                     ind.values5 = chikou;
                     ind.histogram = vec![];
                 }
                 IndicatorType::ParabolicSAR => {
-                    ind.values = compute_psar(&chart_highs, &chart_lows, 0.02, 0.02, 0.2);
+                    let af_start = if ind.param4 > 0.0 { ind.param4 } else { 0.02 };
+                    let af_step = if ind.param2 > 0.0 { ind.param2 } else { 0.02 };
+                    let af_max = if ind.param3 > 0.0 { ind.param3 } else { 0.2 };
+                    ind.values = compute_psar(&chart_highs, &chart_lows, af_start, af_step, af_max);
                     ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                     ind.histogram = vec![];
                 }
                 IndicatorType::Supertrend => {
-                    let (st, dir) = compute_supertrend(&chart_highs, &chart_lows, closes, ind.period, 3.0);
+                    let mult = if ind.param2 > 0.0 { ind.param2 } else { 3.0 };
+                    let (st, dir) = compute_supertrend(&chart_highs, &chart_lows, closes, ind.period, mult);
                     ind.values = st;
                     ind.supertrend_dir = dir;
                     ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                     ind.histogram = vec![];
                 }
                 IndicatorType::KeltnerChannels => {
-                    let (mid, upper, lower) = compute_keltner(&chart_highs, &chart_lows, closes, ind.period, 2.0);
+                    let mult = if ind.param2 > 0.0 { ind.param2 } else { 2.0 };
+                    let (mid, upper, lower) = compute_keltner(&chart_highs, &chart_lows, closes, ind.period, mult);
                     ind.values = mid;
                     ind.values2 = upper;
                     ind.values3 = lower;
@@ -1644,14 +1997,14 @@ fn tick_simulation(chart: &mut Chart) {
         }
 
         if chart.auto_scroll {
-            chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + 8.0).max(0.0);
+            chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         }
 
     }
 
     if !chart.auto_scroll && chart.last_input.elapsed().as_secs() >= AUTO_SCROLL_RESUME_SECS {
         chart.auto_scroll = true; chart.price_lock = None;
-        chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + 8.0).max(0.0);
+        chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
     }
 }
 
@@ -1728,6 +2081,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if *dte == 0 { watchlist.chain_0dte.0.len() } else { watchlist.chain_far.0.len() },
                         if *dte == 0 { watchlist.chain_0dte.1.len() } else { watchlist.chain_far.1.len() },
                         symbol, dte, underlying_price);
+                }
+            }
+            ChartCommand::OverlayChainData { symbol, calls, puts } => {
+                let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
+                    data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
+                        strike: *strike, last: *last, bid: *bid, ask: *ask,
+                        volume: *vol, oi: *oi, iv: *iv, itm: *itm, contract: contract.clone(),
+                    }).collect()
+                };
+                for chart in panes.iter_mut() {
+                    if chart.symbol == *symbol && chart.overlay_chain_loading {
+                        chart.overlay_calls = to_rows(calls);
+                        chart.overlay_puts = to_rows(puts);
+                        chart.overlay_chain_symbol = symbol.clone();
+                        chart.overlay_chain_loading = false;
+                        eprintln!("[overlay-chain] Loaded {} calls + {} puts for {}", chart.overlay_calls.len(), chart.overlay_puts.len(), symbol);
+                    }
                 }
             }
             ChartCommand::SearchResults { query, results, source } => {
@@ -1956,28 +2326,48 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             });
             TB_BTN_CLICKED.with(|f| f.set(true)); // prevent window drag
 
-            // Moving Averages dropdown (multi-select — adds/removes indicators)
+            // Moving Averages dropdown (always creates new instance — supports multiple)
             ui.menu_button(egui::RichText::new("MAs").monospace().size(10.0).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
                     (IndicatorType::DEMA, "DEMA"), (IndicatorType::TEMA, "TEMA"), (IndicatorType::VWAP, "VWAP")];
-                for (itype, label) in ma_types {
-                    let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
-                    if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(10.0)).clicked() {
-                        if has {
-                            // Hide it
-                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
-                        } else {
-                            // Show existing or create new
-                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
-                            else {
-                                let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                                let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                                panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                // Show existing MA instances with edit/remove
+                let existing: Vec<(u32, IndicatorType, usize, String, bool)> = panes[ap].indicators.iter()
+                    .filter(|i| i.kind.category() == IndicatorCategory::Overlay && ma_types.iter().any(|(t,_)| *t == i.kind))
+                    .map(|i| (i.id, i.kind, i.period, i.color.clone(), i.visible))
+                    .collect();
+                if !existing.is_empty() {
+                    for (eid, ekind, eperiod, ecolor, evis) in &existing {
+                        let label_text = format!("{} {} {}", if *evis { Icon::CHECK } else { "" }, ekind.label(), eperiod);
+                        let c = hex_to_color(ecolor, 1.0);
+                        ui.horizontal(|ui| {
+                            ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, c);
+                            ui.add_space(10.0);
+                            if ui.selectable_label(*evis, egui::RichText::new(label_text.trim()).monospace().size(10.0)).clicked() {
+                                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = !ind.visible; }
+                            }
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::PENCIL_LINE).size(9.0).color(t.dim.gamma_multiply(0.5)))
+                                .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                panes[ap].editing_indicator = Some(*eid);
+                            }
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.bear.gamma_multiply(0.5)))
+                                .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                panes[ap].indicators.retain(|i| i.id != *eid);
                                 panes[ap].indicator_bar_count = 0;
                             }
-                        }
+                        });
+                    }
+                    ui.separator();
+                }
+                // Add new MA instance
+                for (itype, label) in ma_types {
+                    if ui.selectable_label(false, egui::RichText::new(format!("{} + {}", Icon::PLUS, label)).monospace().size(10.0)).clicked() {
+                        let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                        let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                        panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                        panes[ap].indicator_bar_count = 0;
+                        panes[ap].editing_indicator = Some(id); // open editor to set period
                     }
                 }
                 ui.separator();
@@ -2442,6 +2832,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.label(egui::RichText::new("Real P&L").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
                             ui.label(egui::RichText::new(format!("{:+.0}", acct.realized_pnl)).monospace().size(13.0).strong()
                                 .color(rpnl_color));
+
+                            ui.add(egui::Separator::default().spacing(8.0));
+
+                            // Emergency action buttons
+                            if ui.add(egui::Button::new(egui::RichText::new("CANCEL ALL").monospace().size(9.0).strong().color(egui::Color32::WHITE))
+                                .fill(color_alpha(t.bear, 120)).corner_radius(3.0).min_size(egui::vec2(0.0, 22.0))
+                                .stroke(egui::Stroke::new(1.0, t.bear))).clicked() {
+                                for chart in panes.iter_mut() { chart.orders.clear(); }
+                                std::thread::spawn(|| {
+                                    let _ = reqwest::blocking::Client::new()
+                                        .delete(format!("{}/orders", APEXIB_URL))
+                                        .timeout(std::time::Duration::from_secs(5)).send();
+                                });
+                            }
+                            if ui.add(egui::Button::new(egui::RichText::new("FLATTEN").monospace().size(9.0).strong().color(egui::Color32::WHITE))
+                                .fill(color_alpha(t.bear, 180)).corner_radius(3.0).min_size(egui::vec2(0.0, 22.0))
+                                .stroke(egui::Stroke::new(1.0, t.bear))).clicked() {
+                                for chart in panes.iter_mut() { chart.orders.retain(|o| o.status == OrderStatus::Executed); }
+                                std::thread::spawn(|| {
+                                    let _ = reqwest::blocking::Client::new()
+                                        .post(format!("{}/risk/flatten", APEXIB_URL))
+                                        .timeout(std::time::Duration::from_secs(5)).send();
+                                });
+                            }
                         } else {
                             // Not connected
                             ui.label(egui::RichText::new("IB Disconnected").monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
@@ -2474,6 +2888,147 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
         }
+    }
+
+    // ── Command palette (Ctrl+Space) ────────────────────────────────────────
+    if !ctx.wants_keyboard_input() {
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Space)) {
+            watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
+            if watchlist.cmd_palette_open { watchlist.cmd_palette_query.clear(); watchlist.cmd_palette_results.clear(); watchlist.cmd_palette_sel = 0; }
+        }
+    }
+    if watchlist.cmd_palette_open {
+        // Escape closes
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) { watchlist.cmd_palette_open = false; }
+
+        let screen = ctx.screen_rect();
+        let pal_w = 500.0_f32;
+        let pal_x = (screen.width() - pal_w) / 2.0;
+        let pal_y = screen.height() * 0.2;
+
+        // Dimmed background overlay
+        egui::Area::new(egui::Id::new("cmd_palette_bg"))
+            .fixed_pos(egui::pos2(0.0, 0.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                ui.painter().rect_filled(screen, 0.0, egui::Color32::from_black_alpha(120));
+            });
+
+        egui::Window::new("cmd_palette")
+            .fixed_pos(egui::pos2(pal_x, pal_y))
+            .fixed_size(egui::vec2(pal_w, 0.0))
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style())
+                .fill(color_alpha(t.toolbar_bg, 250))
+                .inner_margin(egui::Margin::same(8))
+                .stroke(egui::Stroke::new(1.5, color_alpha(t.accent, 80)))
+                .corner_radius(8.0)
+)
+            .show(ctx, |ui| {
+                // Search field
+                let te = ui.add(egui::TextEdit::singleline(&mut watchlist.cmd_palette_query)
+                    .desired_width(pal_w - 16.0)
+                    .font(egui::FontId::monospace(14.0))
+                    .hint_text("Symbol or command...")
+                    .frame(false));
+                te.request_focus();
+
+                // Search on query change
+                let query = watchlist.cmd_palette_query.trim().to_uppercase();
+                if !query.is_empty() {
+                    // Built-in commands
+                    let mut results: Vec<(String, String, String)> = Vec::new();
+                    if "> flatten".starts_with(&query.to_lowercase()) || "flatten".starts_with(&query.to_lowercase()) {
+                        results.push(("> flatten".into(), "Flatten all positions".into(), "Command".into()));
+                    }
+                    if "> cancel".starts_with(&query.to_lowercase()) || "cancel all".starts_with(&query.to_lowercase()) {
+                        results.push(("> cancel".into(), "Cancel all open orders".into(), "Command".into()));
+                    }
+
+                    // Symbol search (static)
+                    let sym_results = crate::ui_kit::symbols::search_symbols(&query, 10);
+                    for si in &sym_results {
+                        results.push((si.symbol.to_string(), si.name.to_string(), "Symbol".into()));
+                    }
+                    watchlist.cmd_palette_results = results;
+                } else {
+                    // Show recent symbols when empty
+                    watchlist.cmd_palette_results.clear();
+                }
+
+                // Arrow keys navigate, Enter selects
+                if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                    watchlist.cmd_palette_sel = (watchlist.cmd_palette_sel + 1).min(watchlist.cmd_palette_results.len() as i32 - 1);
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                    watchlist.cmd_palette_sel = (watchlist.cmd_palette_sel - 1).max(0);
+                }
+
+                let mut execute_idx: Option<usize> = None;
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.cmd_palette_results.is_empty() {
+                    execute_idx = Some(watchlist.cmd_palette_sel.max(0) as usize);
+                }
+
+                // Results list
+                if !watchlist.cmd_palette_results.is_empty() {
+                    ui.add_space(4.0);
+                    ui.add(egui::Separator::default().spacing(2.0));
+                    ui.add_space(4.0);
+                    for (ri, (sym, name, rtype)) in watchlist.cmd_palette_results.iter().enumerate() {
+                        let is_sel = ri as i32 == watchlist.cmd_palette_sel;
+                        let bg = if is_sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                        let resp = ui.horizontal(|ui| {
+                            let full_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(pal_w - 16.0, 24.0));
+                            ui.painter().rect_filled(full_rect, 4.0, bg);
+                            ui.add_space(8.0);
+                            let type_col = if rtype == "Command" { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            ui.label(egui::RichText::new(rtype).monospace().size(8.0).color(type_col));
+                            ui.add_space(4.0);
+                            let sym_col = if is_sel { egui::Color32::WHITE } else { egui::Color32::from_rgb(220, 220, 230) };
+                            ui.label(egui::RichText::new(sym).monospace().size(12.0).strong().color(sym_col));
+                            ui.label(egui::RichText::new(name).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.allocate_space(egui::vec2(0.0, 24.0)); // ensure row height
+                        });
+                        if resp.response.interact(egui::Sense::click()).clicked() {
+                            execute_idx = Some(ri);
+                        }
+                    }
+                }
+
+                // Execute selected command/symbol
+                if let Some(idx) = execute_idx {
+                    if let Some((sym, _, rtype)) = watchlist.cmd_palette_results.get(idx) {
+                        if rtype == "Command" {
+                            match sym.as_str() {
+                                "> flatten" => {
+                                    for chart in panes.iter_mut() { chart.orders.retain(|o| o.status == OrderStatus::Executed); }
+                                    std::thread::spawn(|| {
+                                        let _ = reqwest::blocking::Client::new()
+                                            .post(format!("{}/risk/flatten", APEXIB_URL))
+                                            .timeout(std::time::Duration::from_secs(5)).send();
+                                    });
+                                }
+                                "> cancel" => {
+                                    for chart in panes.iter_mut() { chart.orders.clear(); }
+                                    std::thread::spawn(|| {
+                                        let _ = reqwest::blocking::Client::new()
+                                            .delete(format!("{}/orders", APEXIB_URL))
+                                            .timeout(std::time::Duration::from_secs(5)).send();
+                                    });
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            // Symbol — load in active pane
+                            let sym_str = sym.clone();
+                            let tf = panes[*active_pane].timeframe.clone();
+                            panes[*active_pane].symbol = sym_str.clone();
+                            fetch_bars_background(sym_str, tf);
+                        }
+                        watchlist.cmd_palette_open = false;
+                    }
+                }
+            });
     }
 
     // ── Hotkey editor: key capture (runs before dialog rendering) ──────────
@@ -2857,85 +3412,330 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // Old global style_bar removed — unified into per-pane draw_props bar
 
-    // ── Indicator editor popup ─────────────────────────────────────────────────
+    // ── Indicator editor popup (per-type properties panel) ──────────────────
     let t = &THEMES[panes[ap].theme_idx];
     if let Some(edit_id) = panes[ap].editing_indicator {
         let mut close_editor = false;
         let mut delete_id: Option<u32> = None;
         let mut needs_recompute = false;
         let mut needs_source_fetch: Option<(String, String, u32)> = None;
-        let pane_symbol = panes[ap].symbol.clone(); // clone to avoid borrow conflict
+        let pane_symbol = panes[ap].symbol.clone();
 
-        {
-        dialog_window_themed(ctx, &format!("ind_editor_{}", edit_id), egui::pos2(200.0, 80.0), 280.0, t.toolbar_bg, t.toolbar_border, None)
+        // Determine panel width based on indicator complexity
+        let ind_kind = panes[ap].indicators.iter().find(|i| i.id == edit_id).map(|i| i.kind);
+        let panel_w = match ind_kind {
+            Some(IndicatorType::MACD) | Some(IndicatorType::Ichimoku) => 310.0,
+            _ => 270.0,
+        };
+
+        egui::Window::new(format!("ind_editor_{}", edit_id))
+            .default_pos(egui::pos2(200.0, 80.0))
+            .default_size(egui::vec2(panel_w, 0.0))
+            .resizable(false)
+            .movable(true)
+            .title_bar(false)
+            .interactable(true)
+            .frame(egui::Frame::popup(&ctx.style())
+                .fill(color_alpha(t.toolbar_bg, 248))
+                .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
+                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
+                .corner_radius(6.0))
             .show(ctx, |ui| {
                 if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
-                    if dialog_header(ui, &ind.display_name(), t.dim) { close_editor = true; }
+                    let ind_color = hex_to_color(&ind.color, 1.0);
+                    let m = 10.0;
 
-                    // ── Body ──
-                    ui.add_space(8.0);
-                    let m = 10.0; // body margin
-
-                    // Type selector — full-width segmented control
-                    dialog_section(ui, "TYPE", m, t.dim.gamma_multiply(0.5));
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        for (i, &kind) in IndicatorType::all().iter().enumerate() {
-                            let selected = ind.kind == kind;
-                            let fg = if selected { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                            let bg = if selected { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
-                            let rounding = if i == 0 {
-                                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
-                            } else if i == IndicatorType::all().len() - 1 {
-                                egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
-                            } else {
-                                egui::CornerRadius::ZERO
-                            };
-                            if ui.add(egui::Button::new(egui::RichText::new(kind.label()).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 22.0))
-                                .stroke(egui::Stroke::new(0.5, if selected { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
-                                .clicked() && !selected {
-                                ind.kind = kind;
-                                needs_recompute = true;
-                            }
-                        }
-                    });
-
-                    ui.add_space(8.0);
-
-                    // Period — drag value + quick presets
-                    dialog_section(ui, "PERIOD", m, t.dim.gamma_multiply(0.5));
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        let mut period = ind.period as i32;
-                        if ui.add(egui::DragValue::new(&mut period).range(1..=500).speed(0.5)
-                            .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
-                            ind.period = (period as usize).max(1);
-                            needs_recompute = true;
-                        }
+                    // ── Header: color dot + name + X ──
+                    let header_resp = ui.horizontal(|ui| {
+                        ui.set_min_width(panel_w);
+                        let hr = ui.max_rect();
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 26.0)),
+                            egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 },
+                            color_alpha(t.toolbar_border, 30));
                         ui.add_space(8.0);
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        for &p in &[9, 12, 20, 26, 50, 100, 200] {
-                            let sel = ind.period == p;
-                            let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                            let bg = if sel { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT };
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("{}", p)).monospace().size(8.0).color(fg))
-                                .fill(bg).corner_radius(2.0).min_size(egui::vec2(22.0, 18.0))
-                                .stroke(if sel { egui::Stroke::new(0.5, color_alpha(t.accent, 60)) } else { egui::Stroke::NONE }))
-                                .clicked() && !sel {
-                                ind.period = p;
-                                needs_recompute = true;
+                        ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, ind_color);
+                        ui.add_space(12.0);
+                        ui.label(egui::RichText::new(ind.display_name()).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220, 220, 230)));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add_space(4.0);
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim.gamma_multiply(0.5)))
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)).clicked() {
+                                close_editor = true;
                             }
-                        }
+                        });
                     });
+                    // Make header draggable
+                    let hdr_rect = header_resp.response.rect;
+                    let drag_resp = ui.interact(hdr_rect, egui::Id::new(("ind_editor_drag", edit_id)), egui::Sense::drag());
+                    if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
 
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
 
-                    // Source interval — segmented control
-                    dialog_section(ui, "SOURCE", m, t.dim.gamma_multiply(0.5));
+                    // ── Per-type parameters ──
+                    let is_ma = matches!(ind.kind, IndicatorType::SMA | IndicatorType::EMA | IndicatorType::WMA | IndicatorType::DEMA | IndicatorType::TEMA);
+
+                    // MA type switcher (only for moving averages)
+                    if is_ma {
+                        dialog_section(ui, "TYPE", m, t.dim.gamma_multiply(0.5));
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            let ma_kinds = [IndicatorType::SMA, IndicatorType::EMA, IndicatorType::WMA, IndicatorType::DEMA, IndicatorType::TEMA];
+                            for (i, &kind) in ma_kinds.iter().enumerate() {
+                                let sel = ind.kind == kind;
+                                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                                let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                                let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
+                                    else if i == ma_kinds.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
+                                    else { egui::CornerRadius::ZERO };
+                                if ui.add(egui::Button::new(egui::RichText::new(kind.label()).monospace().size(9.0).color(fg))
+                                    .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 22.0))
+                                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
+                                    .clicked() && !sel { ind.kind = kind; needs_recompute = true; }
+                            }
+                        });
+                        ui.add_space(6.0);
+                    }
+
+                    // Band type switcher (BB ↔ Keltner)
+                    if matches!(ind.kind, IndicatorType::BollingerBands | IndicatorType::KeltnerChannels) {
+                        dialog_section(ui, "TYPE", m, t.dim.gamma_multiply(0.5));
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            for (i, &kind) in [IndicatorType::BollingerBands, IndicatorType::KeltnerChannels].iter().enumerate() {
+                                let sel = ind.kind == kind;
+                                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                                let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                                let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
+                                    else { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } };
+                                if ui.add(egui::Button::new(egui::RichText::new(kind.label()).monospace().size(9.0).color(fg))
+                                    .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 22.0))
+                                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
+                                    .clicked() && !sel { ind.kind = kind; needs_recompute = true; }
+                            }
+                        });
+                        ui.add_space(6.0);
+                    }
+
+                    // ── PARAMETERS section ──
+                    dialog_section(ui, "PARAMETERS", m, t.dim.gamma_multiply(0.5));
+
+                    // Helper: labeled drag value row
+                    macro_rules! param_row {
+                        ($ui:expr, $label:expr, $val:expr, $range:expr, $speed:expr, $fmt:expr) => {{
+                            $ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new($label).monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let changed = ui.add(egui::DragValue::new($val).range($range).speed($speed)
+                                    .custom_formatter(|v, _| format!($fmt, v))).changed();
+                                changed
+                            }).inner
+                        }};
+                    }
+
+                    // Period (for most types except VWAP)
+                    if !matches!(ind.kind, IndicatorType::VWAP) {
+                        let period_label = match ind.kind {
+                            IndicatorType::MACD => "Fast",
+                            IndicatorType::Ichimoku => "Tenkan",
+                            _ => "Period",
+                        };
+                        let presets: &[usize] = match ind.kind {
+                            IndicatorType::RSI => &[7, 9, 14, 21],
+                            IndicatorType::MACD => &[8, 12, 16],
+                            IndicatorType::Stochastic => &[5, 9, 14, 21],
+                            IndicatorType::ADX => &[7, 14, 21],
+                            IndicatorType::Ichimoku => &[7, 9, 13],
+                            IndicatorType::Supertrend => &[7, 10, 14],
+                            _ => &[9, 20, 50, 100, 200],
+                        };
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            ui.label(egui::RichText::new(period_label).monospace().size(9.0).color(t.dim));
+                            ui.add_space(4.0);
+                            let mut p = ind.period as i32;
+                            if ui.add(egui::DragValue::new(&mut p).range(1..=500).speed(0.5)
+                                .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                                ind.period = (p as usize).max(1); needs_recompute = true;
+                            }
+                            ui.add_space(6.0);
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            for &pr in presets {
+                                let sel = ind.period == pr;
+                                let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
+                                if ui.add(egui::Button::new(egui::RichText::new(format!("{}", pr)).monospace().size(8.0).color(fg))
+                                    .fill(if sel { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT })
+                                    .corner_radius(2.0).min_size(egui::vec2(22.0, 18.0))).clicked() && !sel {
+                                    ind.period = pr; needs_recompute = true;
+                                }
+                            }
+                        });
+                    }
+
+                    // Type-specific additional parameters
+                    match ind.kind {
+                        IndicatorType::MACD => {
+                            // Slow period (param2, default 26)
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Slow  ").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param2 > 0.0 { ind.param2 } else { 26.0 };
+                                if ui.add(egui::DragValue::new(&mut v).range(2.0..=200.0).speed(0.5)
+                                    .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                                    ind.param2 = v; needs_recompute = true;
+                                }
+                            });
+                            // Signal period (param3, default 9)
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Signal").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param3 > 0.0 { ind.param3 } else { 9.0 };
+                                if ui.add(egui::DragValue::new(&mut v).range(1.0..=50.0).speed(0.3)
+                                    .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                                    ind.param3 = v; needs_recompute = true;
+                                }
+                            });
+                        }
+                        IndicatorType::Stochastic => {
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("%D    ").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param2 > 0.0 { ind.param2 } else { 3.0 };
+                                if ui.add(egui::DragValue::new(&mut v).range(1.0..=20.0).speed(0.3)
+                                    .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                                    ind.param2 = v; needs_recompute = true;
+                                }
+                            });
+                        }
+                        IndicatorType::BollingerBands => {
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Std σ ").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param2 > 0.0 { ind.param2 } else { 2.0 };
+                                if ui.add(egui::DragValue::new(&mut v).range(0.5..=4.0).speed(0.05)
+                                    .custom_formatter(|v, _| format!("{:.1}", v))).changed() {
+                                    ind.param2 = v; needs_recompute = true;
+                                }
+                                ui.add_space(4.0);
+                                for &s in &[1.0_f32, 1.5, 2.0, 2.5, 3.0] {
+                                    let cur = if ind.param2 > 0.0 { ind.param2 } else { 2.0 };
+                                    let sel = (cur - s).abs() < 0.01;
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{:.1}", s)).monospace().size(8.0)
+                                        .color(if sel { t.accent } else { t.dim.gamma_multiply(0.5) }))
+                                        .fill(if sel { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT })
+                                        .corner_radius(2.0).min_size(egui::vec2(22.0, 18.0))).clicked() {
+                                        ind.param2 = s; needs_recompute = true;
+                                    }
+                                }
+                            });
+                        }
+                        IndicatorType::KeltnerChannels | IndicatorType::Supertrend => {
+                            let def = if ind.kind == IndicatorType::Supertrend { 3.0 } else { 2.0 };
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Mult  ").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param2 > 0.0 { ind.param2 } else { def };
+                                if ui.add(egui::DragValue::new(&mut v).range(0.5..=6.0).speed(0.05)
+                                    .custom_formatter(|v, _| format!("{:.1}", v))).changed() {
+                                    ind.param2 = v; needs_recompute = true;
+                                }
+                            });
+                        }
+                        IndicatorType::Ichimoku => {
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Kijun ").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param2 > 0.0 { ind.param2 } else { 26.0 };
+                                if ui.add(egui::DragValue::new(&mut v).range(1.0..=200.0).speed(0.5)
+                                    .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                                    ind.param2 = v; needs_recompute = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Senkou").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param3 > 0.0 { ind.param3 } else { 52.0 };
+                                if ui.add(egui::DragValue::new(&mut v).range(1.0..=200.0).speed(0.5)
+                                    .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                                    ind.param3 = v; needs_recompute = true;
+                                }
+                            });
+                        }
+                        IndicatorType::ParabolicSAR => {
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Start ").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param4 > 0.0 { ind.param4 } else { 0.02 };
+                                if ui.add(egui::DragValue::new(&mut v).range(0.001..=0.1).speed(0.001)
+                                    .custom_formatter(|v, _| format!("{:.3}", v))).changed() {
+                                    ind.param4 = v; needs_recompute = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Step  ").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param2 > 0.0 { ind.param2 } else { 0.02 };
+                                if ui.add(egui::DragValue::new(&mut v).range(0.001..=0.1).speed(0.001)
+                                    .custom_formatter(|v, _| format!("{:.3}", v))).changed() {
+                                    ind.param2 = v; needs_recompute = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                ui.label(egui::RichText::new("Max   ").monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                let mut v = if ind.param3 > 0.0 { ind.param3 } else { 0.2 };
+                                if ui.add(egui::DragValue::new(&mut v).range(0.05..=0.5).speed(0.005)
+                                    .custom_formatter(|v, _| format!("{:.2}", v))).changed() {
+                                    ind.param3 = v; needs_recompute = true;
+                                }
+                            });
+                        }
+                        _ => {} // RSI, ADX, CCI, WilliamsR, ATR, VWAP — period only
+                    }
+
+                    // Source selection (for MAs, RSI, CCI)
+                    if is_ma || matches!(ind.kind, IndicatorType::RSI | IndicatorType::CCI | IndicatorType::BollingerBands) {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            ui.label(egui::RichText::new("Source").monospace().size(9.0).color(t.dim));
+                            ui.add_space(4.0);
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            let sources = [(0u8, "C"), (1, "O"), (2, "H"), (3, "L"), (4, "HL"), (5, "OHLC")];
+                            for (i, &(src_id, lbl)) in sources.iter().enumerate() {
+                                let sel = ind.source == src_id;
+                                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                                let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
+                                let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
+                                    else if i == sources.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
+                                    else { egui::CornerRadius::ZERO };
+                                if ui.add(egui::Button::new(egui::RichText::new(lbl).monospace().size(8.0).color(fg))
+                                    .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 20.0))
+                                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
+                                    .clicked() && !sel { ind.source = src_id; needs_recompute = true; }
+                            }
+                        });
+                    }
+
+                    // Timeframe source
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.add_space(m);
+                        ui.label(egui::RichText::new("TF    ").monospace().size(9.0).color(t.dim));
+                        ui.add_space(4.0);
                         ui.spacing_mut().item_spacing.x = 0.0;
                         let tfs = INDICATOR_TIMEFRAMES;
                         for (i, &tf) in tfs.iter().enumerate() {
@@ -2943,143 +3743,109 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let sel = ind.source_tf == tf;
                             let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
                             let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
-                            let rounding = if i == 0 {
-                                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
-                            } else if i == tfs.len() - 1 {
-                                egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
-                            } else {
-                                egui::CornerRadius::ZERO
-                            };
+                            let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
+                                else if i == tfs.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
+                                else { egui::CornerRadius::ZERO };
                             if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 22.0))
+                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 20.0))
                                 .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
                                 .clicked() && !sel {
                                 ind.source_tf = tf.to_string();
                                 ind.source_loaded = tf.is_empty();
-                                ind.source_bars.clear();
-                                ind.source_timestamps.clear();
+                                ind.source_bars.clear(); ind.source_timestamps.clear();
                                 needs_recompute = true;
-                                if !tf.is_empty() {
-                                    needs_source_fetch = Some((pane_symbol.clone(), tf.to_string(), ind.id));
-                                }
+                                if !tf.is_empty() { needs_source_fetch = Some((pane_symbol.clone(), tf.to_string(), ind.id)); }
                             }
                         }
                     });
 
-                    ui.add_space(10.0);
-                    dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
-                    ui.add_space(10.0);
+                    ui.add_space(8.0);
+                    dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 40));
+                    ui.add_space(6.0);
 
-                    // APPEARANCE section
+                    // ── APPEARANCE ──
                     dialog_section(ui, "APPEARANCE", m, t.dim.gamma_multiply(0.5));
-                    ui.add_space(3.0);
-
-                    // Color picker
+                    ui.add_space(2.0);
+                    // Color
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        ui.label(egui::RichText::new("Color").monospace().size(9.0).color(t.dim));
-                        ui.add_space(8.0);
                         ui.spacing_mut().item_spacing.x = 4.0;
                         for &c in INDICATOR_COLORS {
                             let color = hex_to_color(c, 1.0);
                             let is_cur = ind.color == c;
-                            let (r, resp) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+                            let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
                             if is_cur {
                                 ui.painter().rect_filled(r, 3.0, color_alpha(color, 30));
                                 ui.painter().rect_stroke(r, 3.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
                             }
-                            ui.painter().circle_filled(r.center(), if is_cur { 5.5 } else { 4.5 }, color);
+                            ui.painter().circle_filled(r.center(), if is_cur { 5.0 } else { 4.0 }, color);
                             if resp.clicked() { ind.color = c.to_string(); }
                         }
                     });
-                    ui.add_space(4.0);
-
-                    // Width — segmented
+                    ui.add_space(3.0);
+                    // Width + Style on one row
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        ui.label(egui::RichText::new("Width").monospace().size(9.0).color(t.dim));
-                        ui.add_space(6.0);
                         ui.spacing_mut().item_spacing.x = 0.0;
                         let widths = [0.5_f32, 1.0, 1.5, 2.0, 3.0];
                         for (i, &th) in widths.iter().enumerate() {
                             let sel = (ind.thickness - th).abs() < 0.1;
                             let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
                             let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
-                            let rounding = if i == 0 {
-                                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
-                            } else if i == widths.len() - 1 {
-                                egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
-                            } else {
-                                egui::CornerRadius::ZERO
-                            };
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("{:.1}", th)).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(30.0, 20.0))
+                            let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
+                                else if i == widths.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
+                                else { egui::CornerRadius::ZERO };
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("{:.1}", th)).monospace().size(8.0).color(fg))
+                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(26.0, 18.0))
                                 .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
                                 .clicked() { ind.thickness = th; }
                         }
-                    });
-                    ui.add_space(4.0);
-
-                    // Style — segmented
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.label(egui::RichText::new("Style").monospace().size(9.0).color(t.dim));
-                        ui.add_space(8.0);
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        let styles = [(LineStyle::Solid, "Solid"), (LineStyle::Dashed, "Dash"), (LineStyle::Dotted, "Dot")];
-                        for (i, (ls, label)) in styles.iter().enumerate() {
+                        ui.add_space(6.0);
+                        let styles = [(LineStyle::Solid, "━"), (LineStyle::Dashed, "╌"), (LineStyle::Dotted, "┈")];
+                        for (i, (ls, sym)) in styles.iter().enumerate() {
                             let sel = ind.line_style == *ls;
                             let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
                             let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
-                            let rounding = if i == 0 {
-                                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
-                            } else if i == styles.len() - 1 {
-                                egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
-                            } else {
-                                egui::CornerRadius::ZERO
-                            };
-                            if ui.add(egui::Button::new(egui::RichText::new(*label).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(42.0, 20.0))
+                            let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
+                                else if i == styles.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
+                                else { egui::CornerRadius::ZERO };
+                            if ui.add(egui::Button::new(egui::RichText::new(*sym).monospace().size(11.0).color(fg))
+                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(28.0, 18.0))
                                 .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
                                 .clicked() { ind.line_style = *ls; }
                         }
                     });
 
-                    ui.add_space(10.0);
-                    dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
                     ui.add_space(8.0);
+                    dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 40));
+                    ui.add_space(4.0);
 
-                    // ── Footer actions ──
+                    // ── Footer: visibility + delete ──
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        // Visibility toggle
                         let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
                         let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
-                        let vis_bg = if ind.visible { color_alpha(t.toolbar_border, 20) } else { egui::Color32::TRANSPARENT };
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", vis_icon, if ind.visible { "Visible" } else { "Hidden" }))
-                            .monospace().size(9.0).color(vis_fg))
-                            .fill(vis_bg).corner_radius(3.0).min_size(egui::vec2(0.0, 22.0))).clicked() {
+                        if ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(11.0).color(vis_fg))
+                            .fill(if ind.visible { color_alpha(t.toolbar_border, 20) } else { egui::Color32::TRANSPARENT })
+                            .corner_radius(3.0).min_size(egui::vec2(24.0, 22.0))).clicked() {
                             ind.visible = !ind.visible;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(m);
                             let del_color = egui::Color32::from_rgb(224, 85, 96);
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} Delete", Icon::TRASH))
-                                .monospace().size(9.0).color(del_color))
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(11.0).color(del_color))
                                 .fill(color_alpha(del_color, 15)).corner_radius(3.0)
                                 .stroke(egui::Stroke::new(0.5, color_alpha(del_color, 60)))
-                                .min_size(egui::vec2(0.0, 22.0))).clicked() {
-                                delete_id = Some(edit_id);
-                                close_editor = true;
+                                .min_size(egui::vec2(24.0, 22.0))).clicked() {
+                                delete_id = Some(edit_id); close_editor = true;
                             }
                         });
                     });
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                 } else {
                     close_editor = true;
                 }
             });
-        }
 
         if close_editor { panes[ap].editing_indicator = None; }
         if let Some(id) = delete_id { panes[ap].indicators.retain(|i| i.id != id); }
@@ -6033,7 +6799,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         compute_volume_analytics(chart);
 
         let (min_p,max_p) = chart.price_range();
-        let total = chart.vc+8;
+        let total = chart.vc + CHART_RIGHT_PAD;
         let bs = cw/total as f32;
         let vs = chart.vs;
         let end = ((vs as u32)+chart.vc).min(n as u32);
@@ -6058,7 +6824,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             p+=step;
         }
 
-        // Time labels on bottom axis
+        // Time labels on bottom axis (extends into future beyond last bar)
         if !chart.timestamps.is_empty() && end > vs as u32 {
             let candle_sec = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]).max(60) } else { 86400 };
             let nice_int: &[i64] = &[60,300,900,1800,3600,7200,14400,28800,86400,172800,604800,2592000];
@@ -6070,26 +6836,31 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if let Some(&first_ts) = chart.timestamps.get(vs as usize) {
                 let first_label = ((first_ts / time_interval) + 1) * time_interval;
                 let mut ti = first_label;
-                let last_ts = chart.timestamps.get((end-1) as usize).copied().unwrap_or(first_ts);
-                while ti <= last_ts {
-                    let bar_idx = chart.timestamps.partition_point(|&ts| ts < ti);
-                    if bar_idx >= vs as usize && bar_idx < end as usize {
-                        let x = bx(bar_idx as f32);
-                        if x > rect.left()+20.0 && x < rect.left()+cw-40.0 {
-                            chart.fmt_buf.clear();
-                            if time_interval >= 86400 {
-                                let days = (ti / 86400) as i32; let y2k = days - 10957;
-                                let month = ((y2k % 365) / 30 + 1).min(12).max(1);
-                                let day = ((y2k % 365) % 30 + 1).min(31).max(1);
-                                let _ = write!(chart.fmt_buf, "{:02}/{:02}", month, day);
-                            } else {
-                                let h = ((ti % 86400) / 3600) as u32;
-                                let m = ((ti % 3600) / 60) as u32;
-                                let _ = write!(chart.fmt_buf, "{:02}:{:02}", h, m);
-                            };
-                            let y = rect.top() + pt + ch - 10.0;
-                            painter.text(egui::pos2(x, y), egui::Align2::CENTER_BOTTOM, &chart.fmt_buf, egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.6));
-                        }
+                // Extend labels 200 bars into the future beyond the last bar
+                let last_real_ts = chart.timestamps.last().copied().unwrap_or(first_ts);
+                let future_ts = last_real_ts + candle_sec * 200;
+                while ti <= future_ts {
+                    // For timestamps within real data, use partition_point; for future, extrapolate
+                    let bar_f = if ti <= last_real_ts {
+                        chart.timestamps.partition_point(|&ts| ts < ti) as f32
+                    } else {
+                        n as f32 + ((ti - last_real_ts) as f32 / candle_sec as f32)
+                    };
+                    let x = bx(bar_f);
+                    if x > rect.left() + 20.0 && x < rect.left() + cw - 10.0 {
+                        chart.fmt_buf.clear();
+                        if time_interval >= 86400 {
+                            let days = (ti / 86400) as i32; let y2k = days - 10957;
+                            let month = ((y2k % 365) / 30 + 1).min(12).max(1);
+                            let day = ((y2k % 365) % 30 + 1).min(31).max(1);
+                            let _ = write!(chart.fmt_buf, "{:02}/{:02}", month, day);
+                        } else {
+                            let h = ((ti % 86400) / 3600) as u32;
+                            let m = ((ti % 3600) / 60) as u32;
+                            let _ = write!(chart.fmt_buf, "{:02}:{:02}", h, m);
+                        };
+                        let y = rect.top() + pt + ch - 10.0;
+                        painter.text(egui::pos2(x, y), egui::Align2::CENTER_BOTTOM, &chart.fmt_buf, egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.6));
                     }
                     ti += time_interval;
                 }
@@ -6741,23 +7512,50 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let btn_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.3) };
             painter.circle_filled(egui::pos2(btn_x, btn_y), 9.0, color_alpha(t.toolbar_bg, 220));
             painter.circle_stroke(egui::pos2(btn_x, btn_y), 9.0, egui::Stroke::new(1.0, btn_col));
-            painter.text(egui::pos2(btn_x, btn_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(9.0), btn_col);
+            if chart.overlay_chain_loading {
+                // Spinner animation while loading
+                let angle = ctx.input(|i| i.time) as f32 * 4.0;
+                let r = 5.0_f32;
+                for k in 0..8 {
+                    let a = angle + k as f32 * std::f32::consts::TAU / 8.0;
+                    let alpha = 40 + (k as u8) * 25;
+                    painter.circle_filled(
+                        egui::pos2(btn_x + a.cos() * r, btn_y + a.sin() * r),
+                        1.2, color_alpha(t.accent, alpha));
+                }
+                ctx.request_repaint();
+            } else {
+                painter.text(egui::pos2(btn_x, btn_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(9.0), btn_col);
+            }
             // Click detection via raw pointer
             if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                 if egui::pos2(btn_x, btn_y).distance(pos) < 10.0 {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                         chart.show_strikes_overlay = !chart.show_strikes_overlay;
+                        // Auto-fetch chain data for overlay if needed
+                        if chart.show_strikes_overlay && chart.overlay_chain_symbol != chart.symbol && !chart.overlay_chain_loading {
+                            chart.overlay_chain_loading = true;
+                            let sym = chart.symbol.clone();
+                            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                            fetch_overlay_chain_background(sym, price);
+                        }
                     }
                 }
+            }
+            // Also auto-fetch if overlay is on but symbol changed (e.g. switched charts)
+            if chart.show_strikes_overlay && chart.overlay_chain_symbol != chart.symbol && !chart.overlay_chain_loading && !chart.bars.is_empty() {
+                chart.overlay_chain_loading = true;
+                let sym = chart.symbol.clone();
+                let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                fetch_overlay_chain_background(sym, price);
             }
         }
 
         // ── Options strikes overlay on chart ─────────────────────────────────
         if chart.show_strikes_overlay {
-            let has_chain = chart.symbol == watchlist.chain_symbol;
-            let calls = if has_chain { &watchlist.chain_0dte.0 } else { &vec![] as &Vec<OptionRow> };
-            let puts = if has_chain { &watchlist.chain_0dte.1 } else { &vec![] as &Vec<OptionRow> };
+            let calls = &chart.overlay_calls;
+            let puts = &chart.overlay_puts;
             let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
 
             if (!calls.is_empty() || !puts.is_empty()) && last_price > 0.0 {
@@ -6887,93 +7685,130 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
                 }
-            } else if !has_chain {
-                let hint_x = rect.left() + cw - 130.0;
-                painter.text(egui::pos2(hint_x, rect.top() + pt + 24.0), egui::Align2::LEFT_CENTER,
-                    "Load chain in sidebar", egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.3));
             }
         }
 
-        // ── Floating order panes ──────────────────────────────────────────────
-        // These reuse the exact same order entry UI as the main order panel,
-        // but with a title bar showing the option symbol and an X to close.
-        // For now, clicking 💲 on a strike just opens the main order entry
-        // panel with the option pre-selected (since duplicating the full
-        // order entry UI is impractical). The floating pane concept tracks
-        // what the user opened so we can show multiple titled instances later
-        // when the order system is fully componentized.
+        // ── Floating order panes (reuse shared order entry component) ─────
         {
-            let mut close_id: Option<u32> = None;
-            for fop in &chart.floating_order_panes {
-                let title_col = if fop.is_call { t.bull } else { t.bear };
-                let panel_w = 230.0;
+            // Take panes out of chart to avoid borrow conflict with &mut Chart
+            let mut floating_panes = std::mem::take(&mut chart.floating_order_panes);
+            let mut close_ids: Vec<u32> = Vec::new();
 
-                egui::Window::new(format!("forder_{}", fop.id))
-                    .default_pos(fop.pos)
-                    .resizable(false)
+            for pane in &mut floating_panes {
+                let adv = chart.order_advanced;
+                let fp_panel_w = if adv { 300.0 } else { 230.0 };
+
+                egui::Window::new(format!("float_order_{}", pane.id))
+                    .fixed_pos(pane.pos)
+                    .fixed_size(egui::vec2(fp_panel_w, 0.0))
                     .title_bar(false)
                     .frame(egui::Frame::popup(&ctx.style())
                         .fill(color_alpha(t.toolbar_bg, 245))
-                        .stroke(egui::Stroke::new(1.0, color_alpha(title_col, 80)))
-                        .inner_margin(8.0)
-                        .corner_radius(6.0))
+                        .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
+                        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
+                        .corner_radius(4.0))
                     .show(ctx, |ui| {
-                        // Title bar: option symbol + X
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&fop.title).monospace().size(11.0).strong().color(title_col));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
-                                    close_id = Some(fop.id);
+                        // ── Header: title | armed | X ──
+                        let header_resp = ui.horizontal(|ui| {
+                            ui.set_min_width(fp_panel_w);
+                            let header_rect = ui.max_rect();
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_size(header_rect.min, egui::vec2(fp_panel_w, 22.0)),
+                                egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
+                                color_alpha(t.toolbar_border, 30));
+                            ui.add_space(4.0);
+                            // Armed toggle
+                            let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
+                            let armed_color = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            let armed_resp = ui.add(egui::Button::new(egui::RichText::new(armed_icon).size(11.0).color(armed_color))
+                                .fill(if chart.armed { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                                .stroke(egui::Stroke::NONE).min_size(egui::vec2(18.0, 18.0)).corner_radius(2.0));
+                            if armed_resp.clicked() { chart.armed = !chart.armed; }
+                            if armed_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                            // Title
+                            ui.label(egui::RichText::new(&pane.title).monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.7)));
+                            // Position indicator
+                            if let Some((_, positions, _)) = read_account_data() {
+                                if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
+                                    let pos_color = if pos.qty > 0 { t.bull } else { t.bear };
+                                    let pos_text = if pos.qty > 0 { format!("+{}", pos.qty) } else { format!("{}", pos.qty) };
+                                    ui.label(egui::RichText::new(pos_text).monospace().size(9.0).strong().color(pos_color));
                                 }
-                            });
-                        });
-                        ui.separator();
-                        ui.add_space(4.0);
-
-                        // Order type selector
-                        let order_types = ["MKT", "LMT", "STP"];
-                        ui.horizontal(|ui| {
-                            for (idx, &ot) in order_types.iter().enumerate() {
-                                let active = idx == 0; // default to MKT
-                                let col = if active { t.accent } else { t.dim };
-                                ui.add(egui::Button::new(egui::RichText::new(ot).monospace().size(9.0).color(col))
-                                    .fill(if active { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT })
-                                    .corner_radius(3.0).min_size(egui::vec2(40.0, 18.0)));
                             }
-                        });
-                        ui.add_space(4.0);
-
-                        // Quantity
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Qty").monospace().size(10.0).color(t.dim));
-                            ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0)).min_size(egui::vec2(18.0, 18.0)));
-                            ui.label(egui::RichText::new(format!("{}", fop.qty)).monospace().size(12.0).color(egui::Color32::WHITE));
-                            ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0)).min_size(egui::vec2(18.0, 18.0)));
-                        });
-
-                        // Notional mode
-                        if chart.order_notional_mode {
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("$").monospace().size(10.0).color(t.dim));
-                                ui.label(egui::RichText::new(&chart.order_notional_amount).monospace().size(10.0).color(egui::Color32::WHITE));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.add_space(4.0);
+                                // Close button
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim.gamma_multiply(0.5)))
+                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 18.0)).corner_radius(2.0)).clicked() {
+                                    close_ids.push(pane.id);
+                                }
+                                // Separator
+                                ui.add(egui::Separator::default().spacing(2.0));
+                                // Expand/collapse advanced toggle
+                                let exp_icon = if adv { Icon::MINUS } else { Icon::PLUS };
+                                let exp_resp = ui.add(egui::Button::new(egui::RichText::new(exp_icon).size(10.0).color(t.dim.gamma_multiply(0.5)))
+                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 18.0)).corner_radius(2.0));
+                                if exp_resp.clicked() { chart.order_advanced = !chart.order_advanced; }
+                                if exp_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                             });
-                        }
-                        ui.add_space(6.0);
-
-                        // Buy / Sell buttons (same as main order panel)
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 4.0;
-                            let buy_resp = ui.add(egui::Button::new(egui::RichText::new("BUY").monospace().size(11.0).color(egui::Color32::WHITE))
-                                .fill(color_alpha(t.bull, 180)).min_size(egui::vec2(panel_w / 2.0 - 8.0, 26.0)).corner_radius(4.0));
-                            if buy_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                            let sell_resp = ui.add(egui::Button::new(egui::RichText::new("SELL").monospace().size(11.0).color(egui::Color32::WHITE))
-                                .fill(color_alpha(t.bear, 180)).min_size(egui::vec2(panel_w / 2.0 - 8.0, 26.0)).corner_radius(4.0));
-                            if sell_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                         });
+                        // Drag header
+                        let hdr_min = header_resp.response.rect.min;
+                        let mid_rect = egui::Rect::from_min_size(
+                            egui::pos2(hdr_min.x + 26.0, hdr_min.y),
+                            egui::vec2(fp_panel_w - 80.0, 22.0));
+                        let drag_resp = ui.interact(mid_rect, egui::Id::new(("float_order_drag", pane.id)), egui::Sense::click_and_drag());
+                        if drag_resp.dragged() {
+                            let delta = drag_resp.drag_delta();
+                            pane.pos.x += delta.x;
+                            pane.pos.y += delta.y;
+                        }
+                        if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+
+                        // ── Body (shared component) ──
+                        render_order_entry_body(ui, chart, t, 1000 + pane.id as u64, fp_panel_w);
                     });
             }
-            if let Some(id) = close_id {
-                chart.floating_order_panes.retain(|f| f.id != id);
+
+            floating_panes.retain(|p| !close_ids.contains(&p.id));
+            chart.floating_order_panes = floating_panes;
+        }
+
+        // ── Order fill markers on chart ──────────────────────────────────────
+        // Plot buy/sell arrows at the bar where the fill occurred
+        if let Some((_, _, ib_orders)) = read_account_data() {
+            for order in &ib_orders {
+                if order.symbol != chart.symbol || order.avg_fill_price <= 0.0 || order.status != "filled" { continue; }
+                // Find bar closest to fill time
+                let fill_ts = order.submitted_at / 1000; // ms → sec
+                let bar_f = SignalDrawing::time_to_bar(fill_ts, &chart.timestamps);
+                let x = bx(bar_f);
+                let y = py(order.avg_fill_price as f32);
+                if !x.is_finite() || !y.is_finite() { continue; }
+                if x < rect.left() || x > rect.left() + cw { continue; }
+
+                let is_buy = order.side == "BUY" || order.side == "BOT";
+                let color = if is_buy { t.bull } else { t.bear };
+                let arrow_size = 8.0_f32;
+
+                if is_buy {
+                    // Upward arrow below the bar
+                    let tip = egui::pos2(x, y + 4.0);
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![tip, egui::pos2(x - arrow_size * 0.6, y + 4.0 + arrow_size), egui::pos2(x + arrow_size * 0.6, y + 4.0 + arrow_size)],
+                        color, egui::Stroke::new(0.5, egui::Color32::WHITE)));
+                } else {
+                    // Downward arrow above the bar
+                    let tip = egui::pos2(x, y - 4.0);
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![tip, egui::pos2(x - arrow_size * 0.6, y - 4.0 - arrow_size), egui::pos2(x + arrow_size * 0.6, y - 4.0 - arrow_size)],
+                        color, egui::Stroke::new(0.5, egui::Color32::WHITE)));
+                }
+                // Qty label
+                let label = format!("{}x{}", if is_buy { "B" } else { "S" }, order.filled_qty.abs());
+                let label_y = if is_buy { y + 4.0 + arrow_size + 8.0 } else { y - 4.0 - arrow_size - 8.0 };
+                painter.text(egui::pos2(x, label_y), egui::Align2::CENTER_CENTER, &label,
+                    egui::FontId::monospace(7.0), color);
             }
         }
 
@@ -7206,6 +8041,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let bg = egui::Rect::from_min_size(egui::pos2(lx - 2.0, label_y - galley.size().y / 2.0 - 1.0), galley.size() + egui::vec2(4.0, 2.0));
                         painter.rect_filled(bg, 2.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 200));
                         painter.text(egui::pos2(lx, label_y), egui::Align2::LEFT_CENTER, &label, egui::FontId::monospace(8.0), color);
+                    }
+                }
+                // Multi-TF badge on chart line
+                if !ind.source_tf.is_empty() {
+                    // Show TF badge at ~1/3 from left (2/3 back from right edge)
+                    let visible_start = vs as u32;
+                    let visible_end = end.min(n as u32);
+                    let badge_bar = (visible_start + (visible_end - visible_start) / 3) as usize;
+                    if let Some(&v) = ind.values.get(badge_bar) {
+                        if !v.is_nan() {
+                            let bx_pos = bx(badge_bar as f32);
+                            let by_pos = py(v);
+                            if bx_pos.is_finite() && by_pos.is_finite() && by_pos > rect.top() + pt && by_pos < rect.top() + pt + ch {
+                                let badge_text = &ind.source_tf;
+                                let badge_galley = painter.layout_no_wrap(badge_text.to_string(), egui::FontId::monospace(7.0), color);
+                                let badge_rect = egui::Rect::from_min_size(
+                                    egui::pos2(bx_pos - badge_galley.size().x / 2.0 - 3.0, by_pos - badge_galley.size().y - 6.0),
+                                    badge_galley.size() + egui::vec2(6.0, 3.0));
+                                painter.rect_filled(badge_rect, 3.0, color_alpha(color, 25));
+                                painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(0.5, color_alpha(color, 80)), egui::StrokeKind::Outside);
+                                painter.text(badge_rect.center(), egui::Align2::CENTER_CENTER, badge_text, egui::FontId::monospace(7.0), color);
+                            }
+                        }
                     }
                 }
             }
@@ -8636,13 +9494,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + chart.order_panel_pos.y)
             };
 
-            let order_types: Vec<&str> = if chart.is_option {
-                vec!["MKT", "LMT", "STP", "STP-LMT", "TRAIL", "UND"]
-            } else {
-                vec!["MKT", "LMT", "STP", "STP-LMT", "TRAIL"]
-            };
-            let tifs = ["DAY", "GTC", "IOC"];
-
             // Collapsed mode: pill with double-click to expand
             if chart.order_collapsed {
                 let pill_w = 90.0;
@@ -8683,9 +9534,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
                     .corner_radius(4.0))
                 .show(ctx, |ui| {
-                    let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                    let spread = (last_price * 0.0001).max(0.01);
-
                     // ── Header bar: armed toggle | ORDER | separator | +/- ──
                     let header_resp = ui.horizontal(|ui| {
                         ui.set_min_width(panel_w);
@@ -8710,6 +9558,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         // Label
                         ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
+                        // Position indicator
+                        if let Some((_, positions, _)) = read_account_data() {
+                            if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
+                                let pos_color = if pos.qty > 0 { t.bull } else { t.bear };
+                                let pos_text = if pos.qty > 0 { format!("+{}", pos.qty) } else { format!("{}", pos.qty) };
+                                ui.label(egui::RichText::new(pos_text).monospace().size(9.0).strong().color(pos_color));
+                            }
+                        }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(4.0);
                             // Expand/collapse advanced toggle
@@ -8743,270 +9599,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                     if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
 
-                    // ── Body ──
-                    let pad = 8.0;
-                    ui.add_space(4.0);
-
-                    // Advanced: Order type + TIF selectors
-                    if adv {
-                        ui.horizontal(|ui| {
-                            ui.add_space(pad);
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            for (i, &ot) in order_types.iter().enumerate() {
-                                let sel = chart.order_type_idx == i;
-                                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                                let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
-                                let rounding = if i == 0 {
-                                    egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
-                                } else if i == order_types.len() - 1 {
-                                    egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
-                                } else { egui::CornerRadius::ZERO };
-                                if ui.add(egui::Button::new(egui::RichText::new(ot).monospace().size(8.0).color(fg))
-                                    .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 18.0))
-                                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
-                                    .clicked() {
-                                    chart.order_type_idx = i;
-                                    chart.order_market = i == 0;
-                                }
-                            }
-                            ui.add_space(8.0);
-                            // TIF
-                            for (i, &tf) in tifs.iter().enumerate() {
-                                let sel = chart.order_tif_idx == i;
-                                let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                                if ui.add(egui::Button::new(egui::RichText::new(tf).monospace().size(8.0).color(fg))
-                                    .frame(false).min_size(egui::vec2(24.0, 18.0))).clicked() {
-                                    chart.order_tif_idx = i;
-                                }
-                            }
-                        });
-                        ui.add_space(4.0);
-                    }
-
-                    // Row 0: QTY / $ mode toggle
-                    ui.horizontal(|ui| {
-                        ui.add_space(pad);
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        let qty_color = if !chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        let notional_color = if chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        if ui.add(egui::Button::new(egui::RichText::new("QTY").monospace().size(9.0).strong().color(qty_color))
-                            .fill(if !chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
-                            .min_size(egui::vec2(30.0, 16.0))).clicked() {
-                            chart.order_notional_mode = false;
-                        }
-                        if ui.add(egui::Button::new(egui::RichText::new("$").monospace().size(9.0).strong().color(notional_color))
-                            .fill(if chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
-                            .min_size(egui::vec2(20.0, 16.0))).clicked() {
-                            chart.order_notional_mode = true;
-                        }
-                        if chart.order_notional_mode {
-                            ui.add_space(4.0);
-                            let ask = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                            let premium = if chart.is_option { ask } else { ask };
-                            ui.add(egui::TextEdit::singleline(&mut chart.order_notional_amount)
-                                .desired_width(70.0).font(egui::FontId::monospace(11.0)).hint_text("Amount"));
-                            let notional: f32 = chart.order_notional_amount.parse().unwrap_or(0.0);
-                            let qty = contracts_for_notional(notional, premium, if chart.is_option { 100.0 } else { 1.0 });
-                            if qty > 0 { chart.order_qty = qty as u32; }
-                            ui.label(egui::RichText::new(format!("= {} @ {:.2}", qty, premium)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
-                        }
-                    });
-                    ui.add_space(2.0);
-
-                    // Row 1: [-] qty [+]
-                    ui.horizontal(|ui| {
-                        ui.add_space(pad);
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
-                        if !chart.order_notional_mode {
-                        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0))
-                            .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
-                            .fill(color_alpha(t.toolbar_border, 40))).clicked() {
-                            chart.order_qty = chart.order_qty.saturating_sub(step).max(1);
-                        }
-                        let _ = ui.add(egui::TextEdit::singleline(&mut format!("{}", chart.order_qty))
-                            .desired_width(44.0).font(egui::FontId::monospace(12.0))
-                            .horizontal_align(egui::Align::Center).interactive(false));
-                        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0))
-                            .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
-                            .fill(color_alpha(t.toolbar_border, 40))).clicked() {
-                            chart.order_qty += step;
-                        }
-                        } else {
-                        // Notional mode: show derived qty read-only
-                        let _ = ui.add(egui::TextEdit::singleline(&mut format!("{} contracts", chart.order_qty))
-                            .desired_width(100.0).font(egui::FontId::monospace(11.0))
-                            .horizontal_align(egui::Align::Center).interactive(false));
-                        }
-                        ui.add_space(4.0);
-                        let cursor = ui.cursor().min;
-                        ui.painter().line_segment(
-                            [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
-                            egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
-                        ui.add_space(6.0);
-
-                        if !adv {
-                            // Compact mode: single price + MKT/LMT toggle
-                            if chart.order_market {
-                                ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(12.0).color(t.dim));
-                            } else {
-                                ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
-                                    .desired_width(68.0).font(egui::FontId::monospace(12.0)).hint_text("Price")
-                                    .horizontal_align(egui::Align::RIGHT));
-                            }
-                            ui.add_space(2.0);
-                            let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
-                            if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(9.0).strong()
-                                .color(if chart.order_market { t.accent } else { t.dim }))
-                                .fill(if chart.order_market { color_alpha(t.accent, 35) } else { t.toolbar_bg })
-                                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 90))).corner_radius(2.0)
-                                .min_size(egui::vec2(30.0, 20.0))).clicked() {
-                                chart.order_market = !chart.order_market;
-                                if !chart.order_market && chart.order_limit_price.is_empty() {
-                                    chart.order_limit_price = format!("{:.2}", last_price);
-                                }
-                            }
-                        } else {
-                            // Advanced: show last price as reference
-                            ui.label(egui::RichText::new(format!("Last {:.2}", last_price)).monospace().size(10.0).color(t.dim.gamma_multiply(0.6)));
-                        }
-                    });
-
-                    // Advanced: price fields per order type
-                    if adv {
-                        let oti = chart.order_type_idx;
-                        ui.add_space(2.0);
-                        // LMT, STP-LMT: Limit price
-                        if oti == 1 || oti == 3 {
-                            ui.horizontal(|ui| {
-                                ui.add_space(pad);
-                                ui.label(egui::RichText::new("Limit").monospace().size(9.0).color(t.dim));
-                                ui.add_space(4.0);
-                                ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
-                                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Limit price")
-                                    .horizontal_align(egui::Align::RIGHT));
-                            });
-                        }
-                        // STP, STP-LMT: Stop price
-                        if oti == 2 || oti == 3 {
-                            ui.horizontal(|ui| {
-                                ui.add_space(pad);
-                                ui.label(egui::RichText::new("Stop ").monospace().size(9.0).color(t.bear));
-                                ui.add_space(4.0);
-                                ui.add(egui::TextEdit::singleline(&mut chart.order_stop_price)
-                                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Stop price")
-                                    .horizontal_align(egui::Align::RIGHT));
-                            });
-                        }
-                        // TRAIL: Trailing amount
-                        if oti == 4 {
-                            ui.horizontal(|ui| {
-                                ui.add_space(pad);
-                                ui.label(egui::RichText::new("Trail").monospace().size(9.0).color(t.accent));
-                                ui.add_space(4.0);
-                                ui.add(egui::TextEdit::singleline(&mut chart.order_trail_amt)
-                                    .desired_width(80.0).font(egui::FontId::monospace(11.0)).hint_text("Trail amt")
-                                    .horizontal_align(egui::Align::RIGHT));
-                            });
-                        }
-                    }
-
-                    // Advanced: Bracket mode (TP + SL)
-                    if adv {
-                        ui.add_space(2.0);
-                        ui.horizontal(|ui| {
-                            ui.add_space(pad);
-                            let brk_color = if chart.order_bracket { t.accent } else { t.dim.gamma_multiply(0.5) };
-                            if ui.add(egui::Button::new(egui::RichText::new("Bracket").monospace().size(9.0).color(brk_color))
-                                .fill(if chart.order_bracket { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
-                                .min_size(egui::vec2(0.0, 18.0))).clicked() {
-                                chart.order_bracket = !chart.order_bracket;
-                            }
-                            if chart.order_bracket {
-                                ui.add_space(4.0);
-                                ui.label(egui::RichText::new("TP").monospace().size(9.0).color(t.bull));
-                                ui.add(egui::TextEdit::singleline(&mut chart.order_tp_price)
-                                    .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Take")
-                                    .horizontal_align(egui::Align::RIGHT));
-                                ui.label(egui::RichText::new("SL").monospace().size(9.0).color(t.bear));
-                                ui.add(egui::TextEdit::singleline(&mut chart.order_sl_price)
-                                    .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Stop")
-                                    .horizontal_align(egui::Align::RIGHT));
-                            }
-                        });
-
-                        // (C/P + trigger buttons removed — UND BUY/SELL in main buttons handles this)
-                    }
-
-                    ui.add_space(4.0);
-
-                    // Row 2: BUY | SELL | armed toggle
-                    let buy_price = if chart.order_market { last_price + spread } else {
-                        chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
-                    };
-                    let sell_price = if chart.order_market { last_price - spread } else {
-                        chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
-                    };
-
-                    ui.horizontal(|ui| {
-                        ui.add_space(pad);
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        let btn_w = (panel_w - pad * 2.0 - 8.0) / 2.0;
-                        let is_und = adv && chart.order_type_idx == 5 && chart.is_option;
-                        let buy_label = if is_und { format!("BUY {} on UND", chart.option_type) } else { format!("BUY {:.2}", buy_price) };
-                        let sell_label = if is_und { format!("SELL {} on UND", chart.option_type) } else { format!("SELL {:.2}", sell_price) };
-                        // BUY
-                        if trade_btn(ui, &buy_label, t.bull, btn_w) {
-                            if is_und {
-                                // Place a TriggerBuy order level on the underlying pane
-                                chart.pending_und_order = Some(OrderSide::TriggerBuy);
-                            } else if chart.armed && adv {
-                                let sym = chart.symbol.clone();
-                                let qty = chart.order_qty;
-                                let ot_idx = chart.order_type_idx;
-                                let tif_idx = chart.order_tif_idx;
-                                let price = buy_price;
-                                let bracket = chart.order_bracket;
-                                let tp = chart.order_tp_price.parse::<f32>().ok();
-                                let sl = chart.order_sl_price.parse::<f32>().ok();
-                                std::thread::spawn(move || {
-                                    submit_ib_order(&sym, "BUY", qty, ot_idx, tif_idx, price, bracket, tp, sl);
-                                });
-                            } else {
-                                let id = chart.next_order_id; chart.next_order_id += 1;
-                                let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
-                                chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: s, pair_id: None, option_symbol: None, option_con_id: None });
-                                if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
-                            }
-                        }
-                        // SELL
-                        if trade_btn(ui, &sell_label, t.bear, btn_w) {
-                            if is_und {
-                                chart.pending_und_order = Some(OrderSide::TriggerSell);
-                            } else if chart.armed && adv {
-                                let sym = chart.symbol.clone();
-                                let qty = chart.order_qty;
-                                let ot_idx = chart.order_type_idx;
-                                let tif_idx = chart.order_tif_idx;
-                                let price = sell_price;
-                                let bracket = chart.order_bracket;
-                                let tp = chart.order_tp_price.parse::<f32>().ok();
-                                let sl = chart.order_sl_price.parse::<f32>().ok();
-                                std::thread::spawn(move || {
-                                    submit_ib_order(&sym, "SELL", qty, ot_idx, tif_idx, price, bracket, tp, sl);
-                                });
-                            } else {
-                                let id = chart.next_order_id; chart.next_order_id += 1;
-                                let s = if chart.armed { OrderStatus::Placed } else { OrderStatus::Draft };
-                                chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: s, pair_id: None, option_symbol: None, option_con_id: None });
-                                if !chart.armed { chart.pending_confirms.push((id, std::time::Instant::now())); }
-                            }
-                        }
-                    });
-                    ui.add_space(6.0);
+                    // ── Body (shared component) ──
+                    render_order_entry_body(ui, chart, t, pane_idx as u64, panel_w);
                 });
             } // end if !collapsed
 
@@ -11139,7 +11733,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             && chart.dragging_order.is_none() && chart.axis_drag_mode == 0
             && resp.dragged_by(egui::PointerButton::Primary) {
             let d = resp.drag_delta();
+            // Horizontal pan
             chart.vs = (chart.vs - d.x/bs).max(0.0).min(n as f32 + 200.0);
+            // Vertical pan — shift price range
+            if d.y.abs() > 0.5 {
+                let (lo, hi) = chart.price_range();
+                let price_per_px = (hi - lo) / ch;
+                let shift = d.y * price_per_px;
+                chart.price_lock = Some((lo + shift, hi + shift));
+            }
             chart.auto_scroll = false;
             chart.last_input = std::time::Instant::now();
         }
@@ -12121,11 +12723,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         if chart.replay_mode && !ctx.wants_keyboard_input() {
             if ui.input(|i| i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::ArrowRight)) {
                 chart.replay_bar_count = (chart.replay_bar_count + 1).min(chart.bars.len());
-                chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + 8.0).max(0.0);
+                chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
             }
             if ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
                 chart.replay_bar_count = chart.replay_bar_count.saturating_sub(1).max(1);
-                chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + 8.0).max(0.0);
+                chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
             }
         }
 
@@ -12166,13 +12768,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let id = chart.next_order_id; chart.next_order_id += 1;
                 chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None });
             }
-            // Ctrl+Shift+Q: Cancel all orders
+            // Ctrl+Shift+Q: Cancel all orders (local + IB)
             if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Q)) {
                 chart.orders.clear();
+                // Cancel all IB orders too
+                std::thread::spawn(|| {
+                    let _ = reqwest::blocking::Client::new()
+                        .delete(format!("{}/orders", APEXIB_URL))
+                        .timeout(std::time::Duration::from_secs(5))
+                        .send();
+                });
             }
-            // Ctrl+Shift+F: Flatten — cancel all orders
+            // Ctrl+Shift+F: Flatten all positions (IB)
             if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::F)) {
                 chart.orders.retain(|o| o.status == OrderStatus::Executed);
+                std::thread::spawn(|| {
+                    let _ = reqwest::blocking::Client::new()
+                        .post(format!("{}/risk/flatten", APEXIB_URL))
+                        .timeout(std::time::Duration::from_secs(5))
+                        .send();
+                });
             }
         }
 
@@ -12226,7 +12841,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
         panes[target].bars = opt_bars;
         panes[target].timestamps = underlying_ts;
-        panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + 8.0).max(0.0);
+        panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         panes[target].auto_scroll = true;
         panes[target].indicator_bar_count = 0;
         *active_pane = target;
@@ -12467,6 +13082,11 @@ struct Watchlist {
     active_workspace: String,
     workspace_save_name: String,
     pending_workspace_load: Option<String>,
+    // Command palette
+    cmd_palette_open: bool,
+    cmd_palette_query: String,
+    cmd_palette_results: Vec<(String, String, String)>, // (symbol/cmd, name, type)
+    cmd_palette_sel: i32, // selected result index (-1 = none)
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -12496,7 +13116,8 @@ impl Watchlist {
                chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0, chain_far_strike_mode: StrikeMode::Count, chain_far_nmf: 0,
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
-               active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new() }
+               active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
+               cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1 }
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -12743,6 +13364,7 @@ fn default_hotkeys() -> Vec<HotKey> {
         hk("Screenshot",         "General", "screenshot",     egui::Key::S,      true,  true,  "Ctrl+Shift+S"),
         hk("Delete",             "General", "delete",         egui::Key::Delete, false, false, "Delete"),
         hk("Cancel / Deselect",  "General", "escape",         egui::Key::Escape, false, false, "Escape"),
+        hk("Command Palette",    "General", "cmd_palette",    egui::Key::Space,  true,  false, "Ctrl+Space"),
     ]
 }
 
@@ -12873,6 +13495,51 @@ fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlyi
             let calls: Vec<_> = sim_calls.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
             let puts: Vec<_> = sim_puts.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
             send_chain(calls, puts, underlying_price);
+        }
+    });
+}
+
+/// Fetch chain data for the strikes overlay (independent of sidebar chain tab).
+fn fetch_overlay_chain_background(symbol: String, underlying_price: f32) {
+    std::thread::spawn(move || {
+        let path = format!("/options/{}?strikeCount=150&dte=0", symbol);
+        if let Some(json) = apexib_curl(&path) {
+            let parse_rows = |key: &str| -> Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)> {
+                json.get(key).and_then(|v| v.as_array()).map(|arr| {
+                    arr.iter().filter_map(|row| {
+                        let strike = row.get("strike")?.as_f64()? as f32;
+                        let last = row.get("lastPrice").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        let bid = row.get("bid").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        let ask = row.get("ask").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        let vol = row.get("volume").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        let oi = row.get("openInterest").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        let iv = row.get("iv").and_then(|v| v.as_f64())
+                            .or_else(|| row.get("impliedVolatility").and_then(|v| v.as_f64()))
+                            .unwrap_or(0.0) as f32;
+                        let itm = row.get("inTheMoney").and_then(|v| v.as_bool()).unwrap_or(false);
+                        let contract = row.get("contractSymbol").and_then(|v| v.as_str())
+                            .or_else(|| row.get("conId").and_then(|v| v.as_i64()).map(|_| ""))
+                            .unwrap_or("").to_string();
+                        let contract = if contract.is_empty() {
+                            row.get("conId").and_then(|v| v.as_i64()).map(|id| format!("{}", id)).unwrap_or_default()
+                        } else { contract };
+                        Some((strike, last, bid, ask, vol, oi, iv, itm, contract))
+                    }).collect()
+                }).unwrap_or_default()
+            };
+            let calls = parse_rows("calls");
+            let puts = parse_rows("puts");
+            if !calls.is_empty() || !puts.is_empty() {
+                crate::send_to_native_chart(ChartCommand::OverlayChainData { symbol, calls, puts });
+                return;
+            }
+        }
+        // Fallback: simulated chain
+        if underlying_price > 0.0 {
+            let (sim_calls, sim_puts) = build_chain(underlying_price, 75, 0);
+            let calls: Vec<_> = sim_calls.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
+            let puts: Vec<_> = sim_puts.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
+            crate::send_to_native_chart(ChartCommand::OverlayChainData { symbol, calls, puts });
         }
     });
 }
