@@ -7526,8 +7526,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
 
             if (!calls.is_empty() || !puts.is_empty()) && last_price > 0.0 {
-                let pill_w = 110.0;
-                let pill_h = 20.0;
+                let pill_w = 130.0;
+                let pill_h = 22.0;
                 let min_gap = 2.0; // minimum pixels between pills
                 let pill_right = rect.left() + cw - 26.0; // right edge of pills
                 let pill_left = pill_right - pill_w;
@@ -7573,24 +7573,24 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         painter.circle_filled(egui::pos2(pill_right + 6.0, si.natural_y), 2.0, color_alpha(base_col, if is_hovered { 180 } else { 80 }));
                     }
 
-                    // Pill background — solid with good opacity
-                    let pill_bg_alpha = if is_hovered { 200u8 } else { 160 };
-                    painter.rect_filled(pill_rect, 3.0, color_alpha(t.toolbar_bg, pill_bg_alpha));
-                    painter.rect_stroke(pill_rect, 3.0, egui::Stroke::new(1.0, color_alpha(base_col, if is_hovered { 200 } else { 100 })), egui::StrokeKind::Outside);
+                    // Pill background — solid color (call=green tint, put=red tint)
+                    let pill_alpha = if is_hovered { 50u8 } else { 35 };
+                    let pill_bg = egui::Color32::from_rgba_unmultiplied(base_col.r(), base_col.g(), base_col.b(), pill_alpha);
+                    painter.rect_filled(pill_rect, 4.0, pill_bg);
 
                     // Split pill: strike on left (colored) | bid×ask on right (white, larger)
-                    let split_x = pill_left + 38.0;
-                    // Strike price — colored by call/put
-                    painter.text(egui::pos2(pill_left + 5.0, si.display_y), egui::Align2::LEFT_CENTER,
-                        &format!("{:.0}", si.strike), egui::FontId::monospace(10.0),
-                        color_alpha(base_col, 240));
+                    let split_x = pill_left + 44.0;
+                    // Strike price — colored by call/put, bold
+                    painter.text(egui::pos2(pill_left + 6.0, si.display_y), egui::Align2::LEFT_CENTER,
+                        &format!("{:.0}", si.strike), egui::FontId::monospace(11.0),
+                        color_alpha(base_col, 255));
                     // Separator line
                     painter.line_segment([egui::pos2(split_x, si.display_y - pill_h / 2.0 + 3.0), egui::pos2(split_x, si.display_y + pill_h / 2.0 - 3.0)],
-                        egui::Stroke::new(0.5, color_alpha(base_col, 60)));
-                    // Bid × Ask — white, larger font for readability
-                    painter.text(egui::pos2(split_x + 4.0, si.display_y), egui::Align2::LEFT_CENTER,
-                        &format!("{:.2} × {:.2}", si.bid, si.ask), egui::FontId::monospace(10.0),
-                        egui::Color32::from_rgb(220, 220, 230));
+                        egui::Stroke::new(0.5, color_alpha(base_col, 40)));
+                    // Bid × Ask — white, larger font
+                    painter.text(egui::pos2(split_x + 5.0, si.display_y), egui::Align2::LEFT_CENTER,
+                        &format!("{:.2} × {:.2}", si.bid, si.ask), egui::FontId::monospace(11.0),
+                        egui::Color32::from_rgb(230, 230, 240));
 
                     // Dashed horizontal line across chart on hover (visible)
                     if is_hovered {
