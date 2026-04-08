@@ -678,12 +678,12 @@ enum CandleMode { Standard, Violin, Gradient, ViolinGradient, HeikinAshi, Line, 
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum StrikeMode {
-    Count,      // N strikes above/below ATM
+    Count,      // N strikes above/below center point
     Pct(u8),    // strikes within X% of underlying (index into PCT_OPTIONS)
     StdDev,     // strikes within N std deviations
-    NearMidFar(u8), // 0=near (ATM), 1=mid (1σ), 2=far (2σ) as starting point
 }
 const PCT_OPTIONS: [f32; 5] = [0.6, 1.0, 1.25, 1.5, 2.0];
+// NearMidFar: 0=Near (ATM), 1=Mid (1σ away), 2=Far (2σ away) — sets center point, orthogonal to mode
 
 struct VolumeLevel {
     price: f32,
@@ -4740,7 +4740,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let chain_frozen = watchlist.chain_frozen;
                         // Per-chain controls passed as parameters to render_block
 
-                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32, num_strikes: usize, center_offset: i32, strike_mode: StrikeMode| {
+                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32, num_strikes: usize, center_offset: i32, strike_mode: StrikeMode, nmf: u8| {
                             let exp_label = format!("{}DTE", dte);
                             let date_str = if dte == 0 {
                                 "Today".to_string()
@@ -4776,43 +4776,43 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                             // Window: offset shifts which strikes are visible, but divider stays at real price
                             let max_idx = (all_strikes.len() as i32 - 1).max(0);
+                            // Apply Near/Mid/Far as a center point shift
+                            // σ approximated as 1.5% of price until real HV data
+                            let sigma = price * 0.015;
+                            let nmf_shift = match nmf {
+                                1 => { // Mid: find strike ~1σ above ATM
+                                    let target = price + sigma;
+                                    all_strikes.iter().enumerate().min_by(|(_, a), (_, b)| {
+                                        (*a - target).abs().partial_cmp(&(*b - target).abs()).unwrap_or(std::cmp::Ordering::Equal)
+                                    }).map(|(i, _)| i as i32 - atm_idx as i32).unwrap_or(0)
+                                }
+                                2 => { // Far: find strike ~2σ above ATM
+                                    let target = price + sigma * 2.0;
+                                    all_strikes.iter().enumerate().min_by(|(_, a), (_, b)| {
+                                        (*a - target).abs().partial_cmp(&(*b - target).abs()).unwrap_or(std::cmp::Ordering::Equal)
+                                    }).map(|(i, _)| i as i32 - atm_idx as i32).unwrap_or(0)
+                                }
+                                _ => 0, // Near: ATM
+                            };
+                            let effective_offset = center_offset + nmf_shift;
+
                             // Filter strikes based on the selected mode
                             let visible_strikes: Vec<f32> = match strike_mode {
                                 StrikeMode::Count => {
-                                    let window_center = (atm_idx as i32 + center_offset).clamp(0, max_idx) as usize;
+                                    let window_center = (atm_idx as i32 + effective_offset).clamp(0, max_idx) as usize;
                                     let start = window_center.saturating_sub(num_strikes);
                                     let end = (window_center + num_strikes).min(all_strikes.len());
                                     all_strikes[start..end].to_vec()
                                 }
                                 StrikeMode::Pct(pct_idx) => {
                                     let pct = PCT_OPTIONS.get(pct_idx as usize).copied().unwrap_or(1.0) / 100.0;
-                                    all_strikes.iter().filter(|&&s| {
-                                        let dist = (s - price).abs() / price;
-                                        dist <= pct
-                                    }).copied().collect()
+                                    let center_price = all_strikes.get((atm_idx as i32 + effective_offset).clamp(0, max_idx) as usize).copied().unwrap_or(price);
+                                    all_strikes.iter().filter(|&&s| (s - center_price).abs() / price <= pct).copied().collect()
                                 }
                                 StrikeMode::StdDev => {
-                                    // Approximate 1 std dev as 1.5% of price (placeholder until real HV data)
-                                    let sigma = price * 0.015;
-                                    let window_center = (atm_idx as i32 + center_offset).clamp(0, max_idx) as usize;
-                                    all_strikes.iter().filter(|&&s| (s - all_strikes[window_center]).abs() <= sigma * 2.0).copied().collect()
-                                }
-                                StrikeMode::NearMidFar(level) => {
-                                    // Approximate sigma as 1.5% of price
-                                    let sigma = price * 0.015;
-                                    let offset_sigma = level as f32; // 0=ATM, 1=1σ, 2=2σ
-                                    let center_price = price + (offset_sigma * sigma * center_offset.signum() as f32);
-                                    // Find strikes around the offset center
-                                    let center_strike = all_strikes.iter().min_by(|a, b| {
-                                        let da = ((**a) - price - offset_sigma * sigma).abs();
-                                        let db = ((**b) - price - offset_sigma * sigma).abs();
-                                        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-                                    }).copied().unwrap_or(price);
-                                    let ci = all_strikes.iter().position(|&s| s == center_strike).unwrap_or(atm_idx);
-                                    let ci = (ci as i32 + center_offset).clamp(0, max_idx) as usize;
-                                    let start = ci.saturating_sub(num_strikes);
-                                    let end = (ci + num_strikes).min(all_strikes.len());
-                                    all_strikes[start..end].to_vec()
+                                    let window_center = (atm_idx as i32 + effective_offset).clamp(0, max_idx) as usize;
+                                    let center = all_strikes.get(window_center).copied().unwrap_or(price);
+                                    all_strikes.iter().filter(|&&s| (s - center).abs() <= sigma * 2.0).copied().collect()
                                 }
                             };
 
@@ -4887,30 +4887,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             // Per-chain controls: 0DTE
                             ui.horizontal(|ui| {
                                 dim_label(ui, "0DTE", t.dim);
-                                // Strike mode dropdown
+                                // Mode dropdown (Count, %, StdDev)
                                 let mode_label = match watchlist.chain_0_strike_mode {
-                                    StrikeMode::Count => format!("{}x", watchlist.chain_0_num_strikes),
+                                    StrikeMode::Count => "Cnt".into(),
                                     StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
                                     StrikeMode::StdDev => "σ".into(),
-                                    StrikeMode::NearMidFar(0) => "Near".into(),
-                                    StrikeMode::NearMidFar(1) => "Mid".into(),
-                                    StrikeMode::NearMidFar(_) => "Far".into(),
                                 };
-                                egui::ComboBox::from_id_salt("sm_0").selected_text(egui::RichText::new(&mode_label).monospace().size(8.0)).width(45.0).show_ui(ui, |ui| {
+                                egui::ComboBox::from_id_salt("sm_0").selected_text(egui::RichText::new(&mode_label).monospace().size(8.0)).width(40.0).show_ui(ui, |ui| {
                                     if ui.selectable_label(matches!(watchlist.chain_0_strike_mode, StrikeMode::Count), "Count").clicked() { watchlist.chain_0_strike_mode = StrikeMode::Count; }
                                     for (pi, &pct) in PCT_OPTIONS.iter().enumerate() {
                                         if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::Pct(pi as u8), format!("{}%", pct)).clicked() { watchlist.chain_0_strike_mode = StrikeMode::Pct(pi as u8); }
                                     }
                                     if ui.selectable_label(matches!(watchlist.chain_0_strike_mode, StrikeMode::StdDev), "Std Dev").clicked() { watchlist.chain_0_strike_mode = StrikeMode::StdDev; }
-                                    ui.separator();
-                                    if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::NearMidFar(0), "Near (ATM)").clicked() { watchlist.chain_0_strike_mode = StrikeMode::NearMidFar(0); }
-                                    if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::NearMidFar(1), "Mid (1σ)").clicked() { watchlist.chain_0_strike_mode = StrikeMode::NearMidFar(1); }
-                                    if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::NearMidFar(2), "Far (2σ)").clicked() { watchlist.chain_0_strike_mode = StrikeMode::NearMidFar(2); }
                                 });
-                                // Count ± (only in Count mode)
-                                if matches!(watchlist.chain_0_strike_mode, StrikeMode::Count) {
-                                    if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
-                                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes += 1; }
+                                // Count ± (always visible)
+                                if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
+                                ui.label(egui::RichText::new(format!("{}", watchlist.chain_0_num_strikes)).monospace().size(8.0).color(t.dim));
+                                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes += 1; }
+                                // Near / Mid / Far toggles
+                                for (lvl, label) in [(0u8, "N"), (1, "M"), (2, "F")] {
+                                    let active = watchlist.chain_0_nmf == lvl;
+                                    let col = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
+                                    if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(8.0).color(col))
+                                        .fill(if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                                        .min_size(egui::vec2(14.0, 14.0)).corner_radius(2.0)).clicked() { watchlist.chain_0_nmf = lvl; }
                                 }
                                 // Freeze + arrows
                                 let fr_col = if watchlist.chain_0_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
@@ -4926,7 +4926,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let ns_0 = watchlist.chain_0_num_strikes;
                             let off_0 = watchlist.chain_0_offset;
                             let sm_0 = watchlist.chain_0_strike_mode;
-                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_0, off_0, sm_0);
+                            let nmf_0 = watchlist.chain_0_nmf;
+                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_0, off_0, sm_0, nmf_0);
 
                             ui.add_space(6.0);
                             let sep_r = ui.available_rect_before_wrap();
@@ -4939,27 +4940,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.horizontal(|ui| {
                                 dim_label(ui, &format!("{}DTE", far_dte), t.dim);
                                 let mode_label = match watchlist.chain_far_strike_mode {
-                                    StrikeMode::Count => format!("{}x", watchlist.chain_far_num_strikes),
+                                    StrikeMode::Count => "Cnt".into(),
                                     StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
                                     StrikeMode::StdDev => "σ".into(),
-                                    StrikeMode::NearMidFar(0) => "Near".into(),
-                                    StrikeMode::NearMidFar(1) => "Mid".into(),
-                                    StrikeMode::NearMidFar(_) => "Far".into(),
                                 };
-                                egui::ComboBox::from_id_salt("sm_f").selected_text(egui::RichText::new(&mode_label).monospace().size(8.0)).width(45.0).show_ui(ui, |ui| {
+                                egui::ComboBox::from_id_salt("sm_f").selected_text(egui::RichText::new(&mode_label).monospace().size(8.0)).width(40.0).show_ui(ui, |ui| {
                                     if ui.selectable_label(matches!(watchlist.chain_far_strike_mode, StrikeMode::Count), "Count").clicked() { watchlist.chain_far_strike_mode = StrikeMode::Count; }
                                     for (pi, &pct) in PCT_OPTIONS.iter().enumerate() {
                                         if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::Pct(pi as u8), format!("{}%", pct)).clicked() { watchlist.chain_far_strike_mode = StrikeMode::Pct(pi as u8); }
                                     }
                                     if ui.selectable_label(matches!(watchlist.chain_far_strike_mode, StrikeMode::StdDev), "Std Dev").clicked() { watchlist.chain_far_strike_mode = StrikeMode::StdDev; }
-                                    ui.separator();
-                                    if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::NearMidFar(0), "Near (ATM)").clicked() { watchlist.chain_far_strike_mode = StrikeMode::NearMidFar(0); }
-                                    if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::NearMidFar(1), "Mid (1σ)").clicked() { watchlist.chain_far_strike_mode = StrikeMode::NearMidFar(1); }
-                                    if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::NearMidFar(2), "Far (2σ)").clicked() { watchlist.chain_far_strike_mode = StrikeMode::NearMidFar(2); }
                                 });
-                                if matches!(watchlist.chain_far_strike_mode, StrikeMode::Count) {
-                                    if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
-                                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
+                                if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
+                                ui.label(egui::RichText::new(format!("{}", watchlist.chain_far_num_strikes)).monospace().size(8.0).color(t.dim));
+                                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
+                                for (lvl, label) in [(0u8, "N"), (1, "M"), (2, "F")] {
+                                    let active = watchlist.chain_far_nmf == lvl;
+                                    let col = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
+                                    if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(8.0).color(col))
+                                        .fill(if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                                        .min_size(egui::vec2(14.0, 14.0)).corner_radius(2.0)).clicked() { watchlist.chain_far_nmf = lvl; }
                                 }
                                 let fr_col = if watchlist.chain_far_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
                                 if ui.add(egui::Button::new(egui::RichText::new(if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY }).size(9.0).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
@@ -4974,7 +4974,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let ns_f = watchlist.chain_far_num_strikes;
                             let off_f = watchlist.chain_far_offset;
                             let sm_f = watchlist.chain_far_strike_mode;
-                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f, sm_f);
+                            let nmf_f = watchlist.chain_far_nmf;
+                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f, sm_f, nmf_f);
                         });
                         // Normal click: just open option chart (no watchlist add)
                         if let Some(info) = clicked_contract.take() {
@@ -12158,10 +12159,12 @@ struct Watchlist {
     chain_0_frozen: bool,
     chain_0_offset: i32,
     chain_0_strike_mode: StrikeMode,
+    chain_0_nmf: u8, // 0=near, 1=mid, 2=far
     chain_far_num_strikes: usize,
     chain_far_frozen: bool,
     chain_far_offset: i32,
     chain_far_strike_mode: StrikeMode,
+    chain_far_nmf: u8,
     chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
     // Saved options
     saved_options: Vec<SavedOption>,
@@ -12195,8 +12198,8 @@ impl Watchlist {
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
-               chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0, chain_0_strike_mode: StrikeMode::Count,
-               chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0, chain_far_strike_mode: StrikeMode::Count,
+               chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0, chain_0_strike_mode: StrikeMode::Count, chain_0_nmf: 0,
+               chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0, chain_far_strike_mode: StrikeMode::Count, chain_far_nmf: 0,
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new() }
