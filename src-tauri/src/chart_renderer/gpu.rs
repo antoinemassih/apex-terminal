@@ -143,17 +143,38 @@ impl Layout {
                     Layout::SixH => (2, 3),
                     Layout::Nine => (3, 3),
                 };
-                let cw = (rect.width() - gap * (cols as f32 - 1.0).max(0.0)) / cols as f32;
-                let rh = (rect.height() - gap * (rows as f32 - 1.0).max(0.0)) / rows as f32;
+                // Use split ratios for column/row positions
+                let total_w = rect.width() - gap * (cols as f32 - 1.0).max(0.0);
+                let total_h = rect.height() - gap * (rows as f32 - 1.0).max(0.0);
+                // Column widths: for 2 cols use split_h, for 3 cols use split_h for first divider
+                let col_widths: Vec<f32> = if cols == 2 {
+                    let w0 = total_w * split_h.clamp(0.15, 0.85);
+                    vec![w0, total_w - w0]
+                } else if cols == 3 {
+                    let w_each = total_w / 3.0;
+                    vec![w_each, w_each, w_each]
+                } else { vec![total_w] };
+                // Row heights: for 2 rows use split_v, for 3 rows equal
+                let row_heights: Vec<f32> = if rows == 2 {
+                    let h0 = total_h * split_v.clamp(0.15, 0.85);
+                    vec![h0, total_h - h0]
+                } else if rows == 3 {
+                    let h_each = total_h / 3.0;
+                    vec![h_each, h_each, h_each]
+                } else { vec![total_h] };
+
                 let mut rects = Vec::new();
+                let mut y = rect.top();
                 for r in 0..rows {
+                    let mut x = rect.left();
+                    let rh = row_heights[r];
                     for c in 0..cols {
                         if rects.len() >= count { break; }
-                        rects.push(egui::Rect::from_min_size(
-                            egui::pos2(rect.left() + c as f32 * (cw + gap), rect.top() + r as f32 * (rh + gap)),
-                            egui::vec2(cw, rh),
-                        ));
+                        let cw = col_widths[c];
+                        rects.push(egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(cw, rh)));
+                        x += cw + gap;
                     }
+                    y += rh + gap;
                 }
                 rects
             }
