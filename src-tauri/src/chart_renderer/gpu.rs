@@ -1946,7 +1946,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             // ── Scrollable middle section ──
             // Calculate available width: total - logo(25) - symbol(~70) - right section(~350)
-            let right_width = 110.0; // only window controls (3 × 34px + separator)
+            let right_width = 150.0; // window controls + Opt button
             let middle_width = (ui.available_width() - right_width).max(60.0);
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
@@ -2509,17 +2509,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.order_entry_open = !watchlist.order_entry_open;
                 }
 
-                // Strikes overlay toggle
-                if tb_btn(ui, "Opt", panes[ap].show_strikes_overlay, t).clicked() {
-                    panes[ap].show_strikes_overlay = !panes[ap].show_strikes_overlay;
-                    if panes[ap].show_strikes_overlay && panes[ap].overlay_chain_symbol != panes[ap].symbol && !panes[ap].overlay_chain_loading {
-                        panes[ap].overlay_chain_loading = true;
-                        let sym = panes[ap].symbol.clone();
-                        let price = panes[ap].bars.last().map(|b| b.close).unwrap_or(0.0);
-                        fetch_overlay_chain_background(sym, price);
-                    }
-                }
-
                 // Account strip toggle
                 if tb_btn(ui, Icon::PULSE, watchlist.account_strip_open, t).clicked() {
                     watchlist.account_strip_open = !watchlist.account_strip_open;
@@ -2553,6 +2542,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                 ui.add(egui::Separator::default().spacing(4.0));
             });
+
+            // (Opt button is in scroll area, near account strip toggle)
         });
     });
 
@@ -6638,6 +6629,35 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 chart.picker_pos = egui::pos2(sym_rect.left(), sym_rect.bottom());
             }
 
+            // Opt button in pane header
+            {
+                let opt_x = sym_label_x + header_painter.layout_no_wrap(
+                    format!("{} {}", chart.symbol, chart.timeframe), egui::FontId::monospace(10.0), label_color).size().x + 10.0;
+                let opt_rect = egui::Rect::from_min_size(
+                    egui::pos2(opt_x, header_rect.top() + 1.0),
+                    egui::vec2(26.0, pane_top_offset - 2.0));
+                let opt_resp = ui.allocate_rect(opt_rect, egui::Sense::click());
+                let opt_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.4) };
+                let opt_bg = if chart.show_strikes_overlay { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                header_painter.rect_filled(opt_rect, 3.0, opt_bg);
+                header_painter.text(opt_rect.center(), egui::Align2::CENTER_CENTER, "O",
+                    egui::FontId::monospace(9.0), opt_col);
+                if opt_resp.clicked() {
+                    chart.show_strikes_overlay = !chart.show_strikes_overlay;
+                    if chart.show_strikes_overlay && !chart.overlay_chain_loading {
+                        let needs_fetch = chart.overlay_chain_symbol != chart.symbol
+                            || (chart.overlay_calls.is_empty() && chart.overlay_puts.is_empty());
+                        if needs_fetch {
+                            chart.overlay_chain_loading = true;
+                            let sym = chart.symbol.clone();
+                            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                            fetch_overlay_chain_background(sym, price);
+                        }
+                    }
+                }
+            }
+
             // Rest of header — click to activate pane
             let rest_rect = egui::Rect::from_min_size(
                 egui::pos2(header_rect.left() + header_rect.width() * 0.5, header_rect.top()),
@@ -7470,9 +7490,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // Strikes overlay toggle is in toolbar ("Opt" button)
-        // Auto-fetch if overlay is on but symbol changed
-        if chart.show_strikes_overlay && chart.overlay_chain_symbol != chart.symbol && !chart.overlay_chain_loading && !chart.bars.is_empty() {
+        // ── Strikes overlay circle button (rendered on chart, click via priority dispatch) ──
+        let overlay_btn_x = rect.left() + cw - 18.0;
+        let overlay_btn_y = rect.top() + pt + 18.0;
+        {
+            let btn_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.3) };
+            painter.circle_filled(egui::pos2(overlay_btn_x, overlay_btn_y), 9.0, color_alpha(t.toolbar_bg, 220));
+            painter.circle_stroke(egui::pos2(overlay_btn_x, overlay_btn_y), 9.0, egui::Stroke::new(1.0, btn_col));
+            if chart.overlay_chain_loading {
+                let angle = ctx.input(|i| i.time) as f32 * 4.0;
+                for k in 0..8 {
+                    let a = angle + k as f32 * std::f32::consts::TAU / 8.0;
+                    painter.circle_filled(egui::pos2(overlay_btn_x + a.cos() * 5.0, overlay_btn_y + a.sin() * 5.0),
+                        1.2, color_alpha(t.accent, 40 + (k as u8) * 25));
+                }
+                ctx.request_repaint();
+            } else {
+                painter.text(egui::pos2(overlay_btn_x, overlay_btn_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(9.0), btn_col);
+            }
+        }
+
+        // Auto-fetch overlay chain if on but data missing or symbol changed
+        if chart.show_strikes_overlay && !chart.overlay_chain_loading && !chart.bars.is_empty()
+            && (chart.overlay_chain_symbol != chart.symbol || (chart.overlay_calls.is_empty() && chart.overlay_puts.is_empty())) {
             chart.overlay_chain_loading = true;
             let sym = chart.symbol.clone();
             let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
@@ -7538,30 +7578,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     painter.rect_filled(pill_rect, 3.0, color_alpha(t.toolbar_bg, pill_bg_alpha));
                     painter.rect_stroke(pill_rect, 3.0, egui::Stroke::new(1.0, color_alpha(base_col, if is_hovered { 200 } else { 100 })), egui::StrokeKind::Outside);
 
-                    // Split pill: strike on left | bid×ask on right
+                    // Split pill: strike on left (colored) | bid×ask on right (white, larger)
                     let split_x = pill_left + 38.0;
-                    // Strike price (bright, high contrast)
+                    // Strike price — colored by call/put
                     painter.text(egui::pos2(pill_left + 5.0, si.display_y), egui::Align2::LEFT_CENTER,
                         &format!("{:.0}", si.strike), egui::FontId::monospace(10.0),
-                        egui::Color32::from_rgb(230, 230, 240));
+                        color_alpha(base_col, 240));
                     // Separator line
                     painter.line_segment([egui::pos2(split_x, si.display_y - pill_h / 2.0 + 3.0), egui::pos2(split_x, si.display_y + pill_h / 2.0 - 3.0)],
                         egui::Stroke::new(0.5, color_alpha(base_col, 60)));
-                    // Bid × Ask (colored, readable)
+                    // Bid × Ask — white, larger font for readability
                     painter.text(egui::pos2(split_x + 4.0, si.display_y), egui::Align2::LEFT_CENTER,
-                        &format!("{:.2} × {:.2}", si.bid, si.ask), egui::FontId::monospace(9.0),
-                        color_alpha(base_col, 220));
+                        &format!("{:.2} × {:.2}", si.bid, si.ask), egui::FontId::monospace(10.0),
+                        egui::Color32::from_rgb(220, 220, 230));
 
-                    // Dashed horizontal line across chart on hover
+                    // Dashed horizontal line across chart on hover (visible)
                     if is_hovered {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                         let strike_y = si.natural_y;
                         let mut dx = rect.left();
                         while dx < rect.left() + cw {
-                            let end_x = (dx + 4.0).min(rect.left() + cw);
+                            let end_x = (dx + 6.0).min(rect.left() + cw);
                             painter.line_segment([egui::pos2(dx, strike_y), egui::pos2(end_x, strike_y)],
-                                egui::Stroke::new(0.5, color_alpha(base_col, 50)));
-                            dx += 8.0;
+                                egui::Stroke::new(1.0, color_alpha(base_col, 100)));
+                            dx += 10.0;
                         }
 
                         // Price label on Y-axis
@@ -7598,13 +7638,39 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                         }
 
-                        // Measurement: distance % label
-                        let dist_pct = ((si.strike - last_price) / last_price * 100.0).abs();
-                        if dist_pct > 0.01 {
-                            let pct_text = format!("{:.1}%", dist_pct);
-                            let pct_galley = painter.layout_no_wrap(pct_text.clone(), egui::FontId::monospace(9.0), color_alpha(base_col, 180));
-                            painter.text(egui::pos2(pill_left - 30.0, si.display_y), egui::Align2::RIGHT_CENTER,
-                                &pct_text, egui::FontId::monospace(9.0), color_alpha(base_col, 180));
+                        // Measurement: dashed vertical arrow + % label between current price and strike
+                        if price_y.is_finite() {
+                            let strike_screen_y = si.natural_y;
+                            let dist_pct = ((si.strike - last_price) / last_price * 100.0).abs();
+                            let top_y = strike_screen_y.min(price_y);
+                            let bot_y = strike_screen_y.max(price_y);
+                            let mid_y = (top_y + bot_y) / 2.0;
+                            // Dashed vertical line
+                            let mut dy = top_y;
+                            while dy < bot_y {
+                                let end = (dy + 3.0).min(bot_y);
+                                painter.line_segment([egui::pos2(measure_x, dy), egui::pos2(measure_x, end)],
+                                    egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                                dy += 6.0;
+                            }
+                            // Arrow tips
+                            painter.line_segment([egui::pos2(measure_x - 3.0, top_y + 4.0), egui::pos2(measure_x, top_y)], egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                            painter.line_segment([egui::pos2(measure_x + 3.0, top_y + 4.0), egui::pos2(measure_x, top_y)], egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                            painter.line_segment([egui::pos2(measure_x - 3.0, bot_y - 4.0), egui::pos2(measure_x, bot_y)], egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                            painter.line_segment([egui::pos2(measure_x + 3.0, bot_y - 4.0), egui::pos2(measure_x, bot_y)], egui::Stroke::new(1.0, color_alpha(base_col, 120)));
+                            // Horizontal connector lines
+                            painter.line_segment([egui::pos2(measure_x - 8.0, strike_screen_y), egui::pos2(pill_left - 2.0, strike_screen_y)],
+                                egui::Stroke::new(0.5, color_alpha(base_col, 80)));
+                            painter.line_segment([egui::pos2(measure_x - 8.0, price_y), egui::pos2(measure_x + 8.0, price_y)],
+                                egui::Stroke::new(0.5, color_alpha(base_col, 80)));
+                            // % label with background
+                            if dist_pct > 0.01 {
+                                let pct_text = format!("{:.2}%", dist_pct);
+                                let pct_galley = painter.layout_no_wrap(pct_text.clone(), egui::FontId::monospace(12.0), base_col);
+                                let pct_rect = egui::Rect::from_center_size(egui::pos2(measure_x, mid_y), pct_galley.size() + egui::vec2(8.0, 4.0));
+                                painter.rect_filled(pct_rect, 4.0, color_alpha(t.toolbar_bg, 230));
+                                painter.text(egui::pos2(measure_x, mid_y), egui::Align2::CENTER_CENTER, &pct_text, egui::FontId::monospace(12.0), base_col);
+                            }
                         }
                     }
                 }
@@ -11031,8 +11097,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if chart.measuring { chart.measuring = false; chart.measure_start = None; chart.measure_active = false; }
         }
 
-        // Strikes overlay toggle is handled by toolbar "Opt" button
+        // ── PRIORITY 0: Strikes overlay circle button click ──
         let mut event_consumed = false;
+        if let Some(pos) = hover_pos {
+            if egui::pos2(overlay_btn_x, overlay_btn_y).distance(pos) < 12.0 {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+                    chart.show_strikes_overlay = !chart.show_strikes_overlay;
+                    if chart.show_strikes_overlay && !chart.overlay_chain_loading {
+                        let needs_fetch = chart.overlay_chain_symbol != chart.symbol
+                            || (chart.overlay_calls.is_empty() && chart.overlay_puts.is_empty());
+                        if needs_fetch {
+                            chart.overlay_chain_loading = true;
+                            let sym = chart.symbol.clone();
+                            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                            fetch_overlay_chain_background(sym, price);
+                        }
+                    }
+                    event_consumed = true;
+                }
+            }
+        }
 
         // ── PRIORITY 1: Active drags (always finish, never interrupted) ──────
 
