@@ -6561,8 +6561,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 } else if is_vertical {
                     let div_y = (r0.bottom() + r1.top()) / 2.0;
                     let div_rect = egui::Rect::from_min_size(
-                        egui::pos2(full_rect.left(), div_y - 3.0),
-                        egui::vec2(full_rect.width(), 6.0));
+                        egui::pos2(full_rect.left(), div_y - 5.0),
+                        egui::vec2(full_rect.width(), 10.0));
                     let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", i)), egui::Sense::drag());
                     if div_resp.hovered() || div_resp.dragged() {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
@@ -11975,11 +11975,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if let Some(pos) = resp.interact_pointer_pos() {
                 let zone = pointer_zone(pos);
                 match zone {
-                    Zone::XAxis => {
+                    Zone::XAxis if !watchlist.pane_divider_dragging => {
                         chart.axis_drag_mode = 1; // x-axis zoom drag
                         event_consumed = true;
                     }
-                    Zone::YAxis => {
+                    Zone::YAxis if !watchlist.pane_divider_dragging => {
                         chart.axis_drag_mode = 2; // y-axis zoom drag
                         event_consumed = true;
                     }
@@ -12019,6 +12019,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         // else: fall through to pan (handled below)
                     }
+                    _ => {} // divider dragging — ignore axis zones
                 }
             }
         }
