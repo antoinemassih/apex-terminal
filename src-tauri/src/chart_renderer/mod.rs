@@ -14,6 +14,7 @@ pub mod gpu;
 mod types;
 pub mod ui;
 pub mod compute;
+pub mod trading;
 
 pub use types::*;
 

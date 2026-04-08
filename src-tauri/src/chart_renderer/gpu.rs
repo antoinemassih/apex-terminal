@@ -38,6 +38,8 @@ struct WlTooltipData {
 
 use crate::ui_kit::{self, icons::Icon};
 
+use super::trading::*;
+
 // ─── Themes ───────────────────────────────────────────────────────────────────
 
 struct Theme {
@@ -408,303 +410,10 @@ fn fetch_signal_drawings(symbol: String) {
     });
 }
 
-// ─── Orders ──────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum OrderSide { Buy, Sell, Stop, OcoTarget, OcoStop, TriggerBuy, TriggerSell }
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum OrderStatus { Draft, Placed, Executed, Cancelled }
-
-#[derive(Debug, Clone)]
-struct OrderLevel {
-    id: u32,
-    side: OrderSide,
-    price: f32,
-    qty: u32,
-    status: OrderStatus,
-    pair_id: Option<u32>, // linked order (OCO target↔stop, trigger buy↔sell)
-    // Option trigger metadata (only for TriggerBuy/TriggerSell on underlying chart)
-    option_symbol: Option<String>,  // e.g. "SPY 560C 0DTE"
-    option_con_id: Option<i64>,
-}
-
-impl OrderLevel {
-    fn color(&self, t: &Theme) -> egui::Color32 {
-        match self.side {
-            OrderSide::Buy | OrderSide::TriggerBuy => t.bull,
-            OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::TriggerSell => t.bear,
-            OrderSide::OcoTarget => egui::Color32::from_rgb(167, 139, 250), // purple
-        }
-    }
-    fn label(&self) -> &'static str {
-        match self.side {
-            OrderSide::Buy => "BUY", OrderSide::Sell => "SELL", OrderSide::Stop => "STOP",
-            OrderSide::OcoTarget => "OCO\u{2191}", OrderSide::OcoStop => "OCO\u{2193}",
-            OrderSide::TriggerBuy => "TRIG\u{2191}", OrderSide::TriggerSell => "TRIG\u{2193}",
-        }
-    }
-    fn notional(&self) -> f32 { self.price * self.qty as f32 }
-}
-
-/// Cancel an order and its paired leg (OCO/Trigger).
-fn cancel_order_with_pair(orders: &mut Vec<OrderLevel>, id: u32) {
-    let pair_id = orders.iter().find(|o| o.id == id).and_then(|o| o.pair_id);
-    if let Some(o) = orders.iter_mut().find(|o| o.id == id) {
-        o.status = OrderStatus::Cancelled;
-    }
-    if let Some(pid) = pair_id {
-        if let Some(o) = orders.iter_mut().find(|o| o.id == pid) {
-            if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed {
-                o.status = OrderStatus::Cancelled;
-            }
-        }
-    }
-}
-
-fn fmt_notional(v: f32) -> String {
-    if v >= 1_000_000.0 { format!("${:.1}M", v / 1_000_000.0) }
-    else if v >= 1_000.0 { format!("${:.1}K", v / 1_000.0) }
-    else { format!("${:.0}", v) }
-}
-
-// ─── Account & Positions (from ApexIB) ──────────────────────────────────────
-
-#[derive(Debug, Clone, Default)]
-struct AccountSummary {
-    nav: f64,
-    buying_power: f64,
-    excess_liquidity: f64,
-    initial_margin: f64,
-    maintenance_margin: f64,
-    daily_pnl: f64,
-    unrealized_pnl: f64,
-    realized_pnl: f64,
-    gross_position_value: f64,
-    connected: bool,
-    last_update: Option<std::time::Instant>,
-}
-
-#[derive(Debug, Clone)]
-struct IbOrder {
-    symbol: String,
-    side: String,
-    qty: i32,
-    filled_qty: i32,
-    order_type: String,
-    limit_price: f64,
-    avg_fill_price: f64,
-    status: String,
-    strike: f64,
-    option_type: String,
-    submitted_at: i64, // unix ms
-}
-
-#[derive(Debug, Clone)]
-struct Position {
-    symbol: String,
-    qty: i32,         // positive=long, negative=short
-    avg_price: f32,
-    current_price: f32,
-    market_value: f64,
-    unrealized_pnl: f64,
-    con_id: i64,
-}
-
-impl Position {
-    fn pnl(&self) -> f32 { self.unrealized_pnl as f32 }
-    fn pnl_pct(&self) -> f32 {
-        if self.avg_price == 0.0 { return 0.0; }
-        ((self.current_price - self.avg_price) / self.avg_price) * 100.0
-    }
-}
+// ─── Orders, Account, Alerts, Triggers ─── (moved to trading.rs)
 
 /// ApexIB endpoint configuration
 const APEXIB_URL: &str = "https://apexib-dev.xllio.com";
-
-// Shared account data — written by background worker, read by render thread
-static ACCOUNT_DATA: std::sync::OnceLock<std::sync::Mutex<Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>> = std::sync::OnceLock::new();
-
-/// Start the account polling worker (call once). Polls ApexIB every 5 seconds.
-fn start_account_poller() {
-    use std::sync::OnceLock;
-    static STARTED: OnceLock<bool> = OnceLock::new();
-    STARTED.get_or_init(|| {
-        let _ = ACCOUNT_DATA.get_or_init(|| std::sync::Mutex::new(None));
-        std::thread::spawn(|| {
-            let client = reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(3))
-                .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-            loop {
-                let mut summary = AccountSummary::default();
-                let mut positions = Vec::new();
-
-                // Fetch account summary
-                if let Ok(resp) = client.get(format!("{}/account/summary", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        summary.connected = true;
-                        summary.nav = json["netLiquidation"].as_f64().unwrap_or(0.0);
-                        summary.buying_power = json["buyingPower"].as_f64().unwrap_or(0.0);
-                        summary.excess_liquidity = json["excessLiquidity"].as_f64().unwrap_or(0.0);
-                        summary.initial_margin = json["initMarginReq"].as_f64().unwrap_or(0.0);
-                        summary.maintenance_margin = json["maintMarginReq"].as_f64().unwrap_or(0.0);
-                        summary.gross_position_value = json["grossPositionValue"].as_f64().unwrap_or(0.0);
-                        // Account summary also has unrealized/realized P&L
-                        if summary.unrealized_pnl == 0.0 {
-                            summary.unrealized_pnl = json["unrealizedPnL"].as_f64().unwrap_or(0.0);
-                        }
-                        if summary.realized_pnl == 0.0 {
-                            summary.realized_pnl = json["realizedPnL"].as_f64().unwrap_or(0.0);
-                        }
-                    }
-                }
-
-                // Fetch P&L
-                if let Ok(resp) = client.get(format!("{}/account/pnl", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        summary.daily_pnl = json["dailyPnL"].as_f64().unwrap_or(0.0);
-                        summary.unrealized_pnl = json["unrealizedPnL"].as_f64().unwrap_or(0.0);
-                        summary.realized_pnl = json["realizedPnL"].as_f64().unwrap_or(0.0);
-                    }
-                }
-
-                // Fetch positions
-                if let Ok(resp) = client.get(format!("{}/positions", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        if let Some(pos_arr) = json["positions"].as_array() {
-                            for p in pos_arr {
-                                positions.push(Position {
-                                    symbol: p["symbol"].as_str().unwrap_or("").into(),
-                                    qty: p["quantity"].as_i64().unwrap_or(0) as i32,
-                                    avg_price: p["avgCost"].as_f64().unwrap_or(0.0) as f32,
-                                    current_price: p["marketPrice"].as_f64().unwrap_or(0.0) as f32,
-                                    market_value: p["marketValue"].as_f64().unwrap_or(0.0),
-                                    unrealized_pnl: p["unrealizedPnl"].as_f64().unwrap_or(0.0),
-                                    con_id: p["conId"].as_i64().unwrap_or(0),
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // Fetch executions + pending + cancelled orders
-                let mut ib_orders = Vec::new();
-                // Only show orders from the last 24 hours
-                let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
-                let cutoff_ms = now_ms - 86_400_000; // 24 hours ago
-
-                let parse_orders = |json: &serde_json::Value, key: &str, orders: &mut Vec<IbOrder>, cutoff: i64| {
-                    if let Some(arr) = json[key].as_array() {
-                        for o in arr {
-                            let ts = o["submittedAt"].as_i64().or_else(|| o["time"].as_i64()).unwrap_or(0);
-                            if ts > 0 && ts < cutoff { continue; } // skip old orders
-                            orders.push(IbOrder {
-                                symbol: o["symbol"].as_str().unwrap_or("").into(),
-                                side: o["side"].as_str().or_else(|| o["action"].as_str()).unwrap_or("").into(),
-                                qty: o["quantity"].as_i64().or_else(|| o["shares"].as_i64()).unwrap_or(0) as i32,
-                                filled_qty: o["filledQty"].as_i64().or_else(|| o["shares"].as_i64()).unwrap_or(0) as i32,
-                                order_type: o["orderType"].as_str().unwrap_or("").into(),
-                                limit_price: o["limitPrice"].as_f64().or_else(|| o["price"].as_f64()).unwrap_or(0.0),
-                                avg_fill_price: o["avgFillPrice"].as_f64().or_else(|| o["avgPrice"].as_f64()).or_else(|| o["price"].as_f64()).unwrap_or(0.0),
-                                status: o["status"].as_str().unwrap_or(if key == "executions" { "filled" } else { "" }).into(),
-                                strike: o["strike"].as_f64().unwrap_or(0.0),
-                                option_type: o["optionType"].as_str().unwrap_or("").into(),
-                                submitted_at: ts,
-                            });
-                        }
-                    }
-                };
-                // Executions (filled trades)
-                if let Ok(resp) = client.get(format!("{}/executions", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "executions", &mut ib_orders, cutoff_ms);
-                    }
-                }
-                // Pending/submitted orders
-                if let Ok(resp) = client.get(format!("{}/orders?status=submitted", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "orders", &mut ib_orders, cutoff_ms);
-                    }
-                }
-                // Cancelled orders
-                if let Ok(resp) = client.get(format!("{}/orders?status=cancelled", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "orders", &mut ib_orders, cutoff_ms);
-                    }
-                }
-
-                summary.last_update = Some(std::time::Instant::now());
-
-                if let Some(data) = ACCOUNT_DATA.get() {
-                    if let Ok(mut d) = data.lock() { *d = Some((summary, positions, ib_orders)); }
-                }
-
-                std::thread::sleep(std::time::Duration::from_secs(5));
-            }
-        });
-        true
-    });
-}
-
-/// Read latest account data (non-blocking)
-fn read_account_data() -> Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)> {
-    ACCOUNT_DATA.get()?.lock().ok()?.clone()
-}
-
-#[derive(Debug, Clone)]
-struct Alert {
-    id: u32,
-    symbol: String,
-    price: f32,
-    above: bool, // true = alert when price goes above, false = below
-    triggered: bool,
-    message: String,
-}
-
-// ─── Trigger order (options on underlying price level) ──────────────────────
-
-/// A placed trigger level — like an order level but for conditional options trades.
-/// Lives on the underlying chart. Draggable, double-clickable.
-#[derive(Debug, Clone)]
-struct TriggerLevel {
-    id: u32,
-    side: OrderSide,         // BUY or SELL the option
-    trigger_price: f32,      // underlying price that triggers the order
-    above: bool,             // true = trigger when underlying >= price
-    // Option contract
-    symbol: String,           // underlying symbol
-    option_type: String,      // "C" or "P"
-    strike: f32,              // 0 = ATM
-    expiry: String,           // "" = 0DTE
-    qty: u32,
-    submitted: bool,          // true = sent to IB
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum TriggerPhase { Idle, Picking }
-
-#[derive(Debug, Clone)]
-struct TriggerSetup {
-    phase: TriggerPhase,
-    pending_side: OrderSide,  // which side we're placing
-    option_type: String,
-    strike: f32,
-    expiry: String,
-    qty: u32,
-    // Pane management
-    source_pane: usize,       // pane where the order panel is
-    target_pane: Option<usize>, // pane with the underlying chart
-}
-
-impl Default for TriggerSetup {
-    fn default() -> Self {
-        Self {
-            phase: TriggerPhase::Idle, pending_side: OrderSide::Buy,
-            option_type: "C".into(), strike: 0.0, expiry: String::new(), qty: 1,
-            source_pane: 0, target_pane: None,
-        }
-    }
-}
 
 // ─── Volume Profile ───────────────────────────────────────────────────────────
 
@@ -737,25 +446,6 @@ struct VolumeProfileData {
     val: f32,
     max_vol: f32,
     price_step: f32,
-}
-
-// ─── Market session ───────────────────────────────────────────────────────────
-
-fn market_session() -> (&'static str, egui::Color32) {
-    use chrono::Timelike;
-    let now = chrono::Utc::now();
-    let h = now.hour(); let m = now.minute();
-    let mins = h * 60 + m;
-    if mins >= 13*60+30 && mins < 20*60 { ("OPEN", egui::Color32::from_rgb(46, 204, 113)) }
-    else if mins >= 9*60 && mins < 13*60+30 { ("PRE", egui::Color32::from_rgb(255, 193, 37)) }
-    else if mins >= 20*60 { ("POST", egui::Color32::from_rgb(100, 150, 255)) }
-    else { ("CLOSED", egui::Color32::from_rgb(100, 100, 110)) }
-}
-
-fn contracts_for_notional(notional: f32, premium: f32, multiplier: f32) -> i32 {
-    if premium <= 0.0 { return 0; }
-    let cost_per_contract = premium * multiplier;
-    (notional / cost_per_contract).floor() as i32
 }
 
 /// Shared order entry body — renders qty controls, price fields, and BUY/SELL buttons.
@@ -1037,37 +727,6 @@ fn render_order_entry_body(
         }
     });
     ui.add_space(6.0);
-}
-
-// ─── Bracket order templates ──────────────────────────────────────────────────
-
-#[derive(Clone)]
-struct FloatingOrderPane {
-    id: u32,
-    title: String,      // e.g. "SPY 600C 0DTE"
-    symbol: String,      // underlying
-    strike: f32,
-    is_call: bool,
-    qty: u32,
-    pos: egui::Pos2,     // window position (relative to pane)
-}
-
-#[derive(Clone)]
-struct BracketTemplate {
-    name: String,
-    target_pct: f32,
-    stop_pct: f32,
-}
-
-// ─── Price Alert (per-pane) ──────────────────────────────────────────────────
-
-#[derive(Clone, Debug)]
-struct PriceAlert {
-    id: u32,
-    price: f32,
-    above: bool,  // true = alert when price goes above, false = below
-    triggered: bool,
-    symbol: String,
 }
 
 // ─── Chart state ──────────────────────────────────────────────────────────────
@@ -6352,7 +6011,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     for (pi, pane) in panes.iter().enumerate() {
                         for order in &pane.orders {
-                            let color = order.color(t);
+                            let color = order.color(t.bull, t.bear);
                             let status_text = match order.status {
                                 OrderStatus::Draft => "DRAFT", OrderStatus::Placed => "PLACED",
                                 OrderStatus::Executed => "EXEC", OrderStatus::Cancelled => "CXL",
@@ -9459,7 +9118,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
             let y = py(order.price);
             if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-            let color = order.color(t);
+            let color = order.color(t.bull, t.bear);
             let dash_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200);
 
             // Dashed line across full width
@@ -9583,7 +9242,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         if let Some(edit_id) = chart.editing_order {
             // Extract order data to avoid borrow conflict
             let order_data = chart.orders.iter().find(|o| o.id == edit_id)
-                .map(|o| (o.price, o.color(t), o.label(), o.option_symbol.clone(), o.side));
+                .map(|o| (o.price, o.color(t.bull, t.bear), o.label(), o.option_symbol.clone(), o.side));
 
             if let Some((order_price, color, order_label, opt_sym, side)) = order_data {
                 let is_trigger = matches!(side, OrderSide::TriggerBuy | OrderSide::TriggerSell);
@@ -9823,7 +9482,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                 for (ci, (oid, _created)) in chart.pending_confirms.iter().enumerate() {
                     let order_data = chart.orders.iter().find(|o| o.id == *oid)
-                        .map(|o| (o.label(), o.price, o.qty, o.color(t)));
+                        .map(|o| (o.label(), o.price, o.qty, o.color(t.bull, t.bear)));
                     if let Some((label, price, qty, color)) = order_data {
                         let toast_y = base_y - ci as f32 * 34.0;
                         egui::Window::new(format!("confirm_toast_{}_{}", pane_idx, oid))
