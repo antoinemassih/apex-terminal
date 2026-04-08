@@ -12081,7 +12081,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     if let Some((sym, strike, is_call, expiry)) = watchlist.pending_opt_chart.take() {
         let ap = *active_pane;
         let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
-        let target = ap;
+        // Open in a new/second pane, not the active one
+        let target = if panes.len() <= 1 {
+            // Single pane — switch to 2-pane layout, create new pane
+            *layout = Layout::Two;
+            let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
+            p.theme_idx = panes[ap].theme_idx;
+            p.recent_symbols = panes[ap].recent_symbols.clone();
+            panes.push(p);
+            panes.len() - 1
+        } else {
+            // Multi-pane — find a pane that isn't the active one, or use the last one
+            let other = (0..panes.len()).find(|&i| i != ap).unwrap_or(ap);
+            other
+        };
         panes[target].symbol = opt_sym;
         panes[target].is_option = true;
         panes[target].underlying = sym.clone();
