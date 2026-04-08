@@ -2509,6 +2509,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.order_entry_open = !watchlist.order_entry_open;
                 }
 
+                // Strikes overlay toggle
+                if tb_btn(ui, "Opt", panes[ap].show_strikes_overlay, t).clicked() {
+                    panes[ap].show_strikes_overlay = !panes[ap].show_strikes_overlay;
+                    if panes[ap].show_strikes_overlay && panes[ap].overlay_chain_symbol != panes[ap].symbol && !panes[ap].overlay_chain_loading {
+                        panes[ap].overlay_chain_loading = true;
+                        let sym = panes[ap].symbol.clone();
+                        let price = panes[ap].bars.last().map(|b| b.close).unwrap_or(0.0);
+                        fetch_overlay_chain_background(sym, price);
+                    }
+                }
+
                 // Account strip toggle
                 if tb_btn(ui, Icon::PULSE, watchlist.account_strip_open, t).clicked() {
                     watchlist.account_strip_open = !watchlist.account_strip_open;
@@ -7459,38 +7470,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // ── Strikes overlay toggle button (floating circle, top-right) ─────────
-        // Rendered visually here; click detected from raw pointer (not ui.interact
-        // which gets eaten by the chart's allocate_rect)
-        {
-            let btn_x = rect.left() + cw - 18.0;
-            let btn_y = rect.top() + pt + 18.0; // moved down slightly to avoid pane header overlap
-            let btn_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.3) };
-            painter.circle_filled(egui::pos2(btn_x, btn_y), 9.0, color_alpha(t.toolbar_bg, 220));
-            painter.circle_stroke(egui::pos2(btn_x, btn_y), 9.0, egui::Stroke::new(1.0, btn_col));
-            if chart.overlay_chain_loading {
-                // Spinner animation while loading
-                let angle = ctx.input(|i| i.time) as f32 * 4.0;
-                let r = 5.0_f32;
-                for k in 0..8 {
-                    let a = angle + k as f32 * std::f32::consts::TAU / 8.0;
-                    let alpha = 40 + (k as u8) * 25;
-                    painter.circle_filled(
-                        egui::pos2(btn_x + a.cos() * r, btn_y + a.sin() * r),
-                        1.2, color_alpha(t.accent, alpha));
-                }
-                ctx.request_repaint();
-            } else {
-                painter.text(egui::pos2(btn_x, btn_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(9.0), btn_col);
-            }
-            // Click handled in priority dispatch (after allocate_rect) — see PRIORITY 0 below
-            // Also auto-fetch if overlay is on but symbol changed (e.g. switched charts)
-            if chart.show_strikes_overlay && chart.overlay_chain_symbol != chart.symbol && !chart.overlay_chain_loading && !chart.bars.is_empty() {
-                chart.overlay_chain_loading = true;
-                let sym = chart.symbol.clone();
-                let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                fetch_overlay_chain_background(sym, price);
-            }
+        // Strikes overlay toggle is in toolbar ("Opt" button)
+        // Auto-fetch if overlay is on but symbol changed
+        if chart.show_strikes_overlay && chart.overlay_chain_symbol != chart.symbol && !chart.overlay_chain_loading && !chart.bars.is_empty() {
+            chart.overlay_chain_loading = true;
+            let sym = chart.symbol.clone();
+            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+            fetch_overlay_chain_background(sym, price);
         }
 
         // ── Options strikes overlay on chart ─────────────────────────────────
@@ -11045,27 +11031,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if chart.measuring { chart.measuring = false; chart.measure_start = None; chart.measure_active = false; }
         }
 
-        // ── PRIORITY 0: Strikes overlay toggle button (O) ─────────────────
+        // Strikes overlay toggle is handled by toolbar "Opt" button
         let mut event_consumed = false;
-        {
-            let btn_x = rect.left() + cw - 18.0;
-            let btn_y = rect.top() + pt + 18.0;
-            if let Some(pos) = hover_pos {
-                if egui::pos2(btn_x, btn_y).distance(pos) < 12.0 {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    if resp.clicked() {
-                        chart.show_strikes_overlay = !chart.show_strikes_overlay;
-                        if chart.show_strikes_overlay && chart.overlay_chain_symbol != chart.symbol && !chart.overlay_chain_loading {
-                            chart.overlay_chain_loading = true;
-                            let sym = chart.symbol.clone();
-                            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                            fetch_overlay_chain_background(sym, price);
-                        }
-                        event_consumed = true;
-                    }
-                }
-            }
-        }
 
         // ── PRIORITY 1: Active drags (always finish, never interrupted) ──────
 
