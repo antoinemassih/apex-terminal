@@ -4786,10 +4786,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                         // ── Helper to render one expiry block ──
                         let chain_frozen = watchlist.chain_frozen;
-                        let chain_center_offset = watchlist.chain_center_offset;
-                        let num_strikes = watchlist.chain_num_strikes;
+                        // Per-chain controls passed as parameters to render_block
 
-                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
+                        let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32, num_strikes: usize, center_offset: i32| {
                             let exp_label = format!("{}DTE", dte);
                             let date_str = if dte == 0 {
                                 "Today".to_string()
@@ -4825,7 +4824,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                             // Window: offset shifts which strikes are visible, but divider stays at real price
                             let max_idx = (all_strikes.len() as i32 - 1).max(0);
-                            let window_center = (atm_idx as i32 + chain_center_offset).clamp(0, max_idx) as usize;
+                            let window_center = (atm_idx as i32 + center_offset).clamp(0, max_idx) as usize;
                             let start = window_center.saturating_sub(num_strikes);
                             let end = (window_center + num_strikes).min(all_strikes.len());
                             let visible_strikes: Vec<f32> = all_strikes[start..end].to_vec();
@@ -4870,8 +4869,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 ui.painter().rect_filled(badge_rect, 9.0, color_alpha(t.toolbar_border, 40));
                                 ui.painter().rect_stroke(badge_rect, 9.0, egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)), egui::StrokeKind::Outside);
                                 // Price text
-                                let badge_text = if chain_frozen && chain_center_offset != 0 {
-                                    format!("${:.2} ({:+})", price, chain_center_offset)
+                                let badge_text = if center_offset != 0 {
+                                    format!("${:.2} ({:+})", price, center_offset)
                                 } else {
                                     format!("${:.2}", price)
                                 };
@@ -4898,15 +4897,60 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             let puts_f = watchlist.chain_far.1.clone();
                             let far_dte = watchlist.chain_far_dte;
 
-                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
-                            ui.add_space(4.0);
-                            // DTE separator
+                            // Per-chain controls: 0DTE
+                            ui.horizontal(|ui| {
+                                dim_label(ui, "0DTE", t.dim);
+                                if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                    watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1);
+                                }
+                                ui.label(egui::RichText::new(format!("{}", watchlist.chain_0_num_strikes)).monospace().size(9.0).color(t.dim));
+                                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                    watchlist.chain_0_num_strikes += 1;
+                                }
+                                let fr_col = if watchlist.chain_0_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
+                                if ui.add(egui::Button::new(egui::RichText::new(if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY }).size(9.0).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                    watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
+                                    if !watchlist.chain_0_frozen { watchlist.chain_0_offset = 0; }
+                                }
+                                if watchlist.chain_0_frozen {
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, 15)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset += 1; }
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, 15)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset -= 1; }
+                                }
+                            });
+                            let ns_0 = watchlist.chain_0_num_strikes;
+                            let off_0 = watchlist.chain_0_offset;
+                            render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_0, off_0);
+
+                            ui.add_space(6.0);
                             let sep_r = ui.available_rect_before_wrap();
                             ui.painter().line_segment(
                                 [egui::pos2(sep_r.left() + 4.0, ui.cursor().min.y), egui::pos2(sep_r.right() - 4.0, ui.cursor().min.y)],
                                 egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
                             ui.add_space(4.0);
-                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w);
+
+                            // Per-chain controls: far DTE
+                            ui.horizontal(|ui| {
+                                dim_label(ui, &format!("{}DTE", far_dte), t.dim);
+                                if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                    watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1);
+                                }
+                                ui.label(egui::RichText::new(format!("{}", watchlist.chain_far_num_strikes)).monospace().size(9.0).color(t.dim));
+                                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                    watchlist.chain_far_num_strikes += 1;
+                                }
+                                let fr_col = if watchlist.chain_far_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
+                                if ui.add(egui::Button::new(egui::RichText::new(if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY }).size(9.0).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                    watchlist.chain_far_frozen = !watchlist.chain_far_frozen;
+                                    if !watchlist.chain_far_frozen { watchlist.chain_far_offset = 0; }
+                                }
+                                if watchlist.chain_far_frozen {
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, 15)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset += 1; }
+                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, 15)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset -= 1; }
+                                }
+                            });
+                            let ns_f = watchlist.chain_far_num_strikes;
+                            let off_f = watchlist.chain_far_offset;
+                            render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f);
                         });
                         // Normal click: just open option chart (no watchlist add)
                         if let Some(info) = clicked_contract.take() {
@@ -12076,15 +12120,22 @@ struct Watchlist {
     // Options chain
     chain_symbol: String,
     chain_sym_input: String,
-    chain_num_strikes: usize,
+    chain_num_strikes: usize,     // legacy fallback
     chain_far_dte: i32,
     chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
     chain_far: (Vec<OptionRow>, Vec<OptionRow>),   // (calls, puts) for far DTE
     chain_select_mode: bool,
     chain_loading: bool,       // true while fetching chain from ApexIB
     chain_underlying_price: f32, // real-time underlying price from IB chain response
-    chain_frozen: bool,        // freeze the strike window (don't move with price)
-    chain_center_offset: i32,  // manual offset in strikes when frozen
+    chain_frozen: bool,        // legacy fallback
+    chain_center_offset: i32,  // legacy fallback
+    // Per-chain independent controls
+    chain_0_num_strikes: usize,
+    chain_0_frozen: bool,
+    chain_0_offset: i32,
+    chain_far_num_strikes: usize,
+    chain_far_frozen: bool,
+    chain_far_offset: i32,
     chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
     // Saved options
     saved_options: Vec<SavedOption>,
@@ -12118,6 +12169,8 @@ impl Watchlist {
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
+               chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0,
+               chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0,
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new() }
