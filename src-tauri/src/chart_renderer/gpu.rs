@@ -6898,10 +6898,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         0.0, color);
                 }
             } else {
-                // Standard volume bars with optional RVOL intensity
+                // Standard volume bars — batched into single mesh
                 let mut mv: f32 = 0.0;
                 for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) { mv = mv.max(b.volume); } }
                 if mv == 0.0 { mv = 1.0; }
+                let mut vol_mesh = egui::Mesh::default();
+                vol_mesh.texture_id = egui::TextureId::default();
                 for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) {
                     let idx = i as usize;
                     let x = bx(i as f32);
@@ -6915,15 +6917,22 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let alpha_base = (40.0_f32 + intensity * 160.0_f32) as u8;
                     let alpha = if vol_extended { (alpha_base as f32 * 0.4) as u8 } else { alpha_base };
                     let bar_color = egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(), alpha);
-                    painter.rect_filled(
-                        egui::Rect::from_min_max(egui::pos2(x-bw/2.0, vol_bottom-vh), egui::pos2(x+bw/2.0, vol_bottom)),
-                        0.0, bar_color);
+                    let vi = vol_mesh.vertices.len() as u32;
+                    let top = vol_bottom - vh;
+                    vol_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - bw/2.0, top), uv: egui::epaint::WHITE_UV, color: bar_color });
+                    vol_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + bw/2.0, top), uv: egui::epaint::WHITE_UV, color: bar_color });
+                    vol_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + bw/2.0, vol_bottom), uv: egui::epaint::WHITE_UV, color: bar_color });
+                    vol_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - bw/2.0, vol_bottom), uv: egui::epaint::WHITE_UV, color: bar_color });
+                    vol_mesh.indices.extend_from_slice(&[vi, vi+1, vi+2, vi, vi+2, vi+3]);
                     if chart.show_rvol && rvol > 2.5_f32 {
-                        painter.text(egui::pos2(x, vol_bottom - vh - 2.0), egui::Align2::CENTER_BOTTOM,
+                        painter.text(egui::pos2(x, top - 2.0), egui::Align2::CENTER_BOTTOM,
                             &format!("{:.1}x", rvol), egui::FontId::monospace(7.0),
                             egui::Color32::from_rgba_unmultiplied(255, 255, 255, 150));
                     }
                 }}
+                if !vol_mesh.vertices.is_empty() {
+                    painter.add(egui::Shape::mesh(vol_mesh));
+                }
             }
         }
 
@@ -7067,7 +7076,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // Candles — no rounding (0.0) for fast tessellation
+        // Candles — batched into meshes for fast GPU rendering
+        // Build wick mesh + body mesh + session lines in a single pass
+        {
+        let mut wick_mesh = egui::Mesh::default();
+        let mut body_mesh = egui::Mesh::default();
+        let clip = painter.clip_rect();
+        wick_mesh.texture_id = egui::TextureId::default();
+        body_mesh.texture_id = egui::TextureId::default();
+
         for i in (vs as u32)..end { if let Some(b)=chart.bars.get(i as usize) {
             let x=bx(i as f32); let c=if b.close>=b.open{t.bull}else{t.bear};
             let bt=py(b.open.max(b.close)); let bb=py(b.open.min(b.close));
@@ -7079,22 +7096,38 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let prev_ext = is_extended_hour(ts_prev);
                     if prev_ext != extended || (ts_cur - ts_prev) > 1800 {
                         let sx = bx(i as f32) - bs / 2.0;
-                        painter.line_segment(
-                            [egui::pos2(sx, rect.top()+pt), egui::pos2(sx, rect.top()+pt+ch)],
-                            egui::Stroke::new(0.5, egui::Color32::from_white_alpha(15)));
+                        let sep_c = egui::Color32::from_white_alpha(15);
+                        let vi = wick_mesh.vertices.len() as u32;
+                        wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(sx - 0.25, rect.top()+pt), uv: egui::epaint::WHITE_UV, color: sep_c });
+                        wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(sx + 0.25, rect.top()+pt), uv: egui::epaint::WHITE_UV, color: sep_c });
+                        wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(sx + 0.25, rect.top()+pt+ch), uv: egui::epaint::WHITE_UV, color: sep_c });
+                        wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(sx - 0.25, rect.top()+pt+ch), uv: egui::epaint::WHITE_UV, color: sep_c });
+                        wick_mesh.indices.extend_from_slice(&[vi, vi+1, vi+2, vi, vi+2, vi+3]);
                     }
                 }
             }
-            // Wick renders for standard candle modes only (not line/area)
+            // Wick — add as thin rect to wick mesh
             if !matches!(chart.candle_mode, CandleMode::Line | CandleMode::Area | CandleMode::HeikinAshi) {
                 let wick_c = if extended { color_alpha(c, 80) } else { c };
-                painter.line_segment([egui::pos2(x,wt),egui::pos2(x,wb)],egui::Stroke::new(1.0,wick_c));
+                let hw = 0.5_f32; // half wick width
+                let vi = wick_mesh.vertices.len() as u32;
+                wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - hw, wt), uv: egui::epaint::WHITE_UV, color: wick_c });
+                wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + hw, wt), uv: egui::epaint::WHITE_UV, color: wick_c });
+                wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + hw, wb), uv: egui::epaint::WHITE_UV, color: wick_c });
+                wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - hw, wb), uv: egui::epaint::WHITE_UV, color: wick_c });
+                wick_mesh.indices.extend_from_slice(&[vi, vi+1, vi+2, vi, vi+2, vi+3]);
             }
             // Body rendering depends on candle mode
             match chart.candle_mode {
                 CandleMode::Standard => {
                     let c_final = if extended { color_alpha(c, 80) } else { c };
-                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x-bw,bt),egui::vec2(bw*2.0,(bb-bt).max(1.0))),0.0,c_final);
+                    let body_h = (bb - bt).max(1.0);
+                    let vi = body_mesh.vertices.len() as u32;
+                    body_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - bw, bt), uv: egui::epaint::WHITE_UV, color: c_final });
+                    body_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + bw, bt), uv: egui::epaint::WHITE_UV, color: c_final });
+                    body_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + bw, bt + body_h), uv: egui::epaint::WHITE_UV, color: c_final });
+                    body_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - bw, bt + body_h), uv: egui::epaint::WHITE_UV, color: c_final });
+                    body_mesh.indices.extend_from_slice(&[vi, vi+1, vi+2, vi, vi+2, vi+3]);
                 }
                 CandleMode::Violin | CandleMode::ViolinGradient => {
                     let micro = bar_micro_profile(b, 10);
@@ -7225,6 +7258,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
         }}
+        // Submit batched candle meshes (1 draw call each instead of 200+ individual shapes)
+        if !wick_mesh.vertices.is_empty() {
+            painter.add(egui::Shape::mesh(wick_mesh));
+        }
+        if !body_mesh.vertices.is_empty() {
+            painter.add(egui::Shape::mesh(body_mesh));
+        }
+        } // end candle batch block
 
         // ── Multi-symbol overlay ──────────────────────────────────────────────
         if !chart.overlay_symbol.is_empty() && !chart.overlay_bars.is_empty() {
