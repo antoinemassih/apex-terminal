@@ -118,17 +118,21 @@ impl Layout {
                 ]
             }
             Layout::Three if count >= 2 => {
-                let top_h = (rect.height() * split_v.clamp(0.2, 0.8)) - gap * 0.5;
+                let top_h = (rect.height() - gap) * split_v.clamp(0.15, 0.85);
                 let bot_h = rect.height() - top_h - gap;
                 let top = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), top_h));
                 let bot_count = (count - 1).min(2);
-                let bw = (rect.width() - gap * (bot_count as f32 - 1.0).max(0.0)) / bot_count as f32;
                 let mut rects = vec![top];
-                for i in 0..bot_count {
+                if bot_count == 2 {
+                    let left_w = (rect.width() - gap) * split_h.clamp(0.15, 0.85);
+                    let right_w = rect.width() - gap - left_w;
                     rects.push(egui::Rect::from_min_size(
-                        egui::pos2(rect.left() + i as f32 * (bw + gap), rect.top() + top_h + gap),
-                        egui::vec2(bw, bot_h),
-                    ));
+                        egui::pos2(rect.left(), rect.top() + top_h + gap), egui::vec2(left_w, bot_h)));
+                    rects.push(egui::Rect::from_min_size(
+                        egui::pos2(rect.left() + left_w + gap, rect.top() + top_h + gap), egui::vec2(right_w, bot_h)));
+                } else {
+                    rects.push(egui::Rect::from_min_size(
+                        egui::pos2(rect.left(), rect.top() + top_h + gap), egui::vec2(rect.width(), bot_h)));
                 }
                 rects
             }
