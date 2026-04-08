@@ -308,8 +308,11 @@ pub fn bs_delta(s: f32, k: f32, t: f32, r: f32, iv: f32, is_call: bool) -> f32 {
 }
 
 pub fn strike_interval(price: f32) -> f32 {
-    if price < 20.0 { 0.5 } else if price < 50.0 { 1.0 } else if price < 100.0 { 2.5 }
-    else if price < 200.0 { 5.0 } else if price < 500.0 { 10.0 } else { 25.0 }
+    // Most liquid options (SPY, QQQ, AAPL, etc.) have $1 strikes
+    // Less liquid / lower priced have wider intervals
+    if price < 10.0 { 0.5 } else if price < 25.0 { 1.0 } else { 1.0 }
+    // Note: real chains from IB/ApexIB have exact strike spacing per symbol.
+    // This is only used for simulated/fallback data.
 }
 
 pub fn atm_strike(price: f32) -> f32 {
