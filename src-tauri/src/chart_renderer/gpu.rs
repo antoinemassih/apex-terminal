@@ -3683,7 +3683,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 // ── Section header (only if title is non-empty) ──
                                 if !sec_title.is_empty() && watchlist.renaming_section != Some(sec_id) {
                                     let header_resp = ui.horizontal(|ui| {
-                                        ui.set_min_width(full_w);
+                                        // ui.set_min_width removed — was preventing sidebar resize
                                         ui.set_min_height(20.0);
 
                                         // Collapse chevron
@@ -3758,7 +3758,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 // ── Inline rename editor (replaces title in header row) ──
                                 if watchlist.renaming_section == Some(sec_id) {
                                     ui.horizontal(|ui| {
-                                        ui.set_min_width(full_w);
+                                        // ui.set_min_width removed — was preventing sidebar resize
                                         ui.set_min_height(20.0);
 
                                         // Collapse chevron (keep visible during rename)
@@ -3853,7 +3853,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                             let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
 
                                             let resp = ui.horizontal(|ui| {
-                                                ui.set_min_width(full_w);
+                                                // ui.set_min_width removed — was preventing sidebar resize
                                                 ui.set_min_height(24.0);
                                                 ui.painter().rect_filled(ui.max_rect(), 0.0, row_bg);
                                                 if is_active {
@@ -4307,7 +4307,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                     // Section header with collapse chevron
                                     let header_resp = ui.horizontal(|ui| {
-                                        ui.set_min_width(full_w);
+                                        // ui.set_min_width removed — was preventing sidebar resize
                                         ui.set_min_height(20.0);
                                         let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
                                         if ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false)).clicked() {
@@ -4678,7 +4678,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                         // Column headers
                         ui.horizontal(|ui| {
-                            ui.set_min_width(full_w);
+                            // ui.set_min_width removed — was preventing sidebar resize
                             ui.spacing_mut().item_spacing.x = gap;
                             let hdr_color = t.dim.gamma_multiply(0.4);
                             ui.add_space(col_chk);
@@ -4795,7 +4795,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             };
                             // Expiry header
                             ui.horizontal(|ui| {
-                                ui.set_min_width(w);
+                                // min_width removed — was preventing sidebar resize
                                 ui.label(egui::RichText::new(&exp_label).monospace().size(12.0).strong().color(t.accent));
                                 ui.label(egui::RichText::new(&date_str).monospace().size(11.0).color(t.dim.gamma_multiply(0.6)));
                             });
@@ -4885,7 +4885,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // ── Scroll area with two expiry blocks ──
                         let scroll_w = ui.available_width();
                         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                            ui.set_min_width(scroll_w);
+                            // min_width removed — was preventing sidebar resize
                             let sym = watchlist.chain_symbol.clone();
                             let sel = watchlist.chain_select_mode;
                             let calls_0 = watchlist.chain_0dte.0.clone();
