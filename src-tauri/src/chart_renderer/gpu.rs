@@ -6586,10 +6586,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Vertical dividers (drag left/right to adjust column widths)
             for (di, &div_x) in v_dividers.iter().enumerate() {
-                // Large hit area biased toward chart side (left, away from Y-axis)
+                // Extra-wide hit area for vertical divider (hard to catch otherwise)
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(div_x - 24.0, full_rect.top()),
-                    egui::vec2(30.0, full_rect.height()));
+                    egui::pos2(div_x - 30.0, full_rect.top()),
+                    egui::vec2(42.0, full_rect.height()));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
