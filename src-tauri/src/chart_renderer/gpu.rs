@@ -6593,6 +6593,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                    let alpha = if div_resp.dragged() { 30u8 } else { 15 };
+                    ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.accent, alpha));
+                    ui.painter().line_segment(
+                        [egui::pos2(div_x, full_rect.top()), egui::pos2(div_x, full_rect.bottom())],
+                        egui::Stroke::new(1.0, color_alpha(t.accent, if div_resp.dragged() { 120 } else { 50 })));
                 }
                 if div_resp.dragged() {
                     let dx = div_resp.drag_delta().x;
@@ -6611,6 +6616,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                    let alpha = if div_resp.dragged() { 30u8 } else { 15 };
+                    ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.accent, alpha));
+                    ui.painter().line_segment(
+                        [egui::pos2(full_rect.left(), div_y), egui::pos2(full_rect.right(), div_y)],
+                        egui::Stroke::new(1.0, color_alpha(t.accent, if div_resp.dragged() { 120 } else { 50 })));
                 }
                 if div_resp.dragged() {
                     let dy = div_resp.drag_delta().y;
@@ -10937,15 +10947,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         span_begin("interaction");
 
         // Single interaction rect covering chart body + axis strips
-        // Shrink edges that border a pane divider to avoid stealing drag from divider
+        // Shrink all edges that border another pane to avoid stealing drag from divider
         let div_margin = if visible_count > 1 { 20.0_f32 } else { 0.0 };
         let has_right_neighbor = pane_rects.iter().any(|r| (r.left() - pane_rect.right()).abs() < 5.0);
+        let has_left_neighbor = pane_rects.iter().any(|r| (r.right() - pane_rect.left()).abs() < 5.0);
         let has_bottom_neighbor = pane_rects.iter().any(|r| (r.top() - pane_rect.bottom()).abs() < 5.0);
+        let has_top_neighbor = pane_rects.iter().any(|r| (r.bottom() - pane_rect.top()).abs() < 5.0);
+        let shrink_left = if has_left_neighbor { div_margin } else { 0.0 };
         let shrink_right = if has_right_neighbor { div_margin } else { 0.0 };
+        let shrink_top = if has_top_neighbor { div_margin } else { 0.0 };
         let shrink_bottom = if has_bottom_neighbor { div_margin } else { 0.0 };
         let interact_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.left(), rect.top() + pt),
-            egui::vec2(cw + pr - shrink_right, ch - shrink_bottom),
+            egui::pos2(rect.left() + shrink_left, rect.top() + pt + shrink_top),
+            egui::vec2(cw + pr - shrink_left - shrink_right, ch - shrink_top - shrink_bottom),
         );
         let resp = ui.allocate_rect(interact_rect, egui::Sense::click_and_drag());
 
