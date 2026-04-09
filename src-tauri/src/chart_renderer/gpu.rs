@@ -2129,7 +2129,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
 
-            // ── Timeframes ──
+            // ── Broadcast mode toggle ──
+            {
+                let bc = watchlist.broadcast_mode;
+                let bc_fg = if bc { t.accent } else { t.dim.gamma_multiply(0.4) };
+                let bc_bg = if bc { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                let bc_resp = ui.add(egui::Button::new(egui::RichText::new("BC").monospace().size(9.0).strong().color(bc_fg))
+                    .fill(bc_bg).corner_radius(3.0).min_size(egui::vec2(24.0, 22.0))
+                    .stroke(if bc { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }));
+                if bc_resp.clicked() {
+                    watchlist.broadcast_mode = !watchlist.broadcast_mode;
+                    TB_BTN_CLICKED.with(|f| f.set(true));
+                }
+                if bc_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("bc_tip"), |ui| {
+                        ui.label(egui::RichText::new("Broadcast — changes apply to all panes (or Shift+click)").monospace().size(9.0));
+                    });
+                }
+            }
+            ui.add(egui::Separator::default().spacing(4.0));
+
             // ── Interval buttons (candle size) — adjusts vc to maintain same time range ──
             let tf_to_secs = |tf: &str| -> u32 { match tf {
                 "1m" => 60, "5m" => 300, "15m" => 900, "30m" => 1800,
@@ -2772,46 +2792,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.order_entry_open = !watchlist.order_entry_open;
                 }
 
-                // Broadcast mode toggle
-                {
-                    let bc = watchlist.broadcast_mode;
-                    let bc_fg = if bc { t.accent } else { t.dim.gamma_multiply(0.4) };
-                    let bc_bg = if bc { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
-                    let bc_resp = ui.add(egui::Button::new(egui::RichText::new("BC").monospace().size(9.0).strong().color(bc_fg))
-                        .fill(bc_bg).corner_radius(3.0).min_size(egui::vec2(24.0, 22.0))
-                        .stroke(if bc { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }));
-                    if bc_resp.clicked() {
-                        watchlist.broadcast_mode = !watchlist.broadcast_mode;
-                        TB_BTN_CLICKED.with(|f| f.set(true));
-                    }
-                    if bc_resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("bc_tip"), |ui| {
-                            ui.label(egui::RichText::new("Broadcast — changes apply to all panes (or Shift+click)").monospace().size(9.0));
-                        });
-                    }
-                }
-
                 // Account strip toggle
                 if tb_btn(ui, Icon::PULSE, watchlist.account_strip_open, t).clicked() {
                     watchlist.account_strip_open = !watchlist.account_strip_open;
-                }
-
-                // Broadcast mode toggle
-                {
-                    let bc_color = if watchlist.broadcast_mode { t.accent } else { t.dim };
-                    let bc_resp = ui.add(
-                        egui::Button::new(egui::RichText::new("BC").monospace().size(10.0).strong().color(bc_color))
-                            .fill(if watchlist.broadcast_mode { t.accent.gamma_multiply(0.15) } else { egui::Color32::TRANSPARENT })
-                            .stroke(if watchlist.broadcast_mode { egui::Stroke::new(1.0, t.accent.gamma_multiply(0.5)) } else { egui::Stroke::NONE })
-                            .min_size(egui::vec2(24.0, 20.0))
-                            .corner_radius(3.0)
-                    );
-                    if bc_resp.clicked() {
-                        watchlist.broadcast_mode = !watchlist.broadcast_mode;
-                        TB_BTN_CLICKED.with(|f| f.set(true));
-                    }
-                    bc_resp.on_hover_text("Broadcast mode \u{2014} changes apply to all panes");
                 }
 
                 // Watchlist toggle
