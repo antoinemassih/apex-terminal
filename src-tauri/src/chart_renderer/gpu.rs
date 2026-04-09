@@ -1059,6 +1059,7 @@ struct Chart {
     hide_all_indicators: bool,
     drawing_list_open: bool,  // toggle drawing list panel (left side of pane)
     ohlc_tooltip: bool,       // show OHLC values at crosshair
+    measure_tooltip: bool,     // show big distance-only measurement at crosshair
     show_volume: bool,
     show_oscillators: bool, // toggle oscillator sub-panel
     draw_color: String, // current drawing color
@@ -1227,7 +1228,7 @@ impl Chart {
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
-            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, drawing_list_open: false, ohlc_tooltip: true,
+            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, drawing_list_open: false, ohlc_tooltip: true, measure_tooltip: false,
             signal_drawings: vec![], hide_signal_drawings: false, last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
             draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
@@ -2743,6 +2744,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !ohlc;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.ohlc_tooltip = nv; } } else { panes[ap].ohlc_tooltip = nv; }
+                }
+                let mt = panes[ap].measure_tooltip;
+                if ui.selectable_label(mt, egui::RichText::new(format!("{} Measure Tooltip", check(mt))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !mt;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.measure_tooltip = nv; } } else { panes[ap].measure_tooltip = nv; }
                 }
                 let pc = panes[ap].show_prev_close;
                 if ui.selectable_label(pc, egui::RichText::new(format!("{} Prev Close / Open", check(pc))).monospace().size(10.0)).clicked() {
@@ -11724,6 +11731,33 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let d = if hp>=10.0{2}else{4};
                     chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", hp, d);
                     painter.text(egui::pos2(rect.left()+cw+3.0,pos.y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),egui::Color32::WHITE);
+
+                    // Distance from current price to cursor level (always shown)
+                    if last_price > 0.0 {
+                        let dist = hp - last_price;
+                        let dist_pct = dist / last_price * 100.0;
+                        let dist_col = if dist >= 0.0 { t.bull } else { t.bear };
+                        let dist_text = format!("{:+.2}%", dist_pct);
+                        let dist_galley = painter.layout_no_wrap(dist_text.clone(), egui::FontId::monospace(12.0), dist_col);
+                        // Position: right side, slightly below the price label
+                        let dist_x = rect.left() + cw + 3.0;
+                        let dist_y = pos.y + 14.0;
+                        let dist_bg = egui::Rect::from_min_size(
+                            egui::pos2(dist_x - 2.0, dist_y - dist_galley.size().y / 2.0 - 1.0),
+                            dist_galley.size() + egui::vec2(4.0, 2.0));
+                        painter.rect_filled(dist_bg, 2.0, color_alpha(t.toolbar_bg, 220));
+                        painter.text(egui::pos2(dist_x, dist_y), egui::Align2::LEFT_CENTER,
+                            &dist_text, egui::FontId::monospace(12.0), dist_col);
+
+                        // Faint horizontal line from last price to cursor level
+                        let price_y = py(last_price);
+                        if price_y.is_finite() && (pos.y - price_y).abs() > 10.0 {
+                            // Small dashed connector between price and cursor
+                            let mid_x = rect.left() + cw - 30.0;
+                            painter.line_segment([egui::pos2(mid_x, price_y), egui::pos2(mid_x, pos.y)],
+                                egui::Stroke::new(0.5, color_alpha(dist_col, 40)));
+                        }
+                    }
                     // Time label at crosshair X position (bottom of chart)
                     let bar_idx_f = (pos.x - rect.left() + off - bs * 0.5) / bs + vs;
                     let bar_idx = bar_idx_f.round() as usize;
@@ -11740,6 +11774,31 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             painter.text(egui::pos2(pos.x, time_y + time_galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &time_str, egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(160));
                         }
                     }
+                    // Measure tooltip — big clean distance display
+                    if chart.measure_tooltip && last_price > 0.0 {
+                        let dist = hp - last_price;
+                        let dist_pct = dist / last_price * 100.0;
+                        let dist_col = if dist >= 0.0 { t.bull } else { t.bear };
+                        let m_price_text = format!("{:+.2}", dist);
+                        let m_pct_text = format!("{:+.2}%", dist_pct);
+                        // Big floating box near cursor
+                        let mx = pos.x + 20.0;
+                        let my = pos.y;
+                        let pct_galley = painter.layout_no_wrap(m_pct_text.clone(), egui::FontId::monospace(16.0), dist_col);
+                        let price_galley = painter.layout_no_wrap(m_price_text.clone(), egui::FontId::monospace(10.0), color_alpha(dist_col, 160));
+                        let box_w = pct_galley.size().x.max(price_galley.size().x) + 16.0;
+                        let box_h = pct_galley.size().y + price_galley.size().y + 10.0;
+                        // Flip left if near right edge
+                        let bx_pos = if mx + box_w > rect.left() + cw { pos.x - box_w - 10.0 } else { mx };
+                        let measure_rect = egui::Rect::from_min_size(egui::pos2(bx_pos, my - box_h / 2.0), egui::vec2(box_w, box_h));
+                        painter.rect_filled(measure_rect, 4.0, color_alpha(t.toolbar_bg, 240));
+                        painter.rect_stroke(measure_rect, 4.0, egui::Stroke::new(1.0, color_alpha(dist_col, 80)), egui::StrokeKind::Outside);
+                        painter.text(egui::pos2(measure_rect.center().x, measure_rect.top() + pct_galley.size().y / 2.0 + 4.0),
+                            egui::Align2::CENTER_CENTER, &m_pct_text, egui::FontId::monospace(16.0), dist_col);
+                        painter.text(egui::pos2(measure_rect.center().x, measure_rect.bottom() - price_galley.size().y / 2.0 - 3.0),
+                            egui::Align2::CENTER_CENTER, &m_price_text, egui::FontId::monospace(10.0), color_alpha(dist_col, 160));
+                    }
+
                     // OHLC tooltip (togglable — hidden when footprint is active)
                     if chart.ohlc_tooltip && !chart.show_footprint {
                         if let Some(bar_data) = chart.bars.get(bar_idx) {
