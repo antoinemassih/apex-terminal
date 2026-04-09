@@ -2045,6 +2045,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
     }
 
+    // ── Window drag + double-click maximize (before any UI renders) ──
+    {
+        let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
+        let pressed = ctx.input(|i| i.pointer.primary_pressed());
+        let dbl = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+        if let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) {
+            if pos.y < 36.0 && (pressed || dbl) {
+                // Check if any toolbar button was clicked last frame
+                let btn_clicked = TB_BTN_CLICKED.with(|f| f.get());
+                if !btn_clicked {
+                    if dbl {
+                        if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+                    } else if pressed {
+                        if let Some(w) = &win_ref { let _ = w.drag_window(); }
+                    }
+                }
+            }
+        }
+    }
+
     // Route incoming commands to the matching pane (by symbol), or watchlist
     span_begin("cmd_routing");
     while let Ok(cmd) = rx.try_recv() {
@@ -3097,25 +3117,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             });
     }
 
-    // ── Drag to move window ──
-    // The toolbar zone (y < 36) allows window drag when no widget consumed the click.
-    // TB_BTN_CLICKED is set by tb_btn() and explicit toolbar interactions.
-    // Window drag + double-click maximize
-    {
-        let btn_clicked = TB_BTN_CLICKED.with(|f| { let v = f.get(); f.set(false); v });
-        let pressed = ctx.input(|i| i.pointer.primary_pressed());
-        let released = ctx.input(|i| i.pointer.primary_released());
-        let dbl = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
-        if let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) {
-            if pos.y < 36.0 && !btn_clicked {
-                if dbl {
-                    if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
-                } else if pressed {
-                    if let Some(w) = &win_ref { let _ = w.drag_window(); }
-                }
-            }
-        }
-    }
+    // Window drag handled at top of draw_chart (before toolbar renders)
+    // TB_BTN_CLICKED flag is cleared here for next frame
+    TB_BTN_CLICKED.with(|f| f.set(false));
 
     // ── Layout dropdown popup (manual window — star clicks don't close it) ──
     if watchlist.layout_dropdown_open {
