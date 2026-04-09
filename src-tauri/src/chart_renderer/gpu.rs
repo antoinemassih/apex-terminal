@@ -9450,12 +9450,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let price = low_price + range * ratio;
                         let y = py(price);
                         if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-                        let alpha = if ratio == 0.5 || ratio == 0.618 { 80 } else { 60 };
-                        let label_alpha = if ratio == 0.5 || ratio == 0.618 { 180 } else { 140 };
+                        let is_key = ratio == 0.5 || ratio == 0.618;
+                        let is_boundary = ratio == 0.0 || ratio == 1.0;
+                        let alpha = if is_boundary { 150 } else if is_key { 80 } else { 45 };
+                        let label_alpha = if is_boundary { 230 } else if is_key { 180 } else { 120 };
+                        let lw = if is_boundary { 1.5 } else { 0.5 };
                         let line_col = egui::Color32::from_rgba_unmultiplied(255, 193, 37, alpha);
                         let label_col = egui::Color32::from_rgba_unmultiplied(255, 193, 37, label_alpha);
-                        dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
-                            egui::Stroke::new(0.5, line_col), LineStyle::Dashed);
+                        if is_boundary {
+                            // Solid line for 0% and 100%
+                            painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y)],
+                                egui::Stroke::new(lw, line_col));
+                        } else {
+                            dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+                                egui::Stroke::new(lw, line_col), LineStyle::Dashed);
+                        }
                         let fib_label = format!("Fib {} \u{2014} ${:.2}", label, price);
                         painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
                             &fib_label, egui::FontId::monospace(7.0), label_col);
