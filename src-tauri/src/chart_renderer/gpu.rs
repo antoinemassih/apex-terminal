@@ -2160,6 +2160,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     let theme_idx = panes[*active_pane].theme_idx;
     let t = &THEMES[theme_idx];
     let ap = *active_pane;
+    // Set global egui style to match theme (affects all popups, menus, dropdowns)
+    {
+        let mut style = (*ctx.style()).clone();
+        style.visuals.window_fill = t.toolbar_bg;
+        style.visuals.panel_fill = t.toolbar_bg;
+        style.visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+        style.visuals.widgets.inactive.weak_bg_fill = t.toolbar_bg;
+        style.visuals.extreme_bg_color = t.bg;
+        style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
+        ctx.set_style(style);
+    }
     // Cache account data once per frame (avoid repeated Mutex lock + clone)
     let account_data_cached = read_account_data();
     // Store window ref for drag/minimize/maximize/close
@@ -3083,7 +3094,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             .fixed_size(egui::vec2(248.0, 0.0))
             .title_bar(false)
             .frame(egui::Frame::popup(&ctx.style())
-                .fill(color_alpha(t.toolbar_bg, 248))
+                .fill(t.toolbar_bg)
                 .inner_margin(egui::Margin::same(6))
                 .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
                 .corner_radius(6.0))
@@ -3757,7 +3768,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             .title_bar(false)
             .interactable(true)
             .frame(egui::Frame::popup(&ctx.style())
-                .fill(color_alpha(t.toolbar_bg, 248))
+                .fill(t.toolbar_bg)
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
                 .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
                 .corner_radius(6.0))
@@ -8316,7 +8327,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     .fixed_size(egui::vec2(fp_panel_w, 0.0))
                     .title_bar(false)
                     .frame(egui::Frame::popup(&ctx.style())
-                        .fill(color_alpha(t.toolbar_bg, 245))
+                        .fill(t.toolbar_bg)
                         .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
                         .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
                         .corner_radius(4.0))
@@ -10224,7 +10235,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 .fixed_size(egui::vec2(panel_w, 0.0))
                 .title_bar(false)
                 .frame(egui::Frame::popup(&ctx.style())
-                    .fill(color_alpha(t.toolbar_bg, 245))
+                    .fill(t.toolbar_bg)
                     .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
                     .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
                     .corner_radius(4.0))

@@ -129,6 +129,7 @@ pub fn init_icons(ctx: &egui::Context) {
     // Add Phosphor icon fonts
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Bold);
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Fill);
 
     // Ensure phosphor is a fallback for Monospace too (for icons in monospace text)
     if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
