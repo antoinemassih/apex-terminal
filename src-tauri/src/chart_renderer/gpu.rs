@@ -2304,7 +2304,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, c);
                             ui.add_space(10.0);
                             if ui.selectable_label(*evis, egui::RichText::new(label_text.trim()).monospace().size(10.0)).clicked() {
-                                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = !ind.visible; }
+                                let shift = ui.input(|i| i.modifiers.shift);
+                                let nv = !*evis;
+                                if shift || watchlist.broadcast_mode {
+                                    for p in panes.iter_mut() {
+                                        if let Some(ind) = p.indicators.iter_mut().find(|i| i.kind == *ekind && i.period == *eperiod) { ind.visible = nv; }
+                                    }
+                                } else {
+                                    if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
+                                }
                             }
                             if ui.add(egui::Button::new(egui::RichText::new(Icon::PENCIL_LINE).size(9.0).color(t.dim.gamma_multiply(0.5)))
                                 .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
@@ -2312,8 +2320,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             }
                             if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.bear.gamma_multiply(0.5)))
                                 .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                panes[ap].indicators.retain(|i| i.id != *eid);
-                                panes[ap].indicator_bar_count = 0;
+                                let shift = ui.input(|i| i.modifiers.shift);
+                                if shift || watchlist.broadcast_mode {
+                                    for p in panes.iter_mut() {
+                                        p.indicators.retain(|i| !(i.kind == *ekind && i.period == *eperiod));
+                                        p.indicator_bar_count = 0;
+                                    }
+                                } else {
+                                    panes[ap].indicators.retain(|i| i.id != *eid);
+                                    panes[ap].indicator_bar_count = 0;
+                                }
                             }
                         });
                     }
@@ -2322,17 +2338,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // Add new MA instance
                 for (itype, label) in ma_types {
                     if ui.selectable_label(false, egui::RichText::new(format!("{} + {}", Icon::PLUS, label)).monospace().size(10.0)).clicked() {
-                        let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                        let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                        panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
-                        panes[ap].indicator_bar_count = 0;
-                        panes[ap].editing_indicator = Some(id); // open editor to set period
+                        let shift = ui.input(|i| i.modifiers.shift);
+                        if shift || watchlist.broadcast_mode {
+                            for p in panes.iter_mut() {
+                                let id = p.next_indicator_id; p.next_indicator_id += 1;
+                                let color = INDICATOR_COLORS[p.indicators.len() % INDICATOR_COLORS.len()];
+                                p.indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                                p.indicator_bar_count = 0;
+                            }
+                            panes[ap].editing_indicator = Some(panes[ap].indicators.last().map_or(0, |i| i.id));
+                        } else {
+                            let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                            let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                            panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                            panes[ap].indicator_bar_count = 0;
+                            panes[ap].editing_indicator = Some(id);
+                        }
                     }
                 }
                 ui.separator();
                 let ribbon_active = panes[ap].show_ma_ribbon;
                 if ui.selectable_label(ribbon_active, egui::RichText::new(format!("{} MA Ribbon (8-89)", check(ribbon_active))).monospace().size(10.0)).clicked() {
-                    panes[ap].show_ma_ribbon = !panes[ap].show_ma_ribbon;
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !ribbon_active;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_ma_ribbon = nv; } } else { panes[ap].show_ma_ribbon = nv; }
                 }
             });
 
@@ -2346,15 +2375,33 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 for (itype, label) in osc_types {
                     let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
                     if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(10.0)).clicked() {
-                        if has {
-                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
+                        let shift = ui.input(|i| i.modifiers.shift);
+                        if shift || watchlist.broadcast_mode {
+                            for p in panes.iter_mut() {
+                                let p_has = p.indicators.iter().any(|i| i.kind == itype && i.visible);
+                                if has {
+                                    if let Some(ind) = p.indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
+                                } else {
+                                    if let Some(ind) = p.indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
+                                    else if !p_has {
+                                        let id = p.next_indicator_id; p.next_indicator_id += 1;
+                                        let color = INDICATOR_COLORS[p.indicators.len() % INDICATOR_COLORS.len()];
+                                        p.indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                                        p.indicator_bar_count = 0;
+                                    }
+                                }
+                            }
                         } else {
-                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
-                            else {
-                                let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                                let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                                panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
-                                panes[ap].indicator_bar_count = 0;
+                            if has {
+                                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
+                            } else {
+                                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
+                                else {
+                                    let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                                    let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                                    panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                                    panes[ap].indicator_bar_count = 0;
+                                }
                             }
                         }
                     }
@@ -2362,7 +2409,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.separator();
                 let cvd = panes[ap].show_cvd;
                 if ui.selectable_label(cvd, egui::RichText::new(format!("{} CVD", check(cvd))).monospace().size(10.0)).clicked() {
-                    panes[ap].show_cvd = !panes[ap].show_cvd;
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !cvd;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_cvd = nv; } } else { panes[ap].show_cvd = nv; }
                 }
             });
 
@@ -2371,15 +2420,35 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let vol = panes[ap].show_volume;
-                if ui.selectable_label(vol, egui::RichText::new(format!("{} Volume Bars", check(vol))).monospace().size(10.0)).clicked() { panes[ap].show_volume = !panes[ap].show_volume; }
+                if ui.selectable_label(vol, egui::RichText::new(format!("{} Volume Bars", check(vol))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !vol;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_volume = nv; } } else { panes[ap].show_volume = nv; }
+                }
                 let dvol = panes[ap].show_delta_volume;
-                if ui.selectable_label(dvol, egui::RichText::new(format!("{} Delta Volume", check(dvol))).monospace().size(10.0)).clicked() { panes[ap].show_delta_volume = !panes[ap].show_delta_volume; }
+                if ui.selectable_label(dvol, egui::RichText::new(format!("{} Delta Volume", check(dvol))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !dvol;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_delta_volume = nv; } } else { panes[ap].show_delta_volume = nv; }
+                }
                 let rvol = panes[ap].show_rvol;
-                if ui.selectable_label(rvol, egui::RichText::new(format!("{} Relative Volume", check(rvol))).monospace().size(10.0)).clicked() { panes[ap].show_rvol = !panes[ap].show_rvol; }
+                if ui.selectable_label(rvol, egui::RichText::new(format!("{} Relative Volume", check(rvol))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !rvol;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_rvol = nv; } } else { panes[ap].show_rvol = nv; }
+                }
                 let vwap = panes[ap].show_vwap_bands;
-                if ui.selectable_label(vwap, egui::RichText::new(format!("{} VWAP + Bands", check(vwap))).monospace().size(10.0)).clicked() { panes[ap].show_vwap_bands = !panes[ap].show_vwap_bands; }
+                if ui.selectable_label(vwap, egui::RichText::new(format!("{} VWAP + Bands", check(vwap))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !vwap;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_vwap_bands = nv; } } else { panes[ap].show_vwap_bands = nv; }
+                }
                 let fp = panes[ap].show_footprint;
-                if ui.selectable_label(fp, egui::RichText::new(format!("{} Footprint (hover)", check(fp))).monospace().size(10.0)).clicked() { panes[ap].show_footprint = !panes[ap].show_footprint; }
+                if ui.selectable_label(fp, egui::RichText::new(format!("{} Footprint (hover)", check(fp))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !fp;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_footprint = nv; } } else { panes[ap].show_footprint = nv; }
+                }
                 ui.separator();
                 ui.label(egui::RichText::new("Volume Profile").monospace().size(9.0).color(t.dim));
                 for (mode, label) in [
@@ -2463,11 +2532,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let ohlc = panes[ap].ohlc_tooltip;
-                if ui.selectable_label(ohlc, egui::RichText::new(format!("{} OHLC Tooltip", check(ohlc))).monospace().size(10.0)).clicked() { panes[ap].ohlc_tooltip = !panes[ap].ohlc_tooltip; }
+                if ui.selectable_label(ohlc, egui::RichText::new(format!("{} OHLC Tooltip", check(ohlc))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !ohlc;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.ohlc_tooltip = nv; } } else { panes[ap].ohlc_tooltip = nv; }
+                }
                 let pc = panes[ap].show_prev_close;
-                if ui.selectable_label(pc, egui::RichText::new(format!("{} Prev Close / Open", check(pc))).monospace().size(10.0)).clicked() { panes[ap].show_prev_close = !panes[ap].show_prev_close; }
+                if ui.selectable_label(pc, egui::RichText::new(format!("{} Prev Close / Open", check(pc))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !pc;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_prev_close = nv; } } else { panes[ap].show_prev_close = nv; }
+                }
                 let sr = panes[ap].show_auto_sr;
-                if ui.selectable_label(sr, egui::RichText::new(format!("{} Auto S/R Levels", check(sr))).monospace().size(10.0)).clicked() { panes[ap].show_auto_sr = !panes[ap].show_auto_sr; }
+                if ui.selectable_label(sr, egui::RichText::new(format!("{} Auto S/R Levels", check(sr))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !sr;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_auto_sr = nv; } } else { panes[ap].show_auto_sr = nv; }
+                }
                 let pnl = panes[ap].show_pnl_curve;
                 if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(10.0)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
                 ui.separator();
@@ -2477,7 +2558,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if panes[ap].replay_mode { panes[ap].replay_bar_count = panes[ap].bars.len().saturating_sub(50); }
                 }
                 let osc = panes[ap].show_oscillators;
-                if ui.selectable_label(osc, egui::RichText::new(format!("{} Show Oscillators", check(osc))).monospace().size(10.0)).clicked() { panes[ap].show_oscillators = !panes[ap].show_oscillators; }
+                if ui.selectable_label(osc, egui::RichText::new(format!("{} Show Oscillators", check(osc))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !osc;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_oscillators = nv; } } else { panes[ap].show_oscillators = nv; }
+                }
                 ui.separator();
                 ui.label(egui::RichText::new("OVERLAY").monospace().size(8.0).color(t.dim));
                 let has_overlay = !panes[ap].overlay_symbol.is_empty();
@@ -2690,6 +2775,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // Account strip toggle
                 if tb_btn(ui, Icon::PULSE, watchlist.account_strip_open, t).clicked() {
                     watchlist.account_strip_open = !watchlist.account_strip_open;
+                }
+
+                // Broadcast mode toggle
+                {
+                    let bc_color = if watchlist.broadcast_mode { t.accent } else { t.dim };
+                    let bc_resp = ui.add(
+                        egui::Button::new(egui::RichText::new("BC").monospace().size(10.0).strong().color(bc_color))
+                            .fill(if watchlist.broadcast_mode { t.accent.gamma_multiply(0.15) } else { egui::Color32::TRANSPARENT })
+                            .stroke(if watchlist.broadcast_mode { egui::Stroke::new(1.0, t.accent.gamma_multiply(0.5)) } else { egui::Stroke::NONE })
+                            .min_size(egui::vec2(24.0, 20.0))
+                            .corner_radius(3.0)
+                    );
+                    if bc_resp.clicked() {
+                        watchlist.broadcast_mode = !watchlist.broadcast_mode;
+                        TB_BTN_CLICKED.with(|f| f.set(true));
+                    }
+                    bc_resp.on_hover_text("Broadcast mode \u{2014} changes apply to all panes");
                 }
 
                 // Watchlist toggle
@@ -13563,6 +13665,7 @@ struct Watchlist {
     hotkeys: Vec<HotKey>,
     trendline_filter_open: bool, // trendline filter dropdown
     account_strip_open: bool, // account summary bar below toolbar
+    broadcast_mode: bool, // when true, toolbar actions apply to all panes
     pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
     // Watchlist filter
     filter_open: bool,
@@ -13647,7 +13750,7 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
-               trendline_filter_open: false, account_strip_open: false, pending_opt_chart: None,
+               trendline_filter_open: false, account_strip_open: false, broadcast_mode: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
