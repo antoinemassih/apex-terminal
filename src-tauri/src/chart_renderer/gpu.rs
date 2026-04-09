@@ -4459,6 +4459,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         ui.add_space(12.0);
                         let status = if ov_loading { " ..." } else if ov_empty { " (no data)" } else { "" };
                         ui.label(egui::RichText::new(format!("{}{}", ov_sym, status)).monospace().size(11.0).color(oc));
+                        // Color cycle (click to cycle through colors)
+                        let (cr, cresp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+                        ui.painter().circle_filled(cr.center(), 5.0, oc);
+                        if cresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                        if cresp.clicked() {
+                            let all_colors: Vec<&str> = OVERLAY_COLORS.iter().chain(INDICATOR_COLORS.iter().filter(|c| !OVERLAY_COLORS.contains(c))).copied().collect();
+                            let cur_idx = all_colors.iter().position(|&c| c == ov_color).unwrap_or(0);
+                            panes[ap].symbol_overlays[oi].color = all_colors[(cur_idx + 1) % all_colors.len()].to_string();
+                        }
                         // Candle toggle
                         let candle_icon = if ov_candles { Icon::CHART_BAR } else { Icon::CHART_LINE };
                         let candle_col = if ov_candles { t.accent } else { t.dim.gamma_multiply(0.5) };
@@ -4472,33 +4481,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             delete_idx = Some(oi);
                         }
                     });
-                    // Color picker row
-                    ui.horizontal(|ui| {
-                        ui.add_space(m + 14.0);
-                        ui.spacing_mut().item_spacing.x = 3.0;
-                        for &c in OVERLAY_COLORS {
-                            let color = hex_to_color(c, 1.0);
-                            let is_cur = panes[ap].symbol_overlays[oi].color == c;
-                            let (r, resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
-                            if is_cur {
-                                ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
-                            }
-                            ui.painter().circle_filled(r.center(), if is_cur { 4.5 } else { 3.5 }, color);
-                            if resp.clicked() { panes[ap].symbol_overlays[oi].color = c.to_string(); }
-                        }
-                        for &c in INDICATOR_COLORS {
-                            if OVERLAY_COLORS.contains(&c) { continue; }
-                            let color = hex_to_color(c, 1.0);
-                            let is_cur = panes[ap].symbol_overlays[oi].color == c;
-                            let (r, resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
-                            if is_cur {
-                                ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
-                            }
-                            ui.painter().circle_filled(r.center(), if is_cur { 4.5 } else { 3.5 }, color);
-                            if resp.clicked() { panes[ap].symbol_overlays[oi].color = c.to_string(); }
-                        }
-                    });
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
                 }
 
                 if n_ov > 0 {
@@ -8303,15 +8286,38 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let overlay_base = ov.bars.get(start_idx).map(|b| b.close).unwrap_or(1.0);
             if main_base > 0.0 && overlay_base > 0.0 {
                 let overlay_color = hex_to_color(&ov.color, 1.0);
-                for i in start_idx..end_idx.saturating_sub(1) {
-                    if let (Some(ob0), Some(ob1)) = (ov.bars.get(i), ov.bars.get(i+1)) {
-                        let pct0 = (ob0.close / overlay_base - 1.0) * main_base + main_base;
-                        let pct1 = (ob1.close / overlay_base - 1.0) * main_base + main_base;
-                        let y0 = py(pct0); let y1 = py(pct1);
-                        if y0.is_finite() && y1.is_finite() {
-                            painter.line_segment(
-                                [egui::pos2(bx(i as f32), y0), egui::pos2(bx((i+1) as f32), y1)],
-                                egui::Stroke::new(1.5, overlay_color));
+                let scale = |price: f32| -> f32 { (price / overlay_base - 1.0) * main_base + main_base };
+                if ov.show_candles {
+                    // Candle rendering for overlay
+                    let bw = (bs * 0.25).max(0.5);
+                    for i in start_idx..end_idx {
+                        if let Some(ob) = ov.bars.get(i) {
+                            let x = bx(i as f32);
+                            let o = scale(ob.open); let h = scale(ob.high);
+                            let l = scale(ob.low); let c = scale(ob.close);
+                            let bull = c >= o;
+                            let alpha = if bull { 160u8 } else { 120 };
+                            let col = egui::Color32::from_rgba_unmultiplied(overlay_color.r(), overlay_color.g(), overlay_color.b(), alpha);
+                            let wick_col = color_alpha(overlay_color, 100);
+                            // Wick
+                            painter.line_segment([egui::pos2(x, py(h)), egui::pos2(x, py(l))], egui::Stroke::new(0.5, wick_col));
+                            // Body
+                            let bt = py(o.max(c)); let bb = py(o.min(c));
+                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(x - bw, bt), egui::vec2(bw * 2.0, (bb - bt).max(0.5))), 0.0, col);
+                        }
+                    }
+                } else {
+                    // Line rendering
+                    for i in start_idx..end_idx.saturating_sub(1) {
+                        if let (Some(ob0), Some(ob1)) = (ov.bars.get(i), ov.bars.get(i+1)) {
+                            let pct0 = scale(ob0.close);
+                            let pct1 = scale(ob1.close);
+                            let y0 = py(pct0); let y1 = py(pct1);
+                            if y0.is_finite() && y1.is_finite() {
+                                painter.line_segment(
+                                    [egui::pos2(bx(i as f32), y0), egui::pos2(bx((i+1) as f32), y1)],
+                                    egui::Stroke::new(1.5, overlay_color));
+                            }
                         }
                     }
                 }
