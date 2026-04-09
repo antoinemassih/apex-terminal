@@ -2412,7 +2412,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
             });
-            TB_BTN_CLICKED.with(|f| f.set(true)); // prevent window drag
 
             // Moving Averages dropdown (always creates new instance — supports multiple)
             ui.menu_button(egui::RichText::new("MAs").monospace().size(10.0).color(t.dim), |ui| {
@@ -2871,40 +2870,61 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
 
-                // Window control button helper using Phosphor icons
-                let win_ctrl = |ui: &mut egui::Ui, icon: &str, danger: bool| -> bool {
-                    let fg = t.dim;
-                    let resp = ui.add(
-                        egui::Button::new(egui::RichText::new(icon).size(12.0).color(fg))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE)
-                            .min_size(egui::vec2(34.0, 28.0))
-                            .corner_radius(0.0)
-                    );
+                // Window control buttons — custom drawn for clean look
+                let win_btn = |ui: &mut egui::Ui, danger: bool| -> (egui::Response, egui::Rect) {
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(36.0, 28.0), egui::Sense::click());
                     if resp.hovered() {
-                        let bg = if danger { rgb(224, 85, 96) } else { t.toolbar_border };
-                        let hover_fg = if danger { egui::Color32::WHITE } else { egui::Color32::from_rgb(200, 200, 210) };
-                        ui.painter().rect_filled(resp.rect, 0.0, bg);
-                        ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(12.0), hover_fg);
+                        let bg = if danger { rgb(224, 85, 96) } else { color_alpha(t.toolbar_border, 80) };
+                        ui.painter().rect_filled(r, 0.0, bg);
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
-                    let clicked = resp.clicked();
-                    if clicked { TB_BTN_CLICKED.with(|f| f.set(true)); }
-                    clicked
+                    if resp.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
+                    (resp, r)
                 };
 
-                // Close
-                if win_ctrl(ui, Icon::X, true) {
-                    save_state(panes, *layout);
-                    watchlist.persist();
-                    CLOSE_REQUESTED.with(|f| f.set(true));
+                // Close — draw X with lines
+                {
+                    let (resp, r) = win_btn(ui, true);
+                    let c = r.center();
+                    let s = 4.5;
+                    let col = if resp.hovered() { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                    ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(1.0, col));
+                    ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(1.0, col));
+                    if resp.clicked() {
+                        save_state(panes, *layout);
+                        watchlist.persist();
+                        CLOSE_REQUESTED.with(|f| f.set(true));
+                    }
                 }
-                // Maximize
-                if win_ctrl(ui, Icon::SQUARE, false) {
-                    if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+                // Maximize — draw square outline (or overlapping squares when maximized)
+                {
+                    let (resp, r) = win_btn(ui, false);
+                    let c = r.center();
+                    let s = 4.5;
+                    let col = if resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.7) };
+                    let is_max = win_ref.as_ref().map_or(false, |w| w.is_maximized());
+                    if is_max {
+                        // Restore icon: two overlapping squares
+                        let o = 1.5;
+                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + o, c.y - s), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(1.0, col), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s, c.y - s + o), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(1.0, col), egui::StrokeKind::Outside);
+                    } else {
+                        ui.painter().rect_stroke(egui::Rect::from_center_size(c, egui::vec2(s * 2.0, s * 2.0)), 0.5, egui::Stroke::new(1.0, col), egui::StrokeKind::Outside);
+                    }
+                    if resp.clicked() {
+                        if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+                    }
                 }
-                // Minimize
-                if win_ctrl(ui, Icon::MINUS, false) {
-                    if let Some(w) = &win_ref { w.set_minimized(true); }
+                // Minimize — draw horizontal line
+                {
+                    let (resp, r) = win_btn(ui, false);
+                    let c = r.center();
+                    let s = 5.0;
+                    let col = if resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.7) };
+                    ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(1.0, col));
+                    if resp.clicked() {
+                        if let Some(w) = &win_ref { w.set_minimized(true); }
+                    }
                 }
 
                 // Separator between window controls and panel toggles
@@ -3080,21 +3100,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     // ── Drag to move window ──
     // The toolbar zone (y < 36) allows window drag when no widget consumed the click.
     // TB_BTN_CLICKED is set by tb_btn() and explicit toolbar interactions.
-    if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-        if pos.y < 36.0 {
-            let btn_clicked = TB_BTN_CLICKED.with(|f| { let v = f.get(); f.set(false); v });
-            if !btn_clicked {
-                let pointer_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
-                let double_clicked = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+    // Window drag + double-click maximize
+    // Check if pointer is in toolbar zone AND no button was clicked
+    {
+        let btn_clicked = TB_BTN_CLICKED.with(|f| { let v = f.get(); f.set(false); v });
+        let pointer_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
+        let double_clicked = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+        if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+            if pos.y < 36.0 && !btn_clicked {
                 if double_clicked {
                     if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
                 } else if pointer_pressed {
                     if let Some(w) = &win_ref { let _ = w.drag_window(); }
                 }
             }
-        } else {
-            // Clear flag even when not in toolbar zone
-            TB_BTN_CLICKED.with(|f| f.set(false));
         }
     }
 
