@@ -11435,13 +11435,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.add(egui::Separator::default().spacing(2.0));
                         });
                     });
-                    // Drag + double-click on narrow zone (between armed button and DOM/+- buttons)
-                    let hdr_min = header_resp.response.rect.min;
-                    let mid_rect = egui::Rect::from_min_size(
-                        egui::pos2(hdr_min.x + 26.0, hdr_min.y),
-                        egui::vec2(panel_w - 120.0, 22.0));
-                    let drag_resp = ui.interact(mid_rect, egui::Id::new(("order_panel_drag", pane_idx)), egui::Sense::click_and_drag());
-                    if drag_resp.double_clicked() { chart.order_collapsed = true; }
+                    // Drag only on header (no click_and_drag — buttons need clicks)
+                    let hdr_rect = header_resp.response.rect;
+                    let drag_resp = ui.interact(hdr_rect, egui::Id::new(("order_panel_drag", pane_idx)), egui::Sense::drag());
                     if drag_resp.dragged() {
                         let delta = drag_resp.drag_delta();
                         chart.order_panel_pos.x += delta.x;
