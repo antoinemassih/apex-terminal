@@ -2194,7 +2194,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // Apply font scale from settings (base = 1.2, range 1.2–2.2)
-    if (watchlist.font_scale - 1.0).abs() > 0.01 {
+    if (watchlist.font_scale - 1.6).abs() > 0.01 {
         ctx.set_pixels_per_point(watchlist.font_scale);
     } else {
         ctx.set_pixels_per_point(1.2);
@@ -3549,20 +3549,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.label(egui::RichText::new("Font Scale").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
-                        // Display 60-160% maps to 0.7-1.6 ppp. 100% = 1.0 (standard)
-                        let display_pct = ((watchlist.font_scale - 0.7) / 0.009).round() as i32 + 60;
+                        // Display 60-160% maps to 0.96-2.56 ppp. 100% = 1.6 (baseline)
+                        let display_pct = ((watchlist.font_scale - 0.96) / 0.016).round() as i32 + 60;
                         let mut dp = display_pct.clamp(60, 160);
                         if ui.add(egui::DragValue::new(&mut dp).range(60..=160).suffix("%").speed(1)
                             .custom_formatter(|v, _| format!("{}%", v as i32))).changed() {
-                            watchlist.font_scale = 0.7 + (dp - 60) as f32 * 0.009;
+                            watchlist.font_scale = 0.96 + (dp - 60) as f32 * 0.016;
                         }
                     });
                 });
                 // Preset buttons (display % → internal ppp)
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    // 60%→0.7, 80%→0.85, 100%→1.0 (standard), 120%→1.2, 140%→1.4, 160%→1.6
-                    for (label, ppp) in [(60, 0.7_f32), (80, 0.85), (100, 1.0), (120, 1.2), (140, 1.4), (160, 1.6)] {
+                    // 100% = 1.6 ppp (baseline), 20% steps = 0.32 ppp each
+                    for (label, ppp) in [(60, 0.96_f32), (80, 1.28), (100, 1.6), (120, 1.92), (140, 2.24), (160, 2.56)] {
                         let active = (watchlist.font_scale - ppp).abs() < 0.05;
                         let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
                         let bg = if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
@@ -14374,7 +14374,7 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
-               settings_open: false, font_scale: 1.0, compact_mode: false, show_x_axis: true, show_y_axis: true,
+               settings_open: false, font_scale: 1.6, compact_mode: false, show_x_axis: true, show_y_axis: true,
                toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false, shared_y_axis: false,
                trendline_filter_open: false, account_strip_open: false, broadcast_mode: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
