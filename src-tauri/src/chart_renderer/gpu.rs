@@ -7788,11 +7788,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         chart.tab_active = ci;
                         let new_sym = chart.tab_symbols[ci].clone();
                         let new_tf = chart.tab_timeframes[ci].clone();
-                        if new_sym != chart.symbol {
-                            chart.pending_symbol_change = Some(new_sym);
+                        if !new_sym.is_empty() && new_sym != chart.symbol {
+                            chart.pending_symbol_change = Some(new_sym.clone());
                         }
-                        if new_tf != chart.timeframe {
+                        if !new_tf.is_empty() && new_tf != chart.timeframe {
                             chart.pending_timeframe_change = Some(new_tf);
+                        }
+                        // Force load even if symbol matches (tab might have been created without data)
+                        if new_sym == chart.symbol && chart.bars.is_empty() && !new_sym.is_empty() {
+                            fetch_bars_background(new_sym, chart.timeframe.clone());
                         }
                     }
                 }
