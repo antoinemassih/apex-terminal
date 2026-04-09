@@ -7894,6 +7894,39 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         if chart.overlay_editing { chart.overlay_editing_idx = None; }
                     }
                 }
+
+                // "+" add tab button (in non-tab mode)
+                {
+                    let plus_x = sym_label_x + sym_text_w + 10.0
+                        + if chart.bars.len() > 1 { 60.0 } else { 0.0 } + 34.0;
+                    let plus_rect = egui::Rect::from_min_size(
+                        egui::pos2(plus_x, header_rect.top() + 1.0),
+                        egui::vec2(20.0, pane_top_offset - 2.0));
+                    let plus_resp = ui.allocate_rect(plus_rect, egui::Sense::click());
+                    let plus_col = if plus_resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.4) };
+                    if plus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    header_painter.text(plus_rect.center(), egui::Align2::CENTER_CENTER,
+                        "+", egui::FontId::monospace(12.0), plus_col);
+                    if plus_resp.clicked() {
+                        // Initialize tabs: current symbol becomes tab 0, add empty tab 1
+                        if chart.tab_symbols.is_empty() {
+                            chart.tab_symbols.push(chart.symbol.clone());
+                            chart.tab_timeframes.push(chart.timeframe.clone());
+                            let chg = if let (Some(f), Some(l)) = (chart.bars.first(), chart.bars.last()) {
+                                if f.open > 0.0 { (l.close - f.open) / f.open * 100.0 } else { 0.0 }
+                            } else { 0.0 };
+                            chart.tab_changes.push(chg);
+                        }
+                        chart.tab_symbols.push("".into());
+                        chart.tab_timeframes.push(chart.timeframe.clone());
+                        chart.tab_changes.push(0.0);
+                        chart.tab_active = chart.tab_symbols.len() - 1;
+                        // Open picker for new tab
+                        chart.picker_open = true;
+                        chart.picker_query.clear();
+                        chart.picker_results.clear();
+                    }
+                }
             }
 
             // Rest of header — click to activate pane
