@@ -2301,12 +2301,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if false {
             }
 
-            // Overlay button (before scroll area — always visible)
-            if tb_btn(ui, "OVL", panes[ap].overlay_editing, t).clicked() {
-                panes[ap].overlay_editing = !panes[ap].overlay_editing;
-                if panes[ap].overlay_editing { panes[ap].overlay_editing_idx = None; }
-            }
-
             ui.add(egui::Separator::default().spacing(4.0));
 
             // ── Scrollable middle section ──
@@ -7701,6 +7695,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
 
+            // OVL button in pane header (add symbol overlay)
+            {
+                let ovl_x = sym_label_x + sym_text_w + 10.0
+                    + if chart.bars.len() > 1 { 60.0 } else { 0.0 } + 28.0; // after change badge + O button
+                let has_overlays = !chart.symbol_overlays.is_empty();
+                let ovl_rect = egui::Rect::from_min_size(
+                    egui::pos2(ovl_x, header_rect.top() + 1.0),
+                    egui::vec2(30.0, pane_top_offset - 2.0));
+                let ovl_resp = ui.allocate_rect(ovl_rect, egui::Sense::click());
+                let ovl_col = if chart.overlay_editing { t.accent } else if has_overlays { t.dim } else { t.dim.gamma_multiply(0.4) };
+                let ovl_bg = if chart.overlay_editing { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                if ovl_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                header_painter.rect_filled(ovl_rect, 3.0, ovl_bg);
+                header_painter.text(ovl_rect.center(), egui::Align2::CENTER_CENTER, "+OV",
+                    egui::FontId::monospace(8.0), ovl_col);
+                if ovl_resp.clicked() {
+                    chart.overlay_editing = !chart.overlay_editing;
+                    if chart.overlay_editing { chart.overlay_editing_idx = None; }
+                }
+            }
+
             // Rest of header — click to activate pane
             let rest_rect = egui::Rect::from_min_size(
                 egui::pos2(header_rect.left() + header_rect.width() * 0.5, header_rect.top()),
@@ -8581,6 +8596,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             } else {
                 painter.text(egui::pos2(overlay_btn_x, overlay_btn_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(9.0), btn_col);
             }
+        }
+
+        // ── Symbol overlay button on chart (single-pane mode, or always) ──
+        let ovl_chart_x = rect.left() + cw - 18.0;
+        let ovl_chart_y = rect.top() + pt + 36.0; // below O button
+        {
+            let has_ov = !chart.symbol_overlays.is_empty();
+            let ovl_col = if chart.overlay_editing { t.accent } else if has_ov { t.dim } else { t.dim.gamma_multiply(0.3) };
+            painter.circle_filled(egui::pos2(ovl_chart_x, ovl_chart_y), 9.0, color_alpha(t.toolbar_bg, 220));
+            painter.circle_stroke(egui::pos2(ovl_chart_x, ovl_chart_y), 9.0, egui::Stroke::new(1.0, ovl_col));
+            painter.text(egui::pos2(ovl_chart_x, ovl_chart_y), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(11.0), ovl_col);
         }
 
         // Auto-fetch overlay chain if on but data missing or symbol changed
@@ -12264,6 +12290,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
                     event_consumed = true;
+                }
+            }
+        }
+
+        // Symbol overlay circle button click (+OV)
+        if !event_consumed {
+            if let Some(pos) = hover_pos {
+                if egui::pos2(ovl_chart_x, ovl_chart_y).distance(pos) < 12.0 {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+                        chart.overlay_editing = !chart.overlay_editing;
+                        if chart.overlay_editing { chart.overlay_editing_idx = None; }
+                        event_consumed = true;
+                    }
                 }
             }
         }
