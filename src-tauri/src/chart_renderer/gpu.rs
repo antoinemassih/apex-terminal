@@ -11367,9 +11367,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     });
             } else {
-            // Order panel stays in place — DOM grows upward from it
+            // DOM expands upward: shift window position up by DOM height
+            let dom_scroll_h_outer = if chart.dom_open { (ch * 0.7).min(600.0).max(300.0) } else { 0.0 };
+            let window_pos = egui::pos2(abs_pos.x, abs_pos.y - dom_scroll_h_outer);
             egui::Window::new(format!("order_entry_{}", pane_idx))
-                .fixed_pos(abs_pos)
+                .fixed_pos(window_pos)
                 .fixed_size(egui::vec2(panel_w, 0.0))
                 .title_bar(false)
                 .frame(egui::Frame::popup(&ctx.style())
@@ -11464,7 +11466,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── DOM ladder (when open, between header and order body) ──
                     if chart.dom_open {
-                        let dom_scroll_h = (ch * 0.5).min(400.0).max(180.0);
+                        let dom_scroll_h = dom_scroll_h_outer - 20.0; // minus header/separator
                         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
                         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
                         let tick = if is_index { 1.0_f32 } else { 0.01 };
