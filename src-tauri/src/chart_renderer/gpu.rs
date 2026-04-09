@@ -8582,35 +8582,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // ── Strikes overlay circle button (rendered on chart, click via priority dispatch) ──
+        // ── Symbol overlay button on chart (top-right) ──
         let overlay_btn_x = rect.left() + cw - 18.0;
         let overlay_btn_y = rect.top() + pt + 18.0;
-        {
-            let btn_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.3) };
-            painter.circle_filled(egui::pos2(overlay_btn_x, overlay_btn_y), 9.0, color_alpha(t.toolbar_bg, 220));
-            painter.circle_stroke(egui::pos2(overlay_btn_x, overlay_btn_y), 9.0, egui::Stroke::new(1.0, btn_col));
-            if chart.overlay_chain_loading {
-                let angle = ctx.input(|i| i.time) as f32 * 4.0;
-                for k in 0..8 {
-                    let a = angle + k as f32 * std::f32::consts::TAU / 8.0;
-                    painter.circle_filled(egui::pos2(overlay_btn_x + a.cos() * 5.0, overlay_btn_y + a.sin() * 5.0),
-                        1.2, color_alpha(t.accent, 40 + (k as u8) * 25));
-                }
-                ctx.request_repaint();
-            } else {
-                painter.text(egui::pos2(overlay_btn_x, overlay_btn_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(9.0), btn_col);
-            }
-        }
-
-        // ── Symbol overlay button on chart (single-pane mode, or always) ──
-        let ovl_chart_x = rect.left() + cw - 18.0;
-        let ovl_chart_y = rect.top() + pt + 36.0; // below O button
+        let ovl_chart_x = overlay_btn_x;
+        let ovl_chart_y = overlay_btn_y;
         {
             let has_ov = !chart.symbol_overlays.is_empty();
-            let ovl_col = if chart.overlay_editing { t.accent } else if has_ov { t.dim } else { t.dim.gamma_multiply(0.3) };
-            painter.circle_filled(egui::pos2(ovl_chart_x, ovl_chart_y), 9.0, color_alpha(t.toolbar_bg, 220));
-            painter.circle_stroke(egui::pos2(ovl_chart_x, ovl_chart_y), 9.0, egui::Stroke::new(1.0, ovl_col));
-            painter.text(egui::pos2(ovl_chart_x, ovl_chart_y), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(11.0), ovl_col);
+            let ovl_col = if chart.overlay_editing { t.accent } else if has_ov { t.accent.gamma_multiply(0.7) } else { t.dim.gamma_multiply(0.4) };
+            let ovl_bg = if chart.overlay_editing || has_ov { color_alpha(t.toolbar_bg, 240) } else { color_alpha(t.toolbar_bg, 200) };
+            painter.circle_filled(egui::pos2(ovl_chart_x, ovl_chart_y), 10.0, ovl_bg);
+            painter.circle_stroke(egui::pos2(ovl_chart_x, ovl_chart_y), 10.0, egui::Stroke::new(1.0, ovl_col));
+            painter.text(egui::pos2(ovl_chart_x, ovl_chart_y), egui::Align2::CENTER_CENTER,
+                if has_ov { Icon::CHART_LINE } else { "+" },
+                egui::FontId::proportional(12.0), ovl_col);
         }
 
         // Auto-fetch overlay chain if on but data missing or symbol changed
@@ -12277,37 +12262,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── PRIORITY 0: Strikes overlay circle button click ──
+        // ── PRIORITY 0: Overlay manager button click ──
         let mut event_consumed = false;
         if let Some(pos) = hover_pos {
-            if egui::pos2(overlay_btn_x, overlay_btn_y).distance(pos) < 12.0 {
+            if egui::pos2(ovl_chart_x, ovl_chart_y).distance(pos) < 12.0 {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-                    chart.show_strikes_overlay = !chart.show_strikes_overlay;
-                    if chart.show_strikes_overlay && !chart.overlay_chain_loading {
-                        let needs_fetch = chart.overlay_chain_symbol != chart.symbol
-                            || (chart.overlay_calls.is_empty() && chart.overlay_puts.is_empty());
-                        if needs_fetch {
-                            chart.overlay_chain_loading = true;
-                            let sym = chart.symbol.clone();
-                            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                            fetch_overlay_chain_background(sym, price);
-                        }
-                    }
+                    chart.overlay_editing = !chart.overlay_editing;
+                    if chart.overlay_editing { chart.overlay_editing_idx = None; }
                     event_consumed = true;
-                }
-            }
-        }
-
-        // Symbol overlay circle button click (+OV)
-        if !event_consumed {
-            if let Some(pos) = hover_pos {
-                if egui::pos2(ovl_chart_x, ovl_chart_y).distance(pos) < 12.0 {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-                        chart.overlay_editing = !chart.overlay_editing;
-                        if chart.overlay_editing { chart.overlay_editing_idx = None; }
-                        event_consumed = true;
-                    }
                 }
             }
         }
