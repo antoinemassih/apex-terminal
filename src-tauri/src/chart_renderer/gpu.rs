@@ -11401,20 +11401,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         // Label
                         ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
-                        // DOM button
-                        {
-                            let dom_color = if chart.dom_open { t.accent } else { t.dim.gamma_multiply(0.4) };
-                            let dom_resp = ui.add(egui::Button::new(egui::RichText::new("DOM").monospace().size(8.0).color(dom_color))
-                                .fill(if chart.dom_open { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                                .stroke(egui::Stroke::NONE).min_size(egui::vec2(24.0, 18.0)).corner_radius(2.0));
-                            if dom_resp.clicked() { chart.dom_open = !chart.dom_open; }
-                            if dom_resp.hovered() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new(("dom_tip", pane_idx)), |ui| {
-                                    ui.label(egui::RichText::new("Price Ladder / DOM").monospace().size(9.0));
-                                });
-                            }
-                        }
+                        // DOM label (click handled via raw pointer after drag zone)
+                        let dom_color = if chart.dom_open { t.accent } else { t.dim.gamma_multiply(0.5) };
+                        ui.label(egui::RichText::new("DOM").monospace().size(8.0).color(dom_color));
                         // Position indicator
                         if let Some((_, ref positions, _)) = account_data_cached {
                             if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
@@ -11451,6 +11440,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
                     if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+
+                    // DOM button — raw pointer click (above drag zone)
+                    {
+                        let dom_rect = egui::Rect::from_min_size(
+                            egui::pos2(hdr_rect.right() - 60.0, hdr_rect.top() + 2.0),
+                            egui::vec2(30.0, 18.0));
+                        let dom_col = if chart.dom_open { t.accent } else { t.dim.gamma_multiply(0.5) };
+                        let dom_bg = if chart.dom_open { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
+                        ui.painter().rect_filled(dom_rect, 2.0, dom_bg);
+                        ui.painter().text(dom_rect.center(), egui::Align2::CENTER_CENTER, "DOM",
+                            egui::FontId::monospace(8.0), dom_col);
+                        if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
+                            if dom_rect.contains(pos) {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+                                    chart.dom_open = !chart.dom_open;
+                                }
+                            }
+                        }
+                    }
 
                     // ── Body (shared component) ──
                     render_order_entry_body(ui, chart, t, pane_idx as u64, panel_w);
