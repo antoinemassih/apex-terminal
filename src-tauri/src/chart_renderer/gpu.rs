@@ -7434,8 +7434,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let py_inv = |y:f32| max_p - (y - rect.top() - pt) / ch * (max_p - min_p);
         let bx = |i:f32| rect.left()+(i-vs)*bs+bs*0.5-off;
         let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-        // Use full_rect as clip to avoid masking candles near the right edge
-        let painter = ui.painter_at(full_rect);
+        let painter = ui.painter_at(rect);
 
         // Grid + price labels
         let rng=max_p-min_p; let rs=rng/8.0; let mg=10.0_f32.powf(rs.log10().floor());
