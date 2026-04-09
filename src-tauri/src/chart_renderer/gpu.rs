@@ -155,16 +155,18 @@ impl Layout {
                     let w0 = total_w * split_h.clamp(0.15, 0.85);
                     vec![w0, total_w - w0]
                 } else if cols == 3 {
-                    let w_each = total_w / 3.0;
-                    vec![w_each, w_each, w_each]
+                    let w0 = total_w * (split_h * 0.9).clamp(0.15, 0.5); // first col
+                    let rest = total_w - w0;
+                    vec![w0, rest / 2.0, rest / 2.0]
                 } else { vec![total_w] };
                 // Row heights: for 2 rows use split_v, for 3 rows equal
                 let row_heights: Vec<f32> = if rows == 2 {
                     let h0 = total_h * split_v.clamp(0.15, 0.85);
                     vec![h0, total_h - h0]
                 } else if rows == 3 {
-                    let h_each = total_h / 3.0;
-                    vec![h_each, h_each, h_each]
+                    let h0 = total_h * (split_v * 0.9).clamp(0.15, 0.5); // first row
+                    let rest = total_h - h0;
+                    vec![h0, rest / 2.0, rest / 2.0]
                 } else { vec![total_h] };
 
                 let mut rects = Vec::new();
@@ -6584,10 +6586,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Vertical dividers (drag left/right to adjust column widths)
             for (di, &div_x) in v_dividers.iter().enumerate() {
-                // Bigger hit area biased toward chart side (left, away from Y-axis)
+                // Large hit area biased toward chart side (left, away from Y-axis)
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(div_x - 8.0, full_rect.top()),
-                    egui::vec2(12.0, full_rect.height()));
+                    egui::pos2(div_x - 16.0, full_rect.top()),
+                    egui::vec2(20.0, full_rect.height()));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -6602,10 +6604,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Horizontal dividers (drag up/down to adjust row heights)
             for (di, &div_y) in h_dividers.iter().enumerate() {
-                // Bigger hit area biased upward (away from bottom axis area)
+                // Large hit area biased upward (away from bottom axis area)
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(full_rect.left(), div_y - 8.0),
-                    egui::vec2(full_rect.width(), 12.0));
+                    egui::pos2(full_rect.left(), div_y - 16.0),
+                    egui::vec2(full_rect.width(), 20.0));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
