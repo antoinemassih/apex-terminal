@@ -2767,42 +2767,90 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     switch_layout(ly, panes, layout, active_pane);
                 }
             }
-            // Dropdown for all layouts (organized by section)
-            let layout_dropdown_label = format!("{}", Icon::CARET_DOWN);
-            ui.menu_button(egui::RichText::new(&layout_dropdown_label).monospace().size(11.0).color(t.dim), |ui| {
-                ui.set_min_width(180.0);
+            // Dropdown for all layouts (organized by section, visual)
+            ui.menu_button(egui::RichText::new(Icon::CARET_DOWN).size(11.0).color(t.dim), |ui| {
+                ui.set_min_width(220.0);
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let mut last_section = "";
                 for &ly in ALL_LAYOUTS {
                     let sec = ly.section();
                     if sec != last_section {
-                        if !last_section.is_empty() { ui.separator(); }
-                        ui.label(egui::RichText::new(sec).monospace().size(9.0).strong().color(t.accent));
+                        if !last_section.is_empty() { ui.add_space(4.0); }
+                        ui.horizontal(|ui| {
+                            ui.add_space(6.0);
+                            ui.label(egui::RichText::new(sec).monospace().size(8.0).strong().color(t.dim.gamma_multiply(0.5)));
+                        });
+                        ui.add_space(2.0);
                         last_section = sec;
                     }
                     let is_cur = *layout == ly;
                     let is_fav = watchlist.layout_favorites.iter().any(|f| f == ly.label());
-                    ui.horizontal(|ui| {
-                        // Star toggle
-                        let star = if is_fav { Icon::STAR_FILL } else { Icon::STAR };
-                        let star_col = if is_fav { egui::Color32::from_rgb(255, 200, 60) } else { t.dim.gamma_multiply(0.4) };
-                        if ui.add(egui::Button::new(egui::RichText::new(star).size(12.0).color(star_col))
-                            .frame(false).min_size(egui::vec2(18.0, 18.0))).clicked() {
-                            if is_fav {
-                                watchlist.layout_favorites.retain(|f| f != ly.label());
-                            } else {
-                                watchlist.layout_favorites.push(ly.label().to_string());
-                            }
+
+                    // Full row with hover highlight
+                    let row_resp = ui.horizontal(|ui| {
+                        let row_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(210.0, 24.0));
+                        let resp = ui.allocate_rect(row_rect, egui::Sense::hover());
+                        let hovered = resp.hovered();
+
+                        // Hover background
+                        if hovered || is_cur {
+                            let bg = if is_cur { color_alpha(t.accent, 25) } else { color_alpha(t.toolbar_border, 40) };
+                            ui.painter().rect_filled(row_rect, 3.0, bg);
                         }
-                        // Layout label + description
-                        let label_col = if is_cur { t.accent } else { egui::Color32::from_rgb(220, 220, 230) };
-                        let row_resp = ui.add(egui::Button::new(
-                            egui::RichText::new(format!("{:>3}  {}", ly.label(), ly.description()))
-                                .monospace().size(10.0).color(label_col)
-                        ).frame(false).min_size(egui::vec2(150.0, 18.0)));
-                        if row_resp.clicked() {
+
+                        // Active indicator bar
+                        if is_cur {
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 24.0)),
+                                1.0, t.accent);
+                        }
+
+                        // Star toggle (doesn't close menu)
+                        let star = if is_fav { Icon::STAR_FILL } else { Icon::STAR };
+                        let star_col = if is_fav { egui::Color32::from_rgb(255, 200, 60) }
+                            else if hovered { t.dim.gamma_multiply(0.6) }
+                            else { t.dim.gamma_multiply(0.25) };
+                        let star_rect = egui::Rect::from_min_size(
+                            egui::pos2(row_rect.left() + 6.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
+                        let star_resp = ui.allocate_rect(star_rect, egui::Sense::click());
+                        ui.painter().text(star_rect.center(), egui::Align2::CENTER_CENTER, star,
+                            egui::FontId::proportional(12.0), star_col);
+                        if star_resp.clicked() {
+                            if is_fav { watchlist.layout_favorites.retain(|f| f != ly.label()); }
+                            else { watchlist.layout_favorites.push(ly.label().to_string()); }
+                            // Don't close menu — allow toggling multiple favorites
+                        }
+                        if star_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+
+                        // Layout label
+                        let label_col = if is_cur { t.accent }
+                            else if hovered { egui::Color32::from_rgb(240, 240, 250) }
+                            else { egui::Color32::from_rgb(200, 200, 210) };
+                        ui.painter().text(
+                            egui::pos2(row_rect.left() + 28.0, row_rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            ly.label(), egui::FontId::monospace(11.0), label_col);
+
+                        // Description
+                        let desc_col = if hovered { t.dim.gamma_multiply(0.7) } else { t.dim.gamma_multiply(0.4) };
+                        ui.painter().text(
+                            egui::pos2(row_rect.left() + 60.0, row_rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            ly.description(), egui::FontId::monospace(9.0), desc_col);
+
+                        // Click row to switch layout (but not if clicking star)
+                        let click_rect = egui::Rect::from_min_size(
+                            egui::pos2(row_rect.left() + 24.0, row_rect.top()),
+                            egui::vec2(row_rect.width() - 24.0, 24.0));
+                        let click_resp = ui.allocate_rect(click_rect, egui::Sense::click());
+                        if click_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                        if click_resp.clicked() {
                             switch_layout(ly, panes, layout, active_pane);
                             ui.close_menu();
                         }
+
+                        ui.allocate_space(egui::vec2(0.0, 24.0));
                     });
                 }
             });
