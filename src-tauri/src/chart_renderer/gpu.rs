@@ -3205,6 +3205,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // Watchlist toggle
                 if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() { watchlist.open = !watchlist.open; }
 
+                // Discord chat toggle
+                if tb_btn(ui, Icon::CHAT_DOTS, watchlist.discord_open, t).clicked() {
+                    watchlist.discord_open = !watchlist.discord_open;
+                }
+
+                // News feed toggle
+                if tb_btn(ui, Icon::NEWSPAPER, watchlist.news_open, t).clicked() {
+                    watchlist.news_open = !watchlist.news_open;
+                }
+
                 ui.add(egui::Separator::default().spacing(4.0));
 
                 // Object tree panel
@@ -7471,6 +7481,321 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 pos.current_price = bar.close;
             }
         }
+    }
+
+    // ── Discord Chat side panel ─────────────────────────────────────────────────
+    if watchlist.discord_open {
+        egui::SidePanel::left("discord_chat")
+            .default_width(260.0)
+            .min_width(200.0)
+            .max_width(400.0)
+            .resizable(true)
+            .frame(egui::Frame::NONE.fill(t.toolbar_bg)
+                .inner_margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 6 })
+                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+            .show(ctx, |ui| {
+                let panel_w = ui.available_width();
+                ui.set_max_width(panel_w);
+
+                // Header: DISCORD + channel name + close button
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("DISCORD").monospace().size(11.0).strong().color(t.accent));
+                    ui.label(egui::RichText::new(&watchlist.discord_channel).monospace().size(9.0).color(t.dim));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if close_button(ui, t.dim) { watchlist.discord_open = false; }
+                    });
+                });
+                ui.add_space(4.0);
+                separator(ui, t.toolbar_border);
+                ui.add_space(4.0);
+
+                // Author color palette (deterministic per author name)
+                let author_colors: &[egui::Color32] = &[
+                    rgb(74, 158, 255), rgb(46, 204, 113), rgb(243, 156, 18),
+                    rgb(155, 89, 182), rgb(231, 76, 60), rgb(26, 188, 156),
+                    rgb(241, 196, 15), rgb(52, 152, 219),
+                ];
+
+                // Message list (scrollable)
+                let msg_area_h = ui.available_height() - 60.0; // reserve space for input
+                egui::ScrollArea::vertical()
+                    .id_salt("discord_msgs")
+                    .max_height(msg_area_h.max(80.0))
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        ui.set_min_width(panel_w - 4.0);
+                        for msg in &watchlist.discord_messages {
+                            let author_hash = msg.author.bytes().fold(0usize, |a, b| a.wrapping_mul(31).wrapping_add(b as usize));
+                            let author_col = author_colors[author_hash % author_colors.len()];
+
+                            if msg.is_own {
+                                // Own messages: right-aligned with accent tint
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                    ui.add_space(2.0);
+                                    let (rect, _) = ui.allocate_exact_size(
+                                        egui::vec2((panel_w - 30.0).min(220.0), 0.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    // Draw content in a sub-area
+                                    let msg_rect = egui::Rect::from_min_size(
+                                        egui::pos2(rect.right() - (panel_w - 30.0).min(220.0), rect.min.y),
+                                        egui::vec2((panel_w - 30.0).min(220.0), 40.0),
+                                    );
+                                    ui.painter().rect_filled(msg_rect, 4.0, color_alpha(t.accent, 20));
+                                });
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(panel_w, 0.0),
+                                    egui::Layout::right_to_left(egui::Align::Min),
+                                    |ui| {
+                                        ui.add_space(4.0);
+                                        ui.vertical(|ui| {
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                                ui.label(egui::RichText::new(&msg.timestamp).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                                                ui.label(egui::RichText::new(&msg.author).monospace().size(9.0).strong().color(author_col));
+                                            });
+                                            ui.label(egui::RichText::new(&msg.content).monospace().size(9.0).color(egui::Color32::from_gray(220)));
+                                        });
+                                    },
+                                );
+                            } else {
+                                // Other messages: left-aligned
+                                ui.vertical(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(&msg.author).monospace().size(9.0).strong().color(author_col));
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            ui.label(egui::RichText::new(&msg.timestamp).monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                                        });
+                                    });
+                                    ui.label(egui::RichText::new(&msg.content).monospace().size(9.0).color(egui::Color32::from_gray(200)));
+                                });
+                            }
+                            ui.add_space(6.0);
+                        }
+                    });
+
+                ui.add_space(4.0);
+                separator(ui, t.toolbar_border);
+                ui.add_space(4.0);
+
+                // Input field + send button
+                ui.horizontal(|ui| {
+                    let input = ui.add(
+                        egui::TextEdit::singleline(&mut watchlist.discord_input)
+                            .desired_width(panel_w - 50.0)
+                            .font(egui::TextStyle::Monospace)
+                            .text_color(egui::Color32::from_gray(220))
+                            .hint_text("Message...")
+                    );
+                    let send_clicked = ui.add(egui::Button::new(
+                        egui::RichText::new("Send").monospace().size(9.0).color(t.accent))
+                        .fill(color_alpha(t.accent, 20))
+                        .corner_radius(3.0)
+                        .min_size(egui::vec2(36.0, 20.0))
+                    ).clicked();
+                    if (send_clicked || (input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+                        && !watchlist.discord_input.trim().is_empty()
+                    {
+                        let content = watchlist.discord_input.trim().to_string();
+                        watchlist.discord_messages.push(DiscordMessage {
+                            author: "You".into(),
+                            content,
+                            timestamp: "now".into(),
+                            is_own: true,
+                            has_chart: false,
+                        });
+                        watchlist.discord_input.clear();
+                    }
+                });
+
+                // Share Chart / Share Trade buttons
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::Button::new(
+                        egui::RichText::new("Share Chart").monospace().size(8.0).color(t.dim))
+                        .fill(color_alpha(t.toolbar_border, 40))
+                        .corner_radius(3.0)
+                        .min_size(egui::vec2(0.0, 18.0))
+                    ).clicked() {
+                        // TODO: screenshot chart and send to channel
+                    }
+                    if ui.add(egui::Button::new(
+                        egui::RichText::new("Share Trade").monospace().size(8.0).color(t.dim))
+                        .fill(color_alpha(t.toolbar_border, 40))
+                        .corner_radius(3.0)
+                        .min_size(egui::vec2(0.0, 18.0))
+                    ).clicked() {
+                        // TODO: auto-format last trade as a message
+                    }
+                });
+            });
+    }
+
+    // ── News Feed floating window ─────────────────────────────────────────────
+    if watchlist.news_open {
+        let active_symbol = panes[ap].symbol.clone();
+        let mut close_news = false;
+        egui::Window::new("news_feed")
+            .default_pos(egui::pos2(300.0, 100.0))
+            .default_size(egui::vec2(300.0, 400.0))
+            .resizable(true)
+            .movable(true)
+            .title_bar(false)
+            .frame(egui::Frame::popup(&ctx.style())
+                .fill(t.toolbar_bg)
+                .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
+                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
+                .corner_radius(6.0))
+            .show(ctx, |ui| {
+                let w = ui.available_width();
+
+                // Header: NEWS + filter toggle + close
+                ui.horizontal(|ui| {
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new("NEWS").monospace().size(11.0).strong().color(t.accent));
+                    ui.add_space(8.0);
+                    // Filter toggle: "All" / symbol name
+                    let filter_label = if watchlist.news_filter_symbol {
+                        active_symbol.as_str()
+                    } else {
+                        "All"
+                    };
+                    let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
+                    if ui.add(egui::Button::new(
+                        egui::RichText::new(filter_label).monospace().size(9.0).color(filter_col))
+                        .fill(color_alpha(filter_col, 15))
+                        .corner_radius(3.0)
+                        .stroke(egui::Stroke::new(0.5, color_alpha(filter_col, 40)))
+                        .min_size(egui::vec2(0.0, 16.0))
+                    ).clicked() {
+                        watchlist.news_filter_symbol = !watchlist.news_filter_symbol;
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(6.0);
+                        if close_button(ui, t.dim) { close_news = true; }
+                    });
+                });
+                ui.add_space(4.0);
+
+                // Divider
+                let div_rect = egui::Rect::from_min_size(
+                    egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
+                    egui::vec2(w, 1.0),
+                );
+                ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, 60));
+                ui.add_space(5.0);
+
+                // News items (scrollable)
+                egui::ScrollArea::vertical()
+                    .id_salt("news_items")
+                    .show(ui, |ui| {
+                        ui.set_min_width(w - 4.0);
+                        let filtered: Vec<&NewsItem> = watchlist.news_items.iter()
+                            .filter(|n| !watchlist.news_filter_symbol || n.symbol == active_symbol)
+                            .collect();
+
+                        if filtered.is_empty() {
+                            ui.add_space(20.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(egui::RichText::new("No news for this symbol")
+                                    .monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                            });
+                        }
+
+                        for news in &filtered {
+                            let m = 10.0;
+                            // Hover highlight
+                            let item_rect = egui::Rect::from_min_size(
+                                egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
+                                egui::vec2(w, 52.0),
+                            );
+                            let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
+                            let bg = if item_resp.hovered() {
+                                color_alpha(t.toolbar_border, 40)
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            };
+                            ui.painter().rect_filled(item_rect, 2.0, bg);
+
+                            // Headline
+                            let headline_rect = egui::Rect::from_min_size(
+                                egui::pos2(item_rect.min.x + m, item_rect.min.y + 4.0),
+                                egui::vec2(w - m * 2.0, 24.0),
+                            );
+                            ui.painter().text(
+                                headline_rect.left_top(),
+                                egui::Align2::LEFT_TOP,
+                                &news.headline,
+                                egui::FontId::monospace(10.0),
+                                egui::Color32::from_gray(230),
+                            );
+
+                            // Source badge + timestamp + symbol badge + sentiment dot
+                            let meta_y = item_rect.min.y + 30.0;
+
+                            // Source badge
+                            let source_col = match news.source.as_str() {
+                                "Reuters" => rgb(255, 140, 0),
+                                "Bloomberg" => rgb(100, 180, 255),
+                                "CNBC" => rgb(0, 180, 120),
+                                "Benzinga" => rgb(180, 100, 255),
+                                _ => t.dim,
+                            };
+                            let source_rect = egui::Rect::from_min_size(
+                                egui::pos2(item_rect.min.x + m, meta_y),
+                                egui::vec2(50.0, 14.0),
+                            );
+                            ui.painter().rect_filled(source_rect, 2.0, color_alpha(source_col, 25));
+                            ui.painter().text(
+                                source_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                &news.source,
+                                egui::FontId::monospace(7.0),
+                                source_col,
+                            );
+
+                            // Timestamp
+                            ui.painter().text(
+                                egui::pos2(item_rect.min.x + m + 55.0, meta_y + 7.0),
+                                egui::Align2::LEFT_CENTER,
+                                &news.timestamp,
+                                egui::FontId::monospace(7.0),
+                                t.dim.gamma_multiply(0.5),
+                            );
+
+                            // Symbol badge
+                            let sym_x = item_rect.min.x + m + 95.0;
+                            let sym_rect = egui::Rect::from_min_size(
+                                egui::pos2(sym_x, meta_y),
+                                egui::vec2(36.0, 14.0),
+                            );
+                            ui.painter().rect_filled(sym_rect, 2.0, color_alpha(t.accent, 20));
+                            ui.painter().text(
+                                sym_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                &news.symbol,
+                                egui::FontId::monospace(7.0),
+                                t.accent,
+                            );
+
+                            // Sentiment dot
+                            let dot_col = match news.sentiment {
+                                1 => t.bull,
+                                -1 => t.bear,
+                                _ => t.dim.gamma_multiply(0.4),
+                            };
+                            ui.painter().circle_filled(
+                                egui::pos2(item_rect.right() - m - 4.0, meta_y + 7.0),
+                                3.5,
+                                dot_col,
+                            );
+
+                            if item_resp.clicked() && !news.url.is_empty() {
+                                // TODO: open URL in browser
+                            }
+                        }
+                    });
+            });
+        if close_news { watchlist.news_open = false; }
     }
 
     // ── Alert checking — run every frame, check if any alert prices were crossed ──
@@ -15243,6 +15568,32 @@ struct HotKey {
     alt: bool,
 }
 
+// ─── Discord Chat ────────────────────────────────────────────────────────────
+// TODO: Connect to Discord bot via WebSocket — needs bot token in K8s secrets
+
+#[derive(Clone)]
+struct DiscordMessage {
+    author: String,
+    content: String,
+    timestamp: String,  // "2m ago", "12:34"
+    is_own: bool,       // true if sent by the user
+    #[allow(dead_code)]
+    has_chart: bool,    // true if message contains a chart screenshot
+}
+
+// ─── News Feed ───────────────────────────────────────────────────────────────
+// TODO: Connect to stock wire API / news feed — poll every 60s
+
+#[derive(Clone)]
+struct NewsItem {
+    headline: String,
+    source: String,     // "Reuters", "Bloomberg", "Benzinga"
+    timestamp: String,  // "10m ago", "1h ago"
+    symbol: String,     // related symbol
+    sentiment: i8,      // -1 bearish, 0 neutral, 1 bullish
+    url: String,        // link to full article
+}
+
 #[derive(Clone)]
 struct WatchlistItem {
     symbol: String,
@@ -15443,6 +15794,15 @@ struct Watchlist {
     // Pane templates (save/load indicator + toggle configs)
     pane_templates: Vec<(String, serde_json::Value)>,  // (name, serialized pane config)
     pane_template_name: String, // input buffer for naming a new template
+    // Discord chat panel
+    discord_open: bool,
+    discord_messages: Vec<DiscordMessage>,
+    discord_input: String,
+    discord_channel: String,  // currently selected channel name
+    // News feed panel
+    news_open: bool,
+    news_items: Vec<NewsItem>,
+    news_filter_symbol: bool,  // true = filter to active chart symbol
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -15480,7 +15840,25 @@ impl Watchlist {
                layout_favorites: vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()],
                layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO,
                pending_overlay_add: false,
-               pane_templates: vec![], pane_template_name: String::new() }
+               pane_templates: vec![], pane_template_name: String::new(),
+               discord_open: false,
+               discord_messages: vec![
+                   DiscordMessage { author: "TraderJoe".into(), content: "SPY looking weak here, watching 590 support".into(), timestamp: "2m".into(), is_own: false, has_chart: false },
+                   DiscordMessage { author: "AlphaWolf".into(), content: "Loaded NVDA calls at 920, targeting 950".into(), timestamp: "5m".into(), is_own: false, has_chart: false },
+                   DiscordMessage { author: "You".into(), content: "Nice entry. I'm watching the 200 SMA on the daily".into(), timestamp: "3m".into(), is_own: true, has_chart: false },
+                   DiscordMessage { author: "MarketMaven".into(), content: "Fed minutes at 2pm, expect vol spike".into(), timestamp: "8m".into(), is_own: false, has_chart: false },
+               ],
+               discord_input: String::new(),
+               discord_channel: "#trading-room".into(),
+               news_open: false,
+               news_items: vec![
+                   NewsItem { headline: "Fed Holds Rates Steady, Signals Cautious Approach".into(), source: "Reuters".into(), timestamp: "10m".into(), symbol: "SPY".into(), sentiment: 0, url: String::new() },
+                   NewsItem { headline: "NVDA Beats Earnings Estimates, Guides Higher".into(), source: "Bloomberg".into(), timestamp: "25m".into(), symbol: "NVDA".into(), sentiment: 1, url: String::new() },
+                   NewsItem { headline: "Apple Announces Stock Buyback Program".into(), source: "CNBC".into(), timestamp: "1h".into(), symbol: "AAPL".into(), sentiment: 1, url: String::new() },
+                   NewsItem { headline: "Oil Prices Slide on Demand Concerns".into(), source: "Benzinga".into(), timestamp: "2h".into(), symbol: "USO".into(), sentiment: -1, url: String::new() },
+                   NewsItem { headline: "Tesla Deliveries Miss Expectations".into(), source: "Reuters".into(), timestamp: "3h".into(), symbol: "TSLA".into(), sentiment: -1, url: String::new() },
+               ],
+               news_filter_symbol: false }
     }
 
     /// Add symbol to the last section (creates one if none exist).

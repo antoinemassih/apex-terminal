@@ -70,6 +70,8 @@ impl Icon {
     pub const NOTEBOOK: &'static str = ph::NOTEBOOK;
     pub const STAR: &'static str = ph::STAR;
     pub const STAR_FILL: &'static str = ph_fill::STAR;
+    pub const CHAT_DOTS: &'static str = ph::CHAT_DOTS;
+    pub const NEWSPAPER: &'static str = ph::NEWSPAPER;
 
     // Chart
     pub const CHART_LINE: &'static str = ph::CHART_LINE;
