@@ -1005,6 +1005,19 @@ fn render_order_entry_body(
     ui.add_space(6.0);
 }
 
+// ─── Overlay colors for multi-symbol overlays ───────────────────────────────
+const OVERLAY_COLORS: &[&str] = &["#ff8c3c", "#00e5ff", "#ff00ff", "#76ff03", "#ff4081"];
+
+#[derive(Clone)]
+struct SymbolOverlay {
+    symbol: String,
+    color: String,       // hex color
+    bars: Vec<Bar>,
+    timestamps: Vec<i64>,
+    loading: bool,
+    show_candles: bool,  // false = line, true = candle bodies (future use)
+}
+
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
 struct Chart {
@@ -1127,12 +1140,10 @@ struct Chart {
     show_prev_close: bool,
     show_auto_sr: bool,
     swing_leg_mode: u8, // 0=off, 1=vertical, 2=diagonal
-    overlay_symbol: String,
+    symbol_overlays: Vec<SymbolOverlay>,
     overlay_editing: bool,
+    overlay_editing_idx: Option<usize>, // Some(i) = editing existing overlay, None = adding new
     overlay_input: String,
-    overlay_bars: Vec<Bar>,
-    overlay_timestamps: Vec<i64>,
-    overlay_loading: bool,
     show_gamma: bool,
     show_strikes_overlay: bool, // show option strikes on the chart
     overlay_calls: Vec<OptionRow>, // independent chain data for strikes overlay
@@ -1234,7 +1245,7 @@ impl Chart {
             vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, swing_leg_mode: 0,
-            overlay_symbol: String::new(), overlay_editing: false, overlay_input: String::new(), overlay_bars: vec![], overlay_timestamps: vec![], overlay_loading: false,
+            symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
             show_gamma: false, show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
@@ -1387,10 +1398,10 @@ impl Chart {
                 }
             }
             ChartCommand::OverlayBars { symbol, bars, timestamps } => {
-                if self.overlay_symbol == symbol {
-                    self.overlay_bars = bars;
-                    self.overlay_timestamps = timestamps;
-                    self.overlay_loading = false;
+                if let Some(ov) = self.symbol_overlays.iter_mut().find(|o| o.symbol == symbol) {
+                    ov.bars = bars;
+                    ov.timestamps = timestamps;
+                    ov.loading = false;
                 }
             }
             _ => {}
@@ -2143,7 +2154,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             // Overlay bars: route to all panes that have this overlay symbol
             ChartCommand::OverlayBars { symbol, .. } => {
                 let s = symbol.clone();
-                for p in panes.iter_mut() { if p.overlay_symbol == s { p.process(cmd.clone()); } }
+                for p in panes.iter_mut() { if p.symbol_overlays.iter().any(|o| o.symbol == s) { p.process(cmd.clone()); } }
             }
             // Everything else goes to active pane
             _ => {
@@ -2736,10 +2747,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_auto_sr = nv; } } else { panes[ap].show_auto_sr = nv; }
                 }
                 let sl_mode = panes[ap].swing_leg_mode;
-                let sl_labels = ["SwingRange: Off", "SwingRange: Vertical", "SwingRange: Diagonal"];
-                let sl_label = sl_labels[sl_mode as usize % 3];
                 let sl_active = sl_mode > 0;
-                if ui.selectable_label(sl_active, egui::RichText::new(format!("{} {}", check(sl_active), sl_label)).monospace().size(10.0)).clicked() {
+                let sl_suffix = match sl_mode { 1 => " (Vertical)", 2 => " (Diagonal)", _ => "" };
+                if ui.selectable_label(sl_active, egui::RichText::new(format!("{} SwingRange{}", check(sl_active), sl_suffix)).monospace().size(10.0)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = (sl_mode + 1) % 3;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.swing_leg_mode = nv; } } else { panes[ap].swing_leg_mode = nv; }
@@ -2760,25 +2770,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 ui.separator();
                 ui.label(egui::RichText::new("OVERLAY").monospace().size(8.0).color(t.dim));
-                // Existing overlay — show with edit/remove
-                let has_overlay = !panes[ap].overlay_symbol.is_empty();
-                if has_overlay {
+                // Existing overlays — show each with color + symbol + remove
+                let mut remove_idx: Option<usize> = None;
+                let mut edit_idx: Option<usize> = None;
+                for (oi, ov) in panes[ap].symbol_overlays.iter().enumerate() {
                     ui.horizontal(|ui| {
-                        let oc = egui::Color32::from_rgb(255, 140, 60);
+                        let oc = hex_to_color(&ov.color, 1.0);
                         ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, oc);
                         ui.add_space(10.0);
-                        ui.label(egui::RichText::new(&panes[ap].overlay_symbol).monospace().size(10.0).color(oc));
+                        let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(10.0).color(oc));
+                        if label_resp.double_clicked() { edit_idx = Some(oi); }
                         if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.bear.gamma_multiply(0.5)))
                             .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                            panes[ap].overlay_symbol.clear();
-                            panes[ap].overlay_bars.clear();
-                            panes[ap].overlay_timestamps.clear();
+                            remove_idx = Some(oi);
                         }
                     });
+                }
+                if let Some(ri) = remove_idx { panes[ap].symbol_overlays.remove(ri); }
+                if let Some(ei) = edit_idx {
+                    panes[ap].overlay_editing = true;
+                    panes[ap].overlay_editing_idx = Some(ei);
+                    panes[ap].overlay_input = panes[ap].symbol_overlays[ei].symbol.clone();
                 }
                 // Add overlay button
                 if ui.selectable_label(false, egui::RichText::new(format!("{} Add Symbol Overlay", Icon::PLUS)).monospace().size(10.0)).clicked() {
                     panes[ap].overlay_editing = true;
+                    panes[ap].overlay_editing_idx = None;
                 }
             });
 
@@ -4400,52 +4417,131 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     // ── Overlay symbol editor popup ──────────────────────────────────────────
     if panes[ap].overlay_editing {
         let mut close_ov = false;
+        let mut delete_ov = false;
+        let editing_existing = panes[ap].overlay_editing_idx;
         dialog_window_themed(ctx, "overlay_editor", egui::pos2(200.0, 100.0), 250.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
-                if dialog_header(ui, "SYMBOL OVERLAY", t.dim) { close_ov = true; }
+                let title = if editing_existing.is_some() { "EDIT OVERLAY" } else { "SYMBOL OVERLAY" };
+                if dialog_header(ui, title, t.dim) { close_ov = true; }
                 ui.add_space(8.0);
                 let m = 10.0;
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].overlay_input)
-                        .hint_text("Symbol (e.g. QQQ, SPY, AAPL)")
-                        .desired_width(230.0 - m * 2.0)
-                        .font(egui::FontId::monospace(12.0)));
-                    resp.request_focus();
-                });
-                // Search suggestions
-                let query = panes[ap].overlay_input.trim().to_uppercase();
-                if !query.is_empty() {
-                    ui.add_space(4.0);
-                    let results = crate::ui_kit::symbols::search_symbols(&query, 6);
-                    for si in &results {
+                // Symbol input (only for new overlays)
+                if editing_existing.is_none() {
+                    ui.horizontal(|ui| {
+                        ui.add_space(m);
+                        let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].overlay_input)
+                            .hint_text("Symbol (e.g. QQQ, SPY, AAPL)")
+                            .desired_width(230.0 - m * 2.0)
+                            .font(egui::FontId::monospace(12.0)));
+                        resp.request_focus();
+                    });
+                    // Search suggestions
+                    let query = panes[ap].overlay_input.trim().to_uppercase();
+                    if !query.is_empty() {
+                        ui.add_space(4.0);
+                        let results = crate::ui_kit::symbols::search_symbols(&query, 6);
+                        for si in &results {
+                            ui.horizontal(|ui| {
+                                ui.add_space(m);
+                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} — {}", si.symbol, si.name)).monospace().size(10.0).color(t.dim))
+                                    .frame(false).min_size(egui::vec2(220.0, 20.0))).clicked() {
+                                    let color = OVERLAY_COLORS[panes[ap].symbol_overlays.len() % OVERLAY_COLORS.len()].to_string();
+                                    panes[ap].symbol_overlays.push(SymbolOverlay {
+                                        symbol: si.symbol.to_string(), color, bars: vec![], timestamps: vec![], loading: true, show_candles: false,
+                                    });
+                                    fetch_overlay_bars_background(si.symbol.to_string(), panes[ap].timeframe.clone());
+                                    close_ov = true;
+                                }
+                            });
+                        }
+                    }
+                    // Enter key submits
+                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !query.is_empty() {
+                        let color = OVERLAY_COLORS[panes[ap].symbol_overlays.len() % OVERLAY_COLORS.len()].to_string();
+                        panes[ap].symbol_overlays.push(SymbolOverlay {
+                            symbol: query.clone(), color, bars: vec![], timestamps: vec![], loading: true, show_candles: false,
+                        });
+                        fetch_overlay_bars_background(query, panes[ap].timeframe.clone());
+                        close_ov = true;
+                    }
+                }
+                // Color picker + options for editing existing overlay
+                if let Some(ei) = editing_existing {
+                    if ei < panes[ap].symbol_overlays.len() {
                         ui.horizontal(|ui| {
                             ui.add_space(m);
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} — {}", si.symbol, si.name)).monospace().size(10.0).color(t.dim))
-                                .frame(false).min_size(egui::vec2(220.0, 20.0))).clicked() {
-                                panes[ap].overlay_symbol = si.symbol.to_string();
-                                panes[ap].overlay_loading = true;
-                                panes[ap].overlay_bars.clear();
-                                panes[ap].overlay_timestamps.clear();
-                                fetch_overlay_bars_background(si.symbol.to_string(), panes[ap].timeframe.clone());
+                            let oc = hex_to_color(&panes[ap].symbol_overlays[ei].color, 1.0);
+                            ui.label(egui::RichText::new(&panes[ap].symbol_overlays[ei].symbol).monospace().size(12.0).color(oc));
+                        });
+                        ui.add_space(6.0);
+                        // Color picker
+                        dialog_section(ui, "COLOR", m, t.dim.gamma_multiply(0.5));
+                        ui.add_space(2.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            for &c in OVERLAY_COLORS {
+                                let color = hex_to_color(c, 1.0);
+                                let is_cur = panes[ap].symbol_overlays[ei].color == c;
+                                let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+                                if is_cur {
+                                    ui.painter().rect_filled(r, 3.0, color_alpha(color, 30));
+                                    ui.painter().rect_stroke(r, 3.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
+                                }
+                                ui.painter().circle_filled(r.center(), if is_cur { 5.0 } else { 4.0 }, color);
+                                if resp.clicked() { panes[ap].symbol_overlays[ei].color = c.to_string(); }
+                            }
+                            // Also show indicator colors for more options
+                            for &c in INDICATOR_COLORS {
+                                if OVERLAY_COLORS.contains(&c) { continue; }
+                                let color = hex_to_color(c, 1.0);
+                                let is_cur = panes[ap].symbol_overlays[ei].color == c;
+                                let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+                                if is_cur {
+                                    ui.painter().rect_filled(r, 3.0, color_alpha(color, 30));
+                                    ui.painter().rect_stroke(r, 3.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
+                                }
+                                ui.painter().circle_filled(r.center(), if is_cur { 5.0 } else { 4.0 }, color);
+                                if resp.clicked() { panes[ap].symbol_overlays[ei].color = c.to_string(); }
+                            }
+                        });
+                        ui.add_space(6.0);
+                        // Show as candles toggle
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            let sc = panes[ap].symbol_overlays[ei].show_candles;
+                            if ui.selectable_label(sc, egui::RichText::new(if sc { "\u{2611} Show as candles" } else { "\u{2610} Show as candles" }).monospace().size(10.0)).clicked() {
+                                panes[ap].symbol_overlays[ei].show_candles = !sc;
+                            }
+                        });
+                        ui.add_space(6.0);
+                        // Delete button
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            let del_color = t.bear;
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("{} Delete", Icon::TRASH)).monospace().size(10.0).color(del_color))
+                                .fill(color_alpha(del_color, 15))
+                                .stroke(egui::Stroke::new(0.5, color_alpha(del_color, 60)))
+                                .min_size(egui::vec2(80.0, 22.0))).clicked() {
+                                delete_ov = true;
                                 close_ov = true;
                             }
                         });
+                    } else {
+                        close_ov = true;
                     }
-                }
-                // Enter key submits
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !query.is_empty() {
-                    panes[ap].overlay_symbol = query.clone();
-                    panes[ap].overlay_loading = true;
-                    panes[ap].overlay_bars.clear();
-                    panes[ap].overlay_timestamps.clear();
-                    fetch_overlay_bars_background(query, panes[ap].timeframe.clone());
-                    close_ov = true;
                 }
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close_ov = true; }
                 ui.add_space(8.0);
             });
-        if close_ov { panes[ap].overlay_editing = false; panes[ap].overlay_input.clear(); }
+        if delete_ov {
+            if let Some(ei) = editing_existing {
+                if ei < panes[ap].symbol_overlays.len() {
+                    panes[ap].symbol_overlays.remove(ei);
+                }
+            }
+        }
+        if close_ov { panes[ap].overlay_editing = false; panes[ap].overlay_editing_idx = None; panes[ap].overlay_input.clear(); }
     }
 
     // ── Group manager popup ────────────────────────────────────────────────────
@@ -7696,49 +7792,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
         let painter = ui.painter_at(rect);
 
-        // Grid + price labels (with volume-weighted background intensity)
+        // Grid + price labels
         let rng=max_p-min_p; let rs=rng/8.0; let mg=10.0_f32.powf(rs.log10().floor());
         let ns=[1.0,2.0,2.5,5.0,10.0]; let step=ns.iter().map(|&s|s*mg).find(|&s|s>=rs).unwrap_or(rs);
-        // Pre-compute max volume hit count across all grid levels for normalization
-        let vis_start = vs.floor() as usize;
-        let vis_end = (end as usize).min(n);
         let mut p=(min_p/step).ceil()*step;
-        let mut vol_max_hits: f32 = 1.0;
-        {
-            let mut tp = p;
-            while tp <= max_p {
-                let mut hits: f32 = 0.0;
-                for bi in vis_start..vis_end {
-                    let b = &chart.bars[bi];
-                    if b.low <= tp + step * 0.5 && b.high >= tp - step * 0.5 {
-                        hits += b.volume;
-                    }
-                }
-                if hits > vol_max_hits { vol_max_hits = hits; }
-                tp += step;
-            }
-        }
         while p<=max_p { let y=py(p);
             painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
             if watchlist.show_y_axis {
-                // Volume-weighted background bar behind price label
-                let mut vol_hits: f32 = 0.0;
-                for bi in vis_start..vis_end {
-                    let b = &chart.bars[bi];
-                    if b.low <= p + step * 0.5 && b.high >= p - step * 0.5 {
-                        vol_hits += b.volume;
-                    }
-                }
-                let vol_ratio = (vol_hits / vol_max_hits).clamp(0.0, 1.0);
-                let vol_alpha = (10.0 + vol_ratio * 30.0) as u8; // 10–40 alpha
-                let vol_bar_w = pr * vol_ratio; // width proportional to volume
-                if vol_bar_w > 1.0 {
-                    painter.rect_filled(
-                        egui::Rect::from_min_size(egui::pos2(rect.left() + cw, y - 6.0), egui::vec2(vol_bar_w, 12.0)),
-                        0.0,
-                        egui::Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), vol_alpha),
-                    );
-                }
                 let d=if p>=10.0{2}else{4};
                 chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", p, d);
                 painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),t.dim);
@@ -8204,16 +8264,17 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
         } // end candle batch block
 
-        // ── Multi-symbol overlay ──────────────────────────────────────────────
-        if !chart.overlay_symbol.is_empty() && !chart.overlay_bars.is_empty() {
+        // ── Multi-symbol overlays ─────────────────────────────────────────────
+        for ov in &chart.symbol_overlays {
+            if ov.symbol.is_empty() || ov.bars.is_empty() { continue; }
             let start_idx = vs.floor() as usize;
             let end_idx = end as usize;
             let main_base = chart.bars.get(start_idx).map(|b| b.close).unwrap_or(1.0);
-            let overlay_base = chart.overlay_bars.get(start_idx).map(|b| b.close).unwrap_or(1.0);
+            let overlay_base = ov.bars.get(start_idx).map(|b| b.close).unwrap_or(1.0);
             if main_base > 0.0 && overlay_base > 0.0 {
-                let overlay_color = egui::Color32::from_rgb(255, 140, 60);
+                let overlay_color = hex_to_color(&ov.color, 1.0);
                 for i in start_idx..end_idx.saturating_sub(1) {
-                    if let (Some(ob0), Some(ob1)) = (chart.overlay_bars.get(i), chart.overlay_bars.get(i+1)) {
+                    if let (Some(ob0), Some(ob1)) = (ov.bars.get(i), ov.bars.get(i+1)) {
                         let pct0 = (ob0.close / overlay_base - 1.0) * main_base + main_base;
                         let pct1 = (ob1.close / overlay_base - 1.0) * main_base + main_base;
                         let y0 = py(pct0); let y1 = py(pct1);
@@ -8226,12 +8287,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 // Badge in the middle of the overlay line
                 let badge_bar = (start_idx + end_idx) / 2;
-                if let Some(ob) = chart.overlay_bars.get(badge_bar) {
+                if let Some(ob) = ov.bars.get(badge_bar) {
                     let pct_mid = (ob.close / overlay_base - 1.0) * main_base + main_base;
                     let badge_x = bx(badge_bar as f32);
                     let badge_y = py(pct_mid);
                     if badge_y.is_finite() {
-                        let badge_text = &chart.overlay_symbol;
+                        let badge_text = &ov.symbol;
                         let bg = painter.layout_no_wrap(badge_text.to_string(), egui::FontId::monospace(8.0), overlay_color);
                         let br = egui::Rect::from_center_size(egui::pos2(badge_x, badge_y - 10.0), bg.size() + egui::vec2(8.0, 4.0));
                         painter.rect_filled(br, 3.0, egui::Color32::from_rgba_unmultiplied(overlay_color.r(), overlay_color.g(), overlay_color.b(), 30));
@@ -8241,7 +8302,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 // Right edge label
                 painter.text(egui::pos2(rect.left() + cw + 3.0, py(main_base)),
-                    egui::Align2::LEFT_CENTER, &chart.overlay_symbol,
+                    egui::Align2::LEFT_CENTER, &ov.symbol,
                     egui::FontId::monospace(8.0), overlay_color);
             }
         }
@@ -15338,7 +15399,7 @@ impl ApplicationHandler for App {
                     let sym = match &cmd {
                         ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
                         ChartCommand::IndicatorSourceBars { .. } => None,
-                        ChartCommand::OverlayBars { symbol, .. } => { let s = symbol.clone(); for p in cw.panes.iter_mut() { if p.overlay_symbol == s { p.process(cmd.clone()); } } continue; }
+                        ChartCommand::OverlayBars { symbol, .. } => { let s = symbol.clone(); for p in cw.panes.iter_mut() { if p.symbol_overlays.iter().any(|o| o.symbol == s) { p.process(cmd.clone()); } } continue; }
                         _ => None,
                     };
                     if let Some(s) = sym {
