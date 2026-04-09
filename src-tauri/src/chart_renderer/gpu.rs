@@ -5651,14 +5651,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                                 &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.6));
 
                                             // ── Sparkline (tiny inline price chart) ──
-                                            if item_price_history.len() >= 2 {
+                                            if item_price_history.len() >= 8 { // need enough points for a visible chart
                                                 let spark_w = 40.0_f32;
                                                 let spark_h = 14.0_f32;
                                                 let spark_x = mid_x + change_str.len() as f32 * 8.0 + 6.0;
                                                 let spark_top = y_c - spark_h / 2.0;
                                                 let pmin = item_price_history.iter().cloned().fold(f32::MAX, f32::min);
                                                 let pmax = item_price_history.iter().cloned().fold(f32::MIN, f32::max);
-                                                let prng = (pmax - pmin).max(0.001);
+                                                let prng = pmax - pmin;
+                                                if prng < 0.001 { continue; } // skip flat lines
                                                 let spark_col = if *item_price_history.last().unwrap() >= *item_price_history.first().unwrap() { t.bull } else { t.bear };
                                                 let pts: Vec<egui::Pos2> = item_price_history.iter().enumerate().map(|(pi, &pv)| {
                                                     let px = spark_x + (pi as f32 / (item_price_history.len() - 1) as f32) * spark_w;
