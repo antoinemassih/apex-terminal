@@ -12783,7 +12783,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             egui::pos2(rect.left() + shrink_left, rect.top() + pt + shrink_top),
             egui::vec2(cw + pr - shrink_left - shrink_right, ch - shrink_top - shrink_bottom),
         );
-        let resp = ui.allocate_rect(interact_rect, egui::Sense::click_and_drag());
+        // Skip chart interaction when pointer is over a floating window (order panel, DOM, etc.)
+        let pointer_over_window = ctx.memory(|m| m.any_popup_open())
+            || (watchlist.order_entry_open && ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| {
+                let abs_pos = if chart.order_panel_pos.y < 0.0 {
+                    egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + ch + chart.order_panel_pos.y)
+                } else {
+                    egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + chart.order_panel_pos.y)
+                };
+                let panel_w = if chart.order_advanced { 300.0 } else { 230.0 };
+                egui::Rect::from_min_size(abs_pos, egui::vec2(panel_w, 300.0)).contains(p)
+            }));
+        let chart_sense = if pointer_over_window { egui::Sense::hover() } else { egui::Sense::click_and_drag() };
+        let resp = ui.allocate_rect(interact_rect, chart_sense);
 
         // Zone geometry (no allocate_rect — just math)
         let xaxis_y_top = rect.top() + pt + ch - 18.0;
