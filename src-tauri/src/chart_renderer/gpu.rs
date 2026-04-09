@@ -11379,33 +11379,21 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
                     .corner_radius(4.0))
                 .show(ctx, |ui| {
-                    // ── Header bar: armed toggle | ORDER | separator | +/- ──
+                    // ── Header bar — all clicks via raw pointer ──
                     let header_resp = ui.horizontal(|ui| {
                         ui.set_min_width(panel_w);
-                        let header_rect = ui.max_rect();
+                        let hr = ui.max_rect();
                         ui.painter().rect_filled(
-                            egui::Rect::from_min_size(header_rect.min, egui::vec2(panel_w, 22.0)),
+                            egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 22.0)),
                             egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
                             color_alpha(t.toolbar_border, 30));
                         ui.add_space(4.0);
-                        // Armed toggle (inline in header)
+                        // Armed icon (visual only — click via raw pointer below)
                         let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
                         let armed_color = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.4) };
-                        let armed_resp = ui.add(egui::Button::new(egui::RichText::new(armed_icon).size(11.0).color(armed_color))
-                            .fill(if chart.armed { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                            .stroke(egui::Stroke::NONE).min_size(egui::vec2(18.0, 18.0)).corner_radius(2.0));
-                        if armed_resp.clicked() { chart.armed = !chart.armed; }
-                        if armed_resp.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                            egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new(("armed_tip", pane_idx)), |ui| {
-                                ui.label(egui::RichText::new(if chart.armed { "Armed — sends to IB" } else { "Unarmed — drafts only" }).monospace().size(9.0));
-                            });
-                        }
-                        // Label
+                        ui.label(egui::RichText::new(armed_icon).size(11.0).color(armed_color));
+                        // ORDER label
                         ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
-                        // DOM label (click handled via raw pointer after drag zone)
-                        let dom_color = if chart.dom_open { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        ui.label(egui::RichText::new("DOM").monospace().size(8.0).color(dom_color));
                         // Position indicator
                         if let Some((_, ref positions, _)) = account_data_cached {
                             if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
@@ -11416,24 +11404,53 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(4.0);
-                            // Expand/collapse advanced toggle
+                            // +/- icon (visual only)
                             let exp_icon = if adv { Icon::MINUS } else { Icon::PLUS };
-                            let exp_resp = ui.add(egui::Button::new(egui::RichText::new(exp_icon).size(10.0).color(t.dim.gamma_multiply(0.5)))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 18.0)).corner_radius(2.0));
-                            if exp_resp.clicked() { chart.order_advanced = !chart.order_advanced; }
-                            if exp_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                            // Separator
+                            ui.label(egui::RichText::new(exp_icon).size(10.0).color(t.dim.gamma_multiply(0.5)));
                             ui.add(egui::Separator::default().spacing(2.0));
+                            // DOM label (visual only)
+                            let dom_col = if chart.dom_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            ui.label(egui::RichText::new("DOM").monospace().size(8.0).color(dom_col));
                         });
                     });
-                    // Drag only on header (no click_and_drag — buttons need clicks)
+                    // All header interactions via raw pointer (avoids drag stealing clicks)
                     let hdr_rect = header_resp.response.rect;
+                    if let Some(mpos) = ui.input(|i| i.pointer.latest_pos()) {
+                        if hdr_rect.contains(mpos) {
+                            let released = ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
+                            let dbl = ui.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+                            // Armed toggle: left 22px
+                            let armed_rect = egui::Rect::from_min_size(hdr_rect.min, egui::vec2(22.0, 22.0));
+                            if armed_rect.contains(mpos) {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if released { chart.armed = !chart.armed; }
+                            }
+                            // DOM button: right area
+                            else if mpos.x > hdr_rect.right() - 50.0 && mpos.x < hdr_rect.right() - 20.0 {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if released { chart.dom_open = !chart.dom_open; }
+                            }
+                            // +/- toggle: rightmost 20px
+                            else if mpos.x > hdr_rect.right() - 20.0 {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if released { chart.order_advanced = !chart.order_advanced; }
+                            }
+                            // Double-click anywhere else: collapse
+                            else if dbl {
+                                chart.order_collapsed = true;
+                            }
+                            // Drag
+                            else {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                            }
+                        }
+                    }
+                    // Drag on header
                     let drag_resp = ui.interact(hdr_rect, egui::Id::new(("order_panel_drag", pane_idx)), egui::Sense::drag());
                     if drag_resp.dragged() {
                         let delta = drag_resp.drag_delta();
                         chart.order_panel_pos.x += delta.x;
                         chart.order_panel_pos.y += delta.y;
-                        // Clamp to chart area
                         chart.order_panel_pos.x = chart.order_panel_pos.x.clamp(0.0, (cw - panel_w).max(0.0));
                         if chart.order_panel_pos.y < 0.0 {
                             chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(-(ch - 30.0), -30.0);
@@ -11441,31 +11458,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(0.0, (ch - 30.0).max(0.0));
                         }
                     }
-                    if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
-
-                    // DOM button — raw pointer click (above drag zone)
-                    {
-                        let dom_rect = egui::Rect::from_min_size(
-                            egui::pos2(hdr_rect.right() - 60.0, hdr_rect.top() + 2.0),
-                            egui::vec2(30.0, 18.0));
-                        let dom_col = if chart.dom_open { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        let dom_bg = if chart.dom_open { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
-                        ui.painter().rect_filled(dom_rect, 2.0, dom_bg);
-                        ui.painter().text(dom_rect.center(), egui::Align2::CENTER_CENTER, "DOM",
-                            egui::FontId::monospace(8.0), dom_col);
-                        if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
-                            if dom_rect.contains(pos) {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-                                    chart.dom_open = !chart.dom_open;
-                                }
-                            }
-                        }
-                    }
 
                     // ── DOM ladder (when open, between header and order body) ──
                     if chart.dom_open {
-                        let dom_scroll_h = (ch * 0.75).min(700.0).max(350.0);
+                        let dom_scroll_h = 21.0 * 20.0 + 20.0; // 10 above + current + 10 below at 20px each
                         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
                         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
                         let tick = if is_index { 1.0_f32 } else { 0.01 };
@@ -11488,7 +11484,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("ASK").monospace().size(8.0).color(t.bear.gamma_multiply(0.4))));
                         });
                         egui::ScrollArea::vertical().max_height(dom_scroll_h).auto_shrink([false, false]).show(ui, |ui| {
-                            let rows_above = 20; let rows_below = 20;
+                            let rows_above = 10; let rows_below = 10;
                             for row in (-rows_above..=rows_below).rev() {
                                 let price = center_price + (row as f32 * tick * -1.0);
                                 let is_current = (price - center_price).abs() < tick * 0.5;
