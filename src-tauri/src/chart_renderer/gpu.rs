@@ -6588,8 +6588,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             for (di, &div_x) in v_dividers.iter().enumerate() {
                 // Large hit area biased toward chart side (left, away from Y-axis)
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(div_x - 16.0, full_rect.top()),
-                    egui::vec2(20.0, full_rect.height()));
+                    egui::pos2(div_x - 24.0, full_rect.top()),
+                    egui::vec2(30.0, full_rect.height()));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -6606,8 +6606,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             for (di, &div_y) in h_dividers.iter().enumerate() {
                 // Large hit area biased upward (away from bottom axis area)
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(full_rect.left(), div_y - 16.0),
-                    egui::vec2(full_rect.width(), 20.0));
+                    egui::pos2(full_rect.left(), div_y - 24.0),
+                    egui::vec2(full_rect.width(), 30.0));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
