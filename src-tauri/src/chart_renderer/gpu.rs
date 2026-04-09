@@ -344,18 +344,20 @@ impl Layout {
                     let w0 = total_w * split_h.clamp(0.15, 0.85);
                     vec![w0, total_w - w0]
                 } else if cols == 3 {
-                    let w0 = total_w * (split_h * 0.9).clamp(0.15, 0.5); // first col
+                    let w0 = total_w * (split_h * 0.9).clamp(0.15, 0.5);
                     let rest = total_w - w0;
-                    vec![w0, rest / 2.0, rest / 2.0]
+                    let w1 = rest * split_h2.clamp(0.2, 0.8);
+                    vec![w0, w1, rest - w1]
                 } else { vec![total_w] };
                 // Row heights: for 2 rows use split_v, for 3 rows equal
                 let row_heights: Vec<f32> = if rows == 2 {
                     let h0 = total_h * split_v.clamp(0.15, 0.85);
                     vec![h0, total_h - h0]
                 } else if rows == 3 {
-                    let h0 = total_h * (split_v * 0.9).clamp(0.15, 0.5); // first row
+                    let h0 = total_h * (split_v * 0.9).clamp(0.15, 0.5);
                     let rest = total_h - h0;
-                    vec![h0, rest / 2.0, rest / 2.0]
+                    let h1 = rest * split_v2.clamp(0.2, 0.8);
+                    vec![h0, h1, rest - h1]
                 } else { vec![total_h] };
 
                 let mut rects = Vec::new();
