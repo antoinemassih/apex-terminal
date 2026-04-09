@@ -7647,50 +7647,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
 
-            // Opt button in pane header
-            {
-                let opt_x = sym_label_x + sym_text_w + 10.0
-                    + if chart.bars.len() > 1 { 60.0 } else { 0.0 }; // space for change badge
-                let opt_rect = egui::Rect::from_min_size(
-                    egui::pos2(opt_x, header_rect.top() + 1.0),
-                    egui::vec2(26.0, pane_top_offset - 2.0));
-                let opt_resp = ui.allocate_rect(opt_rect, egui::Sense::click());
-                let opt_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.4) };
-                let opt_bg = if chart.show_strikes_overlay { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
-                if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                header_painter.rect_filled(opt_rect, 3.0, opt_bg);
-                header_painter.text(opt_rect.center(), egui::Align2::CENTER_CENTER, "O",
-                    egui::FontId::monospace(9.0), opt_col);
-                if opt_resp.clicked() {
-                    chart.show_strikes_overlay = !chart.show_strikes_overlay;
-                    if chart.show_strikes_overlay && !chart.overlay_chain_loading {
-                        let needs_fetch = chart.overlay_chain_symbol != chart.symbol
-                            || (chart.overlay_calls.is_empty() && chart.overlay_puts.is_empty());
-                        if needs_fetch {
-                            chart.overlay_chain_loading = true;
-                            let sym = chart.symbol.clone();
-                            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                            fetch_overlay_chain_background(sym, price);
-                        }
-                    }
-                }
-            }
-
-            // OVL button in pane header (add symbol overlay)
+            // OVL button in pane header (symbol overlay manager)
             {
                 let ovl_x = sym_label_x + sym_text_w + 10.0
-                    + if chart.bars.len() > 1 { 60.0 } else { 0.0 } + 28.0; // after change badge + O button
+                    + if chart.bars.len() > 1 { 60.0 } else { 0.0 };
                 let has_overlays = !chart.symbol_overlays.is_empty();
                 let ovl_rect = egui::Rect::from_min_size(
                     egui::pos2(ovl_x, header_rect.top() + 1.0),
                     egui::vec2(30.0, pane_top_offset - 2.0));
                 let ovl_resp = ui.allocate_rect(ovl_rect, egui::Sense::click());
-                let ovl_col = if chart.overlay_editing { t.accent } else if has_overlays { t.dim } else { t.dim.gamma_multiply(0.4) };
-                let ovl_bg = if chart.overlay_editing { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                let ovl_col = if chart.overlay_editing { t.accent }
+                    else if has_overlays { egui::Color32::from_rgb(180, 180, 195) }
+                    else { t.dim.gamma_multiply(0.6) };
+                let ovl_bg = if chart.overlay_editing { color_alpha(t.accent, 30) }
+                    else if has_overlays { color_alpha(t.toolbar_border, 30) }
+                    else { egui::Color32::TRANSPARENT };
                 if ovl_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 header_painter.rect_filled(ovl_rect, 3.0, ovl_bg);
-                header_painter.text(ovl_rect.center(), egui::Align2::CENTER_CENTER, "+OV",
-                    egui::FontId::monospace(8.0), ovl_col);
+                header_painter.text(ovl_rect.center(), egui::Align2::CENTER_CENTER,
+                    if has_overlays { Icon::CHART_LINE } else { "+OV" },
+                    egui::FontId::monospace(if has_overlays { 10.0 } else { 8.0 }), ovl_col);
                 if ovl_resp.clicked() {
                     chart.overlay_editing = !chart.overlay_editing;
                     if chart.overlay_editing { chart.overlay_editing_idx = None; }
@@ -8582,14 +8558,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // ── Symbol overlay button on chart (top-right) ──
-        let overlay_btn_x = rect.left() + cw - 18.0;
-        let overlay_btn_y = rect.top() + pt + 18.0;
-        let ovl_chart_x = overlay_btn_x;
-        let ovl_chart_y = overlay_btn_y;
-        {
+        // ── Symbol overlay button on chart (only in single-pane mode where there's no header) ──
+        let ovl_chart_x = rect.left() + cw - 18.0;
+        let ovl_chart_y = rect.top() + pt + 18.0;
+        if visible_count <= 1 {
             let has_ov = !chart.symbol_overlays.is_empty();
-            let ovl_col = if chart.overlay_editing { t.accent } else if has_ov { t.accent.gamma_multiply(0.7) } else { t.dim.gamma_multiply(0.4) };
+            let ovl_col = if chart.overlay_editing { t.accent } else if has_ov { t.accent.gamma_multiply(0.7) } else { t.dim.gamma_multiply(0.5) };
             let ovl_bg = if chart.overlay_editing || has_ov { color_alpha(t.toolbar_bg, 240) } else { color_alpha(t.toolbar_bg, 200) };
             painter.circle_filled(egui::pos2(ovl_chart_x, ovl_chart_y), 10.0, ovl_bg);
             painter.circle_stroke(egui::pos2(ovl_chart_x, ovl_chart_y), 10.0, egui::Stroke::new(1.0, ovl_col));
@@ -12261,9 +12235,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if chart.measuring { chart.measuring = false; chart.measure_start = None; chart.measure_active = false; }
         }
 
-        // ── PRIORITY 0: Strikes overlay circle button click ──
-        // ── PRIORITY 0: Overlay manager button click ──
+        // ── PRIORITY 0: Overlay manager button click (single-pane only) ──
         let mut event_consumed = false;
+        if visible_count <= 1 {
         if let Some(pos) = hover_pos {
             if egui::pos2(ovl_chart_x, ovl_chart_y).distance(pos) < 12.0 {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -12274,6 +12248,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
             }
         }
+        } // end single-pane guard
 
         // ── PRIORITY 1: Active drags (always finish, never interrupted) ──────
 
