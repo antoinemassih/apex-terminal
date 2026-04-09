@@ -11461,7 +11461,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── DOM ladder (when open, between header and order body) ──
                     if chart.dom_open {
-                        let dom_scroll_h = 21.0 * 20.0 + 20.0; // 10 above + current + 10 below at 20px each
+                        let dom_scroll_h = 21.0 * 22.0; // 10 above + current + 10 below at 22px each
                         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
                         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
                         let tick = if is_index { 1.0_f32 } else { 0.01 };
@@ -11495,29 +11495,28 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 let is_entry = position_entry.map(|ep| (ep - price).abs() < tick * 0.5).unwrap_or(false);
                                 let row_h = 20.0;
                                 ui.horizontal(|ui| {
-                                    ui.set_min_width(panel_w - 4.0);
+                                    ui.spacing_mut().item_spacing.x = 0.0;
                                     let rs = ui.cursor().min;
-                                    let rr = egui::Rect::from_min_size(rs, egui::vec2(panel_w - 4.0, row_h));
+                                    let rr = egui::Rect::from_min_size(rs, egui::vec2(panel_w - 8.0, row_h));
                                     let rh = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| rr.contains(p));
                                     let bg = if is_current { color_alpha(t.accent, 35) } else if rh { color_alpha(t.toolbar_border, 30) } else { egui::Color32::TRANSPARENT };
                                     ui.painter().rect_filled(rr, 0.0, bg);
                                     if has_buy { ui.painter().rect_filled(rr, 0.0, color_alpha(t.bull, 25)); }
                                     if has_sell { ui.painter().rect_filled(rr, 0.0, color_alpha(t.bear, 25)); }
                                     if is_entry { ui.painter().rect_stroke(rr, 0.0, egui::Stroke::new(1.0, color_alpha(egui::Color32::from_rgb(255, 200, 50), 150)), egui::StrokeKind::Inside); }
-                                    let col_w = (panel_w - 4.0) / 3.0;
-                                    ui.add_space(2.0);
+                                    let col_w = (panel_w - 8.0) / 3.0;
                                     let bc = if rh { t.bull } else { t.bull.gamma_multiply(0.6) };
                                     let bbg = if rh { color_alpha(t.bull, 15) } else { egui::Color32::TRANSPARENT };
-                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(10.0).color(bc)).fill(bbg).frame(false).min_size(egui::vec2(col_w - 4.0, row_h))).clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(9.0).color(bc)).fill(bbg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
                                         let id = chart.next_order_id; chart.next_order_id += 1;
                                         chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                                     }
                                     let pc = if is_current { egui::Color32::WHITE } else if price > current_price { t.bull.gamma_multiply(0.7) } else { t.bear.gamma_multiply(0.7) };
                                     let pf = if tick >= 1.0 { format!("{:.0}", price) } else { format!("{:.2}", price) };
-                                    ui.add_sized(egui::vec2(col_w, row_h), egui::Label::new(egui::RichText::new(pf).monospace().size(10.0).strong().color(pc)));
+                                    ui.add_sized(egui::vec2(col_w, row_h), egui::Label::new(egui::RichText::new(pf).monospace().size(9.0).strong().color(pc)));
                                     let ac = if rh { t.bear } else { t.bear.gamma_multiply(0.6) };
                                     let abg = if rh { color_alpha(t.bear, 15) } else { egui::Color32::TRANSPARENT };
-                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(10.0).color(ac)).fill(abg).frame(false).min_size(egui::vec2(col_w - 4.0, row_h))).clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(9.0).color(ac)).fill(abg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
                                         let id = chart.next_order_id; chart.next_order_id += 1;
                                         chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                                     }
