@@ -96,8 +96,11 @@ enum Layout {
     FourL,      // 1 big left + 3 stacked right
     FiveC,      // 2 left + 1 big center + 2 right
     FiveL,      // 2 stacked left + 3 stacked right
+    FiveW,      // 1 wide top + 2×2 bottom (all horizontal)
+    FiveR,      // 2 top + 1 middle + 2 bottom (all horizontal rows)
     Six, SixH,
     SixL,       // 2 big stacked left + 4 stacked right
+    Seven,      // 1 big top + 6 bottom (3 cols × 2 rows)
     EightH,     // 4 horizontal stacked left + 4 horizontal stacked right
     Nine,
 }
@@ -106,20 +109,21 @@ impl Layout {
     fn max_panes(self) -> usize { match self {
         Layout::One=>1, Layout::Two|Layout::TwoH=>2,
         Layout::Three|Layout::ThreeL=>3, Layout::Four|Layout::FourL=>4,
-        Layout::FiveC|Layout::FiveL=>5, Layout::Six|Layout::SixH|Layout::SixL=>6,
-        Layout::EightH=>8, Layout::Nine=>9,
+        Layout::FiveC|Layout::FiveL|Layout::FiveW|Layout::FiveR=>5,
+        Layout::Six|Layout::SixH|Layout::SixL=>6,
+        Layout::Seven=>7, Layout::EightH=>8, Layout::Nine=>9,
     }}
     fn label(self) -> &'static str { match self {
         Layout::One=>"1", Layout::Two=>"2", Layout::TwoH=>"2H",
         Layout::Three=>"3", Layout::ThreeL=>"3L",
         Layout::Four=>"4", Layout::FourL=>"4L",
-        Layout::FiveC=>"5C", Layout::FiveL=>"5L",
+        Layout::FiveC=>"5C", Layout::FiveL=>"5L", Layout::FiveW=>"5W", Layout::FiveR=>"5R",
         Layout::Six=>"6", Layout::SixH=>"6H", Layout::SixL=>"6L",
-        Layout::EightH=>"8H", Layout::Nine=>"9",
+        Layout::Seven=>"7", Layout::EightH=>"8H", Layout::Nine=>"9",
     }}
     /// Returns (col, row) grid dimensions for each pane in the layout, given the total rect.
     /// For Layout::Three, returns a custom arrangement: 1 full-width top (60%) + 2 bottom (40%).
-    fn pane_rects(self, rect: egui::Rect, count: usize, split_h: f32, split_v: f32) -> Vec<egui::Rect> {
+    fn pane_rects(self, rect: egui::Rect, count: usize, split_h: f32, split_v: f32, split_h2: f32, split_v2: f32) -> Vec<egui::Rect> {
         if count == 0 { return vec![]; }
         let gap = 1.0;
         match self {
@@ -260,6 +264,64 @@ impl Layout {
                 }
                 rects
             }
+            Layout::FiveW if count >= 2 => {
+                // 1 wide top + 2 cols × 2 rows bottom (all horizontal)
+                let top_h = (rect.height() - gap) * split_v.clamp(0.15, 0.85);
+                let bot_h = rect.height() - gap - top_h;
+                let mut rects = vec![egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), top_h))];
+                let by = rect.top() + top_h + gap;
+                let half_w = (rect.width() - gap) / 2.0;
+                let half_bh = (bot_h - gap) / 2.0;
+                let n_bot = (count - 1).min(4);
+                // 2 cols × 2 rows: [TL, TR, BL, BR]
+                let positions = [(0.0, 0.0), (half_w + gap, 0.0), (0.0, half_bh + gap), (half_w + gap, half_bh + gap)];
+                for i in 0..n_bot {
+                    let (dx, dy) = positions[i];
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rect.left() + dx, by + dy), egui::vec2(half_w, half_bh)));
+                }
+                rects
+            }
+            Layout::FiveR if count >= 2 => {
+                // 2 top + 1 middle + 2 bottom (all horizontal rows)
+                let total_h = rect.height() - gap * 2.0;
+                let row_h = total_h / 3.0;
+                let half_w = (rect.width() - gap) / 2.0;
+                let mut rects = Vec::new();
+                // Top row: 2 panes
+                let n_top = (count).min(2);
+                for i in 0..n_top {
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rect.left() + i as f32 * (half_w + gap), rect.top()), egui::vec2(half_w, row_h)));
+                }
+                // Middle row: 1 full-width pane
+                if count > 2 {
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + row_h + gap), egui::vec2(rect.width(), row_h)));
+                }
+                // Bottom row: 2 panes
+                let n_bot = count.saturating_sub(3).min(2);
+                for i in 0..n_bot {
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rect.left() + i as f32 * (half_w + gap), rect.top() + (row_h + gap) * 2.0), egui::vec2(half_w, row_h)));
+                }
+                rects
+            }
+            Layout::Seven if count >= 2 => {
+                // 1 big top + 6 bottom (3 cols × 2 rows)
+                let top_h = (rect.height() - gap) * split_v.clamp(0.15, 0.85);
+                let bot_h = rect.height() - gap - top_h;
+                let mut rects = vec![egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), top_h))];
+                let by = rect.top() + top_h + gap;
+                let col_w = (rect.width() - gap * 2.0) / 3.0;
+                let half_bh = (bot_h - gap) / 2.0;
+                let n_bot = (count - 1).min(6);
+                // 3 cols × 2 rows: col0r0, col1r0, col2r0, col0r1, col1r1, col2r1
+                for i in 0..n_bot {
+                    let col = i % 3;
+                    let row = i / 3;
+                    rects.push(egui::Rect::from_min_size(
+                        egui::pos2(rect.left() + col as f32 * (col_w + gap), by + row as f32 * (half_bh + gap)),
+                        egui::vec2(col_w, half_bh)));
+                }
+                rects
+            }
             _ => {
                 let (cols, rows) = match self {
                     Layout::One => (1, 1),
@@ -267,9 +329,10 @@ impl Layout {
                     Layout::TwoH => (1, 2),
                     Layout::Three | Layout::ThreeL => (2, 2),
                     Layout::Four | Layout::FourL => (2, 2),
-                    Layout::FiveC | Layout::FiveL => (3, 2),
+                    Layout::FiveC | Layout::FiveL | Layout::FiveW | Layout::FiveR => (3, 2),
                     Layout::Six | Layout::SixL => (3, 2),
                     Layout::SixH => (2, 3),
+                    Layout::Seven => (3, 3),
                     Layout::EightH => (4, 2),
                     Layout::Nine => (3, 3),
                 };
@@ -318,9 +381,9 @@ const ALL_LAYOUTS: &[Layout] = &[
     Layout::One, Layout::Two, Layout::TwoH,
     Layout::Three, Layout::ThreeL,
     Layout::Four, Layout::FourL,
-    Layout::FiveC, Layout::FiveL,
+    Layout::FiveC, Layout::FiveL, Layout::FiveW, Layout::FiveR,
     Layout::Six, Layout::SixH, Layout::SixL,
-    Layout::EightH, Layout::Nine,
+    Layout::Seven, Layout::EightH, Layout::Nine,
 ];
 
 // ─── Indicators ──────────────────────────────────────────────────────────────
@@ -6796,7 +6859,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.bg)).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
         let visible_count = layout.max_panes().min(panes.len());
-        let pane_rects = layout.pane_rects(full_rect, visible_count, watchlist.pane_split_h, watchlist.pane_split_v);
+        let pane_rects = layout.pane_rects(full_rect, visible_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2);
 
         // ── Pane divider drag handles (geometry-based, works for all layouts) ──
         if visible_count > 1 {
@@ -6841,7 +6904,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if div_resp.dragged() {
                     let dx = div_resp.drag_delta().x;
                     let ratio = dx / full_rect.width();
-                    watchlist.pane_split_h = (watchlist.pane_split_h + ratio).clamp(0.15, 0.85);
+                    // First vertical divider → split_h, second → split_h2
+                    if di == 0 {
+                        watchlist.pane_split_h = (watchlist.pane_split_h + ratio).clamp(0.15, 0.85);
+                    } else {
+                        watchlist.pane_split_h2 = (watchlist.pane_split_h2 + ratio).clamp(0.15, 0.85);
+                    }
                     watchlist.pane_divider_dragging = true;
                 }
                 if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
@@ -6865,7 +6933,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if div_resp.dragged() {
                     let dy = div_resp.drag_delta().y;
                     let ratio = dy / full_rect.height();
-                    watchlist.pane_split_v = (watchlist.pane_split_v + ratio).clamp(0.15, 0.85);
+                    // First horizontal divider → split_v, second → split_v2
+                    if di == 0 {
+                        watchlist.pane_split_v = (watchlist.pane_split_v + ratio).clamp(0.15, 0.85);
+                    } else {
+                        watchlist.pane_split_v2 = (watchlist.pane_split_v2 + ratio).clamp(0.15, 0.85);
+                    }
                     watchlist.pane_divider_dragging = true;
                 }
                 if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
@@ -13726,8 +13799,10 @@ struct Watchlist {
     workspace_save_name: String,
     pending_workspace_load: Option<String>,
     // Pane split ratios (for resizable panes)
-    pane_split_h: f32, // horizontal split ratio (0.0-1.0) for Two/TwoH layouts. 0.5 = equal.
-    pane_split_v: f32, // vertical split ratio for TwoH layout
+    pane_split_h: f32,  // primary vertical divider ratio
+    pane_split_v: f32,  // primary horizontal divider ratio
+    pane_split_h2: f32, // secondary vertical divider ratio (for 3-column layouts)
+    pane_split_v2: f32, // secondary horizontal divider ratio (for 3-row layouts)
     pane_divider_dragging: bool,
     // Command palette
     cmd_palette_open: bool,
@@ -13764,7 +13839,7 @@ impl Watchlist {
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
-               pane_split_h: 0.5, pane_split_v: 0.5, pane_divider_dragging: false,
+               pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5, pane_divider_dragging: false,
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1 }
     }
 
@@ -14665,9 +14740,10 @@ impl ApplicationHandler for App {
                             let (new_panes, new_layout) = {
                                 let layout = match json.get("layout").and_then(|v| v.as_str()).unwrap_or("1") {
                                     "2" => Layout::Two, "2H" => Layout::TwoH, "3" => Layout::Three, "3L" => Layout::ThreeL,
-                                    "4" => Layout::Four, "4L" => Layout::FourL, "5C" => Layout::FiveC, "5L" => Layout::FiveL,
+                                    "4" => Layout::Four, "4L" => Layout::FourL,
+                                    "5C" => Layout::FiveC, "5L" => Layout::FiveL, "5W" => Layout::FiveW, "5R" => Layout::FiveR,
                                     "6" => Layout::Six, "6H" => Layout::SixH, "6L" => Layout::SixL,
-                                    "8H" => Layout::EightH, "9" => Layout::Nine, _ => Layout::One,
+                                    "7" => Layout::Seven, "8H" => Layout::EightH, "9" => Layout::Nine, _ => Layout::One,
                                 };
                                 let theme_idx = json.get("theme_idx").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
                                 let recents: Vec<(String, String)> = json.get("recent_symbols").and_then(|v| v.as_array()).map(|arr| {
