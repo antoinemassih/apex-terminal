@@ -3549,12 +3549,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.label(egui::RichText::new("Font Scale").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
-                        // Display as 60-160% but internally 1.2-2.2 ppp
-                        let display_pct = ((watchlist.font_scale - 1.2) / 0.02).round() as i32 + 60;
-                        let mut dp = display_pct;
+                        // Display 60-160% maps to internal 1.2-2.2 ppp (step 0.01 per %)
+                        let display_pct = ((watchlist.font_scale - 1.2) * 100.0).round() as i32 + 60;
+                        let mut dp = display_pct.clamp(60, 160);
                         if ui.add(egui::DragValue::new(&mut dp).range(60..=160).suffix("%").speed(1)
                             .custom_formatter(|v, _| format!("{}%", v as i32))).changed() {
-                            watchlist.font_scale = 1.2 + (dp - 60) as f32 * 0.02;
+                            watchlist.font_scale = 1.2 + (dp - 60) as f32 * 0.01;
                         }
                     });
                 });
