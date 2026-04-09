@@ -40,7 +40,7 @@ pollster = "0.4"
 egui = "0.31"
 egui-wgpu = "0.31"
 egui-winit = "0.31"
-egui-phosphor = { version = "0.9", features = ["regular", "bold"] }
+egui-phosphor = { version = "0.9", features = ["regular", "bold", "fill"] }
 
 # Bar data caching
 redis = { version = "0.27", features = ["tokio-comp"] }

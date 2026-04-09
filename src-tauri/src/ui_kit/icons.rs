@@ -4,6 +4,7 @@
 
 use egui_phosphor::regular as ph;
 use egui_phosphor::bold as ph_bold;
+use egui_phosphor::fill as ph_fill;
 
 /// Icon constants — all from Phosphor Regular set.
 /// Add new icons here as needed; they render via the embedded Phosphor font.
@@ -68,7 +69,7 @@ impl Icon {
     pub const PULSE: &'static str = ph::PULSE;
     pub const NOTEBOOK: &'static str = ph::NOTEBOOK;
     pub const STAR: &'static str = ph::STAR;
-    pub const STAR_FILL: &'static str = ph_bold::STAR;  // bold variant as "filled" star
+    pub const STAR_FILL: &'static str = ph_fill::STAR;
 
     // Chart
     pub const CHART_LINE: &'static str = ph::CHART_LINE;
