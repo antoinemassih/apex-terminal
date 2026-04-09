@@ -3101,16 +3101,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     // The toolbar zone (y < 36) allows window drag when no widget consumed the click.
     // TB_BTN_CLICKED is set by tb_btn() and explicit toolbar interactions.
     // Window drag + double-click maximize
-    // Check if pointer is in toolbar zone AND no button was clicked
     {
         let btn_clicked = TB_BTN_CLICKED.with(|f| { let v = f.get(); f.set(false); v });
-        let pointer_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
-        let double_clicked = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
-        if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+        let pressed = ctx.input(|i| i.pointer.primary_pressed());
+        let released = ctx.input(|i| i.pointer.primary_released());
+        let dbl = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+        if let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) {
             if pos.y < 36.0 && !btn_clicked {
-                if double_clicked {
+                if dbl {
                     if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
-                } else if pointer_pressed {
+                } else if pressed {
                     if let Some(w) = &win_ref { let _ = w.drag_window(); }
                 }
             }
