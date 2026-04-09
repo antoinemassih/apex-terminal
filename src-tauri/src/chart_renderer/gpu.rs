@@ -11466,19 +11466,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 });
             } // end if !collapsed
 
-            // ── DOM / Price Ladder — slides above order panel, same width ──
+            // ── DOM / Price Ladder — integrated into order panel, above body ──
             if chart.dom_open {
-                let panel_w_dom = if chart.order_advanced { 300.0 } else { 230.0 };
-                let dom_h = (ch * 0.6).min(450.0).max(200.0); // ~3x order panel height
-                let order_abs_y = if chart.order_panel_pos.y < 0.0 {
-                    rect.top() + pt + ch + chart.order_panel_pos.y
-                } else {
-                    rect.top() + pt + chart.order_panel_pos.y
-                };
-                let dom_pos = egui::pos2(
-                    rect.left() + chart.order_panel_pos.x,
-                    order_abs_y - dom_h - 2.0, // directly above order panel
-                );
+                let panel_w_dom = panel_w; // same width as order panel
+                let dom_h = (ch * 0.55).min(400.0).max(180.0);
+                // Render inside the same window — positioned above order body
+                // Use the order panel's abs_pos but shift up by dom_h
+                let dom_pos = egui::pos2(abs_pos.x, abs_pos.y - dom_h);
                 egui::Window::new(format!("dom_{}", pane_idx))
                     .fixed_pos(dom_pos)
                     .fixed_size(egui::vec2(panel_w_dom, dom_h))
@@ -11487,24 +11481,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         .fill(t.toolbar_bg)
                         .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
                         .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
-                        .corner_radius(4.0))
+                        .corner_radius(egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }))
                     .show(ctx, |ui| {
-                        // Header
-                        let hdr_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(panel_w_dom, 20.0));
-                        ui.painter().rect_filled(hdr_rect, egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, color_alpha(t.toolbar_border, 30));
-                        ui.horizontal(|ui| {
-                            ui.add_space(6.0);
-                            ui.label(egui::RichText::new("DOM").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
-                            ui.label(egui::RichText::new(&chart.symbol).monospace().size(9.0).color(t.accent));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.add_space(4.0);
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5)))
-                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                    chart.dom_open = false;
-                                }
-                            });
-                        });
-                        ui.add_space(2.0);
+                        // Drag handle at top — moves entire order panel + DOM unit
+                        let drag_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(panel_w_dom, 16.0));
+                        ui.painter().rect_filled(drag_rect, egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, color_alpha(t.toolbar_border, 30));
+                        ui.painter().text(drag_rect.center(), egui::Align2::CENTER_CENTER, "DOM", egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.5));
+                        let drag_resp = ui.interact(drag_rect, egui::Id::new(("dom_drag", pane_idx)), egui::Sense::drag());
+                        if drag_resp.dragged() {
+                            let delta = drag_resp.drag_delta();
+                            chart.order_panel_pos.x += delta.x;
+                            chart.order_panel_pos.y += delta.y;
+                        }
+                        if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+                        ui.allocate_space(egui::vec2(panel_w_dom, 16.0));
 
                         // TODO: wire real Level 2 data from Polygon/IB
                         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
