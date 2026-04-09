@@ -11367,8 +11367,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     });
             } else {
+            let dom_h = if chart.dom_open { (ch * 0.45).min(350.0).max(150.0) } else { 0.0 };
+            let window_pos = egui::pos2(abs_pos.x, abs_pos.y - dom_h);
             egui::Window::new(format!("order_entry_{}", pane_idx))
-                .fixed_pos(abs_pos)
+                .fixed_pos(window_pos)
                 .fixed_size(egui::vec2(panel_w, 0.0))
                 .title_bar(false)
                 .frame(egui::Frame::popup(&ctx.style())
@@ -11461,14 +11463,82 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     }
 
+                    // ── DOM ladder (when open, between header and order body) ──
+                    if chart.dom_open {
+                        let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
+                        let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
+                        let tick = if is_index { 1.0_f32 } else { 0.01 };
+                        let center_price = (current_price / tick).round() * tick;
+                        let sim_size = |price: f32, is_bid: bool| -> u32 {
+                            let dist = ((price - current_price).abs() / tick).round() as u32;
+                            let base = 50u32.saturating_sub(dist * 2).max(1);
+                            let hash = ((price * 1000.0) as u32).wrapping_mul(2654435761);
+                            (base + hash % 100) + if !is_bid { 20 } else { 0 }
+                        };
+                        let position_entry = account_data_cached.as_ref()
+                            .and_then(|(_, positions, _)| positions.iter().find(|p| p.symbol == chart.symbol))
+                            .map(|p| p.avg_price);
+                        // Column headers
+                        ui.horizontal(|ui| {
+                            let col_w = (panel_w - 4.0) / 3.0;
+                            ui.add_space(2.0);
+                            ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("BID").monospace().size(8.0).color(t.bull.gamma_multiply(0.4))));
+                            ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("PRICE").monospace().size(8.0).color(t.dim.gamma_multiply(0.4))));
+                            ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("ASK").monospace().size(8.0).color(t.bear.gamma_multiply(0.4))));
+                        });
+                        egui::ScrollArea::vertical().max_height(dom_h - 36.0).auto_shrink([false, false]).show(ui, |ui| {
+                            let rows_above = 20; let rows_below = 20;
+                            for row in (-rows_above..=rows_below).rev() {
+                                let price = center_price + (row as f32 * tick * -1.0);
+                                let is_current = (price - center_price).abs() < tick * 0.5;
+                                let bid_size = sim_size(price, true);
+                                let ask_size = sim_size(price, false);
+                                let has_buy = chart.orders.iter().any(|o| (o.price - price).abs() < tick * 0.5 && matches!(o.side, OrderSide::Buy));
+                                let has_sell = chart.orders.iter().any(|o| (o.price - price).abs() < tick * 0.5 && matches!(o.side, OrderSide::Sell));
+                                let is_entry = position_entry.map(|ep| (ep - price).abs() < tick * 0.5).unwrap_or(false);
+                                let row_h = 20.0;
+                                ui.horizontal(|ui| {
+                                    ui.set_min_width(panel_w - 4.0);
+                                    let rs = ui.cursor().min;
+                                    let rr = egui::Rect::from_min_size(rs, egui::vec2(panel_w - 4.0, row_h));
+                                    let rh = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| rr.contains(p));
+                                    let bg = if is_current { color_alpha(t.accent, 35) } else if rh { color_alpha(t.toolbar_border, 30) } else { egui::Color32::TRANSPARENT };
+                                    ui.painter().rect_filled(rr, 0.0, bg);
+                                    if has_buy { ui.painter().rect_filled(rr, 0.0, color_alpha(t.bull, 25)); }
+                                    if has_sell { ui.painter().rect_filled(rr, 0.0, color_alpha(t.bear, 25)); }
+                                    if is_entry { ui.painter().rect_stroke(rr, 0.0, egui::Stroke::new(1.0, color_alpha(egui::Color32::from_rgb(255, 200, 50), 150)), egui::StrokeKind::Inside); }
+                                    let col_w = (panel_w - 4.0) / 3.0;
+                                    ui.add_space(2.0);
+                                    let bc = if rh { t.bull } else { t.bull.gamma_multiply(0.6) };
+                                    let bbg = if rh { color_alpha(t.bull, 15) } else { egui::Color32::TRANSPARENT };
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(10.0).color(bc)).fill(bbg).frame(false).min_size(egui::vec2(col_w - 4.0, row_h))).clicked() {
+                                        let id = chart.next_order_id; chart.next_order_id += 1;
+                                        chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
+                                    }
+                                    let pc = if is_current { egui::Color32::WHITE } else if price > current_price { t.bull.gamma_multiply(0.7) } else { t.bear.gamma_multiply(0.7) };
+                                    let pf = if tick >= 1.0 { format!("{:.0}", price) } else { format!("{:.2}", price) };
+                                    ui.add_sized(egui::vec2(col_w, row_h), egui::Label::new(egui::RichText::new(pf).monospace().size(10.0).strong().color(pc)));
+                                    let ac = if rh { t.bear } else { t.bear.gamma_multiply(0.6) };
+                                    let abg = if rh { color_alpha(t.bear, 15) } else { egui::Color32::TRANSPARENT };
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(10.0).color(ac)).fill(abg).frame(false).min_size(egui::vec2(col_w - 4.0, row_h))).clicked() {
+                                        let id = chart.next_order_id; chart.next_order_id += 1;
+                                        chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
+                                    }
+                                });
+                            }
+                        });
+                        ui.add_space(2.0);
+                        dialog_separator_shadow(ui, 0.0, color_alpha(t.toolbar_border, 50));
+                    }
+
                     // ── Body (shared component) ──
                     render_order_entry_body(ui, chart, t, pane_idx as u64, panel_w);
                 });
             } // end if !collapsed
 
-            // ── DOM / Price Ladder — integrated into order panel, above body ──
-            if chart.dom_open {
-                let panel_w_dom = panel_w; // same width as order panel
+            // (DOM is now integrated inside the order panel window above)
+            if false { // old separate DOM window — removed
+                let panel_w_dom = panel_w;
                 let dom_h = (ch * 0.55).min(400.0).max(180.0);
                 // Render inside the same window — positioned above order body
                 // Use the order panel's abs_pos but shift up by dom_h
