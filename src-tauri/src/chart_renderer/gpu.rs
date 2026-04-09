@@ -8787,18 +8787,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 120)
                 };
                 let p1 = egui::pos2(bx(pivot_i as f32), py(pivot_price));
-                let p2 = egui::pos2(bx(cur_bar as f32), py(cur_price));
-                dashed_line(&painter, p1, p2, egui::Stroke::new(1.0, col), LineStyle::Dashed);
-                // Dot at pivot only
-                painter.circle_filled(p1, 3.5, col);
-                // Label: percentage only, 50% bigger font
-                let mid = egui::pos2((p1.x + p2.x) / 2.0, (p1.y + p2.y) / 2.0);
+                // Vertical line from pivot price to current price level, at the pivot's X position
+                let pivot_x = bx(pivot_i as f32);
+                let y_pivot = py(pivot_price);
+                let y_current = py(cur_price);
+                dashed_line(&painter, egui::pos2(pivot_x, y_pivot), egui::pos2(pivot_x, y_current),
+                    egui::Stroke::new(1.0, col), LineStyle::Dashed);
+                // Dot at pivot
+                painter.circle_filled(egui::pos2(pivot_x, y_pivot), 3.5, col);
+                // Small tick at current price level
+                painter.line_segment([egui::pos2(pivot_x - 4.0, y_current), egui::pos2(pivot_x + 4.0, y_current)],
+                    egui::Stroke::new(1.0, col));
+                // Label at midpoint of the vertical line
+                let mid_y = (y_pivot + y_current) / 2.0;
                 let dist_pct = ((cur_price - pivot_price) / pivot_price * 100.0).abs();
                 let label = format!("{:.1}%", dist_pct);
                 let label_galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(14.0), col);
-                let label_rect = egui::Rect::from_center_size(mid, label_galley.size() + egui::vec2(10.0, 6.0));
+                let label_rect = egui::Rect::from_center_size(
+                    egui::pos2(pivot_x + label_galley.size().x / 2.0 + 8.0, mid_y),
+                    label_galley.size() + egui::vec2(10.0, 6.0));
                 painter.rect_filled(label_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 220));
-                painter.text(mid, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(14.0), col);
+                painter.text(label_rect.center(), egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(14.0), col);
             }
         }
 
