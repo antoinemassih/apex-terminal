@@ -11367,10 +11367,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                     });
             } else {
-            let dom_h = if chart.dom_open { (ch * 0.45).min(350.0).max(150.0) } else { 0.0 };
-            let window_pos = egui::pos2(abs_pos.x, abs_pos.y - dom_h);
+            // Order panel stays in place — DOM grows upward from it
             egui::Window::new(format!("order_entry_{}", pane_idx))
-                .fixed_pos(window_pos)
+                .fixed_pos(abs_pos)
                 .fixed_size(egui::vec2(panel_w, 0.0))
                 .title_bar(false)
                 .frame(egui::Frame::popup(&ctx.style())
@@ -11465,6 +11464,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── DOM ladder (when open, between header and order body) ──
                     if chart.dom_open {
+                        let dom_scroll_h = (ch * 0.5).min(400.0).max(180.0);
                         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
                         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
                         let tick = if is_index { 1.0_f32 } else { 0.01 };
@@ -11486,7 +11486,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("PRICE").monospace().size(8.0).color(t.dim.gamma_multiply(0.4))));
                             ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("ASK").monospace().size(8.0).color(t.bear.gamma_multiply(0.4))));
                         });
-                        egui::ScrollArea::vertical().max_height(dom_h - 36.0).auto_shrink([false, false]).show(ui, |ui| {
+                        egui::ScrollArea::vertical().max_height(dom_scroll_h).auto_shrink([false, false]).show(ui, |ui| {
                             let rows_above = 20; let rows_below = 20;
                             for row in (-rows_above..=rows_below).rev() {
                                 let price = center_price + (row as f32 * tick * -1.0);
