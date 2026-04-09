@@ -1126,6 +1126,7 @@ struct Chart {
     show_ma_ribbon: bool,
     show_prev_close: bool,
     show_auto_sr: bool,
+    show_swing_legs: bool,
     overlay_symbol: String,
     overlay_bars: Vec<Bar>,
     overlay_timestamps: Vec<i64>,
@@ -1230,7 +1231,7 @@ impl Chart {
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
             vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
-            show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false,
+            show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, show_swing_legs: false,
             overlay_symbol: String::new(), overlay_bars: vec![], overlay_timestamps: vec![], overlay_loading: false,
             show_gamma: false, show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
@@ -2191,6 +2192,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
         ctx.set_style(style);
     }
+
+    // Apply font scale from settings
+    if (watchlist.font_scale - 1.0).abs() > 0.01 {
+        ctx.set_pixels_per_point(watchlist.font_scale);
+    } else {
+        ctx.set_pixels_per_point(1.0);
+    }
     // Cache account data once per frame (avoid repeated Mutex lock + clone)
     let account_data_cached = read_account_data();
     // Store window ref for drag/minimize/maximize/close
@@ -2212,7 +2220,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     egui::TopBottomPanel::top("tb")
         .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 10, right: 0, top: 0, bottom: 0 }))
-        .exact_height(36.0)
+        .exact_height(if watchlist.compact_mode { 28.0 } else { 36.0 })
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         // Bottom border line
@@ -2247,6 +2255,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 panes[ap].picker_results.clear();
                 panes[ap].picker_last_query.clear();
                 panes[ap].picker_pos = egui::pos2(sym_btn.rect.left(), sym_btn.rect.bottom());
+            }
+
+            // ── Daily Change % Badge ──
+            if let (Some(first), Some(last)) = (panes[ap].bars.first(), panes[ap].bars.last()) {
+                if first.open > 0.0 {
+                    let change_pct = (last.close - first.open) / first.open * 100.0;
+                    let is_positive = change_pct >= 0.0;
+                    let badge_text = if is_positive { format!("+{:.2}%", change_pct) } else { format!("{:.2}%", change_pct) };
+                    let badge_color = if is_positive { t.bull } else { t.bear };
+                    let badge_bg = egui::Color32::from_rgba_unmultiplied(badge_color.r(), badge_color.g(), badge_color.b(), 25);
+                    ui.add(egui::Button::new(
+                        egui::RichText::new(&badge_text).monospace().size(10.0).color(badge_color)
+                    ).fill(badge_bg).corner_radius(3.0).stroke(egui::Stroke::NONE));
+                }
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -2697,6 +2719,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let nv = !sr;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_auto_sr = nv; } } else { panes[ap].show_auto_sr = nv; }
                 }
+                let sl = panes[ap].show_swing_legs;
+                if ui.selectable_label(sl, egui::RichText::new(format!("{} Swing Legs", check(sl))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !sl;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_swing_legs = nv; } } else { panes[ap].show_swing_legs = nv; }
+                }
                 let pnl = panes[ap].show_pnl_curve;
                 if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(10.0)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
                 ui.separator();
@@ -2981,6 +3009,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if tb_btn(ui, Icon::LIST, watchlist.open, t).clicked() { watchlist.open = !watchlist.open; }
 
                 ui.add(egui::Separator::default().spacing(4.0));
+
+                // Settings panel
+                if tb_btn(ui, Icon::GEAR, watchlist.settings_open, t).clicked() {
+                    watchlist.settings_open = !watchlist.settings_open;
+                }
 
                 // Keyboard shortcuts / hotkey editor
                 if tb_btn(ui, Icon::QUESTION, watchlist.hotkey_editor_open, t).clicked() {
@@ -3477,6 +3510,87 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         watchlist.hotkeys = default_hotkeys();
                     }
                 });
+            });
+    }
+
+    // ── Settings panel ──────────────────────────────────────────────────────
+    if watchlist.settings_open {
+        let screen = ctx.screen_rect();
+        dialog_window_themed(ctx, "settings_panel", egui::pos2(screen.center().x - 160.0, 60.0), 320.0, t.toolbar_bg, t.toolbar_border, None)
+            .show(ctx, |ui| {
+                if dialog_header(ui, "SETTINGS", t.dim) { watchlist.settings_open = false; }
+                ui.add_space(8.0);
+                let m = 10.0;
+
+                // ── Appearance section ──
+                dialog_section(ui, "APPEARANCE", m, t.dim.gamma_multiply(0.5));
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new("Font Scale").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(m);
+                        let mut pct = (watchlist.font_scale * 100.0).round() as i32;
+                        if ui.add(egui::DragValue::new(&mut pct).range(80..=130).suffix("%").speed(1)
+                            .custom_formatter(|v, _| format!("{}%", v as i32))).changed() {
+                            watchlist.font_scale = pct as f32 / 100.0;
+                        }
+                    });
+                });
+                // Preset buttons
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    for pct in [80, 90, 100, 110, 120] {
+                        let active = (watchlist.font_scale * 100.0).round() as i32 == pct;
+                        let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
+                        let bg = if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
+                        if ui.add(egui::Button::new(egui::RichText::new(format!("{}%", pct)).monospace().size(9.0).color(fg))
+                            .fill(bg).corner_radius(3.0).min_size(egui::vec2(36.0, 18.0))).clicked() {
+                            watchlist.font_scale = pct as f32 / 100.0;
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new("Compact Mode").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(m);
+                        let mut val = watchlist.compact_mode;
+                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
+                            watchlist.compact_mode = val;
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+
+                // ── Axes section ──
+                dialog_section(ui, "AXES", m, t.dim.gamma_multiply(0.5));
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new("Show X-Axis (time)").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(m);
+                        let mut val = watchlist.show_x_axis;
+                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
+                            watchlist.show_x_axis = val;
+                        }
+                    });
+                });
+                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new("Show Y-Axis (price)").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(m);
+                        let mut val = watchlist.show_y_axis;
+                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
+                            watchlist.show_y_axis = val;
+                        }
+                    });
+                });
+                ui.add_space(8.0);
             });
     }
 
@@ -7349,7 +7463,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             egui::vec2(pane_rect.width(), pane_rect.height() - pane_top_offset),
         );
         let (w,h) = (rect.width(), rect.height());
-        let (pr,pt,pb) = (42.0_f32, 4.0_f32, 0.0_f32);
+        let pr = if watchlist.show_y_axis { 42.0_f32 } else { 0.0_f32 };
+        let pt = if watchlist.compact_mode { 1.0_f32 } else { 4.0_f32 };
+        let pb = 0.0_f32;
         // Reserve space for oscillator sub-panel if any oscillator indicators or CVD is active
         let has_oscillators = chart.show_oscillators && chart.indicators.iter().any(|i| i.visible && i.kind.category() == IndicatorCategory::Oscillator);
         let needs_osc_panel = has_oscillators || chart.show_cvd;
@@ -7442,14 +7558,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let mut p=(min_p/step).ceil()*step;
         while p<=max_p { let y=py(p);
             painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
-            let d=if p>=10.0{2}else{4};
-            chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", p, d);
-            painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),t.dim);
+            if watchlist.show_y_axis {
+                let d=if p>=10.0{2}else{4};
+                chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", p, d);
+                painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),t.dim);
+            }
             p+=step;
         }
 
         // Time labels on bottom axis (extends into future beyond last bar)
-        if !chart.timestamps.is_empty() && end > vs as u32 {
+        if watchlist.show_x_axis && !chart.timestamps.is_empty() && end > vs as u32 {
             let candle_sec = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]).max(60) } else { 86400 };
             let nice_int: &[i64] = &[60,300,900,1800,3600,7200,14400,28800,86400,172800,604800,2592000];
             let min_label_px = 70.0;
@@ -8516,6 +8634,47 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
                     &format!("{}{:.2} ({}x)", if *is_res { "R " } else { "S " }, price, touches),
                     egui::FontId::monospace(7.0), col);
+            }
+        }
+
+        // ── Swing Legs overlay ──
+        if chart.show_swing_legs && n > 20 {
+            let vis_start = vs as usize;
+            let vis_end = (vis_start + chart.vc as usize).min(n);
+            let pivot_n = 10_usize;
+            let mut last_peak: Option<(usize, f32)> = None; // (bar_idx, price)
+            let mut last_trough: Option<(usize, f32)> = None;
+            for i in vis_start..vis_end {
+                if i >= pivot_n && i + pivot_n < n {
+                    let is_ph = (1..=pivot_n).all(|j| chart.bars[i].high >= chart.bars[i-j].high && chart.bars[i].high >= chart.bars[i+j].high);
+                    let is_pl = (1..=pivot_n).all(|j| chart.bars[i].low <= chart.bars[i-j].low && chart.bars[i].low <= chart.bars[i+j].low);
+                    if is_ph { last_peak = Some((i, chart.bars[i].high)); }
+                    if is_pl { last_trough = Some((i, chart.bars[i].low)); }
+                }
+            }
+            if let (Some((pk_i, pk_p)), Some((tr_i, tr_p))) = (last_peak, last_trough) {
+                let bull_move = tr_i < pk_i; // trough before peak = bullish
+                let col = if bull_move {
+                    egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 120)
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 120)
+                };
+                let p1 = egui::pos2(bx(pk_i as f32), py(pk_p));
+                let p2 = egui::pos2(bx(tr_i as f32), py(tr_p));
+                dashed_line(&painter, p1, p2, egui::Stroke::new(1.0, col), LineStyle::Dashed);
+                // Small dot at each pivot
+                painter.circle_filled(p1, 3.0, col);
+                painter.circle_filled(p2, 3.0, col);
+                // Label at midpoint
+                let mid = egui::pos2((p1.x + p2.x) / 2.0, (p1.y + p2.y) / 2.0);
+                let dist_pct = ((pk_p - tr_p) / tr_p * 100.0).abs();
+                let dist_dollar = (pk_p - tr_p).abs();
+                let label = format!("{:.1}% (${:.2})", dist_pct, dist_dollar);
+                // Background for label
+                let label_galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(8.0), col);
+                let label_rect = egui::Rect::from_center_size(mid, label_galley.size() + egui::vec2(6.0, 4.0));
+                painter.rect_filled(label_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 200));
+                painter.text(mid, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(8.0), col);
             }
         }
 
@@ -13984,6 +14143,11 @@ struct Watchlist {
     #[allow(dead_code)] shortcuts_open: bool, // superseded by hotkey_editor_open
     hotkey_editor_open: bool,
     hotkey_editing_id: Option<u32>,
+    settings_open: bool,
+    font_scale: f32,
+    compact_mode: bool,
+    show_x_axis: bool,
+    show_y_axis: bool,
     hotkeys: Vec<HotKey>,
     trendline_filter_open: bool, // trendline filter dropdown
     account_strip_open: bool, // account summary bar below toolbar
@@ -14078,6 +14242,7 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
+               settings_open: false, font_scale: 1.0, compact_mode: false, show_x_axis: true, show_y_axis: true,
                trendline_filter_open: false, account_strip_open: false, broadcast_mode: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
@@ -15025,6 +15190,7 @@ impl ApplicationHandler for App {
                                         chart.show_ma_ribbon = gb("show_ma_ribbon", false);
                                         chart.show_prev_close = gb("show_prev_close", true);
                                         chart.show_auto_sr = gb("show_auto_sr", false);
+                                        chart.show_swing_legs = gb("show_swing_legs", false);
                                         chart.show_footprint = gb("show_footprint", false);
                                         chart.show_gamma = gb("show_gamma", false);
                                         chart.show_pnl_curve = gb("show_pnl_curve", false);
@@ -15517,7 +15683,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
             "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
             "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
-            "show_auto_sr": p.show_auto_sr, "show_footprint": p.show_footprint,
+            "show_auto_sr": p.show_auto_sr, "show_swing_legs": p.show_swing_legs, "show_footprint": p.show_footprint,
             "show_gamma": p.show_gamma,
             "show_pnl_curve": p.show_pnl_curve,
             "link_group": p.link_group,
@@ -15583,7 +15749,7 @@ fn save_state(panes: &[Chart], layout: Layout) {
             "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
             "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
-            "show_auto_sr": p.show_auto_sr, "show_footprint": p.show_footprint,
+            "show_auto_sr": p.show_auto_sr, "show_swing_legs": p.show_swing_legs, "show_footprint": p.show_footprint,
             "show_gamma": p.show_gamma,
             "show_pnl_curve": p.show_pnl_curve,
             "link_group": p.link_group,
@@ -15659,6 +15825,7 @@ fn load_state() -> (Vec<Chart>, Layout) {
             chart.show_ma_ribbon = gb("show_ma_ribbon", false);
             chart.show_prev_close = gb("show_prev_close", true);
             chart.show_auto_sr = gb("show_auto_sr", false);
+            chart.show_swing_legs = gb("show_swing_legs", false);
             chart.show_footprint = gb("show_footprint", false);
             chart.show_gamma = gb("show_gamma", false);
             chart.show_pnl_curve = gb("show_pnl_curve", false);
