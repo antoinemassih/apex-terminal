@@ -2767,18 +2767,32 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     switch_layout(ly, panes, layout, active_pane);
                 }
             }
-            // Dropdown for all layouts (organized by section, visual)
+            // Dropdown for all layouts (organized by section, visual glyphs)
             ui.menu_button(egui::RichText::new(Icon::CARET_DOWN).size(11.0).color(t.dim), |ui| {
-                ui.set_min_width(220.0);
+                ui.set_min_width(240.0);
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                let hover_pos = ui.input(|i| i.pointer.hover_pos());
+                let clicked = ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+                let mut did_switch = false;
+                let mut fav_toggles: Vec<(String, bool)> = Vec::new(); // (label, add)
                 let mut last_section = "";
+
                 for &ly in ALL_LAYOUTS {
                     let sec = ly.section();
                     if sec != last_section {
-                        if !last_section.is_empty() { ui.add_space(4.0); }
+                        if !last_section.is_empty() {
+                            // Separator line between sections
+                            ui.add_space(3.0);
+                            let sep_rect = ui.available_rect_before_wrap();
+                            ui.painter().line_segment(
+                                [egui::pos2(sep_rect.left() + 8.0, ui.cursor().min.y),
+                                 egui::pos2(sep_rect.left() + 230.0, ui.cursor().min.y)],
+                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60)));
+                            ui.add_space(3.0);
+                        }
                         ui.horizontal(|ui| {
-                            ui.add_space(6.0);
+                            ui.add_space(8.0);
                             ui.label(egui::RichText::new(sec).monospace().size(8.0).strong().color(t.dim.gamma_multiply(0.5)));
                         });
                         ui.add_space(2.0);
@@ -2787,72 +2801,85 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let is_cur = *layout == ly;
                     let is_fav = watchlist.layout_favorites.iter().any(|f| f == ly.label());
 
-                    // Full row with hover highlight
-                    let row_resp = ui.horizontal(|ui| {
-                        let row_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(210.0, 24.0));
-                        let resp = ui.allocate_rect(row_rect, egui::Sense::hover());
-                        let hovered = resp.hovered();
+                    // Row — use selectable_label for proper hover + no auto-close on star
+                    let row_min = ui.cursor().min;
+                    let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(232.0, 26.0));
+                    let hovered = hover_pos.map_or(false, |p| row_rect.contains(p));
 
-                        // Hover background
-                        if hovered || is_cur {
-                            let bg = if is_cur { color_alpha(t.accent, 25) } else { color_alpha(t.toolbar_border, 40) };
-                            ui.painter().rect_filled(row_rect, 3.0, bg);
+                    // Background
+                    if hovered || is_cur {
+                        let bg = if is_cur { color_alpha(t.accent, 25) } else { color_alpha(t.toolbar_border, 30) };
+                        ui.painter().rect_filled(row_rect, 3.0, bg);
+                    }
+                    if is_cur {
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 26.0)), 1.0, t.accent);
+                    }
+
+                    // Mini layout glyph (24×16 px)
+                    let glyph_rect = egui::Rect::from_min_size(
+                        egui::pos2(row_rect.left() + 8.0, row_rect.center().y - 8.0), egui::vec2(24.0, 16.0));
+                    {
+                        let gr = glyph_rect;
+                        let gc = if is_cur { t.accent } else if hovered { t.dim } else { t.dim.gamma_multiply(0.5) };
+                        let g_gap = 1.0;
+                        // Draw mini version of the layout
+                        let mini_rects = ly.pane_rects(gr, ly.max_panes(), 0.5, 0.5, 0.5, 0.5);
+                        for mr in &mini_rects {
+                            let shrunk = egui::Rect::from_min_max(
+                                egui::pos2(mr.left() + g_gap * 0.5, mr.top() + g_gap * 0.5),
+                                egui::pos2(mr.right() - g_gap * 0.5, mr.bottom() - g_gap * 0.5));
+                            ui.painter().rect_filled(shrunk, 1.0, color_alpha(gc, 80));
+                            ui.painter().rect_stroke(shrunk, 1.0, egui::Stroke::new(0.5, color_alpha(gc, 150)), egui::StrokeKind::Outside);
                         }
+                    }
 
-                        // Active indicator bar
-                        if is_cur {
-                            ui.painter().rect_filled(
-                                egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 24.0)),
-                                1.0, t.accent);
-                        }
+                    // Label
+                    let label_col = if is_cur { t.accent }
+                        else if hovered { egui::Color32::from_rgb(240, 240, 250) }
+                        else { egui::Color32::from_rgb(200, 200, 210) };
+                    ui.painter().text(egui::pos2(row_rect.left() + 38.0, row_rect.center().y),
+                        egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(10.0), label_col);
 
-                        // Star toggle (doesn't close menu)
-                        let star = if is_fav { Icon::STAR_FILL } else { Icon::STAR };
-                        let star_col = if is_fav { egui::Color32::from_rgb(255, 200, 60) }
-                            else if hovered { t.dim.gamma_multiply(0.6) }
-                            else { t.dim.gamma_multiply(0.25) };
-                        let star_rect = egui::Rect::from_min_size(
-                            egui::pos2(row_rect.left() + 6.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
-                        let star_resp = ui.allocate_rect(star_rect, egui::Sense::click());
-                        ui.painter().text(star_rect.center(), egui::Align2::CENTER_CENTER, star,
-                            egui::FontId::proportional(12.0), star_col);
-                        if star_resp.clicked() {
-                            if is_fav { watchlist.layout_favorites.retain(|f| f != ly.label()); }
-                            else { watchlist.layout_favorites.push(ly.label().to_string()); }
-                            // Don't close menu — allow toggling multiple favorites
-                        }
-                        if star_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    // Description
+                    let desc_col = if hovered { t.dim.gamma_multiply(0.7) } else { t.dim.gamma_multiply(0.35) };
+                    ui.painter().text(egui::pos2(row_rect.left() + 68.0, row_rect.center().y),
+                        egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(9.0), desc_col);
 
-                        // Layout label
-                        let label_col = if is_cur { t.accent }
-                            else if hovered { egui::Color32::from_rgb(240, 240, 250) }
-                            else { egui::Color32::from_rgb(200, 200, 210) };
-                        ui.painter().text(
-                            egui::pos2(row_rect.left() + 28.0, row_rect.center().y),
-                            egui::Align2::LEFT_CENTER,
-                            ly.label(), egui::FontId::monospace(11.0), label_col);
+                    // Star (right-aligned) — raw pointer detection to avoid menu close
+                    let star_rect = egui::Rect::from_min_size(
+                        egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
+                    let star_hovered = hover_pos.map_or(false, |p| star_rect.contains(p));
+                    let star = if is_fav { Icon::STAR_FILL } else { Icon::STAR };
+                    let star_col = if is_fav { egui::Color32::from_rgb(255, 200, 60) }
+                        else if star_hovered { t.dim.gamma_multiply(0.7) }
+                        else if hovered { t.dim.gamma_multiply(0.4) }
+                        else { t.dim.gamma_multiply(0.15) };
+                    ui.painter().text(star_rect.center(), egui::Align2::CENTER_CENTER, star,
+                        egui::FontId::proportional(11.0), star_col);
+                    if star_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    if star_hovered && clicked {
+                        fav_toggles.push((ly.label().to_string(), !is_fav));
+                    }
 
-                        // Description
-                        let desc_col = if hovered { t.dim.gamma_multiply(0.7) } else { t.dim.gamma_multiply(0.4) };
-                        ui.painter().text(
-                            egui::pos2(row_rect.left() + 60.0, row_rect.center().y),
-                            egui::Align2::LEFT_CENTER,
-                            ly.description(), egui::FontId::monospace(9.0), desc_col);
+                    // Click row (not star) to switch
+                    let row_click_area = egui::Rect::from_min_size(row_rect.min, egui::vec2(row_rect.width() - 24.0, 26.0));
+                    let row_hovered = hover_pos.map_or(false, |p| row_click_area.contains(p));
+                    if row_hovered && !star_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    if row_hovered && !star_hovered && clicked {
+                        switch_layout(ly, panes, layout, active_pane);
+                        did_switch = true;
+                    }
 
-                        // Click row to switch layout (but not if clicking star)
-                        let click_rect = egui::Rect::from_min_size(
-                            egui::pos2(row_rect.left() + 24.0, row_rect.top()),
-                            egui::vec2(row_rect.width() - 24.0, 24.0));
-                        let click_resp = ui.allocate_rect(click_rect, egui::Sense::click());
-                        if click_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                        if click_resp.clicked() {
-                            switch_layout(ly, panes, layout, active_pane);
-                            ui.close_menu();
-                        }
-
-                        ui.allocate_space(egui::vec2(0.0, 24.0));
-                    });
+                    ui.allocate_space(egui::vec2(232.0, 26.0));
                 }
+
+                // Apply favorite toggles (deferred to avoid borrow issues)
+                for (label, add) in fav_toggles {
+                    if add { watchlist.layout_favorites.push(label); }
+                    else { watchlist.layout_favorites.retain(|f| *f != label); }
+                }
+                if did_switch { ui.close_menu(); }
             });
 
             ui.add(egui::Separator::default().spacing(4.0));
