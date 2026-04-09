@@ -2194,7 +2194,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // Apply font scale from settings (base = 1.2, range 1.2–2.2)
-    if (watchlist.font_scale - 1.6).abs() > 0.01 {
+    if (watchlist.font_scale - 1.0).abs() > 0.01 {
         ctx.set_pixels_per_point(watchlist.font_scale);
     } else {
         ctx.set_pixels_per_point(1.2);
@@ -3549,21 +3549,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.label(egui::RichText::new("Font Scale").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
-                        // Display 60-160% maps to internal 1.2-2.2 ppp (step 0.01 per %)
-                        let display_pct = ((watchlist.font_scale - 1.2) * 100.0).round() as i32 + 60;
+                        // Display 60-160% maps to 0.7-1.6 ppp. 100% = 1.0 (standard)
+                        let display_pct = ((watchlist.font_scale - 0.7) / 0.009).round() as i32 + 60;
                         let mut dp = display_pct.clamp(60, 160);
                         if ui.add(egui::DragValue::new(&mut dp).range(60..=160).suffix("%").speed(1)
                             .custom_formatter(|v, _| format!("{}%", v as i32))).changed() {
-                            watchlist.font_scale = 1.2 + (dp - 60) as f32 * 0.01;
+                            watchlist.font_scale = 0.7 + (dp - 60) as f32 * 0.009;
                         }
                     });
                 });
                 // Preset buttons (display % → internal ppp)
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    // display: [60, 80, 100, 120, 140, 160] → ppp: [1.2, 1.6, 2.0, 2.4, 2.8, 3.2]
-                    // Actually: 60→1.2, 80→1.4, 100→1.6, 120→1.8, 140→2.0, 160→2.2
-                    for (label, ppp) in [(60, 1.2_f32), (80, 1.4), (100, 1.6), (120, 1.8), (140, 2.0), (160, 2.2)] {
+                    // 60%→0.7, 80%→0.85, 100%→1.0 (standard), 120%→1.2, 140%→1.4, 160%→1.6
+                    for (label, ppp) in [(60, 0.7_f32), (80, 0.85), (100, 1.0), (120, 1.2), (140, 1.4), (160, 1.6)] {
                         let active = (watchlist.font_scale - ppp).abs() < 0.05;
                         let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
                         let bg = if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
@@ -8794,21 +8793,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let p1 = egui::pos2(bx(pivot_i as f32), py(pivot_price));
                 let p2 = egui::pos2(bx(cur_bar as f32), py(cur_price));
                 dashed_line(&painter, p1, p2, egui::Stroke::new(1.0, col), LineStyle::Dashed);
-                // Dot at pivot, small arrow at current
+                // Dot at pivot only
                 painter.circle_filled(p1, 3.5, col);
-                let arrow_dir = if cur_price > pivot_price { -1.0 } else { 1.0 };
-                painter.line_segment([egui::pos2(p2.x - 4.0, p2.y + arrow_dir * 5.0), p2], egui::Stroke::new(1.5, col));
-                painter.line_segment([egui::pos2(p2.x + 4.0, p2.y + arrow_dir * 5.0), p2], egui::Stroke::new(1.5, col));
-                // Label: distance from pivot to current
+                // Label: percentage only, 50% bigger font
                 let mid = egui::pos2((p1.x + p2.x) / 2.0, (p1.y + p2.y) / 2.0);
                 let dist_pct = ((cur_price - pivot_price) / pivot_price * 100.0).abs();
-                let dist_dollar = (cur_price - pivot_price).abs();
-                let dir_label = if is_peak { "\u{25BC}" } else { "\u{25B2}" }; // ▼ or ▲
-                let label = format!("{} {:.1}% ${:.2}", dir_label, dist_pct, dist_dollar);
-                let label_galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(9.0), col);
-                let label_rect = egui::Rect::from_center_size(mid, label_galley.size() + egui::vec2(8.0, 4.0));
-                painter.rect_filled(label_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 220));
-                painter.text(mid, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(9.0), col);
+                let label = format!("{:.1}%", dist_pct);
+                let label_galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(14.0), col);
+                let label_rect = egui::Rect::from_center_size(mid, label_galley.size() + egui::vec2(10.0, 6.0));
+                painter.rect_filled(label_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 220));
+                painter.text(mid, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(14.0), col);
             }
         }
 
@@ -14380,7 +14374,7 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
-               settings_open: false, font_scale: 1.6, compact_mode: false, show_x_axis: true, show_y_axis: true,
+               settings_open: false, font_scale: 1.0, compact_mode: false, show_x_axis: true, show_y_axis: true,
                toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false, shared_y_axis: false,
                trendline_filter_open: false, account_strip_open: false, broadcast_mode: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
