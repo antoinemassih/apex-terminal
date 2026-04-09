@@ -11732,32 +11732,6 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", hp, d);
                     painter.text(egui::pos2(rect.left()+cw+3.0,pos.y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),egui::Color32::WHITE);
 
-                    // Distance from current price to cursor level (always shown)
-                    if last_price > 0.0 {
-                        let dist = hp - last_price;
-                        let dist_pct = dist / last_price * 100.0;
-                        let dist_col = if dist >= 0.0 { t.bull } else { t.bear };
-                        let dist_text = format!("{:+.2}%", dist_pct);
-                        let dist_galley = painter.layout_no_wrap(dist_text.clone(), egui::FontId::monospace(12.0), dist_col);
-                        // Position: right side, slightly below the price label
-                        let dist_x = rect.left() + cw + 3.0;
-                        let dist_y = pos.y + 14.0;
-                        let dist_bg = egui::Rect::from_min_size(
-                            egui::pos2(dist_x - 2.0, dist_y - dist_galley.size().y / 2.0 - 1.0),
-                            dist_galley.size() + egui::vec2(4.0, 2.0));
-                        painter.rect_filled(dist_bg, 2.0, color_alpha(t.toolbar_bg, 220));
-                        painter.text(egui::pos2(dist_x, dist_y), egui::Align2::LEFT_CENTER,
-                            &dist_text, egui::FontId::monospace(12.0), dist_col);
-
-                        // Faint horizontal line from last price to cursor level
-                        let price_y = py(last_price);
-                        if price_y.is_finite() && (pos.y - price_y).abs() > 10.0 {
-                            // Small dashed connector between price and cursor
-                            let mid_x = rect.left() + cw - 30.0;
-                            painter.line_segment([egui::pos2(mid_x, price_y), egui::pos2(mid_x, pos.y)],
-                                egui::Stroke::new(0.5, color_alpha(dist_col, 40)));
-                        }
-                    }
                     // Time label at crosshair X position (bottom of chart)
                     let bar_idx_f = (pos.x - rect.left() + off - bs * 0.5) / bs + vs;
                     let bar_idx = bar_idx_f.round() as usize;
@@ -11784,8 +11758,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         // Big floating box near cursor
                         let mx = pos.x + 20.0;
                         let my = pos.y;
-                        let pct_galley = painter.layout_no_wrap(m_pct_text.clone(), egui::FontId::monospace(16.0), dist_col);
-                        let price_galley = painter.layout_no_wrap(m_price_text.clone(), egui::FontId::monospace(10.0), color_alpha(dist_col, 160));
+                        let pct_galley = painter.layout_no_wrap(m_pct_text.clone(), egui::FontId::monospace(10.0), dist_col);
+                        let price_galley = painter.layout_no_wrap(m_price_text.clone(), egui::FontId::monospace(8.0), color_alpha(dist_col, 160));
                         let box_w = pct_galley.size().x.max(price_galley.size().x) + 16.0;
                         let box_h = pct_galley.size().y + price_galley.size().y + 10.0;
                         // Flip left if near right edge
@@ -11794,9 +11768,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         painter.rect_filled(measure_rect, 4.0, color_alpha(t.toolbar_bg, 240));
                         painter.rect_stroke(measure_rect, 4.0, egui::Stroke::new(1.0, color_alpha(dist_col, 80)), egui::StrokeKind::Outside);
                         painter.text(egui::pos2(measure_rect.center().x, measure_rect.top() + pct_galley.size().y / 2.0 + 4.0),
-                            egui::Align2::CENTER_CENTER, &m_pct_text, egui::FontId::monospace(16.0), dist_col);
+                            egui::Align2::CENTER_CENTER, &m_pct_text, egui::FontId::monospace(10.0), dist_col);
                         painter.text(egui::pos2(measure_rect.center().x, measure_rect.bottom() - price_galley.size().y / 2.0 - 3.0),
-                            egui::Align2::CENTER_CENTER, &m_price_text, egui::FontId::monospace(10.0), color_alpha(dist_col, 160));
+                            egui::Align2::CENTER_CENTER, &m_price_text, egui::FontId::monospace(8.0), color_alpha(dist_col, 160));
                     }
 
                     // OHLC tooltip (togglable — hidden when footprint is active)
