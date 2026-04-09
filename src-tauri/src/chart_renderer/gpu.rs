@@ -7550,8 +7550,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
         let has_tabs = chart.tab_symbols.len() > 1;
-        let show_header = has_tabs || visible_count > 1;
-        let pane_top_offset = if has_tabs { 28.0 } else if visible_count > 1 { 18.0 } else { 0.0 };
+        // Always show header (18px min) so + tab button is accessible even in single-pane
+        let pane_top_offset = if has_tabs { 28.0 } else { 18.0 };
+        let show_header = true;
         if show_header {
             let header_rect = egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), pane_top_offset));
             ui.allocate_rect(header_rect, egui::Sense::hover()); // reserve space
