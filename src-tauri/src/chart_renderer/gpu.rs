@@ -2285,18 +2285,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 panes[ap].picker_pos = egui::pos2(sym_btn.rect.left(), sym_btn.rect.bottom());
             }
 
-            // ── Daily Change % Badge ──
-            if let (Some(first), Some(last)) = (panes[ap].bars.first(), panes[ap].bars.last()) {
-                if first.open > 0.0 {
-                    let change_pct = (last.close - first.open) / first.open * 100.0;
-                    let is_positive = change_pct >= 0.0;
-                    let badge_text = if is_positive { format!("+{:.2}%", change_pct) } else { format!("{:.2}%", change_pct) };
-                    let badge_color = if is_positive { t.bull } else { t.bear };
-                    let badge_bg = egui::Color32::from_rgba_unmultiplied(badge_color.r(), badge_color.g(), badge_color.b(), 25);
-                    ui.add(egui::Button::new(
-                        egui::RichText::new(&badge_text).monospace().size(10.0).color(badge_color)
-                    ).fill(badge_bg).corner_radius(3.0).stroke(egui::Stroke::NONE));
-                }
+            // Daily change badge moved to pane header
+            if false {
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -7490,10 +7480,30 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 chart.picker_pos = egui::pos2(sym_rect.left(), sym_rect.bottom());
             }
 
+            // Change % badge in pane header
+            let sym_text_w = header_painter.layout_no_wrap(
+                format!("{} {}", chart.symbol, chart.timeframe), egui::FontId::monospace(10.0), label_color).size().x;
+            if let (Some(first), Some(last)) = (chart.bars.first(), chart.bars.last()) {
+                if first.open > 0.0 {
+                    let chg = (last.close - first.open) / first.open * 100.0;
+                    let chg_col = if chg >= 0.0 { t.bull } else { t.bear };
+                    let chg_text = if chg >= 0.0 { format!("+{:.2}%", chg) } else { format!("{:.2}%", chg) };
+                    let chg_x = sym_label_x + sym_text_w + 8.0;
+                    let chg_bg = egui::Color32::from_rgba_unmultiplied(chg_col.r(), chg_col.g(), chg_col.b(), 20);
+                    let chg_galley = header_painter.layout_no_wrap(chg_text.clone(), egui::FontId::monospace(9.0), chg_col);
+                    let chg_rect = egui::Rect::from_min_size(
+                        egui::pos2(chg_x, header_rect.center().y - chg_galley.size().y / 2.0 - 1.0),
+                        chg_galley.size() + egui::vec2(6.0, 2.0));
+                    header_painter.rect_filled(chg_rect, 2.0, chg_bg);
+                    header_painter.text(egui::pos2(chg_x + 3.0, header_rect.center().y), egui::Align2::LEFT_CENTER,
+                        &chg_text, egui::FontId::monospace(9.0), chg_col);
+                }
+            }
+
             // Opt button in pane header
             {
-                let opt_x = sym_label_x + header_painter.layout_no_wrap(
-                    format!("{} {}", chart.symbol, chart.timeframe), egui::FontId::monospace(10.0), label_color).size().x + 10.0;
+                let opt_x = sym_label_x + sym_text_w + 10.0
+                    + if chart.bars.len() > 1 { 60.0 } else { 0.0 }; // space for change badge
                 let opt_rect = egui::Rect::from_min_size(
                     egui::pos2(opt_x, header_rect.top() + 1.0),
                     egui::vec2(26.0, pane_top_offset - 2.0));
@@ -8749,12 +8759,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        // ── Swing Legs overlay ──
+        // ── Swing Legs overlay — measures from most recent pivot to current price ──
         if chart.show_swing_legs && n > 20 {
             let vis_start = vs as usize;
             let vis_end = (vis_start + chart.vc as usize).min(n);
             let pivot_n = 10_usize;
-            let mut last_peak: Option<(usize, f32)> = None; // (bar_idx, price)
+            let mut last_peak: Option<(usize, f32)> = None;
             let mut last_trough: Option<(usize, f32)> = None;
             for i in vis_start..vis_end {
                 if i >= pivot_n && i + pivot_n < n {
@@ -8764,29 +8774,41 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if is_pl { last_trough = Some((i, chart.bars[i].low)); }
                 }
             }
-            if let (Some((pk_i, pk_p)), Some((tr_i, tr_p))) = (last_peak, last_trough) {
-                let bull_move = tr_i < pk_i; // trough before peak = bullish
-                let col = if bull_move {
-                    egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 120)
-                } else {
+            // Find the most recent pivot (whichever came last)
+            let cur_price = last_price;
+            let cur_bar = n - 1;
+            let most_recent = match (last_peak, last_trough) {
+                (Some((pi, _)), Some((ti, _))) => if pi > ti { last_peak.map(|p| (p, true)) } else { last_trough.map(|p| (p, false)) },
+                (Some(p), None) => Some((p, true)),
+                (None, Some(p)) => Some((p, false)),
+                _ => None,
+            };
+            if let Some(((pivot_i, pivot_price), is_peak)) = most_recent {
+                // Line from pivot to current price
+                let from_above = is_peak; // peak → current = falling, trough → current = rising
+                let col = if from_above {
                     egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 120)
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 120)
                 };
-                let p1 = egui::pos2(bx(pk_i as f32), py(pk_p));
-                let p2 = egui::pos2(bx(tr_i as f32), py(tr_p));
+                let p1 = egui::pos2(bx(pivot_i as f32), py(pivot_price));
+                let p2 = egui::pos2(bx(cur_bar as f32), py(cur_price));
                 dashed_line(&painter, p1, p2, egui::Stroke::new(1.0, col), LineStyle::Dashed);
-                // Small dot at each pivot
-                painter.circle_filled(p1, 3.0, col);
-                painter.circle_filled(p2, 3.0, col);
-                // Label at midpoint
+                // Dot at pivot, small arrow at current
+                painter.circle_filled(p1, 3.5, col);
+                let arrow_dir = if cur_price > pivot_price { -1.0 } else { 1.0 };
+                painter.line_segment([egui::pos2(p2.x - 4.0, p2.y + arrow_dir * 5.0), p2], egui::Stroke::new(1.5, col));
+                painter.line_segment([egui::pos2(p2.x + 4.0, p2.y + arrow_dir * 5.0), p2], egui::Stroke::new(1.5, col));
+                // Label: distance from pivot to current
                 let mid = egui::pos2((p1.x + p2.x) / 2.0, (p1.y + p2.y) / 2.0);
-                let dist_pct = ((pk_p - tr_p) / tr_p * 100.0).abs();
-                let dist_dollar = (pk_p - tr_p).abs();
-                let label = format!("{:.1}% (${:.2})", dist_pct, dist_dollar);
-                // Background for label
-                let label_galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(8.0), col);
-                let label_rect = egui::Rect::from_center_size(mid, label_galley.size() + egui::vec2(6.0, 4.0));
-                painter.rect_filled(label_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 200));
-                painter.text(mid, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(8.0), col);
+                let dist_pct = ((cur_price - pivot_price) / pivot_price * 100.0).abs();
+                let dist_dollar = (cur_price - pivot_price).abs();
+                let dir_label = if is_peak { "\u{25BC}" } else { "\u{25B2}" }; // ▼ or ▲
+                let label = format!("{} {:.1}% ${:.2}", dir_label, dist_pct, dist_dollar);
+                let label_galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(9.0), col);
+                let label_rect = egui::Rect::from_center_size(mid, label_galley.size() + egui::vec2(8.0, 4.0));
+                painter.rect_filled(label_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 220));
+                painter.text(mid, egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(9.0), col);
             }
         }
 
