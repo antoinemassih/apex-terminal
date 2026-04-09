@@ -2194,7 +2194,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // Apply font scale from settings (base = 1.2, range 1.2–2.2)
-    if (watchlist.font_scale - 1.2).abs() > 0.01 {
+    if (watchlist.font_scale - 1.6).abs() > 0.01 {
         ctx.set_pixels_per_point(watchlist.font_scale);
     } else {
         ctx.set_pixels_per_point(1.2);
@@ -3559,23 +3559,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.label(egui::RichText::new("Font Scale").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
-                        let mut pct = (watchlist.font_scale * 100.0).round() as i32;
-                        if ui.add(egui::DragValue::new(&mut pct).range(120..=220).suffix("%").speed(1)
+                        // Display as 60-160% but internally 1.2-2.2 ppp
+                        let display_pct = ((watchlist.font_scale - 1.2) / 0.02).round() as i32 + 60;
+                        let mut dp = display_pct;
+                        if ui.add(egui::DragValue::new(&mut dp).range(60..=160).suffix("%").speed(1)
                             .custom_formatter(|v, _| format!("{}%", v as i32))).changed() {
-                            watchlist.font_scale = pct as f32 / 100.0;
+                            watchlist.font_scale = 1.2 + (dp - 60) as f32 * 0.02;
                         }
                     });
                 });
-                // Preset buttons
+                // Preset buttons (display % → internal ppp)
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    for pct in [120, 140, 160, 180, 200] {
-                        let active = (watchlist.font_scale * 100.0).round() as i32 == pct;
+                    // display: [60, 80, 100, 120, 140, 160] → ppp: [1.2, 1.6, 2.0, 2.4, 2.8, 3.2]
+                    // Actually: 60→1.2, 80→1.4, 100→1.6, 120→1.8, 140→2.0, 160→2.2
+                    for (label, ppp) in [(60, 1.2_f32), (80, 1.4), (100, 1.6), (120, 1.8), (140, 2.0), (160, 2.2)] {
+                        let active = (watchlist.font_scale - ppp).abs() < 0.05;
                         let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
                         let bg = if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("{}%", pct)).monospace().size(9.0).color(fg))
-                            .fill(bg).corner_radius(3.0).min_size(egui::vec2(36.0, 18.0))).clicked() {
-                            watchlist.font_scale = pct as f32 / 100.0;
+                        if ui.add(egui::Button::new(egui::RichText::new(format!("{}%", label)).monospace().size(9.0).color(fg))
+                            .fill(bg).corner_radius(3.0).min_size(egui::vec2(32.0, 18.0))).clicked() {
+                            watchlist.font_scale = ppp;
                         }
                     }
                 });
@@ -3641,6 +3645,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let mut val = watchlist.shared_x_axis;
                         if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
                             watchlist.shared_x_axis = val;
+                        }
+                    });
+                });
+                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new("Shared Y-Axis").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(m);
+                        let mut val = watchlist.shared_y_axis;
+                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
+                            watchlist.shared_y_axis = val;
                         }
                     });
                 });
@@ -7518,9 +7534,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         );
         // Shared X-axis: detect if this pane has a bottom neighbor (skip X labels on upper panes)
         let pane_has_bottom_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.top() - pane_rect.bottom()).abs() < 5.0);
+        let pane_has_right_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.left() - pane_rect.right()).abs() < 5.0);
         let skip_x_labels = watchlist.shared_x_axis && pane_has_bottom_neighbor;
+        let skip_y_axis = watchlist.shared_y_axis && pane_has_right_neighbor;
         let (w,h) = (rect.width(), rect.height());
-        let pr = if watchlist.show_y_axis { 42.0_f32 } else { 0.0_f32 };
+        let pr = if !watchlist.show_y_axis || skip_y_axis { 0.0_f32 } else { 42.0_f32 };
         let pt = if watchlist.compact_mode { 1.0_f32 } else { 4.0_f32 };
         let pb = 0.0_f32;
         // Reserve space for oscillator sub-panel if any oscillator indicators or CVD is active
@@ -14245,6 +14263,7 @@ struct Watchlist {
     show_x_axis: bool,
     show_y_axis: bool,
     shared_x_axis: bool,
+    shared_y_axis: bool,
     hotkeys: Vec<HotKey>,
     trendline_filter_open: bool, // trendline filter dropdown
     account_strip_open: bool, // account summary bar below toolbar
@@ -14339,8 +14358,8 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
-               settings_open: false, font_scale: 1.2, compact_mode: false, show_x_axis: true, show_y_axis: true,
-               toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false,
+               settings_open: false, font_scale: 1.6, compact_mode: false, show_x_axis: true, show_y_axis: true,
+               toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false, shared_y_axis: false,
                trendline_filter_open: false, account_strip_open: false, broadcast_mode: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
