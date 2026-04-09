@@ -121,6 +121,27 @@ impl Layout {
         Layout::Six=>"6", Layout::SixH=>"6H", Layout::SixL=>"6L",
         Layout::Seven=>"7", Layout::EightH=>"8H", Layout::Nine=>"9",
     }}
+    fn description(self) -> &'static str { match self {
+        Layout::One=>"Single pane", Layout::Two=>"2 side-by-side", Layout::TwoH=>"2 stacked",
+        Layout::Three=>"1 top + 2 bottom", Layout::ThreeL=>"1 left + 2 right",
+        Layout::Four=>"2\u{00d7}2 grid", Layout::FourL=>"1 left + 3 right",
+        Layout::FiveC=>"2L + 1 center + 2R", Layout::FiveL=>"2 left + 3 right",
+        Layout::FiveW=>"1 wide top + 2\u{00d7}2", Layout::FiveR=>"2 + 1 + 2 rows",
+        Layout::Six=>"2\u{00d7}3 grid", Layout::SixH=>"3 + 3 stacked",
+        Layout::SixL=>"2 left + 4 right",
+        Layout::Seven=>"1 top + 6 bottom", Layout::EightH=>"4 + 4 columns",
+        Layout::Nine=>"3\u{00d7}3 grid",
+    }}
+    /// Section header for the layout dropdown
+    fn section(self) -> &'static str { match self {
+        Layout::One => "1 Pane",
+        Layout::Two | Layout::TwoH => "2 Panes",
+        Layout::Three | Layout::ThreeL => "3 Panes",
+        Layout::Four | Layout::FourL => "4 Panes",
+        Layout::FiveC | Layout::FiveL | Layout::FiveW | Layout::FiveR => "5 Panes",
+        Layout::Six | Layout::SixH | Layout::SixL => "6 Panes",
+        Layout::Seven | Layout::EightH | Layout::Nine => "7+ Panes",
+    }}
     /// Returns (col, row) grid dimensions for each pane in the layout, given the total rect.
     /// For Layout::Three, returns a custom arrangement: 1 full-width top (60%) + 2 bottom (40%).
     fn pane_rects(self, rect: egui::Rect, count: usize, split_h: f32, split_v: f32, split_h2: f32, split_v2: f32) -> Vec<egui::Rect> {
@@ -2721,24 +2742,70 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // ── Layouts ──
+            // ── Layouts — favorites bar + dropdown ──
+            // Helper: switch to a layout, creating panes as needed
+            let mut switch_layout = |ly: Layout, panes: &mut Vec<Chart>, layout: &mut Layout, active_pane: &mut usize| {
+                if *layout == ly { return; }
+                let max = ly.max_panes();
+                while panes.len() < max {
+                    let syms = ["SPY","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOG","AMD"];
+                    let sym = syms.get(panes.len()).unwrap_or(&"SPY");
+                    let mut p = Chart::new_with(sym, &panes[0].timeframe);
+                    p.theme_idx = panes[0].theme_idx;
+                    p.recent_symbols = panes[0].recent_symbols.clone();
+                    p.pending_symbol_change = Some(sym.to_string());
+                    panes.push(p);
+                }
+                *layout = ly;
+                if *active_pane >= max { *active_pane = 0; }
+            };
+            // Show favorited layouts as buttons
             for &ly in ALL_LAYOUTS {
+                if !watchlist.layout_favorites.iter().any(|f| f == ly.label()) { continue; }
                 let is_cur = *layout == ly;
-                if tb_btn(ui, ly.label(), is_cur, t).clicked() && !is_cur {
-                    let max = ly.max_panes();
-                    while panes.len() < max {
-                        let syms = ["SPY","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOG","AMD"];
-                        let sym = syms.get(panes.len()).unwrap_or(&"SPY");
-                        let mut p = Chart::new_with(sym, &panes[0].timeframe);
-                        p.theme_idx = panes[0].theme_idx;
-                        p.recent_symbols = panes[0].recent_symbols.clone();
-                        p.pending_symbol_change = Some(sym.to_string());
-                        panes.push(p);
-                    }
-                    *layout = ly;
-                    if *active_pane >= max { *active_pane = 0; }
+                if tb_btn(ui, ly.label(), is_cur, t).clicked() {
+                    switch_layout(ly, panes, layout, active_pane);
                 }
             }
+            // Dropdown for all layouts (organized by section)
+            let layout_dropdown_label = format!("{}", Icon::CARET_DOWN);
+            ui.menu_button(egui::RichText::new(&layout_dropdown_label).monospace().size(11.0).color(t.dim), |ui| {
+                ui.set_min_width(180.0);
+                let mut last_section = "";
+                for &ly in ALL_LAYOUTS {
+                    let sec = ly.section();
+                    if sec != last_section {
+                        if !last_section.is_empty() { ui.separator(); }
+                        ui.label(egui::RichText::new(sec).monospace().size(9.0).strong().color(t.accent));
+                        last_section = sec;
+                    }
+                    let is_cur = *layout == ly;
+                    let is_fav = watchlist.layout_favorites.iter().any(|f| f == ly.label());
+                    ui.horizontal(|ui| {
+                        // Star toggle
+                        let star = if is_fav { Icon::STAR_FILL } else { Icon::STAR };
+                        let star_col = if is_fav { egui::Color32::from_rgb(255, 200, 60) } else { t.dim.gamma_multiply(0.4) };
+                        if ui.add(egui::Button::new(egui::RichText::new(star).size(12.0).color(star_col))
+                            .frame(false).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                            if is_fav {
+                                watchlist.layout_favorites.retain(|f| f != ly.label());
+                            } else {
+                                watchlist.layout_favorites.push(ly.label().to_string());
+                            }
+                        }
+                        // Layout label + description
+                        let label_col = if is_cur { t.accent } else { egui::Color32::from_rgb(220, 220, 230) };
+                        let row_resp = ui.add(egui::Button::new(
+                            egui::RichText::new(format!("{:>3}  {}", ly.label(), ly.description()))
+                                .monospace().size(10.0).color(label_col)
+                        ).frame(false).min_size(egui::vec2(150.0, 18.0)));
+                        if row_resp.clicked() {
+                            switch_layout(ly, panes, layout, active_pane);
+                            ui.close_menu();
+                        }
+                    });
+                }
+            });
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -3059,7 +3126,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.painter().rect_filled(screen, 0.0, egui::Color32::from_black_alpha(120));
             });
 
-        egui::Window::new("cmd_palette")
+        let cmd_pal_resp = egui::Window::new("cmd_palette")
             .fixed_pos(egui::pos2(pal_x, pal_y))
             .fixed_size(egui::vec2(pal_w, 0.0))
             .title_bar(false)
@@ -3174,6 +3241,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
             });
+
+        // Click-away closes command palette
+        if let Some(wr) = &cmd_pal_resp {
+            let pal_rect = wr.response.rect;
+            if ctx.input(|i| i.pointer.any_pressed()) {
+                if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                    if !pal_rect.contains(pos) {
+                        watchlist.cmd_palette_open = false;
+                    }
+                }
+            }
+        }
     }
 
     // ── Hotkey editor: key capture (runs before dialog rendering) ──────────
@@ -3442,7 +3521,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
 
-        egui::Window::new(format!("picker_{}", picker_pane_idx))
+        let picker_win_resp = egui::Window::new(format!("picker_{}", picker_pane_idx))
             .fixed_pos(chart.picker_pos)
             .fixed_size(egui::vec2(340.0, 420.0))
             .title_bar(false)
@@ -3541,6 +3620,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     }
                 }
             });
+
+        // Click-away closes picker
+        if !close_picker {
+            if let Some(wr) = &picker_win_resp {
+                let picker_rect = wr.response.rect;
+                if ctx.input(|i| i.pointer.any_pressed()) {
+                    if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                        if !picker_rect.contains(pos) {
+                            close_picker = true;
+                        }
+                    }
+                }
+            }
+        }
 
         if close_picker { chart.picker_open = false; }
 
@@ -13823,6 +13916,8 @@ struct Watchlist {
     cmd_palette_query: String,
     cmd_palette_results: Vec<(String, String, String)>, // (symbol/cmd, name, type)
     cmd_palette_sel: i32, // selected result index (-1 = none)
+    // Layout favorites (shown as buttons in toolbar; rest in dropdown)
+    layout_favorites: Vec<String>,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -13854,7 +13949,8 @@ impl Watchlist {
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
                pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5, pane_divider_dragging: false,
-               cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1 }
+               cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
+               layout_favorites: vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()] }
     }
 
     /// Add symbol to the last section (creates one if none exist).

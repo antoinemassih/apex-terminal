@@ -67,6 +67,8 @@ impl Icon {
     pub const SPARKLE: &'static str = ph::SPARKLE;
     pub const PULSE: &'static str = ph::PULSE;
     pub const NOTEBOOK: &'static str = ph::NOTEBOOK;
+    pub const STAR: &'static str = ph::STAR;
+    pub const STAR_FILL: &'static str = ph_bold::STAR;  // bold variant as "filled" star
 
     // Chart
     pub const CHART_LINE: &'static str = ph::CHART_LINE;
