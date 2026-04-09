@@ -6558,48 +6558,65 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let visible_count = layout.max_panes().min(panes.len());
         let pane_rects = layout.pane_rects(full_rect, visible_count, watchlist.pane_split_h, watchlist.pane_split_v);
 
-        // ── Pane divider drag handles ──
+        // ── Pane divider drag handles (geometry-based, works for all layouts) ──
         if visible_count > 1 {
-            for i in 0..visible_count - 1 {
-                let r0 = &pane_rects[i];
-                let r1 = &pane_rects[i + 1];
-                // Detect if divider is horizontal (panes side by side) or vertical (stacked)
-                let is_horizontal = (r0.right() - r1.left()).abs() < 10.0; // side by side = vertical divider line
-                let is_vertical = (r0.bottom() - r1.top()).abs() < 10.0;   // stacked = horizontal divider line
-
-                if is_horizontal {
-                    let div_x = (r0.right() + r1.left()) / 2.0;
-                    let div_rect = egui::Rect::from_min_size(
-                        egui::pos2(div_x - 3.0, full_rect.top()),
-                        egui::vec2(6.0, full_rect.height()));
-                    let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", i)), egui::Sense::drag());
-                    if div_resp.hovered() || div_resp.dragged() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            // Find unique vertical divider X positions (between side-by-side panes)
+            let mut v_dividers: Vec<f32> = Vec::new();
+            // Find unique horizontal divider Y positions (between stacked panes)
+            let mut h_dividers: Vec<f32> = Vec::new();
+            for i in 0..visible_count {
+                for j in (i+1)..visible_count {
+                    let r0 = &pane_rects[i];
+                    let r1 = &pane_rects[j];
+                    // Side by side: r0.right ≈ r1.left (vertical divider)
+                    if (r0.right() - r1.left()).abs() < 5.0
+                        && r0.top().max(r1.top()) < r0.bottom().min(r1.bottom()) {
+                        let x = (r0.right() + r1.left()) / 2.0;
+                        if !v_dividers.iter().any(|&vx| (vx - x).abs() < 3.0) { v_dividers.push(x); }
                     }
-                    if div_resp.dragged() {
-                        let dx = div_resp.drag_delta().x;
-                        let ratio = dx / full_rect.width();
-                        watchlist.pane_split_h = (watchlist.pane_split_h + ratio).clamp(0.15, 0.85);
-                        watchlist.pane_divider_dragging = true;
+                    // Stacked: r0.bottom ≈ r1.top (horizontal divider)
+                    if (r0.bottom() - r1.top()).abs() < 5.0
+                        && r0.left().max(r1.left()) < r0.right().min(r1.right()) {
+                        let y = (r0.bottom() + r1.top()) / 2.0;
+                        if !h_dividers.iter().any(|&hy| (hy - y).abs() < 3.0) { h_dividers.push(y); }
                     }
-                    if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
-                } else if is_vertical {
-                    let div_y = (r0.bottom() + r1.top()) / 2.0;
-                    let div_rect = egui::Rect::from_min_size(
-                        egui::pos2(full_rect.left(), div_y - 5.0),
-                        egui::vec2(full_rect.width(), 10.0));
-                    let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", i)), egui::Sense::drag());
-                    if div_resp.hovered() || div_resp.dragged() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                    }
-                    if div_resp.dragged() {
-                        let dy = div_resp.drag_delta().y;
-                        let ratio = dy / full_rect.height();
-                        watchlist.pane_split_v = (watchlist.pane_split_v + ratio).clamp(0.15, 0.85);
-                        watchlist.pane_divider_dragging = true;
-                    }
-                    if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
                 }
+            }
+            // Vertical dividers (drag left/right to adjust column widths)
+            for (di, &div_x) in v_dividers.iter().enumerate() {
+                // Bigger hit area biased toward chart side (left, away from Y-axis)
+                let div_rect = egui::Rect::from_min_size(
+                    egui::pos2(div_x - 8.0, full_rect.top()),
+                    egui::vec2(12.0, full_rect.height()));
+                let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
+                if div_resp.hovered() || div_resp.dragged() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                }
+                if div_resp.dragged() {
+                    let dx = div_resp.drag_delta().x;
+                    let ratio = dx / full_rect.width();
+                    watchlist.pane_split_h = (watchlist.pane_split_h + ratio).clamp(0.15, 0.85);
+                    watchlist.pane_divider_dragging = true;
+                }
+                if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
+            }
+            // Horizontal dividers (drag up/down to adjust row heights)
+            for (di, &div_y) in h_dividers.iter().enumerate() {
+                // Bigger hit area biased upward (away from bottom axis area)
+                let div_rect = egui::Rect::from_min_size(
+                    egui::pos2(full_rect.left(), div_y - 8.0),
+                    egui::vec2(full_rect.width(), 12.0));
+                let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
+                if div_resp.hovered() || div_resp.dragged() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                }
+                if div_resp.dragged() {
+                    let dy = div_resp.drag_delta().y;
+                    let ratio = dy / full_rect.height();
+                    watchlist.pane_split_v = (watchlist.pane_split_v + ratio).clamp(0.15, 0.85);
+                    watchlist.pane_divider_dragging = true;
+                }
+                if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
             }
         }
 
