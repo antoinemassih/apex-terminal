@@ -7402,7 +7402,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let total = chart.vc + dynamic_pad;
         let bs = cw/total as f32;
         let vs = chart.vs;
-        let end = ((vs as u32)+chart.vc).min(n as u32);
+        // Render bars for full screen width (vc + padding) so bars fill to the edge
+        let end = ((vs as u32) + chart.vc + dynamic_pad).min(n as u32);
         let frac = vs-vs.floor();
         let off = frac*bs;
 
@@ -7410,7 +7411,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let py_inv = |y:f32| max_p - (y - rect.top() - pt) / ch * (max_p - min_p);
         let bx = |i:f32| rect.left()+(i-vs)*bs+bs*0.5-off;
         let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-        let painter = ui.painter_at(rect);
+        // Use full_rect as clip to avoid masking candles near the right edge
+        let painter = ui.painter_at(full_rect);
 
         // Grid + price labels
         let rng=max_p-min_p; let rs=rng/8.0; let mg=10.0_f32.powf(rs.log10().floor());
