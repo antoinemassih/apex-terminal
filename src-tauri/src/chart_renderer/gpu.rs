@@ -165,28 +165,42 @@ impl Layout {
                 rects
             }
             Layout::ThreeL if count >= 2 => {
-                // 1 big left + 2 stacked right
+                // 1 big left + 2 stacked right (split_v controls right side)
                 let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
                 let right_w = rect.width() - gap - left_w;
                 let rx = rect.left() + left_w + gap;
                 let mut rects = vec![egui::Rect::from_min_size(rect.min, egui::vec2(left_w, rect.height()))];
-                let n_right = (count - 1).min(2);
-                let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right as f32;
-                for i in 0..n_right {
-                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                if count >= 3 {
+                    let h0 = (rect.height() - gap) * split_v.clamp(0.15, 0.85);
+                    let h1 = rect.height() - gap - h0;
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top()), egui::vec2(right_w, h0)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + h0 + gap), egui::vec2(right_w, h1)));
+                } else {
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top()), egui::vec2(right_w, rect.height())));
                 }
                 rects
             }
             Layout::FourL if count >= 2 => {
-                // 1 big left + 3 stacked right
+                // 1 big left + 3 stacked right (split_v + split_v2 control right side)
                 let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
                 let right_w = rect.width() - gap - left_w;
                 let rx = rect.left() + left_w + gap;
                 let mut rects = vec![egui::Rect::from_min_size(rect.min, egui::vec2(left_w, rect.height()))];
                 let n_right = (count - 1).min(3);
-                let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right as f32;
-                for i in 0..n_right {
-                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                if n_right == 3 {
+                    let total_rh = rect.height() - gap * 2.0;
+                    let h0 = total_rh * (split_v * 0.9).clamp(0.1, 0.5);
+                    let rest = total_rh - h0;
+                    let h1 = rest * split_v2.clamp(0.2, 0.8);
+                    let h2 = rest - h1;
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top()), egui::vec2(right_w, h0)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + h0 + gap), egui::vec2(right_w, h1)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + h0 + gap + h1 + gap), egui::vec2(right_w, h2)));
+                } else {
+                    let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right as f32;
+                    for i in 0..n_right {
+                        rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                    }
                 }
                 rects
             }
@@ -211,16 +225,15 @@ impl Layout {
                 rects
             }
             Layout::FiveL if count >= 2 => {
-                // 2 stacked left + 3 stacked right
+                // 2 stacked left + 3 stacked right (split_v controls left, split_v2 controls right)
                 let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
                 let right_w = rect.width() - gap - left_w;
                 let rx = rect.left() + left_w + gap;
-                let half_h = (rect.height() - gap) / 2.0;
+                let lh0 = (rect.height() - gap) * split_v.clamp(0.15, 0.85);
+                let lh1 = rect.height() - gap - lh0;
                 let mut rects = Vec::new();
-                // Left 2
-                rects.push(egui::Rect::from_min_size(rect.min, egui::vec2(left_w, half_h)));
-                rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + half_h + gap), egui::vec2(left_w, half_h)));
-                // Right 3
+                rects.push(egui::Rect::from_min_size(rect.min, egui::vec2(left_w, lh0)));
+                rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + lh0 + gap), egui::vec2(left_w, lh1)));
                 let n_right = (count - 2).min(3);
                 let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right as f32;
                 for i in 0..n_right {
@@ -229,16 +242,15 @@ impl Layout {
                 rects
             }
             Layout::SixL if count >= 2 => {
-                // 2 big stacked left + 4 stacked right
+                // 2 big stacked left + 4 stacked right (split_v controls left)
                 let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
                 let right_w = rect.width() - gap - left_w;
                 let rx = rect.left() + left_w + gap;
-                let half_h = (rect.height() - gap) / 2.0;
+                let lh0 = (rect.height() - gap) * split_v.clamp(0.15, 0.85);
+                let lh1 = rect.height() - gap - lh0;
                 let mut rects = Vec::new();
-                // Left 2
-                rects.push(egui::Rect::from_min_size(rect.min, egui::vec2(left_w, half_h)));
-                rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + half_h + gap), egui::vec2(left_w, half_h)));
-                // Right 4
+                rects.push(egui::Rect::from_min_size(rect.min, egui::vec2(left_w, lh0)));
+                rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + lh0 + gap), egui::vec2(left_w, lh1)));
                 let n_right = (count - 2).min(4);
                 let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right as f32;
                 for i in 0..n_right {
@@ -11275,7 +11287,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         // Stacked: top pane gives 5px on bottom (axis side), bottom pane gives 30px on top (chart side)
         let shrink_left = if has_left_neighbor { 15.0_f32 } else { 0.0 };  // right pane: grab area on left
         let shrink_right = if has_right_neighbor { 5.0 } else { 0.0 };     // left pane: small on axis side
-        let shrink_top = if has_top_neighbor { 10.0 } else { 0.0 };        // bottom pane: 10px grab below header
+        let shrink_top = if has_top_neighbor { 28.0 } else { 0.0 };        // bottom pane: header (18px) + divider grab (10px)
         let shrink_bottom = 0.0_f32;                                        // top pane: no shrink (axis stays free)
         let interact_rect = egui::Rect::from_min_size(
             egui::pos2(rect.left() + shrink_left, rect.top() + pt + shrink_top),
