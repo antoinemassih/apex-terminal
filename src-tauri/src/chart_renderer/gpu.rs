@@ -2194,11 +2194,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // Apply font scale from settings (base = 1.2, range 1.2–2.2)
-    if (watchlist.font_scale - 1.6).abs() > 0.01 {
-        ctx.set_pixels_per_point(watchlist.font_scale);
-    } else {
-        ctx.set_pixels_per_point(1.2);
-    }
+    ctx.set_pixels_per_point(watchlist.font_scale);
     // Cache account data once per frame (avoid repeated Mutex lock + clone)
     let account_data_cached = read_account_data();
     // Store window ref for drag/minimize/maximize/close
