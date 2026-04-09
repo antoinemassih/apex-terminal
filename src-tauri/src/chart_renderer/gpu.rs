@@ -11466,20 +11466,22 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 });
             } // end if !collapsed
 
-            // ── DOM / Price Ladder floating window ──────────────────────
+            // ── DOM / Price Ladder — slides above order panel, same width ──
             if chart.dom_open {
-                let dom_w = 180.0;
+                let panel_w_dom = if chart.order_advanced { 300.0 } else { 230.0 };
+                let dom_h = (ch * 0.6).min(450.0).max(200.0); // ~3x order panel height
+                let order_abs_y = if chart.order_panel_pos.y < 0.0 {
+                    rect.top() + pt + ch + chart.order_panel_pos.y
+                } else {
+                    rect.top() + pt + chart.order_panel_pos.y
+                };
                 let dom_pos = egui::pos2(
-                    rect.left() + chart.order_panel_pos.x + (if chart.order_advanced { 300.0 } else { 230.0 }) + 4.0,
-                    if chart.order_panel_pos.y < 0.0 {
-                        rect.top() + pt + ch + chart.order_panel_pos.y
-                    } else {
-                        rect.top() + pt + chart.order_panel_pos.y
-                    },
+                    rect.left() + chart.order_panel_pos.x,
+                    order_abs_y - dom_h - 2.0, // directly above order panel
                 );
                 egui::Window::new(format!("dom_{}", pane_idx))
                     .fixed_pos(dom_pos)
-                    .fixed_size(egui::vec2(dom_w, 0.0))
+                    .fixed_size(egui::vec2(panel_w_dom, dom_h))
                     .title_bar(false)
                     .frame(egui::Frame::popup(&ctx.style())
                         .fill(t.toolbar_bg)
@@ -11488,7 +11490,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         .corner_radius(4.0))
                     .show(ctx, |ui| {
                         // Header
-                        let hdr_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(dom_w, 20.0));
+                        let hdr_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(panel_w_dom, 20.0));
                         ui.painter().rect_filled(hdr_rect, egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, color_alpha(t.toolbar_border, 30));
                         ui.horizontal(|ui| {
                             ui.add_space(6.0);
@@ -11538,7 +11540,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.label(egui::RichText::new("ASK").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
                         });
 
-                        egui::ScrollArea::vertical().max_height(ch.min(500.0)).show(ui, |ui| {
+                        egui::ScrollArea::vertical().max_height(dom_h - 40.0).auto_shrink([false, false]).show(ui, |ui| {
                             for row in (-rows_above..=rows_below).rev() {
                                 let price = center_price + (row as f32 * tick * -1.0);
                                 let is_current = (price - center_price).abs() < tick * 0.5;
@@ -11559,7 +11561,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                                 let row_rect = ui.horizontal(|ui| {
                                     let row_start = ui.cursor().min;
-                                    let row_r = egui::Rect::from_min_size(row_start, egui::vec2(dom_w, 16.0));
+                                    let row_r = egui::Rect::from_min_size(row_start, egui::vec2(panel_w_dom, 16.0));
                                     ui.painter().rect_filled(row_r, 0.0, row_bg);
                                     if has_buy_order {
                                         ui.painter().rect_filled(row_r, 0.0, color_alpha(t.bull, 25));
