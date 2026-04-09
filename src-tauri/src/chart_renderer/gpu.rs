@@ -1111,6 +1111,7 @@ struct Chart {
     measuring: bool,
     measure_start: Option<(f32, f32)>, // (bar, price) start point
     measure_active: bool, // context menu activated measure mode
+    dom_open: bool, // DOM / Price Ladder floating window
     // Symbol/timeframe change request — signals the App to reload data
     pending_symbol_change: Option<String>,
     pending_timeframe_change: Option<String>,
@@ -1245,7 +1246,7 @@ impl Chart {
             dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
-            measuring: false, measure_start: None, measure_active: false,
+            measuring: false, measure_start: None, measure_active: false, dom_open: false,
             pending_symbol_change: None, pending_timeframe_change: None,
             cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
@@ -2821,6 +2822,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 if ui.selectable_label(false, egui::RichText::new(format!("{} Add Symbol Overlay", Icon::PLUS)).monospace().size(10.0)).clicked() {
                     watchlist.pending_overlay_add = true;
                 }
+                ui.separator();
+                ui.label(egui::RichText::new("COMING SOON").monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                ui.label(egui::RichText::new("  Time & Sales").monospace().size(10.0).color(t.dim.gamma_multiply(0.3)));
+                ui.label(egui::RichText::new("  Events / Earnings").monospace().size(10.0).color(t.dim.gamma_multiply(0.3)));
+                ui.label(egui::RichText::new("  IV Overlay").monospace().size(10.0).color(t.dim.gamma_multiply(0.3)));
+                ui.label(egui::RichText::new("  Indicator Alerts").monospace().size(10.0).color(t.dim.gamma_multiply(0.3)));
             });
             // Deferred: open overlay editor after menu closes
             if watchlist.pending_overlay_add {
@@ -2870,6 +2877,121 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             ui.close_menu();
                         }
                     });
+                    // ── PANE TEMPLATES ──
+                    ui.separator();
+                    ui.label(egui::RichText::new("PANE TEMPLATES").monospace().size(8.0).color(t.dim));
+                    // Save current pane as template
+                    ui.horizontal(|ui| {
+                        ui.add(egui::TextEdit::singleline(&mut watchlist.pane_template_name)
+                            .hint_text("Template name")
+                            .desired_width(100.0)
+                            .font(egui::FontId::monospace(10.0)));
+                        let can_save_t = !watchlist.pane_template_name.trim().is_empty();
+                        if ui.add_enabled(can_save_t, egui::Button::new(egui::RichText::new("Save Pane").monospace().size(9.0).color(t.accent))).clicked() {
+                            let p = &panes[ap];
+                            let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
+                                "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
+                                "visible": ind.visible, "thickness": ind.thickness,
+                                "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
+                                "source": ind.source, "offset": ind.offset,
+                                "ob_level": ind.ob_level, "os_level": ind.os_level,
+                                "source_tf": ind.source_tf,
+                                "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
+                            })).collect();
+                            let tmpl = serde_json::json!({
+                                "show_volume": p.show_volume, "show_oscillators": p.show_oscillators,
+                                "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet,
+                                "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
+                                "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
+                                "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
+                                "show_auto_sr": p.show_auto_sr, "show_auto_fib": p.show_auto_fib,
+                                "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
+                                "show_gamma": p.show_gamma, "show_pnl_curve": p.show_pnl_curve,
+                                "candle_mode": match p.candle_mode {
+                                    CandleMode::Standard => "std", CandleMode::Violin => "vln",
+                                    CandleMode::Gradient => "grd", CandleMode::ViolinGradient => "vg",
+                                    CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
+                                },
+                                "vp_mode": match p.vp_mode {
+                                    VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
+                                    VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
+                                    VolumeProfileMode::Clean => "clean",
+                                },
+                                "indicators": indicators,
+                            });
+                            let name = watchlist.pane_template_name.trim().to_string();
+                            // Replace existing template with same name
+                            watchlist.pane_templates.retain(|(n, _)| n != &name);
+                            watchlist.pane_templates.push((name, tmpl));
+                            watchlist.pane_template_name.clear();
+                        }
+                    });
+                    // List saved templates
+                    let mut apply_tmpl: Option<usize> = None;
+                    let mut delete_tmpl: Option<usize> = None;
+                    for (ti, (tname, _)) in watchlist.pane_templates.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::Button::new(egui::RichText::new(tname).monospace().size(10.0).color(t.accent))
+                                .frame(false)).clicked() {
+                                apply_tmpl = Some(ti);
+                            }
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(9.0).color(t.bear.gamma_multiply(0.5)))
+                                .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                delete_tmpl = Some(ti);
+                            }
+                        });
+                    }
+                    if let Some(di) = delete_tmpl {
+                        watchlist.pane_templates.remove(di);
+                    }
+                    if let Some(ai) = apply_tmpl {
+                        let tmpl = watchlist.pane_templates[ai].1.clone();
+                        let p = &mut panes[ap];
+                        let gb = |key: &str, def: bool| -> bool { tmpl.get(key).and_then(|v| v.as_bool()).unwrap_or(def) };
+                        p.show_volume = gb("show_volume", true);
+                        p.show_oscillators = gb("show_oscillators", true);
+                        p.ohlc_tooltip = gb("ohlc_tooltip", true);
+                        p.magnet = gb("magnet", true);
+                        p.show_vwap_bands = gb("show_vwap_bands", true);
+                        p.show_cvd = gb("show_cvd", false);
+                        p.show_delta_volume = gb("show_delta_volume", false);
+                        p.show_rvol = gb("show_rvol", true);
+                        p.show_ma_ribbon = gb("show_ma_ribbon", false);
+                        p.show_prev_close = gb("show_prev_close", true);
+                        p.show_auto_sr = gb("show_auto_sr", false);
+                        p.show_auto_fib = gb("show_auto_fib", false);
+                        p.swing_leg_mode = tmpl.get("swing_leg_mode").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+                        p.show_footprint = gb("show_footprint", false);
+                        p.show_gamma = gb("show_gamma", false);
+                        p.show_pnl_curve = gb("show_pnl_curve", false);
+                        p.candle_mode = match tmpl.get("candle_mode").and_then(|v| v.as_str()).unwrap_or("std") {
+                            "vln" => CandleMode::Violin, "grd" => CandleMode::Gradient, "vg" => CandleMode::ViolinGradient,
+                            "ha" => CandleMode::HeikinAshi, "line" => CandleMode::Line, "area" => CandleMode::Area,
+                            _ => CandleMode::Standard,
+                        };
+                        p.vp_mode = match tmpl.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
+                            "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
+                            "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
+                            _ => VolumeProfileMode::Off,
+                        };
+                        if let Some(inds) = tmpl.get("indicators").and_then(|v| v.as_array()) {
+                            p.indicators.clear();
+                            for (idx, ind_json) in inds.iter().enumerate() {
+                                let kind_label = ind_json.get("kind").and_then(|v| v.as_str()).unwrap_or("SMA");
+                                let kind = IndicatorType::all().iter().find(|t| t.label() == kind_label).copied().unwrap_or(IndicatorType::SMA);
+                                let period = ind_json.get("period").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+                                let color = ind_json.get("color").and_then(|v| v.as_str()).unwrap_or(INDICATOR_COLORS[idx % INDICATOR_COLORS.len()]);
+                                let visible = ind_json.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
+                                let thickness = ind_json.get("thickness").and_then(|v| v.as_f64()).unwrap_or(1.5) as f32;
+                                let id = p.next_indicator_id; p.next_indicator_id += 1;
+                                let mut ind = Indicator::new(id, kind, period, color);
+                                ind.visible = visible; ind.thickness = thickness;
+                                p.indicators.push(ind);
+                            }
+                            p.indicator_bar_count = 0; // force recompute
+                        }
+                        ui.close_menu();
+                    }
                 });
             }
 
@@ -11279,6 +11401,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         }
                         // Label
                         ui.label(egui::RichText::new("ORDER").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
+                        // DOM button
+                        {
+                            let dom_color = if chart.dom_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            let dom_resp = ui.add(egui::Button::new(egui::RichText::new("DOM").monospace().size(8.0).color(dom_color))
+                                .fill(if chart.dom_open { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
+                                .stroke(egui::Stroke::NONE).min_size(egui::vec2(24.0, 18.0)).corner_radius(2.0));
+                            if dom_resp.clicked() { chart.dom_open = !chart.dom_open; }
+                            if dom_resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new(("dom_tip", pane_idx)), |ui| {
+                                    ui.label(egui::RichText::new("Price Ladder / DOM").monospace().size(9.0));
+                                });
+                            }
+                        }
                         // Position indicator
                         if let Some((_, ref positions, _)) = account_data_cached {
                             if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
@@ -11324,6 +11460,136 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     render_order_entry_body(ui, chart, t, pane_idx as u64, panel_w);
                 });
             } // end if !collapsed
+
+            // ── DOM / Price Ladder floating window ──────────────────────
+            if chart.dom_open {
+                let dom_w = 180.0;
+                let dom_pos = egui::pos2(
+                    rect.left() + chart.order_panel_pos.x + (if chart.order_advanced { 300.0 } else { 230.0 }) + 4.0,
+                    if chart.order_panel_pos.y < 0.0 {
+                        rect.top() + pt + ch + chart.order_panel_pos.y
+                    } else {
+                        rect.top() + pt + chart.order_panel_pos.y
+                    },
+                );
+                egui::Window::new(format!("dom_{}", pane_idx))
+                    .fixed_pos(dom_pos)
+                    .fixed_size(egui::vec2(dom_w, 0.0))
+                    .title_bar(false)
+                    .frame(egui::Frame::popup(&ctx.style())
+                        .fill(t.toolbar_bg)
+                        .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
+                        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
+                        .corner_radius(4.0))
+                    .show(ctx, |ui| {
+                        // Header
+                        let hdr_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(dom_w, 20.0));
+                        ui.painter().rect_filled(hdr_rect, egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, color_alpha(t.toolbar_border, 30));
+                        ui.horizontal(|ui| {
+                            ui.add_space(6.0);
+                            ui.label(egui::RichText::new("DOM").monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
+                            ui.label(egui::RichText::new(&chart.symbol).monospace().size(9.0).color(t.accent));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.add_space(4.0);
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5)))
+                                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                    chart.dom_open = false;
+                                }
+                            });
+                        });
+                        ui.add_space(2.0);
+
+                        // TODO: wire real Level 2 data from Polygon/IB
+                        let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
+                        let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
+                        let tick = if is_index { 1.0 } else { 0.01 };
+                        let rows_above = 20;
+                        let rows_below = 20;
+                        // Snap current price to tick grid
+                        let center_price = (current_price / tick).round() * tick;
+
+                        // Simulated bid/ask sizes (deterministic pseudo-random based on price level)
+                        let sim_size = |price: f32, is_bid: bool| -> u32 {
+                            let dist = ((price - current_price).abs() / tick).round() as u32;
+                            let base = 50u32.saturating_sub(dist * 2).max(1);
+                            let hash = ((price * 1000.0) as u32).wrapping_mul(2654435761);
+                            let extra = (hash % 100) as u32;
+                            let size = base + extra;
+                            if is_bid { size } else { size + 20 }
+                        };
+
+                        // Find user's position entry price
+                        let position_entry = account_data_cached.as_ref()
+                            .and_then(|(_, positions, _)| positions.iter().find(|p| p.symbol == chart.symbol))
+                            .map(|p| p.avg_price);
+
+                        // Column headers
+                        ui.horizontal(|ui| {
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new("BID").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.add_space(20.0);
+                            ui.label(egui::RichText::new("PRICE").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.add_space(16.0);
+                            ui.label(egui::RichText::new("ASK").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                        });
+
+                        egui::ScrollArea::vertical().max_height(ch.min(500.0)).show(ui, |ui| {
+                            for row in (-rows_above..=rows_below).rev() {
+                                let price = center_price + (row as f32 * tick * -1.0);
+                                let is_current = (price - center_price).abs() < tick * 0.5;
+                                let bid_size = sim_size(price, true);
+                                let ask_size = sim_size(price, false);
+
+                                // Highlight: current price row
+                                let row_bg = if is_current {
+                                    color_alpha(t.accent, 35)
+                                } else {
+                                    egui::Color32::TRANSPARENT
+                                };
+                                // Highlight: user's open orders on matching price
+                                let has_buy_order = chart.orders.iter().any(|o| (o.price - price).abs() < tick * 0.5 && matches!(o.side, OrderSide::Buy));
+                                let has_sell_order = chart.orders.iter().any(|o| (o.price - price).abs() < tick * 0.5 && matches!(o.side, OrderSide::Sell));
+                                // Highlight: position entry price
+                                let is_entry = position_entry.map(|ep| (ep - price).abs() < tick * 0.5).unwrap_or(false);
+
+                                let row_rect = ui.horizontal(|ui| {
+                                    let row_start = ui.cursor().min;
+                                    let row_r = egui::Rect::from_min_size(row_start, egui::vec2(dom_w, 16.0));
+                                    ui.painter().rect_filled(row_r, 0.0, row_bg);
+                                    if has_buy_order {
+                                        ui.painter().rect_filled(row_r, 0.0, color_alpha(t.bull, 25));
+                                    }
+                                    if has_sell_order {
+                                        ui.painter().rect_filled(row_r, 0.0, color_alpha(t.bear, 25));
+                                    }
+                                    if is_entry {
+                                        ui.painter().rect_stroke(row_r, 0.0, egui::Stroke::new(1.0, color_alpha(egui::Color32::from_rgb(255, 200, 50), 150)), egui::StrokeKind::Inside);
+                                    }
+
+                                    ui.add_space(2.0);
+                                    // Buy button at bid
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(8.0).color(t.bull.gamma_multiply(0.7)))
+                                        .fill(egui::Color32::TRANSPARENT).frame(false).min_size(egui::vec2(36.0, 14.0))).clicked() {
+                                        let id = chart.next_order_id; chart.next_order_id += 1;
+                                        chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
+                                    }
+                                    // Price
+                                    let price_color = if is_current { t.accent } else if price > current_price { t.bull.gamma_multiply(0.6) } else { t.bear.gamma_multiply(0.6) };
+                                    let price_fmt = if tick >= 1.0 { format!("{:.0}", price) } else { format!("{:.2}", price) };
+                                    ui.label(egui::RichText::new(price_fmt).monospace().size(8.0).strong().color(price_color));
+                                    // Sell button at ask
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(8.0).color(t.bear.gamma_multiply(0.7)))
+                                        .fill(egui::Color32::TRANSPARENT).frame(false).min_size(egui::vec2(36.0, 14.0))).clicked() {
+                                        let id = chart.next_order_id; chart.next_order_id += 1;
+                                        chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
+                                    }
+                                }).response.rect;
+                                let _ = row_rect; // suppress unused warning
+                            }
+                        });
+                        ui.add_space(2.0);
+                    });
+            }
 
             // ── Pending confirm toasts (above order entry panel) ─────────
             if !chart.pending_confirms.is_empty() {
@@ -13094,7 +13360,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     event_consumed = true;
                     if let Some((sb, sp)) = chart.measure_start {
                         let start_pos = egui::pos2(bx(sb), py(sp));
-                        let dir = pos - start_pos;
+                        let end_pos = egui::pos2(bx(bar_f), py(price_f));
+
+                        // Draw semi-transparent rectangle from start to current cursor
+                        let measure_rect = egui::Rect::from_two_pos(start_pos, end_pos);
+                        let price_diff = price_f - sp;
+                        let fill_color = if price_diff >= 0.0 {
+                            egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 20)
+                        } else {
+                            egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 20)
+                        };
+                        let stroke_color = if price_diff >= 0.0 { color_alpha(t.bull, 120) } else { color_alpha(t.bear, 120) };
+                        painter.rect_filled(measure_rect, 0.0, fill_color);
+                        painter.rect_stroke(measure_rect, 0.0, egui::Stroke::new(1.0, stroke_color), egui::StrokeKind::Outside);
+
+                        // Corner dots
+                        painter.circle_filled(start_pos, 3.0, t.accent);
+                        painter.circle_filled(end_pos, 3.0, t.accent);
+
+                        // Dashed diagonal line
+                        let dir = end_pos - start_pos;
                         let len = dir.length();
                         if len > 2.0 {
                             let norm = dir / len;
@@ -13102,14 +13387,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             while dd < len {
                                 let a = start_pos + norm * dd;
                                 let b_pt = start_pos + norm * (dd + 4.0).min(len);
-                                painter.line_segment([a, b_pt], egui::Stroke::new(1.0, t.accent));
+                                painter.line_segment([a, b_pt], egui::Stroke::new(1.0, color_alpha(t.accent, 150)));
                                 dd += 7.0;
                             }
                         }
-                        painter.circle_filled(start_pos, 3.0, t.accent);
-                        painter.circle_filled(pos, 3.0, t.accent);
 
-                        let price_diff = price_f - sp;
                         let bar_diff = (bar_f - sb).abs();
                         let pct = if sp != 0.0 { (price_diff / sp) * 100.0 } else { 0.0 };
                         let candle_sec = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]).max(60) } else { 300 };
@@ -13119,7 +13401,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             else { format!("{}m", time_secs / 60) };
 
                         let label = format!("{:+.2} ({:+.2}%)  {} bars  {}", price_diff, pct, bar_diff.round() as i32, time_str);
-                        let label_pos = egui::pos2((start_pos.x + pos.x) / 2.0, (start_pos.y + pos.y) / 2.0 - 14.0);
+                        let label_pos = egui::pos2(
+                            (start_pos.x + end_pos.x) / 2.0,
+                            measure_rect.top() - 14.0,
+                        );
                         let label_color = if price_diff >= 0.0 { t.bull } else { t.bear };
                         let galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(10.0), label_color);
                         let label_rect = egui::Rect::from_center_size(label_pos, galley.size() + egui::vec2(8.0, 4.0));
@@ -15066,6 +15351,9 @@ struct Watchlist {
     layout_dropdown_open: bool,
     pending_overlay_add: bool,
     layout_dropdown_pos: egui::Pos2,
+    // Pane templates (save/load indicator + toggle configs)
+    pane_templates: Vec<(String, serde_json::Value)>,  // (name, serialized pane config)
+    pane_template_name: String, // input buffer for naming a new template
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -15102,7 +15390,8 @@ impl Watchlist {
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
                layout_favorites: vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()],
                layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO,
-               pending_overlay_add: false }
+               pending_overlay_add: false,
+               pane_templates: vec![], pane_template_name: String::new() }
     }
 
     /// Add symbol to the last section (creates one if none exist).
