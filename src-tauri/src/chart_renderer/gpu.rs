@@ -6586,12 +6586,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Vertical dividers (drag left/right to adjust column widths)
             for (di, &div_x) in v_dividers.iter().enumerate() {
-                // Hit area: 5px left (axis side of left pane), 30px right (chart side of right pane)
-                // Start below pane header to protect link dot + symbol dropdown
+                // Hit area: 5px left, 15px right = 20px total (smaller vertical)
                 let header_h = if visible_count > 1 { 18.0_f32 } else { 0.0 };
                 let div_rect = egui::Rect::from_min_size(
                     egui::pos2(div_x - 5.0, full_rect.top() + header_h),
-                    egui::vec2(35.0, full_rect.height() - header_h));
+                    egui::vec2(20.0, full_rect.height() - header_h));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -6611,13 +6610,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Horizontal dividers (drag up/down to adjust row heights)
             for (di, &div_y) in h_dividers.iter().enumerate() {
-                // Hit area: 5px above (axis side of top pane), 30px below (chart side of bottom pane)
-                // But skip the first 18px of the below zone to protect the pane header
-                let header_protect = if visible_count > 1 { 18.0_f32 } else { 0.0 };
-                let below_grab = (30.0 - header_protect).max(5.0);
+                // Hit area: 5px above, 25px below = 30px total
                 let div_rect = egui::Rect::from_min_size(
                     egui::pos2(full_rect.left(), div_y - 5.0),
-                    egui::vec2(full_rect.width(), 5.0 + below_grab));
+                    egui::vec2(full_rect.width(), 30.0));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
@@ -6666,6 +6662,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             let link_dot_center = egui::pos2(link_dot_x + link_dot_size / 2.0, header_rect.center().y);
             let link_dot_rect = egui::Rect::from_center_size(link_dot_center, egui::vec2(link_dot_size + 4.0, pane_top_offset));
             let link_resp = ui.allocate_rect(link_dot_rect, egui::Sense::click());
+            if link_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             let link_colors: [egui::Color32; 4] = [
                 egui::Color32::from_rgb(70, 130, 255),  // 1=blue
                 egui::Color32::from_rgb(80, 200, 120),  // 2=green
@@ -6694,6 +6691,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     egui::vec2(nav_btn_size, nav_btn_size),
                 );
                 let back_resp = ui.allocate_rect(back_rect, egui::Sense::click());
+                if back_resp.hovered() && can_go_back { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 let back_col = if can_go_back {
                     if back_resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.5) }
                 } else { t.dim.gamma_multiply(0.15) };
@@ -6714,6 +6712,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     egui::vec2(nav_btn_size, nav_btn_size),
                 );
                 let fwd_resp = ui.allocate_rect(fwd_rect, egui::Sense::click());
+                if fwd_resp.hovered() && can_go_fwd { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 let fwd_col = if can_go_fwd {
                     if fwd_resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.5) }
                 } else { t.dim.gamma_multiply(0.15) };
@@ -6734,6 +6733,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 egui::vec2(header_rect.right() - sym_label_x - header_rect.width() * 0.5, pane_top_offset),
             );
             let sym_resp = ui.allocate_rect(sym_rect, egui::Sense::click());
+            if sym_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             let label_color = if is_active { t.bull } else { egui::Color32::from_rgb(180,180,190) };
             header_painter.text(
                 egui::pos2(sym_label_x + 2.0, header_rect.center().y),
@@ -10959,7 +10959,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let has_top_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.bottom() - pane_rect.top()).abs() < 5.0);
         // Side-by-side: left pane gives 5px on right (axis side), right pane gives 30px on left (chart side)
         // Stacked: top pane gives 5px on bottom (axis side), bottom pane gives 30px on top (chart side)
-        let shrink_left = if has_left_neighbor { 30.0_f32 } else { 0.0 };  // right pane: big grab area on left
+        let shrink_left = if has_left_neighbor { 15.0_f32 } else { 0.0 };  // right pane: grab area on left
         let shrink_right = if has_right_neighbor { 5.0 } else { 0.0 };     // left pane: small on axis side
         let shrink_top = if has_top_neighbor { 30.0 } else { 0.0 };        // bottom pane: big grab area on top
         let shrink_bottom = if has_bottom_neighbor { 5.0 } else { 0.0 };   // top pane: small on axis side
