@@ -1398,10 +1398,13 @@ impl Chart {
                 }
             }
             ChartCommand::OverlayBars { symbol, bars, timestamps } => {
+                eprintln!("[overlay] Received {} bars for '{}', overlays: {:?}", bars.len(), symbol,
+                    self.symbol_overlays.iter().map(|o| o.symbol.as_str()).collect::<Vec<_>>());
                 if let Some(ov) = self.symbol_overlays.iter_mut().find(|o| o.symbol == symbol) {
                     ov.bars = bars;
                     ov.timestamps = timestamps;
                     ov.loading = false;
+                    eprintln!("[overlay] Loaded {} bars for {}", ov.bars.len(), ov.symbol);
                 }
             }
             _ => {}
@@ -2298,6 +2301,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             if false {
             }
 
+            // Overlay button (before scroll area — always visible)
+            if tb_btn(ui, "OVL", panes[ap].overlay_editing, t).clicked() {
+                panes[ap].overlay_editing = !panes[ap].overlay_editing;
+                if panes[ap].overlay_editing { panes[ap].overlay_editing_idx = None; }
+            }
+
             ui.add(egui::Separator::default().spacing(4.0));
 
             // ── Scrollable middle section ──
@@ -2794,10 +2803,16 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 }
                 // Add overlay button
                 if ui.selectable_label(false, egui::RichText::new(format!("{} Add Symbol Overlay", Icon::PLUS)).monospace().size(10.0)).clicked() {
-                    panes[ap].overlay_editing = true;
-                    panes[ap].overlay_editing_idx = None;
+                    watchlist.pending_overlay_add = true;
                 }
             });
+            // Deferred: open overlay editor after menu closes
+            if watchlist.pending_overlay_add {
+                watchlist.pending_overlay_add = false;
+                panes[ap].overlay_editing = true;
+                panes[ap].overlay_editing_idx = None;
+            }
+            // (OVL button moved before scroll area)
 
             // ── Workspace ──
             {
@@ -4416,6 +4431,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
     // ── Overlay symbol editor popup ──────────────────────────────────────────
     if panes[ap].overlay_editing {
+        eprintln!("[overlay-editor] Popup open for pane {}", ap);
         let mut close_ov = false;
         let mut delete_ov = false;
         let editing_existing = panes[ap].overlay_editing_idx;
@@ -4446,6 +4462,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 if ui.add(egui::Button::new(egui::RichText::new(format!("{} — {}", si.symbol, si.name)).monospace().size(10.0).color(t.dim))
                                     .frame(false).min_size(egui::vec2(220.0, 20.0))).clicked() {
                                     let color = OVERLAY_COLORS[panes[ap].symbol_overlays.len() % OVERLAY_COLORS.len()].to_string();
+                                    eprintln!("[overlay-add] Adding {} to pane {}", si.symbol, ap);
                                     panes[ap].symbol_overlays.push(SymbolOverlay {
                                         symbol: si.symbol.to_string(), color, bars: vec![], timestamps: vec![], loading: true, show_candles: false,
                                     });
@@ -14508,6 +14525,7 @@ struct Watchlist {
     // Layout favorites (shown as buttons in toolbar; rest in dropdown)
     layout_favorites: Vec<String>,
     layout_dropdown_open: bool,
+    pending_overlay_add: bool,
     layout_dropdown_pos: egui::Pos2,
 }
 
@@ -14544,7 +14562,8 @@ impl Watchlist {
                pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5, pane_divider_dragging: false,
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
                layout_favorites: vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()],
-               layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO }
+               layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO,
+               pending_overlay_add: false }
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -15399,7 +15418,10 @@ impl ApplicationHandler for App {
                     let sym = match &cmd {
                         ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
                         ChartCommand::IndicatorSourceBars { .. } => None,
-                        ChartCommand::OverlayBars { symbol, .. } => { let s = symbol.clone(); for p in cw.panes.iter_mut() { if p.symbol_overlays.iter().any(|o| o.symbol == s) { p.process(cmd.clone()); } } continue; }
+                        ChartCommand::OverlayBars { ref symbol, .. } => {
+                            eprintln!("[about_to_wait] OverlayBars for '{}' arrived", symbol);
+                            let s = symbol.clone(); for p in cw.panes.iter_mut() { if p.symbol_overlays.iter().any(|o| o.symbol == s) { p.process(cmd.clone()); } } continue;
+                        }
                         _ => None,
                     };
                     if let Some(s) = sym {
@@ -15900,9 +15922,10 @@ fn fetch_bars_background(sym: String, tf: String) {
 }
 
 fn fetch_overlay_bars_background(sym: String, tf: String) {
+    eprintln!("[overlay-fetch] Starting fetch for {} {}", sym, tf);
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
-    if txs.is_empty() { return; }
+    if txs.is_empty() { eprintln!("[overlay-fetch] No TXS channels!"); return; }
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::builder()
             .user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
