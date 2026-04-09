@@ -6586,10 +6586,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Vertical dividers (drag left/right to adjust column widths)
             for (di, &div_x) in v_dividers.iter().enumerate() {
-                // Extra-wide hit area for vertical divider (hard to catch otherwise)
+                // Hit area for vertical divider (chart interaction excluded from this zone)
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(div_x - 30.0, full_rect.top()),
-                    egui::vec2(42.0, full_rect.height()));
+                    egui::pos2(div_x - 14.0, full_rect.top()),
+                    egui::vec2(20.0, full_rect.height()));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -6604,10 +6604,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Horizontal dividers (drag up/down to adjust row heights)
             for (di, &div_y) in h_dividers.iter().enumerate() {
-                // Large hit area biased upward (away from bottom axis area)
+                // Hit area for horizontal divider (chart interaction excluded from this zone)
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(full_rect.left(), div_y - 24.0),
-                    egui::vec2(full_rect.width(), 30.0));
+                    egui::pos2(full_rect.left(), div_y - 14.0),
+                    egui::vec2(full_rect.width(), 20.0));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
@@ -10937,9 +10937,15 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         span_begin("interaction");
 
         // Single interaction rect covering chart body + axis strips
+        // Shrink edges that border a pane divider to avoid stealing drag from divider
+        let div_margin = if visible_count > 1 { 20.0_f32 } else { 0.0 };
+        let has_right_neighbor = pane_rects.iter().any(|r| (r.left() - pane_rect.right()).abs() < 5.0);
+        let has_bottom_neighbor = pane_rects.iter().any(|r| (r.top() - pane_rect.bottom()).abs() < 5.0);
+        let shrink_right = if has_right_neighbor { div_margin } else { 0.0 };
+        let shrink_bottom = if has_bottom_neighbor { div_margin } else { 0.0 };
         let interact_rect = egui::Rect::from_min_size(
             egui::pos2(rect.left(), rect.top() + pt),
-            egui::vec2(cw + pr, ch),
+            egui::vec2(cw + pr - shrink_right, ch - shrink_bottom),
         );
         let resp = ui.allocate_rect(interact_rect, egui::Sense::click_and_drag());
 
