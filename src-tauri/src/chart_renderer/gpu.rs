@@ -1126,7 +1126,7 @@ struct Chart {
     show_ma_ribbon: bool,
     show_prev_close: bool,
     show_auto_sr: bool,
-    show_swing_legs: bool,
+    swing_leg_mode: u8, // 0=off, 1=vertical, 2=diagonal
     overlay_symbol: String,
     overlay_bars: Vec<Bar>,
     overlay_timestamps: Vec<i64>,
@@ -1231,7 +1231,7 @@ impl Chart {
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
             vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard, show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
-            show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, show_swing_legs: false,
+            show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, swing_leg_mode: 0,
             overlay_symbol: String::new(), overlay_bars: vec![], overlay_timestamps: vec![], overlay_loading: false,
             show_gamma: false, show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
@@ -2733,11 +2733,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let nv = !sr;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_auto_sr = nv; } } else { panes[ap].show_auto_sr = nv; }
                 }
-                let sl = panes[ap].show_swing_legs;
-                if ui.selectable_label(sl, egui::RichText::new(format!("{} Swing Legs", check(sl))).monospace().size(10.0)).clicked() {
+                let sl_mode = panes[ap].swing_leg_mode;
+                let sl_labels = ["Off", "Swing (Vertical)", "Swing (Diagonal)"];
+                let sl_label = sl_labels[sl_mode as usize % 3];
+                let sl_active = sl_mode > 0;
+                if ui.selectable_label(sl_active, egui::RichText::new(format!("{} {}", check(sl_active), sl_label)).monospace().size(10.0)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
-                    let nv = !sl;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_swing_legs = nv; } } else { panes[ap].show_swing_legs = nv; }
+                    let nv = (sl_mode + 1) % 3;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.swing_leg_mode = nv; } } else { panes[ap].swing_leg_mode = nv; }
                 }
                 let pnl = panes[ap].show_pnl_curve;
                 if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(10.0)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
@@ -8755,7 +8758,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // ── Swing Legs overlay — measures from most recent pivot to current price ──
-        if chart.show_swing_legs && n > 20 {
+        if chart.swing_leg_mode > 0 && n > 20 {
             let vis_start = vs as usize;
             let vis_end = (vis_start + chart.vc as usize).min(n);
             let pivot_n = 10_usize;
@@ -8786,28 +8789,36 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 } else {
                     egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 120)
                 };
-                let p1 = egui::pos2(bx(pivot_i as f32), py(pivot_price));
-                // Vertical line from pivot price to current price level, at the pivot's X position
                 let pivot_x = bx(pivot_i as f32);
                 let y_pivot = py(pivot_price);
                 let y_current = py(cur_price);
-                dashed_line(&painter, egui::pos2(pivot_x, y_pivot), egui::pos2(pivot_x, y_current),
-                    egui::Stroke::new(1.0, col), LineStyle::Dashed);
-                // Dot at pivot
-                painter.circle_filled(egui::pos2(pivot_x, y_pivot), 3.5, col);
-                // Small tick at current price level
-                painter.line_segment([egui::pos2(pivot_x - 4.0, y_current), egui::pos2(pivot_x + 4.0, y_current)],
-                    egui::Stroke::new(1.0, col));
-                // Label at midpoint of the vertical line
-                let mid_y = (y_pivot + y_current) / 2.0;
                 let dist_pct = ((cur_price - pivot_price) / pivot_price * 100.0).abs();
-                let label = format!("{:.1}%", dist_pct);
-                let label_galley = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(14.0), col);
-                let label_rect = egui::Rect::from_center_size(
-                    egui::pos2(pivot_x + label_galley.size().x / 2.0 + 8.0, mid_y),
-                    label_galley.size() + egui::vec2(10.0, 6.0));
-                painter.rect_filled(label_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 220));
-                painter.text(label_rect.center(), egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(14.0), col);
+
+                if chart.swing_leg_mode == 1 {
+                    // Mode 1: Vertical — straight up/down at pivot X
+                    dashed_line(&painter, egui::pos2(pivot_x, y_pivot), egui::pos2(pivot_x, y_current),
+                        egui::Stroke::new(1.0, col), LineStyle::Dashed);
+                    painter.circle_filled(egui::pos2(pivot_x, y_pivot), 3.5, col);
+                    painter.line_segment([egui::pos2(pivot_x - 4.0, y_current), egui::pos2(pivot_x + 4.0, y_current)],
+                        egui::Stroke::new(1.0, col));
+                    let mid_y = (y_pivot + y_current) / 2.0;
+                    let label = format!("{:.1}%", dist_pct);
+                    let lg = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(14.0), col);
+                    let lr = egui::Rect::from_center_size(egui::pos2(pivot_x + lg.size().x / 2.0 + 8.0, mid_y), lg.size() + egui::vec2(10.0, 6.0));
+                    painter.rect_filled(lr, 4.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 220));
+                    painter.text(lr.center(), egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(14.0), col);
+                } else {
+                    // Mode 2: Diagonal — line from pivot to current bar
+                    let p2 = egui::pos2(bx(cur_bar as f32), y_current);
+                    dashed_line(&painter, egui::pos2(pivot_x, y_pivot), p2, egui::Stroke::new(1.0, col), LineStyle::Dashed);
+                    painter.circle_filled(egui::pos2(pivot_x, y_pivot), 3.5, col);
+                    let mid = egui::pos2((pivot_x + p2.x) / 2.0, (y_pivot + y_current) / 2.0);
+                    let label = format!("{:.1}%", dist_pct);
+                    let lg = painter.layout_no_wrap(label.clone(), egui::FontId::monospace(14.0), col);
+                    let lr = egui::Rect::from_center_size(mid, lg.size() + egui::vec2(10.0, 6.0));
+                    painter.rect_filled(lr, 4.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 220));
+                    painter.text(lr.center(), egui::Align2::CENTER_CENTER, &label, egui::FontId::monospace(14.0), col);
+                }
             }
         }
 
@@ -15328,7 +15339,7 @@ impl ApplicationHandler for App {
                                         chart.show_ma_ribbon = gb("show_ma_ribbon", false);
                                         chart.show_prev_close = gb("show_prev_close", true);
                                         chart.show_auto_sr = gb("show_auto_sr", false);
-                                        chart.show_swing_legs = gb("show_swing_legs", false);
+                                        chart.swing_leg_mode = p.get("swing_leg_mode").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
                                         chart.show_footprint = gb("show_footprint", false);
                                         chart.show_gamma = gb("show_gamma", false);
                                         chart.show_pnl_curve = gb("show_pnl_curve", false);
@@ -15821,7 +15832,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
             "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
             "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
-            "show_auto_sr": p.show_auto_sr, "show_swing_legs": p.show_swing_legs, "show_footprint": p.show_footprint,
+            "show_auto_sr": p.show_auto_sr, "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
             "show_gamma": p.show_gamma,
             "show_pnl_curve": p.show_pnl_curve,
             "link_group": p.link_group,
@@ -15887,7 +15898,7 @@ fn save_state(panes: &[Chart], layout: Layout) {
             "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
             "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
-            "show_auto_sr": p.show_auto_sr, "show_swing_legs": p.show_swing_legs, "show_footprint": p.show_footprint,
+            "show_auto_sr": p.show_auto_sr, "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
             "show_gamma": p.show_gamma,
             "show_pnl_curve": p.show_pnl_curve,
             "link_group": p.link_group,
@@ -15963,7 +15974,7 @@ fn load_state() -> (Vec<Chart>, Layout) {
             chart.show_ma_ribbon = gb("show_ma_ribbon", false);
             chart.show_prev_close = gb("show_prev_close", true);
             chart.show_auto_sr = gb("show_auto_sr", false);
-            chart.show_swing_legs = gb("show_swing_legs", false);
+            chart.swing_leg_mode = p.get("swing_leg_mode").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
             chart.show_footprint = gb("show_footprint", false);
             chart.show_gamma = gb("show_gamma", false);
             chart.show_pnl_curve = gb("show_pnl_curve", false);
