@@ -2772,6 +2772,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.order_entry_open = !watchlist.order_entry_open;
                 }
 
+                // Broadcast mode toggle
+                {
+                    let bc = watchlist.broadcast_mode;
+                    let bc_fg = if bc { t.accent } else { t.dim.gamma_multiply(0.4) };
+                    let bc_bg = if bc { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                    let bc_resp = ui.add(egui::Button::new(egui::RichText::new("BC").monospace().size(9.0).strong().color(bc_fg))
+                        .fill(bc_bg).corner_radius(3.0).min_size(egui::vec2(24.0, 22.0))
+                        .stroke(if bc { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }));
+                    if bc_resp.clicked() {
+                        watchlist.broadcast_mode = !watchlist.broadcast_mode;
+                        TB_BTN_CLICKED.with(|f| f.set(true));
+                    }
+                    if bc_resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("bc_tip"), |ui| {
+                            ui.label(egui::RichText::new("Broadcast — changes apply to all panes (or Shift+click)").monospace().size(9.0));
+                        });
+                    }
+                }
+
                 // Account strip toggle
                 if tb_btn(ui, Icon::PULSE, watchlist.account_strip_open, t).clicked() {
                     watchlist.account_strip_open = !watchlist.account_strip_open;
