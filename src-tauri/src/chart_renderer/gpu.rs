@@ -2157,8 +2157,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
     span_end();
 
-    let theme_idx = panes[*active_pane].theme_idx;
-    let t = &THEMES[theme_idx];
+    let t = &THEMES[0]; // Toolbar/dropdowns always use standard Midnight theme
     let ap = *active_pane;
     // Cache account data once per frame (avoid repeated Mutex lock + clone)
     let account_data_cached = read_account_data();
@@ -2773,7 +2772,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let hover_pos = ui.input(|i| i.pointer.hover_pos());
-                let clicked = ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+                let clicked = ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
                 let mut did_switch = false;
                 let mut fav_toggles: Vec<(String, bool)> = Vec::new(); // (label, add)
                 let mut last_section = "";
@@ -2816,9 +2815,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 26.0)), 1.0, t.accent);
                     }
 
-                    // Mini layout glyph (24×16 px)
+                    // Mini layout glyph (29×19 px)
                     let glyph_rect = egui::Rect::from_min_size(
-                        egui::pos2(row_rect.left() + 8.0, row_rect.center().y - 8.0), egui::vec2(24.0, 16.0));
+                        egui::pos2(row_rect.left() + 6.0, row_rect.center().y - 9.5), egui::vec2(29.0, 19.0));
                     {
                         let gr = glyph_rect;
                         let gc = if is_cur { t.accent } else if hovered { t.dim } else { t.dim.gamma_multiply(0.5) };
@@ -2838,24 +2837,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     let label_col = if is_cur { t.accent }
                         else if hovered { egui::Color32::from_rgb(240, 240, 250) }
                         else { egui::Color32::from_rgb(200, 200, 210) };
-                    ui.painter().text(egui::pos2(row_rect.left() + 38.0, row_rect.center().y),
+                    ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y),
                         egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(10.0), label_col);
 
                     // Description
                     let desc_col = if hovered { t.dim.gamma_multiply(0.7) } else { t.dim.gamma_multiply(0.35) };
-                    ui.painter().text(egui::pos2(row_rect.left() + 68.0, row_rect.center().y),
+                    ui.painter().text(egui::pos2(row_rect.left() + 72.0, row_rect.center().y),
                         egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(9.0), desc_col);
 
                     // Star (right-aligned) — raw pointer detection to avoid menu close
                     let star_rect = egui::Rect::from_min_size(
                         egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
                     let star_hovered = hover_pos.map_or(false, |p| star_rect.contains(p));
-                    let star = if is_fav { Icon::STAR_FILL } else { Icon::STAR };
                     let star_col = if is_fav { egui::Color32::from_rgb(255, 200, 60) }
-                        else if star_hovered { t.dim.gamma_multiply(0.7) }
-                        else if hovered { t.dim.gamma_multiply(0.4) }
-                        else { t.dim.gamma_multiply(0.15) };
-                    ui.painter().text(star_rect.center(), egui::Align2::CENTER_CENTER, star,
+                        else if star_hovered { t.dim.gamma_multiply(0.5) }
+                        else if hovered { t.dim.gamma_multiply(0.2) }
+                        else { t.dim.gamma_multiply(0.08) };
+                    ui.painter().text(star_rect.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL,
                         egui::FontId::proportional(11.0), star_col);
                     if star_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if star_hovered && clicked {
