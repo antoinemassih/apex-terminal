@@ -6586,10 +6586,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Vertical dividers (drag left/right to adjust column widths)
             for (di, &div_x) in v_dividers.iter().enumerate() {
-                // Hit area for vertical divider (30px chart side, 5px axis side)
+                // Hit area: 5px left (axis side of left pane), 30px right (chart side of right pane)
+                // Start below pane header to protect link dot + symbol dropdown
+                let header_h = if visible_count > 1 { 18.0_f32 } else { 0.0 };
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(div_x - 30.0, full_rect.top()),
-                    egui::vec2(35.0, full_rect.height()));
+                    egui::pos2(div_x - 5.0, full_rect.top() + header_h),
+                    egui::vec2(35.0, full_rect.height() - header_h));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -6609,10 +6611,13 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Horizontal dividers (drag up/down to adjust row heights)
             for (di, &div_y) in h_dividers.iter().enumerate() {
-                // Hit area for horizontal divider (30px chart side, 5px axis side)
+                // Hit area: 5px above (axis side of top pane), 30px below (chart side of bottom pane)
+                // But skip the first 18px of the below zone to protect the pane header
+                let header_protect = if visible_count > 1 { 18.0_f32 } else { 0.0 };
+                let below_grab = (30.0 - header_protect).max(5.0);
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(full_rect.left(), div_y - 30.0),
-                    egui::vec2(full_rect.width(), 35.0));
+                    egui::pos2(full_rect.left(), div_y - 5.0),
+                    egui::vec2(full_rect.width(), 5.0 + below_grab));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
@@ -10952,11 +10957,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let has_left_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.right() - pane_rect.left()).abs() < 5.0);
         let has_bottom_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.top() - pane_rect.bottom()).abs() < 5.0);
         let has_top_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.bottom() - pane_rect.top()).abs() < 5.0);
-        // Shrink chart side (away from axes) by 30px, axis side by 5px
-        let shrink_left = if has_left_neighbor { 5.0_f32 } else { 0.0 };  // left = axis side of right pane
-        let shrink_right = if has_right_neighbor { 30.0 } else { 0.0 };   // right = chart side toward divider
-        let shrink_top = if has_top_neighbor { 5.0 } else { 0.0 };        // top = axis side of bottom pane
-        let shrink_bottom = if has_bottom_neighbor { 30.0 } else { 0.0 }; // bottom = chart side toward divider
+        // Side-by-side: left pane gives 5px on right (axis side), right pane gives 30px on left (chart side)
+        // Stacked: top pane gives 5px on bottom (axis side), bottom pane gives 30px on top (chart side)
+        let shrink_left = if has_left_neighbor { 30.0_f32 } else { 0.0 };  // right pane: big grab area on left
+        let shrink_right = if has_right_neighbor { 5.0 } else { 0.0 };     // left pane: small on axis side
+        let shrink_top = if has_top_neighbor { 30.0 } else { 0.0 };        // bottom pane: big grab area on top
+        let shrink_bottom = if has_bottom_neighbor { 5.0 } else { 0.0 };   // top pane: small on axis side
         let interact_rect = egui::Rect::from_min_size(
             egui::pos2(rect.left() + shrink_left, rect.top() + pt + shrink_top),
             egui::vec2(cw + pr - shrink_left - shrink_right, ch - shrink_top - shrink_bottom),
