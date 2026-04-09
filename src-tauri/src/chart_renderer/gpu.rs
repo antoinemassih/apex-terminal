@@ -1191,6 +1191,12 @@ struct Chart {
     vc_target: u32,
     // ── Auto-fit price animation ──
     price_range_animated: Option<(f32, f32)>,
+    // ── Tabs (multiple symbols per pane) ──
+    tab_symbols: Vec<String>,     // symbol per tab
+    tab_timeframes: Vec<String>,  // timeframe per tab
+    tab_changes: Vec<f32>,        // cached daily change % per tab
+    tab_active: usize,            // index of active tab (0-based)
+    tab_hovered: Option<usize>,   // which tab the mouse is over (for close button)
 }
 
 impl Chart {
@@ -1264,6 +1270,7 @@ impl Chart {
             symbol_history: vec![], symbol_history_idx: 0, symbol_nav_in_progress: false,
             vc_target: 200,
             price_range_animated: None,
+            tab_symbols: vec![], tab_timeframes: vec![], tab_changes: vec![], tab_active: 0, tab_hovered: None,
         }
     }
     fn process(&mut self, cmd: ChartCommand) {
@@ -7425,6 +7432,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let visible_count = layout.max_panes().min(panes.len());
         let pane_rects = layout.pane_rects(full_rect, visible_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2);
 
+        // Compute max pane header height (tabs make headers taller)
+        let any_pane_has_tabs = panes.iter().take(visible_count).any(|c| c.tab_symbols.len() > 1);
+        let max_header_h = if any_pane_has_tabs { 28.0_f32 } else if visible_count > 1 { 18.0_f32 } else { 0.0_f32 };
+
         // ── Pane divider drag handles (geometry-based, works for all layouts) ──
         if visible_count > 1 {
             // Find unique vertical divider X positions (between side-by-side panes)
@@ -7452,10 +7463,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             // Vertical dividers (drag left/right to adjust column widths)
             for (di, &div_x) in v_dividers.iter().enumerate() {
                 // Hit area: 5px left, 15px right = 20px total (smaller vertical)
-                let header_h = if visible_count > 1 { 18.0_f32 } else { 0.0 };
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(div_x - 5.0, full_rect.top() + header_h),
-                    egui::vec2(20.0, full_rect.height() - header_h));
+                    egui::pos2(div_x - 5.0, full_rect.top() + max_header_h),
+                    egui::vec2(20.0, full_rect.height() - max_header_h));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -7480,10 +7490,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
             // Horizontal dividers (drag up/down to adjust row heights)
             for (di, &div_y) in h_dividers.iter().enumerate() {
-                // Hit area: nothing above, 10px below the pane header (starts 18px below divider)
-                let header_h = if visible_count > 1 { 18.0_f32 } else { 0.0 };
+                // Hit area: nothing above, 10px below the pane header (starts below divider)
                 let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(full_rect.left(), div_y + header_h),
+                    egui::pos2(full_rect.left(), div_y + max_header_h),
                     egui::vec2(full_rect.width(), 10.0));
                 let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
@@ -7524,9 +7533,26 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             ui.painter().rect_stroke(pane_rect, 0.0, egui::Stroke::new(border_width, border_color), egui::StrokeKind::Inside);
         }
 
-        // Pane header (symbol + timeframe + per-pane selector) for multi-pane layouts
-        let pane_top_offset = if visible_count > 1 { 18.0 } else { 0.0 };
-        if visible_count > 1 {
+        // Pane header (symbol + timeframe + per-pane selector) for multi-pane or tabbed layouts
+        // Sync tab state: ensure active tab matches current symbol
+        if !chart.tab_symbols.is_empty() {
+            let ai = chart.tab_active.min(chart.tab_symbols.len().saturating_sub(1));
+            chart.tab_active = ai;
+            chart.tab_symbols[ai] = chart.symbol.clone();
+            chart.tab_timeframes[ai] = chart.timeframe.clone();
+            // Update cached change % for active tab from current bars
+            if chart.tab_changes.len() > ai {
+                if let (Some(first), Some(last)) = (chart.bars.first(), chart.bars.last()) {
+                    if first.open > 0.0 {
+                        chart.tab_changes[ai] = (last.close - first.open) / first.open * 100.0;
+                    }
+                }
+            }
+        }
+        let has_tabs = chart.tab_symbols.len() > 1;
+        let show_header = has_tabs || visible_count > 1;
+        let pane_top_offset = if has_tabs { 28.0 } else if visible_count > 1 { 18.0 } else { 0.0 };
+        if show_header {
             let header_rect = egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), pane_top_offset));
             ui.allocate_rect(header_rect, egui::Sense::hover()); // reserve space
             let header_painter = ui.painter_at(header_rect);
@@ -7603,73 +7629,269 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 sym_label_x += nav_btn_size + 3.0;
             }
 
-            // Clickable symbol — opens this pane's picker
-            let sym_rect = egui::Rect::from_min_size(
-                egui::pos2(sym_label_x, header_rect.top()),
-                egui::vec2(header_rect.right() - sym_label_x - header_rect.width() * 0.5, pane_top_offset),
-            );
-            let sym_resp = ui.allocate_rect(sym_rect, egui::Sense::click());
-            if sym_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let label_color = if is_active { t.bull } else { egui::Color32::from_rgb(180,180,190) };
-            header_painter.text(
-                egui::pos2(sym_label_x + 2.0, header_rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                format!("{} {}", chart.symbol, chart.timeframe),
-                egui::FontId::monospace(10.0),
-                label_color,
-            );
-            if sym_resp.clicked() {
-                *active_pane = pane_idx;
-                chart.picker_open = !chart.picker_open;
-                chart.picker_query.clear();
-                chart.picker_results.clear();
-                chart.picker_last_query.clear();
-                chart.picker_pos = egui::pos2(sym_rect.left(), sym_rect.bottom());
-            }
+            // ── Tab bar or simple symbol label ──
+            if has_tabs {
+                // Render browser-style tab bar
+                let tab_h = pane_top_offset - 2.0; // tab height within header
+                let tab_y = header_rect.top() + 1.0;
+                let mut tab_x = sym_label_x;
+                let tab_count = chart.tab_symbols.len();
+                let active_tab = chart.tab_active;
+                // Collect tab data to avoid borrow issues
+                let tab_data: Vec<(String, String, f32)> = (0..tab_count).map(|i| {
+                    (chart.tab_symbols[i].clone(), chart.tab_timeframes[i].clone(),
+                     if i < chart.tab_changes.len() { chart.tab_changes[i] } else { 0.0 })
+                }).collect();
+                let mut clicked_tab: Option<usize> = None;
+                let mut close_tab: Option<usize> = None;
+                let mut hovered_tab: Option<usize> = None;
+                let prev_hovered = chart.tab_hovered;
 
-            // Change % badge in pane header
-            let sym_text_w = header_painter.layout_no_wrap(
-                format!("{} {}", chart.symbol, chart.timeframe), egui::FontId::monospace(10.0), label_color).size().x;
-            if let (Some(first), Some(last)) = (chart.bars.first(), chart.bars.last()) {
-                if first.open > 0.0 {
-                    let chg = (last.close - first.open) / first.open * 100.0;
-                    let chg_col = if chg >= 0.0 { t.bull } else { t.bear };
-                    let chg_text = if chg >= 0.0 { format!("+{:.2}%", chg) } else { format!("{:.2}%", chg) };
-                    let chg_x = sym_label_x + sym_text_w + 8.0;
-                    let chg_bg = egui::Color32::from_rgba_unmultiplied(chg_col.r(), chg_col.g(), chg_col.b(), 20);
-                    let chg_galley = header_painter.layout_no_wrap(chg_text.clone(), egui::FontId::monospace(9.0), chg_col);
-                    let chg_rect = egui::Rect::from_min_size(
-                        egui::pos2(chg_x, header_rect.center().y - chg_galley.size().y / 2.0 - 1.0),
-                        chg_galley.size() + egui::vec2(6.0, 2.0));
-                    header_painter.rect_filled(chg_rect, 2.0, chg_bg);
-                    header_painter.text(egui::pos2(chg_x + 3.0, header_rect.center().y), egui::Align2::LEFT_CENTER,
-                        &chg_text, egui::FontId::monospace(9.0), chg_col);
+                for (ti, (sym, _tf, chg)) in tab_data.iter().enumerate() {
+                    let is_active_tab = ti == active_tab;
+                    // Measure tab text width
+                    let chg_text = if *chg >= 0.0 { format!("+{:.1}%", chg) } else { format!("{:.1}%", chg) };
+                    let sym_galley = header_painter.layout_no_wrap(sym.clone(), egui::FontId::monospace(9.0), t.dim);
+                    let chg_galley = header_painter.layout_no_wrap(chg_text.clone(), egui::FontId::monospace(8.0), t.dim);
+                    let close_w = 12.0;
+                    let tab_pad = 8.0;
+                    let gap = 4.0;
+                    let tab_w = tab_pad + sym_galley.size().x + gap + chg_galley.size().x + gap + close_w + tab_pad;
+
+                    let tab_rect = egui::Rect::from_min_size(egui::pos2(tab_x, tab_y), egui::vec2(tab_w, tab_h));
+                    let tab_resp = ui.allocate_rect(tab_rect, egui::Sense::click());
+                    if tab_resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        hovered_tab = Some(ti);
+                    }
+
+                    // Tab background
+                    let tab_bg = if is_active_tab {
+                        t.bg.gamma_multiply(1.4)
+                    } else if tab_resp.hovered() {
+                        t.bg.gamma_multiply(1.1)
+                    } else {
+                        t.bg.gamma_multiply(0.9)
+                    };
+                    header_painter.rect_filled(
+                        tab_rect,
+                        egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
+                        tab_bg);
+                    // Active tab: accent bottom border
+                    if is_active_tab {
+                        header_painter.line_segment(
+                            [egui::pos2(tab_rect.left() + 1.0, tab_rect.bottom()),
+                             egui::pos2(tab_rect.right() - 1.0, tab_rect.bottom())],
+                            egui::Stroke::new(2.0, t.accent));
+                    }
+                    // Separator between inactive tabs
+                    if !is_active_tab && ti > 0 && ti.checked_sub(1).map_or(true, |p| p != active_tab) {
+                        header_painter.line_segment(
+                            [egui::pos2(tab_rect.left(), tab_rect.top() + 4.0),
+                             egui::pos2(tab_rect.left(), tab_rect.bottom() - 4.0)],
+                            egui::Stroke::new(0.5, t.dim.gamma_multiply(0.3)));
+                    }
+
+                    // Symbol text
+                    let sym_col = if is_active_tab { egui::Color32::from_rgb(220, 220, 230) } else { t.dim.gamma_multiply(0.7) };
+                    header_painter.text(
+                        egui::pos2(tab_x + tab_pad, tab_rect.center().y),
+                        egui::Align2::LEFT_CENTER, sym, egui::FontId::monospace(9.0), sym_col);
+                    // Change % badge
+                    let chg_col = if *chg >= 0.0 { t.bull } else { t.bear };
+                    let chg_alpha = if is_active_tab { 255u8 } else { 140 };
+                    let chg_draw_col = egui::Color32::from_rgba_unmultiplied(chg_col.r(), chg_col.g(), chg_col.b(), chg_alpha);
+                    let chg_x = tab_x + tab_pad + sym_galley.size().x + gap;
+                    header_painter.text(
+                        egui::pos2(chg_x, tab_rect.center().y),
+                        egui::Align2::LEFT_CENTER, &chg_text, egui::FontId::monospace(8.0), chg_draw_col);
+
+                    // Close button (x) — show on hover or if active
+                    let show_close = tab_count > 1 && (prev_hovered == Some(ti) || is_active_tab);
+                    if show_close {
+                        let close_rect = egui::Rect::from_center_size(
+                            egui::pos2(tab_rect.right() - tab_pad - close_w / 2.0, tab_rect.center().y),
+                            egui::vec2(close_w, close_w));
+                        let close_resp = ui.allocate_rect(close_rect, egui::Sense::click());
+                        let close_col = if close_resp.hovered() { t.bear } else { t.dim.gamma_multiply(0.5) };
+                        if close_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                        if close_resp.hovered() {
+                            header_painter.rect_filled(close_rect, 2.0, color_alpha(t.bear, 20));
+                        }
+                        header_painter.text(close_rect.center(), egui::Align2::CENTER_CENTER,
+                            "\u{00D7}", egui::FontId::proportional(11.0), close_col);
+                        if close_resp.clicked() {
+                            close_tab = Some(ti);
+                        }
+                    }
+
+                    if tab_resp.clicked() && close_tab.is_none() {
+                        clicked_tab = Some(ti);
+                    }
+                    tab_x += tab_w + 1.0; // 1px gap between tabs
                 }
-            }
 
-            // OVL button in pane header (symbol overlay manager)
-            {
-                let ovl_x = sym_label_x + sym_text_w + 10.0
-                    + if chart.bars.len() > 1 { 60.0 } else { 0.0 };
-                let has_overlays = !chart.symbol_overlays.is_empty();
-                let ovl_rect = egui::Rect::from_min_size(
-                    egui::pos2(ovl_x, header_rect.top() + 1.0),
-                    egui::vec2(30.0, pane_top_offset - 2.0));
-                let ovl_resp = ui.allocate_rect(ovl_rect, egui::Sense::click());
-                let ovl_col = if chart.overlay_editing { t.accent }
-                    else if has_overlays { egui::Color32::from_rgb(180, 180, 195) }
-                    else { t.dim.gamma_multiply(0.6) };
-                let ovl_bg = if chart.overlay_editing { color_alpha(t.accent, 30) }
-                    else if has_overlays { color_alpha(t.toolbar_border, 30) }
-                    else { egui::Color32::TRANSPARENT };
-                if ovl_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                header_painter.rect_filled(ovl_rect, 3.0, ovl_bg);
-                header_painter.text(ovl_rect.center(), egui::Align2::CENTER_CENTER,
-                    if has_overlays { Icon::CHART_LINE } else { "+OV" },
-                    egui::FontId::monospace(if has_overlays { 10.0 } else { 8.0 }), ovl_col);
-                if ovl_resp.clicked() {
-                    chart.overlay_editing = !chart.overlay_editing;
-                    if chart.overlay_editing { chart.overlay_editing_idx = None; }
+                chart.tab_hovered = hovered_tab;
+
+                // "+" button to add new tab
+                {
+                    let plus_rect = egui::Rect::from_min_size(egui::pos2(tab_x + 2.0, tab_y), egui::vec2(20.0, tab_h));
+                    let plus_resp = ui.allocate_rect(plus_rect, egui::Sense::click());
+                    let plus_col = if plus_resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.5) };
+                    if plus_resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        header_painter.rect_filled(plus_rect, 3.0, color_alpha(t.toolbar_border, 20));
+                    }
+                    header_painter.text(plus_rect.center(), egui::Align2::CENTER_CENTER,
+                        "+", egui::FontId::monospace(12.0), plus_col);
+                    if plus_resp.clicked() {
+                        // Add a new tab with the current symbol (user can change it via picker)
+                        chart.tab_symbols.push(chart.symbol.clone());
+                        chart.tab_timeframes.push(chart.timeframe.clone());
+                        chart.tab_changes.push(0.0);
+                        chart.tab_active = chart.tab_symbols.len() - 1;
+                        // Open picker for the new tab
+                        chart.picker_open = true;
+                        chart.picker_query.clear();
+                        chart.picker_results.clear();
+                        chart.picker_last_query.clear();
+                        chart.picker_pos = egui::pos2(plus_rect.left(), plus_rect.bottom());
+                        *active_pane = pane_idx;
+                    }
+                }
+
+                // Handle tab close
+                if let Some(ci) = close_tab {
+                    chart.tab_symbols.remove(ci);
+                    chart.tab_timeframes.remove(ci);
+                    if ci < chart.tab_changes.len() { chart.tab_changes.remove(ci); }
+                    if chart.tab_active >= chart.tab_symbols.len() {
+                        chart.tab_active = chart.tab_symbols.len().saturating_sub(1);
+                    } else if chart.tab_active > ci {
+                        chart.tab_active -= 1;
+                    }
+                    // Switch to the (possibly new) active tab
+                    if !chart.tab_symbols.is_empty() {
+                        let ai = chart.tab_active;
+                        let new_sym = chart.tab_symbols[ai].clone();
+                        let new_tf = chart.tab_timeframes[ai].clone();
+                        if new_sym != chart.symbol {
+                            chart.pending_symbol_change = Some(new_sym);
+                        }
+                        if new_tf != chart.timeframe {
+                            chart.pending_timeframe_change = Some(new_tf);
+                        }
+                    }
+                } else if let Some(ci) = clicked_tab {
+                    if ci != chart.tab_active {
+                        chart.tab_active = ci;
+                        let new_sym = chart.tab_symbols[ci].clone();
+                        let new_tf = chart.tab_timeframes[ci].clone();
+                        if new_sym != chart.symbol {
+                            chart.pending_symbol_change = Some(new_sym);
+                        }
+                        if new_tf != chart.timeframe {
+                            chart.pending_timeframe_change = Some(new_tf);
+                        }
+                    }
+                }
+
+                // OVL button after tab bar
+                {
+                    let sym_text_w = 0.0; // not used in tab mode, OVL goes after tabs
+                    let _ = sym_text_w;
+                    let ovl_x = tab_x + 26.0;
+                    let has_overlays = !chart.symbol_overlays.is_empty();
+                    let ovl_rect = egui::Rect::from_min_size(
+                        egui::pos2(ovl_x, header_rect.top() + 1.0),
+                        egui::vec2(30.0, pane_top_offset - 2.0));
+                    let ovl_resp = ui.allocate_rect(ovl_rect, egui::Sense::click());
+                    let ovl_col = if chart.overlay_editing { t.accent }
+                        else if has_overlays { egui::Color32::from_rgb(180, 180, 195) }
+                        else { t.dim.gamma_multiply(0.6) };
+                    let ovl_bg = if chart.overlay_editing { color_alpha(t.accent, 30) }
+                        else if has_overlays { color_alpha(t.toolbar_border, 30) }
+                        else { egui::Color32::TRANSPARENT };
+                    if ovl_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    header_painter.rect_filled(ovl_rect, 3.0, ovl_bg);
+                    header_painter.text(ovl_rect.center(), egui::Align2::CENTER_CENTER,
+                        if has_overlays { Icon::CHART_LINE } else { "+OV" },
+                        egui::FontId::monospace(if has_overlays { 10.0 } else { 8.0 }), ovl_col);
+                    if ovl_resp.clicked() {
+                        chart.overlay_editing = !chart.overlay_editing;
+                        if chart.overlay_editing { chart.overlay_editing_idx = None; }
+                    }
+                }
+            } else {
+                // Simple symbol label (no tabs — original single-symbol header)
+                // Clickable symbol — opens this pane's picker
+                let sym_rect = egui::Rect::from_min_size(
+                    egui::pos2(sym_label_x, header_rect.top()),
+                    egui::vec2(header_rect.right() - sym_label_x - header_rect.width() * 0.5, pane_top_offset),
+                );
+                let sym_resp = ui.allocate_rect(sym_rect, egui::Sense::click());
+                if sym_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let label_color = if is_active { t.bull } else { egui::Color32::from_rgb(180,180,190) };
+                header_painter.text(
+                    egui::pos2(sym_label_x + 2.0, header_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    format!("{} {}", chart.symbol, chart.timeframe),
+                    egui::FontId::monospace(10.0),
+                    label_color,
+                );
+                if sym_resp.clicked() {
+                    *active_pane = pane_idx;
+                    chart.picker_open = !chart.picker_open;
+                    chart.picker_query.clear();
+                    chart.picker_results.clear();
+                    chart.picker_last_query.clear();
+                    chart.picker_pos = egui::pos2(sym_rect.left(), sym_rect.bottom());
+                }
+
+                // Change % badge in pane header
+                let sym_text_w = header_painter.layout_no_wrap(
+                    format!("{} {}", chart.symbol, chart.timeframe), egui::FontId::monospace(10.0), label_color).size().x;
+                if let (Some(first), Some(last)) = (chart.bars.first(), chart.bars.last()) {
+                    if first.open > 0.0 {
+                        let chg = (last.close - first.open) / first.open * 100.0;
+                        let chg_col = if chg >= 0.0 { t.bull } else { t.bear };
+                        let chg_text = if chg >= 0.0 { format!("+{:.2}%", chg) } else { format!("{:.2}%", chg) };
+                        let chg_x = sym_label_x + sym_text_w + 8.0;
+                        let chg_bg = egui::Color32::from_rgba_unmultiplied(chg_col.r(), chg_col.g(), chg_col.b(), 20);
+                        let chg_galley = header_painter.layout_no_wrap(chg_text.clone(), egui::FontId::monospace(9.0), chg_col);
+                        let chg_rect = egui::Rect::from_min_size(
+                            egui::pos2(chg_x, header_rect.center().y - chg_galley.size().y / 2.0 - 1.0),
+                            chg_galley.size() + egui::vec2(6.0, 2.0));
+                        header_painter.rect_filled(chg_rect, 2.0, chg_bg);
+                        header_painter.text(egui::pos2(chg_x + 3.0, header_rect.center().y), egui::Align2::LEFT_CENTER,
+                            &chg_text, egui::FontId::monospace(9.0), chg_col);
+                    }
+                }
+
+                // OVL button in pane header (symbol overlay manager)
+                {
+                    let ovl_x = sym_label_x + sym_text_w + 10.0
+                        + if chart.bars.len() > 1 { 60.0 } else { 0.0 };
+                    let has_overlays = !chart.symbol_overlays.is_empty();
+                    let ovl_rect = egui::Rect::from_min_size(
+                        egui::pos2(ovl_x, header_rect.top() + 1.0),
+                        egui::vec2(30.0, pane_top_offset - 2.0));
+                    let ovl_resp = ui.allocate_rect(ovl_rect, egui::Sense::click());
+                    let ovl_col = if chart.overlay_editing { t.accent }
+                        else if has_overlays { egui::Color32::from_rgb(180, 180, 195) }
+                        else { t.dim.gamma_multiply(0.6) };
+                    let ovl_bg = if chart.overlay_editing { color_alpha(t.accent, 30) }
+                        else if has_overlays { color_alpha(t.toolbar_border, 30) }
+                        else { egui::Color32::TRANSPARENT };
+                    if ovl_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    header_painter.rect_filled(ovl_rect, 3.0, ovl_bg);
+                    header_painter.text(ovl_rect.center(), egui::Align2::CENTER_CENTER,
+                        if has_overlays { Icon::CHART_LINE } else { "+OV" },
+                        egui::FontId::monospace(if has_overlays { 10.0 } else { 8.0 }), ovl_col);
+                    if ovl_resp.clicked() {
+                        chart.overlay_editing = !chart.overlay_editing;
+                        if chart.overlay_editing { chart.overlay_editing_idx = None; }
+                    }
                 }
             }
 
