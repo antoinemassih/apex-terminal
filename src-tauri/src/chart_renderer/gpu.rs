@@ -11532,12 +11532,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                         // Column headers
                         ui.horizontal(|ui| {
-                            ui.add_space(4.0);
-                            ui.label(egui::RichText::new("BID").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.add_space(20.0);
-                            ui.label(egui::RichText::new("PRICE").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.add_space(16.0);
-                            ui.label(egui::RichText::new("ASK").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                            let col_w = (panel_w_dom - 4.0) / 3.0;
+                            ui.add_space(2.0);
+                            ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("BID").monospace().size(8.0).color(t.bull.gamma_multiply(0.4))));
+                            ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("PRICE").monospace().size(8.0).color(t.dim.gamma_multiply(0.4))));
+                            ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("ASK").monospace().size(8.0).color(t.bear.gamma_multiply(0.4))));
                         });
 
                         egui::ScrollArea::vertical().max_height(dom_h - 40.0).auto_shrink([false, false]).show(ui, |ui| {
@@ -11559,10 +11558,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                 // Highlight: position entry price
                                 let is_entry = position_entry.map(|ep| (ep - price).abs() < tick * 0.5).unwrap_or(false);
 
+                                let row_h = 20.0;
                                 let row_rect = ui.horizontal(|ui| {
+                                    ui.set_min_width(panel_w_dom - 4.0);
                                     let row_start = ui.cursor().min;
-                                    let row_r = egui::Rect::from_min_size(row_start, egui::vec2(panel_w_dom, 16.0));
-                                    ui.painter().rect_filled(row_r, 0.0, row_bg);
+                                    let row_r = egui::Rect::from_min_size(row_start, egui::vec2(panel_w_dom - 4.0, row_h));
+                                    let row_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| row_r.contains(p));
+
+                                    // Row background
+                                    let bg = if is_current { color_alpha(t.accent, 35) }
+                                        else if row_hovered { color_alpha(t.toolbar_border, 30) }
+                                        else { egui::Color32::TRANSPARENT };
+                                    ui.painter().rect_filled(row_r, 0.0, bg);
                                     if has_buy_order {
                                         ui.painter().rect_filled(row_r, 0.0, color_alpha(t.bull, 25));
                                     }
@@ -11573,20 +11580,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                         ui.painter().rect_stroke(row_r, 0.0, egui::Stroke::new(1.0, color_alpha(egui::Color32::from_rgb(255, 200, 50), 150)), egui::StrokeKind::Inside);
                                     }
 
+                                    // Three columns: BID | PRICE | ASK (each ~1/3 width)
+                                    let col_w = (panel_w_dom - 4.0) / 3.0;
                                     ui.add_space(2.0);
-                                    // Buy button at bid
-                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(8.0).color(t.bull.gamma_multiply(0.7)))
-                                        .fill(egui::Color32::TRANSPARENT).frame(false).min_size(egui::vec2(36.0, 14.0))).clicked() {
+                                    // Buy button at bid — full column width
+                                    let bid_col = if row_hovered { t.bull } else { t.bull.gamma_multiply(0.6) };
+                                    let bid_bg = if row_hovered { color_alpha(t.bull, 15) } else { egui::Color32::TRANSPARENT };
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(10.0).color(bid_col))
+                                        .fill(bid_bg).frame(false).min_size(egui::vec2(col_w - 4.0, row_h))).clicked() {
                                         let id = chart.next_order_id; chart.next_order_id += 1;
                                         chart.orders.push(OrderLevel { id, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                                     }
-                                    // Price
-                                    let price_color = if is_current { t.accent } else if price > current_price { t.bull.gamma_multiply(0.6) } else { t.bear.gamma_multiply(0.6) };
+                                    // Price — center column
+                                    let price_color = if is_current { egui::Color32::WHITE } else if price > current_price { t.bull.gamma_multiply(0.7) } else { t.bear.gamma_multiply(0.7) };
                                     let price_fmt = if tick >= 1.0 { format!("{:.0}", price) } else { format!("{:.2}", price) };
-                                    ui.label(egui::RichText::new(price_fmt).monospace().size(8.0).strong().color(price_color));
-                                    // Sell button at ask
-                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(8.0).color(t.bear.gamma_multiply(0.7)))
-                                        .fill(egui::Color32::TRANSPARENT).frame(false).min_size(egui::vec2(36.0, 14.0))).clicked() {
+                                    let price_label = egui::RichText::new(price_fmt).monospace().size(10.0).strong().color(price_color);
+                                    ui.add_sized(egui::vec2(col_w, row_h), egui::Label::new(price_label));
+                                    // Sell button at ask — full column width
+                                    let ask_col = if row_hovered { t.bear } else { t.bear.gamma_multiply(0.6) };
+                                    let ask_bg = if row_hovered { color_alpha(t.bear, 15) } else { egui::Color32::TRANSPARENT };
+                                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(10.0).color(ask_col))
+                                        .fill(ask_bg).frame(false).min_size(egui::vec2(col_w - 4.0, row_h))).clicked() {
                                         let id = chart.next_order_id; chart.next_order_id += 1;
                                         chart.orders.push(OrderLevel { id, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None });
                                     }
