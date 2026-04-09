@@ -7397,7 +7397,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             chart.price_range_animated = None;
             (target_min, target_max)
         };
-        let total = chart.vc + CHART_RIGHT_PAD;
+        // Proportional right padding: ~8% of visible bars, min 5, max 30
+        let dynamic_pad = ((chart.vc as f32 * 0.08) as u32).max(5).min(30);
+        let total = chart.vc + dynamic_pad;
         let bs = cw/total as f32;
         let vs = chart.vs;
         let end = ((vs as u32)+chart.vc).min(n as u32);
