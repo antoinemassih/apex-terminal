@@ -2193,11 +2193,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         ctx.set_style(style);
     }
 
-    // Apply font scale from settings
-    if (watchlist.font_scale - 1.0).abs() > 0.01 {
+    // Apply font scale from settings (base = 1.2, range 1.2–2.2)
+    if (watchlist.font_scale - 1.2).abs() > 0.01 {
         ctx.set_pixels_per_point(watchlist.font_scale);
     } else {
-        ctx.set_pixels_per_point(1.0);
+        ctx.set_pixels_per_point(1.2);
     }
     // Cache account data once per frame (avoid repeated Mutex lock + clone)
     let account_data_cached = read_account_data();
@@ -2218,6 +2218,34 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         resp
     };
 
+    // Auto-hide toolbar logic
+    let toolbar_visible = if watchlist.toolbar_auto_hide {
+        let mouse_y = ctx.input(|i| i.pointer.hover_pos().map(|p| p.y));
+        let tb_h = if watchlist.compact_mode { 28.0 } else { 36.0 };
+        let in_trigger_zone = mouse_y.map_or(false, |y| y < 8.0);
+        let in_toolbar = mouse_y.map_or(false, |y| y < tb_h);
+        if in_trigger_zone || in_toolbar {
+            watchlist.toolbar_hover_time = Some(std::time::Instant::now());
+            true
+        } else if let Some(t_hover) = watchlist.toolbar_hover_time {
+            if t_hover.elapsed().as_millis() < 500 { true }
+            else { watchlist.toolbar_hover_time = None; false }
+        } else {
+            false
+        }
+    } else {
+        true
+    };
+
+    if !toolbar_visible {
+        // Show thin accent hint line at the very top
+        egui::TopBottomPanel::top("tb_hint")
+            .exact_height(2.0)
+            .frame(egui::Frame::NONE.fill(t.accent))
+            .show(ctx, |_ui| {});
+    }
+
+    if toolbar_visible {
     egui::TopBottomPanel::top("tb")
         .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 10, right: 0, top: 0, bottom: 0 }))
         .exact_height(if watchlist.compact_mode { 28.0 } else { 36.0 })
@@ -3042,6 +3070,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             // (Opt button is in scroll area, near account strip toggle)
         });
     });
+    } // end if toolbar_visible
 
     // ── Account summary strip (below toolbar) ──
     if watchlist.account_strip_open {
@@ -3531,7 +3560,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         let mut pct = (watchlist.font_scale * 100.0).round() as i32;
-                        if ui.add(egui::DragValue::new(&mut pct).range(80..=130).suffix("%").speed(1)
+                        if ui.add(egui::DragValue::new(&mut pct).range(120..=220).suffix("%").speed(1)
                             .custom_formatter(|v, _| format!("{}%", v as i32))).changed() {
                             watchlist.font_scale = pct as f32 / 100.0;
                         }
@@ -3540,7 +3569,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 // Preset buttons
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    for pct in [80, 90, 100, 110, 120] {
+                    for pct in [120, 140, 160, 180, 200] {
                         let active = (watchlist.font_scale * 100.0).round() as i32 == pct;
                         let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
                         let bg = if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
@@ -3559,6 +3588,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let mut val = watchlist.compact_mode;
                         if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
                             watchlist.compact_mode = val;
+                        }
+                    });
+                });
+                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new("Auto-Hide Toolbar").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(m);
+                        let mut val = watchlist.toolbar_auto_hide;
+                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
+                            watchlist.toolbar_auto_hide = val;
+                            if !val { watchlist.toolbar_hover_time = None; }
                         }
                     });
                 });
@@ -3587,6 +3629,18 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                         let mut val = watchlist.show_y_axis;
                         if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
                             watchlist.show_y_axis = val;
+                        }
+                    });
+                });
+                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new("Shared X-Axis").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(m);
+                        let mut val = watchlist.shared_x_axis;
+                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
+                            watchlist.shared_x_axis = val;
                         }
                     });
                 });
@@ -7462,6 +7516,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             egui::pos2(pane_rect.left(), pane_rect.top() + pane_top_offset),
             egui::vec2(pane_rect.width(), pane_rect.height() - pane_top_offset),
         );
+        // Shared X-axis: detect if this pane has a bottom neighbor (skip X labels on upper panes)
+        let pane_has_bottom_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.top() - pane_rect.bottom()).abs() < 5.0);
+        let skip_x_labels = watchlist.shared_x_axis && pane_has_bottom_neighbor;
         let (w,h) = (rect.width(), rect.height());
         let pr = if watchlist.show_y_axis { 42.0_f32 } else { 0.0_f32 };
         let pt = if watchlist.compact_mode { 1.0_f32 } else { 4.0_f32 };
@@ -7552,13 +7609,49 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
         let painter = ui.painter_at(rect);
 
-        // Grid + price labels
+        // Grid + price labels (with volume-weighted background intensity)
         let rng=max_p-min_p; let rs=rng/8.0; let mg=10.0_f32.powf(rs.log10().floor());
         let ns=[1.0,2.0,2.5,5.0,10.0]; let step=ns.iter().map(|&s|s*mg).find(|&s|s>=rs).unwrap_or(rs);
+        // Pre-compute max volume hit count across all grid levels for normalization
+        let vis_start = vs.floor() as usize;
+        let vis_end = (end as usize).min(n);
         let mut p=(min_p/step).ceil()*step;
+        let mut vol_max_hits: f32 = 1.0;
+        {
+            let mut tp = p;
+            while tp <= max_p {
+                let mut hits: f32 = 0.0;
+                for bi in vis_start..vis_end {
+                    let b = &chart.bars[bi];
+                    if b.low <= tp + step * 0.5 && b.high >= tp - step * 0.5 {
+                        hits += b.volume;
+                    }
+                }
+                if hits > vol_max_hits { vol_max_hits = hits; }
+                tp += step;
+            }
+        }
         while p<=max_p { let y=py(p);
             painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
             if watchlist.show_y_axis {
+                // Volume-weighted background bar behind price label
+                let mut vol_hits: f32 = 0.0;
+                for bi in vis_start..vis_end {
+                    let b = &chart.bars[bi];
+                    if b.low <= p + step * 0.5 && b.high >= p - step * 0.5 {
+                        vol_hits += b.volume;
+                    }
+                }
+                let vol_ratio = (vol_hits / vol_max_hits).clamp(0.0, 1.0);
+                let vol_alpha = (10.0 + vol_ratio * 30.0) as u8; // 10–40 alpha
+                let vol_bar_w = pr * vol_ratio; // width proportional to volume
+                if vol_bar_w > 1.0 {
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(egui::pos2(rect.left() + cw, y - 6.0), egui::vec2(vol_bar_w, 12.0)),
+                        0.0,
+                        egui::Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), vol_alpha),
+                    );
+                }
                 let d=if p>=10.0{2}else{4};
                 chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", p, d);
                 painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),t.dim);
@@ -7567,7 +7660,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
 
         // Time labels on bottom axis (extends into future beyond last bar)
-        if watchlist.show_x_axis && !chart.timestamps.is_empty() && end > vs as u32 {
+        // When shared_x_axis is on and this pane has a bottom neighbor, skip X labels
+        if watchlist.show_x_axis && !skip_x_labels && !chart.timestamps.is_empty() && end > vs as u32 {
             let candle_sec = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]).max(60) } else { 86400 };
             let nice_int: &[i64] = &[60,300,900,1800,3600,7200,14400,28800,86400,172800,604800,2592000];
             let min_label_px = 70.0;
@@ -14146,8 +14240,11 @@ struct Watchlist {
     settings_open: bool,
     font_scale: f32,
     compact_mode: bool,
+    toolbar_auto_hide: bool,
+    toolbar_hover_time: Option<std::time::Instant>,
     show_x_axis: bool,
     show_y_axis: bool,
+    shared_x_axis: bool,
     hotkeys: Vec<HotKey>,
     trendline_filter_open: bool, // trendline filter dropdown
     account_strip_open: bool, // account summary bar below toolbar
@@ -14242,7 +14339,8 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
-               settings_open: false, font_scale: 1.0, compact_mode: false, show_x_axis: true, show_y_axis: true,
+               settings_open: false, font_scale: 1.2, compact_mode: false, show_x_axis: true, show_y_axis: true,
+               toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false,
                trendline_filter_open: false, account_strip_open: false, broadcast_mode: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
