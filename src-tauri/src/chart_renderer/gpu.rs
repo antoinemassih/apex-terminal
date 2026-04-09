@@ -11461,7 +11461,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // ── DOM ladder (when open, between header and order body) ──
                     if chart.dom_open {
-                        let dom_scroll_h = 21.0 * 22.0; // 10 above + current + 10 below at 22px each
+                        // No scroll — show all 21 rows directly
                         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
                         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
                         let tick = if is_index { 1.0_f32 } else { 0.01 };
@@ -11477,14 +11477,14 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                             .map(|p| p.avg_price);
                         // Column headers
                         ui.horizontal(|ui| {
-                            let col_w = (panel_w - 4.0) / 3.0;
-                            ui.add_space(2.0);
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            let col_w = (panel_w - 8.0) / 3.0;
                             ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("BID").monospace().size(8.0).color(t.bull.gamma_multiply(0.4))));
                             ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("PRICE").monospace().size(8.0).color(t.dim.gamma_multiply(0.4))));
                             ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("ASK").monospace().size(8.0).color(t.bear.gamma_multiply(0.4))));
                         });
-                        egui::ScrollArea::vertical().max_height(dom_scroll_h).auto_shrink([false, false]).show(ui, |ui| {
-                            let rows_above = 10; let rows_below = 10;
+                        {
+                            let rows_above = 10_i32; let rows_below = 10_i32;
                             for row in (-rows_above..=rows_below).rev() {
                                 let price = center_price + (row as f32 * tick * -1.0);
                                 let is_current = (price - center_price).abs() < tick * 0.5;
@@ -11522,7 +11522,7 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                                     }
                                 });
                             }
-                        });
+                        }
                         ui.add_space(2.0);
                         dialog_separator_shadow(ui, 0.0, color_alpha(t.toolbar_border, 50));
                     }
