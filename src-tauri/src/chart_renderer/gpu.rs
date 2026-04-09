@@ -2795,8 +2795,23 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                 let mut ti = panes[ap].theme_idx;
                 egui::ComboBox::from_id_salt("thm").selected_text(
                     egui::RichText::new(THEMES[ti].name).monospace().size(11.0).color(t.dim)
-                ).width(90.0).show_ui(ui, |ui| {
-                    for (i, th) in THEMES.iter().enumerate() { ui.selectable_value(&mut ti, i, th.name); }
+                ).width(120.0).show_ui(ui, |ui| {
+                    ui.set_min_width(140.0);
+                    for (i, th) in THEMES.iter().enumerate() {
+                        let sel = i == ti;
+                        ui.horizontal(|ui| {
+                            // Color swatch
+                            let swatch_rect = egui::Rect::from_min_size(ui.cursor().min + egui::vec2(2.0, 2.0), egui::vec2(14.0, 14.0));
+                            ui.painter().rect_filled(swatch_rect, 2.0, th.bg);
+                            ui.painter().circle_filled(egui::pos2(swatch_rect.left() + 4.0, swatch_rect.center().y), 2.5, th.bull);
+                            ui.painter().circle_filled(egui::pos2(swatch_rect.left() + 10.0, swatch_rect.center().y), 2.5, th.bear);
+                            ui.add_space(18.0);
+                            let text_col = if sel { th.accent } else { egui::Color32::from_rgb(200, 200, 210) };
+                            if ui.selectable_label(sel, egui::RichText::new(th.name).monospace().size(11.0).color(text_col)).clicked() {
+                                ti = i;
+                            }
+                        });
+                    }
                 });
                 if ti != panes[ap].theme_idx { for p in panes.iter_mut() { p.theme_idx = ti; } }
             }
@@ -3145,9 +3160,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
                     // Label + description
                     let lc = if is_cur { t.accent } else if hovered { egui::Color32::from_rgb(240, 240, 250) } else { egui::Color32::from_rgb(200, 200, 210) };
-                    ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(10.0), lc);
-                    let dc = if hovered { t.dim.gamma_multiply(0.7) } else { t.dim.gamma_multiply(0.35) };
-                    ui.painter().text(egui::pos2(row_rect.left() + 72.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(9.0), dc);
+                    ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(11.0), lc);
+                    let dc = if hovered { egui::Color32::from_rgb(180, 180, 195) } else { t.dim.gamma_multiply(0.55) };
+                    ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(10.0), dc);
 
                     // Star — filled, raw pointer click
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
@@ -3619,7 +3634,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             .fixed_pos(chart.picker_pos)
             .fixed_size(egui::vec2(340.0, 420.0))
             .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style()).fill(egui::Color32::from_rgb(28,28,32)))
+            .frame(egui::Frame::popup(&ctx.style())
+                .fill(t.toolbar_bg)
+                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)))
+                .corner_radius(6.0)
+                .inner_margin(egui::Margin::same(8)))
             .show(ctx, |ui| {
                 let input = ui.add(
                     egui::TextEdit::singleline(&mut chart.picker_query)
