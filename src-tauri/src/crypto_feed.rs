@@ -84,11 +84,14 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 };
                 send_to_charts(cmd);
             } else {
-                // Live tick → update current bar
+                // Live tick → update current bar (volume=0 to prevent accumulation,
+                // since UpdateLastBar does += and we send full bar state)
+                let mut tick_bar = gpu_bar;
+                tick_bar.volume = 0.0;
                 let cmd = ChartCommand::UpdateLastBar {
                     symbol: bar.symbol.clone(),
                     timeframe: bar.timeframe.clone(),
-                    bar: gpu_bar,
+                    bar: tick_bar,
                 };
                 send_to_charts(cmd);
             }
