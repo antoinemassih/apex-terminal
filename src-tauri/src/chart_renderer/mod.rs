@@ -166,6 +166,14 @@ pub enum ChartCommand {
         price: f32,
         prev_close: f32,
     },
+    /// Time & Sales tape entry
+    TapeEntry {
+        symbol: String,
+        price: f32,
+        qty: f32,
+        time: i64,
+        is_buy: bool,
+    },
     /// Signal drawings from analysis server
     SignalDrawings {
         symbol: String,

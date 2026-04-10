@@ -41,17 +41,19 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (ws, _) = connect_async(APEX_CRYPTO_WS).await?;
     let (mut write, mut read) = ws.split();
 
-    // Subscribe to chart timeframes only (1s for price, 1m+ for charts)
+    // Subscribe to chart timeframes + tape for T&S
     let sub_msg = serde_json::json!({
-        "subscribe": ["*:1s", "*:1m", "*:5m", "*:15m", "*:30m", "*:1h", "*:4h", "*:1d"]
+        "subscribe": ["*:1s", "*:1m", "*:5m", "*:15m", "*:30m", "*:1h", "*:4h", "*:1d"],
+        "tape": ["*"]
     });
     write.send(tokio_tungstenite::tungstenite::Message::Text(
         sub_msg.to_string().into()
     )).await?;
-    eprintln!("[crypto-feed] Connected — subscribed to chart timeframes");
+    eprintln!("[crypto-feed] Connected — bars + tape subscribed");
 
     let mut chart_updates: u64 = 0;
     let mut price_updates: u64 = 0;
+    let mut tape_updates: u64 = 0;
     let mut last_log = std::time::Instant::now();
 
     while let Some(msg) = read.next().await {
@@ -59,7 +61,24 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if !msg.is_text() { continue; }
         let text = msg.to_text()?;
 
-        if let Ok(update) = serde_json::from_str::<BarUpdateMsg>(text) {
+        // Parse trade tape entries
+        let json: serde_json::Value = match serde_json::from_str(text) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        if let Some(trade) = json.get("trade") {
+            let symbol = trade["symbol"].as_str().unwrap_or("").to_string();
+            let price = trade["price"].as_f64().unwrap_or(0.0) as f32;
+            let qty = trade["qty"].as_f64().unwrap_or(0.0) as f32;
+            let time = trade["time"].as_i64().unwrap_or(0);
+            let is_buy = trade["side"].as_str() == Some("buy");
+            send_to_charts(ChartCommand::TapeEntry { symbol, price, qty, time, is_buy });
+            tape_updates += 1;
+            continue;
+        }
+
+        if let Ok(update) = serde_json::from_value::<BarUpdateMsg>(json) {
             let bar = &update.bar;
             let is_1s = bar.timeframe == "1s";
 
@@ -104,9 +123,10 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
 
             if last_log.elapsed().as_secs() >= 30 {
-                eprintln!("[crypto-feed] chart: {}/30s, prices: {}/30s", chart_updates, price_updates);
+                eprintln!("[crypto-feed] chart: {}/30s, prices: {}/30s, tape: {}/30s", chart_updates, price_updates, tape_updates);
                 chart_updates = 0;
                 price_updates = 0;
+                tape_updates = 0;
                 last_log = std::time::Instant::now();
             }
         }
