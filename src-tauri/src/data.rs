@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+/// Detect crypto symbols (Binance pairs)
+pub fn is_crypto(symbol: &str) -> bool {
+    let s = symbol.to_uppercase();
+    s.ends_with("USDT") || s.ends_with("BUSD") || s.ends_with("USDC")
+        || s.ends_with("BTC") && s.len() > 3 && s != "GBTC"
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bar {
     pub time: i64,
@@ -50,7 +57,21 @@ pub async fn get_bars(symbol: String, interval: String, period: String) -> Resul
         .user_agent("Mozilla/5.0")
         .build().map_err(|e| e.to_string())?;
 
-    // 1. OCOCO
+    // 1. ApexCrypto — real-time crypto (BTCUSDT, ETHUSDT, etc.)
+    if is_crypto(&symbol) {
+        let apex_url = format!("http://localhost:8400/api/bars/{}/{}", symbol, interval);
+        if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(2)).send().await {
+            if let Ok(bars) = resp.json::<Vec<Bar>>().await {
+                if !bars.is_empty() {
+                    eprintln!("[get_bars] {} bars for {} from ApexCrypto", bars.len(), symbol);
+                    crate::bar_cache::set(&symbol, &interval, &bars);
+                    return Ok(bars);
+                }
+            }
+        }
+    }
+
+    // 2. OCOCO
     let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", symbol, interval);
     if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(2)).send().await {
         if let Ok(bars) = resp.json::<Vec<Bar>>().await {
@@ -61,7 +82,7 @@ pub async fn get_bars(symbol: String, interval: String, period: String) -> Resul
         }
     }
 
-    // 2. yfinance sidecar
+    // 3. yfinance sidecar
     let yf_url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", symbol, interval, period);
     if let Ok(resp) = client.get(&yf_url).timeout(std::time::Duration::from_secs(3)).send().await {
         if let Ok(bars) = resp.json::<Vec<Bar>>().await {
@@ -72,7 +93,7 @@ pub async fn get_bars(symbol: String, interval: String, period: String) -> Resul
         }
     }
 
-    // 3. Direct Yahoo Finance v8 API
+    // 4. Direct Yahoo Finance v8 API
     let (yf_interval, yf_range) = match interval.as_str() {
         "1m" => ("1m","5d"), "2m" => ("2m","5d"), "5m" => ("5m","5d"),
         "15m" => ("15m","60d"), "30m" => ("30m","60d"),

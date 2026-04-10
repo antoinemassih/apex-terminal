@@ -17565,7 +17565,20 @@ fn fetch_bars_background(sym: String, tf: String) {
             .user_agent("Mozilla/5.0")
             .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
 
-        // 1. OCOCO (InfluxDB cache)
+        // 1. ApexCrypto — real-time crypto
+        if crate::data::is_crypto(&sym) {
+            let apex_url = format!("http://localhost:8400/api/bars/{}/{}", sym, tf);
+            if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(2)).send() {
+                if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
+                    if !bars.is_empty() {
+                        crate::bar_cache::set(&sym, &tf, &bars);
+                        if send_bars(&bars, "ApexCrypto") { return; }
+                    }
+                }
+            }
+        }
+
+        // 2. OCOCO (InfluxDB cache)
         let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", sym, tf);
         if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(2)).send() {
             if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
