@@ -25,3 +25,5 @@ dist-ssr
 
 # Project
 .firecrawl/
+discord.env
+discord_token.json

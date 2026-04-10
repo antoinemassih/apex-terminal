@@ -43,6 +43,9 @@ fn main() {
     // Start performance monitoring — Prometheus metrics + jank detection + GPU telemetry
     _scaffold_lib::monitoring::start();
 
+    // Discord OAuth2 — load client credentials from discord.env
+    _scaffold_lib::discord::load_config();
+
     eprintln!("[apex-native] Opening chart window...");
 
     // Create a channel and open the first window

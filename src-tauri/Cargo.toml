@@ -46,6 +46,11 @@ egui-phosphor = { version = "0.9", features = ["regular", "bold", "fill"] }
 redis = { version = "0.27", features = ["tokio-comp"] }
 dirs = "6"
 
+# Discord OAuth2
+urlencoding = "2"
+open = "5"
+image = { version = "0.24", default-features = false, features = ["png"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
 

@@ -6,6 +6,7 @@ pub mod ui_kit;
 pub mod bar_cache;
 pub mod drawing_db;
 pub mod monitoring;
+pub mod discord;
 
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
@@ -146,6 +147,9 @@ pub fn run() {
 
             // System monitoring — GPU, CPU, memory, frame timing → :9091/metrics
             monitoring::start();
+
+            // Discord OAuth2 — load client credentials from discord.env
+            discord::load_config();
 
             // IB WebSocket hot path — Rust-native, msgpack binary
             let ib_handle = ib_ws::spawn(app.handle().clone());
