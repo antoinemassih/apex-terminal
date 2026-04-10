@@ -45,29 +45,29 @@ pub struct OptionsChain {
 
 #[tauri::command]
 pub async fn get_bars(symbol: String, interval: String, period: String) -> Result<Vec<Bar>, String> {
-    // 0. Redis cache
-    if let Some(cached) = crate::bar_cache::get(&symbol, &interval) {
-        if !cached.is_empty() {
-            eprintln!("[get_bars] Cache hit for {}:{} ({} bars)", symbol, interval, cached.len());
-            return Ok(cached);
-        }
-    }
-
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0")
         .build().map_err(|e| e.to_string())?;
 
-    // 1. ApexCrypto — real-time crypto (BTCUSDT, ETHUSDT, etc.)
+    // 0. Crypto → ApexCrypto directly (manages its own cache + Binance backfill)
     if is_crypto(&symbol) {
         let apex_url = format!("http://localhost:8400/api/bars/{}/{}", symbol, interval);
-        if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(2)).send().await {
+        if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(5)).send().await {
             if let Ok(bars) = resp.json::<Vec<Bar>>().await {
                 if !bars.is_empty() {
                     eprintln!("[get_bars] {} bars for {} from ApexCrypto", bars.len(), symbol);
-                    crate::bar_cache::set(&symbol, &interval, &bars);
                     return Ok(bars);
                 }
             }
+        }
+        return Ok(vec![]);
+    }
+
+    // 1. Redis cache (stocks only)
+    if let Some(cached) = crate::bar_cache::get(&symbol, &interval) {
+        if !cached.is_empty() {
+            eprintln!("[get_bars] Cache hit for {}:{} ({} bars)", symbol, interval, cached.len());
+            return Ok(cached);
         }
     }
 

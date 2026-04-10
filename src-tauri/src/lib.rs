@@ -7,6 +7,7 @@ pub mod bar_cache;
 pub mod drawing_db;
 pub mod monitoring;
 pub mod discord;
+pub mod crypto_feed;
 
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
@@ -150,6 +151,9 @@ pub fn run() {
 
             // Discord OAuth2 — load client credentials from discord.env
             discord::load_config();
+
+            // Crypto real-time feed — connects to ApexCrypto WebSocket
+            crypto_feed::start();
 
             // IB WebSocket hot path — Rust-native, msgpack binary
             let ib_handle = ib_ws::spawn(app.handle().clone());

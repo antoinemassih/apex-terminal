@@ -1342,13 +1342,16 @@ impl Chart {
                     }
                 }
             }
-            ChartCommand::AppendBar { bar, timestamp, .. } => {
-                self.bars.push(bar); self.timestamps.push(timestamp);
-                if self.auto_scroll { self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0); }
+            ChartCommand::AppendBar { symbol, timeframe, bar, timestamp } => {
+                // Only append if both symbol AND timeframe match this pane
+                if symbol == self.symbol && timeframe == self.timeframe {
+                    self.bars.push(bar); self.timestamps.push(timestamp);
+                    if self.auto_scroll { self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0); }
+                }
             }
-            ChartCommand::UpdateLastBar { symbol, bar, .. } => {
-                // Only update if tick is for the currently displayed symbol
-                if symbol == self.symbol {
+            ChartCommand::UpdateLastBar { symbol, timeframe, bar, .. } => {
+                // Only update if both symbol AND timeframe match
+                if symbol == self.symbol && (timeframe.is_empty() || timeframe == self.timeframe) {
                     if let Some(l) = self.bars.last_mut() {
                         // Properly update candle — don't replace open
                         l.close = bar.close;
@@ -1952,6 +1955,8 @@ fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing> {
 }
 
 fn tick_simulation(chart: &mut Chart) {
+    // Skip simulation for crypto — real data comes from ApexCrypto
+    if crate::data::is_crypto(&chart.symbol) { return; }
     if !chart.bars.is_empty() {
         // Init sim_price from last bar's close — and immediately create a new
         // candle so the simulation never overwrites historical data.
@@ -2098,7 +2103,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     while let Ok(cmd) = rx.try_recv() {
         match &cmd {
             // Pane-targeted commands: route by symbol
-            ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => {
+            ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } => {
+                // Broadcast to ALL panes with this symbol (each checks timeframe internally)
+                let s = symbol.clone();
+                for p in panes.iter_mut() { if p.symbol == s { p.process(cmd.clone()); } }
+            }
+            ChartCommand::LoadBars { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => {
                 let s = symbol.clone();
                 if let Some(p) = panes.iter_mut().find(|p| p.symbol == s) { p.process(cmd); }
                 else if let Some(p) = panes.get_mut(*active_pane) {
@@ -16190,6 +16200,7 @@ struct Watchlist {
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
+const DEFAULT_CRYPTO: &[&str] = &["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","BNBUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT","LINKUSDT","DOTUSDT","SUIUSDT","NEARUSDT","ARBUSDT","OPUSDT","APTUSDT","AAVEUSDT","UNIUSDT","ATOMUSDT","LTCUSDT","MATICUSDT"];
 
 impl Watchlist {
     fn new() -> Self {
@@ -17102,8 +17113,17 @@ impl ApplicationHandler for App {
                 // Actually, draw_chart also drains rx. So we need to pass these through.
                 // Simpler: just process ALL commands here and pass pane commands to the right pane.
                 for cmd in cmds_to_requeue {
+                    // Tick updates: broadcast to all matching panes (each checks timeframe)
+                    match &cmd {
+                        ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } => {
+                            let s = symbol.clone();
+                            for p in cw.panes.iter_mut() { if p.symbol == s { p.process(cmd.clone()); } }
+                            continue;
+                        }
+                        _ => {}
+                    }
                     let sym = match &cmd {
-                        ChartCommand::LoadBars { symbol, .. } | ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
+                        ChartCommand::LoadBars { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => Some(symbol.clone()),
                         ChartCommand::IndicatorSourceBars { .. } => None,
                         ChartCommand::OverlayBars { ref symbol, .. } => {
                             eprintln!("[about_to_wait] OverlayBars for '{}' arrived", symbol);
@@ -17556,26 +17576,27 @@ fn fetch_bars_background(sym: String, tf: String) {
             true
         };
 
-        // 0. Redis cache — instant
-        if let Some(cached) = crate::bar_cache::get(&sym, &tf) {
-            if send_bars(&cached, "Redis cache") { return; }
-        }
-
         let client = reqwest::blocking::Client::builder()
             .user_agent("Mozilla/5.0")
             .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
 
-        // 1. ApexCrypto — real-time crypto
+        // 0. Crypto → ApexCrypto (skip local cache, ApexCrypto manages its own + Binance backfill)
         if crate::data::is_crypto(&sym) {
             let apex_url = format!("http://localhost:8400/api/bars/{}/{}", sym, tf);
-            if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(2)).send() {
+            if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(5)).send() {
                 if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
                     if !bars.is_empty() {
-                        crate::bar_cache::set(&sym, &tf, &bars);
                         if send_bars(&bars, "ApexCrypto") { return; }
                     }
                 }
             }
+            // Crypto-only: don't fall through to Yahoo
+            return;
+        }
+
+        // 1. Redis cache — instant (stocks only)
+        if let Some(cached) = crate::bar_cache::get(&sym, &tf) {
+            if send_bars(&cached, "Redis cache") { return; }
         }
 
         // 2. OCOCO (InfluxDB cache)
@@ -17996,22 +18017,31 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
 }
 
 fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
-    let items: Vec<WatchlistItem> = DEFAULT_WATCHLIST.iter().map(|&s| {
-        let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
-        let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1;
-        WatchlistItem {
-            symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
-            is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
-            pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
-            high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
-            avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false, price_history: vec![],
-        }
-    }).collect();
-    let default_section = WatchlistSection {
-        id: 1, title: String::new(), color: None, collapsed: false, items,
+    let make_items = |syms: &[&str]| -> Vec<WatchlistItem> {
+        syms.iter().map(|&s| {
+            let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+            let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1;
+            WatchlistItem {
+                symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
+                is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
+                pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
+                high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
+                avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false, price_history: vec![],
+            }
+        }).collect()
     };
-    let wl = SavedWatchlist { name: "Default".into(), sections: vec![default_section], next_section_id: 2 };
-    (vec![wl], 0)
+
+    let stocks_section = WatchlistSection {
+        id: 1, title: String::new(), color: None, collapsed: false, items: make_items(DEFAULT_WATCHLIST),
+    };
+    let stocks = SavedWatchlist { name: "Stocks".into(), sections: vec![stocks_section], next_section_id: 2 };
+
+    let crypto_section = WatchlistSection {
+        id: 1, title: String::new(), color: None, collapsed: false, items: make_items(DEFAULT_CRYPTO),
+    };
+    let crypto = SavedWatchlist { name: "Crypto".into(), sections: vec![crypto_section], next_section_id: 2 };
+
+    (vec![stocks, crypto], 0)
 }
 
 /// Global sender for spawning new windows on the persistent render thread.
