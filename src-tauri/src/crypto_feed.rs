@@ -1,7 +1,7 @@
 //! Real-time crypto feed — connects to ApexCrypto WebSocket for live bar updates.
 //!
-//! Subscribes to all crypto symbols in the watchlist and pushes
-//! UpdateLastBar / AppendBar commands to the chart renderer.
+//! Subscribes to chart timeframes + 1s for price tracking.
+//! Pushes UpdateLastBar / AppendBar / WatchlistPrice to the chart renderer.
 
 use std::sync::{Mutex, OnceLock};
 use crate::chart_renderer::{self, ChartCommand, Bar};
@@ -10,7 +10,6 @@ const APEX_CRYPTO_WS: &str = "ws://192.168.1.56:30840/ws";
 
 static FEED_RUNNING: OnceLock<Mutex<bool>> = OnceLock::new();
 
-/// Start the crypto feed in a background thread. Safe to call multiple times — only starts once.
 pub fn start() {
     let running = FEED_RUNNING.get_or_init(|| Mutex::new(false));
     let mut guard = running.lock().unwrap();
@@ -42,16 +41,17 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (ws, _) = connect_async(APEX_CRYPTO_WS).await?;
     let (mut write, mut read) = ws.split();
 
-    // Subscribe to all timeframes for all symbols
+    // Subscribe to chart timeframes only (1s for price, 1m+ for charts)
     let sub_msg = serde_json::json!({
-        "subscribe": ["*"]
+        "subscribe": ["*:1s", "*:1m", "*:5m", "*:15m", "*:30m", "*:1h", "*:4h", "*:1d"]
     });
     write.send(tokio_tungstenite::tungstenite::Message::Text(
         sub_msg.to_string().into()
     )).await?;
-    eprintln!("[crypto-feed] Connected — subscribed to all streams");
+    eprintln!("[crypto-feed] Connected — subscribed to chart timeframes");
 
-    let mut count: u64 = 0;
+    let mut chart_updates: u64 = 0;
+    let mut price_updates: u64 = 0;
     let mut last_log = std::time::Instant::now();
 
     while let Some(msg) = read.next().await {
@@ -59,55 +59,54 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if !msg.is_text() { continue; }
         let text = msg.to_text()?;
 
-        // Parse BarUpdate from ApexCrypto
         if let Ok(update) = serde_json::from_str::<BarUpdateMsg>(text) {
             let bar = &update.bar;
+            let is_1s = bar.timeframe == "1s";
 
-            // Convert to chart renderer Bar (f32, time in seconds)
-            let gpu_bar = Bar {
-                open: bar.open as f32,
-                high: bar.high as f32,
-                low: bar.low as f32,
-                close: bar.close as f32,
-                volume: bar.volume as f32,
-                _pad: 0.0,
-            };
-            let time_sec = bar.time / 1000;
-
-            if update.is_closed {
-                // Bar closed → append new bar to chart
-                let cmd = ChartCommand::AppendBar {
+            // 1s bars → watchlist price updates only (don't send to chart)
+            if is_1s {
+                let price_cmd = ChartCommand::WatchlistPrice {
                     symbol: bar.symbol.clone(),
-                    timeframe: bar.timeframe.clone(),
-                    bar: gpu_bar,
-                    timestamp: time_sec,
+                    price: bar.close as f32,
+                    prev_close: bar.open as f32,
                 };
-                send_to_charts(cmd);
+                send_to_charts(price_cmd);
+                price_updates += 1;
             } else {
-                // Live tick → update current bar (volume=0 to prevent accumulation,
-                // since UpdateLastBar does += and we send full bar state)
-                let mut tick_bar = gpu_bar;
-                tick_bar.volume = 0.0;
-                let cmd = ChartCommand::UpdateLastBar {
-                    symbol: bar.symbol.clone(),
-                    timeframe: bar.timeframe.clone(),
-                    bar: tick_bar,
+                // >= 1m bars → chart updates
+                let gpu_bar = Bar {
+                    open: bar.open as f32,
+                    high: bar.high as f32,
+                    low: bar.low as f32,
+                    close: bar.close as f32,
+                    volume: bar.volume as f32,
+                    _pad: 0.0,
                 };
-                send_to_charts(cmd);
+                let time_sec = bar.time / 1000;
+
+                if update.is_closed {
+                    send_to_charts(ChartCommand::AppendBar {
+                        symbol: bar.symbol.clone(),
+                        timeframe: bar.timeframe.clone(),
+                        bar: gpu_bar,
+                        timestamp: time_sec,
+                    });
+                } else {
+                    let mut tick_bar = gpu_bar;
+                    tick_bar.volume = 0.0;
+                    send_to_charts(ChartCommand::UpdateLastBar {
+                        symbol: bar.symbol.clone(),
+                        timeframe: bar.timeframe.clone(),
+                        bar: tick_bar,
+                    });
+                }
+                chart_updates += 1;
             }
 
-            // Also push watchlist price updates
-            let price_cmd = ChartCommand::WatchlistPrice {
-                symbol: bar.symbol.clone(),
-                price: bar.close as f32,
-                prev_close: bar.open as f32,
-            };
-            send_to_charts(price_cmd);
-
-            count += 1;
             if last_log.elapsed().as_secs() >= 30 {
-                eprintln!("[crypto-feed] {} updates/30s", count);
-                count = 0;
+                eprintln!("[crypto-feed] chart: {}/30s, prices: {}/30s", chart_updates, price_updates);
+                chart_updates = 0;
+                price_updates = 0;
                 last_log = std::time::Instant::now();
             }
         }
@@ -124,7 +123,6 @@ fn send_to_charts(cmd: ChartCommand) {
     }
 }
 
-/// ApexCrypto bar update message format
 #[derive(serde::Deserialize)]
 struct BarUpdateMsg {
     bar: CryptoBar,
