@@ -17582,7 +17582,7 @@ fn fetch_bars_background(sym: String, tf: String) {
 
         // 0. Crypto → ApexCrypto (skip local cache, ApexCrypto manages its own + Binance backfill)
         if crate::data::is_crypto(&sym) {
-            let apex_url = format!("http://localhost:8400/api/bars/{}/{}", sym, tf);
+            let apex_url = format!("http://192.168.1.56:30840/api/bars/{}/{}", sym, tf);
             if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(5)).send() {
                 if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
                     if !bars.is_empty() {

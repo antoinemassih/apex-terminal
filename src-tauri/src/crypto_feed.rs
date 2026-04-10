@@ -6,7 +6,7 @@
 use std::sync::{Mutex, OnceLock};
 use crate::chart_renderer::{self, ChartCommand, Bar};
 
-const APEX_CRYPTO_WS: &str = "ws://localhost:8400/ws";
+const APEX_CRYPTO_WS: &str = "ws://192.168.1.56:30840/ws";
 
 static FEED_RUNNING: OnceLock<Mutex<bool>> = OnceLock::new();
 
