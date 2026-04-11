@@ -511,6 +511,12 @@ pub(crate) struct Indicator {
     pub(crate) offset: i16, // shift line forward/backward N bars
     pub(crate) ob_level: f32, // overbought level (RSI 70, Stoch 80, CCI 100, WR -20)
     pub(crate) os_level: f32, // oversold level (RSI 30, Stoch 20, CCI -100, WR -80)
+    // BB/KC band styling (empty = inherit from main color)
+    pub(crate) upper_color: String,
+    pub(crate) lower_color: String,
+    pub(crate) fill_color_hex: String,
+    pub(crate) upper_thickness: f32,
+    pub(crate) lower_thickness: f32,
 }
 
 pub(crate) const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1wk"];
@@ -524,7 +530,9 @@ impl Indicator {
                supertrend_dir: vec![],
                histogram: vec![], divergences: vec![],
                source_bars: vec![], source_timestamps: vec![], source_loaded: false,
-               param2: 0.0, param3: 0.0, param4: 0.0, source: 0, offset: 0, ob_level: 0.0, os_level: 0.0 }
+               param2: 0.0, param3: 0.0, param4: 0.0, source: 0, offset: 0, ob_level: 0.0, os_level: 0.0,
+               upper_color: String::new(), lower_color: String::new(), fill_color_hex: String::new(),
+               upper_thickness: 0.0, lower_thickness: 0.0 }
     }
     pub(crate) fn display_name(&self) -> String {
         let tf = if self.source_tf.is_empty() { "Chart" } else { &self.source_tf };
@@ -5628,6 +5636,12 @@ fn render_chart_pane(
 
             // ── Bollinger Bands ──
             if ind.kind == IndicatorType::BollingerBands {
+                // Resolve per-component colors (empty = inherit from main color)
+                let bb_upper_color = if ind.upper_color.is_empty() { dim_color } else { hex_to_color(&ind.upper_color, 1.0) };
+                let bb_lower_color = if ind.lower_color.is_empty() { dim_color } else { hex_to_color(&ind.lower_color, 1.0) };
+                let bb_fill = if ind.fill_color_hex.is_empty() { fill_color } else { hex_to_color(&ind.fill_color_hex, 0.12) };
+                let bb_upper_thick = if ind.upper_thickness > 0.0 { ind.upper_thickness } else { ind.thickness * 0.7 };
+                let bb_lower_thick = if ind.lower_thickness > 0.0 { ind.lower_thickness } else { ind.thickness * 0.7 };
                 // Fill between upper and lower
                 for i in start_i..end.saturating_sub(1) {
                     let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
@@ -5637,12 +5651,12 @@ fn render_chart_pane(
                     if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
                     let pts = vec![egui::pos2(bx(i as f32), py(u0)), egui::pos2(bx((i+1) as f32), py(u1)),
                         egui::pos2(bx((i+1) as f32), py(l1)), egui::pos2(bx(i as f32), py(l0))];
-                    painter.add(egui::Shape::convex_polygon(pts, fill_color, egui::Stroke::NONE));
+                    painter.add(egui::Shape::convex_polygon(pts, bb_fill, egui::Stroke::NONE));
                 }
                 // Upper band
                 let mut pts: Vec<egui::Pos2> = vec![];
                 for i in start_i..end { if let Some(&v) = ind.values2.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
+                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(bb_upper_thick, bb_upper_color))); }
                 // Middle (SMA)
                 let mut pts: Vec<egui::Pos2> = vec![];
                 for i in start_i..end { if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
@@ -5650,7 +5664,7 @@ fn render_chart_pane(
                 // Lower band
                 let mut pts: Vec<egui::Pos2> = vec![];
                 for i in start_i..end { if let Some(&v) = ind.values3.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
+                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(bb_lower_thick, bb_lower_color))); }
                 // Value label
                 if let Some(&last_val) = ind.values.iter().rev().find(|v| !v.is_nan()) {
                     let label_y = py(last_val);

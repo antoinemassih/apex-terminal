@@ -398,6 +398,88 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     }
                 });
 
+                // ── BAND STYLING (BB / KC only) ──
+                if matches!(ind.kind, IndicatorType::BollingerBands | IndicatorType::KeltnerChannels) {
+                    ui.add_space(6.0);
+                    dialog_section(ui, "BAND COLORS", m, t.dim.gamma_multiply(0.5));
+                    ui.add_space(2.0);
+
+                    let band_row = |ui: &mut egui::Ui, label: &str, color_field: &mut String, thickness_field: &mut f32, t: &Theme| {
+                        ui.horizontal(|ui| {
+                            ui.add_space(m);
+                            ui.label(egui::RichText::new(label).monospace().size(8.0).color(t.dim));
+                            ui.add_space(4.0);
+                            ui.spacing_mut().item_spacing.x = 3.0;
+                            // Color swatches
+                            for &c in INDICATOR_COLORS {
+                                let col = hex_to_color(c, 1.0);
+                                let is_cur = *color_field == c;
+                                let (r, resp) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::click());
+                                if is_cur {
+                                    ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(1.0, col), egui::StrokeKind::Outside);
+                                }
+                                ui.painter().circle_filled(r.center(), if is_cur { 4.0 } else { 3.0 }, col);
+                                if resp.clicked() { *color_field = c.to_string(); }
+                            }
+                            // "Auto" button (inherit from main color)
+                            let is_auto = color_field.is_empty();
+                            if ui.add(egui::Button::new(egui::RichText::new("auto").monospace().size(7.0)
+                                .color(if is_auto { t.accent } else { t.dim.gamma_multiply(0.5) }))
+                                .fill(if is_auto { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT })
+                                .corner_radius(2.0).min_size(egui::vec2(24.0, 12.0))).clicked() {
+                                *color_field = String::new();
+                            }
+                        });
+                        // Thickness
+                        ui.horizontal(|ui| {
+                            ui.add_space(m + 44.0);
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            for (i, &th) in [0.5_f32, 0.8, 1.0, 1.5, 2.0].iter().enumerate() {
+                                let cur = if *thickness_field > 0.0 { *thickness_field } else { 0.8 };
+                                let sel = (cur - th).abs() < 0.1;
+                                let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.6) };
+                                let bg = if sel { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 20) };
+                                let rounding = if i == 0 { egui::CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 } }
+                                    else if i == 4 { egui::CornerRadius { nw: 0, sw: 0, ne: 2, se: 2 } }
+                                    else { egui::CornerRadius::ZERO };
+                                if ui.add(egui::Button::new(egui::RichText::new(format!("{:.1}", th)).monospace().size(7.0).color(fg))
+                                    .fill(bg).corner_radius(rounding).min_size(egui::vec2(22.0, 14.0))
+                                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 80) } else { color_alpha(t.toolbar_border, 40) })))
+                                    .clicked() { *thickness_field = th; }
+                            }
+                        });
+                        ui.add_space(2.0);
+                    };
+
+                    band_row(ui, "Upper ", &mut ind.upper_color, &mut ind.upper_thickness, t);
+                    band_row(ui, "Lower ", &mut ind.lower_color, &mut ind.lower_thickness, t);
+
+                    // Fill color
+                    ui.horizontal(|ui| {
+                        ui.add_space(m);
+                        ui.label(egui::RichText::new("Fill  ").monospace().size(8.0).color(t.dim));
+                        ui.add_space(4.0);
+                        ui.spacing_mut().item_spacing.x = 3.0;
+                        for &c in INDICATOR_COLORS {
+                            let col = hex_to_color(c, 1.0);
+                            let is_cur = ind.fill_color_hex == c;
+                            let (r, resp) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::click());
+                            if is_cur {
+                                ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(1.0, col), egui::StrokeKind::Outside);
+                            }
+                            ui.painter().circle_filled(r.center(), if is_cur { 4.0 } else { 3.0 }, color_alpha(col, 80));
+                            if resp.clicked() { ind.fill_color_hex = c.to_string(); }
+                        }
+                        let is_auto = ind.fill_color_hex.is_empty();
+                        if ui.add(egui::Button::new(egui::RichText::new("auto").monospace().size(7.0)
+                            .color(if is_auto { t.accent } else { t.dim.gamma_multiply(0.5) }))
+                            .fill(if is_auto { color_alpha(t.accent, 20) } else { egui::Color32::TRANSPARENT })
+                            .corner_radius(2.0).min_size(egui::vec2(24.0, 12.0))).clicked() {
+                            ind.fill_color_hex = String::new();
+                        }
+                    });
+                }
+
                 ui.add_space(8.0);
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 40));
                 ui.add_space(4.0);
