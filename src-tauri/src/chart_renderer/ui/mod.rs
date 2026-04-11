@@ -13,3 +13,5 @@ pub mod panels;
 pub mod picker;
 pub mod tape_panel;
 pub mod news_panel;
+pub mod discord_panel;
+pub mod settings_panel;
