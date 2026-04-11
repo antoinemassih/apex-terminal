@@ -430,7 +430,7 @@ pub(crate) enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands,
 pub(crate) enum IndicatorCategory { Overlay, Oscillator }
 
 impl IndicatorType {
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::SMA => "SMA", Self::EMA => "EMA", Self::WMA => "WMA",
             Self::DEMA => "DEMA", Self::TEMA => "TEMA", Self::VWAP => "VWAP",
@@ -479,34 +479,34 @@ impl IndicatorType {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Indicator {
-    id: u32,
-    kind: IndicatorType,
-    period: usize,
-    source_tf: String,
-    color: String,
-    thickness: f32,
-    line_style: LineStyle,
-    visible: bool,
-    values: Vec<f32>,         // primary line (same length as chart bars)
-    values2: Vec<f32>,        // secondary line: MACD signal, Stochastic %D, BB upper, KC upper, Ichi kijun
-    values3: Vec<f32>,        // BB lower, KC lower, Ichi senkou_a
-    values4: Vec<f32>,        // Ichi senkou_b
-    values5: Vec<f32>,        // Ichi chikou
-    supertrend_dir: Vec<bool>, // Supertrend: true=bullish
-    histogram: Vec<f32>,      // MACD histogram
-    divergences: Vec<i8>,     // 1=bullish divergence, -1=bearish, 0=none
+    pub(crate) id: u32,
+    pub(crate) kind: IndicatorType,
+    pub(crate) period: usize,
+    pub(crate) source_tf: String,
+    pub(crate) color: String,
+    pub(crate) thickness: f32,
+    pub(crate) line_style: LineStyle,
+    pub(crate) visible: bool,
+    pub(crate) values: Vec<f32>, // primary line (same length as chart bars)
+    pub(crate) values2: Vec<f32>, // secondary line: MACD signal, Stochastic %D, BB upper, KC upper, Ichi kijun
+    pub(crate) values3: Vec<f32>, // BB lower, KC lower, Ichi senkou_a
+    pub(crate) values4: Vec<f32>, // Ichi senkou_b
+    pub(crate) values5: Vec<f32>, // Ichi chikou
+    pub(crate) supertrend_dir: Vec<bool>, // Supertrend: true=bullish
+    pub(crate) histogram: Vec<f32>, // MACD histogram
+    pub(crate) divergences: Vec<i8>, // 1=bullish divergence, -1=bearish, 0=none
     // Cross-timeframe state
-    source_bars: Vec<Bar>,
-    source_timestamps: Vec<i64>,
-    source_loaded: bool,
+    pub(crate) source_bars: Vec<Bar>,
+    pub(crate) source_timestamps: Vec<i64>,
+    pub(crate) source_loaded: bool,
     // Extended parameters (0.0 = use default)
-    param2: f32,   // BB stddev, KC mult, ST mult, MACD slow, Stoch D, Ichi kijun, SAR step
-    param3: f32,   // MACD signal, Ichi senkou_b, SAR max
-    param4: f32,   // SAR start, Ichi displacement
-    source: u8,    // 0=Close, 1=Open, 2=High, 3=Low, 4=HL2, 5=OHLC4
-    offset: i16,   // shift line forward/backward N bars
-    ob_level: f32, // overbought level (RSI 70, Stoch 80, CCI 100, WR -20)
-    os_level: f32, // oversold level (RSI 30, Stoch 20, CCI -100, WR -80)
+    pub(crate) param2: f32, // BB stddev, KC mult, ST mult, MACD slow, Stoch D, Ichi kijun, SAR step
+    pub(crate) param3: f32, // MACD signal, Ichi senkou_b, SAR max
+    pub(crate) param4: f32, // SAR start, Ichi displacement
+    pub(crate) source: u8, // 0=Close, 1=Open, 2=High, 3=Low, 4=HL2, 5=OHLC4
+    pub(crate) offset: i16, // shift line forward/backward N bars
+    pub(crate) ob_level: f32, // overbought level (RSI 70, Stoch 80, CCI 100, WR -20)
+    pub(crate) os_level: f32, // oversold level (RSI 30, Stoch 20, CCI -100, WR -80)
 }
 
 const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1wk"];
@@ -556,16 +556,16 @@ static INDICATOR_COLORS: &[&str] = &["#00bef0", "#f0961a", "#f0d732", "#b266e6",
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct SignalDrawing {
-    id: String,
-    symbol: String,
-    drawing_type: String, // "trendline", "hline", "hzone"
-    points: Vec<(i64, f32)>, // (unix_timestamp, price)
-    color: String,
-    opacity: f32,
-    thickness: f32,
-    line_style: LineStyle,
-    strength: f32, // 0.0-1.0, how confident the analysis is
-    timeframe: String,
+    pub(crate) id: String,
+    pub(crate) symbol: String,
+    pub(crate) drawing_type: String, // "trendline", "hline", "hzone"
+    pub(crate) points: Vec<(i64, f32)>, // (unix_timestamp, price)
+    pub(crate) color: String,
+    pub(crate) opacity: f32,
+    pub(crate) thickness: f32,
+    pub(crate) line_style: LineStyle,
+    pub(crate) strength: f32, // 0.0-1.0, how confident the analysis is
+    pub(crate) timeframe: String,
 }
 
 impl SignalDrawing {
@@ -709,19 +709,19 @@ const PCT_OPTIONS: [f32; 5] = [0.6, 1.0, 1.25, 1.5, 2.0];
 // NearMidFar: 0=Near (ATM), 1=Mid (1σ away), 2=Far (2σ away) — sets center point, orthogonal to mode
 
 struct VolumeLevel {
-    price: f32,
-    total_vol: f32,
-    buy_vol: f32,
-    sell_vol: f32,
+    pub(crate) price: f32,
+    pub(crate) total_vol: f32,
+    pub(crate) buy_vol: f32,
+    pub(crate) sell_vol: f32,
 }
 
 struct VolumeProfileData {
-    levels: Vec<VolumeLevel>,
-    poc_price: f32,
-    vah: f32,
-    val: f32,
-    max_vol: f32,
-    price_step: f32,
+    pub(crate) levels: Vec<VolumeLevel>,
+    pub(crate) poc_price: f32,
+    pub(crate) vah: f32,
+    pub(crate) val: f32,
+    pub(crate) max_vol: f32,
+    pub(crate) price_step: f32,
 }
 
 /// Shared order entry body — renders qty controls, price fields, and BUY/SELL buttons.
@@ -1010,197 +1010,197 @@ const OVERLAY_COLORS: &[&str] = &["#ff8c3c", "#00e5ff", "#ff00ff", "#76ff03", "#
 
 #[derive(Clone)]
 pub(crate) struct SymbolOverlay {
-    symbol: String,
-    color: String,       // hex color
-    bars: Vec<Bar>,
-    timestamps: Vec<i64>,
-    loading: bool,
-    show_candles: bool,  // false = line, true = candle bodies (future use)
-    visible: bool,
+    pub(crate) symbol: String,
+    pub(crate) color: String, // hex color
+    pub(crate) bars: Vec<Bar>,
+    pub(crate) timestamps: Vec<i64>,
+    pub(crate) loading: bool,
+    pub(crate) show_candles: bool, // false = line, true = candle bodies (future use)
+    pub(crate) visible: bool,
 }
 
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
 pub(crate) struct Chart {
-    symbol: String, timeframe: String,
+    pub(crate) symbol: String, pub(crate) timeframe: String,
     // Option chart metadata
-    is_option: bool,
-    underlying: String,       // e.g. "SPY" when this chart shows an option
-    option_type: String,      // "C" or "P"
-    option_strike: f32,
-    option_expiry: String,    // "20260402"
-    option_con_id: i64,
-    bars: Vec<Bar>, timestamps: Vec<i64>, drawings: Vec<Drawing>,
-    indicators: Vec<Indicator>,
-    indicator_bar_count: usize, // bar count when indicators were last computed
-    next_indicator_id: u32,
-    editing_indicator: Option<u32>, // id of indicator being edited
-    vs: f32, vc: u32, price_lock: Option<(f32,f32)>,
-    auto_scroll: bool, last_input: std::time::Instant,
-    history_loading: bool, // true while fetching older bars
-    history_exhausted: bool, // true if no more history available
-    tick_counter: u64, last_candle_time: std::time::Instant, sim_price: f32, sim_seed: u64,
-    theme_idx: usize,
-    draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker", "fibonacci", "channel"
-    pending_pt: Option<(f32,f32)>,  // first click (bar, price)
-    pending_pt2: Option<(f32,f32)>, // second click for channel (bar, price)
-    pending_pts: Vec<(f32,f32)>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
-    magnet: bool,                   // snap to OHLC when placing drawings
-    selected_id: Option<String>,
-    selected_ids: Vec<String>, // multi-select with shift
-    dragging_drawing: Option<(String, i32)>,
-    drag_start_price: f32, drag_start_bar: f32,
-    groups: Vec<DrawingGroup>,
-    hidden_groups: Vec<String>,
-    signal_drawings: Vec<SignalDrawing>, // auto-generated trendlines from server
-    hide_signal_drawings: bool,
-    drawings_requested: bool, // prevents duplicate fetch_drawings_background calls
-    last_signal_fetch: std::time::Instant,
-    hide_all_drawings: bool,
-    hide_all_indicators: bool,
-    drawing_list_open: bool,  // toggle drawing list panel (left side of pane)
-    ohlc_tooltip: bool,       // show OHLC values at crosshair
-    measure_tooltip: bool,     // show big distance-only measurement at crosshair
-    show_volume: bool,
-    show_oscillators: bool, // toggle oscillator sub-panel
-    draw_color: String, // current drawing color
-    zoom_selecting: bool, zoom_start: egui::Pos2,
-    axis_drag_mode: u8, // 0=none, 1=xaxis, 2=yaxis
+    pub(crate) is_option: bool,
+    pub(crate) underlying: String, // e.g. "SPY" when this chart shows an option
+    pub(crate) option_type: String, // "C" or "P"
+    pub(crate) option_strike: f32,
+    pub(crate) option_expiry: String, // "20260402"
+    pub(crate) option_con_id: i64,
+    pub(crate) bars: Vec<Bar>, pub(crate) timestamps: Vec<i64>, pub(crate) drawings: Vec<Drawing>,
+    pub(crate) indicators: Vec<Indicator>,
+    pub(crate) indicator_bar_count: usize, // bar count when indicators were last computed
+    pub(crate) next_indicator_id: u32,
+    pub(crate) editing_indicator: Option<u32>, // id of indicator being edited
+    pub(crate) vs: f32, pub(crate) vc: u32, pub(crate) price_lock: Option<(f32,f32)>,
+    pub(crate) auto_scroll: bool, pub(crate) last_input: std::time::Instant,
+    pub(crate) history_loading: bool, // true while fetching older bars
+    pub(crate) history_exhausted: bool, // true if no more history available
+    pub(crate) tick_counter: u64, pub(crate) last_candle_time: std::time::Instant, pub(crate) sim_price: f32, pub(crate) sim_seed: u64,
+    pub(crate) theme_idx: usize,
+    pub(crate) draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker", "fibonacci", "channel"
+    pub(crate) pending_pt: Option<(f32,f32)>,  // first click (bar, price)
+    pub(crate) pending_pt2: Option<(f32,f32)>, // second click for channel (bar, price)
+    pub(crate) pending_pts: Vec<(f32,f32)>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
+    pub(crate) magnet: bool, // snap to OHLC when placing drawings
+    pub(crate) selected_id: Option<String>,
+    pub(crate) selected_ids: Vec<String>, // multi-select with shift
+    pub(crate) dragging_drawing: Option<(String, i32)>,
+    pub(crate) drag_start_price: f32, pub(crate) drag_start_bar: f32,
+    pub(crate) groups: Vec<DrawingGroup>,
+    pub(crate) hidden_groups: Vec<String>,
+    pub(crate) signal_drawings: Vec<SignalDrawing>, // auto-generated trendlines from server
+    pub(crate) hide_signal_drawings: bool,
+    pub(crate) drawings_requested: bool, // prevents duplicate fetch_drawings_background calls
+    pub(crate) last_signal_fetch: std::time::Instant,
+    pub(crate) hide_all_drawings: bool,
+    pub(crate) hide_all_indicators: bool,
+    pub(crate) drawing_list_open: bool, // toggle drawing list panel (left side of pane)
+    pub(crate) ohlc_tooltip: bool, // show OHLC values at crosshair
+    pub(crate) measure_tooltip: bool, // show big distance-only measurement at crosshair
+    pub(crate) show_volume: bool,
+    pub(crate) show_oscillators: bool, // toggle oscillator sub-panel
+    pub(crate) draw_color: String, // current drawing color
+    pub(crate) zoom_selecting: bool, pub(crate) zoom_start: egui::Pos2,
+    pub(crate) axis_drag_mode: u8, // 0=none, 1=xaxis, 2=yaxis
     // Symbol picker
-    picker_open: bool, picker_query: String,
-    picker_results: Vec<(String, String, String)>, // (symbol, name, exchange/type)
-    picker_last_query: String, // debounce: only search when query changes
-    picker_searching: bool, // true while background search is in flight
-    picker_rx: Option<mpsc::Receiver<Vec<(String, String, String)>>>, // receives search results from bg thread
-    picker_pos: egui::Pos2, // anchor position for the popup
-    recent_symbols: Vec<(String, String)>, // (symbol, name) — most recent first, max 20
+    pub(crate) picker_open: bool, pub(crate) picker_query: String,
+    pub(crate) picker_results: Vec<(String, String, String)>, // (symbol, name, exchange/type)
+    pub(crate) picker_last_query: String, // debounce: only search when query changes
+    pub(crate) picker_searching: bool, // true while background search is in flight
+    pub(crate) picker_rx: Option<mpsc::Receiver<Vec<(String, String, String)>>>, // receives search results from bg thread
+    pub(crate) picker_pos: egui::Pos2, // anchor position for the popup
+    pub(crate) recent_symbols: Vec<(String, String)>, // (symbol, name) — most recent first, max 20
     // Group management
-    group_manager_open: bool,
-    new_group_name: String,
+    pub(crate) group_manager_open: bool,
+    pub(crate) new_group_name: String,
     // Orders
-    orders: Vec<OrderLevel>,
-    next_order_id: u32,
-    order_qty: u32,
-    order_market: bool, // true=market, false=limit
-    order_limit_price: String, // limit price as editable text
-    order_type_idx: usize, // 0=MKT, 1=LMT, 2=STP, 3=STP-LMT, 4=TRAIL
-    order_tif_idx: usize, // 0=DAY, 1=GTC, 2=IOC
-    order_advanced: bool, // expanded mode
-    order_bracket: bool, // bracket mode: entry + TP + SL
-    order_stop_price: String, // stop trigger price (for STP, STP-LMT)
-    order_trail_amt: String, // trailing amount (for TRAIL)
-    order_tp_price: String, // take profit price (bracket)
-    order_sl_price: String, // stop loss price (bracket)
-    order_panel_pos: egui::Pos2, // draggable position (relative to chart rect)
-    order_panel_dragging: bool,
-    order_collapsed: bool, // true = show as pill, double-click to expand
-    dragging_order: Option<u32>, // order id being dragged
-    editing_order: Option<u32>,
-    edit_order_qty: String,
-    edit_order_price: String,
-    armed: bool, // skip confirmation, fire orders immediately
-    pending_confirms: Vec<(u32, std::time::Instant)>, // order ids awaiting user confirm from panel
+    pub(crate) orders: Vec<OrderLevel>,
+    pub(crate) next_order_id: u32,
+    pub(crate) order_qty: u32,
+    pub(crate) order_market: bool, // true=market, false=limit
+    pub(crate) order_limit_price: String, // limit price as editable text
+    pub(crate) order_type_idx: usize, // 0=MKT, 1=LMT, 2=STP, 3=STP-LMT, 4=TRAIL
+    pub(crate) order_tif_idx: usize, // 0=DAY, 1=GTC, 2=IOC
+    pub(crate) order_advanced: bool, // expanded mode
+    pub(crate) order_bracket: bool, // bracket mode: entry + TP + SL
+    pub(crate) order_stop_price: String, // stop trigger price (for STP, STP-LMT)
+    pub(crate) order_trail_amt: String, // trailing amount (for TRAIL)
+    pub(crate) order_tp_price: String, // take profit price (bracket)
+    pub(crate) order_sl_price: String, // stop loss price (bracket)
+    pub(crate) order_panel_pos: egui::Pos2, // draggable position (relative to chart rect)
+    pub(crate) order_panel_dragging: bool,
+    pub(crate) order_collapsed: bool, // true = show as pill, double-click to expand
+    pub(crate) dragging_order: Option<u32>, // order id being dragged
+    pub(crate) editing_order: Option<u32>,
+    pub(crate) edit_order_qty: String,
+    pub(crate) edit_order_price: String,
+    pub(crate) armed: bool, // skip confirmation, fire orders immediately
+    pub(crate) pending_confirms: Vec<(u32, std::time::Instant)>, // order ids awaiting user confirm from panel
     // ── Trigger orders (options on underlying price) ──
-    trigger_setup: TriggerSetup,
-    trigger_levels: Vec<TriggerLevel>,
-    pending_und_order: Option<OrderSide>, // deferred: activate underlying crosshair
-    next_trigger_id: u32,
-    dragging_trigger: Option<u32>,
-    editing_trigger: Option<u32>,
+    pub(crate) trigger_setup: TriggerSetup,
+    pub(crate) trigger_levels: Vec<TriggerLevel>,
+    pub(crate) pending_und_order: Option<OrderSide>, // deferred: activate underlying crosshair
+    pub(crate) next_trigger_id: u32,
+    pub(crate) dragging_trigger: Option<u32>,
+    pub(crate) editing_trigger: Option<u32>,
     // Measure tool (shift+drag)
-    measuring: bool,
-    measure_start: Option<(f32, f32)>, // (bar, price) start point
-    measure_active: bool, // context menu activated measure mode
-    dom_open: bool, // DOM / Price Ladder floating window
+    pub(crate) measuring: bool,
+    pub(crate) measure_start: Option<(f32, f32)>, // (bar, price) start point
+    pub(crate) measure_active: bool, // context menu activated measure mode
+    pub(crate) dom_open: bool, // DOM / Price Ladder floating window
     // Symbol/timeframe change request — signals the App to reload data
-    pending_symbol_change: Option<String>,
-    pending_timeframe_change: Option<String>,
+    pub(crate) pending_symbol_change: Option<String>,
+    pub(crate) pending_timeframe_change: Option<String>,
     // Cached formatted strings — updated only when data changes, not every frame
     #[allow(dead_code)] cached_ohlc: String,
     #[allow(dead_code)] cached_ohlc_bar_count: usize,
     // Undo/redo
-    undo_stack: Vec<DrawingAction>,
-    redo_stack: Vec<DrawingAction>,
-    drag_drawing_snapshot: Option<Drawing>,
+    pub(crate) undo_stack: Vec<DrawingAction>,
+    pub(crate) redo_stack: Vec<DrawingAction>,
+    pub(crate) drag_drawing_snapshot: Option<Drawing>,
     // Text annotation editing
-    text_edit_id: Option<String>,
-    text_edit_buf: String,
+    pub(crate) text_edit_id: Option<String>,
+    pub(crate) text_edit_buf: String,
     // Reusable buffers to avoid per-frame allocations
-    indicator_pts_buf: Vec<egui::Pos2>,
-    fmt_buf: String, // reusable format buffer
-    vp_mode: VolumeProfileMode,
-    candle_mode: CandleMode,
-    show_footprint: bool,  // hover-activated volume footprint on individual bars
-    vp_data: Option<VolumeProfileData>,
-    vp_last_vs: f32,
-    vp_last_vc: u32,
+    pub(crate) indicator_pts_buf: Vec<egui::Pos2>,
+    pub(crate) fmt_buf: String, // reusable format buffer
+    pub(crate) vp_mode: VolumeProfileMode,
+    pub(crate) candle_mode: CandleMode,
+    pub(crate) show_footprint: bool, // hover-activated volume footprint on individual bars
+    pub(crate) vp_data: Option<VolumeProfileData>,
+    pub(crate) vp_last_vs: f32,
+    pub(crate) vp_last_vc: u32,
     // Volume analytics
-    show_vwap_bands: bool,
-    show_cvd: bool,
-    show_delta_volume: bool,
-    show_rvol: bool,
-    show_ma_ribbon: bool,
-    show_prev_close: bool,
-    show_auto_sr: bool,
-    show_auto_fib: bool,
-    swing_leg_mode: u8, // 0=off, 1=vertical, 2=diagonal
-    symbol_overlays: Vec<SymbolOverlay>,
-    overlay_editing: bool,
-    overlay_editing_idx: Option<usize>, // Some(i) = editing existing overlay, None = adding new
-    overlay_input: String,
-    show_gamma: bool,
-    show_strikes_overlay: bool, // show option strikes on the chart
-    overlay_calls: Vec<OptionRow>, // independent chain data for strikes overlay
-    overlay_puts: Vec<OptionRow>,
-    overlay_chain_symbol: String, // symbol for which overlay data is loaded
-    overlay_chain_loading: bool,
-    floating_order_panes: Vec<FloatingOrderPane>, // floating order entry windows
-    gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
-    gamma_call_wall: f32,
-    gamma_put_wall: f32,
-    gamma_zero: f32,
-    gamma_hvl: f32,
-    vwap_data: Vec<f32>,
-    vwap_upper1: Vec<f32>,
-    vwap_lower1: Vec<f32>,
-    vwap_upper2: Vec<f32>,
-    vwap_lower2: Vec<f32>,
-    cvd_data: Vec<f32>,
-    delta_data: Vec<f32>,
-    rvol_data: Vec<f32>,
-    vol_analytics_computed: usize,
-    replay_mode: bool,
-    replay_bar_count: usize,
+    pub(crate) show_vwap_bands: bool,
+    pub(crate) show_cvd: bool,
+    pub(crate) show_delta_volume: bool,
+    pub(crate) show_rvol: bool,
+    pub(crate) show_ma_ribbon: bool,
+    pub(crate) show_prev_close: bool,
+    pub(crate) show_auto_sr: bool,
+    pub(crate) show_auto_fib: bool,
+    pub(crate) swing_leg_mode: u8, // 0=off, 1=vertical, 2=diagonal
+    pub(crate) symbol_overlays: Vec<SymbolOverlay>,
+    pub(crate) overlay_editing: bool,
+    pub(crate) overlay_editing_idx: Option<usize>, // Some(i) = editing existing overlay, None = adding new
+    pub(crate) overlay_input: String,
+    pub(crate) show_gamma: bool,
+    pub(crate) show_strikes_overlay: bool, // show option strikes on the chart
+    pub(crate) overlay_calls: Vec<OptionRow>, // independent chain data for strikes overlay
+    pub(crate) overlay_puts: Vec<OptionRow>,
+    pub(crate) overlay_chain_symbol: String, // symbol for which overlay data is loaded
+    pub(crate) overlay_chain_loading: bool,
+    pub(crate) floating_order_panes: Vec<FloatingOrderPane>, // floating order entry windows
+    pub(crate) gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
+    pub(crate) gamma_call_wall: f32,
+    pub(crate) gamma_put_wall: f32,
+    pub(crate) gamma_zero: f32,
+    pub(crate) gamma_hvl: f32,
+    pub(crate) vwap_data: Vec<f32>,
+    pub(crate) vwap_upper1: Vec<f32>,
+    pub(crate) vwap_lower1: Vec<f32>,
+    pub(crate) vwap_upper2: Vec<f32>,
+    pub(crate) vwap_lower2: Vec<f32>,
+    pub(crate) cvd_data: Vec<f32>,
+    pub(crate) delta_data: Vec<f32>,
+    pub(crate) rvol_data: Vec<f32>,
+    pub(crate) vol_analytics_computed: usize,
+    pub(crate) replay_mode: bool,
+    pub(crate) replay_bar_count: usize,
     // Notional-based order entry
-    order_notional_mode: bool,
-    order_notional_amount: String,
+    pub(crate) order_notional_mode: bool,
+    pub(crate) order_notional_amount: String,
     // Bracket order templates
-    bracket_templates: Vec<BracketTemplate>,
-    new_bracket_name: String,
-    new_bracket_target: String,
-    new_bracket_stop: String,
+    pub(crate) bracket_templates: Vec<BracketTemplate>,
+    pub(crate) new_bracket_name: String,
+    pub(crate) new_bracket_target: String,
+    pub(crate) new_bracket_stop: String,
     // ── Linked pane groups ──
-    link_group: u8, // 0=unlinked, 1-4 = link group (blue, green, orange, purple)
+    pub(crate) link_group: u8, // 0=unlinked, 1-4 = link group (blue, green, orange, purple)
     // ── Per-pane price alerts (rendered on chart) ──
-    price_alerts: Vec<PriceAlert>,
-    next_alert_id: u32,
-    alert_input_price: String,
+    pub(crate) price_alerts: Vec<PriceAlert>,
+    pub(crate) next_alert_id: u32,
+    pub(crate) alert_input_price: String,
     // ── P&L equity curve ──
-    show_pnl_curve: bool,
+    pub(crate) show_pnl_curve: bool,
     // ── Symbol history breadcrumb (back/forward navigation) ──
-    symbol_history: Vec<String>,
-    symbol_history_idx: usize,
-    symbol_nav_in_progress: bool, // true when navigating via back/forward (skip history push)
+    pub(crate) symbol_history: Vec<String>,
+    pub(crate) symbol_history_idx: usize,
+    pub(crate) symbol_nav_in_progress: bool, // true when navigating via back/forward (skip history push)
     // ── Smooth zoom animation ──
-    vc_target: u32,
+    pub(crate) vc_target: u32,
     // ── Auto-fit price animation ──
-    price_range_animated: Option<(f32, f32)>,
+    pub(crate) price_range_animated: Option<(f32, f32)>,
     // ── Tabs (multiple symbols per pane) ──
-    tab_symbols: Vec<String>,     // symbol per tab
-    tab_timeframes: Vec<String>,  // timeframe per tab
-    tab_changes: Vec<f32>,        // cached daily change % per tab
-    tab_active: usize,            // index of active tab (0-based)
-    tab_hovered: Option<usize>,   // which tab the mouse is over (for close button)
+    pub(crate) tab_symbols: Vec<String>, // symbol per tab
+    pub(crate) tab_timeframes: Vec<String>, // timeframe per tab
+    pub(crate) tab_changes: Vec<f32>, // cached daily change % per tab
+    pub(crate) tab_active: usize, // index of active tab (0-based)
+    pub(crate) tab_hovered: Option<usize>, // which tab the mouse is over (for close button)
 }
 
 impl Chart {
@@ -1688,7 +1688,7 @@ fn new_uuid() -> String { uuid::Uuid::new_v4().to_string() }
 
 /// Undo/redo action for drawing operations.
 #[derive(Clone)]
-enum DrawingAction {
+pub(crate) enum DrawingAction {
     Add(Drawing),
     Remove(Drawing),
     Modify(String, Drawing), // (id, old_state)
@@ -1718,7 +1718,7 @@ fn shift_drawing_time(kind: &mut DrawingKind, dt: i64) {
 }
 
 /// Short human-readable name for a DrawingKind (used in undo/redo toasts).
-fn drawing_kind_short(kind: &DrawingKind) -> &'static str {
+pub(crate) fn drawing_kind_short(kind: &DrawingKind) -> &'static str {
     match kind {
         DrawingKind::HLine{..} => "HLine", DrawingKind::TrendLine{..} => "TrendLine",
         DrawingKind::Ray{..} => "Ray", DrawingKind::HZone{..} => "Zone",
@@ -3752,126 +3752,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             });
     }
 
-    // ── Settings panel ──────────────────────────────────────────────────────
-    if watchlist.settings_open {
-        let screen = ctx.screen_rect();
-        dialog_window_themed(ctx, "settings_panel", egui::pos2(screen.center().x - 160.0, 60.0), 320.0, t.toolbar_bg, t.toolbar_border, None)
-            .show(ctx, |ui| {
-                if dialog_header(ui, "SETTINGS", t.dim) { watchlist.settings_open = false; }
-                ui.add_space(8.0);
-                let m = 10.0;
-
-                // ── Appearance section ──
-                dialog_section(ui, "APPEARANCE", m, t.dim.gamma_multiply(0.5));
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.label(egui::RichText::new("Font Scale").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(m);
-                        // Display 60-160% maps to 0.96-2.56 ppp. 100% = 1.6 (baseline)
-                        let display_pct = ((watchlist.font_scale - 0.96) / 0.016).round() as i32 + 60;
-                        let mut dp = display_pct.clamp(60, 160);
-                        if ui.add(egui::DragValue::new(&mut dp).range(60..=160).suffix("%").speed(1)
-                            .custom_formatter(|v, _| format!("{}%", v as i32))).changed() {
-                            watchlist.font_scale = 0.96 + (dp - 60) as f32 * 0.016;
-                        }
-                    });
-                });
-                // Preset buttons (display % → internal ppp)
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    // 100% = 1.6 ppp (baseline), 20% steps = 0.32 ppp each
-                    for (label, ppp) in [(60, 0.96_f32), (80, 1.28), (100, 1.6), (120, 1.92), (140, 2.24), (160, 2.56)] {
-                        let active = (watchlist.font_scale - ppp).abs() < 0.05;
-                        let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
-                        let bg = if active { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT };
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("{}%", label)).monospace().size(9.0).color(fg))
-                            .fill(bg).corner_radius(3.0).min_size(egui::vec2(32.0, 18.0))).clicked() {
-                            watchlist.font_scale = ppp;
-                        }
-                    }
-                });
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.label(egui::RichText::new("Compact Mode").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(m);
-                        let mut val = watchlist.compact_mode;
-                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
-                            watchlist.compact_mode = val;
-                        }
-                    });
-                });
-                ui.add_space(2.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.label(egui::RichText::new("Auto-Hide Toolbar").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(m);
-                        let mut val = watchlist.toolbar_auto_hide;
-                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
-                            watchlist.toolbar_auto_hide = val;
-                            if !val { watchlist.toolbar_hover_time = None; }
-                        }
-                    });
-                });
-                ui.add_space(8.0);
-
-                // ── Axes section ──
-                dialog_section(ui, "AXES", m, t.dim.gamma_multiply(0.5));
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.label(egui::RichText::new("Show X-Axis (time)").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(m);
-                        let mut val = watchlist.show_x_axis;
-                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
-                            watchlist.show_x_axis = val;
-                        }
-                    });
-                });
-                ui.add_space(2.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.label(egui::RichText::new("Show Y-Axis (price)").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(m);
-                        let mut val = watchlist.show_y_axis;
-                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
-                            watchlist.show_y_axis = val;
-                        }
-                    });
-                });
-                ui.add_space(2.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.label(egui::RichText::new("Shared X-Axis").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(m);
-                        let mut val = watchlist.shared_x_axis;
-                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
-                            watchlist.shared_x_axis = val;
-                        }
-                    });
-                });
-                ui.add_space(2.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.label(egui::RichText::new("Shared Y-Axis").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(m);
-                        let mut val = watchlist.shared_y_axis;
-                        if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
-                            watchlist.shared_y_axis = val;
-                        }
-                    });
-                });
-                ui.add_space(8.0);
-            });
-    }
+    // ── Settings panel
+    super::ui::settings_panel::draw(ctx, watchlist, t);
 
     // ── Trendline filter dropdown ────────────────────────────────────────────
     if watchlist.trendline_filter_open {
@@ -6912,181 +6794,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             });
     }
 
-    // ── Object Tree side panel ─────────────────────────────────────────────────
-    if watchlist.object_tree_open {
-        egui::SidePanel::right("object_tree")
-            .default_width(200.0)
-            .min_width(160.0)
-            .max_width(300.0)
-            .resizable(true)
-            .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-                .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 })
-                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
-            .show(ctx, |ui| {
-                let panel_w = ui.available_width();
-                ui.set_max_width(panel_w);
-                // Header
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("OBJECTS").monospace().size(11.0).strong().color(t.accent));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if close_button(ui, t.dim) { watchlist.object_tree_open = false; }
-                    });
-                });
-                ui.add_space(4.0);
-
-                let chart = &mut panes[ap];
-
-                // ── DRAWINGS section ──
-                ui.label(egui::RichText::new("DRAWINGS").monospace().size(8.0).color(t.dim));
-                ui.add_space(2.0);
-                if chart.drawings.is_empty() {
-                    ui.label(egui::RichText::new("  No drawings").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                } else {
-                    let mut del_id: Option<String> = None;
-                    for d in chart.drawings.iter_mut() {
-                        let kind_name = drawing_kind_short(&d.kind);
-                        let dc = hex_to_color(&d.color, 1.0);
-                        let hidden = chart.hidden_groups.contains(&d.group_id);
-                        ui.horizontal(|ui| {
-                            ui.set_height(18.0);
-                            ui.spacing_mut().item_spacing.x = 2.0;
-                            // Color dot
-                            ui.painter().circle_filled(
-                                egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, dc);
-                            ui.add_space(12.0);
-                            // Kind label
-                            ui.label(egui::RichText::new(kind_name).monospace().size(8.0).color(
-                                if hidden { t.dim.gamma_multiply(0.3) } else { egui::Color32::from_white_alpha(180) }));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.spacing_mut().item_spacing.x = 1.0;
-                                // Delete button
-                                if ui.add(egui::Button::new(
-                                    egui::RichText::new(Icon::TRASH).size(8.0).color(egui::Color32::from_rgb(224, 85, 96)))
-                                    .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                    del_id = Some(d.id.clone());
-                                }
-                                // Eye toggle
-                                let eye_icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
-                                let eye_col = if hidden { t.dim.gamma_multiply(0.3) } else { t.dim };
-                                if ui.add(egui::Button::new(
-                                    egui::RichText::new(eye_icon).size(8.0).color(eye_col))
-                                    .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                    let gid = d.group_id.clone();
-                                    if hidden {
-                                        chart.hidden_groups.retain(|g| g != &gid);
-                                    } else if !chart.hidden_groups.contains(&gid) {
-                                        chart.hidden_groups.push(gid);
-                                    }
-                                }
-                            });
-                        });
-                    }
-                    if let Some(id) = del_id {
-                        if let Some(d) = chart.drawings.iter().find(|d| d.id == id) {
-                            chart.undo_stack.push(DrawingAction::Remove(d.clone()));
-                        }
-                        crate::drawing_db::remove(&id);
-                        chart.drawings.retain(|d| d.id != id);
-                        chart.redo_stack.clear();
-                        if chart.selected_id.as_deref() == Some(&id) { chart.selected_id = None; }
-                        chart.selected_ids.retain(|s| s != &id);
-                    }
-                }
-
-                ui.add_space(6.0);
-                ui.add(egui::Separator::default().spacing(2.0));
-                ui.add_space(4.0);
-
-                // ── INDICATORS section ──
-                ui.label(egui::RichText::new("INDICATORS").monospace().size(8.0).color(t.dim));
-                ui.add_space(2.0);
-                if chart.indicators.is_empty() {
-                    ui.label(egui::RichText::new("  No indicators").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                } else {
-                    let mut edit_ind: Option<u32> = None;
-                    for ind in chart.indicators.iter_mut() {
-                        let ic = hex_to_color(&ind.color, 1.0);
-                        ui.horizontal(|ui| {
-                            ui.set_height(18.0);
-                            ui.spacing_mut().item_spacing.x = 2.0;
-                            // Color dot
-                            ui.painter().circle_filled(
-                                egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, ic);
-                            ui.add_space(12.0);
-                            // Name + period
-                            let label = format!("{} {}", ind.kind.label(), ind.period);
-                            let label_resp = ui.label(egui::RichText::new(&label).monospace().size(8.0).color(
-                                if ind.visible { egui::Color32::from_white_alpha(180) } else { t.dim.gamma_multiply(0.3) }));
-                            if label_resp.clicked() { edit_ind = Some(ind.id); }
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.spacing_mut().item_spacing.x = 1.0;
-                                // Eye toggle
-                                let eye_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
-                                let eye_col = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.3) };
-                                if ui.add(egui::Button::new(
-                                    egui::RichText::new(eye_icon).size(8.0).color(eye_col))
-                                    .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                    ind.visible = !ind.visible;
-                                }
-                            });
-                        });
-                    }
-                    if let Some(id) = edit_ind {
-                        chart.editing_indicator = Some(id);
-                    }
-                }
-
-                ui.add_space(6.0);
-                ui.add(egui::Separator::default().spacing(2.0));
-                ui.add_space(4.0);
-
-                // ── OVERLAYS section ──
-                ui.label(egui::RichText::new("OVERLAYS").monospace().size(8.0).color(t.dim));
-                ui.add_space(2.0);
-                if chart.symbol_overlays.is_empty() {
-                    ui.label(egui::RichText::new("  No overlays").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                } else {
-                    let mut del_ov: Option<usize> = None;
-                    let mut toggle_ov: Option<usize> = None;
-                    // Snapshot data for iteration to avoid borrow conflicts
-                    let ov_snap: Vec<(String, String, bool)> = chart.symbol_overlays.iter()
-                        .map(|ov| (ov.symbol.clone(), ov.color.clone(), ov.visible)).collect();
-                    for (oi, (sym, color, vis)) in ov_snap.iter().enumerate() {
-                        let oc = hex_to_color(color, 1.0);
-                        ui.horizontal(|ui| {
-                            ui.set_height(18.0);
-                            ui.spacing_mut().item_spacing.x = 2.0;
-                            ui.painter().circle_filled(
-                                egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, oc);
-                            ui.add_space(12.0);
-                            ui.label(egui::RichText::new(sym).monospace().size(8.0).color(
-                                if *vis { egui::Color32::from_white_alpha(180) } else { t.dim.gamma_multiply(0.3) }));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.spacing_mut().item_spacing.x = 1.0;
-                                if ui.add(egui::Button::new(
-                                    egui::RichText::new(Icon::TRASH).size(8.0).color(egui::Color32::from_rgb(224, 85, 96)))
-                                    .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                    del_ov = Some(oi);
-                                }
-                                let eye_icon = if *vis { Icon::EYE } else { Icon::EYE_SLASH };
-                                let eye_col = if *vis { t.dim } else { t.dim.gamma_multiply(0.3) };
-                                if ui.add(egui::Button::new(
-                                    egui::RichText::new(eye_icon).size(8.0).color(eye_col))
-                                    .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                    toggle_ov = Some(oi);
-                                }
-                            });
-                        });
-                    }
-                    if let Some(idx) = toggle_ov {
-                        chart.symbol_overlays[idx].visible = !chart.symbol_overlays[idx].visible;
-                    }
-                    if let Some(idx) = del_ov {
-                        chart.symbol_overlays.remove(idx);
-                    }
-                }
-            });
-    }
+    // ── Object Tree side panel
+    super::ui::object_tree::draw(ctx, watchlist, panes, ap, t);
 
     // ── Orders / Positions / Alerts side panel (left of watchlist) ─────────────
     if watchlist.orders_panel_open {
@@ -7509,523 +7218,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
     }
 
-    // ── Discord Chat side panel ─────────────────────────────────────────────────
-    // Drain background results each frame
-    if watchlist.discord_open {
-        // Check auth
-        if !watchlist.discord_authenticated {
-            if let Some(auth) = crate::discord::get_auth() {
-                watchlist.discord_authenticated = true;
-                watchlist.discord_username = auth.username.clone();
-                watchlist.discord_user_id = auth.user_id.clone();
-                watchlist.discord_connecting = false;
-                crate::discord::fetch_guilds_bg();
-            }
-        }
-        // Drain guilds
-        if let Some(guilds) = crate::discord::drain_guilds() {
-            watchlist.discord_guilds = guilds;
-        }
-        // Drain guild icons → create textures
-        for icon in crate::discord::drain_icons() {
-            let pixels: Vec<egui::Color32> = icon.rgba.chunks_exact(4)
-                .map(|c| egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]))
-                .collect();
-            let img = egui::ColorImage { size: [icon.width as usize, icon.height as usize], pixels };
-            let tex = ctx.load_texture(format!("guild_{}", icon.guild_id), img, egui::TextureOptions::LINEAR);
-            watchlist.discord_guild_icons.insert(icon.guild_id, tex);
-        }
-        // Drain channels
-        if let Some(channels) = crate::discord::drain_channels() {
-            watchlist.discord_channels = channels;
-            watchlist.discord_channels_loading = false;
-        }
-        // Drain messages
-        if let Some((msgs, is_append)) = crate::discord::drain_messages() {
-            if is_append {
-                for m in &msgs {
-                    let is_own = m.author.id == watchlist.discord_user_id;
-                    watchlist.discord_messages.push(DiscordMessage {
-                        author: m.author.display_name().to_string(),
-                        content: m.content.clone(),
-                        timestamp: crate::discord::relative_time(&m.timestamp),
-                        is_own,
-                        has_chart: false,
-                    });
-                    watchlist.discord_last_msg_id = Some(m.id.clone());
-                }
-            } else {
-                watchlist.discord_messages.clear();
-                for m in &msgs {
-                    let is_own = m.author.id == watchlist.discord_user_id;
-                    watchlist.discord_messages.push(DiscordMessage {
-                        author: m.author.display_name().to_string(),
-                        content: m.content.clone(),
-                        timestamp: crate::discord::relative_time(&m.timestamp),
-                        is_own,
-                        has_chart: false,
-                    });
-                }
-                watchlist.discord_last_msg_id = msgs.last().map(|m| m.id.clone());
-                watchlist.discord_messages_loading = false;
-            }
-        }
-        // Drain send result
-        if let Some(result) = crate::discord::drain_send() {
-            if let Ok(msg) = result {
-                watchlist.discord_messages.push(DiscordMessage {
-                    author: msg.author.display_name().to_string(),
-                    content: msg.content.clone(),
-                    timestamp: "now".into(),
-                    is_own: msg.author.id == watchlist.discord_user_id,
-                    has_chart: false,
-                });
-                watchlist.discord_last_msg_id = Some(msg.id);
-            }
-        }
-        // Poll for new messages every 5s (only after initial load completes)
-        if watchlist.discord_selected_channel.is_some()
-            && !watchlist.discord_messages_loading
-            && watchlist.discord_last_msg_id.is_some()
-        {
-            let should_poll = watchlist.discord_poll_timer
-                .map(|t| t.elapsed().as_secs_f32() > 5.0)
-                .unwrap_or(false);
-            if should_poll {
-                if let Some(ref ch_id) = watchlist.discord_selected_channel {
-                    crate::discord::fetch_messages_bg(ch_id.clone(), watchlist.discord_last_msg_id.clone());
-                    watchlist.discord_poll_timer = Some(std::time::Instant::now());
-                }
-            }
-        }
-    }
-
-    if watchlist.discord_open {
-        let discord_blurple = rgb(88, 101, 242);
-        egui::SidePanel::left("discord_chat")
-            .default_width(280.0)
-            .min_width(220.0)
-            .max_width(420.0)
-            .resizable(true)
-            .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-                .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
-            .show(ctx, |ui| {
-                let panel_w = ui.available_width();
-
-                if !watchlist.discord_authenticated {
-                    // ── Not authenticated: Connect button ──
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(8.0);
-                        ui.label(egui::RichText::new("DISCORD").monospace().size(11.0).strong().color(discord_blurple));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add_space(8.0);
-                            if close_button(ui, t.dim) { watchlist.discord_open = false; }
-                        });
-                    });
-                    let avail = ui.available_size();
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(panel_w, avail.y),
-                        egui::Layout::top_down(egui::Align::Center),
-                        |ui| {
-                            ui.add_space(avail.y * 0.25);
-                            ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(36.0).color(discord_blurple.gamma_multiply(0.5)));
-                            ui.add_space(12.0);
-                            if !crate::discord::is_configured() {
-                                ui.label(egui::RichText::new("Discord not configured").monospace().size(10.0).color(t.dim));
-                                ui.label(egui::RichText::new("Add discord.env with credentials").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                            } else if watchlist.discord_connecting {
-                                ui.label(egui::RichText::new("Waiting for authorization...").monospace().size(10.0).color(t.dim));
-                                ui.add_space(6.0);
-                                ui.spinner();
-                                ui.add_space(4.0);
-                                ui.label(egui::RichText::new("Complete sign-in in your browser").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                            } else {
-                                if ui.add(egui::Button::new(
-                                    egui::RichText::new("  Connect Discord  ").monospace().size(12.0).strong().color(egui::Color32::WHITE))
-                                    .fill(discord_blurple)
-                                    .corner_radius(6.0)
-                                    .min_size(egui::vec2(180.0, 36.0))
-                                ).clicked() {
-                                    watchlist.discord_connecting = true;
-                                    crate::discord::start_oauth2();
-                                }
-                                ui.add_space(8.0);
-                                ui.label(egui::RichText::new("Chat with your trading community").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                            }
-                        },
-                    );
-                } else {
-                    // ── Authenticated: full Discord UI ──
-                    let has_guilds = !watchlist.discord_guilds.is_empty();
-
-                    // ── Header ──
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(8.0);
-                        if !watchlist.discord_channel.is_empty() {
-                            ui.label(egui::RichText::new(&watchlist.discord_channel).monospace().size(11.0).strong().color(egui::Color32::WHITE));
-                        } else {
-                            ui.label(egui::RichText::new("DISCORD").monospace().size(11.0).strong().color(discord_blurple));
-                        }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add_space(6.0);
-                            if close_button(ui, t.dim) { watchlist.discord_open = false; }
-                            if ui.add(egui::Button::new(
-                                egui::RichText::new("×").monospace().size(10.0).color(rgb(231, 76, 60)))
-                                .fill(egui::Color32::TRANSPARENT).frame(false)
-                            ).on_hover_text("Disconnect").clicked() {
-                                crate::discord::disconnect();
-                                watchlist.discord_authenticated = false;
-                                watchlist.discord_username.clear();
-                                watchlist.discord_user_id.clear();
-                                watchlist.discord_guilds.clear();
-                                watchlist.discord_selected_guild = None;
-                                watchlist.discord_channels.clear();
-                                watchlist.discord_selected_channel = None;
-                                watchlist.discord_channel.clear();
-                                watchlist.discord_messages.clear();
-                                watchlist.discord_guild_icons.clear();
-                                watchlist.discord_last_msg_id = None;
-                                watchlist.discord_poll_timer = None;
-                            }
-                        });
-                    });
-                    ui.add_space(4.0);
-
-                    // ── Server strip (horizontal, top) ──
-                    if has_guilds {
-                        // Dark strip background
-                        let strip_h = 44.0;
-                        let (strip_bg_rect, _) = ui.allocate_exact_size(egui::vec2(panel_w, 0.0), egui::Sense::hover());
-                        let bg_rect = egui::Rect::from_min_size(strip_bg_rect.min, egui::vec2(panel_w, strip_h));
-                        ui.painter().rect_filled(bg_rect, 0.0, color_alpha(egui::Color32::BLACK, 30));
-
-                        egui::ScrollArea::horizontal().id_salt("guild_strip").show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.add_space(6.0);
-                                let guild_list: Vec<_> = watchlist.discord_guilds.clone();
-                                for guild in &guild_list {
-                                    let selected = watchlist.discord_selected_guild.as_ref() == Some(&guild.id);
-                                    let icon_size = 32.0;
-
-                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(icon_size + 6.0, icon_size + 8.0), egui::Sense::click());
-                                    let hovered = resp.hovered();
-
-                                    let icon_rect = egui::Rect::from_center_size(
-                                        egui::pos2(rect.center().x, rect.center().y - 1.0),
-                                        egui::vec2(icon_size, icon_size),
-                                    );
-
-                                    // Rounding: selected → squircle, hovered → less round, default → circle
-                                    let rounding = if selected { 10.0 } else if hovered { 12.0 } else { 16.0 };
-
-                                    // Background glow on hover/selected
-                                    if selected || hovered {
-                                        let glow_rect = icon_rect.expand(2.0);
-                                        let glow_color = if selected { color_alpha(discord_blurple, 80) } else { color_alpha(egui::Color32::WHITE, 20) };
-                                        ui.painter().rect_filled(glow_rect, rounding + 2.0, glow_color);
-                                    }
-
-                                    if let Some(tex) = watchlist.discord_guild_icons.get(&guild.id) {
-                                        // Real icon
-                                        let bg = if hovered && !selected { egui::Color32::from_gray(50) } else { egui::Color32::from_gray(35) };
-                                        ui.painter().rect_filled(icon_rect, rounding, bg);
-                                        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                                        let tint = if hovered || selected { egui::Color32::WHITE } else { egui::Color32::from_gray(200) };
-                                        ui.painter().image(tex.id(), icon_rect, uv, tint);
-                                    } else {
-                                        // Initials fallback
-                                        let bg = if selected { discord_blurple }
-                                                 else if hovered { egui::Color32::from_gray(70) }
-                                                 else { egui::Color32::from_gray(50) };
-                                        ui.painter().rect_filled(icon_rect, rounding, bg);
-                                        let abbrev: String = guild.name.split_whitespace()
-                                            .filter_map(|w| w.chars().next())
-                                            .take(2)
-                                            .collect::<String>()
-                                            .to_uppercase();
-                                        let font = egui::FontId::monospace(if abbrev.len() > 1 { 10.0 } else { 13.0 });
-                                        let text_col = if selected || hovered { egui::Color32::WHITE } else { egui::Color32::from_gray(180) };
-                                        ui.painter().text(icon_rect.center(), egui::Align2::CENTER_CENTER, &abbrev, font, text_col);
-                                    }
-
-                                    // Selection dot under icon
-                                    if selected {
-                                        let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + 4.0);
-                                        ui.painter().circle_filled(dot_center, 2.5, discord_blurple);
-                                    } else if hovered {
-                                        let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + 4.0);
-                                        ui.painter().circle_filled(dot_center, 1.5, egui::Color32::from_gray(120));
-                                    }
-
-                                    if resp.clicked() {
-                                        watchlist.discord_selected_guild = Some(guild.id.clone());
-                                        watchlist.discord_channels.clear();
-                                        watchlist.discord_selected_channel = None;
-                                        watchlist.discord_messages.clear();
-                                        watchlist.discord_last_msg_id = None;
-                                        watchlist.discord_channel.clear();
-                                        watchlist.discord_channels_loading = true;
-                                        crate::discord::fetch_channels_bg(guild.id.clone());
-                                    }
-                                    resp.on_hover_text(&guild.name);
-                                }
-                                ui.add_space(4.0);
-                            });
-                        });
-                        ui.add_space(2.0);
-                        // Separator
-                        let sep_rect = ui.allocate_exact_size(egui::vec2(panel_w, 1.0), egui::Sense::hover()).0;
-                        ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, 60));
-                    }
-
-                    // ── Content area ──
-                    {
-                        let content_w = panel_w;
-
-                            if watchlist.discord_selected_guild.is_none() {
-                                // No server selected
-                                let avail = ui.available_size();
-                                ui.allocate_ui_with_layout(
-                                    egui::vec2(content_w, avail.y),
-                                    egui::Layout::top_down(egui::Align::Center),
-                                    |ui| {
-                                        ui.add_space(avail.y * 0.3);
-                                        ui.label(egui::RichText::new("Select a server").monospace().size(10.0).color(t.dim.gamma_multiply(0.6)));
-                                        ui.label(egui::RichText::new("from the icons above").monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
-                                    },
-                                );
-                            } else if watchlist.discord_selected_channel.is_none() {
-                                // Server selected, show channel list
-                                ui.add_space(4.0);
-
-                                if watchlist.discord_channels_loading {
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(8.0);
-                                        ui.spinner();
-                                        ui.label(egui::RichText::new("Loading channels...").monospace().size(9.0).color(t.dim));
-                                    });
-                                } else if watchlist.discord_channels.is_empty() {
-                                    // Bot not in this server — show invite button
-                                    let avail = ui.available_size();
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(content_w, avail.y),
-                                        egui::Layout::top_down(egui::Align::Center),
-                                        |ui| {
-                                            ui.add_space(avail.y * 0.2);
-                                            ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(28.0).color(t.dim.gamma_multiply(0.5)));
-                                            ui.add_space(8.0);
-                                            ui.label(egui::RichText::new("Bot not in this server").monospace().size(10.0).color(t.dim));
-                                            ui.add_space(4.0);
-                                            ui.label(egui::RichText::new("Add the Apex bot to enable\nchannels & messaging").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                                            ui.add_space(10.0);
-                                            if ui.add(egui::Button::new(
-                                                egui::RichText::new("  Add Bot to Server  ").monospace().size(10.0).strong().color(egui::Color32::WHITE))
-                                                .fill(discord_blurple)
-                                                .corner_radius(4.0)
-                                                .min_size(egui::vec2(160.0, 30.0))
-                                            ).clicked() {
-                                                let guild_id = watchlist.discord_selected_guild.as_deref().unwrap_or("");
-                                                let url = format!(
-                                                    "https://discord.com/oauth2/authorize?client_id=1492118514482417776&scope=bot&permissions=68608&guild_id={}",
-                                                    guild_id
-                                                );
-                                                let _ = open::that(&url);
-                                            }
-                                            ui.add_space(8.0);
-                                            ui.label(egui::RichText::new("Server admins can also\nadd the bot themselves").monospace().size(7.5).color(t.dim.gamma_multiply(0.4)));
-                                            ui.add_space(12.0);
-                                            if ui.add(egui::Button::new(
-                                                egui::RichText::new("Retry").monospace().size(8.0).color(t.dim))
-                                                .fill(color_alpha(t.toolbar_border, 30))
-                                                .corner_radius(3.0)
-                                            ).clicked() {
-                                                if let Some(ref gid) = watchlist.discord_selected_guild {
-                                                    watchlist.discord_channels_loading = true;
-                                                    crate::discord::fetch_channels_bg(gid.clone());
-                                                }
-                                            }
-                                        },
-                                    );
-                                } else {
-                                    // Channel list
-                                    egui::ScrollArea::vertical().id_salt("discord_channels").show(ui, |ui| {
-                                        ui.set_min_width(content_w - 4.0);
-                                        let channels: Vec<_> = watchlist.discord_channels.clone();
-                                        // Group by category
-                                        let mut current_category = String::new();
-                                        for ch in &channels {
-                                            if ch.is_category() {
-                                                // Category header
-                                                ui.add_space(6.0);
-                                                ui.horizontal(|ui| {
-                                                    ui.add_space(8.0);
-                                                    let name = ch.name.as_deref().unwrap_or("UNKNOWN").to_uppercase();
-                                                    ui.label(egui::RichText::new(Icon::CARET_DOWN).size(8.0).color(t.dim.gamma_multiply(0.5)));
-                                                    ui.label(egui::RichText::new(&name).monospace().size(8.0).strong().color(t.dim.gamma_multiply(0.6)));
-                                                });
-                                                current_category = ch.id.clone();
-                                                ui.add_space(2.0);
-                                            } else if ch.is_text() {
-                                                let name = ch.name.as_deref().unwrap_or("unknown");
-                                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(content_w, 22.0), egui::Sense::click());
-                                                let hovered = resp.hovered();
-                                                if hovered {
-                                                    ui.painter().rect_filled(rect, 3.0, color_alpha(egui::Color32::WHITE, 8));
-                                                }
-                                                let text_color = if hovered { egui::Color32::WHITE } else { egui::Color32::from_gray(160) };
-                                                let font = egui::FontId::monospace(9.5);
-                                                ui.painter().text(
-                                                    egui::pos2(rect.left() + 14.0, rect.center().y),
-                                                    egui::Align2::LEFT_CENTER,
-                                                    format!("# {}", name),
-                                                    font,
-                                                    text_color,
-                                                );
-                                                if resp.clicked() {
-                                                    watchlist.discord_selected_channel = Some(ch.id.clone());
-                                                    watchlist.discord_channel = format!("# {}", name);
-                                                    watchlist.discord_messages.clear();
-                                                    watchlist.discord_last_msg_id = None;
-                                                    watchlist.discord_messages_loading = true;
-                                                    watchlist.discord_poll_timer = None;
-                                                    crate::discord::fetch_messages_bg(ch.id.clone(), None);
-                                                }
-                                            }
-                                        }
-                                    });
-                                }
-                            } else {
-                                // ── Channel selected: show messages + input ──
-                                ui.add_space(2.0);
-
-                                // Back button + channel name
-                                ui.horizontal(|ui| {
-                                    ui.add_space(6.0);
-                                    if ui.add(egui::Button::new(
-                                        egui::RichText::new(Icon::CARET_RIGHT).size(10.0).color(t.dim))
-                                        .fill(egui::Color32::TRANSPARENT).frame(false)
-                                    ).on_hover_text("Back to channels").clicked() {
-                                        watchlist.discord_selected_channel = None;
-                                        watchlist.discord_messages.clear();
-                                        watchlist.discord_last_msg_id = None;
-                                        watchlist.discord_poll_timer = None;
-                                    }
-                                    ui.label(egui::RichText::new(&watchlist.discord_channel).monospace().size(9.0).color(t.dim));
-                                });
-                                ui.add_space(2.0);
-
-                                let author_colors: &[egui::Color32] = &[
-                                    rgb(74, 158, 255), rgb(46, 204, 113), rgb(243, 156, 18),
-                                    rgb(155, 89, 182), rgb(231, 76, 60), rgb(26, 188, 156),
-                                    rgb(241, 196, 15), rgb(52, 152, 219),
-                                ];
-
-                                // Messages
-                                let input_h = 36.0;
-                                let msg_area_h = ui.available_height() - input_h;
-                                egui::ScrollArea::vertical()
-                                    .id_salt("discord_msgs")
-                                    .max_height(msg_area_h.max(60.0))
-                                    .stick_to_bottom(true)
-                                    .show(ui, |ui| {
-                                        ui.set_min_width(content_w - 4.0);
-                                        if watchlist.discord_messages_loading {
-                                            ui.add_space(20.0);
-                                            ui.horizontal(|ui| {
-                                                ui.add_space(8.0);
-                                                ui.spinner();
-                                                ui.label(egui::RichText::new("Loading messages...").monospace().size(9.0).color(t.dim));
-                                            });
-                                        } else if watchlist.discord_messages.is_empty() {
-                                            ui.add_space(20.0);
-                                            ui.horizontal(|ui| {
-                                                ui.add_space(8.0);
-                                                ui.label(egui::RichText::new("No messages in this channel").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                                            });
-                                        }
-                                        let mut prev_author = String::new();
-                                        for msg in &watchlist.discord_messages {
-                                            if msg.content.is_empty() { continue; }
-                                            let author_hash = msg.author.bytes().fold(0usize, |a, b| a.wrapping_mul(31).wrapping_add(b as usize));
-                                            let author_col = author_colors[author_hash % author_colors.len()];
-                                            let same_author = msg.author == prev_author;
-
-                                            ui.horizontal(|ui| {
-                                                ui.add_space(8.0);
-                                                ui.vertical(|ui| {
-                                                    if !same_author {
-                                                        if !prev_author.is_empty() { ui.add_space(4.0); }
-                                                        ui.horizontal(|ui| {
-                                                            // Author avatar circle
-                                                            let (av_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
-                                                            let initial = msg.author.chars().next().unwrap_or('?').to_uppercase().to_string();
-                                                            ui.painter().circle_filled(av_rect.center(), 9.0, color_alpha(author_col, 60));
-                                                            ui.painter().text(av_rect.center(), egui::Align2::CENTER_CENTER, &initial, egui::FontId::monospace(8.0), egui::Color32::WHITE);
-
-                                                            ui.label(egui::RichText::new(&msg.author).monospace().size(9.0).strong().color(author_col));
-                                                            ui.label(egui::RichText::new(&msg.timestamp).monospace().size(7.5).color(t.dim.gamma_multiply(0.4)));
-                                                        });
-                                                    }
-                                                    // Message content with left indent
-                                                    ui.horizontal(|ui| {
-                                                        ui.add_space(22.0); // align with text after avatar
-                                                        ui.add(egui::Label::new(
-                                                            egui::RichText::new(&msg.content).monospace().size(9.0).color(egui::Color32::from_gray(210))
-                                                        ).wrap_mode(egui::TextWrapMode::Wrap));
-                                                    });
-                                                });
-                                            });
-                                            prev_author = msg.author.clone();
-                                        }
-                                        ui.add_space(4.0);
-                                    });
-
-                                // Input area
-                                let sep_rect = ui.allocate_exact_size(egui::vec2(content_w, 1.0), egui::Sense::hover()).0;
-                                ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, 40));
-                                ui.add_space(4.0);
-                                ui.horizontal(|ui| {
-                                    ui.add_space(8.0);
-                                    let input = ui.add(
-                                        egui::TextEdit::singleline(&mut watchlist.discord_input)
-                                            .desired_width(content_w - 60.0)
-                                            .font(egui::TextStyle::Monospace)
-                                            .text_color(egui::Color32::from_gray(220))
-                                            .hint_text(format!("Message {}...", watchlist.discord_channel))
-                                    );
-                                    let send_clicked = ui.add(egui::Button::new(
-                                        egui::RichText::new("Send").monospace().size(9.0).color(egui::Color32::WHITE))
-                                        .fill(discord_blurple)
-                                        .corner_radius(3.0)
-                                        .min_size(egui::vec2(38.0, 22.0))
-                                    ).clicked();
-                                    if (send_clicked || (input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                                        && !watchlist.discord_input.trim().is_empty()
-                                    {
-                                        let content = watchlist.discord_input.trim().to_string();
-                                        if let Some(ref ch_id) = watchlist.discord_selected_channel {
-                                            crate::discord::send_message_bg(ch_id.clone(), content.clone());
-                                            // Optimistic insert
-                                            watchlist.discord_messages.push(DiscordMessage {
-                                                author: watchlist.discord_username.clone(),
-                                                content,
-                                                timestamp: "sending...".into(),
-                                                is_own: true,
-                                                has_chart: false,
-                                            });
-                                        }
-                                        watchlist.discord_input.clear();
-                                    }
-                                });
-                                ui.add_space(4.0);
-                            }
-                    }
-                }
-            });
-    }
+    // ── Discord Chat side panel
+    super::ui::discord_panel::draw(ctx, watchlist, t);
 
     // ── Time & Sales side panel ──────────────────────────────────────────────
     super::ui::tape_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
@@ -15810,10 +15004,10 @@ pub(crate) struct HotKey {
 pub(crate) struct DiscordMessage {
     pub(crate) author: String,
     pub(crate) content: String,
-    pub(crate) timestamp: String,  // "2m ago", "12:34"
-    pub(crate) is_own: bool,       // true if sent by the user
+    pub(crate) timestamp: String, // "2m ago", "12:34"
+    pub(crate) is_own: bool, // true if sent by the user
     #[allow(dead_code)]
-    pub(crate) has_chart: bool,    // true if message contains a chart screenshot
+    pub(crate) has_chart: bool, // true if message contains a chart screenshot
 }
 
 // ─── News Feed ───────────────────────────────────────────────────────────────
@@ -15822,11 +15016,11 @@ pub(crate) struct DiscordMessage {
 #[derive(Clone)]
 pub(crate) struct NewsItem {
     pub(crate) headline: String,
-    pub(crate) source: String,     // "Reuters", "Bloomberg", "Benzinga"
-    pub(crate) timestamp: String,  // "10m ago", "1h ago"
-    pub(crate) symbol: String,     // related symbol
-    pub(crate) sentiment: i8,      // -1 bearish, 0 neutral, 1 bullish
-    pub(crate) url: String,        // link to full article
+    pub(crate) source: String, // "Reuters", "Bloomberg", "Benzinga"
+    pub(crate) timestamp: String, // "10m ago", "1h ago"
+    pub(crate) symbol: String, // related symbol
+    pub(crate) sentiment: i8, // -1 bearish, 0 neutral, 1 bullish
+    pub(crate) url: String, // link to full article
 }
 
 #[derive(Clone)]
@@ -15834,53 +15028,53 @@ pub(crate) struct TapeRow {
     pub(crate) symbol: String,
     pub(crate) price: f32,
     pub(crate) qty: f32,
-    pub(crate) time: i64,    // epoch ms
+    pub(crate) time: i64, // epoch ms
     pub(crate) is_buy: bool,
 }
 
 #[derive(Clone)]
 pub(crate) struct WatchlistItem {
-    symbol: String,
-    price: f32,
-    prev_close: f32,
-    loaded: bool,
+    pub(crate) symbol: String,
+    pub(crate) price: f32,
+    pub(crate) prev_close: f32,
+    pub(crate) loaded: bool,
     // Option fields (defaults for stocks)
-    is_option: bool,
-    underlying: String,    // e.g. "SPY"
-    option_type: String,   // "C" or "P"
-    strike: f32,
-    expiry: String,        // "0DTE", "5DTE" etc.
-    bid: f32,
-    ask: f32,
+    pub(crate) is_option: bool,
+    pub(crate) underlying: String, // e.g. "SPY"
+    pub(crate) option_type: String, // "C" or "P"
+    pub(crate) strike: f32,
+    pub(crate) expiry: String, // "0DTE", "5DTE" etc.
+    pub(crate) bid: f32,
+    pub(crate) ask: f32,
     // Watchlist enhancement fields
-    pinned: bool,
-    tags: Vec<String>,
-    rvol: f32,           // relative volume (1.0 = average)
-    atr: f32,            // average true range
-    high_52wk: f32,
-    low_52wk: f32,
-    day_high: f32,
-    day_low: f32,
-    avg_daily_range: f32, // average daily move % for extreme detection
-    earnings_days: i32,   // days until earnings (-1 = unknown)
-    alert_triggered: bool,
-    price_history: Vec<f32>, // last ~30 price snapshots for sparkline
+    pub(crate) pinned: bool,
+    pub(crate) tags: Vec<String>,
+    pub(crate) rvol: f32, // relative volume (1.0 = average)
+    pub(crate) atr: f32, // average true range
+    pub(crate) high_52wk: f32,
+    pub(crate) low_52wk: f32,
+    pub(crate) day_high: f32,
+    pub(crate) day_low: f32,
+    pub(crate) avg_daily_range: f32, // average daily move % for extreme detection
+    pub(crate) earnings_days: i32, // days until earnings (-1 = unknown)
+    pub(crate) alert_triggered: bool,
+    pub(crate) price_history: Vec<f32>, // last ~30 price snapshots for sparkline
 }
 
 #[derive(Clone)]
 pub(crate) struct WatchlistSection {
-    id: u32,
-    title: String,           // optional label, empty = no header shown
-    color: Option<String>,   // hex bg tint, None = default
-    collapsed: bool,
-    items: Vec<WatchlistItem>,
+    pub(crate) id: u32,
+    pub(crate) title: String, // optional label, empty = no header shown
+    pub(crate) color: Option<String>, // hex bg tint, None = default
+    pub(crate) collapsed: bool,
+    pub(crate) items: Vec<WatchlistItem>,
 }
 
 #[derive(Clone)]
 pub(crate) struct SavedWatchlist {
-    name: String,
-    sections: Vec<WatchlistSection>,
-    next_section_id: u32,
+    pub(crate) name: String,
+    pub(crate) sections: Vec<WatchlistSection>,
+    pub(crate) next_section_id: u32,
 }
 
 // ─── Options chain ───────────────────────────────────────────────────────────
@@ -15888,26 +15082,26 @@ pub(crate) struct SavedWatchlist {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub(crate) struct OptionRow {
-    strike: f32,
-    last: f32,
-    bid: f32,
-    ask: f32,
-    volume: i32,
-    oi: i32,
-    iv: f32,
-    itm: bool,
-    contract: String,
+    pub(crate) strike: f32,
+    pub(crate) last: f32,
+    pub(crate) bid: f32,
+    pub(crate) ask: f32,
+    pub(crate) volume: i32,
+    pub(crate) oi: i32,
+    pub(crate) iv: f32,
+    pub(crate) itm: bool,
+    pub(crate) contract: String,
 }
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub(crate) struct SavedOption {
-    contract: String,
-    symbol: String,
-    strike: f32,
-    is_call: bool,
-    expiry: String,
-    last: f32,
+    pub(crate) contract: String,
+    pub(crate) symbol: String,
+    pub(crate) strike: f32,
+    pub(crate) is_call: bool,
+    pub(crate) expiry: String,
+    pub(crate) last: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -15924,26 +15118,26 @@ pub(crate) struct Watchlist {
     pub(crate) watchlist_name_editing: bool,
     pub(crate) watchlist_name_buf: String,
     #[allow(dead_code)]
-    pub(crate) watchlist_ctx_menu_idx: Option<usize>,   // which watchlist index has context menu open
+    pub(crate) watchlist_ctx_menu_idx: Option<usize>, // which watchlist index has context menu open
     pub(crate) search_query: String,
     pub(crate) search_results: Vec<(String, String)>,
     pub(crate) search_sel: i32, // -1 = none, 0+ = highlighted suggestion index
     pub(crate) search_refocus: bool, // request refocus on search bar after adding
     pub(crate) options_visible: bool, // toggle options section below stocks
-    pub(crate) options_split: f32,    // fraction of height for stocks (0.3..0.9), rest for options
+    pub(crate) options_split: f32, // fraction of height for stocks (0.3..0.9), rest for options
     pub(crate) divider_dragging: bool, // true while dragging the stocks/options divider
-    pub(crate) divider_y: f32,        // screen Y of divider (set during render)
-    pub(crate) divider_total_h: f32,  // total available height for split calculation
+    pub(crate) divider_y: f32, // screen Y of divider (set during render)
+    pub(crate) divider_total_h: f32, // total available height for split calculation
     // Drag-and-drop state
     pub(crate) dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
-    pub(crate) drag_start_pos: Option<egui::Pos2>,      // mouse position when drag started
+    pub(crate) drag_start_pos: Option<egui::Pos2>, // mouse position when drag started
     pub(crate) drop_target: Option<(usize, usize)>,     // (section_idx, insert_before_item_idx)
-    pub(crate) drag_confirmed: bool,                    // true once mouse moved enough to confirm drag
+    pub(crate) drag_confirmed: bool, // true once mouse moved enough to confirm drag
     // Section editing
-    pub(crate) renaming_section: Option<u32>,           // section id being renamed
+    pub(crate) renaming_section: Option<u32>, // section id being renamed
     pub(crate) rename_buf: String,
     #[allow(dead_code)]
-    pub(crate) color_picking_section: Option<u32>,      // section id picking color
+    pub(crate) color_picking_section: Option<u32>, // section id picking color
     // Toolbar
     #[allow(dead_code)] toolbar_scroll: f32,
     #[allow(dead_code)] shortcuts_open: bool, // superseded by hotkey_editor_open
@@ -15975,8 +15169,8 @@ pub(crate) struct Watchlist {
     // Heatmap
     pub(crate) heat_index: String,
     pub(crate) heat_collapsed: std::collections::HashSet<String>,
-    pub(crate) heat_cols: u8,  // 1, 2, or 3 columns
-    pub(crate) heat_sort: i8,  // 0=default, 1=gainers first, -1=losers first
+    pub(crate) heat_cols: u8, // 1, 2, or 3 columns
+    pub(crate) heat_sort: i8, // 0=default, 1=gainers first, -1=losers first
     // Orders
     pub(crate) orders_panel_open: bool,
     pub(crate) order_entry_open: bool,
@@ -15991,15 +15185,15 @@ pub(crate) struct Watchlist {
     // Options chain
     pub(crate) chain_symbol: String,
     pub(crate) chain_sym_input: String,
-    pub(crate) chain_num_strikes: usize,     // legacy fallback
+    pub(crate) chain_num_strikes: usize, // legacy fallback
     pub(crate) chain_far_dte: i32,
     pub(crate) chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
-    pub(crate) chain_far: (Vec<OptionRow>, Vec<OptionRow>),   // (calls, puts) for far DTE
+    pub(crate) chain_far: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for far DTE
     pub(crate) chain_select_mode: bool,
-    pub(crate) chain_loading: bool,       // true while fetching chain from ApexIB
+    pub(crate) chain_loading: bool, // true while fetching chain from ApexIB
     pub(crate) chain_underlying_price: f32, // real-time underlying price from IB chain response
-    pub(crate) chain_frozen: bool,        // legacy fallback
-    pub(crate) chain_center_offset: i32,  // legacy fallback
+    pub(crate) chain_frozen: bool, // legacy fallback
+    pub(crate) chain_center_offset: i32, // legacy fallback
     // Per-chain independent controls
     pub(crate) chain_0_num_strikes: usize,
     pub(crate) chain_0_frozen: bool,
@@ -16020,8 +15214,8 @@ pub(crate) struct Watchlist {
     pub(crate) workspace_save_name: String,
     pub(crate) pending_workspace_load: Option<String>,
     // Pane split ratios (for resizable panes)
-    pub(crate) pane_split_h: f32,  // primary vertical divider ratio
-    pub(crate) pane_split_v: f32,  // primary horizontal divider ratio
+    pub(crate) pane_split_h: f32, // primary vertical divider ratio
+    pub(crate) pane_split_v: f32, // primary horizontal divider ratio
     pub(crate) pane_split_h2: f32, // secondary vertical divider ratio (for 3-column layouts)
     pub(crate) pane_split_v2: f32, // secondary horizontal divider ratio (for 3-row layouts)
     pub(crate) pane_divider_dragging: bool,
@@ -16042,7 +15236,7 @@ pub(crate) struct Watchlist {
     pub(crate) discord_open: bool,
     pub(crate) discord_messages: Vec<DiscordMessage>,
     pub(crate) discord_input: String,
-    pub(crate) discord_channel: String,  // currently selected channel display name
+    pub(crate) discord_channel: String, // currently selected channel display name
     pub(crate) discord_authenticated: bool,
     pub(crate) discord_username: String,
     pub(crate) discord_user_id: String,
@@ -16062,7 +15256,7 @@ pub(crate) struct Watchlist {
     // News feed panel
     pub(crate) news_open: bool,
     pub(crate) news_items: Vec<NewsItem>,
-    pub(crate) news_filter_symbol: bool,  // true = filter to active chart symbol
+    pub(crate) news_filter_symbol: bool, // true = filter to active chart symbol
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
