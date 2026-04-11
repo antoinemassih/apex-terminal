@@ -17,3 +17,4 @@ pub mod discord_panel;
 pub mod settings_panel;
 pub mod object_tree;
 pub mod watchlist_panel;
+pub mod orders_panel;
