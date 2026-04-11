@@ -42,10 +42,10 @@ use super::trading::*;
 
 // ─── Themes ───────────────────────────────────────────────────────────────────
 
-struct Theme {
-    name: &'static str,
-    bg: egui::Color32, bull: egui::Color32, bear: egui::Color32, dim: egui::Color32,
-    toolbar_bg: egui::Color32, toolbar_border: egui::Color32, accent: egui::Color32,
+pub(crate) struct Theme {
+    pub(crate) name: &'static str,
+    pub(crate) bg: egui::Color32, pub(crate) bull: egui::Color32, pub(crate) bear: egui::Color32, pub(crate) dim: egui::Color32,
+    pub(crate) toolbar_bg: egui::Color32, pub(crate) toolbar_border: egui::Color32, pub(crate) accent: egui::Color32,
 }
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 const THEMES: &[Theme] = &[
@@ -88,7 +88,7 @@ use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, comput
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Layout {
+pub(crate) enum Layout {
     One, Two, TwoH,
     Three,      // 1 top + 2 bottom
     ThreeL,     // 1 big left + 2 stacked right
@@ -424,10 +424,10 @@ const ALL_LAYOUTS: &[Layout] = &[
 // ─── Indicators ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR, Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR }
+pub(crate) enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR, Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum IndicatorCategory { Overlay, Oscillator }
+pub(crate) enum IndicatorCategory { Overlay, Oscillator }
 
 impl IndicatorType {
     fn label(self) -> &'static str {
@@ -478,7 +478,7 @@ impl IndicatorType {
 }
 
 #[derive(Debug, Clone)]
-struct Indicator {
+pub(crate) struct Indicator {
     id: u32,
     kind: IndicatorType,
     period: usize,
@@ -694,13 +694,13 @@ const APEXIB_URL: &str = "https://apexib-dev.xllio.com";
 // ─── Volume Profile ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum VolumeProfileMode { Off, Classic, Heatmap, Strip, Clean }
+pub(crate) enum VolumeProfileMode { Off, Classic, Heatmap, Strip, Clean }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum CandleMode { Standard, Violin, Gradient, ViolinGradient, HeikinAshi, Line, Area }
+pub(crate) enum CandleMode { Standard, Violin, Gradient, ViolinGradient, HeikinAshi, Line, Area }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum StrikeMode {
+pub(crate) enum StrikeMode {
     Count,      // N strikes above/below center point
     Pct(u8),    // strikes within X% of underlying (index into PCT_OPTIONS)
     StdDev,     // strikes within N std deviations
@@ -1009,7 +1009,7 @@ fn render_order_entry_body(
 const OVERLAY_COLORS: &[&str] = &["#ff8c3c", "#00e5ff", "#ff00ff", "#76ff03", "#ff4081"];
 
 #[derive(Clone)]
-struct SymbolOverlay {
+pub(crate) struct SymbolOverlay {
     symbol: String,
     color: String,       // hex color
     bars: Vec<Bar>,
@@ -1021,7 +1021,7 @@ struct SymbolOverlay {
 
 // ─── Chart state ──────────────────────────────────────────────────────────────
 
-struct Chart {
+pub(crate) struct Chart {
     symbol: String, timeframe: String,
     // Option chart metadata
     is_option: bool,
@@ -8028,295 +8028,10 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     }
 
     // ── Time & Sales side panel ──────────────────────────────────────────────
-    if watchlist.tape_open {
-        let active_sym = panes[ap].symbol.clone();
-        egui::SidePanel::right("time_and_sales")
-            .default_width(220.0)
-            .min_width(180.0)
-            .max_width(350.0)
-            .resizable(true)
-            .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-                .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
-                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
-            .show(ctx, |ui| {
-                let panel_w = ui.available_width();
-
-                // Header
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("TIME & SALES").monospace().size(10.0).strong().color(t.accent));
-                    ui.label(egui::RichText::new(&active_sym).monospace().size(9.0).color(t.dim));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if close_button(ui, t.dim) { watchlist.tape_open = false; }
-                    });
-                });
-                ui.add_space(2.0);
-
-                // Column headers
-                ui.horizontal(|ui| {
-                    ui.add_space(4.0);
-                    let hw = (panel_w - 12.0) / 3.0;
-                    ui.allocate_ui_with_layout(egui::vec2(hw, 12.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("TIME").monospace().size(7.5).color(t.dim.gamma_multiply(0.5)));
-                    });
-                    ui.allocate_ui_with_layout(egui::vec2(hw, 12.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("PRICE").monospace().size(7.5).color(t.dim.gamma_multiply(0.5)));
-                    });
-                    ui.allocate_ui_with_layout(egui::vec2(hw, 12.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new("SIZE").monospace().size(7.5).color(t.dim.gamma_multiply(0.5)));
-                    });
-                });
-                separator(ui, t.toolbar_border);
-
-                // Trade rows (scrollable, newest at bottom)
-                let row_h = 14.0;
-                egui::ScrollArea::vertical()
-                    .id_salt("tape_scroll")
-                    .stick_to_bottom(true)
-                    .show(ui, |ui| {
-                        ui.set_min_width(panel_w - 4.0);
-                        // Filter to active symbol
-                        let entries: Vec<&TapeRow> = watchlist.tape_entries.iter()
-                            .filter(|e| e.symbol == active_sym)
-                            .collect();
-
-                        if entries.is_empty() {
-                            ui.add_space(20.0);
-                            ui.label(egui::RichText::new("Waiting for trades...").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                            if !crate::data::is_crypto(&active_sym) {
-                                ui.label(egui::RichText::new("T&S available for crypto symbols").monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
-                            }
-                        }
-
-                        let col_w = (panel_w - 12.0) / 3.0;
-                        for entry in entries.iter().rev().take(200).collect::<Vec<_>>().into_iter().rev() {
-                            let (rect, _) = ui.allocate_exact_size(egui::vec2(panel_w - 4.0, row_h), egui::Sense::hover());
-
-                            // Subtle background tint for buy/sell
-                            let bg = if entry.is_buy {
-                                color_alpha(rgb(46, 204, 113), 12)
-                            } else {
-                                color_alpha(rgb(231, 76, 60), 12)
-                            };
-                            ui.painter().rect_filled(rect, 0.0, bg);
-
-                            let side_color = if entry.is_buy { rgb(46, 204, 113) } else { rgb(231, 76, 60) };
-                            let font = egui::FontId::monospace(8.5);
-
-                            // Time (HH:MM:SS)
-                            let secs = entry.time / 1000;
-                            let h = (secs / 3600) % 24;
-                            let m = (secs / 60) % 60;
-                            let s = secs % 60;
-                            let time_str = format!("{:02}:{:02}:{:02}", h, m, s);
-                            ui.painter().text(
-                                egui::pos2(rect.left() + 4.0, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                &time_str,
-                                font.clone(),
-                                t.dim.gamma_multiply(0.6),
-                            );
-
-                            // Price
-                            let price_str = if entry.price >= 100.0 {
-                                format!("{:.2}", entry.price)
-                            } else if entry.price >= 1.0 {
-                                format!("{:.4}", entry.price)
-                            } else {
-                                format!("{:.6}", entry.price)
-                            };
-                            ui.painter().text(
-                                egui::pos2(rect.left() + 4.0 + col_w, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                &price_str,
-                                font.clone(),
-                                side_color,
-                            );
-
-                            // Size
-                            let qty_str = if entry.qty >= 1.0 {
-                                format!("{:.4}", entry.qty)
-                            } else {
-                                format!("{:.6}", entry.qty)
-                            };
-                            ui.painter().text(
-                                egui::pos2(rect.right() - 4.0, rect.center().y),
-                                egui::Align2::RIGHT_CENTER,
-                                &qty_str,
-                                font,
-                                egui::Color32::from_gray(180),
-                            );
-                        }
-                    });
-            });
-    }
+    super::ui::tape_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
 
     // ── News Feed floating window ─────────────────────────────────────────────
-    if watchlist.news_open {
-        let active_symbol = panes[ap].symbol.clone();
-        let mut close_news = false;
-        egui::Window::new("news_feed")
-            .default_pos(egui::pos2(300.0, 100.0))
-            .default_size(egui::vec2(300.0, 400.0))
-            .resizable(true)
-            .movable(true)
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style())
-                .fill(t.toolbar_bg)
-                .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
-                .corner_radius(6.0))
-            .show(ctx, |ui| {
-                let w = ui.available_width();
-
-                // Header: NEWS + filter toggle + close
-                ui.horizontal(|ui| {
-                    ui.add_space(10.0);
-                    ui.label(egui::RichText::new("NEWS").monospace().size(11.0).strong().color(t.accent));
-                    ui.add_space(8.0);
-                    // Filter toggle: "All" / symbol name
-                    let filter_label = if watchlist.news_filter_symbol {
-                        active_symbol.as_str()
-                    } else {
-                        "All"
-                    };
-                    let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new(filter_label).monospace().size(9.0).color(filter_col))
-                        .fill(color_alpha(filter_col, 15))
-                        .corner_radius(3.0)
-                        .stroke(egui::Stroke::new(0.5, color_alpha(filter_col, 40)))
-                        .min_size(egui::vec2(0.0, 16.0))
-                    ).clicked() {
-                        watchlist.news_filter_symbol = !watchlist.news_filter_symbol;
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(6.0);
-                        if close_button(ui, t.dim) { close_news = true; }
-                    });
-                });
-                ui.add_space(4.0);
-
-                // Divider
-                let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
-                    egui::vec2(w, 1.0),
-                );
-                ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, 60));
-                ui.add_space(5.0);
-
-                // News items (scrollable)
-                egui::ScrollArea::vertical()
-                    .id_salt("news_items")
-                    .show(ui, |ui| {
-                        ui.set_min_width(w - 4.0);
-                        let filtered: Vec<&NewsItem> = watchlist.news_items.iter()
-                            .filter(|n| !watchlist.news_filter_symbol || n.symbol == active_symbol)
-                            .collect();
-
-                        if filtered.is_empty() {
-                            ui.add_space(20.0);
-                            ui.vertical_centered(|ui| {
-                                ui.label(egui::RichText::new("No news for this symbol")
-                                    .monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                            });
-                        }
-
-                        for news in &filtered {
-                            let m = 10.0;
-                            // Hover highlight
-                            let item_rect = egui::Rect::from_min_size(
-                                egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
-                                egui::vec2(w, 52.0),
-                            );
-                            let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
-                            let bg = if item_resp.hovered() {
-                                color_alpha(t.toolbar_border, 40)
-                            } else {
-                                egui::Color32::TRANSPARENT
-                            };
-                            ui.painter().rect_filled(item_rect, 2.0, bg);
-
-                            // Headline
-                            let headline_rect = egui::Rect::from_min_size(
-                                egui::pos2(item_rect.min.x + m, item_rect.min.y + 4.0),
-                                egui::vec2(w - m * 2.0, 24.0),
-                            );
-                            ui.painter().text(
-                                headline_rect.left_top(),
-                                egui::Align2::LEFT_TOP,
-                                &news.headline,
-                                egui::FontId::monospace(10.0),
-                                egui::Color32::from_gray(230),
-                            );
-
-                            // Source badge + timestamp + symbol badge + sentiment dot
-                            let meta_y = item_rect.min.y + 30.0;
-
-                            // Source badge
-                            let source_col = match news.source.as_str() {
-                                "Reuters" => rgb(255, 140, 0),
-                                "Bloomberg" => rgb(100, 180, 255),
-                                "CNBC" => rgb(0, 180, 120),
-                                "Benzinga" => rgb(180, 100, 255),
-                                _ => t.dim,
-                            };
-                            let source_rect = egui::Rect::from_min_size(
-                                egui::pos2(item_rect.min.x + m, meta_y),
-                                egui::vec2(50.0, 14.0),
-                            );
-                            ui.painter().rect_filled(source_rect, 2.0, color_alpha(source_col, 25));
-                            ui.painter().text(
-                                source_rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                &news.source,
-                                egui::FontId::monospace(7.0),
-                                source_col,
-                            );
-
-                            // Timestamp
-                            ui.painter().text(
-                                egui::pos2(item_rect.min.x + m + 55.0, meta_y + 7.0),
-                                egui::Align2::LEFT_CENTER,
-                                &news.timestamp,
-                                egui::FontId::monospace(7.0),
-                                t.dim.gamma_multiply(0.5),
-                            );
-
-                            // Symbol badge
-                            let sym_x = item_rect.min.x + m + 95.0;
-                            let sym_rect = egui::Rect::from_min_size(
-                                egui::pos2(sym_x, meta_y),
-                                egui::vec2(36.0, 14.0),
-                            );
-                            ui.painter().rect_filled(sym_rect, 2.0, color_alpha(t.accent, 20));
-                            ui.painter().text(
-                                sym_rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                &news.symbol,
-                                egui::FontId::monospace(7.0),
-                                t.accent,
-                            );
-
-                            // Sentiment dot
-                            let dot_col = match news.sentiment {
-                                1 => t.bull,
-                                -1 => t.bear,
-                                _ => t.dim.gamma_multiply(0.4),
-                            };
-                            ui.painter().circle_filled(
-                                egui::pos2(item_rect.right() - m - 4.0, meta_y + 7.0),
-                                3.5,
-                                dot_col,
-                            );
-
-                            if item_resp.clicked() && !news.url.is_empty() {
-                                // TODO: open URL in browser
-                            }
-                        }
-                    });
-            });
-        if close_news { watchlist.news_open = false; }
-    }
+    super::ui::news_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
 
     // ── Alert checking — run every frame, check if any alert prices were crossed ──
     {
@@ -16076,55 +15791,55 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 // ─── Watchlist ───────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
-struct HotKey {
-    id: u32,
-    name: String,
-    category: String,
-    action: String,
-    key_name: String,
-    key: egui::Key,
-    ctrl: bool,
-    shift: bool,
-    alt: bool,
+pub(crate) struct HotKey {
+    pub(crate) id: u32,
+    pub(crate) name: String,
+    pub(crate) category: String,
+    pub(crate) action: String,
+    pub(crate) key_name: String,
+    pub(crate) key: egui::Key,
+    pub(crate) ctrl: bool,
+    pub(crate) shift: bool,
+    pub(crate) alt: bool,
 }
 
 // ─── Discord Chat ────────────────────────────────────────────────────────────
 // TODO: Connect to Discord bot via WebSocket — needs bot token in K8s secrets
 
 #[derive(Clone)]
-struct DiscordMessage {
-    author: String,
-    content: String,
-    timestamp: String,  // "2m ago", "12:34"
-    is_own: bool,       // true if sent by the user
+pub(crate) struct DiscordMessage {
+    pub(crate) author: String,
+    pub(crate) content: String,
+    pub(crate) timestamp: String,  // "2m ago", "12:34"
+    pub(crate) is_own: bool,       // true if sent by the user
     #[allow(dead_code)]
-    has_chart: bool,    // true if message contains a chart screenshot
+    pub(crate) has_chart: bool,    // true if message contains a chart screenshot
 }
 
 // ─── News Feed ───────────────────────────────────────────────────────────────
 // TODO: Connect to stock wire API / news feed — poll every 60s
 
 #[derive(Clone)]
-struct NewsItem {
-    headline: String,
-    source: String,     // "Reuters", "Bloomberg", "Benzinga"
-    timestamp: String,  // "10m ago", "1h ago"
-    symbol: String,     // related symbol
-    sentiment: i8,      // -1 bearish, 0 neutral, 1 bullish
-    url: String,        // link to full article
+pub(crate) struct NewsItem {
+    pub(crate) headline: String,
+    pub(crate) source: String,     // "Reuters", "Bloomberg", "Benzinga"
+    pub(crate) timestamp: String,  // "10m ago", "1h ago"
+    pub(crate) symbol: String,     // related symbol
+    pub(crate) sentiment: i8,      // -1 bearish, 0 neutral, 1 bullish
+    pub(crate) url: String,        // link to full article
 }
 
 #[derive(Clone)]
-struct TapeRow {
-    symbol: String,
-    price: f32,
-    qty: f32,
-    time: i64,    // epoch ms
-    is_buy: bool,
+pub(crate) struct TapeRow {
+    pub(crate) symbol: String,
+    pub(crate) price: f32,
+    pub(crate) qty: f32,
+    pub(crate) time: i64,    // epoch ms
+    pub(crate) is_buy: bool,
 }
 
 #[derive(Clone)]
-struct WatchlistItem {
+pub(crate) struct WatchlistItem {
     symbol: String,
     price: f32,
     prev_close: f32,
@@ -16153,7 +15868,7 @@ struct WatchlistItem {
 }
 
 #[derive(Clone)]
-struct WatchlistSection {
+pub(crate) struct WatchlistSection {
     id: u32,
     title: String,           // optional label, empty = no header shown
     color: Option<String>,   // hex bg tint, None = default
@@ -16162,7 +15877,7 @@ struct WatchlistSection {
 }
 
 #[derive(Clone)]
-struct SavedWatchlist {
+pub(crate) struct SavedWatchlist {
     name: String,
     sections: Vec<WatchlistSection>,
     next_section_id: u32,
@@ -16172,7 +15887,7 @@ struct SavedWatchlist {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-struct OptionRow {
+pub(crate) struct OptionRow {
     strike: f32,
     last: f32,
     bid: f32,
@@ -16186,7 +15901,7 @@ struct OptionRow {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-struct SavedOption {
+pub(crate) struct SavedOption {
     contract: String,
     symbol: String,
     strike: f32,
@@ -16196,158 +15911,158 @@ struct SavedOption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum WatchlistTab { Stocks, Chain, Heat }
+pub(crate) enum WatchlistTab { Stocks, Chain, Heat }
 
-struct Watchlist {
-    open: bool,
-    tab: WatchlistTab,
-    sections: Vec<WatchlistSection>,
-    next_section_id: u32,
+pub(crate) struct Watchlist {
+    pub(crate) open: bool,
+    pub(crate) tab: WatchlistTab,
+    pub(crate) sections: Vec<WatchlistSection>,
+    pub(crate) next_section_id: u32,
     // Multi-watchlist
-    saved_watchlists: Vec<SavedWatchlist>,
-    active_watchlist_idx: usize,
-    watchlist_name_editing: bool,
-    watchlist_name_buf: String,
+    pub(crate) saved_watchlists: Vec<SavedWatchlist>,
+    pub(crate) active_watchlist_idx: usize,
+    pub(crate) watchlist_name_editing: bool,
+    pub(crate) watchlist_name_buf: String,
     #[allow(dead_code)]
-    watchlist_ctx_menu_idx: Option<usize>,   // which watchlist index has context menu open
-    search_query: String,
-    search_results: Vec<(String, String)>,
-    search_sel: i32, // -1 = none, 0+ = highlighted suggestion index
-    search_refocus: bool, // request refocus on search bar after adding
-    options_visible: bool, // toggle options section below stocks
-    options_split: f32,    // fraction of height for stocks (0.3..0.9), rest for options
-    divider_dragging: bool, // true while dragging the stocks/options divider
-    divider_y: f32,        // screen Y of divider (set during render)
-    divider_total_h: f32,  // total available height for split calculation
+    pub(crate) watchlist_ctx_menu_idx: Option<usize>,   // which watchlist index has context menu open
+    pub(crate) search_query: String,
+    pub(crate) search_results: Vec<(String, String)>,
+    pub(crate) search_sel: i32, // -1 = none, 0+ = highlighted suggestion index
+    pub(crate) search_refocus: bool, // request refocus on search bar after adding
+    pub(crate) options_visible: bool, // toggle options section below stocks
+    pub(crate) options_split: f32,    // fraction of height for stocks (0.3..0.9), rest for options
+    pub(crate) divider_dragging: bool, // true while dragging the stocks/options divider
+    pub(crate) divider_y: f32,        // screen Y of divider (set during render)
+    pub(crate) divider_total_h: f32,  // total available height for split calculation
     // Drag-and-drop state
-    dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
-    drag_start_pos: Option<egui::Pos2>,      // mouse position when drag started
-    drop_target: Option<(usize, usize)>,     // (section_idx, insert_before_item_idx)
-    drag_confirmed: bool,                    // true once mouse moved enough to confirm drag
+    pub(crate) dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
+    pub(crate) drag_start_pos: Option<egui::Pos2>,      // mouse position when drag started
+    pub(crate) drop_target: Option<(usize, usize)>,     // (section_idx, insert_before_item_idx)
+    pub(crate) drag_confirmed: bool,                    // true once mouse moved enough to confirm drag
     // Section editing
-    renaming_section: Option<u32>,           // section id being renamed
-    rename_buf: String,
+    pub(crate) renaming_section: Option<u32>,           // section id being renamed
+    pub(crate) rename_buf: String,
     #[allow(dead_code)]
-    color_picking_section: Option<u32>,      // section id picking color
+    pub(crate) color_picking_section: Option<u32>,      // section id picking color
     // Toolbar
     #[allow(dead_code)] toolbar_scroll: f32,
     #[allow(dead_code)] shortcuts_open: bool, // superseded by hotkey_editor_open
-    hotkey_editor_open: bool,
-    hotkey_editing_id: Option<u32>,
-    settings_open: bool,
-    font_scale: f32,
-    compact_mode: bool,
-    toolbar_auto_hide: bool,
-    toolbar_hover_time: Option<std::time::Instant>,
-    show_x_axis: bool,
-    show_y_axis: bool,
-    shared_x_axis: bool,
-    shared_y_axis: bool,
-    hotkeys: Vec<HotKey>,
-    trendline_filter_open: bool, // trendline filter dropdown
-    account_strip_open: bool, // account summary bar below toolbar
-    object_tree_open: bool, // object tree panel (drawings, indicators, overlays)
-    broadcast_mode: bool, // when true, toolbar actions apply to all panes
-    pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
+    pub(crate) hotkey_editor_open: bool,
+    pub(crate) hotkey_editing_id: Option<u32>,
+    pub(crate) settings_open: bool,
+    pub(crate) font_scale: f32,
+    pub(crate) compact_mode: bool,
+    pub(crate) toolbar_auto_hide: bool,
+    pub(crate) toolbar_hover_time: Option<std::time::Instant>,
+    pub(crate) show_x_axis: bool,
+    pub(crate) show_y_axis: bool,
+    pub(crate) shared_x_axis: bool,
+    pub(crate) shared_y_axis: bool,
+    pub(crate) hotkeys: Vec<HotKey>,
+    pub(crate) trendline_filter_open: bool, // trendline filter dropdown
+    pub(crate) account_strip_open: bool, // account summary bar below toolbar
+    pub(crate) object_tree_open: bool, // object tree panel (drawings, indicators, overlays)
+    pub(crate) broadcast_mode: bool, // when true, toolbar actions apply to all panes
+    pub(crate) pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
     // Watchlist filter
-    filter_open: bool,
-    filter_text: String,
-    filter_preset: String,
-    custom_filters: Vec<(String, f32, f32)>, // (name, min_change%, max_change%)
-    filter_min_change: f32,
-    filter_max_change: f32,
+    pub(crate) filter_open: bool,
+    pub(crate) filter_text: String,
+    pub(crate) filter_preset: String,
+    pub(crate) custom_filters: Vec<(String, f32, f32)>, // (name, min_change%, max_change%)
+    pub(crate) filter_min_change: f32,
+    pub(crate) filter_max_change: f32,
     #[allow(dead_code)] filter_min_rvol: f32,  // reserved for RVOL filter when data is available
     // Heatmap
-    heat_index: String,
-    heat_collapsed: std::collections::HashSet<String>,
-    heat_cols: u8,  // 1, 2, or 3 columns
-    heat_sort: i8,  // 0=default, 1=gainers first, -1=losers first
+    pub(crate) heat_index: String,
+    pub(crate) heat_collapsed: std::collections::HashSet<String>,
+    pub(crate) heat_cols: u8,  // 1, 2, or 3 columns
+    pub(crate) heat_sort: i8,  // 0=default, 1=gainers first, -1=losers first
     // Orders
-    orders_panel_open: bool,
-    order_entry_open: bool,
-    selected_order_ids: Vec<(usize, u32)>, // (pane_idx, order_id) for multi-select
+    pub(crate) orders_panel_open: bool,
+    pub(crate) order_entry_open: bool,
+    pub(crate) selected_order_ids: Vec<(usize, u32)>, // (pane_idx, order_id) for multi-select
     // Positions
-    positions: Vec<Position>,
+    pub(crate) positions: Vec<Position>,
     // Alerts
-    alerts: Vec<Alert>,
-    next_alert_id: u32,
+    pub(crate) alerts: Vec<Alert>,
+    pub(crate) next_alert_id: u32,
     #[allow(dead_code)]
-    alert_query: String,
+    pub(crate) alert_query: String,
     // Options chain
-    chain_symbol: String,
-    chain_sym_input: String,
-    chain_num_strikes: usize,     // legacy fallback
-    chain_far_dte: i32,
-    chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
-    chain_far: (Vec<OptionRow>, Vec<OptionRow>),   // (calls, puts) for far DTE
-    chain_select_mode: bool,
-    chain_loading: bool,       // true while fetching chain from ApexIB
-    chain_underlying_price: f32, // real-time underlying price from IB chain response
-    chain_frozen: bool,        // legacy fallback
-    chain_center_offset: i32,  // legacy fallback
+    pub(crate) chain_symbol: String,
+    pub(crate) chain_sym_input: String,
+    pub(crate) chain_num_strikes: usize,     // legacy fallback
+    pub(crate) chain_far_dte: i32,
+    pub(crate) chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
+    pub(crate) chain_far: (Vec<OptionRow>, Vec<OptionRow>),   // (calls, puts) for far DTE
+    pub(crate) chain_select_mode: bool,
+    pub(crate) chain_loading: bool,       // true while fetching chain from ApexIB
+    pub(crate) chain_underlying_price: f32, // real-time underlying price from IB chain response
+    pub(crate) chain_frozen: bool,        // legacy fallback
+    pub(crate) chain_center_offset: i32,  // legacy fallback
     // Per-chain independent controls
-    chain_0_num_strikes: usize,
-    chain_0_frozen: bool,
-    chain_0_offset: i32,
-    chain_0_strike_mode: StrikeMode,
-    chain_0_nmf: u8, // 0=near, 1=mid, 2=far
-    chain_far_num_strikes: usize,
-    chain_far_frozen: bool,
-    chain_far_offset: i32,
-    chain_far_strike_mode: StrikeMode,
-    chain_far_nmf: u8,
-    chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
+    pub(crate) chain_0_num_strikes: usize,
+    pub(crate) chain_0_frozen: bool,
+    pub(crate) chain_0_offset: i32,
+    pub(crate) chain_0_strike_mode: StrikeMode,
+    pub(crate) chain_0_nmf: u8, // 0=near, 1=mid, 2=far
+    pub(crate) chain_far_num_strikes: usize,
+    pub(crate) chain_far_frozen: bool,
+    pub(crate) chain_far_offset: i32,
+    pub(crate) chain_far_strike_mode: StrikeMode,
+    pub(crate) chain_far_nmf: u8,
+    pub(crate) chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
     // Saved options
-    saved_options: Vec<SavedOption>,
-    dte_filter: i32,
+    pub(crate) saved_options: Vec<SavedOption>,
+    pub(crate) dte_filter: i32,
     // Workspaces
-    active_workspace: String,
-    workspace_save_name: String,
-    pending_workspace_load: Option<String>,
+    pub(crate) active_workspace: String,
+    pub(crate) workspace_save_name: String,
+    pub(crate) pending_workspace_load: Option<String>,
     // Pane split ratios (for resizable panes)
-    pane_split_h: f32,  // primary vertical divider ratio
-    pane_split_v: f32,  // primary horizontal divider ratio
-    pane_split_h2: f32, // secondary vertical divider ratio (for 3-column layouts)
-    pane_split_v2: f32, // secondary horizontal divider ratio (for 3-row layouts)
-    pane_divider_dragging: bool,
+    pub(crate) pane_split_h: f32,  // primary vertical divider ratio
+    pub(crate) pane_split_v: f32,  // primary horizontal divider ratio
+    pub(crate) pane_split_h2: f32, // secondary vertical divider ratio (for 3-column layouts)
+    pub(crate) pane_split_v2: f32, // secondary horizontal divider ratio (for 3-row layouts)
+    pub(crate) pane_divider_dragging: bool,
     // Command palette
-    cmd_palette_open: bool,
-    cmd_palette_query: String,
-    cmd_palette_results: Vec<(String, String, String)>, // (symbol/cmd, name, type)
-    cmd_palette_sel: i32, // selected result index (-1 = none)
+    pub(crate) cmd_palette_open: bool,
+    pub(crate) cmd_palette_query: String,
+    pub(crate) cmd_palette_results: Vec<(String, String, String)>, // (symbol/cmd, name, type)
+    pub(crate) cmd_palette_sel: i32, // selected result index (-1 = none)
     // Layout favorites (shown as buttons in toolbar; rest in dropdown)
-    layout_favorites: Vec<String>,
-    layout_dropdown_open: bool,
-    pending_overlay_add: bool,
-    layout_dropdown_pos: egui::Pos2,
+    pub(crate) layout_favorites: Vec<String>,
+    pub(crate) layout_dropdown_open: bool,
+    pub(crate) pending_overlay_add: bool,
+    pub(crate) layout_dropdown_pos: egui::Pos2,
     // Pane templates (save/load indicator + toggle configs)
-    pane_templates: Vec<(String, serde_json::Value)>,  // (name, serialized pane config)
-    pane_template_name: String, // input buffer for naming a new template
+    pub(crate) pane_templates: Vec<(String, serde_json::Value)>,  // (name, serialized pane config)
+    pub(crate) pane_template_name: String, // input buffer for naming a new template
     // Discord chat panel
-    discord_open: bool,
-    discord_messages: Vec<DiscordMessage>,
-    discord_input: String,
-    discord_channel: String,  // currently selected channel display name
-    discord_authenticated: bool,
-    discord_username: String,
-    discord_user_id: String,
-    discord_guilds: Vec<crate::discord::DiscordGuild>,
-    discord_selected_guild: Option<String>,
-    discord_channels: Vec<crate::discord::DiscordChannel>,
-    discord_selected_channel: Option<String>,
-    discord_connecting: bool,
-    discord_guild_icons: std::collections::HashMap<String, egui::TextureHandle>,
-    discord_last_msg_id: Option<String>,
-    discord_poll_timer: Option<std::time::Instant>,
-    discord_channels_loading: bool,
-    discord_messages_loading: bool,
+    pub(crate) discord_open: bool,
+    pub(crate) discord_messages: Vec<DiscordMessage>,
+    pub(crate) discord_input: String,
+    pub(crate) discord_channel: String,  // currently selected channel display name
+    pub(crate) discord_authenticated: bool,
+    pub(crate) discord_username: String,
+    pub(crate) discord_user_id: String,
+    pub(crate) discord_guilds: Vec<crate::discord::DiscordGuild>,
+    pub(crate) discord_selected_guild: Option<String>,
+    pub(crate) discord_channels: Vec<crate::discord::DiscordChannel>,
+    pub(crate) discord_selected_channel: Option<String>,
+    pub(crate) discord_connecting: bool,
+    pub(crate) discord_guild_icons: std::collections::HashMap<String, egui::TextureHandle>,
+    pub(crate) discord_last_msg_id: Option<String>,
+    pub(crate) discord_poll_timer: Option<std::time::Instant>,
+    pub(crate) discord_channels_loading: bool,
+    pub(crate) discord_messages_loading: bool,
     // Time & Sales
-    tape_open: bool,
-    tape_entries: Vec<TapeRow>,
+    pub(crate) tape_open: bool,
+    pub(crate) tape_entries: Vec<TapeRow>,
     // News feed panel
-    news_open: bool,
-    news_items: Vec<NewsItem>,
-    news_filter_symbol: bool,  // true = filter to active chart symbol
+    pub(crate) news_open: bool,
+    pub(crate) news_items: Vec<NewsItem>,
+    pub(crate) news_filter_symbol: bool,  // true = filter to active chart symbol
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];

@@ -11,3 +11,5 @@ pub mod orders;
 pub mod watchlist;
 pub mod panels;
 pub mod picker;
+pub mod tape_panel;
+pub mod news_panel;
