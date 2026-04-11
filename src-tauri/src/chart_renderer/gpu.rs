@@ -3236,6 +3236,11 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     watchlist.news_open = !watchlist.news_open;
                 }
 
+                // Time & Sales toggle
+                if tb_btn(ui, Icon::PULSE, watchlist.tape_open, t).on_hover_text("Time & Sales").clicked() {
+                    watchlist.tape_open = !watchlist.tape_open;
+                }
+
                 ui.add(egui::Separator::default().spacing(4.0));
 
                 // Object tree panel
