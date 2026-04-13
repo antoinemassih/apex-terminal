@@ -1233,7 +1233,8 @@ pub(crate) struct Chart {
     pub(crate) show_gamma: bool,
     // Hit-test highlighting — flash indicators/drawings when price touches them
     pub(crate) hit_highlight: bool,
-    pub(crate) hit_highlights: Vec<(u32, std::time::Instant)>, // (indicator_id or drawing hash, when hit detected)
+    pub(crate) hit_highlights: Vec<(u32, std::time::Instant)>, // (key, when hit detected)
+    pub(crate) hit_cooldowns: Vec<(u32, usize)>, // (key, bar_index when last triggered) — cooldown for 5 bars
     pub(crate) show_events: bool,
     pub(crate) event_markers: Vec<EventMarker>,
     pub(crate) show_strikes_overlay: bool, // show option strikes on the chart
@@ -1360,7 +1361,7 @@ impl Chart {
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, show_auto_fib: false, swing_leg_mode: 0,
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
-            show_gamma: false, hit_highlight: false, hit_highlights: vec![],
+            show_gamma: false, hit_highlight: false, hit_highlights: vec![], hit_cooldowns: vec![],
             show_events: false, event_markers: vec![],
             show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             show_darkpool: false, darkpool_prints: vec![],
@@ -6165,7 +6166,7 @@ fn render_chart_pane(
         // Generous threshold: 50% of candle range OR 0.3% of price, whichever is larger
         let touch_threshold = (price_range * 0.5).max(last_bar.close * 0.003);
         let now_inst = std::time::Instant::now();
-        let flash_duration = std::time::Duration::from_secs(2);
+        let flash_duration = std::time::Duration::from_millis(800);
 
         // Check overlay indicators (MAs, BB bands, etc.)
         for ind in &chart.indicators {
@@ -6175,8 +6176,10 @@ fn render_chart_pane(
                 if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
                     // Hit detected — register if not already tracked
                     let key = ind.id;
-                    if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
                         chart.hit_highlights.push((key, now_inst));
+                        chart.hit_cooldowns.push((key, n - 1));
                     }
                 }
             }
@@ -6184,8 +6187,10 @@ fn render_chart_pane(
             if let Some(&val) = ind.values2.get(n - 1) {
                 if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
                     let key = ind.id + 10000;
-                    if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
                         chart.hit_highlights.push((key, now_inst));
+                        chart.hit_cooldowns.push((key, n - 1));
                     }
                 }
             }
@@ -6193,8 +6198,10 @@ fn render_chart_pane(
             if let Some(&val) = ind.values3.get(n - 1) {
                 if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
                     let key = ind.id + 20000;
-                    if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
                         chart.hit_highlights.push((key, now_inst));
+                        chart.hit_cooldowns.push((key, n - 1));
                     }
                 }
             }
@@ -6211,8 +6218,10 @@ fn render_chart_pane(
                         let trend_price = *price0 + (*price1 - *price0) * frac as f32;
                         if trend_price >= price_l - touch_threshold && trend_price <= price_h + touch_threshold {
                             let key = 50000 + di as u32;
-                            if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                            let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                            if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
                                 chart.hit_highlights.push((key, now_inst));
+                                chart.hit_cooldowns.push((key, n - 1));
                             }
                         }
                     }
@@ -6222,21 +6231,24 @@ fn render_chart_pane(
             if let super::DrawingKind::HLine { price } = &drawing.kind {
                 if *price >= price_l - touch_threshold && *price <= price_h + touch_threshold {
                     let key = 50000 + di as u32;
-                    if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
                         chart.hit_highlights.push((key, now_inst));
+                        chart.hit_cooldowns.push((key, n - 1));
                     }
                 }
             }
         }
 
-        // GC expired highlights
+        // GC expired highlights and old cooldowns
         chart.hit_highlights.retain(|(_, t)| t.elapsed() < flash_duration);
+        chart.hit_cooldowns.retain(|(_, bar)| (n - 1).saturating_sub(*bar) < 20);
 
         // Render flash: draw the indicator/drawing line AGAIN on top in white at 3x thickness
         let start_i = vs as u32;
         for &(key, ref hit_time) in &chart.hit_highlights {
             let elapsed = hit_time.elapsed().as_secs_f32();
-            let alpha = ((1.0 - elapsed / 2.0) * 255.0).clamp(0.0, 255.0) as u8;
+            let alpha = ((1.0 - elapsed / 0.8) * 255.0).clamp(0.0, 255.0) as u8;
             if alpha < 5 { continue; }
             let flash_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
 
@@ -6254,7 +6266,7 @@ fn render_chart_pane(
                         }
                     }
                     if pts.len() > 1 {
-                        painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 3.0, flash_color)));
+                        painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 2.0, flash_color)));
                     }
                 }
             } else {
@@ -6266,7 +6278,7 @@ fn render_chart_pane(
                             let fy = py(*price);
                             if fy.is_finite() {
                                 painter.line_segment([egui::pos2(rect.left(), fy), egui::pos2(rect.left() + cw, fy)],
-                                    egui::Stroke::new(drawing.thickness * 3.0, flash_color));
+                                    egui::Stroke::new(drawing.thickness * 2.0, flash_color));
                             }
                         }
                         super::DrawingKind::TrendLine { price0, time0, price1, time1 } => {
@@ -6276,7 +6288,7 @@ fn render_chart_pane(
                             let x1 = bx(bar1); let y1 = py(*price1);
                             if y0.is_finite() && y1.is_finite() {
                                 painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)],
-                                    egui::Stroke::new(drawing.thickness * 3.0, flash_color));
+                                    egui::Stroke::new(drawing.thickness * 2.0, flash_color));
                             }
                         }
                         _ => {}
