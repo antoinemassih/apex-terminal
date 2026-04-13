@@ -16,14 +16,39 @@ pub fn mono_bold(text: &str, size: f32, color: Color32) -> RichText {
 
 /// Standard toolbar button — 11px monospace, 3px radius, themed colors, pointer cursor.
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
-    let bg = if active { Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 51) } else { toolbar_bg };
+    let hovered_now = ui.rect_contains_pointer(ui.cursor());
+    let bg = if active {
+        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 51)
+    } else {
+        toolbar_bg
+    };
     let fg = if active { accent } else { dim };
-    let border = if active { Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 136) } else { toolbar_border };
+    let border = if active {
+        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 136)
+    } else {
+        toolbar_border
+    };
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).color(fg))
         .fill(bg).stroke(Stroke::new(1.0, border)).corner_radius(3.0)
         .min_size(egui::vec2(0.0, 22.0)));
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        // Hover highlight — brighter background + accent border glow
+        let hover_bg = if active {
+            Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 80)
+        } else {
+            Color32::from_rgba_unmultiplied(
+                toolbar_border.r().saturating_add(30),
+                toolbar_border.g().saturating_add(30),
+                toolbar_border.b().saturating_add(30),
+                100,
+            )
+        };
+        ui.painter().rect_filled(resp.rect, 3.0, hover_bg);
+        // Redraw the icon text on top so it's visible over the highlight
+        let hover_fg = if active { accent } else { Color32::from_rgb(220, 220, 230) };
+        ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
+            label, egui::FontId::monospace(11.0), hover_fg);
     }
     resp
 }

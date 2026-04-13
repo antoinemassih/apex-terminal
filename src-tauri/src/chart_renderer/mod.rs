@@ -174,6 +174,13 @@ pub enum ChartCommand {
         time: i64,
         is_buy: bool,
     },
+    /// Scanner bulk price update (symbol, price, prev_close, volume)
+    ScannerPrice {
+        symbol: String,
+        price: f32,
+        prev_close: f32,
+        volume: u64,
+    },
     /// Signal drawings from analysis server
     SignalDrawings {
         symbol: String,
@@ -194,6 +201,11 @@ pub enum ChartCommand {
         calls: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>, // strike, last, bid, ask, vol, oi, iv, itm, contract
         puts: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
     },
+    /// Event markers (earnings, dividends, splits, economic) for overlay display
+    EventData {
+        symbol: String,
+        events: Vec<(i64, String, String, String, i8)>, // (timestamp, event_type, label, details, impact)
+    },
     /// Options chain data for the chart overlay (independent of sidebar chain tab)
     OverlayChainData {
         symbol: String,
@@ -211,6 +223,11 @@ pub enum ChartCommand {
         symbol: String,
         bars: Vec<Bar>,
         timestamps: Vec<i64>,
+    },
+    /// Dark pool / off-exchange print data
+    DarkPoolData {
+        symbol: String,
+        prints: Vec<(f32, u64, i64, i8)>, // (price, size, timestamp, side: 1=buy/-1=sell/0=unknown)
     },
 }
 

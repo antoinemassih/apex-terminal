@@ -55,10 +55,9 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     ui.label(egui::RichText::new(ind.display_name()).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220, 220, 230)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(4.0);
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim.gamma_multiply(0.5)))
-                            .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)).clicked() {
-                            close_editor = true;
-                        }
+                        let xr = ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim.gamma_multiply(0.5)))
+                            .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0));
+                        if xr.on_hover_text("Close").clicked() { close_editor = true; }
                     });
                 });
                 // Make header draggable
@@ -489,18 +488,18 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     ui.add_space(m);
                     let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
                     let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
-                    if ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(11.0).color(vis_fg))
+                    let vr = ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(11.0).color(vis_fg))
                         .fill(if ind.visible { color_alpha(t.toolbar_border, 20) } else { egui::Color32::TRANSPARENT })
-                        .corner_radius(3.0).min_size(egui::vec2(24.0, 22.0))).clicked() {
-                        ind.visible = !ind.visible;
-                    }
+                        .corner_radius(3.0).min_size(egui::vec2(24.0, 22.0)));
+                    if vr.on_hover_text("Toggle Visibility").clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         let del_color = egui::Color32::from_rgb(224, 85, 96);
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(11.0).color(del_color))
+                        let dr = ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(11.0).color(del_color))
                             .fill(color_alpha(del_color, 15)).corner_radius(3.0)
                             .stroke(egui::Stroke::new(0.5, color_alpha(del_color, 60)))
-                            .min_size(egui::vec2(24.0, 22.0))).clicked() {
+                            .min_size(egui::vec2(24.0, 22.0)));
+                        if dr.on_hover_text("Delete Indicator").clicked() {
                             delete_id = Some(edit_id); close_editor = true;
                         }
                     });

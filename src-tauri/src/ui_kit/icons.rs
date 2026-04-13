@@ -72,10 +72,13 @@ impl Icon {
     pub const STAR_FILL: &'static str = ph_fill::STAR;
     pub const CHAT_DOTS: &'static str = ph::CHAT_DOTS;
     pub const NEWSPAPER: &'static str = ph::NEWSPAPER;
+    pub const CODE: &'static str = ph::CODE;
+    pub const TERMINAL: &'static str = ph::TERMINAL;
 
     // Chart
     pub const CHART_LINE: &'static str = ph::CHART_LINE;
     pub const CHART_BAR: &'static str = ph::CHART_BAR;
+    pub const MAGNIFYING_GLASS: &'static str = ph::MAGNIFYING_GLASS;
     pub const MAGNIFYING_GLASS_PLUS: &'static str = ph::MAGNIFYING_GLASS_PLUS;
 
     // Bold variants for toolbar (more visible at small sizes)

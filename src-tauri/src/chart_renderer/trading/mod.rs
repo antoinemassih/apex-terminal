@@ -1,6 +1,8 @@
 //! Trading-related types and standalone functions extracted from gpu.rs.
 //! Orders, account data, positions, alerts, triggers, and market session helpers.
 
+pub mod order_manager;
+
 use std::sync::{Mutex, OnceLock};
 
 /// ApexIB endpoint configuration (duplicated from gpu.rs where it's also used)
@@ -25,6 +27,9 @@ pub(crate) struct OrderLevel {
     // Option trigger metadata (only for TriggerBuy/TriggerSell on underlying chart)
     pub option_symbol: Option<String>,  // e.g. "SPY 560C 0DTE"
     pub option_con_id: Option<i64>,
+    // Trailing stop visualization
+    pub trail_amount: Option<f32>,
+    pub trail_percent: Option<f32>,
 }
 
 impl OrderLevel {
