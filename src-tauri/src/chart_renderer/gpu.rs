@@ -1231,6 +1231,9 @@ pub(crate) struct Chart {
     pub(crate) overlay_editing_idx: Option<usize>, // Some(i) = editing existing overlay, None = adding new
     pub(crate) overlay_input: String,
     pub(crate) show_gamma: bool,
+    // Hit-test highlighting — flash indicators/drawings when price touches them
+    pub(crate) hit_highlight: bool,
+    pub(crate) hit_highlights: Vec<(u32, std::time::Instant)>, // (indicator_id or drawing hash, when hit detected)
     pub(crate) show_events: bool,
     pub(crate) event_markers: Vec<EventMarker>,
     pub(crate) show_strikes_overlay: bool, // show option strikes on the chart
@@ -1357,7 +1360,8 @@ impl Chart {
             show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, show_auto_fib: false, swing_leg_mode: 0,
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
-            show_gamma: false, show_events: false, event_markers: vec![],
+            show_gamma: false, hit_highlight: false, hit_highlights: vec![],
+            show_events: false, event_markers: vec![],
             show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             show_darkpool: false, darkpool_prints: vec![],
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
@@ -3433,6 +3437,13 @@ fn render_toolbar(
 
             });
 
+                ui.separator();
+                // Hit Highlight toggle
+                let hh = panes[ap].hit_highlight;
+                if ui.selectable_label(hh, egui::RichText::new(format!("{} Hit Highlight", check(hh))).monospace().size(10.0)).clicked() {
+                    panes[ap].hit_highlight = !panes[ap].hit_highlight;
+                }
+
             // Tools dropdown
             ui.menu_button(egui::RichText::new("Tools").monospace().size(10.0).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
@@ -3603,7 +3614,7 @@ fn render_toolbar(
                                 "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
                                 "show_auto_sr": p.show_auto_sr, "show_auto_fib": p.show_auto_fib,
                                 "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
-                                "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "show_pnl_curve": p.show_pnl_curve,
+                                "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "hit_highlight": p.hit_highlight, "show_pnl_curve": p.show_pnl_curve,
                                 "candle_mode": match p.candle_mode {
                                     CandleMode::Standard => "std", CandleMode::Violin => "vln",
                                     CandleMode::Gradient => "grd", CandleMode::ViolinGradient => "vg",
@@ -6145,6 +6156,141 @@ fn render_chart_pane(
         }
     }
 
+    // ── Hit-test highlighting: flash indicators/drawings when current price touches ──
+    if chart.hit_highlight && n > 1 {
+        let last_bar = &chart.bars[n - 1];
+        let price_h = last_bar.high;
+        let price_l = last_bar.low;
+        let price_range = (price_h - price_l).max(0.01);
+        // Generous threshold: 50% of candle range OR 0.3% of price, whichever is larger
+        let touch_threshold = (price_range * 0.5).max(last_bar.close * 0.003);
+        let now_inst = std::time::Instant::now();
+        let flash_duration = std::time::Duration::from_secs(2);
+
+        // Check overlay indicators (MAs, BB bands, etc.)
+        for ind in &chart.indicators {
+            if !ind.visible || ind.kind.category() != IndicatorCategory::Overlay { continue; }
+            // Check primary line (MA value at last bar)
+            if let Some(&val) = ind.values.get(n - 1) {
+                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
+                    // Hit detected — register if not already tracked
+                    let key = ind.id;
+                    if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                        chart.hit_highlights.push((key, now_inst));
+                    }
+                }
+            }
+            // Check upper band (BB/KC)
+            if let Some(&val) = ind.values2.get(n - 1) {
+                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
+                    let key = ind.id + 10000;
+                    if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                        chart.hit_highlights.push((key, now_inst));
+                    }
+                }
+            }
+            // Check lower band
+            if let Some(&val) = ind.values3.get(n - 1) {
+                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
+                    let key = ind.id + 20000;
+                    if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                        chart.hit_highlights.push((key, now_inst));
+                    }
+                }
+            }
+        }
+
+        // Check trendlines
+        for (di, drawing) in chart.drawings.iter().enumerate() {
+            if let super::DrawingKind::TrendLine { price0, time0, price1, time1 } = &drawing.kind {
+                // Interpolate trendline price at the last bar's timestamp
+                if let Some(&last_ts) = chart.timestamps.last() {
+                    let t0 = *time0 as f64; let t1 = *time1 as f64; let tc = last_ts as f64;
+                    if (t1 - t0).abs() > 1.0 {
+                        let frac = (tc - t0) / (t1 - t0);
+                        let trend_price = *price0 + (*price1 - *price0) * frac as f32;
+                        if trend_price >= price_l - touch_threshold && trend_price <= price_h + touch_threshold {
+                            let key = 50000 + di as u32;
+                            if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                                chart.hit_highlights.push((key, now_inst));
+                            }
+                        }
+                    }
+                }
+            }
+            // HLine check
+            if let super::DrawingKind::HLine { price } = &drawing.kind {
+                if *price >= price_l - touch_threshold && *price <= price_h + touch_threshold {
+                    let key = 50000 + di as u32;
+                    if !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                        chart.hit_highlights.push((key, now_inst));
+                    }
+                }
+            }
+        }
+
+        // GC expired highlights
+        chart.hit_highlights.retain(|(_, t)| t.elapsed() < flash_duration);
+
+        // Render flash: draw the indicator/drawing line AGAIN on top in white at 3x thickness
+        let start_i = vs as u32;
+        for &(key, ref hit_time) in &chart.hit_highlights {
+            let elapsed = hit_time.elapsed().as_secs_f32();
+            let alpha = ((1.0 - elapsed / 2.0) * 255.0).clamp(0.0, 255.0) as u8;
+            if alpha < 5 { continue; }
+            let flash_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
+
+            if key < 50000 {
+                // Indicator — trace the actual polyline
+                let (ind_id, vals_idx) = if key < 10000 { (key, 0u8) }
+                    else if key < 20000 { (key - 10000, 1) }
+                    else { (key - 20000, 2) };
+                if let Some(ind) = chart.indicators.iter().find(|i| i.id == ind_id) {
+                    let vals = match vals_idx { 1 => &ind.values2, 2 => &ind.values3, _ => &ind.values };
+                    let mut pts: Vec<egui::Pos2> = Vec::new();
+                    for i in start_i..end {
+                        if let Some(&v) = vals.get(i as usize) {
+                            if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); }
+                        }
+                    }
+                    if pts.len() > 1 {
+                        painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 3.0, flash_color)));
+                    }
+                }
+            } else {
+                // Drawing — HLine or TrendLine
+                let di = (key - 50000) as usize;
+                if let Some(drawing) = chart.drawings.get(di) {
+                    match &drawing.kind {
+                        super::DrawingKind::HLine { price } => {
+                            let fy = py(*price);
+                            if fy.is_finite() {
+                                painter.line_segment([egui::pos2(rect.left(), fy), egui::pos2(rect.left() + cw, fy)],
+                                    egui::Stroke::new(drawing.thickness * 3.0, flash_color));
+                            }
+                        }
+                        super::DrawingKind::TrendLine { price0, time0, price1, time1 } => {
+                            let bar0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                            let bar1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                            let x0 = bx(bar0); let y0 = py(*price0);
+                            let x1 = bx(bar1); let y1 = py(*price1);
+                            if y0.is_finite() && y1.is_finite() {
+                                painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)],
+                                    egui::Stroke::new(drawing.thickness * 3.0, flash_color));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if !chart.hit_highlights.is_empty() { ctx.request_repaint(); }
+        ctx.request_repaint();
+    }
+
+    // (hit flash rendered as white overlay on top of the indicator line)
+
     // ── Strikes overlay circle button (O) on chart — always visible ──
     let ovl_chart_x = rect.left() + cw - 18.0;
     let ovl_chart_y = rect.top() + pt + 18.0;
@@ -6609,8 +6755,9 @@ fn render_chart_pane(
         for ind in &chart.indicators {
             if !ind.visible || ind.kind.category() != IndicatorCategory::Overlay { continue; }
             let color = hex_to_color(&ind.color, 1.0);
-            let dim_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 120);
-            let fill_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 18);
+            let base_rgb = hex_to_color(&ind.color, 1.0);
+            let dim_color = egui::Color32::from_rgba_unmultiplied(base_rgb.r(), base_rgb.g(), base_rgb.b(), 120);
+            let fill_color = egui::Color32::from_rgba_unmultiplied(base_rgb.r(), base_rgb.g(), base_rgb.b(), 18);
             let start_i = vs as u32;
 
             // ── Bollinger Bands ──
@@ -14349,7 +14496,7 @@ impl ApplicationHandler for App {
                                         chart.show_auto_fib = gb("show_auto_fib", false);
                                         chart.swing_leg_mode = p.get("swing_leg_mode").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
                                         chart.show_footprint = gb("show_footprint", false);
-                                        chart.show_gamma = gb("show_gamma", false);
+                                        chart.show_gamma = gb("show_gamma", false); chart.hit_highlight = gb("hit_highlight", false);
                                         chart.show_darkpool = gb("show_darkpool", false);
                                         chart.show_events = gb("show_events", false);
                                         chart.show_pnl_curve = gb("show_pnl_curve", false);
@@ -14861,7 +15008,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
             "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
             "show_auto_sr": p.show_auto_sr, "show_auto_fib": p.show_auto_fib, "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
-            "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events,
+            "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "hit_highlight": p.hit_highlight,
             "show_pnl_curve": p.show_pnl_curve,
             "link_group": p.link_group,
             "session_shading": p.session_shading,
@@ -14939,7 +15086,7 @@ fn save_state(panes: &[Chart], layout: Layout) {
             "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
             "show_auto_sr": p.show_auto_sr, "show_auto_fib": p.show_auto_fib, "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
-            "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events,
+            "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "hit_highlight": p.hit_highlight,
             "show_pnl_curve": p.show_pnl_curve,
             "link_group": p.link_group,
             // Session shading
@@ -15030,7 +15177,7 @@ fn load_state() -> (Vec<Chart>, Layout) {
             chart.show_auto_fib = gb("show_auto_fib", false);
             chart.swing_leg_mode = p.get("swing_leg_mode").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
             chart.show_footprint = gb("show_footprint", false);
-            chart.show_gamma = gb("show_gamma", false);
+            chart.show_gamma = gb("show_gamma", false); chart.hit_highlight = gb("hit_highlight", false);
             chart.show_darkpool = gb("show_darkpool", false);
             chart.show_events = gb("show_events", false);
             chart.show_pnl_curve = gb("show_pnl_curve", false);
