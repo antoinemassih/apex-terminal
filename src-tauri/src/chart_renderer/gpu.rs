@@ -1098,6 +1098,8 @@ pub(crate) struct Chart {
     pub(crate) next_indicator_id: u32,
     pub(crate) editing_indicator: Option<u32>, // id of indicator being edited
     pub(crate) vs: f32, pub(crate) vc: u32, pub(crate) price_lock: Option<(f32,f32)>,
+    pub(crate) drag_zoom_active: bool,
+    pub(crate) drag_zoom_start: Option<egui::Pos2>,
     pub(crate) auto_scroll: bool, pub(crate) last_input: std::time::Instant,
     pub(crate) history_loading: bool, // true while fetching older bars
     pub(crate) history_exhausted: bool, // true if no more history available
@@ -1323,7 +1325,8 @@ impl Chart {
                 Indicator::new(3, IndicatorType::EMA, 12, "#f0d732"),
                 Indicator::new(4, IndicatorType::EMA, 26, "#b266e6"),
             ],
-            vs: 0.0, vc: 200, price_lock: None, auto_scroll: true, history_loading: false, history_exhausted: false,
+            vs: 0.0, vc: 200, price_lock: None, drag_zoom_active: false, drag_zoom_start: None,
+            auto_scroll: true, history_loading: false, history_exhausted: false,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
@@ -12555,7 +12558,7 @@ fn render_chart_pane(
             else if i.key_pressed(egui::Key::C) && !i.modifiers.command { Some("channel") }
             else if i.key_pressed(egui::Key::V) && !i.modifiers.command { Some("vline") }
             else if i.key_pressed(egui::Key::R) { Some("ray") }
-            else if i.key_pressed(egui::Key::Z) && !i.modifiers.command { Some("hzone") }
+            // Z is now drag-zoom (handled separately), not hzone
             else if i.key_pressed(egui::Key::P) { Some("pitchfork") }
             else if i.key_pressed(egui::Key::G) { Some("gannfan") }
             else if i.key_pressed(egui::Key::X) { Some("fibext") }
