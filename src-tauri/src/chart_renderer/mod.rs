@@ -23,6 +23,92 @@ pub use types::*;
 pub enum LineStyle { Solid, Dashed, Dotted }
 
 /// Drawing on the chart
+/// Significance data for a drawing (populated by backend/ApexSignals)
+#[derive(Debug, Clone)]
+pub struct DrawingSignificance {
+    pub score: f32,            // 0.0-10.0 overall score
+    pub touches: u32,          // number of price touches
+    pub timeframe: String,     // source timeframe e.g. "1D", "4H"
+    pub age_days: u32,         // how old the drawing is
+    pub volume_index: f32,     // avg volume at touches relative to normal (1.0 = average)
+    pub last_tested_bars: u32, // how many bars ago price last touched it
+    pub strength: String,      // "WEAK", "MODERATE", "STRONG", "CRITICAL"
+}
+
+impl DrawingSignificance {
+    /// Generate placeholder significance from basic bar analysis
+    pub fn estimate(kind: &DrawingKind, timestamps: &[i64], bars: &[Bar]) -> Option<Self> {
+        if bars.is_empty() || timestamps.is_empty() { return None; }
+        let n = bars.len();
+        let threshold_pct = 0.003; // 0.3% proximity = touch
+
+        // Get the price function for this drawing at each bar
+        let price_at_bar = |i: usize| -> Option<f32> {
+            match kind {
+                DrawingKind::HLine { price } => Some(*price),
+                DrawingKind::TrendLine { price0, time0, price1, time1 } => {
+                    let t0 = *time0 as f64; let t1 = *time1 as f64;
+                    if (t1 - t0).abs() < 1.0 { return None; }
+                    let tc = timestamps.get(i).copied()? as f64;
+                    let frac = (tc - t0) / (t1 - t0);
+                    Some(*price0 + (*price1 - *price0) * frac as f32)
+                }
+                _ => None,
+            }
+        };
+
+        let mut touches = 0u32;
+        let mut last_touch_bar = 0usize;
+        let mut vol_sum = 0.0f32;
+        let mut vol_count = 0u32;
+        let avg_vol: f32 = bars.iter().map(|b| b.volume).sum::<f32>() / n as f32;
+
+        for i in 0..n {
+            if let Some(level_price) = price_at_bar(i) {
+                if level_price <= 0.0 { continue; }
+                let threshold = level_price * threshold_pct;
+                let bar = &bars[i];
+                // Touch = bar high/low within threshold of the level
+                if (bar.high - level_price).abs() < threshold || (bar.low - level_price).abs() < threshold {
+                    touches += 1;
+                    last_touch_bar = i;
+                    vol_sum += bar.volume;
+                    vol_count += 1;
+                }
+            }
+        }
+
+        if touches == 0 { return None; }
+
+        let volume_index = if vol_count > 0 && avg_vol > 0.0 { (vol_sum / vol_count as f32) / avg_vol } else { 1.0 };
+        let last_tested_bars = (n - 1).saturating_sub(last_touch_bar) as u32;
+
+        // Age in days (approximate from timestamps)
+        let age_days = if timestamps.len() >= 2 {
+            let first = timestamps[0]; let last = *timestamps.last().unwrap();
+            ((last - first) as f64 / 86400.0).ceil() as u32
+        } else { 0 };
+
+        // Score: weighted combination
+        let touch_score = (touches as f32 * 1.5).min(5.0);
+        let vol_score = (volume_index * 1.5).min(2.5);
+        let recency_score = if last_tested_bars < 5 { 2.0 } else if last_tested_bars < 20 { 1.0 } else { 0.5 };
+        let score = (touch_score + vol_score + recency_score).min(10.0);
+
+        let strength = if score >= 7.0 { "CRITICAL" } else if score >= 5.0 { "STRONG" } else if score >= 3.0 { "MODERATE" } else { "WEAK" };
+
+        Some(Self {
+            score,
+            touches,
+            timeframe: String::new(), // filled by backend
+            age_days,
+            volume_index,
+            last_tested_bars,
+            strength: strength.to_string(),
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Drawing {
     pub id: String,
@@ -36,11 +122,12 @@ pub struct Drawing {
     pub extend_right: bool, // extend trendline/ray to right chart edge
     pub locked: bool,       // prevent accidental moves
     pub alert_enabled: bool, // show alert bell indicator
+    pub significance: Option<DrawingSignificance>, // backend-populated or estimated
 }
 
 impl Drawing {
     pub fn new(id: String, kind: DrawingKind) -> Self {
-        Self { id, kind, color: "#4a9eff".into(), opacity: 1.0, line_style: LineStyle::Solid, thickness: 1.5, group_id: "default".into(), extend_left: false, extend_right: false, locked: false, alert_enabled: false }
+        Self { id, kind, color: "#4a9eff".into(), opacity: 1.0, line_style: LineStyle::Solid, thickness: 1.5, group_id: "default".into(), extend_left: false, extend_right: false, locked: false, alert_enabled: false, significance: None }
     }
 }
 

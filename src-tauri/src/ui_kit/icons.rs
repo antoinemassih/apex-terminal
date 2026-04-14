@@ -58,6 +58,8 @@ impl Icon {
     pub const SIDEBAR: &'static str = ph::SIDEBAR;
     pub const TAG: &'static str = ph::TAG;
     pub const CROSSHAIR: &'static str = ph::CROSSHAIR;
+    pub const LOCK: &'static str = ph::LOCK;
+    pub const LOCK_OPEN: &'static str = ph::LOCK_OPEN;
     pub const LIGHTNING: &'static str = ph::LIGHTNING;
     pub const RADIO_BUTTON: &'static str = ph::RADIO_BUTTON;
     pub const DOT: &'static str = ph::DOT_OUTLINE;
