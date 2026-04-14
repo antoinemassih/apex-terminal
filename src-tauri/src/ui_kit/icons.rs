@@ -61,6 +61,8 @@ impl Icon {
     pub const LOCK: &'static str = ph::LOCK;
     pub const LOCK_OPEN: &'static str = ph::LOCK_OPEN;
     pub const LIGHTNING: &'static str = ph::LIGHTNING;
+    pub const BELL: &'static str = ph::BELL;
+    pub const BELL_RINGING: &'static str = ph::BELL_RINGING;
     pub const RADIO_BUTTON: &'static str = ph::RADIO_BUTTON;
     pub const DOT: &'static str = ph::DOT_OUTLINE;
     pub const CIRCLE: &'static str = ph::CIRCLE;
@@ -76,6 +78,7 @@ impl Icon {
     pub const NEWSPAPER: &'static str = ph::NEWSPAPER;
     pub const CODE: &'static str = ph::CODE;
     pub const TERMINAL: &'static str = ph::TERMINAL;
+    pub const CAMERA: &'static str = ph::CAMERA;
 
     // Chart
     pub const CHART_LINE: &'static str = ph::CHART_LINE;
@@ -92,6 +95,13 @@ impl Icon {
     pub const TRASH_BOLD: &'static str = ph_bold::TRASH;
     pub const PLAY_BOLD: &'static str = ph_bold::PLAY;
     pub const X_BOLD: &'static str = ph_bold::X;
+
+    // Media / Replay controls
+    pub const SKIP_BACK: &'static str = ph::SKIP_BACK;
+    pub const SKIP_FORWARD: &'static str = ph::SKIP_FORWARD;
+    pub const CARET_LEFT: &'static str = ph::CARET_LEFT;
+    pub const FAST_FORWARD: &'static str = ph::FAST_FORWARD;
+    pub const REWIND: &'static str = ph::REWIND;
 
     /// Render an icon button at standard size (16px)
     pub fn button(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {

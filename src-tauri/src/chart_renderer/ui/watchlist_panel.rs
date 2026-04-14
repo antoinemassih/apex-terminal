@@ -655,7 +655,7 @@ if watchlist.open {
                                     let item_avg_daily_range = item.avg_daily_range;
                                     let item_earnings_days = item.earnings_days;
                                     let item_alert_triggered = item.alert_triggered;
-                                    let item_price_history = item.price_history.clone();
+                                    let _item_price_history = item.price_history.clone();
                                     let is_dragged = drag_confirmed && dragging == Some((si, ii));
 
                                     // Skip rendering the dragged item in-place (it's shown as floating)
@@ -872,25 +872,6 @@ if watchlist.open {
                                         let price_x = rect.right() - 24.0;
                                         painter.text(egui::pos2(price_x, y_c), egui::Align2::RIGHT_CENTER,
                                             &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.6));
-
-                                        // ── Sparkline (tiny inline price chart) ──
-                                        if item_price_history.len() >= 8 { // need enough points for a visible chart
-                                            let spark_w = 40.0_f32;
-                                            let spark_h = 14.0_f32;
-                                            let spark_x = mid_x + change_str.len() as f32 * 8.0 + 6.0;
-                                            let spark_top = y_c - spark_h / 2.0;
-                                            let pmin = item_price_history.iter().cloned().fold(f32::MAX, f32::min);
-                                            let pmax = item_price_history.iter().cloned().fold(f32::MIN, f32::max);
-                                            let prng = pmax - pmin;
-                                            if prng < 0.001 { continue; } // skip flat lines
-                                            let spark_col = if *item_price_history.last().unwrap() >= *item_price_history.first().unwrap() { t.bull } else { t.bear };
-                                            let pts: Vec<egui::Pos2> = item_price_history.iter().enumerate().map(|(pi, &pv)| {
-                                                let px = spark_x + (pi as f32 / (item_price_history.len() - 1) as f32) * spark_w;
-                                                let spy = spark_top + spark_h - ((pv - pmin) / prng) * spark_h;
-                                                egui::pos2(px, spy)
-                                            }).collect();
-                                            painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0, color_alpha(spark_col, 160))));
-                                        }
 
                                         // Faint row separator line
                                         painter.line_segment(

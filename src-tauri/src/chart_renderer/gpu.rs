@@ -1098,6 +1098,7 @@ pub(crate) struct Chart {
     pub(crate) next_indicator_id: u32,
     pub(crate) editing_indicator: Option<u32>, // id of indicator being edited
     pub(crate) vs: f32, pub(crate) vc: u32, pub(crate) price_lock: Option<(f32,f32)>,
+    pub(crate) log_scale: bool,
     pub(crate) drag_zoom_active: bool,
     pub(crate) drag_zoom_start: Option<egui::Pos2>,
     pub(crate) auto_scroll: bool, pub(crate) last_input: std::time::Instant,
@@ -1265,6 +1266,9 @@ pub(crate) struct Chart {
     pub(crate) vol_analytics_computed: usize,
     pub(crate) replay_mode: bool,
     pub(crate) replay_bar_count: usize,
+    pub(crate) replay_playing: bool,
+    pub(crate) replay_speed: f32,      // 1.0 = normal, 2.0 = 2x, etc.
+    pub(crate) replay_last_step: Option<std::time::Instant>,
     // Notional-based order entry
     pub(crate) order_notional_mode: bool,
     pub(crate) order_notional_amount: String,
@@ -1325,7 +1329,7 @@ impl Chart {
                 Indicator::new(3, IndicatorType::EMA, 12, "#f0d732"),
                 Indicator::new(4, IndicatorType::EMA, 26, "#b266e6"),
             ],
-            vs: 0.0, vc: 200, price_lock: None, drag_zoom_active: false, drag_zoom_start: None,
+            vs: 0.0, vc: 200, price_lock: None, log_scale: false, drag_zoom_active: false, drag_zoom_start: None,
             auto_scroll: true, history_loading: false, history_exhausted: false,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
@@ -1371,7 +1375,7 @@ impl Chart {
             show_darkpool: false, darkpool_prints: vec![],
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
-            replay_mode: false, replay_bar_count: 0,
+            replay_mode: false, replay_bar_count: 0, replay_playing: false, replay_speed: 1.0, replay_last_step: None,
             order_notional_mode: false, order_notional_amount: String::new(),
             bracket_templates: vec![
                 BracketTemplate { name: "Tight".into(),  target_pct: 1.0, stop_pct: 0.5 },
@@ -2357,6 +2361,7 @@ fn tick_simulation(chart: &mut Chart) {
                 alert.triggered = true;
                 let dir = if alert.above { "above" } else { "below" };
                 let msg = format!("{} alert: price {} {:.2}", chart.symbol, dir, alert.price);
+                eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
                 PENDING_TOASTS.with(|ts| ts.borrow_mut().push((msg, alert.price, alert.above)));
             }
         }
@@ -3495,15 +3500,25 @@ fn render_toolbar(
                 if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(10.0)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
                 ui.separator();
                 let rpl = panes[ap].replay_mode;
-                if ui.selectable_label(rpl, egui::RichText::new(format!("{} Replay Mode", check(rpl))).monospace().size(10.0)).clicked() {
+                if ui.selectable_label(rpl, egui::RichText::new(format!("{} Bar Replay", check(rpl))).monospace().size(10.0)).clicked() {
                     panes[ap].replay_mode = !panes[ap].replay_mode;
-                    if panes[ap].replay_mode { panes[ap].replay_bar_count = panes[ap].bars.len().saturating_sub(50); }
+                    if panes[ap].replay_mode {
+                        panes[ap].replay_bar_count = panes[ap].bars.len().min(50);
+                        panes[ap].replay_playing = false;
+                        panes[ap].indicator_bar_count = 0;
+                    }
                 }
                 let osc = panes[ap].show_oscillators;
                 if ui.selectable_label(osc, egui::RichText::new(format!("{} Show Oscillators", check(osc))).monospace().size(10.0)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !osc;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_oscillators = nv; } } else { panes[ap].show_oscillators = nv; }
+                }
+                let log = panes[ap].log_scale;
+                if ui.selectable_label(log, egui::RichText::new(format!("{} Log Scale", check(log))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !log;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.log_scale = nv; } } else { panes[ap].log_scale = nv; }
                 }
                 ui.separator();
                 ui.label(egui::RichText::new("OVERLAY").monospace().size(8.0).color(t.dim));
@@ -3613,7 +3628,7 @@ fn render_toolbar(
                             })).collect();
                             let tmpl = serde_json::json!({
                                 "show_volume": p.show_volume, "show_oscillators": p.show_oscillators,
-                                "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet,
+                                "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet, "log_scale": p.log_scale,
                                 "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
                                 "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
                                 "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
@@ -3677,6 +3692,7 @@ fn render_toolbar(
                         p.show_oscillators = gb("show_oscillators", true);
                         p.ohlc_tooltip = gb("ohlc_tooltip", true);
                         p.magnet = gb("magnet", true);
+                        p.log_scale = gb("log_scale", false);
                         p.show_vwap_bands = gb("show_vwap_bands", true);
                         p.show_cvd = gb("show_cvd", false);
                         p.show_delta_volume = gb("show_delta_volume", false);
@@ -3943,6 +3959,24 @@ fn render_toolbar(
                     watchlist.orders_panel_open = !watchlist.orders_panel_open;
                 }
 
+                // Alerts panel toggle
+                {
+                    let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
+                        + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered).count();
+                    let has_triggered = watchlist.alerts.iter().any(|a| a.triggered)
+                        || panes.iter().flat_map(|p| p.price_alerts.iter()).any(|a| a.triggered);
+                    let alert_icon = if has_triggered { Icon::BELL_RINGING } else { Icon::BELL };
+                    let alert_resp = tb_btn_tip(ui, alert_icon, watchlist.alerts_panel_open, t, "Alerts");
+                    if active_count > 0 {
+                        let badge_x = alert_resp.rect.right() - 3.0;
+                        let badge_y = alert_resp.rect.top() + 5.0;
+                        ui.painter().circle_filled(egui::pos2(badge_x, badge_y), 5.0, egui::Color32::from_rgb(255, 191, 0));
+                        ui.painter().text(egui::pos2(badge_x, badge_y), egui::Align2::CENTER_CENTER,
+                            &format!("{}", active_count), egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                    }
+                    if alert_resp.clicked() { watchlist.alerts_panel_open = !watchlist.alerts_panel_open; }
+                }
+
                 // Order entry toggle
                 // Spread Builder toggle
                 if tb_btn_tip(ui, Icon::GIT_DIFF, watchlist.spread_open, t, "Spread Builder").clicked() {
@@ -3988,6 +4022,11 @@ fn render_toolbar(
                 // Time & Sales toggle
                 if tb_btn_tip(ui, Icon::PULSE, watchlist.tape_open, t, "Time & Sales").clicked() {
                     watchlist.tape_open = !watchlist.tape_open;
+                }
+
+                // Screenshot library toggle
+                if tb_btn_tip(ui, Icon::CAMERA, watchlist.screenshot_open, t, "Screenshots").clicked() {
+                    watchlist.screenshot_open = !watchlist.screenshot_open;
                 }
 
                 ui.add(egui::Separator::default().spacing(4.0));
@@ -4358,6 +4397,12 @@ fn render_toolbar(
     // ── Spread Builder panel ────────────────────────────────────────────────
     super::ui::spread_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
 
+    // ── Screenshot library panel ────────────────────────────────────────────
+    super::ui::screenshot_panel::draw(ctx, watchlist, t, panes, ap);
+
+    // ── Alerts panel ────────────────────────────────────────────────────────
+    super::ui::alerts_panel::draw(ctx, watchlist, panes, ap, t);
+
     // ── Alert checking — run every frame, check if any alert prices were crossed ──
     {
         let active_prices: Vec<(String, f32)> = panes.iter()
@@ -4368,6 +4413,10 @@ fn render_toolbar(
             if let Some((_, price)) = active_prices.iter().find(|(s, _)| *s == alert.symbol) {
                 if (alert.above && *price >= alert.price) || (!alert.above && *price <= alert.price) {
                     alert.triggered = true;
+                    let dir = if alert.above { "above" } else { "below" };
+                    let msg = format!("ALERT: {} {} {:.2}", alert.symbol, dir, alert.price);
+                    eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
+                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push((msg, alert.price, alert.above)));
                 }
             }
         }
@@ -4490,6 +4539,25 @@ fn render_chart_pane(
     }
     let is_active = pane_idx == *active_pane;
     let t = &THEMES[chart.theme_idx];
+
+    // ── Replay auto-advance when playing ──
+    if chart.replay_mode && chart.replay_playing {
+        let interval_ms = (1000.0 / chart.replay_speed) as u128;
+        let should_step = chart.replay_last_step
+            .map_or(true, |ts| ts.elapsed().as_millis() >= interval_ms);
+        if should_step && chart.replay_bar_count < chart.bars.len() {
+            chart.replay_bar_count += 1;
+            chart.indicator_bar_count = 0; // force recompute
+            chart.replay_last_step = Some(std::time::Instant::now());
+            // Keep viewport following the replay head
+            chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+            ctx.request_repaint();
+        }
+        if chart.replay_bar_count >= chart.bars.len() {
+            chart.replay_playing = false; // stop at end
+        }
+    }
+
     let n = chart.bars.len();
     let n = if chart.replay_mode { chart.replay_bar_count.min(n) } else { n };
 
@@ -5091,8 +5159,28 @@ fn render_chart_pane(
     let frac = vs-vs.floor();
     let off = frac*bs;
 
-    let py = |p:f32| rect.top()+pt+(max_p-p)/(max_p-min_p)*ch;
-    let py_inv = |y:f32| max_p - (y - rect.top() - pt) / ch * (max_p - min_p);
+    let log_scale = chart.log_scale;
+    let py = |p:f32| -> f32 {
+        if log_scale && p > 0.0 && min_p > 0.0 {
+            let log_min = min_p.ln();
+            let log_max = max_p.ln();
+            let log_range = log_max - log_min;
+            if log_range.abs() < 0.0001 { return rect.top() + pt + ch * 0.5; }
+            rect.top() + pt + (log_max - p.ln()) / log_range * ch
+        } else {
+            rect.top()+pt+(max_p-p)/(max_p-min_p)*ch
+        }
+    };
+    let py_inv = |y:f32| -> f32 {
+        if log_scale && min_p > 0.0 {
+            let log_min = min_p.ln();
+            let log_max = max_p.ln();
+            let log_val = log_max - (y - rect.top() - pt) / ch * (log_max - log_min);
+            log_val.exp()
+        } else {
+            max_p - (y - rect.top() - pt) / ch * (max_p - min_p)
+        }
+    };
     let bx = |i:f32| rect.left()+(i-vs)*bs+bs*0.5-off;
     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
     let painter = ui.painter_at(rect);
@@ -11901,8 +11989,13 @@ fn render_chart_pane(
         }
     }
 
-    // Ctrl+Shift+S: Screenshot — open Windows Snip tool
+    // Ctrl+Shift+S: Screenshot — save metadata + open Windows Snip tool
     if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::S)) {
+        // Save screenshot metadata to library
+        let ss_entry = super::ui::screenshot_panel::save_screenshot(&chart.symbol, &chart.timeframe, chart.vs, chart.vc);
+        watchlist.screenshot_entries.insert(0, ss_entry);
+        watchlist.screenshot_entries.truncate(200);
+        PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("Screenshot saved".into(), 0.0, true)));
         #[cfg(target_os = "windows")]
         {
             let _ = std::process::Command::new("cmd")
@@ -12538,12 +12631,35 @@ fn render_chart_pane(
 
     // Replay mode keyboard controls
     if chart.replay_mode && !ctx.wants_keyboard_input() {
-        if ui.input(|i| i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::ArrowRight)) {
+        // Space: toggle play/pause
+        if ui.input(|i| i.key_pressed(egui::Key::Space)) {
+            chart.replay_playing = !chart.replay_playing;
+            if chart.replay_playing { chart.replay_last_step = None; }
+        }
+        // Right arrow: step forward 1 bar (only when paused)
+        if !chart.replay_playing && ui.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
             chart.replay_bar_count = (chart.replay_bar_count + 1).min(chart.bars.len());
+            chart.indicator_bar_count = 0;
             chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         }
-        if ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
+        // Left arrow: step back 1 bar (only when paused)
+        if !chart.replay_playing && ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
             chart.replay_bar_count = chart.replay_bar_count.saturating_sub(1).max(1);
+            chart.indicator_bar_count = 0;
+            chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+        }
+        // Home: jump to start
+        if ui.input(|i| i.key_pressed(egui::Key::Home)) {
+            chart.replay_bar_count = 1;
+            chart.replay_playing = false;
+            chart.indicator_bar_count = 0;
+            chart.vs = 0.0;
+        }
+        // End: jump to end (exit replay)
+        if ui.input(|i| i.key_pressed(egui::Key::End)) {
+            chart.replay_bar_count = chart.bars.len();
+            chart.replay_playing = false;
+            chart.indicator_bar_count = 0;
             chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         }
     }
@@ -12637,6 +12753,144 @@ fn render_chart_pane(
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::R)) {
             super::trading::order_manager::resume_trading();
             PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("Trading RESUMED".into(), 0.0, true)));
+        }
+    }
+
+    // ── Replay control bar — bottom of chart pane ──
+    if chart.replay_mode && !chart.bars.is_empty() {
+        use crate::ui_kit::icons::Icon;
+        let replay_h = 28.0_f32;
+        let replay_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.top() + pt + ch - replay_h),
+            egui::vec2(cw, replay_h),
+        );
+        ui.painter().rect_filled(replay_rect, 0.0, color_alpha(t.toolbar_bg, 230));
+        ui.painter().line_segment(
+            [egui::pos2(replay_rect.left(), replay_rect.top()), egui::pos2(replay_rect.right(), replay_rect.top())],
+            egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)),
+        );
+
+        let total_bars = chart.bars.len();
+        let cur_bar = chart.replay_bar_count;
+        let btn_size = egui::vec2(22.0, 20.0);
+        let btn_y = replay_rect.top() + (replay_h - btn_size.y) * 0.5;
+        let mut cx = replay_rect.left() + 8.0;
+
+        let mut replay_btn = |ui: &mut egui::Ui, cx: &mut f32, icon: &str, tooltip: &str| -> bool {
+            let r = egui::Rect::from_min_size(egui::pos2(*cx, btn_y), btn_size);
+            *cx += btn_size.x + 2.0;
+            let resp = ui.allocate_rect(r, egui::Sense::click());
+            let hovered = resp.hovered();
+            let col = if hovered { egui::Color32::from_rgb(220, 220, 230) } else { t.dim.gamma_multiply(0.8) };
+            if hovered {
+                ui.painter().rect_filled(r, 3.0, color_alpha(t.toolbar_border, 60));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            ui.painter().text(r.center(), egui::Align2::CENTER_CENTER,
+                icon, egui::FontId::proportional(12.0), col);
+            if !tooltip.is_empty() { resp.clone().on_hover_text(tooltip); }
+            resp.clicked()
+        };
+
+        if replay_btn(ui, &mut cx, Icon::SKIP_BACK, "Jump to start (Home)") {
+            chart.replay_bar_count = 1;
+            chart.replay_playing = false;
+            chart.indicator_bar_count = 0;
+            chart.vs = 0.0;
+        }
+        if replay_btn(ui, &mut cx, Icon::CARET_LEFT, "Step back (Left)") {
+            chart.replay_bar_count = chart.replay_bar_count.saturating_sub(1).max(1);
+            chart.indicator_bar_count = 0;
+            chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+        }
+        let play_icon = if chart.replay_playing { Icon::PAUSE } else { Icon::PLAY };
+        let play_tip = if chart.replay_playing { "Pause (Space)" } else { "Play (Space)" };
+        if replay_btn(ui, &mut cx, play_icon, play_tip) {
+            chart.replay_playing = !chart.replay_playing;
+            if chart.replay_playing { chart.replay_last_step = None; }
+        }
+        if replay_btn(ui, &mut cx, Icon::CARET_RIGHT, "Step forward (Right)") {
+            chart.replay_bar_count = (chart.replay_bar_count + 1).min(total_bars);
+            chart.indicator_bar_count = 0;
+            chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+        }
+        if replay_btn(ui, &mut cx, Icon::SKIP_FORWARD, "Jump to end (End)") {
+            chart.replay_bar_count = total_bars;
+            chart.replay_playing = false;
+            chart.indicator_bar_count = 0;
+            chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+        }
+
+        cx += 6.0;
+        let speeds: &[(f32, &str)] = &[(0.5, "0.5x"), (1.0, "1x"), (2.0, "2x"), (5.0, "5x"), (10.0, "10x")];
+        for &(spd, label) in speeds {
+            let lw = label.len() as f32 * 6.0 + 8.0;
+            let sr = egui::Rect::from_min_size(egui::pos2(cx, btn_y), egui::vec2(lw, btn_size.y));
+            cx += lw + 2.0;
+            let resp = ui.allocate_rect(sr, egui::Sense::click());
+            let is_active = (chart.replay_speed - spd).abs() < 0.01;
+            let col = if is_active { t.bull } else if resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.6) };
+            if resp.hovered() {
+                ui.painter().rect_filled(sr, 3.0, color_alpha(t.toolbar_border, 40));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if is_active {
+                ui.painter().rect_filled(sr, 3.0, color_alpha(t.bull, 30));
+            }
+            ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER,
+                label, egui::FontId::monospace(9.0), col);
+            if resp.clicked() {
+                chart.replay_speed = spd;
+                chart.replay_last_step = None;
+            }
+        }
+
+        cx += 8.0;
+        let counter_text = format!("Bar {} / {}", cur_bar, total_bars);
+        ui.painter().text(
+            egui::pos2(cx, replay_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            &counter_text,
+            egui::FontId::monospace(9.5),
+            t.dim.gamma_multiply(0.9),
+        );
+        cx += counter_text.len() as f32 * 6.0 + 16.0;
+
+        let progress_w = (replay_rect.right() - cx - 12.0).max(40.0);
+        let progress_h = 6.0_f32;
+        let progress_rect = egui::Rect::from_min_size(
+            egui::pos2(cx, replay_rect.center().y - progress_h * 0.5),
+            egui::vec2(progress_w, progress_h),
+        );
+        ui.painter().rect_filled(progress_rect, 3.0, color_alpha(t.dim, 40));
+        let frac_done = if total_bars > 0 { cur_bar as f32 / total_bars as f32 } else { 0.0 };
+        let filled_w = progress_w * frac_done;
+        if filled_w > 0.5 {
+            let filled_rect = egui::Rect::from_min_size(
+                progress_rect.min,
+                egui::vec2(filled_w, progress_h),
+            );
+            ui.painter().rect_filled(filled_rect, 3.0, color_alpha(t.bull, 180));
+        }
+        let dot_x = progress_rect.left() + filled_w;
+        ui.painter().circle_filled(
+            egui::pos2(dot_x, progress_rect.center().y),
+            4.0,
+            egui::Color32::from_rgb(220, 220, 230),
+        );
+        let progress_sense_rect = progress_rect.expand2(egui::vec2(0.0, 6.0));
+        let prog_resp = ui.allocate_rect(progress_sense_rect, egui::Sense::click_and_drag());
+        if prog_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if prog_resp.clicked() || prog_resp.dragged() {
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                let frac = ((pos.x - progress_rect.left()) / progress_w).clamp(0.0, 1.0);
+                let new_bar = ((frac * total_bars as f32) as usize).max(1).min(total_bars);
+                chart.replay_bar_count = new_bar;
+                chart.indicator_bar_count = 0;
+                chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+            }
         }
     }
 
@@ -13231,6 +13485,7 @@ pub(crate) struct Watchlist {
     pub(crate) next_alert_id: u32,
     #[allow(dead_code)]
     pub(crate) alert_query: String,
+    pub(crate) alerts_panel_open: bool,
     // Options chain
     pub(crate) chain_symbol: String,
     pub(crate) chain_sym_input: String,
@@ -13331,6 +13586,9 @@ pub(crate) struct Watchlist {
     pub(crate) scanner_new_max_change: f32,
     pub(crate) scanner_new_min_volume: String, // string for text edit
     pub(crate) scanner_builder_open: bool,
+    // Screenshot library
+    pub(crate) screenshot_open: bool,
+    pub(crate) screenshot_entries: Vec<super::ui::screenshot_panel::ScreenshotEntry>,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -13357,7 +13615,7 @@ impl Watchlist {
                toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false, shared_y_axis: false,
                trendline_filter_open: false, account_strip_open: false, object_tree_open: false, broadcast_mode: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
-               orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(),
+               orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(), alerts_panel_open: false,
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
@@ -13418,7 +13676,9 @@ impl Watchlist {
                script_output: String::new(),
                script_ai_prompt: String::new(),
                script_result_tab: super::ui::script_panel::ScriptResultTab::Output,
-               script_backtest: None }
+               script_backtest: None,
+               screenshot_open: false,
+               screenshot_entries: super::ui::screenshot_panel::load_screenshots() }
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -14451,6 +14711,7 @@ impl ApplicationHandler for App {
                                         chart.show_oscillators = gb("show_oscillators", true);
                                         chart.ohlc_tooltip = gb("ohlc_tooltip", true);
                                         chart.magnet = gb("magnet", true);
+                                        chart.log_scale = gb("log_scale", false);
                                         chart.show_vwap_bands = gb("show_vwap_bands", true);
                                         chart.show_cvd = gb("show_cvd", false);
                                         chart.show_delta_volume = gb("show_delta_volume", false);
@@ -14968,7 +15229,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
         serde_json::json!({
             "symbol": p.symbol, "timeframe": p.timeframe,
             "show_volume": p.show_volume, "show_oscillators": p.show_oscillators,
-            "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet,
+            "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet, "log_scale": p.log_scale,
             "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
             "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
@@ -15046,7 +15307,7 @@ fn save_state(panes: &[Chart], layout: Layout) {
             "symbol": p.symbol, "timeframe": p.timeframe,
             // Toggles
             "show_volume": p.show_volume, "show_oscillators": p.show_oscillators,
-            "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet,
+            "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet, "log_scale": p.log_scale,
             "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
             "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
@@ -15132,6 +15393,7 @@ fn load_state() -> (Vec<Chart>, Layout) {
             chart.show_oscillators = gb("show_oscillators", true);
             chart.ohlc_tooltip = gb("ohlc_tooltip", true);
             chart.magnet = gb("magnet", true);
+            chart.log_scale = gb("log_scale", false);
             chart.show_vwap_bands = gb("show_vwap_bands", true);
             chart.show_cvd = gb("show_cvd", false);
             chart.show_delta_volume = gb("show_delta_volume", false);

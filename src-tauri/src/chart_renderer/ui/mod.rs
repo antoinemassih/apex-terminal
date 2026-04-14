@@ -29,3 +29,5 @@ pub mod script_panel;
 pub mod scanner_panel;
 pub mod dom_panel;
 pub mod spread_panel;
+pub mod alerts_panel;
+pub mod screenshot_panel;
