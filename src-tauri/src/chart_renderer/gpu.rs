@@ -15,6 +15,17 @@ use winit::{
 
 use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, DrawingSignificance, LineStyle, PatternLabel};
 
+/// Per-alert hit rects stashed each frame so the priority-0 click handler
+/// can route clicks to PLACE/X buttons rendered via painter.
+#[derive(Clone)]
+struct AlertBadgeHit {
+    alert_id: u32,
+    is_draft: bool,
+    place_rect: egui::Rect, // only valid for drafts
+    x_rect: egui::Rect,
+    drag_line_y: f32,
+}
+
 // Thread-local to pass window ref into draw_chart (which doesn't have access to ChartWindow)
 std::thread_local! {
     static CURRENT_WINDOW: std::cell::RefCell<Option<Arc<Window>>> = const { std::cell::RefCell::new(None) };
@@ -25,6 +36,7 @@ std::thread_local! {
     static CONN_PANEL_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CROSSHAIR_SYNC_TIME: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
     static PENDING_WL_TOOLTIP: std::cell::RefCell<Option<WlTooltipData>> = const { std::cell::RefCell::new(None) };
+    static ALERT_BADGE_HITS: std::cell::RefCell<Vec<AlertBadgeHit>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 #[derive(Clone)]
@@ -1187,6 +1199,7 @@ pub(crate) struct Chart {
     pub(crate) order_panel_dragging: bool,
     pub(crate) order_collapsed: bool, // true = show as pill, double-click to expand
     pub(crate) dragging_order: Option<u32>, // order id being dragged
+    pub(crate) dragging_alert: Option<u32>, // alert id being dragged (includes drafts)
     pub(crate) editing_order: Option<u32>,
     pub(crate) edit_order_qty: String,
     pub(crate) edit_order_price: String,
@@ -1386,7 +1399,7 @@ impl Chart {
             order_stop_price: String::new(), order_trail_amt: String::new(),
             order_tp_price: String::new(), order_sl_price: String::new(),
             order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false, order_collapsed: false,
-            dragging_order: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
+            dragging_order: None, dragging_alert: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
             measuring: false, measure_start: None, measure_active: false, dom_open: false,
@@ -9199,13 +9212,16 @@ fn render_chart_pane(
         }
     }
 
-    // ── Price alert lines on chart (draggable) ────────────────────────
+    // ── Price alert lines on chart ────────────────────────
+    // Interactive state (drag, click) is handled in the event-priority blocks
+    // below (hit_alert_line, chart.dragging_alert). This block only paints.
+    // Click hitboxes for PLACE/X are stashed in thread-locals and handled in
+    // the same priority-0 block that processes other overlay clicks.
     {
         let placed_color = egui::Color32::from_rgb(255, 191, 0); // amber = placed
         let draft_color  = egui::Color32::from_rgb(230, 80, 80); // red = draft (needs attention)
-        let mut delete_alert_id: Option<u32> = None;
-        let mut place_alert_id: Option<u32> = None;
-        let mut drag_alert: Option<(u32, f32)> = None; // (id, new_price)
+        let hover_pos = ui.input(|i| i.pointer.hover_pos());
+        ALERT_BADGE_HITS.with(|h| h.borrow_mut().clear());
         let alert_ids: Vec<u32> = chart.price_alerts.iter()
             .filter(|a| !a.triggered && a.symbol == chart.symbol)
             .map(|a| a.id).collect();
@@ -9215,100 +9231,71 @@ fn render_chart_pane(
             let alert_color = if is_draft { draft_color } else { placed_color };
             let y = py(alert.price);
             if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-            // Drag zone: full-width strip at alert price — bigger for drafts (tall red badge)
-            let drag_h = if is_draft { 24.0 } else { 12.0 };
-            let drag_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.left(), y - drag_h / 2.0), egui::vec2(cw, drag_h));
-            let drag_resp = ui.interact(drag_rect, egui::Id::new(("alert_drag", aid)), egui::Sense::click_and_drag());
-            if drag_resp.dragged() {
-                // Use interact_pointer_pos which is valid during drag (hover_pos may not be)
-                if let Some(pos) = drag_resp.interact_pointer_pos() {
-                    let new_price = py_inv(pos.y);
-                    drag_alert = Some((aid, new_price));
-                }
-                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-            } else if drag_resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-            }
+
+            // Hover/drag feedback based on chart state
+            let is_dragging = chart.dragging_alert == Some(aid);
+            let is_hovered = hover_pos.map_or(false, |p| (p.y - y).abs() <= 6.0 && p.x >= rect.left() && p.x <= rect.left() + cw);
+
             // Line: drafts = red dashed, placed = amber dashed
             let base_alpha = if is_draft { 220 } else { 180 };
-            let hover_alpha = 255u8;
             let dash_col = egui::Color32::from_rgba_unmultiplied(
                 alert_color.r(), alert_color.g(), alert_color.b(),
-                if drag_resp.hovered() || drag_resp.dragged() { hover_alpha } else { base_alpha });
+                if is_hovered || is_dragging { 255 } else { base_alpha });
             let mut dx = rect.left();
             let (dash, gap) = if is_draft { (6.0, 4.0) } else { (5.0, 4.0) };
             let line_width = if is_draft { 1.5 } else { 1.0 };
             while dx < rect.left() + cw {
                 let end_x = (dx + dash).min(rect.left() + cw);
                 painter.line_segment([egui::pos2(dx, y), egui::pos2(end_x, y)],
-                    egui::Stroke::new(if drag_resp.hovered() { line_width + 0.5 } else { line_width }, dash_col));
+                    egui::Stroke::new(if is_hovered { line_width + 0.5 } else { line_width }, dash_col));
                 dx += dash + gap;
             }
 
-            // Label on right side
+            // Badge
             let dir_arrow = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
             let d = if alert.price >= 10.0 { 2 } else { 4 };
             let label_font = egui::FontId::monospace(if is_draft { 10.0 } else { 9.0 });
 
             if is_draft {
-                // ── DRAFT: bigger red badge with solid fill + PLACE + X buttons ──
+                // ── DRAFT: big red badge with solid fill + PLACE + X buttons ──
                 let label_text = format!("DRAFT {} {:.prec$}", dir_arrow, alert.price, prec = d);
-                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(),
-                    egui::Color32::WHITE);
-                let place_w = 40.0;
-                let x_w = 18.0;
-                let pad = 8.0;
+                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), egui::Color32::WHITE);
+                let place_w = 42.0; let x_w = 20.0; let pad = 8.0;
                 let badge_h = galley.size().y + 10.0;
                 let badge_w = galley.size().x + pad * 2.0 + place_w + x_w + 6.0;
                 let lx = rect.left() + cw - badge_w - 4.0;
-                let badge_rect = egui::Rect::from_min_size(
-                    egui::pos2(lx, y - badge_h / 2.0),
-                    egui::vec2(badge_w, badge_h));
-                // Solid red fill
+                let badge_rect = egui::Rect::from_min_size(egui::pos2(lx, y - badge_h / 2.0), egui::vec2(badge_w, badge_h));
                 painter.rect_filled(badge_rect, 4.0, alert_color);
                 painter.rect_stroke(badge_rect, 4.0,
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 40, 40)),
-                    egui::StrokeKind::Outside);
-                // Label text (white on red)
-                painter.text(
-                    egui::pos2(lx + pad, y),
-                    egui::Align2::LEFT_CENTER,
-                    &label_text, label_font, egui::Color32::WHITE);
-                // PLACE button (right side of badge) — registered AFTER drag_rect so it wins clicks here
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 40, 40)), egui::StrokeKind::Outside);
+                painter.text(egui::pos2(lx + pad, y), egui::Align2::LEFT_CENTER, &label_text, label_font, egui::Color32::WHITE);
+
+                // PLACE button
                 let place_rect = egui::Rect::from_min_size(
                     egui::pos2(badge_rect.right() - place_w - x_w - 4.0, badge_rect.top() + 3.0),
                     egui::vec2(place_w, badge_h - 6.0));
-                let place_resp = ui.interact(place_rect, egui::Id::new(("alert_place", aid)), egui::Sense::click());
-                let place_bg = if place_resp.hovered() {
-                    egui::Color32::from_rgb(255, 255, 255)
-                } else {
-                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 220)
-                };
+                let place_hover = hover_pos.map_or(false, |p| place_rect.contains(p));
+                let place_bg = if place_hover { egui::Color32::WHITE }
+                    else { egui::Color32::from_rgba_unmultiplied(255, 255, 255, 230) };
                 painter.rect_filled(place_rect, 3.0, place_bg);
-                let place_text_col = if place_resp.hovered() { alert_color } else { egui::Color32::from_rgb(180, 40, 40) };
-                painter.text(
-                    place_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "PLACE", egui::FontId::monospace(9.0),
-                    place_text_col);
-                if place_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                if place_resp.clicked() { place_alert_id = Some(aid); }
+                let place_fg = if place_hover { alert_color } else { egui::Color32::from_rgb(180, 40, 40) };
+                painter.text(place_rect.center(), egui::Align2::CENTER_CENTER, "PLACE", egui::FontId::monospace(9.0), place_fg);
 
-                // X cancel button (far right)
+                // X cancel
                 let x_rect = egui::Rect::from_min_size(
                     egui::pos2(badge_rect.right() - x_w - 2.0, badge_rect.top() + 3.0),
                     egui::vec2(x_w, badge_h - 6.0));
-                let x_resp = ui.interact(x_rect, egui::Id::new(("alert_cancel", aid)), egui::Sense::click());
-                if x_resp.hovered() {
-                    painter.rect_filled(x_rect, 3.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 60));
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                }
+                let x_hover = hover_pos.map_or(false, |p| x_rect.contains(p));
+                if x_hover { painter.rect_filled(x_rect, 3.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 80)); }
                 painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}",
                     egui::FontId::monospace(14.0), egui::Color32::WHITE);
-                if x_resp.clicked() { delete_alert_id = Some(aid); }
+
+                // Stash rects for the priority-0 click handler
+                ALERT_BADGE_HITS.with(|h| h.borrow_mut().push(AlertBadgeHit {
+                    alert_id: aid, is_draft: true, place_rect, x_rect, drag_line_y: y,
+                }));
             } else {
-                // ── PLACED: original amber compact badge ──
+                // ── PLACED: amber compact badge with X ──
                 let label_text = format!("Alert {} {:.prec$}", dir_arrow, alert.price, prec = d);
                 let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), alert_color);
                 let lx = rect.left() + cw - galley.size().x - 24.0;
@@ -9319,32 +9306,17 @@ fn render_chart_pane(
                     t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
                 painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(0.5, alert_color), egui::StrokeKind::Outside);
                 painter.text(egui::pos2(lx, y), egui::Align2::LEFT_CENTER, &label_text, label_font, alert_color);
-                // X delete button
                 let x_rect = egui::Rect::from_min_size(
                     egui::pos2(badge_rect.right() - 16.0, badge_rect.top() + 2.0),
                     egui::vec2(14.0, badge_rect.height() - 4.0));
-                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                    if x_rect.contains(pos) && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                        delete_alert_id = Some(aid);
-                    }
-                    if x_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                }
-                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(10.0),
-                    alert_color.gamma_multiply(0.6));
-            }
-        }
-        if let Some(id) = delete_alert_id {
-            chart.price_alerts.retain(|a| a.id != id);
-        }
-        if let Some(id) = place_alert_id {
-            if let Some(a) = chart.price_alerts.iter_mut().find(|a| a.id == id) {
-                a.draft = false;
-            }
-        }
-        if let Some((id, new_price)) = drag_alert {
-            if let Some(a) = chart.price_alerts.iter_mut().find(|a| a.id == id) {
-                a.price = new_price;
-                a.above = new_price > chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                let x_hover = hover_pos.map_or(false, |p| x_rect.contains(p));
+                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}",
+                    egui::FontId::monospace(10.0),
+                    if x_hover { alert_color } else { alert_color.gamma_multiply(0.6) });
+                ALERT_BADGE_HITS.with(|h| h.borrow_mut().push(AlertBadgeHit {
+                    alert_id: aid, is_draft: false,
+                    place_rect: egui::Rect::NOTHING, x_rect, drag_line_y: y,
+                }));
             }
         }
     }
@@ -11349,6 +11321,7 @@ fn render_chart_pane(
     if !any_button_down && !egui_dragging {
         if chart.axis_drag_mode != 0 { chart.axis_drag_mode = 0; }
         if chart.dragging_order.is_some() { chart.dragging_order = None; }
+        if chart.dragging_alert.is_some() { chart.dragging_alert = None; }
         if chart.dragging_drawing.is_some() {
             if let Some((ref did, _)) = chart.dragging_drawing {
                 if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
@@ -11365,8 +11338,33 @@ fn render_chart_pane(
         if chart.measuring { chart.measuring = false; chart.measure_start = None; chart.measure_active = false; }
     }
 
-    // ── PRIORITY 0: Strikes overlay O button click ──
+    // ── PRIORITY 0: Alert badge PLACE/X click handling (overlay on top of everything) ──
     let mut event_consumed = false;
+    {
+        let hits: Vec<AlertBadgeHit> = ALERT_BADGE_HITS.with(|h| h.borrow().clone());
+        let primary_clicked = ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+        for hit in &hits {
+            if let Some(p) = hover_pos {
+                if hit.is_draft && hit.place_rect.contains(p) {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    if primary_clicked {
+                        if let Some(a) = chart.price_alerts.iter_mut().find(|a| a.id == hit.alert_id) {
+                            a.draft = false;
+                        }
+                        event_consumed = true;
+                    }
+                } else if hit.x_rect.contains(p) {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    if primary_clicked {
+                        chart.price_alerts.retain(|a| a.id != hit.alert_id);
+                        event_consumed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // ── PRIORITY 0: Strikes overlay O button click ──
     if let Some(pos) = hover_pos {
         if egui::pos2(ovl_chart_x, ovl_chart_y).distance(pos) < 12.0 {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -11403,6 +11401,23 @@ fn render_chart_pane(
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
         }
         if resp.drag_stopped() { chart.dragging_order = None; }
+    }
+
+    // 1a-bis: Alert line drag (in progress)
+    if let Some(alert_id) = chart.dragging_alert {
+        event_consumed = true;
+        if resp.dragged_by(egui::PointerButton::Primary) {
+            if let Some(pos) = hover_pos {
+                let new_price = pos_to_price(pos);
+                let current_close = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                if let Some(a) = chart.price_alerts.iter_mut().find(|a| a.id == alert_id) {
+                    a.price = new_price;
+                    a.above = new_price > current_close;
+                }
+            }
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+        }
+        if resp.drag_stopped() { chart.dragging_alert = None; }
     }
 
     // 1b: Drawing drag (in progress)
@@ -12211,9 +12226,16 @@ fn render_chart_pane(
                     event_consumed = true;
                 }
                 Zone::ChartBody => {
-                    // Priority: order lines > drawings > pan
-                    // Use cached hover hits (same frame, same pointer position)
-                    if let Some(oid) = hover_order {
+                    // Priority: alert lines > order lines > drawings > pan
+                    // Check if pointer started drag near an alert line (within 6px vertically)
+                    let hover_alert: Option<u32> = chart.price_alerts.iter()
+                        .filter(|a| !a.triggered && a.symbol == chart.symbol)
+                        .find(|a| (py(a.price) - pos.y).abs() <= 6.0)
+                        .map(|a| a.id);
+                    if let Some(aid) = hover_alert {
+                        chart.dragging_alert = Some(aid);
+                        event_consumed = true;
+                    } else if let Some(oid) = hover_order {
                         chart.dragging_order = Some(oid);
                         event_consumed = true;
                     } else if let Some((ref id, ep)) = hover_hit {
