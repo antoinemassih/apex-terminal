@@ -84,7 +84,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, STROKE_THIN, STROKE_STD, ALPHA_STRONG, ALPHA_HEAVY, ALPHA_MUTED};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, FONT_LG, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -1135,6 +1135,15 @@ pub(crate) struct Chart {
     pub(crate) change_points: Vec<(i64, String, f32)>, // (time, type, confidence)
     pub(crate) trade_plan: Option<(i8, f32, f32, f32, String, f32, f32)>, // (dir, entry, target, stop, contract, rr, conviction)
     pub(crate) signal_demo_toggle: bool, // set to true to toggle demo on/off
+    // VIX Expiry alert
+    pub(crate) vix_expiry_active: bool,
+    pub(crate) vix_expiry_days: u32,
+    pub(crate) vix_expiry_date: String,
+    pub(crate) vix_spot: f32,
+    pub(crate) vix_expiring_future: f32,
+    pub(crate) vix_realized_vol: f32,
+    pub(crate) vix_gap_pct: f32,
+    pub(crate) vix_convergence_score: f32,
     pub(crate) drawings_requested: bool, // prevents duplicate fetch_drawings_background calls
     pub(crate) last_signal_fetch: std::time::Instant,
     pub(crate) hide_all_drawings: bool,
@@ -1363,6 +1372,9 @@ impl Chart {
             signal_zones: vec![], precursor_active: false, precursor_score: 0.0,
             precursor_direction: 0, precursor_description: String::new(),
             change_points: vec![], trade_plan: None, signal_demo_toggle: false,
+            vix_expiry_active: false, vix_expiry_days: 0, vix_expiry_date: String::new(),
+            vix_spot: 0.0, vix_expiring_future: 0.0, vix_realized_vol: 0.0,
+            vix_gap_pct: 0.0, vix_convergence_score: 0.0,
             last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
             draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
@@ -2835,11 +2847,46 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         let mut style = (*ctx.style()).clone();
         style.visuals.window_fill = t.toolbar_bg;
         style.visuals.panel_fill = t.toolbar_bg;
-        style.visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-        style.visuals.widgets.inactive.weak_bg_fill = t.toolbar_bg;
         style.visuals.extreme_bg_color = t.bg;
         style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
-        style.interaction.tooltip_delay = 0.15; // faster tooltips (default ~0.4s)
+        style.interaction.tooltip_delay = 0.15;
+
+        // ── Design token injection — makes menu_button / ComboBox / all egui widgets match tb_btn ──
+        let r = egui::CornerRadius::same(4); // RADIUS_MD equivalent for native widgets
+        let popup_r = egui::CornerRadius::same(8); // RADIUS_LG for popups
+
+        // Inactive (default, unhovered) — visible border so buttons look like buttons
+        style.visuals.widgets.inactive.bg_fill       = t.toolbar_bg;
+        style.visuals.widgets.inactive.weak_bg_fill  = t.toolbar_bg;
+        style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        style.visuals.widgets.inactive.corner_radius = r;
+        style.visuals.widgets.inactive.fg_stroke     = egui::Stroke::new(1.0, t.dim);
+
+        // Hovered — accent tint + accent border
+        style.visuals.widgets.hovered.bg_fill        = color_alpha(t.toolbar_border, ALPHA_SUBTLE);
+        style.visuals.widgets.hovered.bg_stroke      = egui::Stroke::new(0.5, color_alpha(t.accent, ALPHA_LINE));
+        style.visuals.widgets.hovered.corner_radius  = r;
+        style.visuals.widgets.hovered.fg_stroke      = egui::Stroke::new(1.0, TEXT_PRIMARY);
+
+        // Active/pressed
+        style.visuals.widgets.active.bg_fill         = color_alpha(t.accent, ALPHA_TINT);
+        style.visuals.widgets.active.bg_stroke       = egui::Stroke::new(0.5, color_alpha(t.accent, ALPHA_STRONG));
+        style.visuals.widgets.active.corner_radius   = r;
+        style.visuals.widgets.active.fg_stroke       = egui::Stroke::new(1.0, t.accent);
+
+        // Open (ComboBox/menu open state)
+        style.visuals.widgets.open.bg_fill           = color_alpha(t.accent, ALPHA_TINT);
+        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(0.5, color_alpha(t.accent, ALPHA_ACTIVE));
+        style.visuals.widgets.open.corner_radius     = r;
+        style.visuals.widgets.open.fg_stroke         = egui::Stroke::new(1.0, t.accent);
+
+        // Popup/menu window corners + bg
+        style.visuals.window_corner_radius           = popup_r;
+        style.visuals.menu_corner_radius             = popup_r;
+
+        // More horizontal padding on all buttons
+        style.spacing.button_padding                 = egui::vec2(8.0, 3.0);
+
         ctx.set_style(style);
     }
     ctx.set_pixels_per_point(watchlist.font_scale);
@@ -2937,7 +2984,7 @@ fn render_toolbar(
     if toolbar_visible {
     egui::TopBottomPanel::top("tb")
         .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 10, right: 0, top: 0, bottom: 0 }))
-        .exact_height(if watchlist.compact_mode { 28.0 } else { 36.0 })
+        .exact_height(if watchlist.compact_mode { 32.0 } else { 42.0 })
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         // Bottom border line
@@ -3038,7 +3085,7 @@ fn render_toolbar(
             ui.add_space(2.0);
             // ── Range dropdown (sets interval + visible bars) ──
             {
-                let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(10.0).color(t.dim), |ui| {
+                let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(FONT_LG).color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.label(egui::RichText::new("RANGE").monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
@@ -3082,7 +3129,7 @@ fn render_toolbar(
                 let has_tool = !panes[ap].draw_tool.is_empty();
                 let cur_tool = panes[ap].draw_tool.clone();
                 let mut new_tool: Option<String> = None;
-                ui.menu_button(egui::RichText::new(draw_label).monospace().size(10.0).color(if has_tool { t.accent } else { t.dim }), |ui| {
+                ui.menu_button(egui::RichText::new(draw_label).monospace().size(FONT_LG).color(if has_tool { t.accent } else { t.dim }), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     let cur = cur_tool.as_str();
@@ -3162,7 +3209,7 @@ fn render_toolbar(
                 CandleMode::Renko => "RNK", CandleMode::RangeBar => "RNG", CandleMode::TickBar => "TCK",
             };
             let prev_candle_mode = panes[ap].candle_mode;
-            ui.menu_button(egui::RichText::new(cm_label).monospace().size(10.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new(cm_label).monospace().size(FONT_LG).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 for (mode, label) in [
@@ -3245,7 +3292,7 @@ fn render_toolbar(
             }
 
             // Moving Averages dropdown (always creates new instance — supports multiple)
-            ui.menu_button(egui::RichText::new("MAs").monospace().size(10.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("MAs").monospace().size(FONT_LG).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
@@ -3325,7 +3372,7 @@ fn render_toolbar(
             });
 
             // Oscillators dropdown (multi-select)
-            ui.menu_button(egui::RichText::new("Osc").monospace().size(10.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Osc").monospace().size(FONT_LG).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let osc_types = [(IndicatorType::RSI, "RSI"), (IndicatorType::MACD, "MACD"),
@@ -3375,7 +3422,7 @@ fn render_toolbar(
             });
 
             // Volume dropdown
-            ui.menu_button(egui::RichText::new("Vol").monospace().size(10.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Vol").monospace().size(FONT_LG).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let vol = panes[ap].show_volume;
@@ -3423,7 +3470,7 @@ fn render_toolbar(
             });
 
             // Overlays dropdown
-            ui.menu_button(egui::RichText::new("Overlay").monospace().size(10.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Overlay").monospace().size(FONT_LG).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let overlay_types = [(IndicatorType::BollingerBands, "Bollinger Bands"), (IndicatorType::KeltnerChannels, "Keltner Channels"),
@@ -3580,7 +3627,7 @@ fn render_toolbar(
                 }
 
             // Tools dropdown
-            ui.menu_button(egui::RichText::new("Tools").monospace().size(10.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Tools").monospace().size(FONT_LG).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let ohlc = panes[ap].ohlc_tooltip;
@@ -8477,6 +8524,15 @@ fn render_chart_pane(
                     chart.change_points.push((chart.timestamps[chart.timestamps.len() - 15], "directional".into(), 0.85));
                     chart.change_points.push((chart.timestamps[chart.timestamps.len() - 8], "volume".into(), 0.72));
                 }
+                // Demo VIX expiry alert
+                chart.vix_expiry_active = true;
+                chart.vix_expiry_days = 3;
+                chart.vix_expiry_date = "Wed Apr 16".into();
+                chart.vix_spot = 27.3;
+                chart.vix_expiring_future = 20.1;
+                chart.vix_realized_vol = 16.2;
+                chart.vix_gap_pct = 35.7;
+                chart.vix_convergence_score = 82.0;
             }
         } else {
             // Turn OFF demo
@@ -8487,6 +8543,7 @@ fn render_chart_pane(
             chart.signal_zones.clear();
             chart.trade_plan = None;
             chart.change_points.clear();
+            chart.vix_expiry_active = false;
         }
     }
 
@@ -8578,6 +8635,87 @@ fn render_chart_pane(
             );
             ctx.request_repaint();
         }
+    }
+
+    // ── VIX Expiry Alert Card (bottom-right when active) ────────────────
+    if chart.vix_expiry_active && chart.vix_expiry_days <= 5 {
+        let card_w = 240.0;
+        let card_h = 120.0;
+        let card_x = rect.right() - card_w - 8.0;
+        let card_y = rect.bottom() - card_h - 24.0;
+        let card_rect = egui::Rect::from_min_size(egui::pos2(card_x, card_y), egui::vec2(card_w, card_h));
+
+        // Card background
+        let bg = egui::Color32::from_rgba_unmultiplied(18, 18, 24, 230);
+        painter.rect_filled(card_rect, 6.0, bg);
+
+        // Top accent — amber warning stripe
+        let accent = egui::Color32::from_rgb(230, 186, 57);
+        painter.rect_filled(
+            egui::Rect::from_min_size(egui::pos2(card_x, card_y), egui::vec2(card_w, 3.0)),
+            egui::Rounding { nw: 6, ne: 6, sw: 0, se: 0 }, accent,
+        );
+
+        let text_x = card_x + 10.0;
+        let dim = egui::Color32::from_rgb(120, 120, 140);
+        let bright = egui::Color32::from_rgb(220, 220, 230);
+
+        // Title
+        painter.text(egui::pos2(text_x, card_y + 12.0), egui::Align2::LEFT_CENTER,
+            format!("VIX EXPIRY — {} days ({})", chart.vix_expiry_days, chart.vix_expiry_date),
+            egui::FontId::monospace(9.5), accent);
+
+        // VIX spot vs future
+        let y = card_y + 28.0;
+        painter.text(egui::pos2(text_x, y), egui::Align2::LEFT_CENTER,
+            format!("VIX spot:      {:.1}", chart.vix_spot),
+            egui::FontId::monospace(9.0), egui::Color32::from_rgb(224, 82, 82));
+        painter.text(egui::pos2(text_x, y + 13.0), egui::Align2::LEFT_CENTER,
+            format!("Expiring fut:  {:.1}  ← settlement target", chart.vix_expiring_future),
+            egui::FontId::monospace(9.0), egui::Color32::from_rgb(56, 203, 137));
+        painter.text(egui::pos2(text_x, y + 26.0), egui::Align2::LEFT_CENTER,
+            format!("Realized vol:  {:.1}%", chart.vix_realized_vol),
+            egui::FontId::monospace(9.0), dim);
+        painter.text(egui::pos2(text_x, y + 39.0), egui::Align2::LEFT_CENTER,
+            format!("Gap:           {:.1}%  {}", chart.vix_gap_pct,
+                if chart.vix_gap_pct > 25.0 { "EXTREME" } else if chart.vix_gap_pct > 15.0 { "ELEVATED" } else { "" }),
+            egui::FontId::monospace(9.0), if chart.vix_gap_pct > 25.0 { accent } else { bright });
+
+        // Signal line
+        let signal_text = if chart.vix_gap_pct > 20.0 {
+            "SIGNAL: Mean reversion HIGH → bullish SPY"
+        } else if chart.vix_gap_pct > 10.0 {
+            "SIGNAL: Moderate convergence pressure"
+        } else {
+            "SIGNAL: VIX near fair value"
+        };
+        let signal_color = if chart.vix_gap_pct > 20.0 {
+            egui::Color32::from_rgb(56, 203, 137)
+        } else { dim };
+        painter.text(egui::pos2(text_x, y + 56.0), egui::Align2::LEFT_CENTER,
+            signal_text, egui::FontId::monospace(8.5), signal_color);
+
+        // Convergence pressure bar
+        let bar_y = y + 70.0;
+        let bar_w = card_w - 20.0;
+        painter.rect_filled(
+            egui::Rect::from_min_size(egui::pos2(text_x, bar_y), egui::vec2(bar_w, 8.0)),
+            4.0, egui::Color32::from_rgba_unmultiplied(40, 40, 50, 180),
+        );
+        let fill = bar_w * (chart.vix_convergence_score / 100.0).min(1.0);
+        let bar_color = if chart.vix_convergence_score > 70.0 { egui::Color32::from_rgb(56, 203, 137) }
+            else if chart.vix_convergence_score > 40.0 { accent }
+            else { dim };
+        painter.rect_filled(
+            egui::Rect::from_min_size(egui::pos2(text_x, bar_y), egui::vec2(fill, 8.0)),
+            4.0, color_alpha(bar_color, 200),
+        );
+        painter.text(egui::pos2(text_x + bar_w + 4.0, bar_y + 4.0), egui::Align2::LEFT_CENTER,
+            format!("{:.0}", chart.vix_convergence_score), egui::FontId::monospace(8.0), bar_color);
+
+        // Subtle border
+        painter.rect_stroke(card_rect, 6.0,
+            egui::Stroke::new(1.0, color_alpha(accent, 40)), egui::StrokeKind::Outside);
     }
 
     // ── Supply/Demand zones — faint fill, clean edge labels ──────────────
