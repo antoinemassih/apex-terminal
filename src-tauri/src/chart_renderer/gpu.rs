@@ -84,7 +84,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, FONT_LG, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, FONT_LG, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -3061,22 +3061,20 @@ fn render_toolbar(
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
 
-            // ── Interval buttons (candle size) — adjusts vc to maintain same time range ──
-            let tf_to_secs = |tf: &str| -> u32 { match tf {
-                "1m" => 60, "5m" => 300, "15m" => 900, "30m" => 1800,
-                "1h" => 3600, "4h" => 14400, "1d" => 86400, "1wk" => 604800, _ => 300,
-            }};
-            for &tf in &["1m","5m","15m","30m","1h","4h","1d","1wk"] {
-                let is_active_tf = panes[ap].timeframe == tf;
-                if tb_btn(ui, tf, is_active_tf, t).clicked() && !is_active_tf {
-                    // Preserve visible time range: adjust vc proportionally
-                    let old_secs = tf_to_secs(&panes[ap].timeframe);
-                    let new_secs = tf_to_secs(tf);
-                    let time_span = panes[ap].vc as u64 * old_secs as u64;
-                    let new_vc = (time_span / new_secs as u64).max(20).min(2000) as u32;
-                    panes[ap].vc = new_vc;
-                    panes[ap].vc_target = new_vc;
-                    panes[ap].pending_timeframe_change = Some(tf.to_string());
+            // ── Interval buttons — segmented control with inset trough ──
+            {
+                const TF_OPTIONS: &[&str] = &["1m","5m","15m","30m","1h","4h","1d","1wk"];
+                const TF_SECS:    &[u32]  = &[60,  300, 900,  1800, 3600,14400,86400,604800];
+                let active_idx = TF_OPTIONS.iter().position(|&tf| tf == panes[ap].timeframe).unwrap_or(1);
+                if let Some(i) = segmented_control(ui, active_idx, TF_OPTIONS, t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
+                    if i != active_idx {
+                        let old_secs = TF_SECS[active_idx];
+                        let new_secs = TF_SECS[i];
+                        let new_vc = ((panes[ap].vc as u64 * old_secs as u64) / new_secs as u64).max(20).min(2000) as u32;
+                        panes[ap].vc = new_vc;
+                        panes[ap].vc_target = new_vc;
+                        panes[ap].pending_timeframe_change = Some(TF_OPTIONS[i].to_string());
+                    }
                 }
             }
             ui.add_space(2.0);
@@ -3193,6 +3191,10 @@ fn render_toolbar(
                     watchlist.broadcast_mode = !watchlist.broadcast_mode;
                     TB_BTN_CLICKED.with(|f| f.set(true));
                 }
+            }
+            // ── Trendline filter — drawing section ──
+            if tb_btn_tip(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t, "Trendline Filter").clicked() {
+                watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -3959,16 +3961,19 @@ fn render_toolbar(
                 *layout = ly;
                 if *active_pane >= max { *active_pane = 0; }
             };
-            // Show favorited layouts as buttons
-            for &ly in ALL_LAYOUTS {
-                if !watchlist.layout_favorites.iter().any(|f| f == ly.label()) { continue; }
-                let is_cur = *layout == ly;
-                if tb_btn(ui, ly.label(), is_cur, t).clicked() {
-                    switch_layout(ly, panes, layout, active_pane);
-                }
-            }
-            // Layout dropdown toggle button
+            // Show favorited layouts as segmented control + dropdown caret
             {
+                let fav_layouts: Vec<&Layout> = ALL_LAYOUTS.iter()
+                    .filter(|&&ly| watchlist.layout_favorites.iter().any(|f| f == ly.label()))
+                    .collect();
+                if !fav_layouts.is_empty() {
+                    let labels: Vec<&str> = fav_layouts.iter().map(|&&ly| ly.label()).collect();
+                    let active_idx = fav_layouts.iter().position(|&&ly| *layout == ly).unwrap_or(0);
+                    if let Some(i) = segmented_control(ui, active_idx, &labels, t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
+                        switch_layout(*fav_layouts[i], panes, layout, active_pane);
+                    }
+                }
+                // Dropdown caret for the full layout picker
                 let dd_btn = tb_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
                 if dd_btn.clicked() {
                     watchlist.layout_dropdown_open = !watchlist.layout_dropdown_open;

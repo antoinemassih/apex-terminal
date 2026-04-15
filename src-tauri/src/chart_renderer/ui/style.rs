@@ -283,6 +283,66 @@ pub fn col_header(ui: &mut egui::Ui, text: &str, width: f32, color: Color32, rig
     });
 }
 
+// ─── Segmented control ───────────────────────────────────────────────────────
+
+/// Pill group of buttons with a sunken inset trough. Returns `Some(index)` of the clicked
+/// segment, `None` if nothing clicked. Caller updates state on `Some(i)`.
+pub fn segmented_control(
+    ui: &mut egui::Ui,
+    active_idx: usize,
+    labels: &[&str],
+    toolbar_bg: Color32,
+    toolbar_border: Color32,
+    accent: Color32,
+    dim: Color32,
+) -> Option<usize> {
+    let mut clicked = None;
+
+    // Trough: slightly darker than toolbar_bg for the sunken look
+    let trough = Color32::from_rgb(
+        toolbar_bg.r().saturating_sub(10),
+        toolbar_bg.g().saturating_sub(10),
+        toolbar_bg.b().saturating_sub(10),
+    );
+
+    egui::Frame::NONE
+        .fill(trough)
+        .inner_margin(egui::Margin::same(2))
+        .corner_radius(RADIUS_MD + 1.0)
+        .stroke(Stroke::new(STROKE_THIN, color_alpha(toolbar_border, ALPHA_STRONG)))
+        .show(ui, |ui| {
+            let prev_spacing = ui.spacing().item_spacing.x;
+            ui.spacing_mut().item_spacing.x = 1.0;
+            ui.horizontal(|ui| {
+                let n = labels.len();
+                for (i, label) in labels.iter().enumerate() {
+                    let active = i == active_idx;
+                    let fg = if active { accent } else { dim };
+                    let bg = if active { color_alpha(accent, ALPHA_TINT + 5) } else { Color32::TRANSPARENT };
+                    let cr = match (i, n) {
+                        (0, 1) => egui::CornerRadius::same(RADIUS_SM as u8),
+                        (0, _) => egui::CornerRadius { nw: RADIUS_SM as u8, sw: RADIUS_SM as u8, ne: 0, se: 0 },
+                        (x, n) if x == n - 1 => egui::CornerRadius { nw: 0, sw: 0, ne: RADIUS_SM as u8, se: RADIUS_SM as u8 },
+                        _ => egui::CornerRadius::ZERO,
+                    };
+                    let prev_pad = ui.spacing().button_padding;
+                    ui.spacing_mut().button_padding = egui::vec2(4.0, prev_pad.y);
+                    let resp = ui.add(
+                        egui::Button::new(RichText::new(*label).monospace().size(FONT_SM).strong().color(fg))
+                            .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
+                            .min_size(egui::vec2(0.0, 22.0))
+                    );
+                    ui.spacing_mut().button_padding = prev_pad;
+                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    if resp.clicked() { clicked = Some(i); }
+                }
+            });
+            ui.spacing_mut().item_spacing.x = prev_spacing;
+        });
+
+    clicked
+}
+
 // ─── Panel chrome ─────────────────────────────────────────────────────────────
 
 /// Square icon button with hover highlight — always renders as a true square hit target.
