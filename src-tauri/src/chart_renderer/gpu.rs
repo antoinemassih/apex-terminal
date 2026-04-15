@@ -1344,6 +1344,7 @@ pub(crate) struct Chart {
     pub(crate) tab_symbols: Vec<String>, // symbol per tab
     pub(crate) tab_timeframes: Vec<String>, // timeframe per tab
     pub(crate) tab_changes: Vec<f32>, // cached daily change % per tab
+    pub(crate) tab_prices: Vec<f32>,  // cached last-known price per tab (0.0 = unknown)
     pub(crate) tab_active: usize, // index of active tab (0-based)
     pub(crate) tab_hovered: Option<usize>, // which tab the mouse is over (for close button)
     // -- Session shading (pre/post market) --
@@ -1450,7 +1451,7 @@ impl Chart {
             symbol_history: vec![], symbol_history_idx: 0, symbol_nav_in_progress: false,
             vc_target: 200,
             price_range_animated: None,
-            tab_symbols: vec![], tab_timeframes: vec![], tab_changes: vec![], tab_active: 0, tab_hovered: None,
+            tab_symbols: vec![], tab_timeframes: vec![], tab_changes: vec![], tab_prices: vec![], tab_active: 0, tab_hovered: None,
             session_shading: false, rth_start_minutes: 570, rth_end_minutes: 960,
             eth_bar_opacity: 0.35, session_bg_tint: false, session_bg_color: "#1a1a2e".into(),
             session_bg_opacity: 0.15, session_break_lines: true,
@@ -4717,12 +4718,15 @@ fn render_chart_pane(
         chart.tab_active = ai;
         chart.tab_symbols[ai] = chart.symbol.clone();
         chart.tab_timeframes[ai] = chart.timeframe.clone();
-        // Update cached change % for active tab from current bars
-        if chart.tab_changes.len() > ai {
-            if let (Some(first), Some(last)) = (chart.bars.first(), chart.bars.last()) {
-                if first.open > 0.0 {
-                    chart.tab_changes[ai] = (last.close - first.open) / first.open * 100.0;
-                }
+        // Keep tab_prices in sync with tab_symbols length
+        while chart.tab_prices.len() < chart.tab_symbols.len() { chart.tab_prices.push(0.0); }
+        // Update cached change % AND price for active tab from current bars
+        if let (Some(first), Some(last)) = (chart.bars.first(), chart.bars.last()) {
+            if first.open > 0.0 && chart.tab_changes.len() > ai {
+                chart.tab_changes[ai] = (last.close - first.open) / first.open * 100.0;
+            }
+            if chart.tab_prices.len() > ai {
+                chart.tab_prices[ai] = last.close;
             }
         }
     }
@@ -4831,15 +4835,11 @@ fn render_chart_pane(
             let mut tab_x = sym_label_x;
             let tab_count = chart.tab_symbols.len();
             let active_tab = chart.tab_active;
-            // Collect tab data to avoid borrow issues — now we pass the last-bar price through
+            // Collect tab data — cached last-known price + change per tab, so inactive
+            // tabs also display their prices (from tab_prices, updated when they were active)
             let tab_data: Vec<(String, String, f32, f32)> = (0..tab_count).map(|i| {
-                let (price, chg) = if i == active_tab {
-                    let p = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                    let c = if i < chart.tab_changes.len() { chart.tab_changes[i] } else { 0.0 };
-                    (p, c)
-                } else {
-                    (0.0, if i < chart.tab_changes.len() { chart.tab_changes[i] } else { 0.0 })
-                };
+                let price = if i < chart.tab_prices.len() { chart.tab_prices[i] } else { 0.0 };
+                let chg = if i < chart.tab_changes.len() { chart.tab_changes[i] } else { 0.0 };
                 (chart.tab_symbols[i].clone(), chart.tab_timeframes[i].clone(), price, chg)
             }).collect();
             let mut clicked_tab: Option<usize> = None;
@@ -4849,13 +4849,20 @@ fn render_chart_pane(
 
             for (ti, (sym, _tf, price, chg)) in tab_data.iter().enumerate() {
                 let is_active_tab = ti == active_tab;
-                // Price badge text for active tab, % for inactive (no price data cached)
-                let badge_text = if is_active_tab && *price > 0.0 {
-                    if *price >= 100.0 { format!("${:.2}", price) }
-                    else if *price >= 1.0 { format!("${:.2}", price) }
-                    else { format!("${:.4}", price) }
+                // Always show price when we have it. Empty/placeholder for unloaded tabs.
+                let is_option_sym = sym.contains(' ') && (sym.ends_with('C') || sym.ends_with('P')
+                    || sym.contains(" C ") || sym.contains(" P "));
+                let badge_text = if *price > 0.0 {
+                    if is_option_sym {
+                        // For options, show the mark price (we don't cache bid/ask per tab yet)
+                        format!("${:.2}", price)
+                    } else if *price >= 1.0 {
+                        format!("${:.2}", price)
+                    } else {
+                        format!("${:.4}", price)
+                    }
                 } else {
-                    if *chg >= 0.0 { format!("+{:.1}%", chg) } else { format!("{:.1}%", chg) }
+                    String::new()
                 };
                 let sym_galley = header_painter.layout_no_wrap(sym.clone(), title_font.clone(), t.dim);
                 let badge_galley = header_painter.layout_no_wrap(badge_text.clone(), price_font.clone(), t.dim);
@@ -4904,21 +4911,12 @@ fn render_chart_pane(
                     egui::pos2(tab_x + tab_pad, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER, sym, title_font.clone(), sym_col);
 
-                // Price / change badge — tinted bull/bear
+                // Price — colored text only, no bounding badge
                 let badge_col = if *chg >= 0.0 { t.bull } else { t.bear };
-                let badge_alpha = if is_active_tab { 255u8 } else { 160 };
-                let badge_draw_col = egui::Color32::from_rgba_unmultiplied(badge_col.r(), badge_col.g(), badge_col.b(), badge_alpha);
+                let badge_alpha = if is_active_tab { 255u8 } else { 180 };
+                let badge_draw_col = egui::Color32::from_rgba_unmultiplied(
+                    badge_col.r(), badge_col.g(), badge_col.b(), badge_alpha);
                 let badge_x = tab_x + tab_pad + sym_galley.size().x + gap;
-                if is_active_tab && *price > 0.0 {
-                    // Solid bg pill for the active tab's price
-                    let pill_bg = color_alpha(badge_col, 25);
-                    let pill_rect = egui::Rect::from_min_size(
-                        egui::pos2(badge_x - 3.0, tab_rect.center().y - badge_galley.size().y / 2.0 - 2.0),
-                        egui::vec2(badge_galley.size().x + 6.0, badge_galley.size().y + 4.0));
-                    header_painter.rect_filled(pill_rect, 3.0, pill_bg);
-                    header_painter.rect_stroke(pill_rect, 3.0,
-                        egui::Stroke::new(0.5, color_alpha(badge_col, 80)), egui::StrokeKind::Outside);
-                }
                 header_painter.text(
                     egui::pos2(badge_x, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER, &badge_text, price_font.clone(), badge_draw_col);
@@ -4976,6 +4974,7 @@ fn render_chart_pane(
                     chart.tab_symbols.push(chart.symbol.clone());
                     chart.tab_timeframes.push(chart.timeframe.clone());
                     chart.tab_changes.push(0.0);
+                    chart.tab_prices.push(0.0);
                     chart.tab_active = chart.tab_symbols.len() - 1;
                     chart.picker_open = true;
                     chart.picker_query.clear();
@@ -4992,6 +4991,7 @@ fn render_chart_pane(
                 chart.tab_symbols.remove(ci);
                 chart.tab_timeframes.remove(ci);
                 if ci < chart.tab_changes.len() { chart.tab_changes.remove(ci); }
+                if ci < chart.tab_prices.len() { chart.tab_prices.remove(ci); }
                 if chart.tab_active >= chart.tab_symbols.len() {
                     chart.tab_active = chart.tab_symbols.len().saturating_sub(1);
                 } else if chart.tab_active > ci {
@@ -5092,7 +5092,7 @@ fn render_chart_pane(
                 chart.picker_pos = egui::pos2(sym_rect.left(), sym_rect.bottom());
             }
 
-            // Price badge (replaces % change)
+            // Price — colored text only, no bounding badge
             let sym_text_w = sym_galley.size().x;
             let mut cursor_x = sym_label_x + sym_text_w + 10.0;
             if let Some(last) = chart.bars.last() {
@@ -5100,21 +5100,13 @@ fn render_chart_pane(
                 let chg_col = if let Some(first) = chart.bars.first() {
                     if first.open > 0.0 && last.close >= first.open { t.bull } else { t.bear }
                 } else { t.dim };
-                let price_text = if price >= 100.0 { format!("${:.2}", price) }
-                    else if price >= 1.0 { format!("${:.2}", price) }
+                let price_text = if price >= 1.0 { format!("${:.2}", price) }
                     else { format!("${:.4}", price) };
                 let price_font = egui::FontId::monospace(title_font_size - 1.0);
                 let price_galley = header_painter.layout_no_wrap(price_text.clone(), price_font.clone(), chg_col);
-                let price_bg = color_alpha(chg_col, 25);
-                let price_rect = egui::Rect::from_min_size(
-                    egui::pos2(cursor_x, header_rect.center().y - price_galley.size().y / 2.0 - 2.0),
-                    price_galley.size() + egui::vec2(8.0, 4.0));
-                header_painter.rect_filled(price_rect, 3.0, price_bg);
-                header_painter.rect_stroke(price_rect, 3.0,
-                    egui::Stroke::new(0.5, color_alpha(chg_col, 80)), egui::StrokeKind::Outside);
-                header_painter.text(egui::pos2(cursor_x + 4.0, header_rect.center().y),
+                header_painter.text(egui::pos2(cursor_x, header_rect.center().y),
                     egui::Align2::LEFT_CENTER, &price_text, price_font, chg_col);
-                cursor_x += price_rect.width() + 6.0;
+                cursor_x += price_galley.size().x + 10.0;
             }
 
             // OV button (symbol overlay manager) — proper clickable tile
@@ -5180,14 +5172,17 @@ fn render_chart_pane(
                     if chart.tab_symbols.is_empty() {
                         chart.tab_symbols.push(chart.symbol.clone());
                         chart.tab_timeframes.push(chart.timeframe.clone());
-                        let chg = if let (Some(f), Some(l)) = (chart.bars.first(), chart.bars.last()) {
-                            if f.open > 0.0 { (l.close - f.open) / f.open * 100.0 } else { 0.0 }
-                        } else { 0.0 };
+                        let (chg, px) = if let (Some(f), Some(l)) = (chart.bars.first(), chart.bars.last()) {
+                            let c = if f.open > 0.0 { (l.close - f.open) / f.open * 100.0 } else { 0.0 };
+                            (c, l.close)
+                        } else { (0.0, 0.0) };
                         chart.tab_changes.push(chg);
+                        chart.tab_prices.push(px);
                     }
                     chart.tab_symbols.push("".into());
                     chart.tab_timeframes.push(chart.timeframe.clone());
                     chart.tab_changes.push(0.0);
+                    chart.tab_prices.push(0.0);
                     chart.tab_active = chart.tab_symbols.len() - 1;
                     chart.picker_open = true;
                     chart.picker_query.clear();
