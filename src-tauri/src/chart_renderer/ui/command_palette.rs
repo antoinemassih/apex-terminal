@@ -102,7 +102,7 @@ if watchlist.cmd_palette_open {
                         let type_col = if rtype == "Command" { t.accent } else { t.dim.gamma_multiply(0.4) };
                         ui.label(egui::RichText::new(rtype).monospace().size(8.0).color(type_col));
                         ui.add_space(4.0);
-                        let sym_col = if is_sel { egui::Color32::WHITE } else { egui::Color32::from_rgb(220, 220, 230) };
+                        let sym_col = if is_sel { egui::Color32::WHITE } else { TEXT_PRIMARY };
                         ui.label(egui::RichText::new(sym).monospace().size(12.0).strong().color(sym_col));
                         ui.label(egui::RichText::new(name).monospace().size(10.0).color(t.dim.gamma_multiply(0.5)));
                         ui.allocate_space(egui::vec2(0.0, 24.0)); // ensure row height

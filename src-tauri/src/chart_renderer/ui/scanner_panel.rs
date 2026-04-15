@@ -5,7 +5,7 @@
 //! Includes "Save as Watchlist" and a custom scanner builder.
 
 use egui;
-use super::style::{close_button, separator, color_alpha};
+use super::style::{close_button, separator, color_alpha, simple_btn, col_header};
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 
@@ -140,9 +140,7 @@ pub(crate) fn draw(
                     });
 
                     ui.horizontal(|ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new("Create").monospace().size(9.0).color(t.accent))
-                            .min_size(egui::vec2(60.0, 18.0))).clicked()
-                        {
+                        if simple_btn(ui, "Create", t.accent, 60.0) {
                             let name = if watchlist.scanner_new_name.trim().is_empty() {
                                 "Custom Scanner".to_string()
                             } else {
@@ -167,9 +165,7 @@ pub(crate) fn draw(
                             watchlist.scanner_new_min_volume.clear();
                             watchlist.scanner_builder_open = false;
                         }
-                        if ui.add(egui::Button::new(egui::RichText::new("Cancel").monospace().size(9.0).color(t.dim))
-                            .min_size(egui::vec2(50.0, 18.0))).clicked()
-                        {
+                        if simple_btn(ui, "Cancel", t.dim, 50.0) {
                             watchlist.scanner_builder_open = false;
                         }
                     });
@@ -251,15 +247,10 @@ pub(crate) fn draw(
                             ui.horizontal(|ui| {
                                 ui.add_space(4.0);
                                 let cw = (panel_w - 16.0) / 3.0;
-                                ui.allocate_ui_with_layout(egui::vec2(cw, 12.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                    ui.label(egui::RichText::new("SYMBOL").monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
-                                });
-                                ui.allocate_ui_with_layout(egui::vec2(cw, 12.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(egui::RichText::new("PRICE").monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
-                                });
-                                ui.allocate_ui_with_layout(egui::vec2(cw, 12.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(egui::RichText::new("CHG%").monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
-                                });
+                                let hdr_color = t.dim.gamma_multiply(0.4);
+                                col_header(ui, "SYMBOL", cw, hdr_color, false);
+                                col_header(ui, "PRICE",  cw, hdr_color, true);
+                                col_header(ui, "CHG%",   cw, hdr_color, true);
                             });
 
                             // Result rows

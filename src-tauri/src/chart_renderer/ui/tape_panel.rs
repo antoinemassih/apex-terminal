@@ -1,7 +1,7 @@
 //! Time & Sales panel — real-time trade tape display.
 
 use egui;
-use super::style::{close_button, separator, color_alpha};
+use super::style::{close_button, separator, color_alpha, col_header};
 use super::super::gpu::{Watchlist, TapeRow, Theme};
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
@@ -34,15 +34,10 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             ui.horizontal(|ui| {
                 ui.add_space(4.0);
                 let hw = (panel_w - 12.0) / 3.0;
-                ui.allocate_ui_with_layout(egui::vec2(hw, 12.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new("TIME").monospace().size(7.5).color(t.dim.gamma_multiply(0.5)));
-                });
-                ui.allocate_ui_with_layout(egui::vec2(hw, 12.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new("PRICE").monospace().size(7.5).color(t.dim.gamma_multiply(0.5)));
-                });
-                ui.allocate_ui_with_layout(egui::vec2(hw, 12.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new("SIZE").monospace().size(7.5).color(t.dim.gamma_multiply(0.5)));
-                });
+                let hdr_color = t.dim.gamma_multiply(0.5);
+                col_header(ui, "TIME",  hw, hdr_color, false);
+                col_header(ui, "PRICE", hw, hdr_color, true);
+                col_header(ui, "SIZE",  hw, hdr_color, true);
             });
             separator(ui, t.toolbar_border);
 

@@ -1,7 +1,7 @@
 //! Watchlist side panel — stocks list, options chain, heatmap.
 
 use egui;
-use super::style::{close_button, separator, color_alpha, hex_to_color, section_label, dim_label};
+use super::style::{close_button, separator, color_alpha, hex_to_color, section_label, dim_label, TEXT_PRIMARY};
 use super::super::gpu::*;
 use super::super::{Drawing, DrawingKind, ChartCommand};
 use crate::ui_kit::icons::Icon;
@@ -1394,7 +1394,7 @@ if watchlist.open {
                         // Price display
                         if chain_price > 0.0 {
                             ui.add_space(6.0);
-                            ui.label(egui::RichText::new(format!("${:.2}", chain_price)).monospace().size(14.0).color(egui::Color32::from_rgb(220, 220, 230)));
+                            ui.label(egui::RichText::new(format!("${:.2}", chain_price)).monospace().size(14.0).color(TEXT_PRIMARY));
                         }
                         // Search — static immediate + ApexIB background
                         if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
@@ -1719,7 +1719,7 @@ if watchlist.open {
                             };
                             ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER,
                                 &badge_text, egui::FontId::monospace(11.0),
-                                egui::Color32::from_rgb(220, 220, 230));
+                                TEXT_PRIMARY);
                         }
                         ui.add_space(22.0);
 

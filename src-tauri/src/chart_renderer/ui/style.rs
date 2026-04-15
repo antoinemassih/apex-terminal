@@ -2,6 +2,13 @@
 
 use egui::{self, Color32, RichText, Stroke};
 
+// ─── Color constants ─────────────────────────────────────────────────────────
+
+/// Primary text color used in cards, labels, and list rows.
+pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(220, 220, 230);
+/// Secondary text color used in triggered/dimmed card labels.
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(200, 200, 210);
+
 /// Monospace text with size and color.
 #[inline]
 pub fn mono(text: &str, size: f32, color: Color32) -> RichText {
@@ -46,7 +53,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         };
         ui.painter().rect_filled(resp.rect, 3.0, hover_bg);
         // Redraw the icon text on top so it's visible over the highlight
-        let hover_fg = if active { accent } else { Color32::from_rgb(220, 220, 230) };
+        let hover_fg = if active { accent } else { TEXT_PRIMARY };
         ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
             label, egui::FontId::monospace(11.0), hover_fg);
     }
@@ -113,7 +120,7 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(title).monospace().size(11.0).strong()
-                    .color(Color32::from_rgb(220, 220, 230)));
+                    .color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.add(egui::Button::new(RichText::new(Icon::X).size(11.0)
                         .color(dim.gamma_multiply(0.6)))
@@ -351,4 +358,38 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
         .min_size(egui::vec2(width, 26.0)).corner_radius(3.0));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
+}
+
+/// Small action button — 8px text, 16px height, tinted background. For inline header actions
+/// like "Clear All", "Close All", "Dismiss All" where a full-size action_btn is too heavy.
+pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool {
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(8.0).strong().color(color))
+        .fill(color_alpha(color, 15))
+        .corner_radius(2.0)
+        .stroke(Stroke::new(0.5, color_alpha(color, 50)))
+        .min_size(egui::vec2(0.0, 16.0)));
+    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    resp.clicked()
+}
+
+/// Simple button — unstyled button with colored monospace text and a min width.
+/// For form actions like Create/Cancel where the accent-tinted background would be too heavy.
+pub fn simple_btn(ui: &mut egui::Ui, label: &str, color: Color32, min_width: f32) -> bool {
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(9.0).color(color))
+        .min_size(egui::vec2(min_width, 18.0)));
+    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    resp.clicked()
+}
+
+/// Column header cell — fixed-width 7.5px dim monospace label for table headers.
+/// `right_align` = true for numeric columns (PRICE, CHG%, SIZE), false for text (SYMBOL, TIME).
+pub fn col_header(ui: &mut egui::Ui, text: &str, width: f32, color: Color32, right_align: bool) {
+    let layout = if right_align {
+        egui::Layout::right_to_left(egui::Align::Center)
+    } else {
+        egui::Layout::left_to_right(egui::Align::Center)
+    };
+    ui.allocate_ui_with_layout(egui::vec2(width, 12.0), layout, |ui| {
+        ui.label(RichText::new(text).monospace().size(7.5).color(color));
+    });
 }

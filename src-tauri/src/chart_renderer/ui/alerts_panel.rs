@@ -1,7 +1,7 @@
 //! Alerts management panel — shows all active and triggered alerts with controls.
 
 use egui;
-use super::style::{close_button, separator, color_alpha, section_label, status_badge, order_card};
+use super::style::{close_button, separator, color_alpha, section_label, status_badge, order_card, small_action_btn, TEXT_PRIMARY, TEXT_SECONDARY};
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;
@@ -138,12 +138,7 @@ egui::SidePanel::right("alerts_panel")
             section_label(ui, &format!("ACTIVE ({})", total_active), t.accent);
             if total_active > 0 {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new("Clear All").monospace().size(8.0).color(t.bear))
-                        .fill(color_alpha(t.bear, 15)).corner_radius(2.0)
-                        .stroke(egui::Stroke::new(0.5, color_alpha(t.bear, 50)))
-                        .min_size(egui::vec2(0.0, 14.0))).clicked()
-                    {
+                    if small_action_btn(ui, "Clear All", t.bear) {
                         watchlist.alerts.retain(|a| a.triggered);
                         for p in panes.iter_mut() {
                             p.price_alerts.retain(|a| a.triggered);
@@ -169,7 +164,7 @@ egui::SidePanel::right("alerts_panel")
                 order_card(ui, dir_color, color_alpha(t.toolbar_border, 10), |ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
-                            .color(egui::Color32::from_rgb(220,220,230)));
+                            .color(TEXT_PRIMARY));
                         ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
                             .monospace().size(10.0).color(dir_color));
                         status_badge(ui, "ACTIVE", egui::Color32::from_rgb(255, 191, 0));
@@ -193,7 +188,7 @@ egui::SidePanel::right("alerts_panel")
                     order_card(ui, dir_color, color_alpha(t.toolbar_border, 10), |ui| {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
-                                .color(egui::Color32::from_rgb(220,220,230)));
+                                .color(TEXT_PRIMARY));
                             ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
                                 .monospace().size(10.0).color(dir_color));
                             status_badge(ui, "ACTIVE", egui::Color32::from_rgb(255, 191, 0));
@@ -225,11 +220,7 @@ egui::SidePanel::right("alerts_panel")
             ui.horizontal(|ui| {
                 section_label(ui, &format!("TRIGGERED ({})", total_triggered), t.dim);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new("Dismiss All").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)))
-                        .fill(egui::Color32::TRANSPARENT).corner_radius(2.0)
-                        .min_size(egui::vec2(0.0, 14.0))).clicked()
-                    {
+                    if small_action_btn(ui, "Dismiss All", t.dim.gamma_multiply(0.5)) {
                         watchlist.alerts.retain(|a| !a.triggered);
                         for p in panes.iter_mut() {
                             p.price_alerts.retain(|a| !a.triggered);
@@ -248,7 +239,7 @@ egui::SidePanel::right("alerts_panel")
                     order_card(ui, t.accent, color_alpha(t.toolbar_border, 8), |ui| {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
-                                .color(egui::Color32::from_rgb(200,200,210)));
+                                .color(TEXT_SECONDARY));
                             ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
                                 .monospace().size(10.0).color(t.accent));
                             status_badge(ui, "TRIGGERED", t.accent);
@@ -270,7 +261,7 @@ egui::SidePanel::right("alerts_panel")
                         order_card(ui, t.accent, color_alpha(t.toolbar_border, 8), |ui| {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
-                                    .color(egui::Color32::from_rgb(200,200,210)));
+                                    .color(TEXT_SECONDARY));
                                 ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
                                     .monospace().size(10.0).color(t.accent));
                                 status_badge(ui, "TRIGGERED", t.accent);

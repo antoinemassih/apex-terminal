@@ -220,7 +220,7 @@ if chart.picker_open {
                         let is_current = sym == chart.symbol;
                         let resp = ui.horizontal(|ui| {
                             let sym_text = egui::RichText::new(&sym).strong().monospace()
-                                .color(if is_current { t.bull } else { egui::Color32::from_rgb(220,220,230) });
+                                .color(if is_current { t.bull } else { TEXT_PRIMARY });
                             let r = ui.add(egui::Button::new(sym_text).frame(false).min_size(egui::vec2(65.0, 22.0)));
                             ui.label(egui::RichText::new(&name).small().color(t.dim));
                             r
@@ -257,7 +257,7 @@ if chart.picker_open {
                         let is_current = sym == &chart.symbol;
                         let resp = ui.horizontal(|ui| {
                             let sym_text = egui::RichText::new(sym).strong().monospace()
-                                .color(if is_current { t.bull } else { egui::Color32::from_rgb(220,220,230) });
+                                .color(if is_current { t.bull } else { TEXT_PRIMARY });
                             let r = ui.add(egui::Button::new(sym_text).frame(false).min_size(egui::vec2(65.0, 22.0)));
                             ui.vertical(|ui| {
                                 ui.label(egui::RichText::new(name).small().color(egui::Color32::from_rgb(180,180,190)));

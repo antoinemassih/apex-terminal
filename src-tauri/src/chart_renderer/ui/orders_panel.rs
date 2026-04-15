@@ -1,7 +1,7 @@
 //! Orders / Positions / Alerts side panel.
 
 use egui;
-use super::style::{close_button, separator, color_alpha, section_label, status_badge, order_card, action_btn};
+use super::style::{close_button, separator, color_alpha, section_label, status_badge, order_card, action_btn, small_action_btn, TEXT_PRIMARY};
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderStatus, OrderLevel, PriceAlert, cancel_order_with_pair, fmt_notional};
@@ -45,12 +45,7 @@ if watchlist.orders_panel_open {
                     section_label(ui, "POSITIONS", t.accent);
                     if has_positions {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let del_color = t.bear;
-                            if ui.add(egui::Button::new(egui::RichText::new("Close All")
-                                .monospace().size(8.0).color(del_color))
-                                .fill(color_alpha(del_color, 15)).corner_radius(2.0)
-                                .stroke(egui::Stroke::new(0.5, color_alpha(del_color, 50)))
-                                .min_size(egui::vec2(0.0, 16.0))).clicked() {
+                            if small_action_btn(ui, "Close All", t.bear) {
                                 // Fire close-all via ApexIB
                                 std::thread::spawn(|| {
                                     let _ = reqwest::blocking::Client::new()
@@ -74,7 +69,7 @@ if watchlist.orders_panel_open {
                                 // Row 1: symbol, qty@price, close buttons
                                 ui.horizontal(|ui| {
                                     ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong()
-                                        .color(egui::Color32::from_rgb(220,220,230)));
+                                        .color(TEXT_PRIMARY));
                                     ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price))
                                         .monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -362,7 +357,7 @@ if watchlist.orders_panel_open {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(&o.side).monospace().size(9.0).strong().color(side_color));
                                 ui.label(egui::RichText::new(format!("{}{}", o.symbol, opt_label)).monospace().size(10.0).strong()
-                                    .color(egui::Color32::from_rgb(220, 220, 230)));
+                                    .color(TEXT_PRIMARY));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     status_badge(ui, &o.status.to_uppercase(), status_color);
                                 });
@@ -401,7 +396,7 @@ if watchlist.orders_panel_open {
                         let alert_color = if alert.triggered { t.accent } else { t.dim };
                         order_card(ui, alert_color, color_alpha(t.toolbar_border, 10), |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220,220,230)));
+                                ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong().color(TEXT_PRIMARY));
                                 ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price)).monospace().size(10.0).color(alert_color));
                                 if alert.triggered {
                                     status_badge(ui, "TRIGGERED", t.accent);

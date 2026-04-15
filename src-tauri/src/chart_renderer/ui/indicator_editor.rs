@@ -52,7 +52,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     ui.add_space(8.0);
                     ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, ind_color);
                     ui.add_space(12.0);
-                    ui.label(egui::RichText::new(ind.display_name()).monospace().size(10.0).strong().color(egui::Color32::from_rgb(220, 220, 230)));
+                    ui.label(egui::RichText::new(ind.display_name()).monospace().size(10.0).strong().color(TEXT_PRIMARY));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(4.0);
                         let xr = ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim.gamma_multiply(0.5)))
