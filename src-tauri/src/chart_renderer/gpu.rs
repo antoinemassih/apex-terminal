@@ -9215,12 +9215,14 @@ fn render_chart_pane(
             let alert_color = if is_draft { draft_color } else { placed_color };
             let y = py(alert.price);
             if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-            // Drag zone: full-width strip at alert price
+            // Drag zone: full-width strip at alert price — bigger for drafts (tall red badge)
+            let drag_h = if is_draft { 24.0 } else { 12.0 };
             let drag_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.left(), y - 6.0), egui::vec2(cw, 12.0));
+                egui::pos2(rect.left(), y - drag_h / 2.0), egui::vec2(cw, drag_h));
             let drag_resp = ui.interact(drag_rect, egui::Id::new(("alert_drag", aid)), egui::Sense::click_and_drag());
             if drag_resp.dragged() {
-                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                // Use interact_pointer_pos which is valid during drag (hover_pos may not be)
+                if let Some(pos) = drag_resp.interact_pointer_pos() {
                     let new_price = py_inv(pos.y);
                     drag_alert = Some((aid, new_price));
                 }
@@ -9273,47 +9275,38 @@ fn render_chart_pane(
                     egui::pos2(lx + pad, y),
                     egui::Align2::LEFT_CENTER,
                     &label_text, label_font, egui::Color32::WHITE);
-                // PLACE button (right side of badge)
+                // PLACE button (right side of badge) — registered AFTER drag_rect so it wins clicks here
                 let place_rect = egui::Rect::from_min_size(
                     egui::pos2(badge_rect.right() - place_w - x_w - 4.0, badge_rect.top() + 3.0),
                     egui::vec2(place_w, badge_h - 6.0));
-                let place_hover = ui.input(|i| i.pointer.hover_pos())
-                    .map_or(false, |p| place_rect.contains(p));
-                let place_bg = if place_hover {
+                let place_resp = ui.interact(place_rect, egui::Id::new(("alert_place", aid)), egui::Sense::click());
+                let place_bg = if place_resp.hovered() {
                     egui::Color32::from_rgb(255, 255, 255)
                 } else {
-                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 200)
+                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 220)
                 };
                 painter.rect_filled(place_rect, 3.0, place_bg);
-                let place_text_col = if place_hover { alert_color } else { egui::Color32::from_rgb(180, 40, 40) };
+                let place_text_col = if place_resp.hovered() { alert_color } else { egui::Color32::from_rgb(180, 40, 40) };
                 painter.text(
                     place_rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    "PLACE", egui::FontId::monospace(9.0).into(),
+                    "PLACE", egui::FontId::monospace(9.0),
                     place_text_col);
-                if place_hover {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                        place_alert_id = Some(aid);
-                    }
-                }
+                if place_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                if place_resp.clicked() { place_alert_id = Some(aid); }
+
                 // X cancel button (far right)
                 let x_rect = egui::Rect::from_min_size(
                     egui::pos2(badge_rect.right() - x_w - 2.0, badge_rect.top() + 3.0),
                     egui::vec2(x_w, badge_h - 6.0));
-                let x_hover = ui.input(|i| i.pointer.hover_pos())
-                    .map_or(false, |p| x_rect.contains(p));
-                if x_hover {
+                let x_resp = ui.interact(x_rect, egui::Id::new(("alert_cancel", aid)), egui::Sense::click());
+                if x_resp.hovered() {
                     painter.rect_filled(x_rect, 3.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 60));
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
                 painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}",
                     egui::FontId::monospace(14.0), egui::Color32::WHITE);
-                if x_hover {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                        delete_alert_id = Some(aid);
-                    }
-                }
+                if x_resp.clicked() { delete_alert_id = Some(aid); }
             } else {
                 // ── PLACED: original amber compact badge ──
                 let label_text = format!("Alert {} {:.prec$}", dir_arrow, alert.price, prec = d);
@@ -11669,7 +11662,9 @@ fn render_chart_pane(
     // ── PRIORITY 2: Modal tools ─────────────────────────────────────────
 
     // 2a: Measure tool (shift+drag or context menu)
-    if !event_consumed && (shift_held || chart.measure_active) && pointer_in_pane && chart.draw_tool.is_empty() {
+    if !event_consumed && (shift_held || chart.measure_active) && chart.draw_tool.is_empty() {
+        // Set cursor unconditionally whenever measure is armed — even if pointer hasn't entered pane yet
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         if let Some(pos) = hover_pos {
             let bar_f = pos_to_bar(pos);
             let price_f = pos_to_price(pos);
@@ -11741,7 +11736,6 @@ fn render_chart_pane(
                     chart.measure_active = false;
                 }
             }
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         }
     }
 
@@ -11749,7 +11743,8 @@ fn render_chart_pane(
     if !event_consumed && chart.zoom_selecting {
         event_consumed = true;
         let has_start = chart.zoom_start != egui::Pos2::ZERO;
-        if pointer_in_pane { ui.ctx().set_cursor_icon(egui::CursorIcon::ZoomIn); }
+        // Set magnifier cursor unconditionally while zoom tool is armed
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ZoomIn);
 
         if !has_start {
             if resp.clicked() {
