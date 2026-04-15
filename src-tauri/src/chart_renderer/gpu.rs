@@ -5447,23 +5447,28 @@ fn render_chart_pane(
                 if first.open > 0.0 && last_price >= first.open { t.bull } else { t.bear }
             } else { t.dim };
 
-            // Faint horizontal level line spanning the chart — dashed
-            let line_col = color_alpha(price_col, 70);
+            // Faint horizontal level line spanning the chart — very subtle dashed
+            let line_col = color_alpha(price_col, 28);
             let mut dx = rect.left();
             while dx < rect.left() + cw {
-                let end_x = (dx + 4.0).min(rect.left() + cw);
+                let end_x = (dx + 3.0).min(rect.left() + cw);
                 painter.line_segment(
                     [egui::pos2(dx, price_y), egui::pos2(end_x, price_y)],
-                    egui::Stroke::new(1.0, line_col));
-                dx += 8.0;
+                    egui::Stroke::new(0.5, line_col));
+                dx += 10.0;
             }
 
-            // Y-axis price badge (only if axis is visible)
+            // Y-axis price badge (only if axis is visible) — dark text on colored fill
             if watchlist.show_y_axis {
                 let d = if last_price >= 10.0 { 2 } else { 4 };
                 let price_text = format!("{:.prec$}", last_price, prec = d);
                 let badge_font = egui::FontId::monospace(9.5);
-                let galley = painter.layout_no_wrap(price_text.clone(), badge_font.clone(), egui::Color32::WHITE);
+                // Dark foreground derived from the price color — high contrast but tinted
+                let fg_col = egui::Color32::from_rgb(
+                    (price_col.r() as f32 * 0.15) as u8,
+                    (price_col.g() as f32 * 0.15) as u8,
+                    (price_col.b() as f32 * 0.15) as u8);
+                let galley = painter.layout_no_wrap(price_text.clone(), badge_font.clone(), fg_col);
                 let pad_x = 4.0;
                 let pad_y = 2.0;
                 let badge_w = galley.size().x + pad_x * 2.0;
@@ -5485,7 +5490,7 @@ fn render_chart_pane(
                 painter.text(
                     egui::pos2(badge_rect.left() + pad_x, price_y),
                     egui::Align2::LEFT_CENTER,
-                    &price_text, badge_font, egui::Color32::WHITE);
+                    &price_text, badge_font, fg_col);
             }
         }
     }
