@@ -5011,6 +5011,7 @@ fn render_chart_pane(
                 }
             } else if let Some(ci) = clicked_tab {
                 if ci != chart.tab_active {
+                    // Clicked a DIFFERENT tab — switch to it
                     chart.tab_active = ci;
                     let new_sym = chart.tab_symbols[ci].clone();
                     let new_tf = chart.tab_timeframes[ci].clone();
@@ -5023,6 +5024,23 @@ fn render_chart_pane(
                     // Force load even if symbol matches (tab might have been created without data)
                     if new_sym == chart.symbol && chart.bars.is_empty() && !new_sym.is_empty() {
                         fetch_bars_background(new_sym, chart.timeframe.clone());
+                    }
+                } else {
+                    // Clicked the ALREADY-ACTIVE tab — open the appropriate ticker selector
+                    if chart.is_option {
+                        // Option tab: open the Watchlist Chain tab with the underlying pre-loaded
+                        watchlist.open = true;
+                        watchlist.tab = WatchlistTab::Chain;
+                        if !chart.underlying.is_empty() {
+                            watchlist.chain_symbol = chart.underlying.clone();
+                        }
+                    } else {
+                        // Equity tab: open the symbol picker
+                        chart.picker_open = true;
+                        chart.picker_query.clear();
+                        chart.picker_results.clear();
+                        chart.picker_last_query.clear();
+                        chart.picker_pos = egui::pos2(header_rect.left() + sym_label_x, header_rect.bottom() + 4.0);
                     }
                 }
             }
