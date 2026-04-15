@@ -4913,7 +4913,30 @@ fn render_chart_pane(
                 let tab_w = tab_pad + sym_galley.size().x + gap + badge_galley.size().x + gap + close_w + tab_pad;
 
                 let tab_rect = egui::Rect::from_min_size(egui::pos2(tab_x, tab_y), egui::vec2(tab_w, tab_h));
-                let tab_resp = ui.allocate_rect(tab_rect, egui::Sense::click());
+                let tab_resp = ui.interact(tab_rect, egui::Id::new(("pane_tab", pane_idx, ti)), egui::Sense::click_and_drag());
+                // Start cross-pane drag when user drags a tab header
+                if tab_resp.drag_started_by(egui::PointerButton::Primary) && watchlist.dragging_tab.is_none() {
+                    let start_pos = tab_resp.interact_pointer_pos().unwrap_or_else(|| tab_rect.center());
+                    let price = if ti < chart.tab_prices.len() { chart.tab_prices[ti] } else { 0.0 };
+                    let chg = if ti < chart.tab_changes.len() { chart.tab_changes[ti] } else { 0.0 };
+                    watchlist.dragging_tab = Some(TabDragState {
+                        source_pane: pane_idx,
+                        tab_idx: ti,
+                        symbol: sym.clone(),
+                        timeframe: chart.tab_timeframes[ti].clone(),
+                        price, change: chg,
+                        current_pos: start_pos,
+                    });
+                }
+                // Update drag position each frame while dragging
+                if tab_resp.dragged_by(egui::PointerButton::Primary) {
+                    if let Some(drag) = watchlist.dragging_tab.as_mut() {
+                        if drag.source_pane == pane_idx && drag.tab_idx == ti {
+                            if let Some(p) = tab_resp.interact_pointer_pos() { drag.current_pos = p; }
+                        }
+                    }
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
                 if tab_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     hovered_tab = Some(ti);
@@ -14289,6 +14312,104 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let pane_idx = if let Some(max_idx) = watchlist.maximized_pane { max_idx } else { render_i };
         render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached);
         } // end for pane_idx
+
+        // ── Cross-pane tab drag: ghost rendering + drop handling ──
+        if let Some(drag) = watchlist.dragging_tab.clone() {
+            let pointer = ui.input(|i| i.pointer.hover_pos()).or(Some(drag.current_pos)).unwrap();
+            let pointer_released = ui.input(|i| i.pointer.primary_released());
+            let pointer_down = ui.input(|i| i.pointer.primary_down());
+
+            // Find which pane the pointer is over (for drop target highlight + drop target)
+            let drop_pane: Option<usize> = pane_rects.iter().enumerate()
+                .find(|(_, r)| r.contains(pointer))
+                .map(|(i, _)| i);
+
+            // Highlight drop target header
+            if let Some(dst) = drop_pane {
+                if dst != drag.source_pane {
+                    if let Some(pane_r) = pane_rects.get(dst) {
+                        let hsize = watchlist.pane_header_size.tabs_header_h();
+                        let drop_rect = egui::Rect::from_min_size(pane_r.min, egui::vec2(pane_r.width(), hsize));
+                        let t_ref = &THEMES[theme_idx];
+                        ui.painter().rect_filled(drop_rect, 0.0, color_alpha(t_ref.accent, 40));
+                        ui.painter().rect_stroke(drop_rect, 0.0,
+                            egui::Stroke::new(2.0, color_alpha(t_ref.accent, 200)), egui::StrokeKind::Inside);
+                    }
+                }
+            }
+
+            // Paint ghost tab at cursor
+            {
+                let t_ref = &THEMES[theme_idx];
+                let ghost_text = format!("{} {}", drag.symbol, drag.timeframe);
+                let font = egui::FontId::monospace(12.0);
+                let galley = ui.painter().layout_no_wrap(ghost_text.clone(), font.clone(), TEXT_PRIMARY);
+                let gw = galley.size().x + 20.0;
+                let gh = galley.size().y + 8.0;
+                let ghost_rect = egui::Rect::from_min_size(
+                    egui::pos2(pointer.x + 8.0, pointer.y + 8.0),
+                    egui::vec2(gw, gh));
+                ui.painter().rect_filled(ghost_rect, 4.0, color_alpha(t_ref.toolbar_bg, 230));
+                ui.painter().rect_stroke(ghost_rect, 4.0,
+                    egui::Stroke::new(1.0, color_alpha(t_ref.accent, ALPHA_ACTIVE)),
+                    egui::StrokeKind::Outside);
+                ui.painter().text(
+                    egui::pos2(ghost_rect.left() + 10.0, ghost_rect.center().y),
+                    egui::Align2::LEFT_CENTER, &ghost_text, font, TEXT_PRIMARY);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            }
+
+            // On release: perform the move if dropped on a different pane
+            if pointer_released {
+                if let Some(dst) = drop_pane {
+                    if dst != drag.source_pane
+                        && drag.source_pane < panes.len()
+                        && dst < panes.len()
+                        && drag.tab_idx < panes[drag.source_pane].tab_symbols.len()
+                    {
+                        let src = drag.source_pane;
+                        let ti = drag.tab_idx;
+                        // Remove from source
+                        panes[src].tab_symbols.remove(ti);
+                        panes[src].tab_timeframes.remove(ti);
+                        if ti < panes[src].tab_changes.len() { panes[src].tab_changes.remove(ti); }
+                        if ti < panes[src].tab_prices.len() { panes[src].tab_prices.remove(ti); }
+                        if panes[src].tab_active >= panes[src].tab_symbols.len() {
+                            panes[src].tab_active = panes[src].tab_symbols.len().saturating_sub(1);
+                        } else if panes[src].tab_active > ti {
+                            panes[src].tab_active -= 1;
+                        }
+                        // If source had exactly one tab (now zero), keep its current symbol
+                        // rendering via the non-tab header. tab_symbols is allowed to be empty.
+
+                        // Append to destination — initialize dest tabs if needed
+                        if panes[dst].tab_symbols.is_empty() {
+                            // Seed dest with its current symbol as tab 0
+                            let dst_sym = panes[dst].symbol.clone();
+                            let dst_tf = panes[dst].timeframe.clone();
+                            let dst_px = panes[dst].bars.last().map(|b| b.close).unwrap_or(0.0);
+                            panes[dst].tab_symbols.push(dst_sym);
+                            panes[dst].tab_timeframes.push(dst_tf);
+                            panes[dst].tab_changes.push(0.0);
+                            panes[dst].tab_prices.push(dst_px);
+                        }
+                        panes[dst].tab_symbols.push(drag.symbol.clone());
+                        panes[dst].tab_timeframes.push(drag.timeframe.clone());
+                        panes[dst].tab_changes.push(drag.change);
+                        panes[dst].tab_prices.push(drag.price);
+                        panes[dst].tab_active = panes[dst].tab_symbols.len() - 1;
+                        // Load the dragged symbol on dest
+                        panes[dst].pending_symbol_change = Some(drag.symbol.clone());
+                        panes[dst].pending_timeframe_change = Some(drag.timeframe.clone());
+                        *active_pane = dst;
+                    }
+                }
+                watchlist.dragging_tab = None;
+            } else if !pointer_down {
+                // Safety: clear drag state if mouse button got released outside our notice
+                watchlist.dragging_tab = None;
+            }
+        }
     });
     span_end(); // chart_panes
 
@@ -14464,6 +14585,19 @@ impl ScannerDef {
     }
 }
 
+/// Cross-pane tab drag state — populated when user starts dragging a tab header,
+/// cleared when drag ends. Handled in draw_chart after all panes are rendered.
+#[derive(Clone)]
+pub(crate) struct TabDragState {
+    pub source_pane: usize,
+    pub tab_idx: usize,
+    pub symbol: String,
+    pub timeframe: String,
+    pub price: f32,
+    pub change: f32,
+    pub current_pos: egui::Pos2,
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     pub(crate) tab: WatchlistTab,
@@ -14594,6 +14728,8 @@ pub(crate) struct Watchlist {
     pub(crate) layout_dropdown_open: bool,
     pub(crate) pending_overlay_add: bool,
     pub(crate) layout_dropdown_pos: egui::Pos2,
+    // Cross-pane tab drag state
+    pub(crate) dragging_tab: Option<TabDragState>,
     // Pane templates (save/load indicator + toggle configs)
     pub(crate) pane_templates: Vec<(String, serde_json::Value)>,  // (name, serialized pane config)
     pub(crate) pane_template_name: String, // input buffer for naming a new template
@@ -14707,7 +14843,7 @@ impl Watchlist {
                pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5, pane_divider_dragging: false,
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
                layout_favorites: vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()],
-               layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO,
+               layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO, dragging_tab: None,
                pending_overlay_add: false,
                pane_templates: vec![], pane_template_name: String::new(),
                discord_open: false,
