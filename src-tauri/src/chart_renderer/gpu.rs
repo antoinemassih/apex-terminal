@@ -2848,12 +2848,12 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.window_fill = t.toolbar_bg;
         style.visuals.panel_fill = t.toolbar_bg;
         style.visuals.extreme_bg_color = t.bg;
-        // Drop shadow on popup menus/ComboBoxes — gives them real depth and lift
+        // Drop shadow on popup menus/ComboBoxes — subtle depth, not overwhelming
         style.visuals.popup_shadow = egui::epaint::Shadow {
-            offset: [0, 6],
-            blur: 20,
-            spread: 2,
-            color: egui::Color32::from_black_alpha(140),
+            offset: [0, 3],
+            blur: 12,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(70),
         };
         style.interaction.tooltip_delay = 0.15;
 
@@ -2890,10 +2890,12 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.window_corner_radius           = popup_r;
         style.visuals.menu_corner_radius             = popup_r;
 
-        // Button padding — 7px horizontal, 3px vertical — gives dropdowns proper breathing room
-        style.spacing.button_padding                 = egui::vec2(7.0, 3.0);
-        // Inner margin inside popup/menu content
-        style.spacing.menu_margin                    = egui::Margin::same(4);
+        // Button padding — 8px horizontal, 4px vertical — generous padding for dropdown items
+        style.spacing.button_padding                 = egui::vec2(8.0, 4.0);
+        // Inner margin inside popup/menu content — breathing room around the item list
+        style.spacing.menu_margin                    = egui::Margin::same(6);
+        // Menu item minimum height — prevents cramped items
+        style.spacing.interact_size.y                = 22.0;
 
         ctx.set_style(style);
     }
@@ -9200,8 +9202,9 @@ fn render_chart_pane(
     // ── Price alert lines on chart (draggable) ────────────────────────
     {
         let placed_color = egui::Color32::from_rgb(255, 191, 0); // amber = placed
-        let draft_color  = egui::Color32::from_rgb(150, 150, 160); // gray = draft
+        let draft_color  = egui::Color32::from_rgb(230, 80, 80); // red = draft (needs attention)
         let mut delete_alert_id: Option<u32> = None;
+        let mut place_alert_id: Option<u32> = None;
         let mut drag_alert: Option<(u32, f32)> = None; // (id, new_price)
         let alert_ids: Vec<u32> = chart.price_alerts.iter()
             .filter(|a| !a.triggered && a.symbol == chart.symbol)
@@ -9225,49 +9228,125 @@ fn render_chart_pane(
             } else if drag_resp.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
             }
-            // Draft alerts are lighter + wider dash gaps for visual distinction
-            let base_alpha = if is_draft { 100 } else { 180 };
-            let hover_alpha = if is_draft { 180 } else { 255 };
+            // Line: drafts = red dashed, placed = amber dashed
+            let base_alpha = if is_draft { 220 } else { 180 };
+            let hover_alpha = 255u8;
             let dash_col = egui::Color32::from_rgba_unmultiplied(
                 alert_color.r(), alert_color.g(), alert_color.b(),
                 if drag_resp.hovered() || drag_resp.dragged() { hover_alpha } else { base_alpha });
             let mut dx = rect.left();
-            let (dash, gap) = if is_draft { (3.0, 6.0) } else { (5.0, 4.0) };
+            let (dash, gap) = if is_draft { (6.0, 4.0) } else { (5.0, 4.0) };
+            let line_width = if is_draft { 1.5 } else { 1.0 };
             while dx < rect.left() + cw {
                 let end_x = (dx + dash).min(rect.left() + cw);
-                painter.line_segment([egui::pos2(dx, y), egui::pos2(end_x, y)], egui::Stroke::new(if drag_resp.hovered() { 1.5 } else { 1.0 }, dash_col));
+                painter.line_segment([egui::pos2(dx, y), egui::pos2(end_x, y)],
+                    egui::Stroke::new(if drag_resp.hovered() { line_width + 0.5 } else { line_width }, dash_col));
                 dx += dash + gap;
             }
+
             // Label on right side
             let dir_arrow = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
             let d = if alert.price >= 10.0 { 2 } else { 4 };
-            let label_prefix = if is_draft { "DRAFT" } else { "Alert" };
-            let label_text = format!("{} {} {:.prec$}", label_prefix, dir_arrow, alert.price, prec = d);
-            let label_font = egui::FontId::monospace(9.0);
-            let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), alert_color);
-            let lx = rect.left() + cw - galley.size().x - 24.0;
-            let badge_rect = egui::Rect::from_min_size(
-                egui::pos2(lx - 4.0, y - galley.size().y / 2.0 - 2.0),
-                egui::vec2(galley.size().x + 24.0, galley.size().y + 4.0));
-            let badge_bg_alpha = if is_draft { 180 } else { 220 };
-            painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), badge_bg_alpha));
-            painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(0.5, alert_color), egui::StrokeKind::Outside);
-            painter.text(egui::pos2(lx, y), egui::Align2::LEFT_CENTER, &label_text, label_font, alert_color);
-            // X delete button
-            let x_rect = egui::Rect::from_min_size(
-                egui::pos2(badge_rect.right() - 16.0, badge_rect.top() + 2.0),
-                egui::vec2(14.0, badge_rect.height() - 4.0));
-            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                if x_rect.contains(pos) && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                    delete_alert_id = Some(aid);
+            let label_font = egui::FontId::monospace(if is_draft { 10.0 } else { 9.0 });
+
+            if is_draft {
+                // ── DRAFT: bigger red badge with solid fill + PLACE + X buttons ──
+                let label_text = format!("DRAFT {} {:.prec$}", dir_arrow, alert.price, prec = d);
+                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(),
+                    egui::Color32::WHITE);
+                let place_w = 40.0;
+                let x_w = 18.0;
+                let pad = 8.0;
+                let badge_h = galley.size().y + 10.0;
+                let badge_w = galley.size().x + pad * 2.0 + place_w + x_w + 6.0;
+                let lx = rect.left() + cw - badge_w - 4.0;
+                let badge_rect = egui::Rect::from_min_size(
+                    egui::pos2(lx, y - badge_h / 2.0),
+                    egui::vec2(badge_w, badge_h));
+                // Solid red fill
+                painter.rect_filled(badge_rect, 4.0, alert_color);
+                painter.rect_stroke(badge_rect, 4.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 40, 40)),
+                    egui::StrokeKind::Outside);
+                // Label text (white on red)
+                painter.text(
+                    egui::pos2(lx + pad, y),
+                    egui::Align2::LEFT_CENTER,
+                    &label_text, label_font, egui::Color32::WHITE);
+                // PLACE button (right side of badge)
+                let place_rect = egui::Rect::from_min_size(
+                    egui::pos2(badge_rect.right() - place_w - x_w - 4.0, badge_rect.top() + 3.0),
+                    egui::vec2(place_w, badge_h - 6.0));
+                let place_hover = ui.input(|i| i.pointer.hover_pos())
+                    .map_or(false, |p| place_rect.contains(p));
+                let place_bg = if place_hover {
+                    egui::Color32::from_rgb(255, 255, 255)
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 200)
+                };
+                painter.rect_filled(place_rect, 3.0, place_bg);
+                let place_text_col = if place_hover { alert_color } else { egui::Color32::from_rgb(180, 40, 40) };
+                painter.text(
+                    place_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "PLACE", egui::FontId::monospace(9.0).into(),
+                    place_text_col);
+                if place_hover {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                        place_alert_id = Some(aid);
+                    }
                 }
-                if x_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                // X cancel button (far right)
+                let x_rect = egui::Rect::from_min_size(
+                    egui::pos2(badge_rect.right() - x_w - 2.0, badge_rect.top() + 3.0),
+                    egui::vec2(x_w, badge_h - 6.0));
+                let x_hover = ui.input(|i| i.pointer.hover_pos())
+                    .map_or(false, |p| x_rect.contains(p));
+                if x_hover {
+                    painter.rect_filled(x_rect, 3.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 60));
+                }
+                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}",
+                    egui::FontId::monospace(14.0), egui::Color32::WHITE);
+                if x_hover {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                        delete_alert_id = Some(aid);
+                    }
+                }
+            } else {
+                // ── PLACED: original amber compact badge ──
+                let label_text = format!("Alert {} {:.prec$}", dir_arrow, alert.price, prec = d);
+                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), alert_color);
+                let lx = rect.left() + cw - galley.size().x - 24.0;
+                let badge_rect = egui::Rect::from_min_size(
+                    egui::pos2(lx - 4.0, y - galley.size().y / 2.0 - 2.0),
+                    egui::vec2(galley.size().x + 24.0, galley.size().y + 4.0));
+                painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(
+                    t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(0.5, alert_color), egui::StrokeKind::Outside);
+                painter.text(egui::pos2(lx, y), egui::Align2::LEFT_CENTER, &label_text, label_font, alert_color);
+                // X delete button
+                let x_rect = egui::Rect::from_min_size(
+                    egui::pos2(badge_rect.right() - 16.0, badge_rect.top() + 2.0),
+                    egui::vec2(14.0, badge_rect.height() - 4.0));
+                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    if x_rect.contains(pos) && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                        delete_alert_id = Some(aid);
+                    }
+                    if x_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                }
+                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(10.0),
+                    alert_color.gamma_multiply(0.6));
             }
-            painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(10.0),
-                alert_color.gamma_multiply(0.6));
         }
         if let Some(id) = delete_alert_id {
             chart.price_alerts.retain(|a| a.id != id);
+        }
+        if let Some(id) = place_alert_id {
+            if let Some(a) = chart.price_alerts.iter_mut().find(|a| a.id == id) {
+                a.draft = false;
+            }
         }
         if let Some((id, new_price)) = drag_alert {
             if let Some(a) = chart.price_alerts.iter_mut().find(|a| a.id == id) {
