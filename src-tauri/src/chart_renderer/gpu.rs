@@ -12488,13 +12488,26 @@ fn render_chart_pane(
         }
     }
 
-    // ── FINAL cursor override: modal tools (measure/zoom) always win ──
-    // Set AFTER Priority 7 so it overrides the hover cursors from that block
-    if chart.measure_active || chart.measuring {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-    } else if chart.zoom_selecting {
-        // Windows winit doesn't support CursorIcon::ZoomIn — fall back to Crosshair
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    // ── FINAL cursor override: modal tools paint their own cursor via phosphor icons ──
+    // winit on Windows doesn't support ZoomIn cursor (falls back to arrow) and Crosshair
+    // is just a hairline +. We hide the system cursor and paint a phosphor icon at the
+    // pointer position for a proper visual signal of the active tool.
+    if chart.measure_active || chart.measuring || chart.zoom_selecting {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+        if let Some(p) = hover_pos {
+            if in_chart_body || chart.measure_active || chart.zoom_selecting {
+                let (icon, icon_color) = if chart.zoom_selecting {
+                    (Icon::MAGNIFYING_GLASS_PLUS, t.accent)
+                } else {
+                    (Icon::RULER, t.accent)
+                };
+                let font = egui::FontId::proportional(22.0);
+                // Shadow pass for contrast against any background
+                painter.text(p + egui::vec2(1.0, 1.0), egui::Align2::CENTER_CENTER,
+                    icon, font.clone(), egui::Color32::from_black_alpha(180));
+                painter.text(p, egui::Align2::CENTER_CENTER, icon, font, icon_color);
+            }
+        }
     }
 
     // ── Drawing significance tooltip on hover ──────────────────────────
