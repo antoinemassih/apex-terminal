@@ -105,9 +105,9 @@ pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui
 /// Hover state: subtle bg tint + accent border.
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let bg = if active {
-        color_alpha(accent, 38)
+        color_alpha(accent, 32)
     } else {
-        color_alpha(toolbar_border, 18) // subtle visible fill — matches indicator segmented buttons
+        color_alpha(toolbar_border, 18)
     };
     let fg = if active { accent } else { dim };
     let border = if active {
@@ -118,18 +118,15 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
 
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_LG).color(fg))
         .fill(bg).stroke(Stroke::new(STROKE_THIN, border)).corner_radius(RADIUS_MD)
-        .min_size(egui::vec2(0.0, 26.0)));
+        .min_size(egui::vec2(0.0, 24.0)));
 
     if active {
-        // Soft glow halo behind the button (painted behind via bg layer trick)
-        let glow = resp.rect.expand(1.5);
-        ui.painter().rect_filled(glow, RADIUS_MD + 2.0, color_alpha(accent, 18));
-        // Bottom underline — crisp accent line for depth
+        // Bottom underline only — cleaner, no glow halo
         let r = resp.rect;
         ui.painter().line_segment(
             [egui::pos2(r.left() + RADIUS_MD, r.bottom() + 0.5),
              egui::pos2(r.right() - RADIUS_MD, r.bottom() + 0.5)],
-            Stroke::new(STROKE_THICK, color_alpha(accent, ALPHA_DIM)));
+            Stroke::new(STROKE_STD, color_alpha(accent, ALPHA_DIM)));
     } else if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         // Hover: crisp bg tint + accent border repainted
@@ -307,12 +304,12 @@ pub fn segmented_control(
 
     egui::Frame::NONE
         .fill(trough)
-        .inner_margin(egui::Margin::same(2))
+        .inner_margin(egui::Margin { left: 3, right: 3, top: 1, bottom: 1 }) // 1+22+1=24 → matches tb_btn 24px
         .corner_radius(RADIUS_MD + 1.0)
         .stroke(Stroke::new(STROKE_THIN, color_alpha(toolbar_border, ALPHA_STRONG)))
         .show(ui, |ui| {
             let prev_spacing = ui.spacing().item_spacing.x;
-            ui.spacing_mut().item_spacing.x = 1.0;
+            ui.spacing_mut().item_spacing.x = 2.0; // slight gap between segments
             ui.horizontal(|ui| {
                 let n = labels.len();
                 for (i, label) in labels.iter().enumerate() {
@@ -326,9 +323,9 @@ pub fn segmented_control(
                         _ => egui::CornerRadius::ZERO,
                     };
                     let prev_pad = ui.spacing().button_padding;
-                    ui.spacing_mut().button_padding = egui::vec2(4.0, prev_pad.y);
+                    ui.spacing_mut().button_padding = egui::vec2(6.0, prev_pad.y); // more horizontal breathing room
                     let resp = ui.add(
-                        egui::Button::new(RichText::new(*label).monospace().size(FONT_SM).strong().color(fg))
+                        egui::Button::new(RichText::new(*label).monospace().size(FONT_LG).strong().color(fg))
                             .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
                             .min_size(egui::vec2(0.0, 22.0))
                     );
