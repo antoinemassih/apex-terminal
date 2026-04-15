@@ -1,7 +1,7 @@
 //! Time & Sales panel — real-time trade tape display.
 
 use egui;
-use super::style::{close_button, separator, color_alpha, col_header};
+use super::style::{panel_frame_compact, panel_header_sub, separator, color_alpha, col_header};
 use super::super::gpu::{Watchlist, TapeRow, Theme};
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
@@ -14,20 +14,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .min_width(180.0)
         .max_width(350.0)
         .resizable(true)
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+        .frame(panel_frame_compact(t.toolbar_bg, t.toolbar_border))
         .show(ctx, |ui| {
             let panel_w = ui.available_width();
 
-            // Header
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("TIME & SALES").monospace().size(10.0).strong().color(t.accent));
-                ui.label(egui::RichText::new(active_symbol).monospace().size(9.0).color(t.dim));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if close_button(ui, t.dim) { watchlist.tape_open = false; }
-                });
-            });
+            if panel_header_sub(ui, "TIME & SALES", Some(active_symbol), t.accent, t.dim) {
+                watchlist.tape_open = false;
+            }
             ui.add_space(2.0);
 
             // Column headers

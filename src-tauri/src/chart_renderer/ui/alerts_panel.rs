@@ -1,7 +1,7 @@
 //! Alerts management panel — shows all active and triggered alerts with controls.
 
 use egui;
-use super::style::{close_button, separator, color_alpha, section_label, status_badge, order_card, small_action_btn, TEXT_PRIMARY, TEXT_SECONDARY};
+use super::style::{panel_frame, panel_header, separator, color_alpha, section_label, status_badge, order_card, small_action_btn, TEXT_PRIMARY, TEXT_SECONDARY};
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;
@@ -19,17 +19,11 @@ egui::SidePanel::right("alerts_panel")
     .default_width(260.0)
     .min_width(200.0)
     .max_width(320.0)
-    .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-        .inner_margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 6 })
-        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+    .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
     .show(ctx, |ui| {
-        // ── Panel header ──
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(format!("{} ALERTS", Icon::BELL)).monospace().size(11.0).strong().color(t.accent));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if close_button(ui, t.dim) { watchlist.alerts_panel_open = false; }
-            });
-        });
+        if panel_header(ui, &format!("{} ALERTS", Icon::BELL), t.accent, t.dim) {
+            watchlist.alerts_panel_open = false;
+        }
         ui.add_space(4.0);
         separator(ui, color_alpha(t.toolbar_border, 40));
         ui.add_space(4.0);

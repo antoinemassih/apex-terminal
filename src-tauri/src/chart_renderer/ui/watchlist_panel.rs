@@ -1,7 +1,7 @@
 //! Watchlist side panel — stocks list, options chain, heatmap.
 
 use egui;
-use super::style::{close_button, separator, color_alpha, hex_to_color, section_label, dim_label, TEXT_PRIMARY};
+use super::style::{tab_bar, close_button, separator, color_alpha, hex_to_color, section_label, dim_label, TEXT_PRIMARY};
 use super::super::gpu::*;
 use super::super::{Drawing, DrawingKind, ChartCommand};
 use crate::ui_kit::icons::Icon;
@@ -33,25 +33,13 @@ if watchlist.open {
             // ── A) Tabs at the very top with X button ──
             let tab_row_resp = ui.horizontal(|ui| {
                 ui.set_min_height(22.0);
-                for (tab, label) in [(WatchlistTab::Stocks, "LIST"), (WatchlistTab::Chain, "CHAIN"), (WatchlistTab::Heat, "HEAT")] {
-                    let active = watchlist.tab == tab;
-                    let color = if active { t.accent } else { t.dim };
-                    let tab_resp = ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(11.0).strong().color(color)).frame(false));
-                    if tab_resp.clicked() {
-                        watchlist.tab = tab;
-                    }
-                    // Draw 2px accent border under active tab
-                    if active {
-                        let r = tab_resp.rect;
-                        ui.painter().rect_filled(
-                            egui::Rect::from_min_max(egui::pos2(r.left(), r.max.y - 2.0), egui::pos2(r.right(), r.max.y)),
-                            0.0, t.accent);
-                    }
-                }
+                tab_bar(ui, &mut watchlist.tab, &[
+                    (WatchlistTab::Stocks, "LIST"),
+                    (WatchlistTab::Chain, "CHAIN"),
+                    (WatchlistTab::Heat, "HEAT"),
+                ], t.accent, t.dim);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim)).frame(false)).clicked() {
-                        watchlist.open = false;
-                    }
+                    if close_button(ui, t.dim) { watchlist.open = false; }
                     // Market session badge
                     let (session, session_col) = market_session();
                     ui.add_space(4.0);

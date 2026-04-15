@@ -5,7 +5,7 @@
 //! Includes "Save as Watchlist" and a custom scanner builder.
 
 use egui;
-use super::style::{close_button, separator, color_alpha, simple_btn, col_header};
+use super::style::{panel_frame_compact, close_button, separator, color_alpha, simple_btn, col_header};
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 
@@ -72,9 +72,7 @@ pub(crate) fn draw(
         .min_width(180.0)
         .max_width(420.0)
         .resizable(true)
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+        .frame(panel_frame_compact(t.toolbar_bg, t.toolbar_border))
         .show(ctx, |ui| {
             let panel_w = ui.available_width();
             ui.set_min_width(0.0);

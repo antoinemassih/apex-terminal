@@ -1,7 +1,7 @@
 //! Orders / Positions / Alerts side panel.
 
 use egui;
-use super::style::{close_button, separator, color_alpha, section_label, status_badge, order_card, action_btn, small_action_btn, TEXT_PRIMARY};
+use super::style::{panel_frame, panel_header, separator, color_alpha, section_label, status_badge, order_card, action_btn, small_action_btn, TEXT_PRIMARY};
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderStatus, OrderLevel, PriceAlert, cancel_order_with_pair, fmt_notional};
@@ -20,17 +20,9 @@ if watchlist.orders_panel_open {
         .default_width(270.0)
         .min_width(220.0)
         .max_width(350.0)
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 6 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+        .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
         .show(ctx, |ui| {
-            // ── Panel close button ──
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("BOOK").monospace().size(11.0).strong().color(t.accent));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if close_button(ui, t.dim) { watchlist.orders_panel_open = false; }
-                });
-            });
+            if panel_header(ui, "BOOK", t.accent, t.dim) { watchlist.orders_panel_open = false; }
             ui.add_space(4.0);
 
             // ══════════════════════════════════════════════════════
