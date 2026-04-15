@@ -2855,9 +2855,9 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         let r = egui::CornerRadius::same(4); // RADIUS_MD equivalent for native widgets
         let popup_r = egui::CornerRadius::same(8); // RADIUS_LG for popups
 
-        // Inactive (default, unhovered) — visible border so buttons look like buttons
-        style.visuals.widgets.inactive.bg_fill       = t.toolbar_bg;
-        style.visuals.widgets.inactive.weak_bg_fill  = t.toolbar_bg;
+        // Inactive (default, unhovered) — subtle visible fill matches tb_btn and indicator buttons
+        style.visuals.widgets.inactive.bg_fill       = color_alpha(t.toolbar_border, 18);
+        style.visuals.widgets.inactive.weak_bg_fill  = t.toolbar_bg; // keep weak fill transparent for labels
         style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED));
         style.visuals.widgets.inactive.corner_radius = r;
         style.visuals.widgets.inactive.fg_stroke     = egui::Stroke::new(1.0, t.dim);
@@ -3041,7 +3041,7 @@ fn render_toolbar(
             let right_width = 150.0; // window controls + Opt button
             let middle_width = (ui.available_width() - right_width).max(60.0);
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.spacing_mut().item_spacing.x = 2.0;
 
             // ── Broadcast mode toggle ──
             {

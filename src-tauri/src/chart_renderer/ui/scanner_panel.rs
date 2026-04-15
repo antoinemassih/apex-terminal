@@ -202,7 +202,7 @@ pub(crate) fn draw(
                         let header_resp = ui.horizontal(|ui| {
                             // Collapse caret
                             let caret = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                            icon_btn(ui, caret, t.dim, FONT_SM); // click handled via header_resp below
+                            icon_btn(ui, caret, t.dim, FONT_MD); // click handled via header_resp below
 
                             // Scanner name + result count
                             let color = if is_preset { t.accent } else { t.dim };

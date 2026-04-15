@@ -17,7 +17,7 @@ use egui::{self, Color32, RichText, Stroke};
 pub const FONT_XS:  f32 = 8.0;   // column headers, status chips
 pub const FONT_SM:  f32 = 10.0;  // body text, labels, most buttons
 pub const FONT_MD:  f32 = 11.0;  // panel section headers
-pub const FONT_LG:  f32 = 12.0;  // primary headings, toolbar buttons
+pub const FONT_LG:  f32 = 13.0;  // primary headings, toolbar buttons
 pub const FONT_XL:  f32 = 14.0;  // large price values in cards
 pub const FONT_2XL: f32 = 15.0;  // featured prices (chain, big display)
 
@@ -105,9 +105,9 @@ pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui
 /// Hover state: subtle bg tint + accent border.
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let bg = if active {
-        color_alpha(accent, 35)
+        color_alpha(accent, 38)
     } else {
-        toolbar_bg
+        color_alpha(toolbar_border, 18) // subtle visible fill — matches indicator segmented buttons
     };
     let fg = if active { accent } else { dim };
     let border = if active {
@@ -289,7 +289,7 @@ pub fn col_header(ui: &mut egui::Ui, text: &str, width: f32, color: Color32, rig
 /// Internally zeroes button_padding so egui doesn't add asymmetric whitespace around the icon.
 /// Returns the full Response so callers can chain `.clicked()`, `.on_hover_text()`, etc.
 pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egui::Response {
-    let side = (size + 8.0).max(22.0); // 4px padding on each side, min 22px
+    let side = (size + 10.0).max(26.0); // 5px padding on each side, min 26px square
     let prev_pad = ui.spacing().button_padding;
     ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0); // suppress egui's own padding — we control the square
     let resp = ui.add(

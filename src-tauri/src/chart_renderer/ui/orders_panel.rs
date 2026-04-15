@@ -290,7 +290,7 @@ if watchlist.orders_panel_open {
                                     .monospace().size(9.0).color(egui::Color32::from_rgba_unmultiplied(200, 200, 210, 180)));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     if is_active {
-                                        if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_SM).clicked() {
+                                        if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_MD).clicked() {
                                             cancel_order = Some((pi, order.id));
                                         }
                                     }
@@ -393,7 +393,7 @@ if watchlist.orders_panel_open {
                                     status_badge(ui, "TRIGGERED", t.accent);
                                 }
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_SM).clicked() {
+                                    if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_MD).clicked() {
                                         remove_alert = Some(alert.id);
                                     }
                                 });
