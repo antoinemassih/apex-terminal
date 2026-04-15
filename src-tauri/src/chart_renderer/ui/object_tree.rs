@@ -127,10 +127,7 @@ egui::SidePanel::left("object_tree_panel")
                 let any_unlocked = chart.drawings.iter().any(|d| sel_ids.contains(&d.id) && !d.locked);
                 let lock_icon = if any_unlocked { Icon::LOCK } else { Icon::LOCK_OPEN };
                 let lock_tip = if any_unlocked { "Lock selected" } else { "Unlock selected" };
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(lock_icon).size(9.0).color(t.dim))
-                    .frame(false)).on_hover_text(lock_tip).clicked()
-                {
+                if icon_btn(ui, lock_icon, t.dim, FONT_SM).on_hover_text(lock_tip).clicked() {
                     let target = any_unlocked;
                     let sym3 = sym.clone(); let tf3 = tf.clone();
                     for d in &mut chart.drawings {
@@ -141,10 +138,7 @@ egui::SidePanel::left("object_tree_panel")
                     }
                 }
                 // Bulk delete
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(Icon::TRASH).size(9.0).color(egui::Color32::from_rgb(224, 85, 96)))
-                    .frame(false)).on_hover_text("Delete selected").clicked()
-                {
+                if icon_btn(ui, Icon::TRASH, egui::Color32::from_rgb(224, 85, 96), FONT_SM).on_hover_text("Delete selected").clicked() {
                     let ids = chart.selected_ids.clone();
                     for id in &ids {
                         if let Some(d) = chart.drawings.iter().find(|d| d.id == *id) {

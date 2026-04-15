@@ -94,13 +94,13 @@ pub(crate) fn draw(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.scanner_open = false; }
                     // Manual refresh
-                    if ui.add(egui::Button::new(egui::RichText::new(Icon::ARROW_COUNTER_CLOCKWISE).size(10.0).color(t.dim)).frame(false))
+                    if icon_btn(ui, Icon::ARROW_COUNTER_CLOCKWISE, t.dim, FONT_MD)
                         .on_hover_text("Refresh now").clicked()
                     {
                         watchlist.scanner_last_fetch = None; // force re-fetch next frame
                     }
                     // Add custom scanner
-                    if ui.add(egui::Button::new(egui::RichText::new(Icon::PLUS).size(10.0).color(t.dim)).frame(false))
+                    if icon_btn(ui, Icon::PLUS, t.dim, FONT_MD)
                         .on_hover_text("New custom scanner").clicked()
                     {
                         watchlist.scanner_builder_open = !watchlist.scanner_builder_open;
@@ -202,9 +202,7 @@ pub(crate) fn draw(
                         let header_resp = ui.horizontal(|ui| {
                             // Collapse caret
                             let caret = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                            if ui.add(egui::Button::new(egui::RichText::new(caret).size(9.0).color(t.dim)).frame(false)).clicked() {
-                                // Toggle handled below
-                            }
+                            icon_btn(ui, caret, t.dim, FONT_SM); // click handled via header_resp below
 
                             // Scanner name + result count
                             let color = if is_preset { t.accent } else { t.dim };
@@ -220,14 +218,14 @@ pub(crate) fn draw(
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 // Delete (custom scanners only)
                                 if !is_preset {
-                                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim.gamma_multiply(0.5))).frame(false))
+                                    if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), 8.0)
                                         .on_hover_text("Remove scanner").clicked()
                                     {
                                         delete_scanner_idx = Some(scanner_idx);
                                     }
                                 }
                                 // Save as Watchlist
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::FOLDER).size(8.0).color(t.dim.gamma_multiply(0.5))).frame(false))
+                                if icon_btn(ui, Icon::FOLDER, t.dim.gamma_multiply(0.5), 8.0)
                                     .on_hover_text("Save as Watchlist").clicked()
                                 {
                                     save_as_watchlist = Some((scanner_name.clone(), results.clone()));

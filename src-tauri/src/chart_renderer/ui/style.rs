@@ -31,9 +31,9 @@ pub const GAP_2XL: f32 = 12.0;
 pub const GAP_3XL: f32 = 20.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
-pub const RADIUS_SM: f32 = 2.0;
-pub const RADIUS_MD: f32 = 3.0;
-pub const RADIUS_LG: f32 = 6.0;
+pub const RADIUS_SM: f32 = 3.0;   // small buttons, badges, chips
+pub const RADIUS_MD: f32 = 5.0;   // primary buttons, cards
+pub const RADIUS_LG: f32 = 8.0;   // dialogs, panels, modals
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
 pub const STROKE_HAIR:   f32 = 0.3;   // ultra-fine grid/DOM separators
@@ -86,16 +86,16 @@ pub fn mono_bold(text: &str, size: f32, color: Color32) -> RichText {
 pub fn panel_frame(toolbar_bg: Color32, toolbar_border: Color32) -> egui::Frame {
     egui::Frame::NONE
         .fill(toolbar_bg)
-        .inner_margin(egui::Margin { left: GAP_LG as i8, right: GAP_LG as i8, top: GAP_LG as i8, bottom: GAP_MD as i8 })
-        .stroke(Stroke::new(STROKE_STD, color_alpha(toolbar_border, ALPHA_STRONG)))
+        .inner_margin(egui::Margin { left: GAP_XL as i8, right: GAP_XL as i8, top: GAP_XL as i8, bottom: GAP_LG as i8 })
+        .stroke(Stroke::new(STROKE_STD, color_alpha(toolbar_border, ALPHA_HEAVY)))
 }
 
 /// Compact panel frame — tighter margins for narrow info-dense panels (scanner, tape).
 pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui::Frame {
     egui::Frame::NONE
         .fill(toolbar_bg)
-        .inner_margin(egui::Margin { left: GAP_MD as i8, right: GAP_MD as i8, top: GAP_MD as i8, bottom: GAP_SM as i8 })
-        .stroke(Stroke::new(STROKE_STD, color_alpha(toolbar_border, ALPHA_STRONG)))
+        .inner_margin(egui::Margin { left: GAP_LG as i8, right: GAP_LG as i8, top: GAP_LG as i8, bottom: GAP_MD as i8 })
+        .stroke(Stroke::new(STROKE_STD, color_alpha(toolbar_border, ALPHA_HEAVY)))
 }
 
 // ─── Toolbar button ───────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
     };
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_LG).color(fg))
         .fill(bg).stroke(Stroke::new(STROKE_STD, border)).corner_radius(RADIUS_MD)
-        .min_size(egui::vec2(0.0, 22.0)));
+        .min_size(egui::vec2(0.0, 24.0)));
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         let hover_bg = if active {
@@ -185,7 +185,7 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
     let mut closed = false;
     egui::Frame::NONE.fill(fill)
         .inner_margin(egui::Margin { left: GAP_XL as i8, right: GAP_LG as i8, top: GAP_LG as i8, bottom: GAP_LG as i8 })
-        .corner_radius(egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 })
+        .corner_radius(egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 })
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(title).monospace().size(FONT_LG).strong().color(TEXT_PRIMARY));
@@ -278,11 +278,26 @@ pub fn col_header(ui: &mut egui::Ui, text: &str, width: f32, color: Color32, rig
 
 // ─── Panel chrome ─────────────────────────────────────────────────────────────
 
-/// Close button (X icon) — FONT_MD, pointer cursor, frameless.
+/// Frameless icon button with hover highlight — use instead of `.frame(false)` buttons.
+/// Returns the full Response so callers can chain `.clicked()`, `.on_hover_text()`, etc.
+pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egui::Response {
+    let min_dim = (size * 2.4).max(22.0);
+    let resp = ui.add(
+        egui::Button::new(RichText::new(icon).size(size).color(color))
+            .frame(false)
+            .min_size(egui::vec2(min_dim, min_dim))
+    );
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        ui.painter().rect_filled(resp.rect, RADIUS_SM, color_alpha(color, ALPHA_FAINT + 5));
+    }
+    resp
+}
+
+/// Close button (X icon) — uses icon_btn with hover highlight.
 #[inline]
 pub fn close_button(ui: &mut egui::Ui, dim: Color32) -> bool {
-    ui.add(egui::Button::new(RichText::new(super::super::super::ui_kit::icons::Icon::X)
-        .size(FONT_MD).color(dim)).frame(false)).clicked()
+    icon_btn(ui, super::super::super::ui_kit::icons::Icon::X, dim, FONT_MD).clicked()
 }
 
 /// Panel header — FONT_LG title + close button. Returns true if closed.
@@ -397,10 +412,10 @@ pub fn form_row(ui: &mut egui::Ui, label: &str, label_width: f32, dim: Color32, 
 /// Status badge — small tinted pill (e.g. "DRAFT", "PLACED", "TRIGGERED").
 pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
     ui.add(egui::Button::new(RichText::new(text).monospace().size(8.0).strong().color(color))
-        .fill(color_alpha(color, 24))
-        .stroke(Stroke::new(STROKE_THIN, color_alpha(color, 68)))
+        .fill(color_alpha(color, ALPHA_SUBTLE))
+        .stroke(Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_DIM)))
         .corner_radius(RADIUS_SM)
-        .min_size(egui::vec2(0.0, 14.0)));
+        .min_size(egui::vec2(0.0, 16.0)));
 }
 
 /// Order card — left accent stripe + subtle bg. Returns true if the card area was clicked.
@@ -430,13 +445,13 @@ pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: 
 
 /// Action button — tinted bg, for Place/Cancel/Clear. Disabled = greyed out.
 pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
-    let bg     = if enabled { color_alpha(color, ALPHA_TINT)   } else { color_alpha(color, ALPHA_FAINT)  };
+    let bg     = if enabled { color_alpha(color, ALPHA_MUTED)  } else { color_alpha(color, ALPHA_FAINT)  };
     let fg     = if enabled { color                            } else { color_alpha(color, ALPHA_ACTIVE) };
-    let border = if enabled { color_alpha(color, ALPHA_ACTIVE) } else { color_alpha(color, ALPHA_MUTED)  };
+    let border = if enabled { color_alpha(color, ALPHA_ACTIVE) } else { color_alpha(color, ALPHA_LINE)   };
     let resp = ui.add_enabled(enabled,
         egui::Button::new(RichText::new(label).monospace().size(FONT_SM).strong().color(fg))
             .fill(bg).stroke(Stroke::new(STROKE_THIN, border))
-            .corner_radius(RADIUS_MD).min_size(egui::vec2(0.0, 20.0)));
+            .corner_radius(RADIUS_MD).min_size(egui::vec2(0.0, 22.0)));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
@@ -448,26 +463,39 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
         (color.g() as f32 * 0.55) as u8,
         (color.b() as f32 * 0.55) as u8);
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_LG).strong().color(Color32::WHITE))
-        .fill(bg).min_size(egui::vec2(width, 26.0)).corner_radius(RADIUS_MD));
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        .fill(bg).min_size(egui::vec2(width, 28.0)).corner_radius(RADIUS_MD));
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        // Brighten on hover
+        let hover_bg = Color32::from_rgb(
+            (color.r() as f32 * 0.7).min(255.0) as u8,
+            (color.g() as f32 * 0.7).min(255.0) as u8,
+            (color.b() as f32 * 0.7).min(255.0) as u8);
+        ui.painter().rect_filled(resp.rect, RADIUS_MD, hover_bg);
+        ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
+            label, egui::FontId::monospace(FONT_LG), Color32::WHITE);
+    }
     resp.clicked()
 }
 
 /// Small action button — for inline header actions like "Clear All", "Close All".
 pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool {
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(8.0).strong().color(color))
-        .fill(color_alpha(color, ALPHA_GHOST))
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_SM).strong().color(color))
+        .fill(color_alpha(color, ALPHA_SOFT))
         .corner_radius(RADIUS_SM)
-        .stroke(Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_LINE)))
-        .min_size(egui::vec2(0.0, 16.0)));
+        .stroke(Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_DIM)))
+        .min_size(egui::vec2(0.0, 18.0)));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
 
-/// Simple button — plain unstyled, for form actions (Create, Cancel).
+/// Simple button — subtle border, for form actions (Create, Cancel).
 pub fn simple_btn(ui: &mut egui::Ui, label: &str, color: Color32, min_width: f32) -> bool {
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_SM).color(color))
-        .min_size(egui::vec2(min_width, 18.0)));
+        .fill(color_alpha(color, ALPHA_FAINT))
+        .stroke(Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_MUTED)))
+        .corner_radius(RADIUS_SM)
+        .min_size(egui::vec2(min_width, 20.0)));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }

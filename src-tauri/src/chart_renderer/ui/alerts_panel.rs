@@ -163,9 +163,7 @@ egui::SidePanel::right("alerts_panel")
                             .monospace().size(10.0).color(dir_color));
                         status_badge(ui, "ACTIVE", egui::Color32::from_rgb(255, 191, 0));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(
-                                egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5)))
-                                .frame(false)).clicked()
+                            if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_SM).clicked()
                             {
                                 remove_watchlist_alert = Some(alert.id);
                             }
@@ -238,9 +236,7 @@ egui::SidePanel::right("alerts_panel")
                                 .monospace().size(10.0).color(t.accent));
                             status_badge(ui, "TRIGGERED", t.accent);
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.add(egui::Button::new(
-                                    egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.4)))
-                                    .frame(false)).clicked()
+                                if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.4), FONT_SM).clicked()
                                 {
                                     dismiss_watchlist = Some(alert.id);
                                 }
