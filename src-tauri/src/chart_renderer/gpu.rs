@@ -3998,50 +3998,19 @@ fn render_toolbar(
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // Placeholder buttons for future features
-            tb_btn(ui, "triangulator", false, t);
-            tb_btn(ui, "auto target", false, t);
-
-            // Trendline filter button
-            if tb_btn(ui, &format!("{} filters", Icon::FUNNEL), watchlist.trendline_filter_open, t).clicked() {
-                watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
-            }
-
-            ui.add(egui::Separator::default().spacing(4.0));
-
-            // Indicator dropdown (add new indicator from toolbar)
-            let ind_resp = tb_btn(ui, &format!("{} ind", Icon::PLUS), false, t);
-            if ind_resp.clicked() {
-                // Show indicator type menu below the button
-                ui.memory_mut(|m| m.toggle_popup(egui::Id::new("ind_add_popup")));
-            }
-            egui::popup_below_widget(ui, egui::Id::new("ind_add_popup"), &ind_resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-                ui.set_min_width(160.0);
-                section_label(ui, "OVERLAYS", t.accent);
-                for &kind in IndicatorType::overlays() {
-                    if ui.button(egui::RichText::new(kind.label()).monospace().size(10.0)).clicked() {
-                        let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                        let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                        panes[ap].indicators.push(Indicator::new(id, kind, if kind == IndicatorType::RSI { 14 } else { 20 }, color));
-                        panes[ap].indicator_bar_count = 0;
-                        panes[ap].editing_indicator = Some(id);
-                        ui.close_menu();
-                    }
-                }
-                ui.separator();
-                section_label(ui, "OSCILLATORS", t.accent);
-                for &kind in IndicatorType::oscillators() {
-                    let default_period = match kind { IndicatorType::RSI => 14, IndicatorType::MACD => 12, IndicatorType::Stochastic => 14, IndicatorType::ADX => 14, IndicatorType::CCI => 20, IndicatorType::WilliamsR => 14, IndicatorType::ATR => 14, IndicatorType::Supertrend => 10, _ => 20 };
-                    if ui.button(egui::RichText::new(kind.label()).monospace().size(10.0)).clicked() {
-                        let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                        let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                        panes[ap].indicators.push(Indicator::new(id, kind, default_period, color));
-                        panes[ap].indicator_bar_count = 0;
-                        panes[ap].editing_indicator = Some(id);
-                        ui.close_menu();
-                    }
-                }
+            // ── Suites dropdown (Advanced tools) ──
+            ui.menu_button(egui::RichText::new("Suites").monospace().size(FONT_LG).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                ui.selectable_label(false, egui::RichText::new("  Triangulator").monospace().size(10.0));
+                ui.selectable_label(false, egui::RichText::new("  Auto Target").monospace().size(10.0));
             });
+
+            // ⚡ Hit Highlight toggle
+            let hh = panes[ap].hit_highlight;
+            let hh_resp = tb_btn(ui, "\u{26A1}", hh, t);
+            if hh_resp.clicked() { panes[ap].hit_highlight = !hh; }
+            hh_resp.on_hover_text("Hit Highlight");
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -4179,11 +4148,6 @@ fn render_toolbar(
                     watchlist.discord_open = !watchlist.discord_open;
                 }
 
-                // Scanner toggle
-                if tb_btn_tip(ui, Icon::MAGNIFYING_GLASS, watchlist.scanner_open, t, "Scanners").clicked() {
-                    watchlist.scanner_open = !watchlist.scanner_open;
-                }
-
                 // News feed toggle
                 if tb_btn_tip(ui, Icon::NEWSPAPER, watchlist.news_open, t, "News").clicked() {
                     watchlist.news_open = !watchlist.news_open;
@@ -4193,28 +4157,19 @@ fn render_toolbar(
                 if tb_btn_tip(ui, Icon::NOTEBOOK, watchlist.journal_open, t, "Trade Journal").clicked() {
                     watchlist.journal_open = !watchlist.journal_open;
                 }
-                // Script / Backtesting toggle
-                if tb_btn_tip(ui, Icon::CODE, watchlist.script_open, t, "Apex Script").clicked() {
-                    watchlist.script_open = !watchlist.script_open;
-                }
-
-                // Time & Sales toggle
-                if tb_btn_tip(ui, Icon::PULSE, watchlist.tape_open, t, "Time & Sales").clicked() {
-                    watchlist.tape_open = !watchlist.tape_open;
-                }
 
                 // Screenshot library toggle
                 if tb_btn_tip(ui, Icon::CAMERA, watchlist.screenshot_open, t, "Screenshots").clicked() {
                     watchlist.screenshot_open = !watchlist.screenshot_open;
                 }
 
-                // RRG (Relative Rotation Graph) toggle
-                if tb_btn_tip(ui, "RRG", watchlist.rrg_open, t, "Relative Rotation Graph").clicked() {
-                    watchlist.rrg_open = !watchlist.rrg_open;
+                // Analysis sidebar toggle (unified RRG / T&S / Scanner / Scripts)
+                if tb_btn_tip(ui, "Analysis", watchlist.analysis_open, t, "Analysis Sidebar").clicked() {
+                    watchlist.analysis_open = !watchlist.analysis_open;
                 }
                 // Signal demo toggle
                 let demo_active = panes[ap].trend_health_score > 0.0;
-                if tb_btn_tip(ui, "SIG", demo_active, t, "Toggle Signal Demo").clicked() {
+                if tb_btn_tip(ui, "Signals", demo_active, t, "Toggle Signal Demo").clicked() {
                     panes[ap].signal_demo_toggle = true;
                 }
 
@@ -4223,11 +4178,6 @@ fn render_toolbar(
                 // Settings panel
                 if tb_btn_tip(ui, Icon::GEAR, watchlist.settings_open, t, "Settings").clicked() {
                     watchlist.settings_open = !watchlist.settings_open;
-                }
-
-                // Keyboard shortcuts / hotkey editor
-                if tb_btn_tip(ui, Icon::QUESTION, watchlist.hotkey_editor_open, t, "Shortcuts").clicked() {
-                    watchlist.hotkey_editor_open = !watchlist.hotkey_editor_open;
                 }
 
                 // New window
@@ -4580,6 +4530,9 @@ fn render_toolbar(
 
     // ── RRG (Relative Rotation Graph) side panel ───────────────────────────
     super::ui::rrg_panel::draw(ctx, watchlist, t);
+
+    // ── Analysis sidebar (unified RRG / T&S / Scanner / Scripts) ───────────
+    super::ui::analysis_panel::draw(ctx, watchlist, panes, *active_pane, t);
 
     // ── Trade Journal floating window ────────────────────────────────────────
     super::ui::journal_panel::draw(ctx, watchlist, t);
@@ -14233,6 +14186,9 @@ pub(crate) struct Watchlist {
     pub(crate) rrg_cycle_phase: String,
     pub(crate) rrg_time_offset: f32, // 0.0 = current, 1.0 = oldest history point
     pub(crate) rrg_tail_length: usize, // how many tail points to show
+    // Analysis sidebar (unified RRG / T&S / Scanner / Scripts)
+    pub(crate) analysis_open: bool,
+    pub(crate) analysis_tab: crate::chart_renderer::AnalysisTab,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -14324,7 +14280,9 @@ impl Watchlist {
                screenshot_open: false,
                screenshot_entries: super::ui::screenshot_panel::load_screenshots(),
                rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
-               rrg_time_offset: 0.0, rrg_tail_length: 5 }
+               rrg_time_offset: 0.0, rrg_tail_length: 5,
+               analysis_open: false,
+               analysis_tab: crate::chart_renderer::AnalysisTab::Rrg }
     }
 
     /// Add symbol to the last section (creates one if none exist).

@@ -1,18 +1,50 @@
 //! Settings panel — appearance, axes, font scale, session shading.
 
 use egui;
-use super::style::{color_alpha, hex_to_color, dialog_window_themed, dialog_header, dialog_section};
+use super::style::{color_alpha, hex_to_color, dialog_window_themed, dialog_header, dialog_section, tab_bar, FONT_LG, ALPHA_MUTED};
 use super::super::gpu::{Watchlist, Theme, Chart};
+
+/// Which tab is active in the settings dialog.
+#[derive(Clone, Copy, PartialEq)]
+enum SettingsTab { General, Shortcuts }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, chart: &mut Chart, t: &Theme) {
 // ── Settings panel ──────────────────────────────────────────────────────
 if watchlist.settings_open {
     let screen = ctx.screen_rect();
-    dialog_window_themed(ctx, "settings_panel", egui::pos2(screen.center().x - 160.0, 60.0), 320.0, t.toolbar_bg, t.toolbar_border, None)
+    // Widen slightly to accommodate Shortcuts tab content (560px)
+    let dialog_w = 560.0_f32;
+    dialog_window_themed(ctx, "settings_panel", egui::pos2(screen.center().x - dialog_w / 2.0, 60.0), dialog_w, t.toolbar_bg, t.toolbar_border, None)
         .show(ctx, |ui| {
             if dialog_header(ui, "SETTINGS", t.dim) { watchlist.settings_open = false; }
+
+            // ── Tab bar ──
+            let settings_tab_id = egui::Id::new("settings_active_tab");
+            let mut active_tab: SettingsTab = ui.data_mut(|d| *d.get_temp_mut_or(settings_tab_id, SettingsTab::General));
+            ui.horizontal(|ui| {
+                ui.add_space(10.0);
+                tab_bar(ui, &mut active_tab, &[
+                    (SettingsTab::General, "General"),
+                    (SettingsTab::Shortcuts, "Shortcuts"),
+                ], t.accent, t.dim);
+            });
+            ui.data_mut(|d| d.insert_temp(settings_tab_id, active_tab));
+            // Separator below tab bar
+            let rect = ui.available_rect_before_wrap();
+            ui.painter().line_segment(
+                [egui::pos2(rect.left(), ui.cursor().min.y), egui::pos2(rect.right(), ui.cursor().min.y)],
+                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            ui.add_space(1.0);
+
+            match active_tab {
+                SettingsTab::Shortcuts => {
+                    ui.add_space(8.0);
+                    super::hotkey_editor::draw_content(ui, watchlist, t);
+                }
+                SettingsTab::General => {
             ui.add_space(8.0);
             let m = 10.0;
+            let _ = FONT_LG; // suppress unused import
 
             // ── Appearance section ──
             dialog_section(ui, "APPEARANCE", m, t.dim.gamma_multiply(0.5));
@@ -463,6 +495,8 @@ if watchlist.settings_open {
             }
 
             ui.add_space(8.0);
+            } // end General arm
+            } // end match active_tab
         });
 }
 

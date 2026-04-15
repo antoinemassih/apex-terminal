@@ -99,6 +99,136 @@ pub(crate) enum ScriptResultTab {
     Backtest,
 }
 
+// ── draw_content: inner body for use inside analysis_panel tab ─────────────
+
+pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
+    let w = ui.available_width();
+
+    // ── AI Prompt input ─────────────────────────────────────
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("\u{2728}")
+            .monospace().size(10.0).color(t.accent));
+        ui.add_space(4.0);
+        ui.add_sized(
+            egui::vec2(w - 36.0, 22.0),
+            egui::TextEdit::singleline(&mut watchlist.script_ai_prompt)
+                .font(egui::FontId::monospace(9.5))
+                .hint_text("Describe your indicator or strategy...")
+                .text_color(egui::Color32::from_gray(210))
+                .frame(true)
+                .margin(egui::Margin::symmetric(6, 3))
+        );
+    });
+    ui.add_space(4.0);
+
+    // ── Preset examples ─────────────────────────────────────
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Examples:")
+            .monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+        for (name, source) in PRESETS {
+            let btn = ui.add(egui::Button::new(
+                egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
+                .fill(color_alpha(t.accent, 12))
+                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, 35)))
+                .corner_radius(RADIUS_MD)
+                .min_size(egui::vec2(0.0, 16.0))
+            );
+            if btn.clicked() { watchlist.script_source = source.to_string(); }
+            if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        }
+    });
+    ui.add_space(4.0);
+    separator(ui, t.toolbar_border);
+    ui.add_space(4.0);
+
+    // ── Code editor area ────────────────────────────────────
+    let editor_bg = color_alpha(t.bg, 200);
+    let editor_height = 140.0;
+
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w - 8.0, editor_height), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 4.0, editor_bg);
+    ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)), egui::StrokeKind::Outside);
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect.shrink(6.0)), |ui| {
+        egui::ScrollArea::vertical()
+            .id_salt("script_editor_tab")
+            .show(ui, |ui| {
+                ui.add_sized(
+                    egui::vec2(rect.width() - 12.0, editor_height - 16.0),
+                    egui::TextEdit::multiline(&mut watchlist.script_source)
+                        .font(egui::FontId::monospace(10.0))
+                        .code_editor()
+                        .desired_rows(8)
+                        .text_color(egui::Color32::from_gray(220))
+                        .frame(false)
+                );
+            });
+    });
+    ui.add_space(4.0);
+
+    // ── Button row ──────────────────────────────────────────
+    ui.horizontal(|ui| {
+        if action_button(ui, "\u{25B6} Run", t.bull, t).clicked() {
+            if watchlist.script_source.is_empty() {
+                watchlist.script_output = "Error: No script to run.".to_string();
+            } else {
+                watchlist.script_output = format!(
+                    "Evaluating: {}\n\n--- Output ---\nScript parsed successfully.\nBars processed: 1,240\nSignals generated: 47",
+                    watchlist.script_source
+                );
+            }
+            watchlist.script_result_tab = ScriptResultTab::Output;
+        }
+        ui.add_space(4.0);
+        if action_button(ui, "\u{1F4CA} Backtest", t.accent, t).clicked() {
+            let result = mock_backtest();
+            let mut out = String::new();
+            out.push_str(&format!("Backtesting: {}\n", watchlist.script_source));
+            out.push_str(&format!("Period: 252 bars | {} trades\n\n", result.trades.len()));
+            out.push_str(&format!("Total P&L:      ${:.2}\n", result.total_pnl));
+            out.push_str(&format!("Win Rate:       {:.1}%\n", result.win_rate));
+            out.push_str(&format!("Profit Factor:  {:.2}\n", result.profit_factor));
+            out.push_str(&format!("Max Drawdown:   {:.2}%\n", result.max_drawdown));
+            out.push_str(&format!("Sharpe Ratio:   {:.2}\n", result.sharpe));
+            watchlist.script_output = out;
+            watchlist.script_backtest = Some(result);
+            watchlist.script_result_tab = ScriptResultTab::Backtest;
+        }
+        ui.add_space(4.0);
+        if action_button(ui, "Clear", t.bear.gamma_multiply(0.7), t).clicked() {
+            watchlist.script_source.clear();
+            watchlist.script_ai_prompt.clear();
+            watchlist.script_output.clear();
+            watchlist.script_backtest = None;
+        }
+    });
+    ui.add_space(4.0);
+    separator(ui, t.toolbar_border);
+    ui.add_space(2.0);
+
+    // ── Result tabs ─────────────────────────────────────────
+    ui.horizontal(|ui| {
+        result_tab_btn(ui, "Output", ScriptResultTab::Output, &mut watchlist.script_result_tab, t);
+        ui.add_space(2.0);
+        result_tab_btn(ui, "Backtest", ScriptResultTab::Backtest, &mut watchlist.script_result_tab, t);
+    });
+    ui.add_space(4.0);
+
+    // ── Results area ────────────────────────────────────────
+    egui::ScrollArea::vertical()
+        .id_salt("script_results_tab")
+        .show(ui, |ui| {
+            ui.set_min_width(w - 4.0);
+            match watchlist.script_result_tab {
+                ScriptResultTab::Output => draw_output_tab(ui, watchlist, t),
+                ScriptResultTab::Backtest => draw_backtest_tab(ui, watchlist, w, t),
+            }
+        });
+}
+
+fn separator(ui: &mut egui::Ui, color: egui::Color32) {
+    super::style::separator(ui, color);
+}
+
 // ── Main draw function ──────────────────────────────────────────────────────
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {

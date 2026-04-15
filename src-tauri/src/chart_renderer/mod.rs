@@ -18,6 +18,10 @@ pub mod trading;
 
 pub use types::*;
 
+/// Tab selector for the unified Analysis sidebar.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum AnalysisTab { Rrg, TimeSales, Scanner, Scripts }
+
 /// Line style
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LineStyle { Solid, Dashed, Dotted }

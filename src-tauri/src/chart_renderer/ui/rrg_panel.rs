@@ -184,14 +184,8 @@ fn sector_color(symbol: &str) -> egui::Color32 {
     egui::Color32::from_rgb(180, 180, 180)
 }
 
-/// Draw the RRG panel as a side panel (matches scanner_panel, news_panel pattern).
-pub(crate) fn draw(
-    ctx: &egui::Context,
-    watchlist: &mut Watchlist,
-    t: &Theme,
-) {
-    if !watchlist.rrg_open { return; }
-
+/// Draw the RRG panel content into `ui` (used by analysis_panel as a tab).
+pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     // Use live data if available, otherwise demo
     let sectors: &[RRGSector] = if watchlist.rrg_sectors.is_empty() {
         &[]
@@ -199,6 +193,95 @@ pub(crate) fn draw(
         &watchlist.rrg_sectors
     };
     let use_demo = sectors.is_empty();
+
+    // Header
+    ui.label(egui::RichText::new("RRG — Relative Rotation").monospace().size(11.0).color(t.dim));
+    super::style::separator(ui, t.toolbar_border);
+    ui.add_space(2.0);
+
+    // Compute the square plot area
+    let avail = ui.available_size();
+    let plot_size = avail.x.min(avail.y - 30.0).max(200.0); // leave room for cycle text
+    let (response, painter) = ui.allocate_painter(
+        egui::vec2(plot_size, plot_size),
+        egui::Sense::hover(),
+    );
+    let rect = response.rect;
+
+    draw_rrg_content(&painter, rect, sectors, use_demo, t,
+        watchlist.rrg_time_offset, watchlist.rrg_tail_length);
+
+    // Time slider
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("TIME").monospace().size(8.0).color(color_alpha(t.dim, ALPHA_ACTIVE)));
+        ui.spacing_mut().slider_width = plot_size - 50.0;
+        ui.add(egui::Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
+            .show_value(false)
+            .trailing_fill(true));
+    });
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("TAIL").monospace().size(8.0).color(color_alpha(t.dim, ALPHA_ACTIVE)));
+        ui.spacing_mut().slider_width = plot_size - 50.0;
+        let mut tail = watchlist.rrg_tail_length as f32;
+        if ui.add(egui::Slider::new(&mut tail, 1.0..=15.0).show_value(false).step_by(1.0)).changed() {
+            watchlist.rrg_tail_length = tail as usize;
+        }
+    });
+
+    // Cycle phase text at the bottom
+    ui.add_space(2.0);
+    let phase = if !watchlist.rrg_cycle_phase.is_empty() {
+        watchlist.rrg_cycle_phase.as_str()
+    } else {
+        "LATE EXPANSION"
+    };
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("CYCLE:")
+            .monospace().size(9.0).color(color_alpha(t.dim, ALPHA_HEAVY)));
+        ui.label(egui::RichText::new(phase)
+            .monospace().size(9.0).color(egui::Color32::from_rgb(56, 203, 137)));
+    });
+
+    // Legend — compact 2-column layout
+    ui.add_space(4.0);
+    super::style::separator(ui, t.toolbar_border);
+    ui.add_space(2.0);
+    let legend_sectors = if use_demo { &demo_sectors()[..] } else { sectors };
+    let half = (legend_sectors.len() + 1) / 2;
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            for s in legend_sectors.iter().take(half) {
+                ui.horizontal(|ui| {
+                    let c = sector_color(&s.symbol);
+                    let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 10.0));
+                    ui.painter().circle_filled(dot_rect.center(), 3.0, c);
+                    ui.label(egui::RichText::new(&s.symbol)
+                        .monospace().size(9.0).color(c));
+                });
+            }
+        });
+        ui.vertical(|ui| {
+            for s in legend_sectors.iter().skip(half) {
+                ui.horizontal(|ui| {
+                    let c = sector_color(&s.symbol);
+                    let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 10.0));
+                    ui.painter().circle_filled(dot_rect.center(), 3.0, c);
+                    ui.label(egui::RichText::new(&s.symbol)
+                        .monospace().size(9.0).color(c));
+                });
+            }
+        });
+    });
+}
+
+/// Draw the RRG panel as a side panel (matches scanner_panel, news_panel pattern).
+pub(crate) fn draw(
+    ctx: &egui::Context,
+    watchlist: &mut Watchlist,
+    t: &Theme,
+) {
+    if !watchlist.rrg_open { return; }
 
     egui::SidePanel::right("rrg_panel")
         .default_width(340.0)
@@ -209,92 +292,15 @@ pub(crate) fn draw(
             .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
             .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
         .show(ctx, |ui| {
-            // Header
+            // Add close button at the top
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("RRG — Relative Rotation").monospace().size(11.0).color(t.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if super::style::close_button(ui, t.dim) {
                         watchlist.rrg_open = false;
                     }
                 });
             });
-            super::style::separator(ui, t.toolbar_border);
-            ui.add_space(2.0);
-
-            // Compute the square plot area
-            let avail = ui.available_size();
-            let plot_size = avail.x.min(avail.y - 30.0).max(200.0); // leave room for cycle text
-            let (response, painter) = ui.allocate_painter(
-                egui::vec2(plot_size, plot_size),
-                egui::Sense::hover(),
-            );
-            let rect = response.rect;
-
-            draw_rrg_content(&painter, rect, sectors, use_demo, t,
-                watchlist.rrg_time_offset, watchlist.rrg_tail_length);
-
-            // Time slider
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("TIME").monospace().size(8.0).color(color_alpha(t.dim, ALPHA_ACTIVE)));
-                ui.spacing_mut().slider_width = plot_size - 50.0;
-                ui.add(egui::Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
-                    .show_value(false)
-                    .trailing_fill(true));
-            });
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("TAIL").monospace().size(8.0).color(color_alpha(t.dim, ALPHA_ACTIVE)));
-                ui.spacing_mut().slider_width = plot_size - 50.0;
-                let mut tail = watchlist.rrg_tail_length as f32;
-                if ui.add(egui::Slider::new(&mut tail, 1.0..=15.0).show_value(false).step_by(1.0)).changed() {
-                    watchlist.rrg_tail_length = tail as usize;
-                }
-            });
-
-            // Cycle phase text at the bottom
-            ui.add_space(2.0);
-            let phase = if !watchlist.rrg_cycle_phase.is_empty() {
-                watchlist.rrg_cycle_phase.as_str()
-            } else {
-                "LATE EXPANSION"
-            };
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("CYCLE:")
-                    .monospace().size(9.0).color(color_alpha(t.dim, ALPHA_HEAVY)));
-                ui.label(egui::RichText::new(phase)
-                    .monospace().size(9.0).color(egui::Color32::from_rgb(56, 203, 137)));
-            });
-
-            // Legend — compact 2-column layout
-            ui.add_space(4.0);
-            super::style::separator(ui, t.toolbar_border);
-            ui.add_space(2.0);
-            let legend_sectors = if use_demo { &demo_sectors()[..] } else { sectors };
-            let half = (legend_sectors.len() + 1) / 2;
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    for s in legend_sectors.iter().take(half) {
-                        ui.horizontal(|ui| {
-                            let c = sector_color(&s.symbol);
-                            let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 10.0));
-                            ui.painter().circle_filled(dot_rect.center(), 3.0, c);
-                            ui.label(egui::RichText::new(&s.symbol)
-                                .monospace().size(9.0).color(c));
-                        });
-                    }
-                });
-                ui.vertical(|ui| {
-                    for s in legend_sectors.iter().skip(half) {
-                        ui.horizontal(|ui| {
-                            let c = sector_color(&s.symbol);
-                            let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 10.0));
-                            ui.painter().circle_filled(dot_rect.center(), 3.0, c);
-                            ui.label(egui::RichText::new(&s.symbol)
-                                .monospace().size(9.0).color(c));
-                        });
-                    }
-                });
-            });
+            draw_content(ui, watchlist, t);
         });
 }
 

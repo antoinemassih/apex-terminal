@@ -57,48 +57,53 @@ if watchlist.hotkey_editor_open {
         .show(ctx, |ui| {
             if dialog_header(ui, "KEYBOARD SHORTCUTS", t.dim) { watchlist.hotkey_editor_open = false; }
             ui.add_space(8.0);
-            let mut current_category = String::new();
-            let editing_id = watchlist.hotkey_editing_id;
-            {
-                let hotkeys_snapshot: Vec<(u32, String, String, String, bool)> = watchlist.hotkeys.iter()
-                    .map(|h| (h.id, h.name.clone(), h.category.clone(), h.key_name.clone(), editing_id == Some(h.id)))
-                    .collect();
-                for (hk_id, hk_name, hk_cat, hk_key_name, is_editing) in &hotkeys_snapshot {
-                    if *hk_cat != current_category {
-                        if !current_category.is_empty() { ui.add_space(6.0); }
-                        current_category = hk_cat.clone();
-                        ui.add_space(2.0);
-                        ui.label(egui::RichText::new(hk_cat.to_uppercase()).monospace().size(9.0).color(t.dim));
-                        ui.add_space(2.0);
-                    }
-                    ui.horizontal(|ui| {
-                        ui.add_space(10.0);
-                        ui.label(egui::RichText::new(hk_name.as_str()).monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if *is_editing {
-                                ui.label(egui::RichText::new("Press a key...").monospace().size(9.0).color(t.accent));
-                            } else {
-                                if ui.add(egui::Button::new(egui::RichText::new("Edit").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
-                                    watchlist.hotkey_editing_id = Some(*hk_id);
-                                }
-                            }
-                            let key_bg = if *is_editing { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, ALPHA_TINT) };
-                            let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
-                            ui.add(egui::Button::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(10.0).color(key_fg))
-                                .fill(key_bg).corner_radius(3.0).min_size(egui::vec2(80.0, 18.0)));
-                        });
-                    });
-                }
-            }
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                ui.add_space(10.0);
-                if ui.button(egui::RichText::new("Reset Defaults").monospace().size(10.0).color(t.dim)).clicked() {
-                    watchlist.hotkeys = default_hotkeys();
-                }
-            });
+            draw_content(ui, watchlist, t);
         });
 }
 
 
+}
+
+/// Draw the hotkey list content into `ui` (used by settings panel Shortcuts tab).
+pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
+    let mut current_category = String::new();
+    let editing_id = watchlist.hotkey_editing_id;
+    {
+        let hotkeys_snapshot: Vec<(u32, String, String, String, bool)> = watchlist.hotkeys.iter()
+            .map(|h| (h.id, h.name.clone(), h.category.clone(), h.key_name.clone(), editing_id == Some(h.id)))
+            .collect();
+        for (hk_id, hk_name, hk_cat, hk_key_name, is_editing) in &hotkeys_snapshot {
+            if *hk_cat != current_category {
+                if !current_category.is_empty() { ui.add_space(6.0); }
+                current_category = hk_cat.clone();
+                ui.add_space(2.0);
+                ui.label(egui::RichText::new(hk_cat.to_uppercase()).monospace().size(9.0).color(t.dim));
+                ui.add_space(2.0);
+            }
+            ui.horizontal(|ui| {
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new(hk_name.as_str()).monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if *is_editing {
+                        ui.label(egui::RichText::new("Press a key...").monospace().size(9.0).color(t.accent));
+                    } else {
+                        if ui.add(egui::Button::new(egui::RichText::new("Edit").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
+                            watchlist.hotkey_editing_id = Some(*hk_id);
+                        }
+                    }
+                    let key_bg = if *is_editing { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, ALPHA_TINT) };
+                    let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
+                    ui.add(egui::Button::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(10.0).color(key_fg))
+                        .fill(key_bg).corner_radius(3.0).min_size(egui::vec2(80.0, 18.0)));
+                });
+            });
+        }
+    }
+    ui.add_space(10.0);
+    ui.horizontal(|ui| {
+        ui.add_space(10.0);
+        if ui.button(egui::RichText::new("Reset Defaults").monospace().size(10.0).color(t.dim)).clicked() {
+            watchlist.hotkeys = default_hotkeys();
+        }
+    });
 }
