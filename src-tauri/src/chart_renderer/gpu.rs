@@ -9251,6 +9251,25 @@ fn render_chart_pane(
                 dx += dash + gap;
             }
 
+            // Drag handle pill at center of line — visual grab target
+            {
+                let cx = rect.left() + cw / 2.0;
+                let (pill_w, pill_h) = if is_hovered || is_dragging { (12.0, 7.0) } else { (8.0, 5.0) };
+                let pill_rect = egui::Rect::from_center_size(
+                    egui::pos2(cx, y),
+                    egui::vec2(pill_w, pill_h));
+                // Solid fill in alert color, slightly darker border
+                painter.rect_filled(pill_rect, pill_h / 2.0, alert_color);
+                painter.rect_stroke(pill_rect, pill_h / 2.0,
+                    egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120)),
+                    egui::StrokeKind::Outside);
+                // 3 dots for a "grab handle" visual cue
+                let dot_col = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 180);
+                painter.circle_filled(egui::pos2(cx - 2.0, y), 0.7, dot_col);
+                painter.circle_filled(egui::pos2(cx,       y), 0.7, dot_col);
+                painter.circle_filled(egui::pos2(cx + 2.0, y), 0.7, dot_col);
+            }
+
             // Badge
             let dir_arrow = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
             let d = if alert.price >= 10.0 { 2 } else { 4 };
