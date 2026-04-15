@@ -1331,7 +1331,7 @@ if watchlist.open {
                         fetch_chain_background(sym, ns, far_dte, chain_price);
                     }
 
-                    // ── Controls: DTE selector | sel toggle ──
+                    // ── Controls: DTE selector | sel toggle | Spread ──
                     ui.horizontal(|ui| {
                         // DTE dropdown
                         let dte_values = [1, 2, 3, 5, 7, 10];
@@ -1357,6 +1357,12 @@ if watchlist.open {
                             .corner_radius(RADIUS_SM)).clicked() {
                             watchlist.chain_select_mode = !watchlist.chain_select_mode;
                         }
+                        // Spread Builder shortcut
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if small_action_btn(ui, "Spread", t.dim) {
+                                watchlist.spread_open = !watchlist.spread_open;
+                            }
+                        });
                     });
 
                     ui.add_space(4.0);

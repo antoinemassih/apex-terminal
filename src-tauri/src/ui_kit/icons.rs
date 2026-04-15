@@ -64,6 +64,7 @@ impl Icon {
     pub const BELL: &'static str = ph::BELL;
     pub const BELL_RINGING: &'static str = ph::BELL_RINGING;
     pub const RADIO_BUTTON: &'static str = ph::RADIO_BUTTON;
+    pub const MEGAPHONE: &'static str = ph::MEGAPHONE;
     pub const DOT: &'static str = ph::DOT_OUTLINE;
     pub const CIRCLE: &'static str = ph::CIRCLE;
     pub const CURRENCY_DOLLAR: &'static str = ph::CURRENCY_DOLLAR;

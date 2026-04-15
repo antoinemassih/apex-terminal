@@ -3015,23 +3015,37 @@ fn render_toolbar(
             ], egui::Stroke::new(1.3, t.accent)));
             lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(1.3, t.accent));
 
-            ui.add_space(2.0);
+            ui.add_space(4.0);
+            ui.spacing_mut().item_spacing.x = 3.0;
 
-            // ── Symbol ticker ──
-            let sym_label = format!("{} \u{25BE}", panes[ap].symbol); // ▾ dropdown arrow
-            let sym_btn = ui.add(egui::Button::new(
-                egui::RichText::new(&sym_label).monospace().size(12.0).strong().color(t.accent)
-            ).frame(false));
-            if sym_btn.clicked() {
-                panes[ap].picker_open = !panes[ap].picker_open;
-                panes[ap].picker_query.clear();
-                panes[ap].picker_results.clear();
-                panes[ap].picker_last_query.clear();
-                panes[ap].picker_pos = egui::pos2(sym_btn.rect.left(), sym_btn.rect.bottom());
+            // ── Account button (broker + connection state) ──
+            {
+                let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
+                let acct_label = if connected { "IBKR ●" } else { "IBKR ○" };
+                let acct_active = watchlist.account_strip_open;
+                if tb_btn_tip(ui, acct_label, acct_active, t, "Account Summary").clicked() {
+                    watchlist.account_strip_open = !watchlist.account_strip_open;
+                }
             }
 
-            // Daily change badge moved to pane header
-            if false {
+            // ── Paper / Live toggle ──
+            {
+                let paper = super::trading::order_manager::is_paper_mode();
+                let label = if paper { "PAPER" } else { "LIVE" };
+                let tip   = if paper { "Switch to Live" } else { "Switch to Paper" };
+                if tb_btn_tip(ui, label, paper, t, tip).clicked() {
+                    super::trading::order_manager::set_paper_mode(!paper);
+                }
+            }
+
+            // ── Orders book ──
+            if tb_btn_tip(ui, Icon::ARTICLE, watchlist.orders_panel_open, t, "Orders").clicked() {
+                watchlist.orders_panel_open = !watchlist.orders_panel_open;
+            }
+
+            // ── DOM sidebar ──
+            if tb_btn_tip(ui, Icon::SIDEBAR, panes[ap].dom_sidebar_open, t, "DOM Sidebar").clicked() {
+                panes[ap].dom_sidebar_open = !panes[ap].dom_sidebar_open;
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -3043,23 +3057,13 @@ fn render_toolbar(
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
 
-            // ── Broadcast mode toggle ──
+            // ── Broadcast mode toggle (megaphone icon) — placed near interval buttons ──
             {
                 let bc = watchlist.broadcast_mode;
-                let bc_fg = if bc { t.accent } else { t.dim.gamma_multiply(0.4) };
-                let bc_bg = if bc { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
-                let bc_resp = ui.add(egui::Button::new(egui::RichText::new("BC").monospace().size(9.0).strong().color(bc_fg))
-                    .fill(bc_bg).corner_radius(3.0).min_size(egui::vec2(24.0, 22.0))
-                    .stroke(if bc { egui::Stroke::new(0.5, color_alpha(t.accent, 80)) } else { egui::Stroke::NONE }));
+                let bc_resp = tb_btn_tip(ui, Icon::MEGAPHONE, bc, t, "Broadcast — changes apply to all panes");
                 if bc_resp.clicked() {
                     watchlist.broadcast_mode = !watchlist.broadcast_mode;
                     TB_BTN_CLICKED.with(|f| f.set(true));
-                }
-                if bc_resp.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    egui::show_tooltip(ui.ctx(), ui.layer_id(), egui::Id::new("bc_tip"), |ui| {
-                        ui.label(egui::RichText::new("Broadcast — changes apply to all panes (or Shift+click)").monospace().size(9.0));
-                    });
                 }
             }
             ui.add(egui::Separator::default().spacing(4.0));
@@ -3188,11 +3192,6 @@ fn render_toolbar(
             let list_label = if draw_count > 0 { format!("{} {}", Icon::LIST, draw_count) } else { Icon::LIST.to_string() };
             if tb_btn_tip(ui, &list_label, watchlist.object_tree_open, t, "Object Tree").clicked() {
                 watchlist.object_tree_open = !watchlist.object_tree_open;
-            }
-
-            // DOM Sidebar toggle
-            if tb_btn_tip(ui, Icon::SIDEBAR, panes[ap].dom_sidebar_open, t, "DOM Sidebar").clicked() {
-                panes[ap].dom_sidebar_open = !panes[ap].dom_sidebar_open;
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -4083,15 +4082,6 @@ fn render_toolbar(
                 // Panel toggle buttons (right-to-left, so ordered right→left)
                 ui.spacing_mut().item_spacing.x = 4.0;
 
-                // Paper/Live toggle
-                {
-                    let paper = super::trading::order_manager::is_paper_mode();
-                    let paper_label = if paper { "PAPER" } else { "LIVE" };
-                    let paper_tip = if paper { "Switch to Live" } else { "Switch to Paper" };
-                    if tb_btn_tip(ui, paper_label, false, t, paper_tip).clicked() {
-                        super::trading::order_manager::set_paper_mode(!paper);
-                    }
-                }
 
                 // Connection status
                 {
@@ -4102,10 +4092,6 @@ fn render_toolbar(
                     if conn_resp.clicked() { *conn_panel_open = !*conn_panel_open; }
                 }
 
-                // Orders book panel
-                if tb_btn_tip(ui, Icon::ARTICLE, watchlist.orders_panel_open, t, "Orders").clicked() {
-                    watchlist.orders_panel_open = !watchlist.orders_panel_open;
-                }
 
                 // Alerts panel toggle
                 {
@@ -4125,20 +4111,11 @@ fn render_toolbar(
                     if alert_resp.clicked() { watchlist.alerts_panel_open = !watchlist.alerts_panel_open; }
                 }
 
-                // Order entry toggle
-                // Spread Builder toggle
-                if tb_btn_tip(ui, Icon::GIT_DIFF, watchlist.spread_open, t, "Spread Builder").clicked() {
-                    watchlist.spread_open = !watchlist.spread_open;
-                }
 
                 if tb_btn_tip(ui, Icon::CURRENCY_DOLLAR, watchlist.order_entry_open, t, "Order Entry").clicked() {
                     watchlist.order_entry_open = !watchlist.order_entry_open;
                 }
 
-                // Account strip toggle
-                if tb_btn_tip(ui, Icon::PULSE, watchlist.account_strip_open, t, "Account").clicked() {
-                    watchlist.account_strip_open = !watchlist.account_strip_open;
-                }
 
                 // Watchlist toggle
                 if tb_btn_tip(ui, Icon::LIST, watchlist.open, t, "Watchlist").clicked() { watchlist.open = !watchlist.open; }

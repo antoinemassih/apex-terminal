@@ -197,6 +197,12 @@ if watchlist.orders_panel_open {
                         pane.orders.retain(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed);
                     }
                 }
+                // Spread Builder shortcut
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if small_action_btn(ui, "Spread", t.dim) {
+                        watchlist.spread_open = !watchlist.spread_open;
+                    }
+                });
             });
             ui.add_space(4.0);
 
