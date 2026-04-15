@@ -1147,6 +1147,15 @@ pub(crate) struct Chart {
     pub(crate) change_points: Vec<(i64, String, f32)>, // (time, type, confidence)
     pub(crate) trade_plan: Option<(i8, f32, f32, f32, String, f32, f32)>, // (dir, entry, target, stop, contract, rr, conviction)
     pub(crate) signal_demo_toggle: bool, // set to true to toggle demo on/off
+    // Per-signal visibility toggles (controlled from Signals panel)
+    pub(crate) show_trend_health: bool,
+    pub(crate) show_exit_gauge: bool,
+    pub(crate) show_precursor: bool,
+    pub(crate) show_signal_zones: bool,
+    pub(crate) show_trade_plan: bool,
+    pub(crate) show_change_points: bool,
+    pub(crate) show_vix_alert: bool,
+    pub(crate) show_auto_trendlines: bool, // mirrors !hide_signal_drawings, for UI consistency
     // VIX Expiry alert
     pub(crate) vix_expiry_active: bool,
     pub(crate) vix_expiry_days: u32,
@@ -1385,6 +1394,9 @@ impl Chart {
             signal_zones: vec![], precursor_active: false, precursor_score: 0.0,
             precursor_direction: 0, precursor_description: String::new(),
             change_points: vec![], trade_plan: None, signal_demo_toggle: false,
+            show_trend_health: true, show_exit_gauge: true, show_precursor: true,
+            show_signal_zones: true, show_trade_plan: true, show_change_points: true,
+            show_vix_alert: true, show_auto_trendlines: true,
             vix_expiry_active: false, vix_expiry_days: 0, vix_expiry_date: String::new(),
             vix_spot: 0.0, vix_expiring_future: 0.0, vix_realized_vol: 0.0,
             vix_gap_pct: 0.0, vix_convergence_score: 0.0,
@@ -8521,7 +8533,7 @@ fn render_chart_pane(
         };
 
         // ── Trend Health ─────────────────────────────────────────────────
-        if chart.trend_health_score > 0.0 {
+        if chart.show_trend_health && chart.trend_health_score > 0.0 {
             let th = chart.trend_health_score;
             let th_color = if th > 70.0 { egui::Color32::from_rgb(56, 203, 137) }
                 else if th > 40.0 { egui::Color32::from_rgb(230, 186, 57) }
@@ -8532,7 +8544,7 @@ fn render_chart_pane(
         }
 
         // ── Exit Gauge ───────────────────────────────────────────────────
-        if chart.exit_gauge_score > 0.0 {
+        if chart.show_exit_gauge && chart.exit_gauge_score > 0.0 {
             let eg = chart.exit_gauge_score;
             let eg_color = if eg > 80.0 { egui::Color32::from_rgb(224, 50, 50) }
                 else if eg > 60.0 { egui::Color32::from_rgb(230, 140, 30) }
@@ -8554,7 +8566,7 @@ fn render_chart_pane(
         }
 
         // ── Precursor Badge ──────────────────────────────────────────────
-        if chart.precursor_active && chart.precursor_score > 30.0 {
+        if chart.show_precursor && chart.precursor_active && chart.precursor_score > 30.0 {
             let pr_color = match chart.precursor_direction {
                 d if d > 0 => egui::Color32::from_rgb(56, 203, 137),
                 d if d < 0 => egui::Color32::from_rgb(224, 82, 82),
@@ -8574,7 +8586,7 @@ fn render_chart_pane(
     }
 
     // ── VIX Expiry Alert Card (bottom-right when active) ────────────────
-    if chart.vix_expiry_active && chart.vix_expiry_days <= 5 {
+    if chart.show_vix_alert && chart.vix_expiry_active && chart.vix_expiry_days <= 5 {
         let card_w = 240.0;
         let card_h = 120.0;
         let card_x = rect.right() - card_w - 8.0;
@@ -8655,7 +8667,7 @@ fn render_chart_pane(
     }
 
     // ── Supply/Demand zones — faint fill, clean edge labels ──────────────
-    for zone in &chart.signal_zones {
+    if chart.show_signal_zones { for zone in &chart.signal_zones {
         let y_high = py(zone.price_high);
         let y_low = py(zone.price_low);
         if y_high > rect.bottom() || y_low < rect.top() { continue; }
@@ -8701,10 +8713,10 @@ fn render_chart_pane(
                 color_alpha(zone_color, 100),
             );
         }
-    }
+    }}
 
     // ── Change-point markers — small diamonds on the time axis ───────────
-    {
+    if chart.show_change_points {
         let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt_timestamps };
         let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt_bars };
         for (cp_time, cp_type, cp_conf) in &chart.change_points {
@@ -8745,6 +8757,7 @@ fn render_chart_pane(
     }
 
     // ── Trade plan — floating card + subtle chart lines ──────────────────
+    if chart.show_trade_plan {
     if let Some((dir, entry, target, stop, ref contract, rr, conviction)) = chart.trade_plan {
         let entry_y = py(entry);
         let target_y = py(target);
@@ -8912,6 +8925,7 @@ fn render_chart_pane(
             painter.text(egui::pos2(yaxis_x + 2.0, entry_y), egui::Align2::LEFT_CENTER, yaxis_badge, yb_font, pos_color);
         }
     }
+    } // end if chart.show_trade_plan
 
     // ── OCO/Trigger bracket bands with connectors & R:R ─────────────────
     {
