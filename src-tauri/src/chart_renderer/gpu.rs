@@ -13,7 +13,7 @@ use winit::{
     dpi::PhysicalSize,
 };
 
-use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, DrawingSignificance, LineStyle};
+use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, DrawingSignificance, LineStyle, PatternLabel};
 
 // Thread-local to pass window ref into draw_chart (which doesn't have access to ChartWindow)
 std::thread_local! {
@@ -1119,6 +1119,22 @@ pub(crate) struct Chart {
     pub(crate) hidden_groups: Vec<String>,
     pub(crate) signal_drawings: Vec<SignalDrawing>, // auto-generated trendlines from server
     pub(crate) hide_signal_drawings: bool,
+    pub(crate) pattern_labels: Vec<PatternLabel>,   // candlestick pattern labels from ApexSignals
+    pub(crate) show_pattern_labels: bool,
+    // ── Signal engine state ──────────────────────────────────────────────────
+    pub(crate) trend_health_score: f32,
+    pub(crate) trend_health_direction: i8,
+    pub(crate) trend_health_regime: String,
+    pub(crate) exit_gauge_score: f32,
+    pub(crate) exit_gauge_urgency: String,
+    pub(crate) signal_zones: Vec<super::SignalZone>,
+    pub(crate) precursor_active: bool,
+    pub(crate) precursor_score: f32,
+    pub(crate) precursor_direction: i8,
+    pub(crate) precursor_description: String,
+    pub(crate) change_points: Vec<(i64, String, f32)>, // (time, type, confidence)
+    pub(crate) trade_plan: Option<(i8, f32, f32, f32, String, f32, f32)>, // (dir, entry, target, stop, contract, rr, conviction)
+    pub(crate) signal_demo_toggle: bool, // set to true to toggle demo on/off
     pub(crate) drawings_requested: bool, // prevents duplicate fetch_drawings_background calls
     pub(crate) last_signal_fetch: std::time::Instant,
     pub(crate) hide_all_drawings: bool,
@@ -1340,7 +1356,14 @@ impl Chart {
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, drawing_list_open: false, ohlc_tooltip: true, measure_tooltip: false,
-            signal_drawings: vec![], hide_signal_drawings: false, last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
+            signal_drawings: vec![], hide_signal_drawings: false,
+            pattern_labels: vec![], show_pattern_labels: true,
+            trend_health_score: 0.0, trend_health_direction: 0, trend_health_regime: String::new(),
+            exit_gauge_score: 0.0, exit_gauge_urgency: String::new(),
+            signal_zones: vec![], precursor_active: false, precursor_score: 0.0,
+            precursor_direction: 0, precursor_description: String::new(),
+            change_points: vec![], trade_plan: None, signal_demo_toggle: false,
+            last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
             draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
@@ -1556,6 +1579,108 @@ impl Chart {
                         DarkPoolPrint { price, size, time, side }
                     }).collect();
                 }
+            }
+            ChartCommand::PatternLabels { symbol, labels } => {
+                if symbol == self.symbol {
+                    self.pattern_labels = labels;
+                }
+            }
+            ChartCommand::AlertTriggered { symbol: _, alert_id: _, price, message } => {
+                // Push a toast notification regardless of active symbol — alerts are always relevant
+                PENDING_TOASTS.with(|ts| ts.borrow_mut().push((message, price, true)));
+            }
+            ChartCommand::AutoTrendlines { symbol, drawings_json } => {
+                // Same parsing as SignalDrawings — replaces signal_drawings for this symbol
+                if symbol == self.symbol {
+                    if let Ok(annotations) = serde_json::from_str::<Vec<serde_json::Value>>(&drawings_json) {
+                        self.signal_drawings.clear();
+                        for a in &annotations {
+                            let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let dtype = a.get("type").and_then(|v| v.as_str()).unwrap_or("trendline").to_string();
+                            let points: Vec<(i64, f32)> = a.get("points").and_then(|v| v.as_array()).map(|arr| {
+                                arr.iter().filter_map(|p| Some((p.get("time")?.as_i64()?, p.get("price")?.as_f64()? as f32))).collect()
+                            }).unwrap_or_default();
+                            let style = a.get("style");
+                            let color = style.and_then(|s| s.get("color")).and_then(|c| c.as_str()).unwrap_or("#4a9eff").to_string();
+                            let opacity = style.and_then(|s| s.get("opacity")).and_then(|o| o.as_f64()).unwrap_or(0.7) as f32;
+                            let thickness = style.and_then(|s| s.get("thickness")).and_then(|t| t.as_f64()).unwrap_or(1.0) as f32;
+                            let ls = match style.and_then(|s| s.get("lineStyle")).and_then(|l| l.as_str()).unwrap_or("dashed") {
+                                "solid" => LineStyle::Solid, "dotted" => LineStyle::Dotted, _ => LineStyle::Dashed,
+                            };
+                            let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
+                            let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf });
+                        }
+                        // Reset the HTTP polling timer so it doesn't immediately overwrite push data
+                        self.last_signal_fetch = std::time::Instant::now();
+                    }
+                }
+            }
+            ChartCommand::SignificanceUpdate { symbol, drawing_id, score, touches, strength } => {
+                if symbol == self.symbol {
+                    for d in &mut self.drawings {
+                        if d.id == drawing_id {
+                            d.significance = Some(super::DrawingSignificance {
+                                score, touches,
+                                timeframe: String::new(),
+                                age_days: 0,
+                                volume_index: 1.0,
+                                last_tested_bars: 0,
+                                strength: strength.clone(),
+                            });
+                        }
+                    }
+                }
+            }
+            ChartCommand::TrendHealthUpdate { symbol, timeframe: _, score, direction, exhaustion_count: _, regime } => {
+                if symbol == self.symbol {
+                    self.trend_health_score = score;
+                    self.trend_health_direction = direction;
+                    self.trend_health_regime = regime;
+                }
+            }
+            ChartCommand::ExitGaugeUpdate { symbol, score, urgency, components: _ } => {
+                if symbol == self.symbol {
+                    self.exit_gauge_score = score;
+                    self.exit_gauge_urgency = urgency;
+                }
+            }
+            ChartCommand::SupplyDemandZones { symbol, timeframe: _, zones } => {
+                if symbol == self.symbol {
+                    self.signal_zones = zones;
+                }
+            }
+            ChartCommand::PrecursorAlert { symbol, score, direction, surge_ratio: _, lead_minutes, description } => {
+                if symbol == self.symbol {
+                    self.precursor_active = true;
+                    self.precursor_score = score;
+                    self.precursor_direction = direction;
+                    self.precursor_description = description;
+                    // Auto-toast
+                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push((
+                        format!("PRECURSOR: {}", self.precursor_description),
+                        lead_minutes,
+                        true,
+                    )));
+                }
+            }
+            ChartCommand::ChangePointMarker { symbol, time, change_type, confidence } => {
+                if symbol == self.symbol {
+                    self.change_points.push((time, change_type, confidence));
+                    // Keep only last 20
+                    if self.change_points.len() > 20 {
+                        self.change_points.remove(0);
+                    }
+                }
+            }
+            ChartCommand::TradePlanUpdate { symbol, direction, entry_price, target_price, stop_price, contract_name, contract_entry: _, contract_target: _, risk_reward, conviction, summary } => {
+                if symbol == self.symbol {
+                    self.trade_plan = Some((direction, entry_price, target_price, stop_price, contract_name, risk_reward, conviction));
+                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push((summary, conviction, true)));
+                }
+            }
+            ChartCommand::DivergenceOverlay { .. } => {
+                // TODO: store divergence markers for rendering
             }
             _ => {}
         }
@@ -3496,6 +3621,12 @@ fn render_toolbar(
                     let nv = !afib;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_auto_fib = nv; } } else { panes[ap].show_auto_fib = nv; }
                 }
+                let pl = panes[ap].show_pattern_labels;
+                if ui.selectable_label(pl, egui::RichText::new(format!("{} Pattern Labels", check(pl))).monospace().size(10.0)).clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !pl;
+                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_pattern_labels = nv; } } else { panes[ap].show_pattern_labels = nv; }
+                }
                 let pnl = panes[ap].show_pnl_curve;
                 if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(10.0)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
                 ui.separator();
@@ -3634,7 +3765,7 @@ fn render_toolbar(
                                 "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
                                 "show_auto_sr": p.show_auto_sr, "show_auto_fib": p.show_auto_fib,
                                 "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
-                                "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "hit_highlight": p.hit_highlight, "show_pnl_curve": p.show_pnl_curve,
+                                "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "hit_highlight": p.hit_highlight, "show_pnl_curve": p.show_pnl_curve, "show_pattern_labels": p.show_pattern_labels,
                                 "candle_mode": match p.candle_mode {
                                     CandleMode::Standard => "std", CandleMode::Violin => "vln",
                                     CandleMode::Gradient => "grd", CandleMode::ViolinGradient => "vg",
@@ -3707,6 +3838,7 @@ fn render_toolbar(
                         p.show_darkpool = gb("show_darkpool", false);
                         p.show_events = gb("show_events", false);
                         p.show_pnl_curve = gb("show_pnl_curve", false);
+                        p.show_pattern_labels = gb("show_pattern_labels", true);
                         // Session shading
                         p.session_shading = gb("session_shading", false);
                         p.rth_start_minutes = tmpl.get("rth_start_minutes").and_then(|v| v.as_u64()).unwrap_or(570) as u16;
@@ -4027,6 +4159,16 @@ fn render_toolbar(
                 // Screenshot library toggle
                 if tb_btn_tip(ui, Icon::CAMERA, watchlist.screenshot_open, t, "Screenshots").clicked() {
                     watchlist.screenshot_open = !watchlist.screenshot_open;
+                }
+
+                // RRG (Relative Rotation Graph) toggle
+                if tb_btn_tip(ui, "RRG", watchlist.rrg_open, t, "Relative Rotation Graph").clicked() {
+                    watchlist.rrg_open = !watchlist.rrg_open;
+                }
+                // Signal demo toggle
+                let demo_active = panes[ap].trend_health_score > 0.0;
+                if tb_btn_tip(ui, "SIG", demo_active, t, "Toggle Signal Demo").clicked() {
+                    panes[ap].signal_demo_toggle = true;
                 }
 
                 ui.add(egui::Separator::default().spacing(4.0));
@@ -4388,6 +4530,9 @@ fn render_toolbar(
 
     // ── News Feed floating window ────────────────────────────────────────────��
     super::ui::news_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
+
+    // ── RRG (Relative Rotation Graph) side panel ───────────────────────────
+    super::ui::rrg_panel::draw(ctx, watchlist, t);
 
     // ── Trade Journal floating window ────────────────────────────────────────
     super::ui::journal_panel::draw(ctx, watchlist, t);
@@ -8255,6 +8400,362 @@ fn render_chart_pane(
                 _ => {}
             }
         }
+    }
+
+    // ── Candlestick pattern labels (from ApexSignals) ────────────────────
+    if chart.show_pattern_labels && !chart.pattern_labels.is_empty() {
+        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt_bars };
+        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt_timestamps };
+        for pl in &chart.pattern_labels {
+            let bar_f = SignalDrawing::time_to_bar(pl.time, ts_ref);
+            let x = bx(bar_f);
+            if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
+            let bar_idx = bar_f.round() as usize;
+            let (bar_low, bar_high) = if let Some(bar) = bars_ref.get(bar_idx) {
+                (bar.low, bar.high)
+            } else { continue; };
+            let alpha = (180.0 * pl.confidence.clamp(0.3, 1.0)) as u8;
+            if pl.bullish {
+                // Green upward triangle below bar's low
+                let base_y = py(bar_low) + 4.0;
+                let tri_col = color_alpha(t.bull, alpha);
+                let tri = vec![
+                    egui::pos2(x, base_y),
+                    egui::pos2(x - 4.0, base_y + 7.0),
+                    egui::pos2(x + 4.0, base_y + 7.0),
+                ];
+                painter.add(egui::Shape::convex_polygon(tri, tri_col, egui::Stroke::NONE));
+                // Abbreviated label below triangle
+                let abbrev: &str = if pl.label.len() > 3 { &pl.label[..3] } else { &pl.label };
+                painter.text(egui::pos2(x, base_y + 10.0), egui::Align2::CENTER_TOP,
+                    abbrev, egui::FontId::monospace(7.0), color_alpha(t.bull, alpha));
+            } else {
+                // Red downward triangle above bar's high
+                let base_y = py(bar_high) - 4.0;
+                let tri_col = color_alpha(t.bear, alpha);
+                let tri = vec![
+                    egui::pos2(x, base_y),
+                    egui::pos2(x - 4.0, base_y - 7.0),
+                    egui::pos2(x + 4.0, base_y - 7.0),
+                ];
+                painter.add(egui::Shape::convex_polygon(tri, tri_col, egui::Stroke::NONE));
+                let abbrev: &str = if pl.label.len() > 3 { &pl.label[..3] } else { &pl.label };
+                painter.text(egui::pos2(x, base_y - 10.0), egui::Align2::CENTER_BOTTOM,
+                    abbrev, egui::FontId::monospace(7.0), color_alpha(t.bear, alpha));
+            }
+        }
+    }
+
+    // ── Demo signal data (toggled by chart.signal_demo flag) ───────────
+    if chart.signal_demo_toggle {
+        chart.signal_demo_toggle = false; // consume the toggle
+        if chart.trend_health_score == 0.0 {
+            // Turn ON demo
+            chart.trend_health_score = 72.0;
+            chart.trend_health_direction = 1;
+            chart.trend_health_regime = "strong_trend".into();
+            chart.exit_gauge_score = 35.0;
+            chart.exit_gauge_urgency = "HOLD".into();
+            chart.precursor_active = true;
+            chart.precursor_score = 78.0;
+            chart.precursor_direction = 1;
+            chart.precursor_description = "5.2x baseline, 82% calls, 3 TF cascade".into();
+            // Demo zones
+            if chart.signal_zones.is_empty() {
+                let price = if !chart.bars.is_empty() {
+                    chart.bars.last().unwrap().close
+                } else { 100.0 };
+                chart.signal_zones = vec![
+                    super::SignalZone { zone_type: "demand".into(), price_high: price * 0.985, price_low: price * 0.978, start_time: 0, strength: 8.2, touches: 3, fresh: true },
+                    super::SignalZone { zone_type: "supply".into(), price_high: price * 1.025, price_low: price * 1.018, start_time: 0, strength: 7.5, touches: 2, fresh: false },
+                    super::SignalZone { zone_type: "fvg".into(), price_high: price * 0.995, price_low: price * 0.991, start_time: 0, strength: 5.0, touches: 0, fresh: true },
+                ];
+                // Demo trade plan
+                chart.trade_plan = Some((1, price, price * 1.02, price * 0.985, format!("{} {}C 5DTE", chart.symbol, (price / 5.0).round() * 5.0), 2.8, 85.0));
+                // Demo change points
+                if chart.timestamps.len() > 20 {
+                    chart.change_points.push((chart.timestamps[chart.timestamps.len() - 15], "directional".into(), 0.85));
+                    chart.change_points.push((chart.timestamps[chart.timestamps.len() - 8], "volume".into(), 0.72));
+                }
+            }
+        } else {
+            // Turn OFF demo
+            chart.trend_health_score = 0.0;
+            chart.exit_gauge_score = 0.0;
+            chart.precursor_active = false;
+            chart.precursor_score = 0.0;
+            chart.signal_zones.clear();
+            chart.trade_plan = None;
+            chart.change_points.clear();
+        }
+    }
+
+    // ── Signal gauges — compact pill design, top-right ─────────────────
+    {
+        let gauge_x = rect.right() - 100.0;
+        let mut gauge_y = rect.top() + 6.0;
+        let pill_h = 18.0;
+        let pill_w = 90.0;
+        let pill_r = pill_h / 2.0; // fully rounded ends
+        let bg = egui::Color32::from_rgba_unmultiplied(18, 18, 24, 210);
+
+        // Helper: draw one gauge pill
+        let draw_pill = |painter: &egui::Painter, y: f32, label: &str, score: f32, color: egui::Color32| {
+            // Dark pill background
+            painter.rect_filled(
+                egui::Rect::from_min_size(egui::pos2(gauge_x, y), egui::vec2(pill_w, pill_h)),
+                pill_r, bg,
+            );
+            // Thin fill bar inside (2px from edges)
+            let bar_y = y + pill_h - 4.0;
+            let bar_w = (pill_w - 8.0) * (score / 100.0).min(1.0);
+            painter.rect_filled(
+                egui::Rect::from_min_size(egui::pos2(gauge_x + 4.0, bar_y), egui::vec2(bar_w, 2.0)),
+                1.0, color_alpha(color, 200),
+            );
+            // Left: colored dot + label
+            painter.circle_filled(egui::pos2(gauge_x + 10.0, y + pill_h / 2.0), 3.0, color);
+            painter.text(
+                egui::pos2(gauge_x + 17.0, y + pill_h / 2.0), egui::Align2::LEFT_CENTER,
+                label, egui::FontId::monospace(8.5),
+                egui::Color32::from_rgb(180, 180, 190),
+            );
+            // Right: score
+            painter.text(
+                egui::pos2(gauge_x + pill_w - 6.0, y + pill_h / 2.0), egui::Align2::RIGHT_CENTER,
+                format!("{:.0}", score), egui::FontId::monospace(9.0), color,
+            );
+        };
+
+        // ── Trend Health ─────────────────────────────────────────────────
+        if chart.trend_health_score > 0.0 {
+            let th = chart.trend_health_score;
+            let th_color = if th > 70.0 { egui::Color32::from_rgb(56, 203, 137) }
+                else if th > 40.0 { egui::Color32::from_rgb(230, 186, 57) }
+                else { egui::Color32::from_rgb(224, 82, 82) };
+            let dir = match chart.trend_health_direction { 1 => "TH ▲", -1 => "TH ▼", _ => "TH ─" };
+            draw_pill(&painter, gauge_y, dir, th, th_color);
+            gauge_y += pill_h + 2.0;
+        }
+
+        // ── Exit Gauge ───────────────────────────────────────────────────
+        if chart.exit_gauge_score > 0.0 {
+            let eg = chart.exit_gauge_score;
+            let eg_color = if eg > 80.0 { egui::Color32::from_rgb(224, 50, 50) }
+                else if eg > 60.0 { egui::Color32::from_rgb(230, 140, 30) }
+                else if eg > 40.0 { egui::Color32::from_rgb(230, 200, 50) }
+                else { egui::Color32::from_rgb(56, 180, 100) };
+            let label = if eg > 80.0 { "EXIT" } else if eg > 60.0 { "CLOSE" } else if eg > 40.0 { "TIGHT" } else { "HOLD" };
+            draw_pill(&painter, gauge_y, label, eg, eg_color);
+
+            // Subtle glow when critical
+            if eg > 80.0 {
+                let pulse = ((ctx.input(|i| i.time) * 3.0).sin() * 0.3 + 0.7) as f32;
+                painter.rect_stroke(
+                    egui::Rect::from_min_size(egui::pos2(gauge_x - 1.0, gauge_y - 1.0), egui::vec2(pill_w + 2.0, pill_h + 2.0)),
+                    pill_r, egui::Stroke::new(1.0, color_alpha(egui::Color32::from_rgb(255, 60, 60), (pulse * 120.0) as u8)), egui::StrokeKind::Outside,
+                );
+                ctx.request_repaint();
+            }
+            gauge_y += pill_h + 2.0;
+        }
+
+        // ── Precursor Badge ──────────────────────────────────────────────
+        if chart.precursor_active && chart.precursor_score > 30.0 {
+            let pr_color = match chart.precursor_direction {
+                d if d > 0 => egui::Color32::from_rgb(56, 203, 137),
+                d if d < 0 => egui::Color32::from_rgb(224, 82, 82),
+                _ => egui::Color32::from_rgb(230, 186, 57),
+            };
+            let dir = if chart.precursor_direction > 0 { "PRE ▲" } else if chart.precursor_direction < 0 { "PRE ▼" } else { "PRE ?" };
+            draw_pill(&painter, gauge_y, dir, chart.precursor_score, pr_color);
+
+            // Subtle pulse
+            let pulse = ((ctx.input(|i| i.time) * 2.5).sin() * 0.3 + 0.7) as f32;
+            painter.rect_stroke(
+                egui::Rect::from_min_size(egui::pos2(gauge_x - 1.0, gauge_y - 1.0), egui::vec2(pill_w + 2.0, pill_h + 2.0)),
+                pill_r, egui::Stroke::new(1.0, color_alpha(pr_color, (pulse * 80.0) as u8)), egui::StrokeKind::Outside,
+            );
+            ctx.request_repaint();
+        }
+    }
+
+    // ── Supply/Demand zones — faint fill, clean edge labels ──────────────
+    for zone in &chart.signal_zones {
+        let y_high = py(zone.price_high);
+        let y_low = py(zone.price_low);
+        if y_high > rect.bottom() || y_low < rect.top() { continue; }
+
+        let zone_color = match zone.zone_type.as_str() {
+            "demand" | "order_block" => egui::Color32::from_rgb(56, 203, 137),
+            "supply" => egui::Color32::from_rgb(224, 82, 82),
+            "fvg" => egui::Color32::from_rgb(90, 120, 220),
+            "breaker" => egui::Color32::from_rgb(210, 150, 40),
+            _ => egui::Color32::from_rgb(100, 100, 110),
+        };
+
+        // Very faint fill
+        let fill_alpha = if zone.fresh { 15u8 } else { 8 };
+        let zone_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.left(), y_high.max(rect.top())),
+            egui::pos2(rect.right(), y_low.min(rect.bottom())),
+        );
+        painter.rect_filled(zone_rect, 0.0, color_alpha(zone_color, fill_alpha));
+
+        // Top and bottom edge lines (subtle)
+        let edge_alpha = if zone.fresh { 50u8 } else { 25 };
+        painter.line_segment(
+            [egui::pos2(rect.left(), y_high.max(rect.top())), egui::pos2(rect.right(), y_high.max(rect.top()))],
+            egui::Stroke::new(0.5, color_alpha(zone_color, edge_alpha)),
+        );
+        painter.line_segment(
+            [egui::pos2(rect.left(), y_low.min(rect.bottom())), egui::pos2(rect.right(), y_low.min(rect.bottom()))],
+            egui::Stroke::new(0.5, color_alpha(zone_color, edge_alpha)),
+        );
+
+        // Right-edge label (small, clean)
+        let label_str = match zone.zone_type.as_str() {
+            "demand" => "D", "supply" => "S", "fvg" => "FVG",
+            "order_block" => "OB", "breaker" => "BRK", _ => "?",
+        };
+        let label_y = (y_high + y_low) / 2.0;
+        if label_y > rect.top() && label_y < rect.bottom() {
+            painter.text(
+                egui::pos2(rect.right() - 3.0, label_y), egui::Align2::RIGHT_CENTER,
+                format!("{} {:.0}", label_str, zone.strength),
+                egui::FontId::monospace(7.5),
+                color_alpha(zone_color, 100),
+            );
+        }
+    }
+
+    // ── Change-point markers — small diamonds on the time axis ───────────
+    {
+        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt_timestamps };
+        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt_bars };
+        for (cp_time, cp_type, cp_conf) in &chart.change_points {
+            let bar_f = SignalDrawing::time_to_bar(*cp_time, ts_ref);
+            let x = bx(bar_f);
+            if x < rect.left() || x > rect.left() + cw { continue; }
+            let cp_color = match cp_type.as_str() {
+                "volume" => egui::Color32::from_rgb(90, 160, 235),
+                "directional" => egui::Color32::from_rgb(230, 186, 57),
+                "volatility" => egui::Color32::from_rgb(170, 100, 230),
+                "institutional" => egui::Color32::from_rgb(230, 140, 40),
+                _ => egui::Color32::from_rgb(130, 130, 140),
+            };
+            let alpha = ((cp_conf * 80.0) as u8).saturating_add(40);
+
+            // Small diamond marker at the bottom of the chart area
+            let dy = rect.bottom() - 8.0;
+            let sz = 4.0;
+            let diamond = vec![
+                egui::pos2(x, dy - sz),
+                egui::pos2(x + sz, dy),
+                egui::pos2(x, dy + sz),
+                egui::pos2(x - sz, dy),
+            ];
+            painter.add(egui::Shape::convex_polygon(diamond, color_alpha(cp_color, alpha), egui::Stroke::NONE));
+
+            // Very thin vertical line — only on the candle body, not full height
+            let bar_idx = bar_f.round() as usize;
+            if let Some(bar) = bars_ref.get(bar_idx) {
+                let y_top = py(bar.high) - 3.0;
+                let y_bot = py(bar.low) + 3.0;
+                painter.line_segment(
+                    [egui::pos2(x, y_top), egui::pos2(x, y_bot)],
+                    egui::Stroke::new(0.5, color_alpha(cp_color, alpha / 2)),
+                );
+            }
+        }
+    }
+
+    // ── Trade plan — floating card + subtle chart lines ──────────────────
+    if let Some((dir, entry, target, stop, ref contract, rr, conviction)) = chart.trade_plan {
+        let entry_y = py(entry);
+        let target_y = py(target);
+        let stop_y = py(stop);
+
+        // Subtle zone fill between target and stop (the trade's range)
+        if target_y > rect.top() && stop_y < rect.bottom() {
+            let zone_top = target_y.max(rect.top());
+            let zone_bot = stop_y.min(rect.bottom());
+            let mid_y = entry_y.clamp(zone_top, zone_bot);
+            // Green zone: entry to target
+            painter.rect_filled(
+                egui::Rect::from_min_max(egui::pos2(rect.left(), zone_top), egui::pos2(rect.right(), mid_y)),
+                0.0, color_alpha(egui::Color32::from_rgb(56, 203, 137), 6),
+            );
+            // Red zone: entry to stop
+            painter.rect_filled(
+                egui::Rect::from_min_max(egui::pos2(rect.left(), mid_y), egui::pos2(rect.right(), zone_bot)),
+                0.0, color_alpha(egui::Color32::from_rgb(224, 82, 82), 6),
+            );
+        }
+
+        // Thin dotted lines for entry/target/stop
+        if entry_y > rect.top() && entry_y < rect.bottom() {
+            dashed_line(&painter, egui::pos2(rect.left(), entry_y), egui::pos2(rect.right(), entry_y),
+                egui::Stroke::new(0.8, color_alpha(egui::Color32::from_rgb(200, 200, 210), 100)), LineStyle::Dotted);
+        }
+        if target_y > rect.top() && target_y < rect.bottom() {
+            dashed_line(&painter, egui::pos2(rect.left(), target_y), egui::pos2(rect.right(), target_y),
+                egui::Stroke::new(0.8, color_alpha(egui::Color32::from_rgb(56, 203, 137), 80)), LineStyle::Dotted);
+        }
+        if stop_y > rect.top() && stop_y < rect.bottom() {
+            dashed_line(&painter, egui::pos2(rect.left(), stop_y), egui::pos2(rect.right(), stop_y),
+                egui::Stroke::new(0.8, color_alpha(egui::Color32::from_rgb(224, 82, 82), 80)), LineStyle::Dotted);
+        }
+
+        // Price labels on the right edge (price axis)
+        let price_axis_x = rect.right() + 2.0;
+        let label_bg = egui::Color32::from_rgba_unmultiplied(18, 18, 24, 220);
+        for (price, y, color, label) in [
+            (entry, entry_y, egui::Color32::from_rgb(200, 200, 210), ""),
+            (target, target_y, egui::Color32::from_rgb(56, 203, 137), "T"),
+            (stop, stop_y, egui::Color32::from_rgb(224, 82, 82), "S"),
+        ] {
+            if y > rect.top() && y < rect.bottom() {
+                let txt = if label.is_empty() { format!("{:.2}", price) } else { format!("{} {:.2}", label, price) };
+                let txt_rect = egui::Rect::from_min_size(egui::pos2(price_axis_x, y - 7.0), egui::vec2(52.0, 14.0));
+                painter.rect_filled(txt_rect, 2.0, label_bg);
+                painter.rect_filled(
+                    egui::Rect::from_min_size(egui::pos2(price_axis_x, y - 7.0), egui::vec2(2.0, 14.0)),
+                    0.0, color,
+                );
+                painter.text(egui::pos2(price_axis_x + 5.0, y), egui::Align2::LEFT_CENTER,
+                    txt, egui::FontId::monospace(8.0), color);
+            }
+        }
+
+        // Floating trade card — bottom-left of chart
+        let card_w = 200.0;
+        let card_h = 52.0;
+        let card_x = rect.left() + 8.0;
+        let card_y = rect.bottom() - card_h - 24.0;
+        let card_rect = egui::Rect::from_min_size(egui::pos2(card_x, card_y), egui::vec2(card_w, card_h));
+
+        // Card background
+        painter.rect_filled(card_rect, 6.0, egui::Color32::from_rgba_unmultiplied(22, 22, 30, 230));
+        // Left accent stripe
+        let accent = if dir > 0 { egui::Color32::from_rgb(56, 203, 137) } else { egui::Color32::from_rgb(224, 82, 82) };
+        painter.rect_filled(
+            egui::Rect::from_min_size(egui::pos2(card_x, card_y), egui::vec2(3.0, card_h)),
+            egui::Rounding { nw: 6, sw: 6, ne: 0, se: 0 }, accent,
+        );
+
+        // Contract name (bold, first line)
+        painter.text(egui::pos2(card_x + 10.0, card_y + 10.0), egui::Align2::LEFT_CENTER,
+            contract, egui::FontId::monospace(10.0), egui::Color32::from_rgb(220, 220, 230));
+        // R:R and conviction (second line)
+        let move_pct = ((target - entry) / entry * 100.0).abs();
+        painter.text(egui::pos2(card_x + 10.0, card_y + 24.0), egui::Align2::LEFT_CENTER,
+            format!("R:R {:.1}  |  +{:.1}%  |  CVT {:.0}", rr, move_pct, conviction),
+            egui::FontId::monospace(8.0), egui::Color32::from_rgb(140, 140, 160));
+        // Entry → Target (third line)
+        painter.text(egui::pos2(card_x + 10.0, card_y + 38.0), egui::Align2::LEFT_CENTER,
+            format!("{:.2} → {:.2}  stop {:.2}", entry, target, stop),
+            egui::FontId::monospace(8.0), egui::Color32::from_rgb(110, 110, 130));
     }
 
     // ── Periodic signal fetch (every 30s) ────────────────────────────────
@@ -13589,6 +14090,12 @@ pub(crate) struct Watchlist {
     // Screenshot library
     pub(crate) screenshot_open: bool,
     pub(crate) screenshot_entries: Vec<super::ui::screenshot_panel::ScreenshotEntry>,
+    // RRG (Relative Rotation Graph)
+    pub(crate) rrg_open: bool,
+    pub(crate) rrg_sectors: Vec<super::ui::rrg_panel::RRGSector>,
+    pub(crate) rrg_cycle_phase: String,
+    pub(crate) rrg_time_offset: f32, // 0.0 = current, 1.0 = oldest history point
+    pub(crate) rrg_tail_length: usize, // how many tail points to show
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -13678,7 +14185,9 @@ impl Watchlist {
                script_result_tab: super::ui::script_panel::ScriptResultTab::Output,
                script_backtest: None,
                screenshot_open: false,
-               screenshot_entries: super::ui::screenshot_panel::load_screenshots() }
+               screenshot_entries: super::ui::screenshot_panel::load_screenshots(),
+               rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
+               rrg_time_offset: 0.0, rrg_tail_length: 5 }
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -14726,6 +15235,7 @@ impl ApplicationHandler for App {
                                         chart.show_darkpool = gb("show_darkpool", false);
                                         chart.show_events = gb("show_events", false);
                                         chart.show_pnl_curve = gb("show_pnl_curve", false);
+                                        chart.show_pattern_labels = gb("show_pattern_labels", true);
                                         chart.link_group = p.get("link_group").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
                                         // Session shading
                                         chart.session_shading = gb("session_shading", false);
@@ -15235,7 +15745,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
             "show_auto_sr": p.show_auto_sr, "show_auto_fib": p.show_auto_fib, "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
             "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "hit_highlight": p.hit_highlight,
-            "show_pnl_curve": p.show_pnl_curve,
+            "show_pnl_curve": p.show_pnl_curve, "show_pattern_labels": p.show_pattern_labels,
             "link_group": p.link_group,
             "session_shading": p.session_shading,
             "rth_start_minutes": p.rth_start_minutes,
@@ -15313,7 +15823,7 @@ fn save_state(panes: &[Chart], layout: Layout) {
             "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
             "show_auto_sr": p.show_auto_sr, "show_auto_fib": p.show_auto_fib, "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
             "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "hit_highlight": p.hit_highlight,
-            "show_pnl_curve": p.show_pnl_curve,
+            "show_pnl_curve": p.show_pnl_curve, "show_pattern_labels": p.show_pattern_labels,
             "link_group": p.link_group,
             // Session shading
             "session_shading": p.session_shading,
@@ -15408,6 +15918,7 @@ fn load_state() -> (Vec<Chart>, Layout) {
             chart.show_darkpool = gb("show_darkpool", false);
             chart.show_events = gb("show_events", false);
             chart.show_pnl_curve = gb("show_pnl_curve", false);
+            chart.show_pattern_labels = gb("show_pattern_labels", true);
             chart.link_group = p.get("link_group").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
 
             // Restore session shading settings

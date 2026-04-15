@@ -8,6 +8,7 @@ pub mod drawing_db;
 pub mod monitoring;
 pub mod discord;
 pub mod crypto_feed;
+pub mod signals_feed;
 
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;
@@ -154,6 +155,9 @@ pub fn run() {
 
             // Crypto real-time feed — connects to ApexCrypto WebSocket
             crypto_feed::start();
+
+            // Signals real-time feed — connects to ApexSignals WebSocket for patterns/alerts/trendlines
+            signals_feed::start();
 
             // IB WebSocket hot path — Rust-native, msgpack binary
             let ib_handle = ib_ws::spawn(app.handle().clone());

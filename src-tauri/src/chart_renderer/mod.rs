@@ -186,6 +186,15 @@ pub enum DrawingKind {
     TextNote { price: f32, time: i64, text: String, font_size: f32 },
 }
 
+/// Candlestick pattern label from ApexSignals
+#[derive(Debug, Clone)]
+pub struct PatternLabel {
+    pub time: i64,
+    pub label: String,
+    pub bullish: bool,
+    pub confidence: f32, // 0.0–1.0
+}
+
 /// Commands sent from Tauri/WebView to the native chart renderer
 #[derive(Debug, Clone)]
 pub enum ChartCommand {
@@ -316,5 +325,112 @@ pub enum ChartCommand {
         symbol: String,
         prints: Vec<(f32, u64, i64, i8)>, // (price, size, timestamp, side: 1=buy/-1=sell/0=unknown)
     },
+    /// Candlestick pattern labels from ApexSignals (via signals feed)
+    PatternLabels {
+        symbol: String,
+        labels: Vec<PatternLabel>,
+    },
+    /// Alert triggered notification from ApexSignals
+    AlertTriggered {
+        symbol: String,
+        alert_id: String,
+        price: f32,
+        message: String,
+    },
+    /// Auto trendlines pushed from ApexSignals (replaces signal_drawings for this symbol)
+    AutoTrendlines {
+        symbol: String,
+        drawings_json: String, // same JSON format as SignalDrawings
+    },
+    /// Significance score update for a drawing from ApexSignals
+    SignificanceUpdate {
+        symbol: String,
+        drawing_id: String,
+        score: f32,
+        touches: u32,
+        strength: String, // "WEAK", "MODERATE", "STRONG", "CRITICAL"
+    },
+    /// Trend health score from ApexSignals (0-100 composite)
+    TrendHealthUpdate {
+        symbol: String,
+        timeframe: String,
+        score: f32,            // 0-100
+        direction: i8,         // 1=bullish, -1=bearish, 0=neutral
+        exhaustion_count: u8,  // number of active exhaustion signals
+        regime: String,        // "strong_trend", "weakening", "exhausted", "reversal"
+    },
+    /// Exit gauge score from ApexSignals (0-100 master exit signal)
+    ExitGaugeUpdate {
+        symbol: String,
+        score: f32,            // 0-100
+        urgency: String,       // "hold", "tighten", "partial", "close", "exit_now"
+        components: Vec<(String, f32)>, // (engine_name, contribution)
+    },
+    /// Supply/demand zones from ApexSignals
+    SupplyDemandZones {
+        symbol: String,
+        timeframe: String,
+        zones: Vec<SignalZone>,
+    },
+    /// Precursor alert from ApexSignals (smart money front-running detected)
+    PrecursorAlert {
+        symbol: String,
+        score: f32,            // 0-100
+        direction: i8,         // 1=bullish, -1=bearish
+        surge_ratio: f32,      // volume / baseline
+        lead_minutes: f32,     // estimated time to move
+        description: String,
+    },
+    /// Change-point detection — exact moment of regime shift
+    ChangePointMarker {
+        symbol: String,
+        time: i64,             // bar timestamp of change
+        change_type: String,   // "volume", "directional", "volatility", "institutional"
+        confidence: f32,       // 0-1
+    },
+    /// Trade plan suggestion from ApexSignals
+    TradePlanUpdate {
+        symbol: String,
+        direction: i8,         // 1=long, -1=short
+        entry_price: f32,
+        target_price: f32,
+        stop_price: f32,
+        contract_name: String, // e.g. "AAPL 195C 5DTE"
+        contract_entry: f32,
+        contract_target: f32,
+        risk_reward: f32,
+        conviction: f32,       // 0-100
+        summary: String,
+    },
+    /// Divergence visual overlay from ApexSignals
+    DivergenceOverlay {
+        symbol: String,
+        timeframe: String,
+        divergences: Vec<DivergenceMarker>,
+    },
+}
+
+/// A supply/demand zone from the signal engine.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SignalZone {
+    pub zone_type: String,     // "supply", "demand", "order_block", "fvg", "breaker"
+    pub price_high: f32,
+    pub price_low: f32,
+    pub start_time: i64,
+    pub strength: f32,         // 0-10
+    pub touches: u32,
+    pub fresh: bool,           // untested zone
+}
+
+/// A divergence marker for chart overlay.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DivergenceMarker {
+    pub indicator: String,     // "RSI", "MACD", etc.
+    pub div_type: String,      // "regular_bullish", "hidden_bearish", etc.
+    pub start_bar: u32,        // bar index of first point
+    pub end_bar: u32,          // bar index of second point
+    pub start_price: f32,
+    pub end_price: f32,
+    pub confidence: f32,       // 0-1
 }
 

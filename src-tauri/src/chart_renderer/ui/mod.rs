@@ -31,3 +31,4 @@ pub mod dom_panel;
 pub mod spread_panel;
 pub mod alerts_panel;
 pub mod screenshot_panel;
+pub mod rrg_panel;

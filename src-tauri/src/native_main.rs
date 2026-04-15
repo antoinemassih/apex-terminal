@@ -49,6 +49,9 @@ fn main() {
     // Crypto real-time feed — connects to ApexCrypto WebSocket
     _scaffold_lib::crypto_feed::start();
 
+    // Signals real-time feed — connects to ApexSignals WebSocket for patterns/alerts/trendlines
+    _scaffold_lib::signals_feed::start();
+
     eprintln!("[apex-native] Opening chart window...");
 
     // Create a channel and open the first window
