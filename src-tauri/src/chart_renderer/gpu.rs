@@ -9234,7 +9234,7 @@ fn render_chart_pane(
 
             // Hover/drag feedback based on chart state
             let is_dragging = chart.dragging_alert == Some(aid);
-            let is_hovered = hover_pos.map_or(false, |p| (p.y - y).abs() <= 6.0 && p.x >= rect.left() && p.x <= rect.left() + cw);
+            let is_hovered = hover_pos.map_or(false, |p| (p.y - y).abs() <= 10.0 && p.x >= rect.left() && p.x <= rect.left() + cw);
 
             // Line: drafts = red dashed, placed = amber dashed
             let base_alpha = if is_draft { 220 } else { 180 };
@@ -12227,10 +12227,10 @@ fn render_chart_pane(
                 }
                 Zone::ChartBody => {
                     // Priority: alert lines > order lines > drawings > pan
-                    // Check if pointer started drag near an alert line (within 6px vertically)
+                    // Check if pointer started drag near an alert line (within 10px vertically — generous hit area)
                     let hover_alert: Option<u32> = chart.price_alerts.iter()
                         .filter(|a| !a.triggered && a.symbol == chart.symbol)
-                        .find(|a| (py(a.price) - pos.y).abs() <= 6.0)
+                        .find(|a| (py(a.price) - pos.y).abs() <= 10.0)
                         .map(|a| a.id);
                     if let Some(aid) = hover_alert {
                         chart.dragging_alert = Some(aid);
@@ -12465,18 +12465,36 @@ fn render_chart_pane(
     }
 
     // ── PRIORITY 7: Hover cursors (uses cached hover_hit / hover_order) ──
-    if !event_consumed && pointer_in_pane && chart.draw_tool.is_empty() {
+    if !event_consumed && pointer_in_pane && chart.draw_tool.is_empty()
+        && !chart.measure_active && !chart.zoom_selecting {
         if in_xaxis {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         } else if in_yaxis {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
         } else if in_chart_body {
-            if let Some((_, ep)) = &hover_hit {
+            // Alert hover gets vertical resize cursor
+            let near_alert = hover_pos.map_or(false, |p| {
+                chart.price_alerts.iter()
+                    .filter(|a| !a.triggered && a.symbol == chart.symbol)
+                    .any(|a| (py(a.price) - p.y).abs() <= 10.0)
+            });
+            if near_alert {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            } else if let Some((_, ep)) = &hover_hit {
                 ui.ctx().set_cursor_icon(if *ep >= 0 { egui::CursorIcon::Grab } else { egui::CursorIcon::Move });
             } else if hover_order.is_some() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
             }
         }
+    }
+
+    // ── FINAL cursor override: modal tools (measure/zoom) always win ──
+    // Set AFTER Priority 7 so it overrides the hover cursors from that block
+    if chart.measure_active || chart.measuring {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    } else if chart.zoom_selecting {
+        // Windows winit doesn't support CursorIcon::ZoomIn — fall back to Crosshair
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
 
     // ── Drawing significance tooltip on hover ──────────────────────────
