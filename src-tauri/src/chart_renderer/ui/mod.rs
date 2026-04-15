@@ -35,3 +35,4 @@ pub mod rrg_panel;
 pub mod analysis_panel;
 pub mod signals_panel;
 pub mod feed_panel;
+pub mod option_quick_picker;

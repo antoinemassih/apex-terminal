@@ -1114,6 +1114,11 @@ pub(crate) struct Chart {
     pub(crate) drag_zoom_active: bool,
     pub(crate) drag_zoom_start: Option<egui::Pos2>,
     pub(crate) auto_scroll: bool, pub(crate) last_input: std::time::Instant,
+    pub(crate) draw_price_freeze: Option<(f32, f32)>, // locks y-range while drawing so new bars can't rescale
+    // Option quick-picker popup (opened by clicking an options tab)
+    pub(crate) option_quick_open: bool,
+    pub(crate) option_quick_pos: egui::Pos2,
+    pub(crate) option_quick_dte_idx: usize,
     pub(crate) history_loading: bool, // true while fetching older bars
     pub(crate) history_exhausted: bool, // true if no more history available
     pub(crate) tick_counter: u64, pub(crate) last_candle_time: std::time::Instant, pub(crate) sim_price: f32, pub(crate) sim_seed: u64,
@@ -1378,7 +1383,9 @@ impl Chart {
                 Indicator::new(4, IndicatorType::EMA, 26, "#b266e6"),
             ],
             vs: 0.0, vc: 200, price_lock: None, log_scale: false, drag_zoom_active: false, drag_zoom_start: None,
-            auto_scroll: true, history_loading: false, history_exhausted: false,
+            auto_scroll: true, draw_price_freeze: None,
+            option_quick_open: false, option_quick_pos: egui::Pos2::ZERO, option_quick_dte_idx: 0,
+            history_loading: false, history_exhausted: false,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
@@ -1526,7 +1533,9 @@ impl Chart {
                 // Only append if both symbol AND timeframe match this pane
                 if symbol == self.symbol && timeframe == self.timeframe {
                     self.bars.push(bar); self.timestamps.push(timestamp);
-                    if self.auto_scroll { self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0); }
+                    // Smooth advance: increment vs by 1 instead of snapping, so if auto_scroll
+                    // re-engages from a slight offset, the view continues from that position
+                    if self.auto_scroll { self.vs += 1.0; }
                 }
             }
             ChartCommand::UpdateLastBar { symbol, timeframe, bar, .. } => {
@@ -2156,6 +2165,8 @@ impl Chart {
     }
     fn price_range(&self) -> (f32,f32) {
         if let Some(r) = self.price_lock { return r; }
+        // Freeze range while actively drawing so new bars don't rescale the Y-axis mid-draw
+        if let Some(r) = self.draw_price_freeze { return r; }
         // Use alt_bars for alternative chart types
         let bars_ref = if matches!(self.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar) && !self.alt_bars.is_empty() {
             &self.alt_bars
@@ -2510,9 +2521,38 @@ fn tick_simulation(chart: &mut Chart) {
 
     }
 
-    if !chart.auto_scroll && chart.last_input.elapsed().as_secs() >= AUTO_SCROLL_RESUME_SECS {
-        chart.auto_scroll = true; chart.price_lock = None;
-        chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+    // ── Draw-mode price freeze: lock Y-range while user is using a draw tool ──
+    let drawing_active = !chart.draw_tool.is_empty()
+        || chart.dragging_drawing.is_some()
+        || chart.pending_pt.is_some()
+        || chart.pending_pt2.is_some()
+        || !chart.pending_pts.is_empty();
+    if drawing_active {
+        if chart.draw_price_freeze.is_none() && chart.price_lock.is_none() {
+            chart.draw_price_freeze = Some(chart.price_range());
+        }
+    } else if chart.draw_price_freeze.is_some() {
+        chart.draw_price_freeze = None;
+    }
+
+    // ── Auto-scroll re-engagement rules ──
+    // - User panned backward: when latest bar is within 20 bars of the visible right edge,
+    //   smoothly re-engage auto_scroll (vs stays put, AppendBar advances it)
+    // - User panned forward past latest (empty future in view): snap back after 5 seconds
+    if !chart.auto_scroll && !chart.bars.is_empty() {
+        let latest = chart.bars.len() as f32 - 1.0;
+        let right_edge = chart.vs + chart.vc as f32;
+        if latest < chart.vs {
+            // Panned forward — latest is off-screen to the LEFT. Snap back after 5s.
+            if chart.last_input.elapsed().as_secs() >= AUTO_SCROLL_RESUME_SECS {
+                chart.auto_scroll = true;
+                chart.price_lock = None;
+                chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+            }
+        } else if (latest - right_edge).abs() <= 20.0 {
+            // Latest is within 20 bars of the right edge — re-engage smoothly without snapping
+            chart.auto_scroll = true;
+        }
     }
 
     // ── Per-pane price alert checking ──
@@ -4445,6 +4485,7 @@ fn render_toolbar(
 
     // ── trendline_filter
     super::ui::trendline_filter::draw(ctx, watchlist, panes, ap, t);
+    super::ui::option_quick_picker::draw(ctx, watchlist, panes, ap, t);
 
     // ── indicator_editor
     super::ui::indicator_editor::draw(ctx, watchlist, panes, ap, t);
@@ -5028,11 +5069,17 @@ fn render_chart_pane(
                 } else {
                     // Clicked the ALREADY-ACTIVE tab — open the appropriate ticker selector
                     if chart.is_option {
-                        // Option tab: open the Watchlist Chain tab with the underlying pre-loaded
-                        watchlist.open = true;
-                        watchlist.tab = WatchlistTab::Chain;
+                        // Option tab: open the inline option quick-picker popup
+                        chart.option_quick_open = true;
+                        chart.option_quick_pos = egui::pos2(
+                            header_rect.left() + sym_label_x,
+                            header_rect.bottom() + 4.0);
+                        // Trigger a chain fetch for the current DTE if empty
                         if !chart.underlying.is_empty() {
-                            watchlist.chain_symbol = chart.underlying.clone();
+                            let dte_list = [0, 1, 2, 3, 7, 14, 30, 60];
+                            let dte = dte_list[chart.option_quick_dte_idx.min(dte_list.len() - 1)];
+                            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                            fetch_chain_background(chart.underlying.clone(), 15, dte, price);
                         }
                     } else {
                         // Equity tab: open the symbol picker
