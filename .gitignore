@@ -27,3 +27,6 @@ dist-ssr
 .firecrawl/
 discord.env
 discord_token.json
+target/
+src-tauri/target/
+apex-native/target/
