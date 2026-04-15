@@ -14,12 +14,12 @@
 use egui::{self, Color32, RichText, Stroke};
 
 // ─── Font size tokens ─────────────────────────────────────────────────────────
-pub const FONT_XS:  f32 = 7.5;   // column headers, status chips
-pub const FONT_SM:  f32 = 9.0;   // body text, labels, most buttons
-pub const FONT_MD:  f32 = 10.0;  // panel section headers
-pub const FONT_LG:  f32 = 11.0;  // primary headings, toolbar buttons
-pub const FONT_XL:  f32 = 13.0;  // large price values in cards
-pub const FONT_2XL: f32 = 14.0;  // featured prices (chain, big display)
+pub const FONT_XS:  f32 = 8.0;   // column headers, status chips
+pub const FONT_SM:  f32 = 10.0;  // body text, labels, most buttons
+pub const FONT_MD:  f32 = 11.0;  // panel section headers
+pub const FONT_LG:  f32 = 12.0;  // primary headings, toolbar buttons
+pub const FONT_XL:  f32 = 14.0;  // large price values in cards
+pub const FONT_2XL: f32 = 15.0;  // featured prices (chain, big display)
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
 pub const GAP_XS:  f32 = 2.0;
@@ -32,7 +32,7 @@ pub const GAP_3XL: f32 = 20.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 pub const RADIUS_SM: f32 = 3.0;   // small buttons, badges, chips
-pub const RADIUS_MD: f32 = 5.0;   // primary buttons, cards
+pub const RADIUS_MD: f32 = 4.0;   // primary buttons, cards
 pub const RADIUS_LG: f32 = 8.0;   // dialogs, panels, modals
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
@@ -100,38 +100,49 @@ pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui
 
 // ─── Toolbar button ───────────────────────────────────────────────────────────
 
-/// Toolbar button — FONT_LG, RADIUS_MD, themed, pointer cursor, hover highlight.
+/// Toolbar button — FONT_LG, RADIUS_MD, themed, pointer cursor.
+/// Active state: accent fill + accent border + soft glow halo + bottom underline.
+/// Hover state: subtle bg tint + accent border.
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let bg = if active {
-        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 51)
+        color_alpha(accent, 35)
     } else {
         toolbar_bg
     };
     let fg = if active { accent } else { dim };
     let border = if active {
-        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 136)
+        color_alpha(accent, ALPHA_ACTIVE)
     } else {
-        toolbar_border
+        color_alpha(toolbar_border, ALPHA_MUTED)
     };
+
+    // Extra horizontal padding: expand spacing for this button only
+    let prev_pad = ui.spacing().button_padding;
+    ui.spacing_mut().button_padding = egui::vec2(prev_pad.x + 2.0, prev_pad.y);
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_LG).color(fg))
-        .fill(bg).stroke(Stroke::new(STROKE_STD, border)).corner_radius(RADIUS_MD)
-        .min_size(egui::vec2(0.0, 24.0)));
-    if resp.hovered() {
+        .fill(bg).stroke(Stroke::new(STROKE_THIN, border)).corner_radius(RADIUS_MD)
+        .min_size(egui::vec2(0.0, 26.0)));
+    ui.spacing_mut().button_padding = prev_pad;
+
+    if active {
+        // Soft glow halo behind the button (painted behind via bg layer trick)
+        let glow = resp.rect.expand(1.5);
+        ui.painter().rect_filled(glow, RADIUS_MD + 2.0, color_alpha(accent, 18));
+        // Bottom underline — crisp accent line for depth
+        let r = resp.rect;
+        ui.painter().line_segment(
+            [egui::pos2(r.left() + RADIUS_MD, r.bottom() + 0.5),
+             egui::pos2(r.right() - RADIUS_MD, r.bottom() + 0.5)],
+            Stroke::new(STROKE_THICK, color_alpha(accent, ALPHA_DIM)));
+    } else if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        let hover_bg = if active {
-            Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 80)
-        } else {
-            Color32::from_rgba_unmultiplied(
-                toolbar_border.r().saturating_add(30),
-                toolbar_border.g().saturating_add(30),
-                toolbar_border.b().saturating_add(30),
-                100,
-            )
-        };
-        ui.painter().rect_filled(resp.rect, RADIUS_MD, hover_bg);
-        let hover_fg = if active { accent } else { TEXT_PRIMARY };
+        // Hover: crisp bg tint + accent border repainted
+        ui.painter().rect_filled(resp.rect, RADIUS_MD,
+            color_alpha(toolbar_border, ALPHA_SUBTLE));
+        ui.painter().rect_stroke(resp.rect, RADIUS_MD,
+            Stroke::new(STROKE_THIN, color_alpha(accent, ALPHA_LINE)), egui::StrokeKind::Inside);
         ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
-            label, egui::FontId::monospace(FONT_LG), hover_fg);
+            label, egui::FontId::monospace(FONT_LG), TEXT_PRIMARY);
     }
     resp
 }
@@ -278,26 +289,30 @@ pub fn col_header(ui: &mut egui::Ui, text: &str, width: f32, color: Color32, rig
 
 // ─── Panel chrome ─────────────────────────────────────────────────────────────
 
-/// Frameless icon button with hover highlight — use instead of `.frame(false)` buttons.
+/// Square icon button with hover highlight — always renders as a square hit target.
 /// Returns the full Response so callers can chain `.clicked()`, `.on_hover_text()`, etc.
 pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egui::Response {
-    let min_dim = (size * 2.4).max(22.0);
+    // Square: side = icon_size + comfortable padding on both axes
+    let side = (size + 10.0).max(26.0);
     let resp = ui.add(
         egui::Button::new(RichText::new(icon).size(size).color(color))
             .frame(false)
-            .min_size(egui::vec2(min_dim, min_dim))
+            .min_size(egui::vec2(side, side))
     );
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        ui.painter().rect_filled(resp.rect, RADIUS_SM, color_alpha(color, ALPHA_FAINT + 5));
+        // Subtle square bg highlight — more like a real icon button
+        ui.painter().rect_filled(resp.rect, RADIUS_SM, color_alpha(color, ALPHA_GHOST));
+        ui.painter().rect_stroke(resp.rect, RADIUS_SM,
+            egui::Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_MUTED)), egui::StrokeKind::Inside);
     }
     resp
 }
 
-/// Close button (X icon) — uses icon_btn with hover highlight.
+/// Close button (X icon) — square icon_btn, standard panel close.
 #[inline]
 pub fn close_button(ui: &mut egui::Ui, dim: Color32) -> bool {
-    icon_btn(ui, super::super::super::ui_kit::icons::Icon::X, dim, FONT_MD).clicked()
+    icon_btn(ui, super::super::super::ui_kit::icons::Icon::X, dim, FONT_LG).clicked()
 }
 
 /// Panel header — FONT_LG title + close button. Returns true if closed.
@@ -451,7 +466,7 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
     let resp = ui.add_enabled(enabled,
         egui::Button::new(RichText::new(label).monospace().size(FONT_SM).strong().color(fg))
             .fill(bg).stroke(Stroke::new(STROKE_THIN, border))
-            .corner_radius(RADIUS_MD).min_size(egui::vec2(0.0, 22.0)));
+            .corner_radius(RADIUS_MD).min_size(egui::vec2(0.0, 24.0)));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
@@ -463,7 +478,7 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
         (color.g() as f32 * 0.55) as u8,
         (color.b() as f32 * 0.55) as u8);
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_LG).strong().color(Color32::WHITE))
-        .fill(bg).min_size(egui::vec2(width, 28.0)).corner_radius(RADIUS_MD));
+        .fill(bg).min_size(egui::vec2(width, 30.0)).corner_radius(RADIUS_MD));
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         // Brighten on hover
