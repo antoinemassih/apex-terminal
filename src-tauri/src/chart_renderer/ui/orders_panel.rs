@@ -1,7 +1,7 @@
 //! Orders / Positions / Alerts side panel.
 
 use egui;
-use super::style::{panel_frame, panel_header, separator, color_alpha, section_label, status_badge, order_card, action_btn, small_action_btn, TEXT_PRIMARY};
+use super::style::*;
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderStatus, OrderLevel, PriceAlert, cancel_order_with_pair, fmt_notional};
@@ -57,7 +57,7 @@ if watchlist.orders_panel_open {
                         for pos in &ib_positions {
                             total_pnl += pos.unrealized_pnl;
                             let pnl_color = if pos.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
-                            order_card(ui, pnl_color, color_alpha(t.toolbar_border, 10), |ui| {
+                            order_card(ui, pnl_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                                 // Row 1: symbol, qty@price, close buttons
                                 ui.horizontal(|ui| {
                                     ui.label(egui::RichText::new(&pos.symbol).monospace().size(10.0).strong()
@@ -68,7 +68,7 @@ if watchlist.orders_panel_open {
                                         // Close button
                                         let close_color = t.bear;
                                         if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(close_color))
-                                            .fill(color_alpha(close_color, 12)).corner_radius(2.0)
+                                            .fill(color_alpha(close_color, 12)).corner_radius(RADIUS_SM)
                                             .min_size(egui::vec2(18.0, 16.0))).clicked() {
                                             // Close full position via ApexIB
                                             let sym = pos.symbol.clone();
@@ -90,7 +90,7 @@ if watchlist.orders_panel_open {
                                         // Close half button
                                         if pos.qty.abs() > 1 {
                                             if ui.add(egui::Button::new(egui::RichText::new("\u{00BD}").size(9.0).color(t.dim))
-                                                .fill(color_alpha(t.toolbar_border, 15)).corner_radius(2.0)
+                                                .fill(color_alpha(t.toolbar_border, ALPHA_GHOST)).corner_radius(RADIUS_SM)
                                                 .min_size(egui::vec2(18.0, 16.0))).clicked() {
                                                 let sym = pos.symbol.clone();
                                                 let half = (pos.qty.abs() / 2).max(1);
@@ -155,7 +155,7 @@ if watchlist.orders_panel_open {
                 // 2px solid line like sidebar border
                 ui.painter().rect_filled(
                     egui::Rect::from_min_max(egui::pos2(r.left(), y), egui::pos2(r.right(), y + 2.0)),
-                    0.0, color_alpha(t.toolbar_border, 120));
+                    0.0, color_alpha(t.toolbar_border, ALPHA_HEAVY));
                 ui.add_space(6.0);
             }
 
@@ -274,7 +274,7 @@ if watchlist.orders_panel_open {
                         };
                         let is_active = order.status == OrderStatus::Draft || order.status == OrderStatus::Placed;
                         let is_selected = watchlist.selected_order_ids.iter().any(|(p, id)| *p == pi && *id == order.id);
-                        let card_bg = if is_selected { color_alpha(t.accent, 12) } else { color_alpha(t.toolbar_border, 15) };
+                        let card_bg = if is_selected { color_alpha(t.accent, 12) } else { color_alpha(t.toolbar_border, ALPHA_GHOST) };
 
                         let card_clicked = order_card(ui, color, card_bg, |ui| {
                             // Card header: checkbox + type + symbol + status + close
@@ -335,7 +335,7 @@ if watchlist.orders_panel_open {
                 let ib_orders = account_data_cached.as_ref().map(|(_, _, o)| o.clone()).unwrap_or_default();
                 if !ib_orders.is_empty() {
                     ui.add_space(4.0);
-                    separator(ui, color_alpha(t.toolbar_border, 40));
+                    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
                     ui.add_space(4.0);
                     section_label(ui, "IB ORDERS", t.accent);
                     ui.add_space(4.0);
@@ -378,7 +378,7 @@ if watchlist.orders_panel_open {
                 // ── Alerts ──
                 if !watchlist.alerts.is_empty() {
                     ui.add_space(4.0);
-                    separator(ui, color_alpha(t.toolbar_border, 40));
+                    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
                     ui.add_space(4.0);
                     section_label(ui, "ALERTS", t.dim);
                     ui.add_space(4.0);
@@ -386,7 +386,7 @@ if watchlist.orders_panel_open {
                     for alert in &watchlist.alerts {
                         let dir = if alert.above { "\u{2191}" } else { "\u{2193}" };
                         let alert_color = if alert.triggered { t.accent } else { t.dim };
-                        order_card(ui, alert_color, color_alpha(t.toolbar_border, 10), |ui| {
+                        order_card(ui, alert_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong().color(TEXT_PRIMARY));
                                 ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price)).monospace().size(10.0).color(alert_color));

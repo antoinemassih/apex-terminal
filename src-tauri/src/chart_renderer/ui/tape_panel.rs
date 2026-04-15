@@ -1,7 +1,7 @@
 //! Time & Sales panel — real-time trade tape display.
 
 use egui;
-use super::style::{panel_frame_compact, panel_header_sub, separator, color_alpha, col_header};
+use super::style::*;
 use super::super::gpu::{Watchlist, TapeRow, Theme};
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }

@@ -4,7 +4,7 @@
 //! Opens as a left sidebar via the toolbar button next to Magnet.
 
 use egui;
-use super::style::{close_button, color_alpha, hex_to_color};
+use super::style::*;
 use super::super::gpu::{Watchlist, Chart, Theme, DrawingAction, drawing_to_db};
 use super::super::DrawingKind;
 use crate::ui_kit::icons::Icon;
@@ -55,7 +55,7 @@ egui::SidePanel::left("object_tree_panel")
     .resizable(true)
     .frame(egui::Frame::NONE.fill(t.toolbar_bg)
         .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 })
-        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+        .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
     .show(ctx, |ui| {
         let panel_w = ui.available_width();
         ui.set_max_width(panel_w);
@@ -254,7 +254,7 @@ egui::SidePanel::left("object_tree_panel")
                         for ds in &group_draws {
                             let is_sel = chart.selected_ids.contains(&ds.id);
                             let dc = hex_to_color(&ds.color, if is_hidden { 0.3 } else { 1.0 });
-                            let bg = if is_sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                            let bg = if is_sel { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
 
                             let row_resp = ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = 2.0;
@@ -270,7 +270,7 @@ egui::SidePanel::left("object_tree_panel")
                                     else { egui::Color32::from_white_alpha(170) };
                                 let row_btn = ui.add(egui::Button::new(
                                     egui::RichText::new(ds.kind_label).monospace().size(9.0).color(label_col))
-                                    .fill(bg).min_size(egui::vec2(30.0, 18.0)).corner_radius(2.0));
+                                    .fill(bg).min_size(egui::vec2(30.0, 18.0)).corner_radius(RADIUS_SM));
 
                                 // Significance badge
                                 if let Some(score) = ds.sig_score {

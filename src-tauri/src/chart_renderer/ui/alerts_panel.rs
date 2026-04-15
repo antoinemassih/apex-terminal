@@ -1,7 +1,7 @@
 //! Alerts management panel — shows all active and triggered alerts with controls.
 
 use egui;
-use super::style::{panel_frame, panel_header, separator, color_alpha, section_label, status_badge, order_card, small_action_btn, TEXT_PRIMARY, TEXT_SECONDARY};
+use super::style::*;
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;
@@ -25,7 +25,7 @@ egui::SidePanel::right("alerts_panel")
             watchlist.alerts_panel_open = false;
         }
         ui.add_space(4.0);
-        separator(ui, color_alpha(t.toolbar_border, 40));
+        separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
         ui.add_space(4.0);
 
         // ── Add Alert section ──
@@ -62,9 +62,9 @@ egui::SidePanel::right("alerts_panel")
                 if ui.add(egui::Button::new(
                     egui::RichText::new(format!("{} Above {:.2}", Icon::ARROW_FAT_UP, input_price))
                         .monospace().size(9.0).color(above_color))
-                    .fill(color_alpha(above_color, 15))
-                    .corner_radius(3.0)
-                    .stroke(egui::Stroke::new(0.5, color_alpha(above_color, 50)))
+                    .fill(color_alpha(above_color, ALPHA_GHOST))
+                    .corner_radius(RADIUS_MD)
+                    .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(above_color, ALPHA_LINE)))
                     .min_size(egui::vec2(0.0, 20.0))).clicked()
                 {
                     // Add to watchlist alerts
@@ -86,9 +86,9 @@ egui::SidePanel::right("alerts_panel")
                 if ui.add(egui::Button::new(
                     egui::RichText::new(format!("{} Below {:.2}", Icon::ARROW_FAT_DOWN, input_price))
                         .monospace().size(9.0).color(below_color))
-                    .fill(color_alpha(below_color, 15))
-                    .corner_radius(3.0)
-                    .stroke(egui::Stroke::new(0.5, color_alpha(below_color, 50)))
+                    .fill(color_alpha(below_color, ALPHA_GHOST))
+                    .corner_radius(RADIUS_MD)
+                    .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(below_color, ALPHA_LINE)))
                     .min_size(egui::vec2(0.0, 20.0))).clicked()
                 {
                     let id = watchlist.next_alert_id; watchlist.next_alert_id += 1;
@@ -107,7 +107,7 @@ egui::SidePanel::right("alerts_panel")
         }
 
         ui.add_space(6.0);
-        separator(ui, color_alpha(t.toolbar_border, 40));
+        separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
         ui.add_space(4.0);
 
         // ── Active Alerts ──
@@ -155,7 +155,7 @@ egui::SidePanel::right("alerts_panel")
             for alert in &active_alerts {
                 let dir = if alert.above { "\u{25B2}" } else { "\u{25BC}" }; // up/down arrow
                 let dir_color = if alert.above { t.bull } else { t.bear };
-                order_card(ui, dir_color, color_alpha(t.toolbar_border, 10), |ui| {
+                order_card(ui, dir_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
                             .color(TEXT_PRIMARY));
@@ -179,7 +179,7 @@ egui::SidePanel::right("alerts_panel")
                 for alert in pane.price_alerts.iter().filter(|a| !a.triggered) {
                     let dir = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
                     let dir_color = if alert.above { t.bull } else { t.bear };
-                    order_card(ui, dir_color, color_alpha(t.toolbar_border, 10), |ui| {
+                    order_card(ui, dir_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
                                 .color(TEXT_PRIMARY));
@@ -208,7 +208,7 @@ egui::SidePanel::right("alerts_panel")
         // ── Triggered section ──
         if total_triggered > 0 {
             ui.add_space(6.0);
-            separator(ui, color_alpha(t.toolbar_border, 40));
+            separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
             ui.add_space(4.0);
 
             ui.horizontal(|ui| {

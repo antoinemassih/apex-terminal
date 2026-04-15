@@ -6,21 +6,21 @@
 //! Sectors rotate clockwise: Improving -> Leading -> Weakening -> Lagging -> Improving
 
 use egui;
-use super::style::color_alpha;
+use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
 const SECTOR_COLORS: &[(&str, &str, (u8, u8, u8))] = &[
     ("XLK", "Technology",      (74, 158, 255)),
     ("XLF", "Financials",      (56, 203, 137)),
-    ("XLE", "Energy",          (230, 160, 40)),
+    ("XLE", "Energy",          (230, 160, ALPHA_MUTED)),
     ("XLV", "Healthcare",      (0, 190, 190)),
     ("XLI", "Industrials",     (160, 160, 170)),
-    ("XLP", "Staples",         (165, 120, 80)),
-    ("XLU", "Utilities",       (230, 200, 50)),
+    ("XLP", "Staples",         (165, 120, ALPHA_STRONG)),
+    ("XLU", "Utilities",       (230, 200, ALPHA_LINE)),
     ("XLY", "Consumer Disc",   (200, 80, 200)),
     ("XLC", "Communications",  (0, 200, 220)),
-    ("XLRE", "Real Estate",    (140, 160, 60)),
+    ("XLRE", "Real Estate",    (140, 160, ALPHA_DIM)),
     ("XLB", "Materials",       (224, 82, 82)),
 ];
 
@@ -207,7 +207,7 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
         .show(ctx, |ui| {
             // Header
             ui.horizontal(|ui| {
@@ -236,14 +236,14 @@ pub(crate) fn draw(
             // Time slider
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("TIME").monospace().size(8.0).color(color_alpha(t.dim, 100)));
+                ui.label(egui::RichText::new("TIME").monospace().size(8.0).color(color_alpha(t.dim, ALPHA_ACTIVE)));
                 ui.spacing_mut().slider_width = plot_size - 50.0;
                 ui.add(egui::Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
                     .show_value(false)
                     .trailing_fill(true));
             });
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("TAIL").monospace().size(8.0).color(color_alpha(t.dim, 100)));
+                ui.label(egui::RichText::new("TAIL").monospace().size(8.0).color(color_alpha(t.dim, ALPHA_ACTIVE)));
                 ui.spacing_mut().slider_width = plot_size - 50.0;
                 let mut tail = watchlist.rrg_tail_length as f32;
                 if ui.add(egui::Slider::new(&mut tail, 1.0..=15.0).show_value(false).step_by(1.0)).changed() {
@@ -260,7 +260,7 @@ pub(crate) fn draw(
             };
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("CYCLE:")
-                    .monospace().size(9.0).color(color_alpha(t.dim, 120)));
+                    .monospace().size(9.0).color(color_alpha(t.dim, ALPHA_HEAVY)));
                 ui.label(egui::RichText::new(phase)
                     .monospace().size(9.0).color(egui::Color32::from_rgb(56, 203, 137)));
             });
@@ -392,9 +392,9 @@ fn draw_rrg_content(
         egui::Color32::from_rgba_unmultiplied(74, 158, 255, 8),
     );
 
-    // ── Axis crosshair at (100, 100) ──
-    let axis_color = color_alpha(t.dim, 30);
-    let axis_stroke = egui::Stroke::new(1.0, axis_color);
+    // ── Axis crosshair at (100, ALPHA_ACTIVE) ──
+    let axis_color = color_alpha(t.dim, ALPHA_TINT);
+    let axis_stroke = egui::Stroke::new(STROKE_STD, axis_color);
     // Vertical line (RS-Ratio = 100)
     painter.line_segment(
         [egui::pos2(center.x, plot_rect.top()), egui::pos2(center.x, plot_rect.bottom())],
@@ -407,7 +407,7 @@ fn draw_rrg_content(
     );
 
     // ── Axis labels ──
-    let axis_label_color = color_alpha(t.dim, 60);
+    let axis_label_color = color_alpha(t.dim, ALPHA_DIM);
     let axis_font = egui::FontId::monospace(8.0);
     // X-axis label
     painter.text(
@@ -427,7 +427,7 @@ fn draw_rrg_content(
     );
 
     // ── Axis tick marks ──
-    let tick_color = color_alpha(t.dim, 25);
+    let tick_color = color_alpha(t.dim, ALPHA_SUBTLE);
     let tick_font = egui::FontId::monospace(7.0);
     // X-axis ticks
     let x_step = ((max_x - min_x) / 4.0).max(0.5);
@@ -444,7 +444,7 @@ fn draw_rrg_content(
         if (xv - 100.0).abs() > 0.1 {
             painter.line_segment(
                 [egui::pos2(screen.x, plot_rect.top()), egui::pos2(screen.x, plot_rect.bottom())],
-                egui::Stroke::new(0.5, color_alpha(t.dim, 12)),
+                egui::Stroke::new(STROKE_THIN, color_alpha(t.dim, 12)),
             );
         }
         xv += x_step;
@@ -464,7 +464,7 @@ fn draw_rrg_content(
         if (yv - 100.0).abs() > 0.1 {
             painter.line_segment(
                 [egui::pos2(plot_rect.left(), screen.y), egui::pos2(plot_rect.right(), screen.y)],
-                egui::Stroke::new(0.5, color_alpha(t.dim, 12)),
+                egui::Stroke::new(STROKE_THIN, color_alpha(t.dim, 12)),
             );
         }
         yv += y_step;
@@ -533,7 +533,7 @@ fn draw_rrg_content(
         painter.circle_filled(
             pos,
             dot_radius + 2.0,
-            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 25),
+            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), ALPHA_SUBTLE),
         );
         // Main dot
         painter.circle_filled(pos, dot_radius, color);
@@ -541,7 +541,7 @@ fn draw_rrg_content(
         painter.circle_filled(
             egui::pos2(pos.x - 1.0, pos.y - 1.0),
             dot_radius * 0.35,
-            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 50),
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, ALPHA_LINE),
         );
 
         // Label next to dot
@@ -570,7 +570,7 @@ fn draw_rrg_content(
     painter.rect_stroke(
         plot_rect,
         0.0,
-        egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 40)),
+        egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_MUTED)),
         egui::StrokeKind::Outside,
     );
 }

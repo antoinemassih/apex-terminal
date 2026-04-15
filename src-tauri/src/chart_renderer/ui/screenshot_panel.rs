@@ -1,7 +1,7 @@
 //! Screenshot library panel — saves chart snapshots as metadata and displays them.
 
 use egui;
-use super::style::{close_button, color_alpha};
+use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
 
 /// A single screenshot entry with chart state for replay.
@@ -113,7 +113,7 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
         .show(ctx, |ui| {
             // Header
             ui.horizontal(|ui| {
@@ -145,7 +145,7 @@ pub(crate) fn draw(
                         .fill(t.bg.gamma_multiply(0.6))
                         .rounding(4.0)
                         .inner_margin(egui::Margin::same(6))
-                        .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 40)));
+                        .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)));
 
                     card.show(ui, |ui| {
                         ui.horizontal(|ui| {

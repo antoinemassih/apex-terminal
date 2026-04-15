@@ -1,7 +1,7 @@
 //! Trade Journal placeholder panel — coming soon.
 
 use egui;
-use super::style::{close_button, color_alpha};
+use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
 
 const PLANNED_FEATURES: &[(&str, &str)] = &[
@@ -28,8 +28,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
-            .corner_radius(6.0))
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .corner_radius(RADIUS_LG))
         .show(ctx, |ui| {
             let w = ui.available_width();
 
@@ -50,7 +50,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                 egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
                 egui::vec2(w, 1.0),
             );
-            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, 60));
+            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
             ui.add_space(12.0);
 
             // ── Coming Soon content ─────────────────────────────────────
@@ -64,8 +64,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     ui.vertical_centered(|ui| {
                         let badge_text = "COMING SOON";
                         let badge_rect = ui.allocate_space(egui::vec2(100.0, 22.0)).1;
-                        ui.painter().rect_filled(badge_rect, 4.0, color_alpha(t.accent, 20));
-                        ui.painter().rect_stroke(badge_rect, 4.0, egui::Stroke::new(0.5, color_alpha(t.accent, 60)), egui::StrokeKind::Outside);
+                        ui.painter().rect_filled(badge_rect, 4.0, color_alpha(t.accent, ALPHA_SOFT));
+                        ui.painter().rect_stroke(badge_rect, 4.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_DIM)), egui::StrokeKind::Outside);
                         ui.painter().text(
                             badge_rect.center(), egui::Align2::CENTER_CENTER,
                             badge_text, egui::FontId::monospace(9.0), t.accent,

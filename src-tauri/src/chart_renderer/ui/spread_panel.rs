@@ -1,7 +1,7 @@
 //! Spread/Combo Builder panel — build and submit multi-leg option strategies.
 
 use egui;
-use super::style::{close_button, color_alpha};
+use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
 
 // ─── Data Structures ────────────────────────────────────────────────────────
@@ -211,8 +211,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
-            .corner_radius(6.0))
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .corner_radius(RADIUS_LG))
         .show(ctx, |ui| {
             let w = ui.available_width();
 
@@ -231,7 +231,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
                 egui::vec2(w, 1.0),
             );
-            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, 60));
+            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
             ui.add_space(6.0);
 
             egui::ScrollArea::vertical().id_salt("spread_body").show(ui, |ui| {
@@ -255,9 +255,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         ui.add_space(4.0);
                         if ui.add(egui::Button::new(
                             egui::RichText::new(active_symbol).monospace().size(8.0).color(t.accent))
-                            .fill(color_alpha(t.accent, 15))
-                            .corner_radius(3.0)
-                            .stroke(egui::Stroke::new(0.5, color_alpha(t.accent, 40)))
+                            .fill(color_alpha(t.accent, ALPHA_GHOST))
+                            .corner_radius(RADIUS_MD)
+                            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_MUTED)))
                             .min_size(egui::vec2(0.0, 16.0))
                         ).on_hover_text("Use chart symbol").clicked() {
                             watchlist.spread_state.symbol = active_symbol.to_string();
@@ -304,7 +304,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         egui::vec2(w - m * 2.0 + 4.0, 26.0),
                     );
                     let _ = ui.allocate_rect(card_rect, egui::Sense::hover());
-                    ui.painter().rect_filled(card_rect, 3.0, color_alpha(t.toolbar_border, 25));
+                    ui.painter().rect_filled(card_rect, 3.0, color_alpha(t.toolbar_border, ALPHA_SUBTLE));
 
                     // Draw leg label + controls
                     let leg_label_col = if leg.side == "BUY" { t.bull } else { t.bear };
@@ -338,8 +338,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         // Side toggle
                         let side_col = if leg.side == "BUY" { t.bull } else { t.bear };
                         if ui.add(egui::Button::new(egui::RichText::new(&leg.side).monospace().size(8.0).color(side_col))
-                            .fill(color_alpha(side_col, 15)).corner_radius(2.0)
-                            .stroke(egui::Stroke::new(0.5, color_alpha(side_col, 40)))
+                            .fill(color_alpha(side_col, ALPHA_GHOST)).corner_radius(RADIUS_SM)
+                            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(side_col, ALPHA_MUTED)))
                             .min_size(egui::vec2(30.0, 14.0))
                         ).clicked() {
                             leg.side = if leg.side == "BUY" { "SELL".into() } else { "BUY".into() };
@@ -355,8 +355,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         // Option type toggle
                         let ot_col = if leg.option_type == "CALL" { t.bull } else { t.bear };
                         if ui.add(egui::Button::new(egui::RichText::new(&leg.option_type).monospace().size(8.0).color(ot_col))
-                            .fill(color_alpha(ot_col, 15)).corner_radius(2.0)
-                            .stroke(egui::Stroke::new(0.5, color_alpha(ot_col, 40)))
+                            .fill(color_alpha(ot_col, ALPHA_GHOST)).corner_radius(RADIUS_SM)
+                            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(ot_col, ALPHA_MUTED)))
                             .min_size(egui::vec2(34.0, 14.0))
                         ).clicked() {
                             leg.option_type = if leg.option_type == "CALL" { "PUT".into() } else { "CALL".into() };
@@ -388,9 +388,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     if ui.add(egui::Button::new(egui::RichText::new("+ Add Leg").monospace().size(9.0).color(t.accent))
-                        .fill(color_alpha(t.accent, 10))
-                        .corner_radius(3.0)
-                        .stroke(egui::Stroke::new(0.5, color_alpha(t.accent, 30)))
+                        .fill(color_alpha(t.accent, ALPHA_FAINT))
+                        .corner_radius(RADIUS_MD)
+                        .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_TINT)))
                         .min_size(egui::vec2(w - m * 2.0, 18.0))
                     ).clicked() {
                         add_leg = true;
@@ -428,7 +428,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.label(egui::RichText::new("Qty").monospace().size(10.0).color(t.dim));
                     ui.add_space(8.0);
                     if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0).color(t.dim))
-                        .fill(color_alpha(t.toolbar_border, 40)).corner_radius(3.0)
+                        .fill(color_alpha(t.toolbar_border, ALPHA_MUTED)).corner_radius(RADIUS_MD)
                         .min_size(egui::vec2(22.0, 18.0))
                     ).clicked() && watchlist.spread_state.combo_qty > 1 {
                         watchlist.spread_state.combo_qty -= 1;
@@ -436,7 +436,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.label(egui::RichText::new(format!("{}", watchlist.spread_state.combo_qty))
                         .monospace().size(12.0).strong().color(egui::Color32::from_gray(240)));
                     if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0).color(t.dim))
-                        .fill(color_alpha(t.toolbar_border, 40)).corner_radius(3.0)
+                        .fill(color_alpha(t.toolbar_border, ALPHA_MUTED)).corner_radius(RADIUS_MD)
                         .min_size(egui::vec2(22.0, 18.0))
                     ).clicked() {
                         watchlist.spread_state.combo_qty += 1;

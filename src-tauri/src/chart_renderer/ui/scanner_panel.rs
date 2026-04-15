@@ -5,7 +5,7 @@
 //! Includes "Save as Watchlist" and a custom scanner builder.
 
 use egui;
-use super::style::{panel_frame_compact, close_button, separator, color_alpha, simple_btn, col_header};
+use super::style::*;
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 
@@ -258,7 +258,7 @@ pub(crate) fn draw(
 
                                 // Hover highlight
                                 if resp.hovered() {
-                                    ui.painter().rect_filled(rect, 2.0, color_alpha(t.accent, 15));
+                                    ui.painter().rect_filled(rect, 2.0, color_alpha(t.accent, ALPHA_GHOST));
                                 }
 
                                 let change_col = if r.change_pct >= 0.0 { t.bull } else { t.bear };
@@ -319,7 +319,7 @@ pub(crate) fn draw(
                         }
 
                         ui.add_space(4.0);
-                        separator(ui, color_alpha(t.toolbar_border, 60));
+                        separator(ui, color_alpha(t.toolbar_border, ALPHA_DIM));
                         ui.add_space(2.0);
                     }
 

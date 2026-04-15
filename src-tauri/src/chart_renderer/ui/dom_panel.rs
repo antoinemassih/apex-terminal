@@ -2,7 +2,7 @@
 //! volume, delta, imbalance highlighting, and order management.
 
 use egui;
-use super::style::color_alpha;
+use super::style::*;
 use super::super::gpu::Theme;
 use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
 
@@ -54,14 +54,14 @@ pub(crate) fn draw(
     let painter = ui.painter_at(dom_rect);
     painter.rect_filled(dom_rect, 0.0, t.toolbar_bg);
     painter.line_segment([egui::pos2(dom_rect.right(), dom_rect.top()), egui::pos2(dom_rect.right(), dom_rect.bottom())],
-        egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)));
+        egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)));
 
     // Resize handle
     let hr = egui::Rect::from_min_size(egui::pos2(dom_rect.right()-3.0, dom_rect.top()), egui::vec2(6.0, dom_rect.height()));
     let hresp = ui.allocate_rect(hr, egui::Sense::drag());
     if hresp.hovered() || hresp.dragged() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal); }
     if hresp.dragged() { *dom_width = (*dom_width + hresp.drag_delta().x).clamp(DOM_MIN_W, DOM_MAX_W); }
-    if hresp.hovered() { painter.line_segment([egui::pos2(dom_rect.right()-1.0, dom_rect.top()+14.0), egui::pos2(dom_rect.right()-1.0, dom_rect.bottom())], egui::Stroke::new(2.0, color_alpha(t.accent, 80))); }
+    if hresp.hovered() { painter.line_segment([egui::pos2(dom_rect.right()-1.0, dom_rect.top()+14.0), egui::pos2(dom_rect.right()-1.0, dom_rect.bottom())], egui::Stroke::new(STROKE_THICK, color_alpha(t.accent, ALPHA_STRONG))); }
 
     let inner = dom_rect.shrink2(egui::vec2(3.0, 0.0));
     let aw = inner.width();
@@ -112,15 +112,15 @@ pub(crate) fn draw(
     if minus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
     let sep_y = hy+14.0;
-    painter.line_segment([egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)], egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)));
+    painter.line_segment([egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)], egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)));
 
     // ── Bottom controls ──
     let ctrl_h = 58.0;
     let ctrl_top = inner.bottom() - ctrl_h;
     painter.rect_filled(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), ctrl_top), egui::pos2(dom_rect.right(), dom_rect.bottom())), 0.0, t.toolbar_bg);
     // Inset shadow
-    for i in 0..4u32 { painter.line_segment([egui::pos2(inner.left(), ctrl_top-i as f32), egui::pos2(inner.right(), ctrl_top-i as f32)], egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(0,0,0, 20u8.saturating_sub(i as u8*5)))); }
-    painter.line_segment([egui::pos2(inner.left(), ctrl_top), egui::pos2(inner.right(), ctrl_top)], egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
+    for i in 0..4u32 { painter.line_segment([egui::pos2(inner.left(), ctrl_top-i as f32), egui::pos2(inner.right(), ctrl_top-i as f32)], egui::Stroke::new(STROKE_STD, egui::Color32::from_rgba_unmultiplied(0,0,0, 20u8.saturating_sub(i as u8*5)))); }
+    painter.line_segment([egui::pos2(inner.left(), ctrl_top), egui::pos2(inner.right(), ctrl_top)], egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_LINE)));
 
     let fs = egui::FontId::monospace(7.5);
     let fm = egui::FontId::monospace(8.5);
@@ -135,7 +135,7 @@ pub(crate) fn draw(
     // [-]
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, 60) } else { color_alpha(t.toolbar_border, 20) });
+    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) });
     painter.text(r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(11.0), t.dim);
     if resp.clicked() && *order_qty > 1 { *order_qty -= 1; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -151,7 +151,7 @@ pub(crate) fn draw(
     // [+]
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, 60) } else { color_alpha(t.toolbar_border, 20) });
+    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) });
     painter.text(r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(11.0), t.dim);
     if resp.clicked() { *order_qty += 1; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -172,8 +172,8 @@ pub(crate) fn draw(
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
     let ac = if *dom_armed { egui::Color32::from_rgb(230,70,70) } else { t.dim.gamma_multiply(0.4) };
-    painter.rect_filled(r, 2.0, if *dom_armed { color_alpha(ac, 35) } else { color_alpha(t.toolbar_border, 15) });
-    painter.rect_stroke(r, 2.0, egui::Stroke::new(0.5, color_alpha(ac, if *dom_armed {90} else {30})), egui::StrokeKind::Outside);
+    painter.rect_filled(r, 2.0, if *dom_armed { color_alpha(ac, 35) } else { color_alpha(t.toolbar_border, ALPHA_GHOST) });
+    painter.rect_stroke(r, 2.0, egui::Stroke::new(STROKE_THIN, color_alpha(ac, if *dom_armed {90} else {30})), egui::StrokeKind::Outside);
     painter.text(r.center(), egui::Align2::CENTER_CENTER, if *dom_armed {"!"} else {"A"}, fs.clone(), ac);
     if resp.clicked() { *dom_armed = !*dom_armed; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -188,8 +188,8 @@ pub(crate) fn draw(
     // BUY (spans full action height)
     let r = egui::Rect::from_min_size(egui::pos2(inner.left()+1.0, r2y), egui::vec2(side_w, action_h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 3.0, if resp.hovered() { color_alpha(t.bull, 70) } else { color_alpha(t.bull, 30) });
-    painter.rect_stroke(r, 3.0, egui::Stroke::new(0.5, color_alpha(t.bull, 90)), egui::StrokeKind::Outside);
+    painter.rect_filled(r, 3.0, if resp.hovered() { color_alpha(t.bull, 70) } else { color_alpha(t.bull, ALPHA_TINT) });
+    painter.rect_stroke(r, 3.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.bull, 90)), egui::StrokeKind::Outside);
     painter.text(r.center(), egui::Align2::CENTER_CENTER, "BUY", fm.clone(), t.bull);
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Buy, p, *order_qty)); }
@@ -201,8 +201,8 @@ pub(crate) fn draw(
     // FLATTEN
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y), egui::vec2(mid_w, mid_half_h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(fc, 50) } else { color_alpha(fc, 18) });
-    painter.rect_stroke(r, 2.0, egui::Stroke::new(0.5, color_alpha(fc, 50)), egui::StrokeKind::Outside);
+    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(fc, ALPHA_LINE) } else { color_alpha(fc, 18) });
+    painter.rect_stroke(r, 2.0, egui::Stroke::new(STROKE_THIN, color_alpha(fc, ALPHA_LINE)), egui::StrokeKind::Outside);
     painter.text(r.center(), egui::Align2::CENTER_CENTER, "FLATTEN", fs.clone(), if resp.hovered() { fc } else { fc.gamma_multiply(0.6) });
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     if resp.clicked() { *cancel_all = true; }
@@ -210,8 +210,8 @@ pub(crate) fn draw(
     // CANCEL
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y+mid_half_h+2.0), egui::vec2(mid_w, mid_half_h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.dim, 40) } else { color_alpha(t.toolbar_border, 20) });
-    painter.rect_stroke(r, 2.0, egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)), egui::StrokeKind::Outside);
+    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.dim, ALPHA_MUTED) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) });
+    painter.rect_stroke(r, 2.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_LINE)), egui::StrokeKind::Outside);
     painter.text(r.center(), egui::Align2::CENTER_CENTER, "CANCEL", fs.clone(), if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.5) });
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     if resp.clicked() { *cancel_all = true; }
@@ -219,8 +219,8 @@ pub(crate) fn draw(
     // SELL (spans full action height)
     let r = egui::Rect::from_min_size(egui::pos2(mid_x+mid_w+3.0, r2y), egui::vec2(side_w, action_h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 3.0, if resp.hovered() { color_alpha(t.bear, 70) } else { color_alpha(t.bear, 30) });
-    painter.rect_stroke(r, 3.0, egui::Stroke::new(0.5, color_alpha(t.bear, 90)), egui::StrokeKind::Outside);
+    painter.rect_filled(r, 3.0, if resp.hovered() { color_alpha(t.bear, 70) } else { color_alpha(t.bear, ALPHA_TINT) });
+    painter.rect_stroke(r, 3.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.bear, 90)), egui::StrokeKind::Outside);
     painter.text(r.center(), egui::Align2::CENTER_CENTER, "SELL", fm.clone(), t.bear);
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Sell, p, *order_qty)); }
@@ -263,14 +263,14 @@ pub(crate) fn draw(
         if rc.clicked() { *dom_selected_price = Some(price); *dom_order_type = DomOrderType::Limit; }
 
         // Row backgrounds
-        if is { lp.rect_filled(rr, 0.0, color_alpha(t.accent, 30)); lp.line_segment([egui::pos2(inner.left(), ry), egui::pos2(inner.left(), ry+ROW_H)], egui::Stroke::new(2.0, t.accent)); }
+        if is { lp.rect_filled(rr, 0.0, color_alpha(t.accent, ALPHA_TINT)); lp.line_segment([egui::pos2(inner.left(), ry), egui::pos2(inner.left(), ry+ROW_H)], egui::Stroke::new(STROKE_THICK, t.accent)); }
         else if ic {
             // Current price: highlighted with accent border
             lp.rect_filled(rr, 0.0, color_alpha(t.accent, 35));
-            lp.rect_stroke(rr, 0.0, egui::Stroke::new(1.0, color_alpha(t.accent, 100)), egui::StrokeKind::Outside);
+            lp.rect_stroke(rr, 0.0, egui::Stroke::new(STROKE_STD, color_alpha(t.accent, ALPHA_ACTIVE)), egui::StrokeKind::Outside);
         }
-        else if hv { lp.rect_filled(rr, 0.0, color_alpha(t.toolbar_border, 25)); }
-        if bs > 0 && ask > 0 { let r = bs as f32/ask as f32; if r > 3.0 { lp.rect_filled(rr, 0.0, color_alpha(t.bull, 15)); } else if r < 0.33 { lp.rect_filled(rr, 0.0, color_alpha(t.bear, 15)); } }
+        else if hv { lp.rect_filled(rr, 0.0, color_alpha(t.toolbar_border, ALPHA_SUBTLE)); }
+        if bs > 0 && ask > 0 { let r = bs as f32/ask as f32; if r > 3.0 { lp.rect_filled(rr, 0.0, color_alpha(t.bull, ALPHA_GHOST)); } else if r < 0.33 { lp.rect_filled(rr, 0.0, color_alpha(t.bear, ALPHA_GHOST)); } }
 
         let cy = ry + ROW_H*0.5;
         let dark = egui::Color32::from_rgb(12, 14, 18);
@@ -327,7 +327,7 @@ pub(crate) fn draw(
         if show_vol && vol > 0 {
             let vf = vol as f32/mv as f32; let vw = vf*cv*0.8;
             let vol_bar = egui::Rect::from_min_size(egui::pos2(xv+1.0, ry+2.5), egui::vec2(vw, ROW_H-5.0));
-            lp.rect_filled(vol_bar, 1.0, color_alpha(t.dim, 25));
+            lp.rect_filled(vol_bar, 1.0, color_alpha(t.dim, ALPHA_SUBTLE));
             let vs = if vol >= 1_000_000 { format!("{:.1}M", vol as f64/1e6) } else if vol >= 1_000 { format!("{:.0}K", vol as f64/1e3) } else { format!("{}", vol) };
             let txt_pos = egui::pos2(xv+cv*0.5, cy);
             lp.text(txt_pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), t.dim.gamma_multiply(0.5));
@@ -382,14 +382,14 @@ pub(crate) fn draw(
             // Draw badge (dim if being dragged away)
             let alpha_mult = if currently_dragging_this { 0.3 } else { 1.0 };
             lp.rect_filled(br, 2.0, color_alpha(oc, (140.0 * alpha_mult) as u8));
-            lp.rect_stroke(br, 2.0, egui::Stroke::new(0.5, color_alpha(oc, (180.0 * alpha_mult) as u8)), egui::StrokeKind::Outside);
+            lp.rect_stroke(br, 2.0, egui::Stroke::new(STROKE_THIN, color_alpha(oc, (180.0 * alpha_mult) as u8)), egui::StrokeKind::Outside);
 
             let ord_hovered = drag_resp.hovered() && !currently_dragging_this;
             if ord_hovered {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 // X cancel on right
                 let xr = egui::Rect::from_min_size(egui::pos2(br.right()-12.0, br.top()), egui::vec2(12.0, br.height()));
-                lp.rect_filled(xr, 1.0, color_alpha(t.bear, 60));
+                lp.rect_filled(xr, 1.0, color_alpha(t.bear, ALPHA_DIM));
                 lp.text(xr.center(), egui::Align2::CENTER_CENTER, "x", egui::FontId::monospace(7.0), egui::Color32::WHITE);
                 let label_rect = egui::Rect::from_min_max(br.min, egui::pos2(br.right()-12.0, br.max.y));
                 draw_order_label(&lp, label_rect, side_ch, ord.qty, oc);
@@ -411,15 +411,15 @@ pub(crate) fn draw(
                     let side_ch = match drag_ord.side { OrderSide::Buy | OrderSide::TriggerBuy => "B", _ => "S" };
                     let gr = egui::Rect::from_min_size(egui::pos2(xo+1.0, ry+2.0), egui::vec2(co-3.0, ROW_H-4.0));
                     lp.rect_filled(gr, 2.0, color_alpha(oc, 160));
-                    lp.rect_stroke(gr, 2.0, egui::Stroke::new(1.5, oc), egui::StrokeKind::Outside);
+                    lp.rect_stroke(gr, 2.0, egui::Stroke::new(STROKE_BOLD, oc), egui::StrokeKind::Outside);
                     draw_order_label(&lp, gr, side_ch, drag_ord.qty, oc);
                     // Also highlight the full row
-                    lp.rect_stroke(rr, 0.0, egui::Stroke::new(1.0, color_alpha(oc, 60)), egui::StrokeKind::Outside);
+                    lp.rect_stroke(rr, 0.0, egui::Stroke::new(STROKE_STD, color_alpha(oc, ALPHA_DIM)), egui::StrokeKind::Outside);
                 }
             }
         }
 
-        lp.line_segment([egui::pos2(inner.left(), ry+ROW_H), egui::pos2(inner.right(), ry+ROW_H)], egui::Stroke::new(0.3, color_alpha(t.toolbar_border, 25)));
+        lp.line_segment([egui::pos2(inner.left(), ry+ROW_H), egui::pos2(inner.right(), ry+ROW_H)], egui::Stroke::new(STROKE_HAIR, color_alpha(t.toolbar_border, ALPHA_SUBTLE)));
     }
 }
 

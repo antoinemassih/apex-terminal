@@ -84,7 +84,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, STROKE_THIN, STROKE_STD, ALPHA_STRONG, ALPHA_HEAVY, ALPHA_MUTED};
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -12310,8 +12310,7 @@ fn render_chart_pane(
                     let tip_rect = egui::Rect::from_min_size(egui::pos2(tip_x, tip_y), egui::vec2(tip_w, tip_h));
 
                     // Background + shadow
-                    let shadow_rect = tip_rect.translate(egui::vec2(2.0, 2.0));
-                    painter.rect_filled(shadow_rect, 4.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 60));
+                    paint_tooltip_shadow(&painter, tip_rect, 4.0);
                     painter.rect_filled(tip_rect, 4.0, t.toolbar_bg);
                     painter.rect_stroke(tip_rect, 4.0, egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)), egui::StrokeKind::Outside);
 

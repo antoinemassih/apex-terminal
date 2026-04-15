@@ -1,7 +1,7 @@
 //! Discord chat integration panel.
 
 use egui;
-use super::style::{close_button, separator, color_alpha};
+use super::style::*;
 use super::super::gpu::{Watchlist, DiscordMessage, Theme};
 use crate::ui_kit::icons::Icon;
 
@@ -108,7 +108,7 @@ if watchlist.discord_open {
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80))))
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
         .show(ctx, |ui| {
             let panel_w = ui.available_width();
 
@@ -144,7 +144,7 @@ if watchlist.discord_open {
                             if ui.add(egui::Button::new(
                                 egui::RichText::new("  Connect Discord  ").monospace().size(12.0).strong().color(egui::Color32::WHITE))
                                 .fill(discord_blurple)
-                                .corner_radius(6.0)
+                                .corner_radius(RADIUS_LG)
                                 .min_size(egui::vec2(180.0, 36.0))
                             ).clicked() {
                                 watchlist.discord_connecting = true;
@@ -199,7 +199,7 @@ if watchlist.discord_open {
                     let strip_h = 44.0;
                     let (strip_bg_rect, _) = ui.allocate_exact_size(egui::vec2(panel_w, 0.0), egui::Sense::hover());
                     let bg_rect = egui::Rect::from_min_size(strip_bg_rect.min, egui::vec2(panel_w, strip_h));
-                    ui.painter().rect_filled(bg_rect, 0.0, color_alpha(egui::Color32::BLACK, 30));
+                    ui.painter().rect_filled(bg_rect, 0.0, color_alpha(egui::Color32::BLACK, ALPHA_TINT));
 
                     egui::ScrollArea::horizontal().id_salt("guild_strip").show(ui, |ui| {
                         ui.horizontal(|ui| {
@@ -223,7 +223,7 @@ if watchlist.discord_open {
                                 // Background glow on hover/selected
                                 if selected || hovered {
                                     let glow_rect = icon_rect.expand(2.0);
-                                    let glow_color = if selected { color_alpha(discord_blurple, 80) } else { color_alpha(egui::Color32::WHITE, 20) };
+                                    let glow_color = if selected { color_alpha(discord_blurple, ALPHA_STRONG) } else { color_alpha(egui::Color32::WHITE, ALPHA_SOFT) };
                                     ui.painter().rect_filled(glow_rect, rounding + 2.0, glow_color);
                                 }
 
@@ -277,7 +277,7 @@ if watchlist.discord_open {
                     ui.add_space(2.0);
                     // Separator
                     let sep_rect = ui.allocate_exact_size(egui::vec2(panel_w, 1.0), egui::Sense::hover()).0;
-                    ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, 60));
+                    ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
                 }
 
                 // ── Content area ──
@@ -338,8 +338,8 @@ if watchlist.discord_open {
                                         ui.add_space(12.0);
                                         if ui.add(egui::Button::new(
                                             egui::RichText::new("Retry").monospace().size(8.0).color(t.dim))
-                                            .fill(color_alpha(t.toolbar_border, 30))
-                                            .corner_radius(3.0)
+                                            .fill(color_alpha(t.toolbar_border, ALPHA_TINT))
+                                            .corner_radius(RADIUS_MD)
                                         ).clicked() {
                                             if let Some(ref gid) = watchlist.discord_selected_guild {
                                                 watchlist.discord_channels_loading = true;
@@ -461,7 +461,7 @@ if watchlist.discord_open {
                                                         // Author avatar circle
                                                         let (av_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
                                                         let initial = msg.author.chars().next().unwrap_or('?').to_uppercase().to_string();
-                                                        ui.painter().circle_filled(av_rect.center(), 9.0, color_alpha(author_col, 60));
+                                                        ui.painter().circle_filled(av_rect.center(), 9.0, color_alpha(author_col, ALPHA_DIM));
                                                         ui.painter().text(av_rect.center(), egui::Align2::CENTER_CENTER, &initial, egui::FontId::monospace(8.0), egui::Color32::WHITE);
 
                                                         ui.label(egui::RichText::new(&msg.author).monospace().size(9.0).strong().color(author_col));
@@ -484,7 +484,7 @@ if watchlist.discord_open {
 
                             // Input area
                             let sep_rect = ui.allocate_exact_size(egui::vec2(content_w, 1.0), egui::Sense::hover()).0;
-                            ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, 40));
+                            ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
                                 ui.add_space(8.0);
@@ -498,7 +498,7 @@ if watchlist.discord_open {
                                 let send_clicked = ui.add(egui::Button::new(
                                     egui::RichText::new("Send").monospace().size(9.0).color(egui::Color32::WHITE))
                                     .fill(discord_blurple)
-                                    .corner_radius(3.0)
+                                    .corner_radius(RADIUS_MD)
                                     .min_size(egui::vec2(38.0, 22.0))
                                 ).clicked();
                                 if (send_clicked || (input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))

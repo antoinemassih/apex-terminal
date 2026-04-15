@@ -4,7 +4,7 @@
 //! come later; for now, "Run" and "Backtest" produce mock output.
 
 use egui;
-use super::style::{close_button, color_alpha};
+use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
 
 // ── Preset example scripts ──────────────────────────────────────────────────
@@ -115,8 +115,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
-            .corner_radius(6.0))
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .corner_radius(RADIUS_LG))
         .show(ctx, |ui| {
             let w = ui.available_width();
 
@@ -157,7 +157,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                 );
                 // Highlight border on focus
                 if prompt_response.has_focus() {
-                    ui.painter().rect_stroke(bg_rect, 3.0, egui::Stroke::new(1.0, color_alpha(t.accent, 80)), egui::StrokeKind::Outside);
+                    ui.painter().rect_stroke(bg_rect, 3.0, egui::Stroke::new(STROKE_STD, color_alpha(t.accent, ALPHA_STRONG)), egui::StrokeKind::Outside);
                 }
             });
             ui.add_space(6.0);
@@ -172,8 +172,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     let btn = ui.add(egui::Button::new(
                         egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
                         .fill(color_alpha(t.accent, 12))
-                        .stroke(egui::Stroke::new(0.5, color_alpha(t.accent, 35)))
-                        .corner_radius(3.0)
+                        .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, 35)))
+                        .corner_radius(RADIUS_MD)
                         .min_size(egui::vec2(0.0, 16.0))
                     );
                     if btn.clicked() {
@@ -200,7 +200,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     egui::Sense::hover(),
                 );
                 ui.painter().rect_filled(rect, 4.0, editor_bg);
-                ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)), egui::StrokeKind::Outside);
+                ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)), egui::StrokeKind::Outside);
 
                 // Place the text editor inside the rect
                 ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect.shrink(6.0)), |ui| {
@@ -356,8 +356,8 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         let card_w = (w - m * 2.0 - 8.0) / stats.len() as f32;
         for (label, value, color) in &stats {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(card_w, 38.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 3.0, color_alpha(t.toolbar_border, 30));
-            ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)), egui::StrokeKind::Outside);
+            ui.painter().rect_filled(rect, 3.0, color_alpha(t.toolbar_border, ALPHA_TINT));
+            ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_LINE)), egui::StrokeKind::Outside);
 
             // Label
             ui.painter().text(
@@ -413,7 +413,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         egui::pos2(ui.cursor().min.x + m, div_y),
         egui::vec2(w - m * 2.0, 1.0),
     );
-    ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, 40));
+    ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
     ui.add_space(2.0);
 
     // Trade rows
@@ -425,7 +425,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         );
         let resp = ui.allocate_rect(row_rect, egui::Sense::hover());
         if resp.hovered() {
-            ui.painter().rect_filled(row_rect, 1.0, color_alpha(t.toolbar_border, 25));
+            ui.painter().rect_filled(row_rect, 1.0, color_alpha(t.toolbar_border, ALPHA_SUBTLE));
         }
 
         let base_x = ui.cursor().min.x;
@@ -438,7 +438,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[0], row_y + 1.0),
             egui::vec2(32.0, 14.0),
         );
-        ui.painter().rect_filled(side_rect, 2.0, color_alpha(side_col, 20));
+        ui.painter().rect_filled(side_rect, 2.0, color_alpha(side_col, ALPHA_SOFT));
         ui.painter().text(
             side_rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -496,7 +496,7 @@ fn divider(ui: &mut egui::Ui, w: f32, t: &Theme) {
         egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
         egui::vec2(w, 1.0),
     );
-    ui.painter().rect_filled(rect, 0.0, color_alpha(t.toolbar_border, 60));
+    ui.painter().rect_filled(rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
     ui.advance_cursor_after_rect(rect);
 }
 
@@ -504,9 +504,9 @@ fn divider(ui: &mut egui::Ui, w: f32, t: &Theme) {
 fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme) -> egui::Response {
     let resp = ui.add(egui::Button::new(
         egui::RichText::new(label).monospace().size(9.0).color(color))
-        .fill(color_alpha(color, 15))
-        .stroke(egui::Stroke::new(0.5, color_alpha(color, 50)))
-        .corner_radius(3.0)
+        .fill(color_alpha(color, ALPHA_GHOST))
+        .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_LINE)))
+        .corner_radius(RADIUS_MD)
         .min_size(egui::vec2(0.0, 20.0))
     );
     if resp.hovered() {
@@ -523,13 +523,13 @@ fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: 
     let is_active = *active == tab;
     let fg = if is_active { t.accent } else { t.dim.gamma_multiply(0.5) };
     let bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
-    let border = if is_active { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 40) };
+    let border = if is_active { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_MUTED) };
 
     let resp = ui.add(egui::Button::new(
         egui::RichText::new(label).monospace().size(9.0).color(fg))
         .fill(bg)
-        .stroke(egui::Stroke::new(0.5, border))
-        .corner_radius(3.0)
+        .stroke(egui::Stroke::new(STROKE_THIN, border))
+        .corner_radius(RADIUS_MD)
         .min_size(egui::vec2(0.0, 18.0))
     );
     if resp.clicked() {

@@ -1,7 +1,7 @@
 //! News feed floating window.
 
 use egui;
-use super::style::{close_button, color_alpha};
+use super::style::*;
 use super::super::gpu::{Watchlist, NewsItem, Theme};
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
@@ -19,8 +19,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
-            .corner_radius(6.0))
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .corner_radius(RADIUS_LG))
         .show(ctx, |ui| {
             let w = ui.available_width();
 
@@ -33,9 +33,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
                 if ui.add(egui::Button::new(
                     egui::RichText::new(filter_label).monospace().size(9.0).color(filter_col))
-                    .fill(color_alpha(filter_col, 15))
-                    .corner_radius(3.0)
-                    .stroke(egui::Stroke::new(0.5, color_alpha(filter_col, 40)))
+                    .fill(color_alpha(filter_col, ALPHA_GHOST))
+                    .corner_radius(RADIUS_MD)
+                    .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(filter_col, ALPHA_MUTED)))
                     .min_size(egui::vec2(0.0, 16.0))
                 ).clicked() {
                     watchlist.news_filter_symbol = !watchlist.news_filter_symbol;
@@ -51,7 +51,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
                 egui::vec2(w, 1.0),
             );
-            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, 60));
+            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
             ui.add_space(5.0);
 
             // News items
@@ -78,7 +78,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             egui::vec2(w, 52.0),
                         );
                         let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
-                        let bg = if item_resp.hovered() { color_alpha(t.toolbar_border, 40) } else { egui::Color32::TRANSPARENT };
+                        let bg = if item_resp.hovered() { color_alpha(t.toolbar_border, ALPHA_MUTED) } else { egui::Color32::TRANSPARENT };
                         ui.painter().rect_filled(item_rect, 2.0, bg);
 
                         // Headline
@@ -103,7 +103,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             _ => t.dim,
                         };
                         let source_rect = egui::Rect::from_min_size(egui::pos2(item_rect.min.x + m, meta_y), egui::vec2(50.0, 14.0));
-                        ui.painter().rect_filled(source_rect, 2.0, color_alpha(source_col, 25));
+                        ui.painter().rect_filled(source_rect, 2.0, color_alpha(source_col, ALPHA_SUBTLE));
                         ui.painter().text(source_rect.center(), egui::Align2::CENTER_CENTER, &news.source, egui::FontId::monospace(7.0), source_col);
 
                         // Timestamp
@@ -111,7 +111,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
 
                         // Symbol badge
                         let sym_rect = egui::Rect::from_min_size(egui::pos2(item_rect.min.x + m + 95.0, meta_y), egui::vec2(36.0, 14.0));
-                        ui.painter().rect_filled(sym_rect, 2.0, color_alpha(t.accent, 20));
+                        ui.painter().rect_filled(sym_rect, 2.0, color_alpha(t.accent, ALPHA_SOFT));
                         ui.painter().text(sym_rect.center(), egui::Align2::CENTER_CENTER, &news.symbol, egui::FontId::monospace(7.0), t.accent);
 
                         // Sentiment dot
