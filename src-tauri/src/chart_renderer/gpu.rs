@@ -2884,8 +2884,8 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.window_corner_radius           = popup_r;
         style.visuals.menu_corner_radius             = popup_r;
 
-        // More horizontal padding on all buttons
-        style.spacing.button_padding                 = egui::vec2(8.0, 3.0);
+        // Button padding — 5px horizontal, 2px vertical (tighter than egui default of 4,1)
+        style.spacing.button_padding                 = egui::vec2(5.0, 2.0);
 
         ctx.set_style(style);
     }

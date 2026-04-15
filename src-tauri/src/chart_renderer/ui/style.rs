@@ -116,13 +116,9 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         color_alpha(toolbar_border, ALPHA_MUTED)
     };
 
-    // Extra horizontal padding: expand spacing for this button only
-    let prev_pad = ui.spacing().button_padding;
-    ui.spacing_mut().button_padding = egui::vec2(prev_pad.x + 2.0, prev_pad.y);
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_LG).color(fg))
         .fill(bg).stroke(Stroke::new(STROKE_THIN, border)).corner_radius(RADIUS_MD)
         .min_size(egui::vec2(0.0, 26.0)));
-    ui.spacing_mut().button_padding = prev_pad;
 
     if active {
         // Soft glow halo behind the button (painted behind via bg layer trick)
@@ -289,19 +285,21 @@ pub fn col_header(ui: &mut egui::Ui, text: &str, width: f32, color: Color32, rig
 
 // ─── Panel chrome ─────────────────────────────────────────────────────────────
 
-/// Square icon button with hover highlight — always renders as a square hit target.
+/// Square icon button with hover highlight — always renders as a true square hit target.
+/// Internally zeroes button_padding so egui doesn't add asymmetric whitespace around the icon.
 /// Returns the full Response so callers can chain `.clicked()`, `.on_hover_text()`, etc.
 pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egui::Response {
-    // Square: side = icon_size + comfortable padding on both axes
-    let side = (size + 10.0).max(26.0);
+    let side = (size + 8.0).max(22.0); // 4px padding on each side, min 22px
+    let prev_pad = ui.spacing().button_padding;
+    ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0); // suppress egui's own padding — we control the square
     let resp = ui.add(
         egui::Button::new(RichText::new(icon).size(size).color(color))
             .frame(false)
             .min_size(egui::vec2(side, side))
     );
+    ui.spacing_mut().button_padding = prev_pad;
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        // Subtle square bg highlight — more like a real icon button
         ui.painter().rect_filled(resp.rect, RADIUS_SM, color_alpha(color, ALPHA_GHOST));
         ui.painter().rect_stroke(resp.rect, RADIUS_SM,
             egui::Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_MUTED)), egui::StrokeKind::Inside);
