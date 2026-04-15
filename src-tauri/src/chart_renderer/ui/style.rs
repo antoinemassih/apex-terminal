@@ -194,9 +194,8 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
             ui.horizontal(|ui| {
                 ui.label(RichText::new(title).monospace().size(FONT_LG).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(RichText::new(Icon::X).size(FONT_LG)
-                        .color(dim.gamma_multiply(0.6)))
-                        .frame(false).min_size(egui::vec2(20.0, 20.0))).clicked() {
+                    // Clean X close button — uses icon_btn which has pointer cursor + hover highlight
+                    if icon_btn(ui, Icon::X, dim.gamma_multiply(0.7), FONT_XL).clicked() {
                         closed = true;
                     }
                 });
@@ -340,9 +339,10 @@ pub fn segmented_control(
 
     ui.spacing_mut().item_spacing.x = prev_spacing;
 
-    // Fill trough background behind buttons
+    // Fill trough background behind buttons — no vertical expand so it stays the exact
+    // button height (centered by the parent horizontal_centered layout)
     if let Some(ur) = union_rect {
-        let trough_rect = ur.expand2(egui::vec2(4.0, 2.0)); // outer padding
+        let trough_rect = ur.expand2(egui::vec2(4.0, 0.0));
         let r = RADIUS_MD as f32 + 1.0;
         ui.painter().set(bg_slot, egui::Shape::rect_filled(trough_rect, r, trough));
         ui.painter().rect_stroke(trough_rect, r, Stroke::new(STROKE_THIN, border_col), egui::StrokeKind::Outside);

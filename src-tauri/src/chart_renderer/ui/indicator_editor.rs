@@ -55,9 +55,9 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     ui.label(egui::RichText::new(ind.display_name()).monospace().size(10.0).strong().color(TEXT_PRIMARY));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(4.0);
-                        let xr = ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.dim.gamma_multiply(0.5)))
-                            .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0));
-                        if xr.on_hover_text("Close").clicked() { close_editor = true; }
+                        if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.7), FONT_LG).on_hover_text("Close").clicked() {
+                            close_editor = true;
+                        }
                     });
                 });
                 // Make header draggable

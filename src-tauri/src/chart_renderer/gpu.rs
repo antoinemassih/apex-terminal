@@ -2493,7 +2493,7 @@ fn tick_simulation(chart: &mut Chart) {
     if let Some(last_bar) = chart.bars.last() {
         let price = last_bar.close;
         for alert in &mut chart.price_alerts {
-            if alert.triggered || alert.symbol != chart.symbol { continue; }
+            if alert.triggered || alert.draft || alert.symbol != chart.symbol { continue; }
             if (alert.above && price >= alert.price) || (!alert.above && price <= alert.price) {
                 alert.triggered = true;
                 let dir = if alert.above { "above" } else { "below" };
@@ -2848,12 +2848,12 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.window_fill = t.toolbar_bg;
         style.visuals.panel_fill = t.toolbar_bg;
         style.visuals.extreme_bg_color = t.bg;
-        // Drop shadow on popup menus/ComboBoxes — gives them depth and separation from the chart
+        // Drop shadow on popup menus/ComboBoxes — gives them real depth and lift
         style.visuals.popup_shadow = egui::epaint::Shadow {
-            offset: [0, 4],
-            blur: 14,
-            spread: 0,
-            color: egui::Color32::from_black_alpha(100),
+            offset: [0, 6],
+            blur: 20,
+            spread: 2,
+            color: egui::Color32::from_black_alpha(140),
         };
         style.interaction.tooltip_delay = 0.15;
 
@@ -3078,6 +3078,7 @@ fn render_toolbar(
             ui.spacing_mut().item_spacing.x = 2.0;
 
             // ── Interval buttons — segmented control with inset trough ──
+            ui.add_space(2.0);
             {
                 const TF_OPTIONS: &[&str] = &["1m","5m","15m","30m","1h","4h","1d","1wk"];
                 const TF_SECS:    &[u32]  = &[60,  300, 900,  1800, 3600,14400,86400,604800];
@@ -3093,7 +3094,7 @@ fn render_toolbar(
                     }
                 }
             }
-            ui.add_space(2.0);
+            ui.add_space(4.0);
             // ── Range dropdown (sets interval + visible bars) ──
             {
                 let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(FONT_LG).color(t.dim), |ui| {
@@ -3983,11 +3984,13 @@ fn render_toolbar(
                     .filter(|&&ly| watchlist.layout_favorites.iter().any(|f| f == ly.label()))
                     .collect();
                 if !fav_layouts.is_empty() {
+                    ui.add_space(2.0);
                     let labels: Vec<&str> = fav_layouts.iter().map(|&&ly| ly.label()).collect();
                     let active_idx = fav_layouts.iter().position(|&&ly| *layout == ly).unwrap_or(0);
                     if let Some(i) = segmented_control(ui, active_idx, &labels, t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
                         switch_layout(*fav_layouts[i], panes, layout, active_pane);
                     }
+                    ui.add_space(2.0);
                 }
                 // Dropdown caret for the full layout picker
                 let dd_btn = tb_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
@@ -4000,27 +4003,29 @@ fn render_toolbar(
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // ── Theme dropdown ──
+            // ── Theme dropdown — menu_button shows full list without internal scrolling ──
             {
                 let mut ti = panes[ap].theme_idx;
-                egui::ComboBox::from_id_salt("thm").selected_text(
-                    egui::RichText::new(THEMES[ti].name).monospace().size(11.0).color(t.dim)
-                ).width(120.0).show_ui(ui, |ui| {
-                    ui.set_min_width(140.0);
+                let current_label = egui::RichText::new(THEMES[ti].name).monospace().size(FONT_LG).color(t.dim);
+                ui.menu_button(current_label, |ui| {
+                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    ui.set_min_width(160.0);
+                    ui.label(egui::RichText::new("THEME").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
                     for (i, th) in THEMES.iter().enumerate() {
                         let sel = i == ti;
-                        ui.horizontal(|ui| {
-                            // Color swatch
-                            let swatch_rect = egui::Rect::from_min_size(ui.cursor().min + egui::vec2(2.0, 2.0), egui::vec2(14.0, 14.0));
-                            ui.painter().rect_filled(swatch_rect, 2.0, th.bg);
-                            ui.painter().circle_filled(egui::pos2(swatch_rect.left() + 4.0, swatch_rect.center().y), 2.5, th.bull);
-                            ui.painter().circle_filled(egui::pos2(swatch_rect.left() + 10.0, swatch_rect.center().y), 2.5, th.bear);
-                            ui.add_space(18.0);
+                        let row = ui.horizontal(|ui| {
+                            // Swatch
+                            let (sr, _) = ui.allocate_exact_size(egui::vec2(16.0, 14.0), egui::Sense::hover());
+                            ui.painter().rect_filled(sr, 2.0, th.bg);
+                            ui.painter().circle_filled(egui::pos2(sr.left() + 4.0, sr.center().y), 2.5, th.bull);
+                            ui.painter().circle_filled(egui::pos2(sr.left() + 11.0, sr.center().y), 2.5, th.bear);
                             let text_col = if sel { th.accent } else { egui::Color32::from_rgb(200, 200, 210) };
-                            if ui.selectable_label(sel, egui::RichText::new(th.name).monospace().size(11.0).color(text_col)).clicked() {
-                                ti = i;
-                            }
+                            let check = if sel { "\u{2713} " } else { "  " };
+                            ui.selectable_label(sel, egui::RichText::new(format!("{}{}", check, th.name))
+                                .monospace().size(11.0).color(text_col))
                         });
+                        if row.inner.clicked() { ti = i; ui.close_menu(); }
                     }
                 });
                 if ti != panes[ap].theme_idx { for p in panes.iter_mut() { p.theme_idx = ti; } }
@@ -9194,7 +9199,8 @@ fn render_chart_pane(
 
     // ── Price alert lines on chart (draggable) ────────────────────────
     {
-        let alert_color = egui::Color32::from_rgb(255, 191, 0); // amber/yellow
+        let placed_color = egui::Color32::from_rgb(255, 191, 0); // amber = placed
+        let draft_color  = egui::Color32::from_rgb(150, 150, 160); // gray = draft
         let mut delete_alert_id: Option<u32> = None;
         let mut drag_alert: Option<(u32, f32)> = None; // (id, new_price)
         let alert_ids: Vec<u32> = chart.price_alerts.iter()
@@ -9202,6 +9208,8 @@ fn render_chart_pane(
             .map(|a| a.id).collect();
         for &aid in &alert_ids {
             let alert = chart.price_alerts.iter().find(|a| a.id == aid).unwrap();
+            let is_draft = alert.draft;
+            let alert_color = if is_draft { draft_color } else { placed_color };
             let y = py(alert.price);
             if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
             // Drag zone: full-width strip at alert price
@@ -9217,25 +9225,32 @@ fn render_chart_pane(
             } else if drag_resp.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
             }
-            // Dashed amber line
-            let dash_col = egui::Color32::from_rgba_unmultiplied(255, 191, 0, if drag_resp.hovered() || drag_resp.dragged() { 255 } else { 180 });
+            // Draft alerts are lighter + wider dash gaps for visual distinction
+            let base_alpha = if is_draft { 100 } else { 180 };
+            let hover_alpha = if is_draft { 180 } else { 255 };
+            let dash_col = egui::Color32::from_rgba_unmultiplied(
+                alert_color.r(), alert_color.g(), alert_color.b(),
+                if drag_resp.hovered() || drag_resp.dragged() { hover_alpha } else { base_alpha });
             let mut dx = rect.left();
+            let (dash, gap) = if is_draft { (3.0, 6.0) } else { (5.0, 4.0) };
             while dx < rect.left() + cw {
-                let end_x = (dx + 5.0).min(rect.left() + cw);
+                let end_x = (dx + dash).min(rect.left() + cw);
                 painter.line_segment([egui::pos2(dx, y), egui::pos2(end_x, y)], egui::Stroke::new(if drag_resp.hovered() { 1.5 } else { 1.0 }, dash_col));
-                dx += 9.0;
+                dx += dash + gap;
             }
             // Label on right side
             let dir_arrow = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
             let d = if alert.price >= 10.0 { 2 } else { 4 };
-            let label_text = format!("Alert {} {:.prec$}", dir_arrow, alert.price, prec = d);
+            let label_prefix = if is_draft { "DRAFT" } else { "Alert" };
+            let label_text = format!("{} {} {:.prec$}", label_prefix, dir_arrow, alert.price, prec = d);
             let label_font = egui::FontId::monospace(9.0);
             let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), alert_color);
             let lx = rect.left() + cw - galley.size().x - 24.0;
             let badge_rect = egui::Rect::from_min_size(
                 egui::pos2(lx - 4.0, y - galley.size().y / 2.0 - 2.0),
                 egui::vec2(galley.size().x + 24.0, galley.size().y + 4.0));
-            painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+            let badge_bg_alpha = if is_draft { 180 } else { 220 };
+            painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), badge_bg_alpha));
             painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(0.5, alert_color), egui::StrokeKind::Outside);
             painter.text(egui::pos2(lx, y), egui::Align2::LEFT_CENTER, &label_text, label_font, alert_color);
             // X delete button
