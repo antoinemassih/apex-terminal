@@ -284,6 +284,10 @@ pub fn col_header(ui: &mut egui::Ui, text: &str, width: f32, color: Color32, rig
 
 /// Pill group of buttons with a sunken inset trough. Returns `Some(index)` of the clicked
 /// segment, `None` if nothing clicked. Caller updates state on `Some(i)`.
+///
+/// Uses a painter-reservation approach: buttons are rendered in the normal horizontal flow
+/// (so `horizontal_centered` can center them correctly), and the trough background is
+/// painted behind them via a reserved painter slot — avoiding Frame centering issues.
 pub fn segmented_control(
     ui: &mut egui::Ui,
     active_idx: usize,
@@ -295,47 +299,54 @@ pub fn segmented_control(
 ) -> Option<usize> {
     let mut clicked = None;
 
-    // Trough: slightly darker than toolbar_bg for the sunken look
     let trough = Color32::from_rgb(
-        toolbar_bg.r().saturating_sub(10),
-        toolbar_bg.g().saturating_sub(10),
-        toolbar_bg.b().saturating_sub(10),
+        toolbar_bg.r().saturating_sub(12),
+        toolbar_bg.g().saturating_sub(12),
+        toolbar_bg.b().saturating_sub(12),
     );
+    let border_col = color_alpha(toolbar_border, ALPHA_STRONG);
 
-    egui::Frame::NONE
-        .fill(trough)
-        .inner_margin(egui::Margin { left: 3, right: 3, top: 1, bottom: 1 }) // 1+22+1=24 → matches tb_btn 24px
-        .corner_radius(RADIUS_MD + 1.0)
-        .stroke(Stroke::new(STROKE_THIN, color_alpha(toolbar_border, ALPHA_STRONG)))
-        .show(ui, |ui| {
-            let prev_spacing = ui.spacing().item_spacing.x;
-            ui.spacing_mut().item_spacing.x = 2.0; // slight gap between segments
-            ui.horizontal(|ui| {
-                let n = labels.len();
-                for (i, label) in labels.iter().enumerate() {
-                    let active = i == active_idx;
-                    let fg = if active { accent } else { dim };
-                    let bg = if active { color_alpha(accent, ALPHA_TINT + 5) } else { Color32::TRANSPARENT };
-                    let cr = match (i, n) {
-                        (0, 1) => egui::CornerRadius::same(RADIUS_SM as u8),
-                        (0, _) => egui::CornerRadius { nw: RADIUS_SM as u8, sw: RADIUS_SM as u8, ne: 0, se: 0 },
-                        (x, n) if x == n - 1 => egui::CornerRadius { nw: 0, sw: 0, ne: RADIUS_SM as u8, se: RADIUS_SM as u8 },
-                        _ => egui::CornerRadius::ZERO,
-                    };
-                    let prev_pad = ui.spacing().button_padding;
-                    ui.spacing_mut().button_padding = egui::vec2(6.0, prev_pad.y); // more horizontal breathing room
-                    let resp = ui.add(
-                        egui::Button::new(RichText::new(*label).monospace().size(FONT_LG).strong().color(fg))
-                            .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
-                            .min_size(egui::vec2(0.0, 22.0))
-                    );
-                    ui.spacing_mut().button_padding = prev_pad;
-                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    if resp.clicked() { clicked = Some(i); }
-                }
-            });
-            ui.spacing_mut().item_spacing.x = prev_spacing;
-        });
+    // Reserve a painter slot — trough bg will be painted BEHIND buttons
+    let bg_slot = ui.painter().add(egui::Shape::Noop);
+
+    let prev_spacing = ui.spacing().item_spacing.x;
+    ui.spacing_mut().item_spacing.x = 2.0;
+
+    let mut union_rect: Option<egui::Rect> = None;
+    let n = labels.len();
+
+    for (i, label) in labels.iter().enumerate() {
+        let active = i == active_idx;
+        let fg = if active { accent } else { dim };
+        let bg = if active { color_alpha(accent, ALPHA_TINT + 5) } else { Color32::TRANSPARENT };
+        let cr = match (i, n) {
+            (0, 1) => egui::CornerRadius::same(RADIUS_SM as u8),
+            (0, _) => egui::CornerRadius { nw: RADIUS_SM as u8, sw: RADIUS_SM as u8, ne: 0, se: 0 },
+            (x, n) if x == n - 1 => egui::CornerRadius { nw: 0, sw: 0, ne: RADIUS_SM as u8, se: RADIUS_SM as u8 },
+            _ => egui::CornerRadius::ZERO,
+        };
+        let prev_pad = ui.spacing().button_padding;
+        ui.spacing_mut().button_padding = egui::vec2(7.0, prev_pad.y);
+        let resp = ui.add(
+            egui::Button::new(RichText::new(*label).monospace().size(FONT_LG).strong().color(fg))
+                .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
+                .min_size(egui::vec2(0.0, 24.0))
+        );
+        ui.spacing_mut().button_padding = prev_pad;
+        union_rect = Some(union_rect.map_or(resp.rect, |r: egui::Rect| r.union(resp.rect)));
+        if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        if resp.clicked() { clicked = Some(i); }
+    }
+
+    ui.spacing_mut().item_spacing.x = prev_spacing;
+
+    // Fill trough background behind buttons
+    if let Some(ur) = union_rect {
+        let trough_rect = ur.expand2(egui::vec2(4.0, 2.0)); // outer padding
+        let r = RADIUS_MD as f32 + 1.0;
+        ui.painter().set(bg_slot, egui::Shape::rect_filled(trough_rect, r, trough));
+        ui.painter().rect_stroke(trough_rect, r, Stroke::new(STROKE_THIN, border_col), egui::StrokeKind::Outside);
+    }
 
     clicked
 }

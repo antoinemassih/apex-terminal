@@ -2848,7 +2848,13 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.window_fill = t.toolbar_bg;
         style.visuals.panel_fill = t.toolbar_bg;
         style.visuals.extreme_bg_color = t.bg;
-        style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
+        // Drop shadow on popup menus/ComboBoxes — gives them depth and separation from the chart
+        style.visuals.popup_shadow = egui::epaint::Shadow {
+            offset: [0, 4],
+            blur: 14,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(100),
+        };
         style.interaction.tooltip_delay = 0.15;
 
         // ── Design token injection — makes menu_button / ComboBox / all egui widgets match tb_btn ──
@@ -2884,8 +2890,10 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.window_corner_radius           = popup_r;
         style.visuals.menu_corner_radius             = popup_r;
 
-        // Button padding — 5px horizontal, 2px vertical (tighter than egui default of 4,1)
-        style.spacing.button_padding                 = egui::vec2(5.0, 2.0);
+        // Button padding — 7px horizontal, 3px vertical — gives dropdowns proper breathing room
+        style.spacing.button_padding                 = egui::vec2(7.0, 3.0);
+        // Inner margin inside popup/menu content
+        style.spacing.menu_margin                    = egui::Margin::same(4);
 
         ctx.set_style(style);
     }
@@ -3028,12 +3036,20 @@ fn render_toolbar(
                 }
             }
 
-            // ── Paper / Live toggle ──
+            // ── Paper / Live — colored text, no background fill ──
             {
                 let paper = super::trading::order_manager::is_paper_mode();
-                let label = if paper { "PAPER" } else { "LIVE" };
-                let tip   = if paper { "Switch to Live" } else { "Switch to Paper" };
-                if tb_btn_tip(ui, label, paper, t, tip).clicked() {
+                let (label, color) = if paper {
+                    ("PAPER", egui::Color32::from_rgb(255, 165, 0)) // orange
+                } else {
+                    ("LIVE", t.dim)
+                };
+                let tip = if paper { "Switch to Live" } else { "Switch to Paper" };
+                let resp = ui.add(egui::Button::new(
+                    egui::RichText::new(label).monospace().size(FONT_LG).strong().color(color))
+                    .frame(false));
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                if resp.on_hover_text(tip).clicked() {
                     super::trading::order_manager::set_paper_mode(!paper);
                 }
             }
