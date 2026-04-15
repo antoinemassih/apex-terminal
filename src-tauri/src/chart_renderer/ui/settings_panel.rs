@@ -1,7 +1,7 @@
 //! Settings panel — appearance, axes, font scale, session shading.
 
 use egui;
-use super::style::{color_alpha, hex_to_color, dialog_window_themed, dialog_header, dialog_section, tab_bar, FONT_LG, ALPHA_MUTED};
+use super::style::{color_alpha, hex_to_color, dialog_window_themed, dialog_header, dialog_section, tab_bar, segmented_control, FONT_LG, ALPHA_MUTED};
 use super::super::gpu::{Watchlist, Theme, Chart};
 
 /// Which tab is active in the settings dialog.
@@ -86,6 +86,28 @@ if watchlist.settings_open {
                     let mut val = watchlist.compact_mode;
                     if ui.add(egui::Checkbox::without_text(&mut val)).changed() {
                         watchlist.compact_mode = val;
+                    }
+                });
+            });
+            ui.add_space(2.0);
+            // Pane header size: Compact / Normal / Expanded
+            ui.horizontal(|ui| {
+                ui.add_space(m);
+                ui.label(egui::RichText::new("Pane Headers").monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(m);
+                    use crate::chart_renderer::PaneHeaderSize;
+                    let current = watchlist.pane_header_size;
+                    let labels = [
+                        (PaneHeaderSize::Compact,  "Compact"),
+                        (PaneHeaderSize::Normal,   "Normal"),
+                        (PaneHeaderSize::Expanded, "Expanded"),
+                    ];
+                    let active_idx = labels.iter().position(|(s, _)| *s == current).unwrap_or(0);
+                    let label_refs: Vec<&str> = labels.iter().map(|(_, l)| *l).collect();
+                    if let Some(i) = segmented_control(ui, active_idx, &label_refs,
+                        t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
+                        watchlist.pane_header_size = labels[i].0;
                     }
                 });
             });

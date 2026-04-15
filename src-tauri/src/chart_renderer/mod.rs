@@ -34,6 +34,25 @@ pub(crate) enum FeedTab { News, Discord, Screenshots }
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum BookTab { Book, Journal }
 
+/// Pane header density mode — controls header height + title font size.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum PaneHeaderSize { Compact, Normal, Expanded }
+
+impl PaneHeaderSize {
+    pub(crate) fn header_h(self) -> f32 {
+        match self { Self::Compact => 22.0, Self::Normal => 28.0, Self::Expanded => 34.0 }
+    }
+    pub(crate) fn tabs_header_h(self) -> f32 {
+        match self { Self::Compact => 32.0, Self::Normal => 36.0, Self::Expanded => 42.0 }
+    }
+    pub(crate) fn title_font(self) -> f32 {
+        match self { Self::Compact => 12.0, Self::Normal => 14.0, Self::Expanded => 16.0 }
+    }
+    pub(crate) fn label(self) -> &'static str {
+        match self { Self::Compact => "Compact", Self::Normal => "Normal", Self::Expanded => "Expanded" }
+    }
+}
+
 /// Line style
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LineStyle { Solid, Dashed, Dotted }

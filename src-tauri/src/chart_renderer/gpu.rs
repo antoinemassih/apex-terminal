@@ -4728,7 +4728,12 @@ fn render_chart_pane(
     }
     let has_tabs = chart.tab_symbols.len() > 1;
     // Always show header (18px min) so + tab button is accessible even in single-pane
-    let pane_top_offset = if has_tabs { 28.0 } else { 18.0 };
+    let pane_top_offset = if has_tabs {
+        watchlist.pane_header_size.tabs_header_h()
+    } else {
+        watchlist.pane_header_size.header_h()
+    };
+    let title_font_size = watchlist.pane_header_size.title_font();
     let show_header = true;
     if show_header {
         let header_rect = egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), pane_top_offset));
@@ -4760,8 +4765,8 @@ fn render_chart_pane(
 
         let mut sym_label_x = link_dot_x + link_dot_size + 6.0;
 
-        // ── Back/Forward navigation arrows ──
-        let nav_btn_size = 14.0;
+        // ── Back/Forward navigation arrows — square clickable tiles ──
+        let nav_btn_size = 18.0;
         let can_go_back = chart.symbol_history_idx > 0;
         let can_go_fwd = chart.symbol_history_idx < chart.symbol_history.len();
         // Back button
@@ -4771,19 +4776,23 @@ fn render_chart_pane(
                 egui::vec2(nav_btn_size, nav_btn_size),
             );
             let back_resp = ui.allocate_rect(back_rect, egui::Sense::click());
-            if back_resp.hovered() && can_go_back { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let back_col = if can_go_back {
-                if back_resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.5) }
-            } else { t.dim.gamma_multiply(0.15) };
-            header_painter.text(back_rect.center(), egui::Align2::CENTER_CENTER, "\u{25C0}", egui::FontId::proportional(8.0), back_col);
+            let (bg, fg) = if can_go_back {
+                if back_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    (color_alpha(t.toolbar_border, 60), egui::Color32::from_rgb(220, 220, 230))
+                } else {
+                    (egui::Color32::TRANSPARENT, t.dim.gamma_multiply(0.8))
+                }
+            } else { (egui::Color32::TRANSPARENT, t.dim.gamma_multiply(0.25)) };
+            header_painter.rect_filled(back_rect, 3.0, bg);
+            header_painter.text(back_rect.center(), egui::Align2::CENTER_CENTER, Icon::CARET_LEFT, egui::FontId::proportional(12.0), fg);
             if back_resp.clicked() && can_go_back {
                 chart.symbol_history_idx -= 1;
                 let target = chart.symbol_history[chart.symbol_history_idx].clone();
                 chart.symbol_nav_in_progress = true;
                 chart.pending_symbol_change = Some(target);
             }
-            if back_resp.hovered() && can_go_back { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            sym_label_x += nav_btn_size + 1.0;
+            sym_label_x += nav_btn_size + 2.0;
         }
         // Forward button
         {
@@ -4792,19 +4801,23 @@ fn render_chart_pane(
                 egui::vec2(nav_btn_size, nav_btn_size),
             );
             let fwd_resp = ui.allocate_rect(fwd_rect, egui::Sense::click());
-            if fwd_resp.hovered() && can_go_fwd { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let fwd_col = if can_go_fwd {
-                if fwd_resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.5) }
-            } else { t.dim.gamma_multiply(0.15) };
-            header_painter.text(fwd_rect.center(), egui::Align2::CENTER_CENTER, "\u{25B6}", egui::FontId::proportional(8.0), fwd_col);
+            let (bg, fg) = if can_go_fwd {
+                if fwd_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    (color_alpha(t.toolbar_border, 60), egui::Color32::from_rgb(220, 220, 230))
+                } else {
+                    (egui::Color32::TRANSPARENT, t.dim.gamma_multiply(0.8))
+                }
+            } else { (egui::Color32::TRANSPARENT, t.dim.gamma_multiply(0.25)) };
+            header_painter.rect_filled(fwd_rect, 3.0, bg);
+            header_painter.text(fwd_rect.center(), egui::Align2::CENTER_CENTER, Icon::CARET_RIGHT, egui::FontId::proportional(12.0), fg);
             if fwd_resp.clicked() && can_go_fwd {
                 let target = chart.symbol_history[chart.symbol_history_idx].clone();
                 chart.symbol_history_idx += 1;
                 chart.symbol_nav_in_progress = true;
                 chart.pending_symbol_change = Some(target);
             }
-            if fwd_resp.hovered() && can_go_fwd { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            sym_label_x += nav_btn_size + 3.0;
+            sym_label_x += nav_btn_size + 4.0;
         }
 
         // ── Tab bar or simple symbol label ──
@@ -5006,19 +5019,24 @@ fn render_chart_pane(
             }
         } else {
             // Simple symbol label (no tabs — original single-symbol header)
-            // Clickable symbol — opens this pane's picker
+            // Clickable symbol — opens this pane's picker, with bigger/clearer title
+            let title_font = egui::FontId::monospace(title_font_size);
+            let sym_label = format!("{} {}", chart.symbol, chart.timeframe);
+            let sym_galley = header_painter.layout_no_wrap(
+                sym_label.clone(), title_font.clone(),
+                egui::Color32::from_rgb(180, 180, 190));
             let sym_rect = egui::Rect::from_min_size(
-                egui::pos2(sym_label_x, header_rect.top()),
-                egui::vec2(header_rect.right() - sym_label_x - header_rect.width() * 0.5, pane_top_offset),
+                egui::pos2(sym_label_x, header_rect.center().y - sym_galley.size().y / 2.0),
+                egui::vec2(sym_galley.size().x + 4.0, sym_galley.size().y + 2.0),
             );
             let sym_resp = ui.allocate_rect(sym_rect, egui::Sense::click());
             if sym_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let label_color = if is_active { t.bull } else { egui::Color32::from_rgb(180,180,190) };
+            let label_color = if is_active { t.bull } else { egui::Color32::from_rgb(220, 220, 230) };
             header_painter.text(
                 egui::pos2(sym_label_x + 2.0, header_rect.center().y),
                 egui::Align2::LEFT_CENTER,
-                format!("{} {}", chart.symbol, chart.timeframe),
-                egui::FontId::monospace(10.0),
+                &sym_label,
+                title_font.clone(),
                 label_color,
             );
             if sym_resp.clicked() {
@@ -5030,64 +5048,89 @@ fn render_chart_pane(
                 chart.picker_pos = egui::pos2(sym_rect.left(), sym_rect.bottom());
             }
 
-            // Change % badge in pane header
-            let sym_text_w = header_painter.layout_no_wrap(
-                format!("{} {}", chart.symbol, chart.timeframe), egui::FontId::monospace(10.0), label_color).size().x;
-            if let (Some(first), Some(last)) = (chart.bars.first(), chart.bars.last()) {
-                if first.open > 0.0 {
-                    let chg = (last.close - first.open) / first.open * 100.0;
-                    let chg_col = if chg >= 0.0 { t.bull } else { t.bear };
-                    let chg_text = if chg >= 0.0 { format!("+{:.2}%", chg) } else { format!("{:.2}%", chg) };
-                    let chg_x = sym_label_x + sym_text_w + 8.0;
-                    let chg_bg = egui::Color32::from_rgba_unmultiplied(chg_col.r(), chg_col.g(), chg_col.b(), 20);
-                    let chg_galley = header_painter.layout_no_wrap(chg_text.clone(), egui::FontId::monospace(9.0), chg_col);
-                    let chg_rect = egui::Rect::from_min_size(
-                        egui::pos2(chg_x, header_rect.center().y - chg_galley.size().y / 2.0 - 1.0),
-                        chg_galley.size() + egui::vec2(6.0, 2.0));
-                    header_painter.rect_filled(chg_rect, 2.0, chg_bg);
-                    header_painter.text(egui::pos2(chg_x + 3.0, header_rect.center().y), egui::Align2::LEFT_CENTER,
-                        &chg_text, egui::FontId::monospace(9.0), chg_col);
-                }
+            // Price badge (replaces % change)
+            let sym_text_w = sym_galley.size().x;
+            let mut cursor_x = sym_label_x + sym_text_w + 10.0;
+            if let Some(last) = chart.bars.last() {
+                let price = last.close;
+                let chg_col = if let Some(first) = chart.bars.first() {
+                    if first.open > 0.0 && last.close >= first.open { t.bull } else { t.bear }
+                } else { t.dim };
+                let price_text = if price >= 100.0 { format!("${:.2}", price) }
+                    else if price >= 1.0 { format!("${:.2}", price) }
+                    else { format!("${:.4}", price) };
+                let price_font = egui::FontId::monospace(title_font_size - 1.0);
+                let price_galley = header_painter.layout_no_wrap(price_text.clone(), price_font.clone(), chg_col);
+                let price_bg = color_alpha(chg_col, 25);
+                let price_rect = egui::Rect::from_min_size(
+                    egui::pos2(cursor_x, header_rect.center().y - price_galley.size().y / 2.0 - 2.0),
+                    price_galley.size() + egui::vec2(8.0, 4.0));
+                header_painter.rect_filled(price_rect, 3.0, price_bg);
+                header_painter.rect_stroke(price_rect, 3.0,
+                    egui::Stroke::new(0.5, color_alpha(chg_col, 80)), egui::StrokeKind::Outside);
+                header_painter.text(egui::pos2(cursor_x + 4.0, header_rect.center().y),
+                    egui::Align2::LEFT_CENTER, &price_text, price_font, chg_col);
+                cursor_x += price_rect.width() + 6.0;
             }
 
-            // OVL button in pane header (symbol overlay manager)
+            // OV button (symbol overlay manager) — proper clickable tile
             {
-                let ovl_x = sym_label_x + sym_text_w + 10.0
-                    + if chart.bars.len() > 1 { 60.0 } else { 0.0 };
                 let has_overlays = !chart.symbol_overlays.is_empty();
-                let ovl_rect = egui::Rect::from_min_size(
-                    egui::pos2(ovl_x, header_rect.top() + 1.0),
-                    egui::vec2(30.0, pane_top_offset - 2.0));
-                let ovl_resp = ui.allocate_rect(ovl_rect, egui::Sense::click());
-                let ovl_col = if chart.overlay_editing { t.accent }
-                    else if has_overlays { egui::Color32::from_rgb(180, 180, 195) }
-                    else { t.dim.gamma_multiply(0.6) };
-                let ovl_bg = if chart.overlay_editing { color_alpha(t.accent, 30) }
-                    else if has_overlays { color_alpha(t.toolbar_border, 30) }
-                    else { egui::Color32::TRANSPARENT };
-                if ovl_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                header_painter.rect_filled(ovl_rect, 3.0, ovl_bg);
-                header_painter.text(ovl_rect.center(), egui::Align2::CENTER_CENTER,
-                    if has_overlays { Icon::CHART_LINE } else { "+OV" },
-                    egui::FontId::monospace(if has_overlays { 10.0 } else { 8.0 }), ovl_col);
-                if ovl_resp.clicked() {
+                let ov_w = 32.0;
+                let ov_h = pane_top_offset - 6.0;
+                let ov_rect = egui::Rect::from_min_size(
+                    egui::pos2(cursor_x, header_rect.center().y - ov_h / 2.0),
+                    egui::vec2(ov_w, ov_h));
+                let ov_resp = ui.allocate_rect(ov_rect, egui::Sense::click());
+                let active = chart.overlay_editing || has_overlays;
+                let (bg, fg, border) = if chart.overlay_editing {
+                    (color_alpha(t.accent, 38), t.accent, color_alpha(t.accent, ALPHA_ACTIVE))
+                } else if ov_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
+                     if active { t.accent } else { egui::Color32::from_rgb(220, 220, 230) },
+                     color_alpha(t.accent, ALPHA_LINE))
+                } else if has_overlays {
+                    (color_alpha(t.toolbar_border, 18), egui::Color32::from_rgb(180, 180, 195),
+                     color_alpha(t.toolbar_border, ALPHA_MUTED))
+                } else {
+                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
+                     color_alpha(t.toolbar_border, ALPHA_MUTED))
+                };
+                header_painter.rect_filled(ov_rect, 4.0, bg);
+                header_painter.rect_stroke(ov_rect, 4.0,
+                    egui::Stroke::new(0.5, border), egui::StrokeKind::Outside);
+                header_painter.text(ov_rect.center(), egui::Align2::CENTER_CENTER,
+                    "OV", egui::FontId::monospace((title_font_size - 2.0).max(9.0)), fg);
+                if ov_resp.clicked() {
                     chart.overlay_editing = !chart.overlay_editing;
                     if chart.overlay_editing { chart.overlay_editing_idx = None; }
                 }
+                cursor_x += ov_w + 4.0;
             }
 
-            // "+" add tab button (in non-tab mode)
+            // "+ Tab" add tab button — proper clickable tile
             {
-                let plus_x = sym_label_x + sym_text_w + 10.0
-                    + if chart.bars.len() > 1 { 60.0 } else { 0.0 } + 34.0;
+                let plus_w = 44.0;
+                let plus_h = pane_top_offset - 6.0;
                 let plus_rect = egui::Rect::from_min_size(
-                    egui::pos2(plus_x, header_rect.top() + 1.0),
-                    egui::vec2(20.0, pane_top_offset - 2.0));
+                    egui::pos2(cursor_x, header_rect.center().y - plus_h / 2.0),
+                    egui::vec2(plus_w, plus_h));
                 let plus_resp = ui.allocate_rect(plus_rect, egui::Sense::click());
-                let plus_col = if plus_resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.4) };
-                if plus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let (bg, fg, border) = if plus_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
+                     egui::Color32::from_rgb(220, 220, 230),
+                     color_alpha(t.accent, ALPHA_LINE))
+                } else {
+                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
+                     color_alpha(t.toolbar_border, ALPHA_MUTED))
+                };
+                header_painter.rect_filled(plus_rect, 4.0, bg);
+                header_painter.rect_stroke(plus_rect, 4.0,
+                    egui::Stroke::new(0.5, border), egui::StrokeKind::Outside);
                 header_painter.text(plus_rect.center(), egui::Align2::CENTER_CENTER,
-                    "+", egui::FontId::monospace(12.0), plus_col);
+                    "+ Tab", egui::FontId::monospace((title_font_size - 2.0).max(9.0)), fg);
                 if plus_resp.clicked() {
                     // Initialize tabs: current symbol becomes tab 0, add empty tab 1
                     if chart.tab_symbols.is_empty() {
@@ -5102,7 +5145,6 @@ fn render_chart_pane(
                     chart.tab_timeframes.push(chart.timeframe.clone());
                     chart.tab_changes.push(0.0);
                     chart.tab_active = chart.tab_symbols.len() - 1;
-                    // Open picker for new tab
                     chart.picker_open = true;
                     chart.picker_query.clear();
                     chart.picker_results.clear();
@@ -6532,10 +6574,10 @@ fn render_chart_pane(
 
     // (hit flash rendered as white overlay on top of the indicator line)
 
-    // ── Strikes overlay circle button (O) on chart — always visible ──
+    // ── Strikes overlay circle button (O) on chart — EQUITY only ──
     let ovl_chart_x = rect.left() + cw - 18.0;
     let ovl_chart_y = rect.top() + pt + 18.0;
-    {
+    if !chart.is_option {
         let btn_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.3) };
         painter.circle_filled(egui::pos2(ovl_chart_x, ovl_chart_y), 9.0, color_alpha(t.toolbar_bg, 220));
         painter.circle_stroke(egui::pos2(ovl_chart_x, ovl_chart_y), 9.0, egui::Stroke::new(1.0, btn_col));
@@ -11373,8 +11415,8 @@ fn render_chart_pane(
         }
     }
 
-    // ── PRIORITY 0: Strikes overlay O button click ──
-    if let Some(pos) = hover_pos {
+    // ── PRIORITY 0: Strikes overlay O button click (equity only) ──
+    if !chart.is_option { if let Some(pos) = hover_pos {
         if egui::pos2(ovl_chart_x, ovl_chart_y).distance(pos) < 12.0 {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
@@ -11392,7 +11434,7 @@ fn render_chart_pane(
                 event_consumed = true;
             }
         }
-    }
+    }}
 
     // ── PRIORITY 1: Active drags (always finish, never interrupted) ──────
 
@@ -14282,6 +14324,7 @@ pub(crate) struct Watchlist {
     pub(crate) default_tif: usize,          // 0=DAY, 1=GTC, 2=IOC
     pub(crate) default_outside_rth: bool,
     pub(crate) compact_mode: bool,
+    pub(crate) pane_header_size: crate::chart_renderer::PaneHeaderSize,
     pub(crate) toolbar_auto_hide: bool,
     pub(crate) toolbar_hover_time: Option<std::time::Instant>,
     pub(crate) show_x_axis: bool,
@@ -14461,7 +14504,9 @@ impl Watchlist {
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
                settings_open: false, font_scale: 1.6,
                default_stock_qty: 100, default_options_qty: 1, default_order_type: 0, default_tif: 0, default_outside_rth: false,
-               compact_mode: false, show_x_axis: true, show_y_axis: true,
+               compact_mode: false,
+               pane_header_size: crate::chart_renderer::PaneHeaderSize::Compact,
+               show_x_axis: true, show_y_axis: true,
                toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false, shared_y_axis: false,
                trendline_filter_open: false, account_strip_open: false, object_tree_open: false, broadcast_mode: false, pending_opt_chart: None,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
