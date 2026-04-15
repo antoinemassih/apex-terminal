@@ -3047,6 +3047,10 @@ fn render_toolbar(
             if tb_btn_tip(ui, Icon::SIDEBAR, panes[ap].dom_sidebar_open, t, "DOM Sidebar").clicked() {
                 panes[ap].dom_sidebar_open = !panes[ap].dom_sidebar_open;
             }
+            // ── Order Entry ──
+            if tb_btn_tip(ui, Icon::CURRENCY_DOLLAR, watchlist.order_entry_open, t, "Order Entry").clicked() {
+                watchlist.order_entry_open = !watchlist.order_entry_open;
+            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -3056,17 +3060,6 @@ fn render_toolbar(
             let middle_width = (ui.available_width() - right_width).max(60.0);
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-
-            // ── Broadcast mode toggle (megaphone icon) — placed near interval buttons ──
-            {
-                let bc = watchlist.broadcast_mode;
-                let bc_resp = tb_btn_tip(ui, Icon::MEGAPHONE, bc, t, "Broadcast — changes apply to all panes");
-                if bc_resp.clicked() {
-                    watchlist.broadcast_mode = !watchlist.broadcast_mode;
-                    TB_BTN_CLICKED.with(|f| f.set(true));
-                }
-            }
-            ui.add(egui::Separator::default().spacing(4.0));
 
             // ── Interval buttons (candle size) — adjusts vc to maintain same time range ──
             let tf_to_secs = |tf: &str| -> u32 { match tf {
@@ -3192,6 +3185,14 @@ fn render_toolbar(
             let list_label = if draw_count > 0 { format!("{} {}", Icon::LIST, draw_count) } else { Icon::LIST.to_string() };
             if tb_btn_tip(ui, &list_label, watchlist.object_tree_open, t, "Object Tree").clicked() {
                 watchlist.object_tree_open = !watchlist.object_tree_open;
+            }
+            // ── Broadcast — drawing section (applies to all panes) ──
+            {
+                let bc = watchlist.broadcast_mode;
+                if tb_btn_tip(ui, Icon::MEGAPHONE, bc, t, "Broadcast — changes apply to all panes").clicked() {
+                    watchlist.broadcast_mode = !watchlist.broadcast_mode;
+                    TB_BTN_CLICKED.with(|f| f.set(true));
+                }
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -3618,13 +3619,6 @@ fn render_toolbar(
 
             });
 
-                ui.separator();
-                // Hit Highlight toggle
-                let hh = panes[ap].hit_highlight;
-                if ui.selectable_label(hh, egui::RichText::new(format!("{} Hit Highlight", check(hh))).monospace().size(10.0)).clicked() {
-                    panes[ap].hit_highlight = !panes[ap].hit_highlight;
-                }
-
             // Tools dropdown
             ui.menu_button(egui::RichText::new("Tools").monospace().size(FONT_LG).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
@@ -3740,7 +3734,23 @@ fn render_toolbar(
                 panes[ap].overlay_editing = true;
                 panes[ap].overlay_editing_idx = None;
             }
-            // (OVL button moved before scroll area)
+
+            // ── Suites dropdown (advanced signal tools) ──
+            ui.menu_button(egui::RichText::new("Suites").monospace().size(FONT_LG).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                ui.selectable_label(false, egui::RichText::new("  Triangulator").monospace().size(10.0));
+                ui.selectable_label(false, egui::RichText::new("  Auto Target").monospace().size(10.0));
+            });
+
+            // ⚡ Hit Highlight icon toggle
+            {
+                let hh = panes[ap].hit_highlight;
+                let hh_resp = tb_btn_tip(ui, Icon::LIGHTNING, hh, t, "Hit Highlight");
+                if hh_resp.clicked() { panes[ap].hit_highlight = !hh; }
+            }
+
+            ui.add(egui::Separator::default().spacing(4.0));
 
             // ── Workspace ──
             {
@@ -3995,24 +4005,6 @@ fn render_toolbar(
                 if ti != panes[ap].theme_idx { for p in panes.iter_mut() { p.theme_idx = ti; } }
             }
 
-            ui.add(egui::Separator::default().spacing(4.0));
-
-            // ── Suites dropdown (Advanced tools) ──
-            ui.menu_button(egui::RichText::new("Suites").monospace().size(FONT_LG).color(t.dim), |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                ui.selectable_label(false, egui::RichText::new("  Triangulator").monospace().size(10.0));
-                ui.selectable_label(false, egui::RichText::new("  Auto Target").monospace().size(10.0));
-            });
-
-            // ⚡ Hit Highlight toggle
-            let hh = panes[ap].hit_highlight;
-            let hh_resp = tb_btn(ui, "\u{26A1}", hh, t);
-            if hh_resp.clicked() { panes[ap].hit_highlight = !hh; }
-            hh_resp.on_hover_text("Hit Highlight");
-
-            ui.add(egui::Separator::default().spacing(4.0));
-
             }); // end scrollable middle
 
             // ── Fixed right: panels + window controls ──
@@ -4112,9 +4104,6 @@ fn render_toolbar(
                 }
 
 
-                if tb_btn_tip(ui, Icon::CURRENCY_DOLLAR, watchlist.order_entry_open, t, "Order Entry").clicked() {
-                    watchlist.order_entry_open = !watchlist.order_entry_open;
-                }
 
 
                 // Watchlist toggle
