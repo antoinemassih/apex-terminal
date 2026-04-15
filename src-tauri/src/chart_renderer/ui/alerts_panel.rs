@@ -77,7 +77,7 @@ egui::SidePanel::right("alerts_panel")
                     let pid = panes[ap].next_alert_id; panes[ap].next_alert_id += 1;
                     panes[ap].price_alerts.push(PriceAlert {
                         id: pid, price: input_price, above: true,
-                        triggered: false, symbol: sym.clone(),
+                        triggered: false, draft: false, symbol: sym.clone(),
                     });
                     panes[ap].alert_input_price.clear();
                 }
@@ -99,7 +99,7 @@ egui::SidePanel::right("alerts_panel")
                     let pid = panes[ap].next_alert_id; panes[ap].next_alert_id += 1;
                     panes[ap].price_alerts.push(PriceAlert {
                         id: pid, price: input_price, above: false,
-                        triggered: false, symbol: sym.clone(),
+                        triggered: false, draft: false, symbol: sym.clone(),
                     });
                     panes[ap].alert_input_price.clear();
                 }
@@ -110,15 +110,66 @@ egui::SidePanel::right("alerts_panel")
         separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
         ui.add_space(4.0);
 
+        // ── Draft Alerts (context-menu created, pending user Place) ──
+        let pane_drafts: Vec<(usize, PriceAlert)> = panes.iter().enumerate().flat_map(|(pi, p)|
+            p.price_alerts.iter().filter(|a| a.draft).cloned().map(move |a| (pi, a))
+        ).collect();
+        if !pane_drafts.is_empty() {
+            ui.horizontal(|ui| {
+                section_label(ui, &format!("DRAFT ({})", pane_drafts.len()), t.dim);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if small_action_btn(ui, "Place All", t.accent) {
+                        for p in panes.iter_mut() {
+                            for a in p.price_alerts.iter_mut() { if a.draft { a.draft = false; } }
+                        }
+                    }
+                });
+            });
+            ui.add_space(4.0);
+            let mut place_id: Option<(usize, u32)> = None;
+            let mut cancel_id: Option<(usize, u32)> = None;
+            for (pi, alert) in &pane_drafts {
+                let dir = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
+                let dir_color = if alert.above { t.bull } else { t.bear };
+                order_card(ui, t.dim, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong().color(TEXT_PRIMARY));
+                        ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
+                            .monospace().size(10.0).color(dir_color));
+                        status_badge(ui, "DRAFT", t.dim);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_MD).on_hover_text("Cancel").clicked() {
+                                cancel_id = Some((*pi, alert.id));
+                            }
+                            if small_action_btn(ui, "Place", t.accent) {
+                                place_id = Some((*pi, alert.id));
+                            }
+                        });
+                    });
+                });
+            }
+            if let Some((pi, id)) = place_id {
+                if let Some(p) = panes.get_mut(pi) {
+                    if let Some(a) = p.price_alerts.iter_mut().find(|a| a.id == id) { a.draft = false; }
+                }
+            }
+            if let Some((pi, id)) = cancel_id {
+                if let Some(p) = panes.get_mut(pi) { p.price_alerts.retain(|a| a.id != id); }
+            }
+            ui.add_space(6.0);
+            separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+            ui.add_space(4.0);
+        }
+
         // ── Active Alerts ──
         let active_alerts: Vec<_> = watchlist.alerts.iter()
             .filter(|a| !a.triggered).cloned().collect();
         let triggered_alerts: Vec<_> = watchlist.alerts.iter()
             .filter(|a| a.triggered).cloned().collect();
 
-        // Per-pane alerts (from chart lines)
+        // Per-pane alerts (from chart lines) — exclude drafts
         let pane_active: Vec<_> = panes.iter().flat_map(|p|
-            p.price_alerts.iter().filter(|a| !a.triggered).cloned()
+            p.price_alerts.iter().filter(|a| !a.triggered && !a.draft).cloned()
         ).collect();
         let pane_triggered: Vec<_> = panes.iter().flat_map(|p|
             p.price_alerts.iter().filter(|a| a.triggered).cloned()
@@ -174,7 +225,7 @@ egui::SidePanel::right("alerts_panel")
 
             // Per-pane chart alerts
             for (pi, pane) in panes.iter().enumerate() {
-                for alert in pane.price_alerts.iter().filter(|a| !a.triggered) {
+                for alert in pane.price_alerts.iter().filter(|a| !a.triggered && !a.draft) {
                     let dir = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
                     let dir_color = if alert.above { t.bull } else { t.bear };
                     order_card(ui, dir_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {

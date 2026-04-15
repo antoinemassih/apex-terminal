@@ -352,7 +352,8 @@ pub(crate) struct BracketTemplate {
 pub(crate) struct PriceAlert {
     pub id: u32,
     pub price: f32,
-    pub above: bool,  // true = alert when price goes above, false = below
-    pub triggered: bool,
+    pub above: bool,      // true = alert when price goes above, false = below
+    pub triggered: bool,  // has been fired
+    pub draft: bool,      // drafted via right-click; not armed until user places it (like order drafts)
     pub symbol: String,
 }

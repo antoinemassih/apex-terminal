@@ -4109,7 +4109,7 @@ fn render_toolbar(
                 // Alerts panel toggle
                 {
                     let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
-                        + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered).count();
+                        + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
                     let has_triggered = watchlist.alerts.iter().any(|a| a.triggered)
                         || panes.iter().flat_map(|p| p.price_alerts.iter()).any(|a| a.triggered);
                     let alert_icon = if has_triggered { Icon::BELL_RINGING } else { Icon::BELL };
@@ -12588,6 +12588,22 @@ fn render_chart_pane(
         let click_price = ui.input(|i| i.pointer.latest_pos()).map(|p| pos_to_price(p)).unwrap_or(0.0);
         let click_pos = ui.input(|i| i.pointer.latest_pos());
 
+        // ── View controls (top) ──
+        if ui.button(format!("{} Reset View", Icon::ARROW_COUNTER_CLOCKWISE)).clicked() {
+            chart.auto_scroll = true; chart.price_lock = None;
+            chart.vs = (n as f32 - chart.vc as f32 + 8.0).max(0.0);
+            ui.close_menu();
+        }
+        if ui.button(format!("{} Drag Zoom", Icon::MAGNIFYING_GLASS_PLUS)).clicked() {
+            chart.zoom_selecting = true; chart.zoom_start = egui::Pos2::ZERO;
+            ui.close_menu();
+        }
+        if ui.button(format!("{} Measure (Shift+Drag)", Icon::RULER)).clicked() {
+            chart.measure_active = true; chart.measure_start = None;
+            ui.close_menu();
+        }
+        ui.separator();
+
         ui.label(egui::RichText::new(format!("ORDERS @ {:.2}", click_price)).small().color(t.dim));
         if ui.button(egui::RichText::new(format!("{} Buy Order", Icon::ARROW_FAT_UP)).color(t.bull)).clicked() {
             use super::trading::order_manager::*;
@@ -12748,18 +12764,16 @@ fn render_chart_pane(
         }
         ui.separator();
         ui.label(egui::RichText::new(format!("ALERTS @ {:.2}", click_price)).small().color(t.dim));
+        // Context-menu alerts are created as DRAFTS — user must Place them from the alerts panel
+        // (same pattern as orders: draft → placed → active)
         if ui.button(format!("{} Alert Above {:.2}", Icon::ARROW_FAT_UP, click_price)).clicked() {
-            PENDING_ALERT.with(|a| *a.borrow_mut() = Some((chart.symbol.clone(), click_price, true)));
-            // Also add per-pane price alert (rendered on chart)
             let id = chart.next_alert_id; chart.next_alert_id += 1;
-            chart.price_alerts.push(PriceAlert { id, price: click_price, above: true, triggered: false, symbol: chart.symbol.clone() });
+            chart.price_alerts.push(PriceAlert { id, price: click_price, above: true, triggered: false, draft: true, symbol: chart.symbol.clone() });
             ui.close_menu();
         }
         if ui.button(format!("{} Alert Below {:.2}", Icon::ARROW_FAT_DOWN, click_price)).clicked() {
-            PENDING_ALERT.with(|a| *a.borrow_mut() = Some((chart.symbol.clone(), click_price, false)));
-            // Also add per-pane price alert (rendered on chart)
             let id = chart.next_alert_id; chart.next_alert_id += 1;
-            chart.price_alerts.push(PriceAlert { id, price: click_price, above: false, triggered: false, symbol: chart.symbol.clone() });
+            chart.price_alerts.push(PriceAlert { id, price: click_price, above: false, triggered: false, draft: true, symbol: chart.symbol.clone() });
             ui.close_menu();
         }
         ui.separator();
@@ -12829,86 +12843,97 @@ fn render_chart_pane(
             chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
         }
         ui.separator();
-        if ui.button(format!("{} Drag Zoom", Icon::MAGNIFYING_GLASS_PLUS)).clicked() { chart.zoom_selecting=true; chart.zoom_start=egui::Pos2::ZERO; ui.close_menu(); }
-        if ui.button(format!("{} Measure (Shift+Drag)", Icon::RULER)).clicked() { chart.measure_active=true; chart.measure_start=None; ui.close_menu(); }
-        if ui.button(format!("{} Reset View", Icon::ARROW_COUNTER_CLOCKWISE)).clicked() { chart.auto_scroll=true; chart.price_lock=None; chart.vs=(n as f32-chart.vc as f32+8.0).max(0.0); ui.close_menu(); }
-        ui.separator();
-        {
-            let draw_icon = if chart.hide_all_drawings { Icon::EYE_SLASH } else { Icon::EYE };
-            let draw_label = if chart.hide_all_drawings { "Show All Drawings" } else { "Hide All Drawings" };
-            if ui.button(format!("{} {}", draw_icon, draw_label)).clicked() {
-                chart.hide_all_drawings = !chart.hide_all_drawings;
-                ui.close_menu();
-            }
-            let ind_icon = if chart.hide_all_indicators { Icon::EYE_SLASH } else { Icon::EYE };
-            let ind_label = if chart.hide_all_indicators { "Show All Indicators" } else { "Hide All Indicators" };
-            if ui.button(format!("{} {}", ind_icon, ind_label)).clicked() {
-                chart.hide_all_indicators = !chart.hide_all_indicators;
-                ui.close_menu();
-            }
-            let sig_icon = if chart.hide_signal_drawings { Icon::EYE_SLASH } else { Icon::EYE };
-            let sig_label = if chart.hide_signal_drawings { "Show Signal Lines" } else { "Hide Signal Lines" };
-            if ui.button(format!("{} {}", sig_icon, sig_label)).clicked() {
-                chart.hide_signal_drawings = !chart.hide_signal_drawings;
-                ui.close_menu();
-            }
-            if ui.button(format!("{} Add Indicator", Icon::PLUS)).clicked() {
-                let id = chart.next_indicator_id; chart.next_indicator_id += 1;
-                let color = INDICATOR_COLORS[(chart.indicators.len()) % INDICATOR_COLORS.len()];
-                chart.indicators.push(Indicator::new(id, IndicatorType::SMA, 20, color));
-                chart.indicator_bar_count = 0;
-                chart.editing_indicator = Some(id);
-                ui.close_menu();
-            }
+
+        // ══════════════════════════════════════════════════════
+        // ── HIDE section ──
+        // ══════════════════════════════════════════════════════
+        let everything_hidden = chart.hide_all_drawings && chart.hide_all_indicators && chart.hide_signal_drawings;
+        let hide_all_label = if everything_hidden { "Show All" } else { "Hide All" };
+        let hide_all_icon = if everything_hidden { Icon::EYE } else { Icon::EYE_SLASH };
+        if ui.button(format!("{} {}", hide_all_icon, hide_all_label)).clicked() {
+            let target = !everything_hidden;
+            chart.hide_all_drawings    = target;
+            chart.hide_all_indicators  = target;
+            chart.hide_signal_drawings = target;
+            ui.close_menu();
         }
-        ui.separator();
-        ui.label(egui::RichText::new("GROUPS").small().color(t.dim));
-        for g in chart.groups.clone() {
-            let hidden = chart.hidden_groups.contains(&g.id);
-            let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
-            let vis_icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
-            ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(10.0).color(t.dim)).frame(false)).clicked() {
-                    if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
-                    else { chart.hidden_groups.push(g.id.clone()); }
+        ui.menu_button(format!("{} Hide / Show \u{25BA}", Icon::EYE), |ui| {
+            // Drawings
+            ui.label(egui::RichText::new("DRAWINGS").small().color(t.dim));
+            {
+                let icon = if chart.hide_all_drawings { Icon::EYE_SLASH } else { Icon::EYE };
+                let lbl  = if chart.hide_all_drawings { "Show All Drawings" } else { "Hide All Drawings" };
+                if ui.button(format!("{} {}", icon, lbl)).clicked() {
+                    chart.hide_all_drawings = !chart.hide_all_drawings;
+                    ui.close_menu();
                 }
-                ui.label(egui::RichText::new(format!("{} ({})", g.name, count)).monospace().size(10.0).color(if hidden { t.dim } else { egui::Color32::from_rgb(200,200,210) }));
-            });
-            if !chart.selected_ids.is_empty() {
-                let assign_label = format!("  {} Assign {} to {}", Icon::ARROW_FAT_DOWN, chart.selected_ids.len(), g.name);
-                if ui.button(egui::RichText::new(&assign_label).monospace().size(9.0).color(t.accent)).clicked() {
-                    let ids = chart.selected_ids.clone();
-                    let gid = g.id.clone();
-                    let sym = chart.symbol.clone();
-                    let tf = chart.timeframe.clone();
-                    for d in &mut chart.drawings {
-                        if ids.contains(&d.id) {
-                            d.group_id = gid.clone();
-                            crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
-                        }
+            }
+            // By drawing group
+            for g in chart.groups.clone() {
+                let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
+                if count == 0 { continue; }
+                let hidden = chart.hidden_groups.contains(&g.id);
+                let icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
+                let label = format!("  {} {} ({})", icon, g.name, count);
+                if ui.button(label).clicked() {
+                    if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
+                    else      { chart.hidden_groups.push(g.id.clone()); }
+                    ui.close_menu();
+                }
+            }
+            ui.separator();
+
+            // Indicators
+            ui.label(egui::RichText::new("INDICATORS").small().color(t.dim));
+            {
+                let icon = if chart.hide_all_indicators { Icon::EYE_SLASH } else { Icon::EYE };
+                let lbl  = if chart.hide_all_indicators { "Show All Indicators" } else { "Hide All Indicators" };
+                if ui.button(format!("{} {}", icon, lbl)).clicked() {
+                    chart.hide_all_indicators = !chart.hide_all_indicators;
+                    ui.close_menu();
+                }
+            }
+            let ind_snapshot: Vec<(u32, String, bool)> = chart.indicators.iter()
+                .map(|i| (i.id, i.display_name(), i.visible)).collect();
+            for (id, name, visible) in &ind_snapshot {
+                let icon = if *visible { Icon::EYE } else { Icon::EYE_SLASH };
+                let label = format!("  {} {}", icon, name);
+                if ui.button(label).clicked() {
+                    if let Some(ind) = chart.indicators.iter_mut().find(|i| i.id == *id) {
+                        ind.visible = !ind.visible;
                     }
                     ui.close_menu();
                 }
             }
-        }
-        if ui.button(format!("{} New Group...", Icon::PLUS)).clicked() {
-            chart.group_manager_open = true;
-            ui.close_menu();
-        }
-        for g in chart.groups.clone() {
-            if g.id != "default" {
-                let del_label = format!("  {} Delete '{}'", Icon::TRASH, g.name);
-                if ui.button(egui::RichText::new(&del_label).monospace().size(9.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
-                    for d in &mut chart.drawings { if d.group_id == g.id { d.group_id = "default".into(); } }
-                    chart.groups.retain(|gg| gg.id != g.id);
-                    crate::drawing_db::remove_group(&g.id);
+            ui.separator();
+
+            // Signals
+            ui.label(egui::RichText::new("SIGNALS").small().color(t.dim));
+            {
+                let icon = if chart.hide_signal_drawings { Icon::EYE_SLASH } else { Icon::EYE };
+                let lbl  = if chart.hide_signal_drawings { "Show Signal Lines" } else { "Hide Signal Lines" };
+                if ui.button(format!("{} {}", icon, lbl)).clicked() {
+                    chart.hide_signal_drawings = !chart.hide_signal_drawings;
                     ui.close_menu();
                 }
             }
-        }
+            {
+                let icon = if chart.show_pattern_labels { Icon::EYE } else { Icon::EYE_SLASH };
+                let lbl  = if chart.show_pattern_labels { "Hide Pattern Labels" } else { "Show Pattern Labels" };
+                if ui.button(format!("{} {}", icon, lbl)).clicked() {
+                    chart.show_pattern_labels = !chart.show_pattern_labels;
+                    ui.close_menu();
+                }
+            }
+        });
+
         ui.separator();
+
+        // ══════════════════════════════════════════════════════
+        // ── DELETE section ──
+        // ══════════════════════════════════════════════════════
         if !chart.selected_ids.is_empty() {
-            if ui.button(egui::RichText::new(format!("{} Delete Selected", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Delete Selected ({})", Icon::TRASH, chart.selected_ids.len())).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                 let ids = chart.selected_ids.clone();
                 for d in chart.drawings.iter().filter(|d| ids.contains(&d.id)) {
                     if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
@@ -12917,7 +12942,8 @@ fn render_chart_pane(
                 chart.redo_stack.clear();
                 for id in &ids { crate::drawing_db::remove(id); }
                 chart.drawings.retain(|d| !ids.contains(&d.id));
-                chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
+                chart.selected_ids.clear(); chart.selected_id = None;
+                ui.close_menu();
             }
         }
         if !chart.drawings.is_empty() {
@@ -12928,18 +12954,96 @@ fn render_chart_pane(
                 }
                 chart.redo_stack.clear();
                 for d in &chart.drawings { crate::drawing_db::remove(&d.id); }
-                chart.drawings.clear(); chart.selected_ids.clear(); chart.selected_id=None; ui.close_menu();
-            }
-            let temp_count = chart.drawings.iter().filter(|d| d.group_id == "default").count();
-            if temp_count > 0 {
-                if ui.button(egui::RichText::new(format!("{} Delete All Temporary ({})", Icon::TRASH, temp_count)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
-                    let to_remove: Vec<String> = chart.drawings.iter().filter(|d| d.group_id == "default").map(|d| d.id.clone()).collect();
-                    for id in &to_remove { crate::drawing_db::remove(id); }
-                    chart.drawings.retain(|d| d.group_id != "default");
-                    chart.selected_ids.clear(); chart.selected_id = None; ui.close_menu();
-                }
+                chart.drawings.clear();
+                chart.selected_ids.clear(); chart.selected_id = None;
+                ui.close_menu();
             }
         }
+        let temp_count = chart.drawings.iter().filter(|d| d.group_id == "default").count();
+        if temp_count > 0 {
+            if ui.button(egui::RichText::new(format!("{} Delete Temp Drawings ({})", Icon::TRASH, temp_count)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                let to_remove: Vec<String> = chart.drawings.iter().filter(|d| d.group_id == "default").map(|d| d.id.clone()).collect();
+                for id in &to_remove { crate::drawing_db::remove(id); }
+                chart.drawings.retain(|d| d.group_id != "default");
+                chart.selected_ids.clear(); chart.selected_id = None;
+                ui.close_menu();
+            }
+        }
+        ui.menu_button(format!("{} Delete \u{25BA}", Icon::TRASH), |ui| {
+            let red = egui::Color32::from_rgb(224,85,96);
+
+            // Drawings
+            ui.label(egui::RichText::new("DRAWINGS").small().color(t.dim));
+            if !chart.drawings.is_empty() {
+                if ui.button(egui::RichText::new(format!("{} All Drawings", Icon::TRASH)).color(red)).clicked() {
+                    for d in &chart.drawings {
+                        if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                        chart.undo_stack.push(DrawingAction::Remove(d.clone()));
+                    }
+                    chart.redo_stack.clear();
+                    for d in &chart.drawings { crate::drawing_db::remove(&d.id); }
+                    chart.drawings.clear();
+                    chart.selected_ids.clear(); chart.selected_id = None;
+                    ui.close_menu();
+                }
+            }
+            // By group — deletes drawings in THIS chart belonging to that group (not the group itself)
+            for g in chart.groups.clone() {
+                let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
+                if count == 0 { continue; }
+                let label = format!("  {} {} ({})", Icon::TRASH, g.name, count);
+                if ui.button(egui::RichText::new(&label).color(red)).clicked() {
+                    let gid = g.id.clone();
+                    let ids: Vec<String> = chart.drawings.iter().filter(|d| d.group_id == gid).map(|d| d.id.clone()).collect();
+                    for d in chart.drawings.iter().filter(|d| d.group_id == gid) {
+                        if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
+                        chart.undo_stack.push(DrawingAction::Remove(d.clone()));
+                    }
+                    chart.redo_stack.clear();
+                    for id in &ids { crate::drawing_db::remove(id); }
+                    chart.drawings.retain(|d| d.group_id != gid);
+                    chart.selected_ids.retain(|sid| !ids.contains(sid));
+                    if let Some(ref s) = chart.selected_id { if ids.contains(s) { chart.selected_id = None; } }
+                    ui.close_menu();
+                }
+            }
+            ui.separator();
+
+            // Indicators
+            ui.label(egui::RichText::new("INDICATORS").small().color(t.dim));
+            if !chart.indicators.is_empty() {
+                if ui.button(egui::RichText::new(format!("{} All Indicators", Icon::TRASH)).color(red)).clicked() {
+                    chart.indicators.clear();
+                    chart.indicator_bar_count = 0;
+                    ui.close_menu();
+                }
+            }
+            let ind_snapshot: Vec<(u32, String)> = chart.indicators.iter()
+                .map(|i| (i.id, i.display_name())).collect();
+            for (id, name) in &ind_snapshot {
+                let label = format!("  {} {}", Icon::TRASH, name);
+                if ui.button(egui::RichText::new(&label).color(red)).clicked() {
+                    chart.indicators.retain(|i| i.id != *id);
+                    ui.close_menu();
+                }
+            }
+            ui.separator();
+
+            // Signals
+            ui.label(egui::RichText::new("SIGNALS").small().color(t.dim));
+            if !chart.signal_drawings.is_empty() {
+                if ui.button(egui::RichText::new(format!("{} Signal Drawings ({})", Icon::TRASH, chart.signal_drawings.len())).color(red)).clicked() {
+                    chart.signal_drawings.clear();
+                    ui.close_menu();
+                }
+            }
+            if !chart.pattern_labels.is_empty() {
+                if ui.button(egui::RichText::new(format!("{} Pattern Labels ({})", Icon::TRASH, chart.pattern_labels.len())).color(red)).clicked() {
+                    chart.pattern_labels.clear();
+                    ui.close_menu();
+                }
+            }
+        });
     });
 
     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
