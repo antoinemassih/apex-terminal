@@ -22,6 +22,18 @@ pub use types::*;
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum AnalysisTab { Rrg, TimeSales, Scanner, Scripts }
 
+/// Tab selector for the unified Signals sidebar (Alerts + Signals).
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum SignalsTab { Alerts, Signals }
+
+/// Tab selector for the unified Feed sidebar (News + Discord + Screenshots).
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum FeedTab { News, Discord, Screenshots }
+
+/// Tab selector for the Book pane (Positions/Orders + Journal).
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum BookTab { Book, Journal }
+
 /// Line style
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LineStyle { Solid, Dashed, Dotted }

@@ -7,10 +7,8 @@ use crate::ui_kit::icons::Icon;
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
-// ── Discord Chat side panel ─────────────────────────────────────────────────
-// Drain background results each frame
-if watchlist.discord_open {
+/// Drain background Discord results (textures, messages, guilds). Call before rendering.
+pub(crate) fn drain_background(ctx: &egui::Context, watchlist: &mut Watchlist) {
     // Check auth
     if !watchlist.discord_authenticated {
         if let Some(auth) = crate::discord::get_auth() {
@@ -99,8 +97,13 @@ if watchlist.discord_open {
     }
 }
 
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
+// ── Discord Chat side panel ─────────────────────────────────────────────────
 if watchlist.discord_open {
-    let discord_blurple = rgb(88, 101, 242);
+    drain_background(ctx, watchlist);
+}
+
+if watchlist.discord_open {
     egui::SidePanel::left("discord_chat")
         .default_width(280.0)
         .min_width(220.0)
@@ -110,8 +113,18 @@ if watchlist.discord_open {
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
             .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
         .show(ctx, |ui| {
-            let panel_w = ui.available_width();
+            draw_content(ui, watchlist, t);
+        });
+}
 
+}
+
+/// Tab body content (no SidePanel wrapper). Used by feed_panel Discord tab.
+/// NOTE: caller must call `drain_background(ctx, watchlist)` before this each frame.
+pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
+    let discord_blurple = rgb(88, 101, 242);
+    let panel_w = ui.available_width();
+    {
             if !watchlist.discord_authenticated {
                 // ── Not authenticated: Connect button ──
                 ui.add_space(8.0);
@@ -523,7 +536,5 @@ if watchlist.discord_open {
                         }
                 }
             }
-        });
-}
-
+    }
 }

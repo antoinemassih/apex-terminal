@@ -27,7 +27,19 @@ egui::SidePanel::right("alerts_panel")
         ui.add_space(4.0);
         separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
         ui.add_space(4.0);
+        draw_content(ui, watchlist, panes, ap, t);
+    });
+}
 
+/// Tab body content (no SidePanel wrapper, no header). Used by signals_panel.
+pub(crate) fn draw_content(
+    ui: &mut egui::Ui,
+    watchlist: &mut Watchlist,
+    panes: &mut [Chart],
+    ap: usize,
+    t: &Theme,
+) {
+    {
         // ── Add Alert section ──
         {
             let chart = &panes[ap];
@@ -325,5 +337,5 @@ egui::SidePanel::right("alerts_panel")
                 }
             });
         }
-    });
+    }
 }

@@ -124,83 +124,93 @@ pub(crate) fn draw(
                 });
             });
             ui.add_space(4.0);
+            draw_content(ui, watchlist, t, panes, active_pane);
+        });
+}
 
-            if watchlist.screenshot_entries.is_empty() {
-                ui.add_space(20.0);
-                ui.vertical_centered(|ui| {
-                    ui.label(egui::RichText::new("No screenshots yet").monospace().size(10.0).color(t.dim));
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Press Ctrl+Shift+S to capture").monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
-                });
-                return;
-            }
+/// Tab body content (no SidePanel wrapper, no header). Used by feed_panel Screenshots tab.
+pub(crate) fn draw_content(
+    ui: &mut egui::Ui,
+    watchlist: &mut Watchlist,
+    t: &Theme,
+    panes: &mut [super::super::gpu::Chart],
+    active_pane: usize,
+) {
+    if watchlist.screenshot_entries.is_empty() {
+        ui.add_space(20.0);
+        ui.vertical_centered(|ui| {
+            ui.label(egui::RichText::new("No screenshots yet").monospace().size(10.0).color(t.dim));
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("Press Ctrl+Shift+S to capture").monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+        });
+        return;
+    }
 
-            // Scrollable list
-            let mut remove_id: Option<String> = None;
-            let mut navigate_entry: Option<(String, String, f32, u32)> = None;
+    // Scrollable list
+    let mut remove_id: Option<String> = None;
+    let mut navigate_entry: Option<(String, String, f32, u32)> = None;
 
-            egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
-                for entry in &watchlist.screenshot_entries {
-                    let card = egui::Frame::NONE
-                        .fill(t.bg.gamma_multiply(0.6))
-                        .rounding(4.0)
-                        .inner_margin(egui::Margin::same(6))
-                        .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+    egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
+        for entry in &watchlist.screenshot_entries {
+            let card = egui::Frame::NONE
+                .fill(t.bg.gamma_multiply(0.6))
+                .rounding(4.0)
+                .inner_margin(egui::Margin::same(6))
+                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)));
 
-                    card.show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            // Symbol + timeframe
-                            ui.label(egui::RichText::new(&entry.symbol).monospace().size(11.0).strong().color(t.accent));
-                            ui.label(egui::RichText::new(&entry.timeframe).monospace().size(9.0).color(t.dim));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                // Delete button
-                                if ui.add(egui::Button::new(
-                                    egui::RichText::new("\u{e9a8}").size(10.0).color(t.bear.gamma_multiply(0.5)) // X icon
-                                ).frame(false).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Delete").clicked() {
-                                    remove_id = Some(entry.id.clone());
-                                }
-                            });
-                        });
-
-                        // Timestamp
-                        ui.label(egui::RichText::new(format_timestamp(entry.timestamp)).monospace().size(8.5).color(t.dim.gamma_multiply(0.7)));
-
-                        // Note (if any)
-                        if !entry.note.is_empty() {
-                            ui.label(egui::RichText::new(&entry.note).monospace().size(9.0).color(t.dim));
-                        }
-
-                        // View button — navigates to the chart state
+            card.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // Symbol + timeframe
+                    ui.label(egui::RichText::new(&entry.symbol).monospace().size(11.0).strong().color(t.accent));
+                    ui.label(egui::RichText::new(&entry.timeframe).monospace().size(9.0).color(t.dim));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Delete button
                         if ui.add(egui::Button::new(
-                            egui::RichText::new("View").monospace().size(9.0).color(t.accent)
-                        ).min_size(egui::vec2(50.0, 16.0))).on_hover_text("Navigate to this chart state").clicked() {
-                            navigate_entry = Some((entry.symbol.clone(), entry.timeframe.clone(), entry.vs, entry.vc));
+                            egui::RichText::new("\u{e9a8}").size(10.0).color(t.bear.gamma_multiply(0.5)) // X icon
+                        ).frame(false).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Delete").clicked() {
+                            remove_id = Some(entry.id.clone());
                         }
                     });
-                    ui.add_space(4.0);
+                });
+
+                // Timestamp
+                ui.label(egui::RichText::new(format_timestamp(entry.timestamp)).monospace().size(8.5).color(t.dim.gamma_multiply(0.7)));
+
+                // Note (if any)
+                if !entry.note.is_empty() {
+                    ui.label(egui::RichText::new(&entry.note).monospace().size(9.0).color(t.dim));
+                }
+
+                // View button — navigates to the chart state
+                if ui.add(egui::Button::new(
+                    egui::RichText::new("View").monospace().size(9.0).color(t.accent)
+                ).min_size(egui::vec2(50.0, 16.0))).on_hover_text("Navigate to this chart state").clicked() {
+                    navigate_entry = Some((entry.symbol.clone(), entry.timeframe.clone(), entry.vs, entry.vc));
                 }
             });
+            ui.add_space(4.0);
+        }
+    });
 
-            // Handle deletions
-            if let Some(id) = remove_id {
-                watchlist.screenshot_entries.retain(|e| e.id != id);
-                persist(&watchlist.screenshot_entries);
-            }
+    // Handle deletions
+    if let Some(id) = remove_id {
+        watchlist.screenshot_entries.retain(|e| e.id != id);
+        persist(&watchlist.screenshot_entries);
+    }
 
-            // Handle navigation
-            if let Some((symbol, timeframe, vs, vc)) = navigate_entry {
-                if active_pane < panes.len() {
-                    let chart = &mut panes[active_pane];
-                    // Switch symbol/timeframe if different
-                    if chart.symbol != symbol || chart.timeframe != timeframe {
-                        chart.pending_symbol_change = Some(symbol);
-                        chart.pending_timeframe_change = Some(timeframe);
-                    }
-                    chart.vs = vs;
-                    chart.vc = vc;
-                    chart.vc_target = vc;
-                    chart.auto_scroll = false;
-                }
+    // Handle navigation
+    if let Some((symbol, timeframe, vs, vc)) = navigate_entry {
+        if active_pane < panes.len() {
+            let chart = &mut panes[active_pane];
+            // Switch symbol/timeframe if different
+            if chart.symbol != symbol || chart.timeframe != timeframe {
+                chart.pending_symbol_change = Some(symbol);
+                chart.pending_timeframe_change = Some(timeframe);
             }
-        });
+            chart.vs = vs;
+            chart.vc = vc;
+            chart.vc_target = vc;
+            chart.auto_scroll = false;
+        }
+    }
 }

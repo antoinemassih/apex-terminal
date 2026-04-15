@@ -53,64 +53,69 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
             ui.add_space(12.0);
 
-            // ── Coming Soon content ─────────────────────────────────────
-            egui::ScrollArea::vertical()
-                .id_salt("journal_content")
-                .show(ui, |ui| {
-                    ui.set_min_width(w - 4.0);
-                    let m = 14.0;
-
-                    // Badge
-                    ui.vertical_centered(|ui| {
-                        let badge_text = "COMING SOON";
-                        let badge_rect = ui.allocate_space(egui::vec2(100.0, 22.0)).1;
-                        ui.painter().rect_filled(badge_rect, 4.0, color_alpha(t.accent, ALPHA_SOFT));
-                        ui.painter().rect_stroke(badge_rect, 4.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_DIM)), egui::StrokeKind::Outside);
-                        ui.painter().text(
-                            badge_rect.center(), egui::Align2::CENTER_CENTER,
-                            badge_text, egui::FontId::monospace(9.0), t.accent,
-                        );
-                    });
-
-                    ui.add_space(12.0);
-
-                    // Description
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.label(egui::RichText::new("Track every trade with automatic logging,")
-                            .monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.label(egui::RichText::new("chart snapshots, and performance analytics.")
-                            .monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
-                    });
-
-                    ui.add_space(14.0);
-
-                    // Section header
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.label(egui::RichText::new("PLANNED FEATURES")
-                            .monospace().size(8.0).strong().color(t.dim.gamma_multiply(0.5)));
-                    });
-                    ui.add_space(6.0);
-
-                    // Feature list
-                    for (bullet, feature) in PLANNED_FEATURES {
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new(*bullet)
-                                .monospace().size(9.0).color(t.accent.gamma_multiply(0.6)));
-                            ui.add_space(4.0);
-                            ui.label(egui::RichText::new(*feature)
-                                .monospace().size(9.0).color(t.dim.gamma_multiply(0.8)));
-                        });
-                        ui.add_space(2.0);
-                    }
-
-                    ui.add_space(20.0);
-                });
+            draw_content(ui, watchlist, t);
         });
     if close { watchlist.journal_open = false; }
+}
+
+/// Tab body content (no Window wrapper, no header). Used by orders_panel Journal tab.
+pub(crate) fn draw_content(ui: &mut egui::Ui, _watchlist: &mut Watchlist, t: &Theme) {
+    let w = ui.available_width();
+    egui::ScrollArea::vertical()
+        .id_salt("journal_content")
+        .show(ui, |ui| {
+            ui.set_min_width(w - 4.0);
+            let m = 14.0;
+
+            // Badge
+            ui.vertical_centered(|ui| {
+                let badge_text = "COMING SOON";
+                let badge_rect = ui.allocate_space(egui::vec2(100.0, 22.0)).1;
+                ui.painter().rect_filled(badge_rect, 4.0, color_alpha(t.accent, ALPHA_SOFT));
+                ui.painter().rect_stroke(badge_rect, 4.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_DIM)), egui::StrokeKind::Outside);
+                ui.painter().text(
+                    badge_rect.center(), egui::Align2::CENTER_CENTER,
+                    badge_text, egui::FontId::monospace(9.0), t.accent,
+                );
+            });
+
+            ui.add_space(12.0);
+
+            // Description
+            ui.horizontal(|ui| {
+                ui.add_space(m);
+                ui.label(egui::RichText::new("Track every trade with automatic logging,")
+                    .monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(m);
+                ui.label(egui::RichText::new("chart snapshots, and performance analytics.")
+                    .monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
+            });
+
+            ui.add_space(14.0);
+
+            // Section header
+            ui.horizontal(|ui| {
+                ui.add_space(m);
+                ui.label(egui::RichText::new("PLANNED FEATURES")
+                    .monospace().size(8.0).strong().color(t.dim.gamma_multiply(0.5)));
+            });
+            ui.add_space(6.0);
+
+            // Feature list
+            for (bullet, feature) in PLANNED_FEATURES {
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label(egui::RichText::new(*bullet)
+                        .monospace().size(9.0).color(t.accent.gamma_multiply(0.6)));
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new(*feature)
+                        .monospace().size(9.0).color(t.dim.gamma_multiply(0.8)));
+                });
+                ui.add_space(2.0);
+            }
+
+            ui.add_space(20.0);
+        });
 }

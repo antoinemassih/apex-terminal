@@ -54,77 +54,82 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
             ui.add_space(5.0);
 
-            // News items
-            egui::ScrollArea::vertical()
-                .id_salt("news_items")
-                .show(ui, |ui| {
-                    ui.set_min_width(w - 4.0);
-                    let filtered: Vec<&NewsItem> = watchlist.news_items.iter()
-                        .filter(|n| !watchlist.news_filter_symbol || n.symbol == active_symbol)
-                        .collect();
-
-                    if filtered.is_empty() {
-                        ui.add_space(20.0);
-                        ui.vertical_centered(|ui| {
-                            ui.label(egui::RichText::new("No news for this symbol")
-                                .monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                        });
-                    }
-
-                    for news in &filtered {
-                        let m = 10.0;
-                        let item_rect = egui::Rect::from_min_size(
-                            egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
-                            egui::vec2(w, 52.0),
-                        );
-                        let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
-                        let bg = if item_resp.hovered() { color_alpha(t.toolbar_border, ALPHA_MUTED) } else { egui::Color32::TRANSPARENT };
-                        ui.painter().rect_filled(item_rect, 2.0, bg);
-
-                        // Headline
-                        let headline_rect = egui::Rect::from_min_size(
-                            egui::pos2(item_rect.min.x + m, item_rect.min.y + 4.0),
-                            egui::vec2(w - m * 2.0, 24.0),
-                        );
-                        ui.painter().text(
-                            headline_rect.left_top(), egui::Align2::LEFT_TOP,
-                            &news.headline, egui::FontId::monospace(10.0),
-                            egui::Color32::from_gray(230),
-                        );
-
-                        let meta_y = item_rect.min.y + 30.0;
-
-                        // Source badge
-                        let source_col = match news.source.as_str() {
-                            "Reuters" => rgb(255, 140, 0),
-                            "Bloomberg" => rgb(100, 180, 255),
-                            "CNBC" => rgb(0, 180, 120),
-                            "Benzinga" => rgb(180, 100, 255),
-                            _ => t.dim,
-                        };
-                        let source_rect = egui::Rect::from_min_size(egui::pos2(item_rect.min.x + m, meta_y), egui::vec2(50.0, 14.0));
-                        ui.painter().rect_filled(source_rect, 2.0, color_alpha(source_col, ALPHA_SUBTLE));
-                        ui.painter().text(source_rect.center(), egui::Align2::CENTER_CENTER, &news.source, egui::FontId::monospace(7.0), source_col);
-
-                        // Timestamp
-                        ui.painter().text(egui::pos2(item_rect.min.x + m + 55.0, meta_y + 7.0), egui::Align2::LEFT_CENTER, &news.timestamp, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
-
-                        // Symbol badge
-                        let sym_rect = egui::Rect::from_min_size(egui::pos2(item_rect.min.x + m + 95.0, meta_y), egui::vec2(36.0, 14.0));
-                        ui.painter().rect_filled(sym_rect, 2.0, color_alpha(t.accent, ALPHA_SOFT));
-                        ui.painter().text(sym_rect.center(), egui::Align2::CENTER_CENTER, &news.symbol, egui::FontId::monospace(7.0), t.accent);
-
-                        // Sentiment dot
-                        let dot_col = match news.sentiment {
-                            1 => t.bull, -1 => t.bear, _ => t.dim.gamma_multiply(0.4),
-                        };
-                        ui.painter().circle_filled(egui::pos2(item_rect.right() - m - 4.0, meta_y + 7.0), 3.5, dot_col);
-
-                        if item_resp.clicked() && !news.url.is_empty() {
-                            // TODO: open URL
-                        }
-                    }
-                });
+            draw_content(ui, watchlist, active_symbol, t);
         });
     if close_news { watchlist.news_open = false; }
+}
+
+/// Tab body content (no Window wrapper, no header). Used by feed_panel News tab.
+pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
+    let w = ui.available_width();
+    egui::ScrollArea::vertical()
+        .id_salt("news_items")
+        .show(ui, |ui| {
+            ui.set_min_width(w - 4.0);
+            let filtered: Vec<&NewsItem> = watchlist.news_items.iter()
+                .filter(|n| !watchlist.news_filter_symbol || n.symbol == active_symbol)
+                .collect();
+
+            if filtered.is_empty() {
+                ui.add_space(20.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(egui::RichText::new("No news for this symbol")
+                        .monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                });
+            }
+
+            for news in &filtered {
+                let m = 10.0;
+                let item_rect = egui::Rect::from_min_size(
+                    egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
+                    egui::vec2(w, 52.0),
+                );
+                let item_resp = ui.allocate_rect(item_rect, egui::Sense::click());
+                let bg = if item_resp.hovered() { color_alpha(t.toolbar_border, ALPHA_MUTED) } else { egui::Color32::TRANSPARENT };
+                ui.painter().rect_filled(item_rect, 2.0, bg);
+
+                // Headline
+                let headline_rect = egui::Rect::from_min_size(
+                    egui::pos2(item_rect.min.x + m, item_rect.min.y + 4.0),
+                    egui::vec2(w - m * 2.0, 24.0),
+                );
+                ui.painter().text(
+                    headline_rect.left_top(), egui::Align2::LEFT_TOP,
+                    &news.headline, egui::FontId::monospace(10.0),
+                    egui::Color32::from_gray(230),
+                );
+
+                let meta_y = item_rect.min.y + 30.0;
+
+                // Source badge
+                let source_col = match news.source.as_str() {
+                    "Reuters" => rgb(255, 140, 0),
+                    "Bloomberg" => rgb(100, 180, 255),
+                    "CNBC" => rgb(0, 180, 120),
+                    "Benzinga" => rgb(180, 100, 255),
+                    _ => t.dim,
+                };
+                let source_rect = egui::Rect::from_min_size(egui::pos2(item_rect.min.x + m, meta_y), egui::vec2(50.0, 14.0));
+                ui.painter().rect_filled(source_rect, 2.0, color_alpha(source_col, ALPHA_SUBTLE));
+                ui.painter().text(source_rect.center(), egui::Align2::CENTER_CENTER, &news.source, egui::FontId::monospace(7.0), source_col);
+
+                // Timestamp
+                ui.painter().text(egui::pos2(item_rect.min.x + m + 55.0, meta_y + 7.0), egui::Align2::LEFT_CENTER, &news.timestamp, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+
+                // Symbol badge
+                let sym_rect = egui::Rect::from_min_size(egui::pos2(item_rect.min.x + m + 95.0, meta_y), egui::vec2(36.0, 14.0));
+                ui.painter().rect_filled(sym_rect, 2.0, color_alpha(t.accent, ALPHA_SOFT));
+                ui.painter().text(sym_rect.center(), egui::Align2::CENTER_CENTER, &news.symbol, egui::FontId::monospace(7.0), t.accent);
+
+                // Sentiment dot
+                let dot_col = match news.sentiment {
+                    1 => t.bull, -1 => t.bear, _ => t.dim.gamma_multiply(0.4),
+                };
+                ui.painter().circle_filled(egui::pos2(item_rect.right() - m - 4.0, meta_y + 7.0), 3.5, dot_col);
+
+                if item_resp.clicked() && !news.url.is_empty() {
+                    // TODO: open URL
+                }
+            }
+        });
 }

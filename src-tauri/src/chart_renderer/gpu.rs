@@ -4116,75 +4116,59 @@ fn render_toolbar(
                 ui.spacing_mut().item_spacing.x = 4.0;
 
 
-                // Connection status
+                // Connection status — small painted dot, no button frame
                 {
-                    let conn_resp = tb_btn_tip(ui, Icon::SPARKLE, *conn_panel_open, t, "Connection");
-                    // Green dot overlay
-                    let dot_color = rgb(46, 204, 113);
-                    ui.painter().circle_filled(egui::pos2(conn_resp.rect.right() - 3.0, conn_resp.rect.top() + 5.0), 2.5, dot_color);
-                    if conn_resp.clicked() { *conn_panel_open = !*conn_panel_open; }
-                }
-
-
-                // Alerts panel toggle
-                {
-                    let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
-                        + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
-                    let has_triggered = watchlist.alerts.iter().any(|a| a.triggered)
-                        || panes.iter().flat_map(|p| p.price_alerts.iter()).any(|a| a.triggered);
-                    let alert_icon = if has_triggered { Icon::BELL_RINGING } else { Icon::BELL };
-                    let alert_resp = tb_btn_tip(ui, alert_icon, watchlist.alerts_panel_open, t, "Alerts");
-                    if active_count > 0 {
-                        let badge_x = alert_resp.rect.right() - 3.0;
-                        let badge_y = alert_resp.rect.top() + 5.0;
-                        ui.painter().circle_filled(egui::pos2(badge_x, badge_y), 5.0, egui::Color32::from_rgb(255, 191, 0));
-                        ui.painter().text(egui::pos2(badge_x, badge_y), egui::Align2::CENTER_CENTER,
-                            &format!("{}", active_count), egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                    let connected = account_data_cached.as_ref().map_or(false, |(s, _, _)| s.connected);
+                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    let dot_color = if connected {
+                        egui::Color32::from_rgb(46, 204, 113)
+                    } else {
+                        egui::Color32::from_rgb(230, 160, 40)
+                    };
+                    ui.painter().circle_filled(rect.center(), 3.0, dot_color);
+                    if resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
-                    if alert_resp.clicked() { watchlist.alerts_panel_open = !watchlist.alerts_panel_open; }
+                    let tip = if connected { "Connection: OK" } else { "Connection: Issue" };
+                    let resp = resp.on_hover_text(tip);
+                    if resp.clicked() { *conn_panel_open = !*conn_panel_open; }
                 }
-
-
-
-
-                // Watchlist toggle
-                if tb_btn_tip(ui, Icon::LIST, watchlist.open, t, "Watchlist").clicked() { watchlist.open = !watchlist.open; }
-
-                // Discord chat toggle
-                if tb_btn_tip(ui, Icon::CHAT_DOTS, watchlist.discord_open, t, "Discord").clicked() {
-                    watchlist.discord_open = !watchlist.discord_open;
-                }
-
-                // News feed toggle
-                if tb_btn_tip(ui, Icon::NEWSPAPER, watchlist.news_open, t, "News").clicked() {
-                    watchlist.news_open = !watchlist.news_open;
-                }
-
-                // Trade Journal toggle
-                if tb_btn_tip(ui, Icon::NOTEBOOK, watchlist.journal_open, t, "Trade Journal").clicked() {
-                    watchlist.journal_open = !watchlist.journal_open;
-                }
-
-                // Screenshot library toggle
-                if tb_btn_tip(ui, Icon::CAMERA, watchlist.screenshot_open, t, "Screenshots").clicked() {
-                    watchlist.screenshot_open = !watchlist.screenshot_open;
-                }
-
-                // Analysis sidebar toggle (unified RRG / T&S / Scanner / Scripts)
-                if tb_btn_tip(ui, "Analysis", watchlist.analysis_open, t, "Analysis Sidebar").clicked() {
-                    watchlist.analysis_open = !watchlist.analysis_open;
-                }
-                // Signal demo toggle
-                let demo_active = panes[ap].trend_health_score > 0.0;
-                if tb_btn_tip(ui, "Signals", demo_active, t, "Toggle Signal Demo").clicked() {
-                    panes[ap].signal_demo_toggle = true;
-                }
-
-                ui.add(egui::Separator::default().spacing(4.0));
 
                 // Settings panel
                 if tb_btn_tip(ui, Icon::GEAR, watchlist.settings_open, t, "Settings").clicked() {
                     watchlist.settings_open = !watchlist.settings_open;
+                }
+
+                ui.add(egui::Separator::default().spacing(4.0));
+
+                // Feed pane (News + Discord + Screenshots)
+                if tb_btn_tip(ui, &format!("{} Feed", Icon::NEWSPAPER), watchlist.feed_panel_open, t, "Feed (News, Discord, Screenshots)").clicked() {
+                    watchlist.feed_panel_open = !watchlist.feed_panel_open;
+                }
+
+                // Watchlist toggle
+                if tb_btn_tip(ui, &format!("{} Watchlist", Icon::LIST), watchlist.open, t, "Watchlist").clicked() {
+                    watchlist.open = !watchlist.open;
+                }
+
+                // Analysis sidebar toggle (unified RRG / T&S / Scanner / Scripts)
+                if tb_btn_tip(ui, &format!("{} Analysis", Icon::CHART_LINE), watchlist.analysis_open, t, "Analysis Sidebar").clicked() {
+                    watchlist.analysis_open = !watchlist.analysis_open;
+                }
+
+                // Signals pane (Alerts + Signals)
+                {
+                    let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
+                        + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
+                    let signals_resp = tb_btn_tip(ui, &format!("{} Signals", Icon::LIGHTNING), watchlist.signals_panel_open, t, "Signals (Alerts + Signals)");
+                    if active_count > 0 {
+                        let badge_x = signals_resp.rect.right() - 3.0;
+                        let badge_y = signals_resp.rect.top() + 5.0;
+                        ui.painter().circle_filled(egui::pos2(badge_x, badge_y), 5.0, egui::Color32::from_rgb(255, 191, 0));
+                        ui.painter().text(egui::pos2(badge_x, badge_y), egui::Align2::CENTER_CENTER,
+                            &format!("{}", active_count), egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                    }
+                    if signals_resp.clicked() { watchlist.signals_panel_open = !watchlist.signals_panel_open; }
                 }
 
                 // New window
@@ -4520,40 +4504,32 @@ fn render_toolbar(
     // ── Object Tree side panel
     super::ui::object_tree::draw(ctx, watchlist, panes, ap, t);
 
-    // ── Orders / Positions / Alerts side panel
+    // ── Book pane (Positions/Orders + Journal tabs) ─────────────────────────
     super::ui::orders_panel::draw(ctx, watchlist, panes, ap, t, account_data_cached);
 
-    // ── Discord Chat side panel
-    super::ui::discord_panel::draw(ctx, watchlist, t);
-
-    // ── Scanner side panel ───────────────��──────────────────────────────��──────
+    // ── Scanner side panel
     super::ui::scanner_panel::draw(ctx, watchlist, panes, ap, t);
 
-    // ── Time & Sales side panel ──────────────────────────────────────────────
+    // ── Time & Sales side panel
     super::ui::tape_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
 
-    // ── News Feed floating window ────────────────────────────────────────────��
-    super::ui::news_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
-
-    // ── RRG (Relative Rotation Graph) side panel ───────────────────────────
+    // ── RRG (Relative Rotation Graph) side panel
     super::ui::rrg_panel::draw(ctx, watchlist, t);
 
-    // ── Analysis sidebar (unified RRG / T&S / Scanner / Scripts) ───────────
+    // ── Analysis sidebar (unified RRG / T&S / Scanner / Scripts)
     super::ui::analysis_panel::draw(ctx, watchlist, panes, *active_pane, t);
 
-    // ── Trade Journal floating window ────────────────────────────────────────
-    super::ui::journal_panel::draw(ctx, watchlist, t);
-    // ── Script / Backtesting panel ────────────────────────────────────────────
+    // ── Signals sidebar (unified Alerts + Signals)
+    super::ui::signals_panel::draw(ctx, watchlist, panes, ap, t);
+
+    // ── Feed sidebar (unified News + Discord + Screenshots)
+    super::ui::feed_panel::draw(ctx, watchlist, panes, ap, t);
+
+    // ── Script / Backtesting panel
     super::ui::script_panel::draw(ctx, watchlist, t);
 
-    // ── Spread Builder panel ────────────────────────────────────────────────
+    // ── Spread Builder panel
     super::ui::spread_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
-
-    // ── Screenshot library panel ────────────────────────────────────────────
-    super::ui::screenshot_panel::draw(ctx, watchlist, t, panes, ap);
-
-    // ── Alerts panel ────────────────────────────────────────────────────────
-    super::ui::alerts_panel::draw(ctx, watchlist, panes, ap, t);
 
     // ── Alert checking — run every frame, check if any alert prices were crossed ──
     {
@@ -14441,6 +14417,14 @@ pub(crate) struct Watchlist {
     // Analysis sidebar (unified RRG / T&S / Scanner / Scripts)
     pub(crate) analysis_open: bool,
     pub(crate) analysis_tab: crate::chart_renderer::AnalysisTab,
+    // Signals sidebar (unified Alerts + Signals)
+    pub(crate) signals_panel_open: bool,
+    pub(crate) signals_tab: crate::chart_renderer::SignalsTab,
+    // Feed sidebar (unified News + Discord + Screenshots)
+    pub(crate) feed_panel_open: bool,
+    pub(crate) feed_tab: crate::chart_renderer::FeedTab,
+    // Book pane tab (Positions/Orders + Journal)
+    pub(crate) book_tab: crate::chart_renderer::BookTab,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -14534,7 +14518,12 @@ impl Watchlist {
                rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
                rrg_time_offset: 0.0, rrg_tail_length: 5,
                analysis_open: false,
-               analysis_tab: crate::chart_renderer::AnalysisTab::Rrg }
+               analysis_tab: crate::chart_renderer::AnalysisTab::Rrg,
+               signals_panel_open: false,
+               signals_tab: crate::chart_renderer::SignalsTab::Alerts,
+               feed_panel_open: false,
+               feed_tab: crate::chart_renderer::FeedTab::News,
+               book_tab: crate::chart_renderer::BookTab::Book }
     }
 
     /// Add symbol to the last section (creates one if none exist).

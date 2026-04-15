@@ -5,6 +5,7 @@ use super::style::*;
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderStatus, OrderLevel, PriceAlert, cancel_order_with_pair, fmt_notional};
+use crate::chart_renderer::BookTab;
 
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -22,8 +23,28 @@ if watchlist.orders_panel_open {
         .max_width(350.0)
         .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
         .show(ctx, |ui| {
-            if panel_header(ui, "BOOK", t.accent, t.dim) { watchlist.orders_panel_open = false; }
-            ui.add_space(4.0);
+            // Tab bar with close button
+            let tab_row = ui.horizontal(|ui| {
+                ui.set_min_height(26.0);
+                tab_bar(ui, &mut watchlist.book_tab, &[
+                    (BookTab::Book, "Book"),
+                    (BookTab::Journal, "Journal"),
+                ], t.accent, t.dim);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if close_button(ui, t.dim) { watchlist.orders_panel_open = false; }
+                });
+            });
+            let line_y = tab_row.response.rect.max.y;
+            ui.painter().line_segment(
+                [egui::pos2(ui.min_rect().left(), line_y),
+                 egui::pos2(ui.min_rect().right(), line_y)],
+                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            ui.add_space(GAP_SM);
+
+            if watchlist.book_tab == BookTab::Journal {
+                super::journal_panel::draw_content(ui, watchlist, t);
+                return;
+            }
 
             // ══════════════════════════════════════════════════════
             // ── POSITIONS SECTION (top half of book) ──
