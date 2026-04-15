@@ -82,7 +82,7 @@ if watchlist.hotkey_editor_open {
                                     watchlist.hotkey_editing_id = Some(*hk_id);
                                 }
                             }
-                            let key_bg = if *is_editing { color_alpha(t.accent, 30) } else { color_alpha(t.toolbar_border, 30) };
+                            let key_bg = if *is_editing { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, ALPHA_TINT) };
                             let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
                             ui.add(egui::Button::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(10.0).color(key_fg))
                                 .fill(key_bg).corner_radius(3.0).min_size(egui::vec2(80.0, 18.0)));

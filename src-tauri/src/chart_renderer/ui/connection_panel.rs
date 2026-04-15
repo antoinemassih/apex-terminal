@@ -46,7 +46,7 @@ if *conn_panel_open {
             svc_row(ui, "OCOCO", "OK", true, "192.168.1.60:30300");
 
             ui.add_space(4.0);
-            dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 40));
+            dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_MUTED));
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.add_space(m);

@@ -42,7 +42,7 @@ if watchlist.trendline_filter_open {
             }
 
             ui.add_space(8.0);
-            dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
+            dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_LINE));
             ui.add_space(8.0);
 
             // Visibility toggles
@@ -68,7 +68,7 @@ if watchlist.trendline_filter_open {
             // Groups
             if !chart.groups.is_empty() {
                 ui.add_space(8.0);
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, 50));
+                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_LINE));
                 ui.add_space(8.0);
                 dialog_section(ui, "GROUPS", m, t.dim.gamma_multiply(0.5));
                 for g in chart.groups.clone() {
@@ -189,8 +189,8 @@ if chart.picker_open {
         .title_bar(false)
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
-            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 80)))
-            .corner_radius(6.0)
+            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)))
+            .corner_radius(RADIUS_LG)
             .inner_margin(egui::Margin::same(8)))
         .show(ctx, |ui| {
             let input = ui.add(

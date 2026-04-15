@@ -38,8 +38,8 @@ if watchlist.cmd_palette_open {
         .title_bar(false)
         .frame(egui::Frame::popup(&ctx.style())
             .fill(color_alpha(t.toolbar_bg, 250))
-            .inner_margin(egui::Margin::same(8))
-            .stroke(egui::Stroke::new(1.5, color_alpha(t.accent, 80)))
+            .inner_margin(egui::Margin::same(GAP_LG as i8))
+            .stroke(egui::Stroke::new(STROKE_BOLD, color_alpha(t.accent, ALPHA_STRONG)))
             .corner_radius(8.0)
 )
         .show(ctx, |ui| {
@@ -94,7 +94,7 @@ if watchlist.cmd_palette_open {
                 ui.add_space(4.0);
                 for (ri, (sym, name, rtype)) in watchlist.cmd_palette_results.iter().enumerate() {
                     let is_sel = ri as i32 == watchlist.cmd_palette_sel;
-                    let bg = if is_sel { color_alpha(t.accent, 30) } else { egui::Color32::TRANSPARENT };
+                    let bg = if is_sel { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
                     let resp = ui.horizontal(|ui| {
                         let full_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(pal_w - 16.0, 24.0));
                         ui.painter().rect_filled(full_rect, 4.0, bg);
