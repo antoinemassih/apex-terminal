@@ -49,6 +49,9 @@ pub(crate) fn draw(
 
         // Ensure we always see fresh data for the current DTE
         let spot = panes[pi].bars.last().map(|b| b.close).unwrap_or(0.0);
+        // Current option metadata (for prev/next strike buttons)
+        let cur_strike = panes[pi].option_strike;
+        let cur_is_call = panes[pi].option_type == "C";
 
         let window_resp = egui::Area::new(egui::Id::new(("opt_quick_picker", pi)))
             .order(egui::Order::Foreground)
@@ -109,6 +112,71 @@ pub(crate) fn draw(
                             });
                         });
                         ui.add_space(GAP_SM);
+
+                        // ── Quick strike navigation: < Prev Strike    Next Strike > ──
+                        // Only show when we know the current strike (is_option tab)
+                        if cur_strike > 0.0 {
+                            ui.add_space(GAP_XS);
+                            ui.horizontal(|ui| {
+                                ui.add_space(GAP_SM);
+                                let half_w = 120.0;
+                                // Prev strike
+                                let (prev_rect, prev_resp) = ui.allocate_exact_size(
+                                    egui::vec2(half_w, 22.0), egui::Sense::click());
+                                let prev_bg = if prev_resp.hovered() {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                    color_alpha(t.accent, ALPHA_TINT)
+                                } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
+                                ui.painter().rect_filled(prev_rect, RADIUS_MD, prev_bg);
+                                ui.painter().rect_stroke(prev_rect, RADIUS_MD,
+                                    egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_LINE)),
+                                    egui::StrokeKind::Inside);
+                                ui.painter().text(
+                                    prev_rect.center(), egui::Align2::CENTER_CENTER,
+                                    format!("{} Prev Strike", Icon::CARET_LEFT),
+                                    egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+                                if prev_resp.clicked() {
+                                    // Find the next-lower strike in the current type's chain
+                                    let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
+                                    let rows = if current_dte == 0 { rows }
+                                        else if cur_is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 };
+                                    let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
+                                    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                                    if let Some(&lower) = sorted.iter().rev().find(|&&s| s < cur_strike) {
+                                        pending_load = Some((lower, cur_is_call));
+                                    }
+                                }
+                                ui.add_space(GAP_SM);
+                                // Next strike
+                                let (next_rect, next_resp) = ui.allocate_exact_size(
+                                    egui::vec2(half_w, 22.0), egui::Sense::click());
+                                let next_bg = if next_resp.hovered() {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                    color_alpha(t.accent, ALPHA_TINT)
+                                } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
+                                ui.painter().rect_filled(next_rect, RADIUS_MD, next_bg);
+                                ui.painter().rect_stroke(next_rect, RADIUS_MD,
+                                    egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_LINE)),
+                                    egui::StrokeKind::Inside);
+                                ui.painter().text(
+                                    next_rect.center(), egui::Align2::CENTER_CENTER,
+                                    format!("Next Strike {}", Icon::CARET_RIGHT),
+                                    egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+                                if next_resp.clicked() {
+                                    let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
+                                    let rows = if current_dte == 0 { rows }
+                                        else if cur_is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 };
+                                    let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
+                                    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                                    if let Some(&higher) = sorted.iter().find(|&&s| s > cur_strike) {
+                                        pending_load = Some((higher, cur_is_call));
+                                    }
+                                }
+                            });
+                            ui.add_space(GAP_SM);
+                            separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                            ui.add_space(GAP_SM);
+                        }
 
                         // Column headers: CALL | STRIKE | PUT
                         ui.horizontal(|ui| {

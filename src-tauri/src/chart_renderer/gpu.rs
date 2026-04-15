@@ -5017,12 +5017,24 @@ fn render_chart_pane(
                     chart.tab_changes.push(0.0);
                     chart.tab_prices.push(0.0);
                     chart.tab_active = chart.tab_symbols.len() - 1;
-                    chart.picker_open = true;
-                    chart.picker_query.clear();
-                    chart.picker_results.clear();
-                    chart.picker_last_query.clear();
-                    chart.picker_pos = egui::pos2(plus_rect.left(), plus_rect.bottom());
                     *active_pane = pane_idx;
+                    if chart.is_option {
+                        // Open the option quick picker for the underlying
+                        chart.option_quick_open = true;
+                        chart.option_quick_pos = egui::pos2(plus_rect.left(), plus_rect.bottom() + 4.0);
+                        if !chart.underlying.is_empty() {
+                            let dte_list = [0, 1, 2, 3, 7, 14, 30, 60];
+                            let dte = dte_list[chart.option_quick_dte_idx.min(dte_list.len() - 1)];
+                            let px = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                            fetch_chain_background(chart.underlying.clone(), 15, dte, px);
+                        }
+                    } else {
+                        chart.picker_open = true;
+                        chart.picker_query.clear();
+                        chart.picker_results.clear();
+                        chart.picker_last_query.clear();
+                        chart.picker_pos = egui::pos2(plus_rect.left(), plus_rect.bottom());
+                    }
                 }
                 tab_x += plus_w + 6.0;
             }
@@ -5249,9 +5261,21 @@ fn render_chart_pane(
                     chart.tab_changes.push(0.0);
                     chart.tab_prices.push(0.0);
                     chart.tab_active = chart.tab_symbols.len() - 1;
-                    chart.picker_open = true;
-                    chart.picker_query.clear();
-                    chart.picker_results.clear();
+                    if chart.is_option {
+                        // Open the option quick picker for the underlying
+                        chart.option_quick_open = true;
+                        chart.option_quick_pos = egui::pos2(plus_rect.left(), plus_rect.bottom() + 4.0);
+                        if !chart.underlying.is_empty() {
+                            let dte_list = [0, 1, 2, 3, 7, 14, 30, 60];
+                            let dte = dte_list[chart.option_quick_dte_idx.min(dte_list.len() - 1)];
+                            let px = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                            fetch_chain_background(chart.underlying.clone(), 15, dte, px);
+                        }
+                    } else {
+                        chart.picker_open = true;
+                        chart.picker_query.clear();
+                        chart.picker_results.clear();
+                    }
                 }
             }
         }
