@@ -169,47 +169,59 @@ SettingsTab::Appearance => {
     {
         let font_names = crate::ui_kit::icons::FONT_NAMES;
         let current_idx = watchlist.font_idx.min(font_names.len() - 1);
-        ui.horizontal(|ui| {
-            ui.add_space(m);
-            ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-            for (i, &name) in font_names.iter().enumerate() {
-                let sel = current_idx == i;
-                let card_w = 128.0;
-                let card_h = 48.0;
-                let (r, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+        let card_w = 170.0;
+        let card_h = 50.0;
+        let cols = 3;
+        let is_mono = [true, true, true, false, false, false]; // first 3 are mono
 
-                // Card bg
-                let bg = if sel { color_alpha(t.accent, ALPHA_TINT) }
-                    else if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_SUBTLE) }
-                    else { color_alpha(t.toolbar_border, ALPHA_FAINT) };
-                let border = if sel { t.accent }
-                    else if resp.hovered() { color_alpha(t.accent, ALPHA_LINE) }
-                    else { color_alpha(t.toolbar_border, ALPHA_MUTED) };
-                ui.painter().rect_filled(r, RADIUS_MD, bg);
-                ui.painter().rect_stroke(r, RADIUS_MD,
-                    egui::Stroke::new(if sel { 1.5 } else { 0.5 }, border), egui::StrokeKind::Outside);
+        for row_start in (0..font_names.len()).step_by(cols) {
+            ui.horizontal(|ui| {
+                ui.add_space(m);
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                for i in row_start..(row_start + cols).min(font_names.len()) {
+                    let name = font_names[i];
+                    let sel = current_idx == i;
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
 
-                // Font name
-                let name_col = if sel { t.accent } else { TEXT_PRIMARY };
-                ui.painter().text(
-                    egui::pos2(r.center().x, r.top() + 14.0),
-                    egui::Align2::CENTER_CENTER,
-                    name, egui::FontId::monospace(FONT_SM), name_col);
+                    let bg = if sel { color_alpha(t.accent, ALPHA_TINT) }
+                        else if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_SUBTLE) }
+                        else { color_alpha(t.toolbar_border, ALPHA_FAINT) };
+                    let border_col = if sel { t.accent }
+                        else if resp.hovered() { color_alpha(t.accent, ALPHA_LINE) }
+                        else { color_alpha(t.toolbar_border, ALPHA_MUTED) };
+                    ui.painter().rect_filled(r, RADIUS_MD, bg);
+                    ui.painter().rect_stroke(r, RADIUS_MD,
+                        egui::Stroke::new(if sel { 1.5 } else { 0.5 }, border_col), egui::StrokeKind::Outside);
 
-                // Sample text in that font style (visual hint)
-                let sample_col = if sel { TEXT_PRIMARY } else { t.dim.gamma_multiply(0.7) };
-                ui.painter().text(
-                    egui::pos2(r.center().x, r.bottom() - 12.0),
-                    egui::Align2::CENTER_CENTER,
-                    "0123 AAPL $9.50", egui::FontId::monospace(FONT_XS), sample_col);
+                    // Font name
+                    let name_col = if sel { t.accent } else { TEXT_PRIMARY };
+                    ui.painter().text(
+                        egui::pos2(r.center().x, r.top() + 14.0),
+                        egui::Align2::CENTER_CENTER,
+                        name, egui::FontId::monospace(FONT_SM), name_col);
 
-                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                if resp.clicked() && !sel {
-                    watchlist.font_idx = i;
-                    crate::ui_kit::icons::init_fonts(ui.ctx(), i);
+                    // Type badge + sample
+                    let type_label = if is_mono[i.min(is_mono.len()-1)] { "mono" } else { "sans" };
+                    let type_col = t.dim.gamma_multiply(0.4);
+                    ui.painter().text(
+                        egui::pos2(r.left() + 8.0, r.bottom() - 12.0),
+                        egui::Align2::LEFT_CENTER,
+                        type_label, egui::FontId::monospace(7.0), type_col);
+
+                    let sample_col = if sel { TEXT_PRIMARY } else { t.dim.gamma_multiply(0.7) };
+                    ui.painter().text(
+                        egui::pos2(r.right() - 8.0, r.bottom() - 12.0),
+                        egui::Align2::RIGHT_CENTER,
+                        "0123 AAPL $9.50", egui::FontId::monospace(FONT_XS), sample_col);
+
+                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    if resp.clicked() && !sel {
+                        watchlist.font_idx = i;
+                        crate::ui_kit::icons::init_fonts(ui.ctx(), i);
+                    }
                 }
-            }
-        });
+            });
+        }
     }
     ui.add_space(GAP_LG);
 

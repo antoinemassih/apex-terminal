@@ -53,6 +53,7 @@ interface ChartStore {
   autoScrollVersion: number
   layout: Layout
   theme: string
+  font: string
   annotationFilters: AnnotationFilters
   setActivePane: (id: string) => void
   setSymbol: (id: string, symbol: string) => void
@@ -63,6 +64,7 @@ interface ChartStore {
   toggleAllIndicators: (paneId: string) => void
   setLayout: (layout: Layout) => void
   setTheme: (theme: string) => void
+  setFont: (font: string) => void
   toggleFilter: (key: keyof AnnotationFilters) => void
 }
 
@@ -81,6 +83,7 @@ export const useChartStore = create<ChartStore>(set => ({
   autoScrollVersion: 0,
   layout: '9' as Layout,
   theme: 'catppuccin',
+  font: 'jetbrains-mono',
   annotationFilters: { ...DEFAULT_FILTERS },
   setActivePane: (id) => set({ activePane: id }),
   setSymbol: (id, symbol) =>
@@ -111,6 +114,7 @@ export const useChartStore = create<ChartStore>(set => ({
     })),
   setLayout: (layout) => set({ layout }),
   setTheme: (theme) => set({ theme }),
+  setFont: (font) => set({ font }),
   toggleFilter: (key) => set(s => ({
     annotationFilters: { ...s.annotationFilters, [key]: !s.annotationFilters[key] },
   })),

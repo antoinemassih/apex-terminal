@@ -127,28 +127,41 @@ impl Icon {
 }
 
 /// Available font choices for the UI.
-pub const FONT_NAMES: &[&str] = &["JetBrains Mono", "Roboto Mono", "Source Code Pro", "IBM Plex Mono"];
+pub const FONT_NAMES: &[&str] = &[
+    "JetBrains Mono",  // 0 — modern monospace, default
+    "Roboto Mono",     // 1 — clean Google monospace
+    "IBM Plex Mono",   // 2 — professional IBM monospace
+    "Inter",           // 3 — best-practice sans-serif, widely loved
+    "Nunito",          // 4 — rounded friendly sans-serif
+    "Space Grotesk",   // 5 — geometric modern sans-serif
+];
 
 /// Initialize fonts + Phosphor icons. Call once during app setup.
-/// `font_idx` selects which of the 4 fonts to use as primary (0 = JetBrains Mono).
+/// `font_idx` selects which of the 6 fonts to use as primary.
 pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
     let mut fonts = egui::FontDefinitions::default();
 
-    // Load all 4 fonts into font_data
+    // Load all 6 fonts into font_data
     fonts.font_data.insert("jetbrains_mono".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("JetBrainsMono-Regular.ttf"))));
     fonts.font_data.insert("roboto_mono".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("RobotoMono-Regular.ttf"))));
-    fonts.font_data.insert("source_code_pro".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SourceCodePro-Regular.ttf"))));
     fonts.font_data.insert("ibm_plex_mono".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexMono-Regular.ttf"))));
+    fonts.font_data.insert("inter".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Regular.ttf"))));
+    fonts.font_data.insert("nunito".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Nunito-Regular.ttf"))));
+    fonts.font_data.insert("space_grotesk".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SpaceGrotesk-Regular.ttf"))));
 
     // Pick the primary font based on selection
     let primary = match font_idx {
         1 => "roboto_mono",
-        2 => "source_code_pro",
-        3 => "ibm_plex_mono",
+        2 => "ibm_plex_mono",
+        3 => "inter",
+        4 => "nunito",
+        5 => "space_grotesk",
         _ => "jetbrains_mono",
     };
 

@@ -1,10 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useChartStore, type Layout } from '../store/chartStore'
 import { useDrawingStore } from '../store/drawingStore'
 import { useWatchlistStore } from '../store/watchlistStore'
 import { useOrderStore } from '../store/orderStore'
 import { INDICATOR_CATALOG } from '../indicators'
 import { THEMES, getTheme } from '../themes'
+import { FONTS, applyFont } from '../fonts'
 import { SymbolPicker } from '../chart/SymbolPicker'
 import { TrendlineFilters } from './TrendlineFilters'
 import { ConnectionPanel } from './ConnectionPanel'
@@ -35,6 +36,8 @@ export function Toolbar() {
   const setLayout = useChartStore(s => s.setLayout)
   const themeName = useChartStore(s => s.theme)
   const setTheme = useChartStore(s => s.setTheme)
+  const fontId = useChartStore(s => s.font)
+  const setFont = useChartStore(s => s.setFont)
   const activeTool = useDrawingStore(s => s.activeTool)
   const setActiveTool = useDrawingStore(s => s.setActiveTool)
   const watchlistOpen = useWatchlistStore(s => s.open)
@@ -47,6 +50,9 @@ export function Toolbar() {
   const tickerRef = useRef<HTMLSpanElement>(null)
   const theme = getTheme(themeName)
 
+  // Apply font to the whole app whenever it changes
+  useEffect(() => { applyFont(fontId) }, [fontId])
+
   const btnStyle = (active: boolean) => ({
     background: active ? theme.borderActive + '33' : theme.toolbarBackground,
     color: active ? theme.borderActive : theme.axisText,
@@ -54,7 +60,6 @@ export function Toolbar() {
     borderRadius: 3,
     padding: '2px 8px',
     fontSize: 11,
-    fontFamily: 'monospace',
     cursor: 'pointer' as const,
   })
 
@@ -69,7 +74,6 @@ export function Toolbar() {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 13,
-    fontFamily: 'monospace',
     flexShrink: 0,
     transition: 'background 0.1s, color 0.1s',
     ...(danger ? {} : {}),
@@ -80,7 +84,7 @@ export function Toolbar() {
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
         height: 36, background: theme.toolbarBackground, borderBottom: `1px solid ${theme.toolbarBorder}`,
-        padding: '0 0 0 10px', flexShrink: 0, fontFamily: 'monospace', fontSize: 12,
+        padding: '0 0 0 10px', flexShrink: 0, fontSize: 12,
         userSelect: 'none',
       }}
     >
@@ -143,11 +147,32 @@ export function Toolbar() {
           style={{
             background: theme.background, color: theme.ohlcLabel,
             border: `1px solid ${theme.toolbarBorder}`,
-            padding: '2px 4px', fontSize: 11, fontFamily: 'monospace', cursor: 'pointer',
+            padding: '2px 4px', fontSize: 11, cursor: 'pointer',
           }}>
           {Object.entries(THEMES).map(([key, t]) => (
             <option key={key} value={key}>{t.name}</option>
           ))}
+        </select>
+      </div>
+
+      {/* Font picker */}
+      <div style={{ display: 'flex', gap: 2, marginLeft: 4, borderLeft: `1px solid ${theme.toolbarBorder}`, paddingLeft: 6 }}>
+        <select value={fontId} onChange={e => setFont(e.target.value)}
+          style={{
+            background: theme.background, color: theme.ohlcLabel,
+            border: `1px solid ${theme.toolbarBorder}`,
+            padding: '2px 4px', fontSize: 11, cursor: 'pointer', maxWidth: 160,
+          }}>
+          <optgroup label="Monospace">
+            {FONTS.filter(f => f.category === 'monospace').map(f => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Sans-serif">
+            {FONTS.filter(f => f.category === 'sans-serif').map(f => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </optgroup>
         </select>
       </div>
 
