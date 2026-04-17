@@ -1,1 +1,2 @@
-1 ICON "icons/apex-native.ico"
+// Manifest only — icon is embedded by Tauri's build step
+1 24 "apex-native.manifest"

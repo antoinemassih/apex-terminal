@@ -98,14 +98,16 @@ pub(crate) struct ChartWidget {
 impl ChartWidget {
     pub fn new(kind: ChartWidgetKind, x: f32, y: f32) -> Self {
         let (w, h) = match kind {
-            ChartWidgetKind::TrendStrength | ChartWidgetKind::Momentum | ChartWidgetKind::Volatility => (140.0, 80.0),
-            ChartWidgetKind::SessionTimer => (140.0, 60.0),
-            ChartWidgetKind::VolumeProfile => (120.0, 160.0),
-            ChartWidgetKind::KeyLevels => (160.0, 120.0),
-            ChartWidgetKind::OptionGreeks => (160.0, 100.0),
-            ChartWidgetKind::RiskReward => (140.0, 80.0),
-            ChartWidgetKind::MarketBreadth => (160.0, 100.0),
-            ChartWidgetKind::Custom => (140.0, 80.0),
+            ChartWidgetKind::TrendStrength  => (160.0, 120.0),
+            ChartWidgetKind::Momentum       => (160.0, 120.0),
+            ChartWidgetKind::Volatility     => (170.0, 110.0),
+            ChartWidgetKind::SessionTimer   => (160.0, 110.0),
+            ChartWidgetKind::VolumeProfile  => (140.0, 180.0),
+            ChartWidgetKind::KeyLevels      => (190.0, 140.0),
+            ChartWidgetKind::OptionGreeks   => (185.0, 120.0),
+            ChartWidgetKind::RiskReward     => (170.0, 105.0),
+            ChartWidgetKind::MarketBreadth  => (180.0, 120.0),
+            ChartWidgetKind::Custom         => (150.0, 90.0),
         };
         Self { kind, x, y, w, h, visible: true, collapsed: false }
     }

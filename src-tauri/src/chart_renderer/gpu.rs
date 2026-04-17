@@ -12737,6 +12737,14 @@ fn render_chart_pane(
         }
     }
 
+    // ── Chart widgets (floating info cards) ──
+    {
+        let widget_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.top() + pt),
+            egui::vec2(cw, ch));
+        super::ui::chart_widgets::draw_widgets(ui, chart, widget_rect, t);
+    }
+
     // ── FINAL cursor override: modal tools paint their own cursor via phosphor icons ──
     // winit on Windows doesn't support ZoomIn cursor (falls back to arrow) and Crosshair
     // is just a hairline +. We hide the system cursor and paint a phosphor icon at the
