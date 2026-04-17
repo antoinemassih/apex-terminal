@@ -138,6 +138,8 @@ pub(crate) fn draw_widgets(
     // Pass 2 — Render + interact
     // ══════════════════════════════════════════════════════════════════════════
 
+    let mut mode_toggle: Option<usize> = None; // deferred display mode cycle
+
     for wi in 0..n {
         let w = &chart.chart_widgets[wi];
         if !w.visible { continue; }
@@ -151,6 +153,16 @@ pub(crate) fn draw_widgets(
         let kind = w.kind;
         let mode = w.display;
         let title_h = 24.0;
+
+        // ── Mode toggle icon: ◼ Card, ◯ HUD, ◑ Minimal ──
+        let mode_icon = match mode {
+            WidgetDisplayMode::Card    => "\u{25FC}", // ◼
+            WidgetDisplayMode::Hud     => "\u{25CB}", // ○
+            WidgetDisplayMode::Minimal => "\u{25D1}", // ◑
+        };
+
+        // Check if pointer is hovering anywhere on the card (for HUD overlay)
+        let card_hovered = ui.rect_contains_pointer(card_rect);
 
         // ── Render based on display mode ──
         if mode == WidgetDisplayMode::Card {
@@ -186,7 +198,21 @@ pub(crate) fn draw_widgets(
             let chev = if w.collapsed { "\u{25B6}" } else { "\u{25BC}" };
             painter.text(egui::pos2(tr.right() - 12.0, tr.center().y),
                 egui::Align2::CENTER_CENTER, chev, egui::FontId::proportional(6.0), t.dim.gamma_multiply(0.4));
-            painter.circle_filled(egui::pos2(tr.right() - 24.0, tr.center().y), 2.5, t.accent);
+
+            // Mode toggle button (always visible in Card)
+            let toggle_rect = egui::Rect::from_center_size(
+                egui::pos2(tr.right() - 28.0, tr.center().y), egui::vec2(14.0, 14.0));
+            let toggle_resp = ui.interact(toggle_rect,
+                egui::Id::new(("widget_mode", wi)), egui::Sense::click());
+            let toggle_col = if toggle_resp.hovered() { t.accent } else { t.dim.gamma_multiply(0.5) };
+            if toggle_resp.hovered() {
+                painter.rect_filled(toggle_rect, 3.0, color_alpha(t.accent, ALPHA_GHOST));
+            }
+            painter.text(toggle_rect.center(), egui::Align2::CENTER_CENTER,
+                mode_icon, egui::FontId::proportional(FONT_SM), toggle_col);
+            if toggle_resp.clicked() {
+                mode_toggle = Some(wi);
+            }
 
             // Body
             if !w.collapsed {
@@ -205,14 +231,43 @@ pub(crate) fn draw_widgets(
             } else {
                 draw_mini_badge(&painter, card_rect, kind, &wd, t);
             }
+
+            // HUD hover overlay — show mode toggle only on rollover
+            if card_hovered {
+                // Faint pill background at top-right
+                let pill = egui::Rect::from_min_size(
+                    egui::pos2(card_rect.right() - 20.0, card_rect.top()), egui::vec2(20.0, 16.0));
+                painter.rect_filled(pill, 4.0, Color32::from_rgba_unmultiplied(0, 0, 0, 100));
+                let toggle_resp = ui.interact(pill,
+                    egui::Id::new(("widget_mode", wi)), egui::Sense::click());
+                let toggle_col = if toggle_resp.hovered() { t.accent } else { TEXT_PRIMARY };
+                painter.text(pill.center(), egui::Align2::CENTER_CENTER,
+                    mode_icon, egui::FontId::proportional(FONT_XS), toggle_col);
+                if toggle_resp.clicked() {
+                    mode_toggle = Some(wi);
+                }
+            }
         } else {
-            // Minimal
+            // Minimal — faint label + mode toggle
             painter.text(egui::pos2(card_rect.left() + 4.0, card_rect.top() + 8.0),
                 egui::Align2::LEFT_CENTER, kind.icon(),
                 egui::FontId::proportional(FONT_XS), color_alpha(t.accent, ALPHA_MUTED));
             painter.text(egui::pos2(card_rect.left() + 16.0, card_rect.top() + 8.0),
                 egui::Align2::LEFT_CENTER, kind.label(),
                 egui::FontId::monospace(7.0), color_alpha(t.dim, ALPHA_MUTED));
+
+            // Mode toggle in the label area
+            let toggle_rect = egui::Rect::from_center_size(
+                egui::pos2(card_rect.right() - 10.0, card_rect.top() + 8.0), egui::vec2(14.0, 14.0));
+            let toggle_resp = ui.interact(toggle_rect,
+                egui::Id::new(("widget_mode", wi)), egui::Sense::click());
+            let toggle_col = if toggle_resp.hovered() { t.accent } else { t.dim.gamma_multiply(0.3) };
+            painter.text(toggle_rect.center(), egui::Align2::CENTER_CENTER,
+                mode_icon, egui::FontId::proportional(FONT_XS), toggle_col);
+            if toggle_resp.clicked() {
+                mode_toggle = Some(wi);
+            }
+
             if !w.collapsed {
                 let body = egui::Rect::from_min_size(
                     egui::pos2(card_rect.left(), card_rect.top() + 16.0),
@@ -233,21 +288,19 @@ pub(crate) fn draw_widgets(
         // the hold breaks and the widget floats free again.
         // ══════════════════════════════════════════════════════════════════
 
-        let sense = if mode == WidgetDisplayMode::Hud {
-            egui::Sense::click()
-        } else {
-            egui::Sense::click_and_drag()
-        };
+        let sense = egui::Sense::click_and_drag();
 
+        // Interaction area: title bar for Card, thin grab strip for others
         let interact_rect = if mode == WidgetDisplayMode::Card {
             egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, title_h))
         } else {
-            egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, 14.0))
+            // HUD/Minimal: thin strip at top — visible as hover overlay in HUD
+            egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, 16.0))
         };
 
         let resp = ui.interact(interact_rect, egui::Id::new(("widget_drag", wi)), sense);
 
-        if mode != WidgetDisplayMode::Hud && resp.dragged_by(egui::PointerButton::Primary) {
+        if resp.dragged_by(egui::PointerButton::Primary) {
             let d = resp.drag_delta();
             let wid = &mut chart.chart_widgets[wi];
             let pointer = ui.ctx().pointer_interact_pos().unwrap_or(card_rect.center());
@@ -292,7 +345,7 @@ pub(crate) fn draw_widgets(
                 }
             }
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-        } else if resp.hovered() && mode != WidgetDisplayMode::Hud {
+        } else if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
 
@@ -300,13 +353,9 @@ pub(crate) fn draw_widgets(
         if resp.clicked() {
             chart.chart_widgets[wi].collapsed = !chart.chart_widgets[wi].collapsed;
         }
-        // Right-click: cycle display mode
-        if resp.secondary_clicked() {
-            chart.chart_widgets[wi].display = chart.chart_widgets[wi].display.cycle();
-        }
 
         // ── Snap zone glow — fades in as pointer approaches edge ──
-        if mode != WidgetDisplayMode::Hud && resp.dragged_by(egui::PointerButton::Primary) {
+        if resp.dragged_by(egui::PointerButton::Primary) {
             if let Some(pos) = ui.ctx().pointer_interact_pos() {
                 let dist_top = pos.y - rect.top();
                 let dist_bot = rect.bottom() - pos.y;
@@ -329,6 +378,11 @@ pub(crate) fn draw_widgets(
                 }
             }
         }
+    }
+
+    // Apply deferred mode toggle
+    if let Some(wi) = mode_toggle {
+        chart.chart_widgets[wi].display = chart.chart_widgets[wi].display.cycle();
     }
 }
 
