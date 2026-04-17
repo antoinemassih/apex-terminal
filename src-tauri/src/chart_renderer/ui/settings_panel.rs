@@ -12,8 +12,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, chart: &mut C
 if !watchlist.settings_open { return; }
 
 let screen = ctx.screen_rect();
-let dialog_w = 580.0_f32;
-let dialog_h = 520.0_f32;
+let dialog_w = 600.0_f32;
+let dialog_h = (screen.height() * 0.85).min(800.0).max(400.0);
 dialog_window_themed(ctx, "settings_panel",
     egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0),
     dialog_w, t.toolbar_bg, t.toolbar_border, None)
@@ -49,26 +49,89 @@ dialog_window_themed(ctx, "settings_panel",
 SettingsTab::Appearance => {
     ui.add_space(GAP_SM);
 
-    // ── Theme ──
+    // ── Theme — big preview blocks with mini chart layout ──
     dialog_section(ui, "THEME", m, t.dim.gamma_multiply(0.5));
     ui.add_space(GAP_SM);
-    ui.horizontal(|ui| {
-        ui.add_space(m);
-        ui.spacing_mut().item_spacing.x = 4.0;
-        for (i, th) in THEMES.iter().enumerate() {
-            let sel = chart.theme_idx == i;
-            let swatch_size = 20.0;
-            let (sr, resp) = ui.allocate_exact_size(egui::vec2(swatch_size, swatch_size), egui::Sense::click());
-            ui.painter().rect_filled(sr, 3.0, th.bg);
-            ui.painter().circle_filled(egui::pos2(sr.left() + 6.0, sr.center().y), 3.0, th.bull);
-            ui.painter().circle_filled(egui::pos2(sr.right() - 6.0, sr.center().y), 3.0, th.bear);
-            if sel {
-                ui.painter().rect_stroke(sr, 3.0, egui::Stroke::new(1.5, th.accent), egui::StrokeKind::Outside);
-            }
-            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            if resp.clicked() { chart.theme_idx = i; }
+    {
+        let card_w = 85.0;
+        let card_h = 52.0;
+        let cols = 6;
+        for row_start in (0..THEMES.len()).step_by(cols) {
+            ui.horizontal(|ui| {
+                ui.add_space(m);
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                for i in row_start..(row_start + cols).min(THEMES.len()) {
+                    let th = &THEMES[i];
+                    let sel = chart.theme_idx == i;
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+                    let p = ui.painter();
+
+                    // Background fill
+                    p.rect_filled(r, RADIUS_MD, th.bg);
+
+                    // Mini toolbar bar at top
+                    let tb_h = 6.0;
+                    let tb_rect = egui::Rect::from_min_size(r.min, egui::vec2(card_w, tb_h));
+                    p.rect_filled(tb_rect, egui::CornerRadius { nw: RADIUS_MD as u8, ne: RADIUS_MD as u8, sw: 0, se: 0 },
+                        egui::Color32::from_rgb(
+                            th.bg.r().saturating_add(12),
+                            th.bg.g().saturating_add(12),
+                            th.bg.b().saturating_add(12)));
+
+                    // Mini candles
+                    let chart_top = r.top() + tb_h + 4.0;
+                    let chart_bottom = r.bottom() - 12.0;
+                    let chart_mid = (chart_top + chart_bottom) / 2.0;
+                    let bar_w = 4.0;
+                    let bar_gap = 2.0;
+                    let bar_start_x = r.left() + 8.0;
+                    let prices = [0.4, 0.6, 0.3, 0.7, 0.5, 0.8, 0.65, 0.45, 0.55, 0.7];
+                    for (bi, &pv) in prices.iter().enumerate() {
+                        let x = bar_start_x + bi as f32 * (bar_w + bar_gap);
+                        if x + bar_w > r.right() - 6.0 { break; }
+                        let is_bull = bi % 3 != 1; // pseudo pattern
+                        let color = if is_bull { th.bull } else { th.bear };
+                        let h = (chart_bottom - chart_top) * 0.6;
+                        let body_top = chart_mid - h * pv + h * 0.2;
+                        let body_bot = body_top + h * 0.35;
+                        // Wick
+                        p.line_segment(
+                            [egui::pos2(x + bar_w / 2.0, body_top - 3.0),
+                             egui::pos2(x + bar_w / 2.0, body_bot + 3.0)],
+                            egui::Stroke::new(0.5, color_alpha(color, ALPHA_STRONG)));
+                        // Body
+                        p.rect_filled(
+                            egui::Rect::from_min_max(
+                                egui::pos2(x, body_top), egui::pos2(x + bar_w, body_bot)),
+                            1.0, color);
+                    }
+
+                    // Accent line (like a moving average)
+                    let accent_y = chart_mid - 2.0;
+                    p.line_segment(
+                        [egui::pos2(r.left() + 6.0, accent_y), egui::pos2(r.right() - 6.0, accent_y)],
+                        egui::Stroke::new(1.0, color_alpha(th.accent, ALPHA_STRONG)));
+
+                    // Theme name at bottom
+                    p.text(
+                        egui::pos2(r.center().x, r.bottom() - 6.0),
+                        egui::Align2::CENTER_CENTER,
+                        th.name,
+                        egui::FontId::monospace(FONT_XS),
+                        if sel { th.accent } else { th.dim.gamma_multiply(0.8) });
+
+                    // Selection border
+                    if sel {
+                        p.rect_stroke(r, RADIUS_MD, egui::Stroke::new(2.0, th.accent), egui::StrokeKind::Outside);
+                    } else if resp.hovered() {
+                        p.rect_stroke(r, RADIUS_MD, egui::Stroke::new(1.0, color_alpha(th.accent, ALPHA_LINE)), egui::StrokeKind::Outside);
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    if resp.clicked() { chart.theme_idx = i; }
+                }
+            });
         }
-    });
+    }
     ui.add_space(GAP_LG);
 
     // ── Font Scale ──
