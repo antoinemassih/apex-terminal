@@ -18,8 +18,8 @@ use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
 use std::f32::consts::PI;
 
 // ─── Docking tuning ──────────────────────────────────────────────────────────
-const SNAP_ZONE: f32 = 40.0;   // pixels from edge to trigger snap hint
-const YANK_THRESHOLD: f32 = 50.0; // vertical drag needed to undock
+const SNAP_ZONE: f32 = 28.0;   // pixels from edge to trigger snap
+const YANK_THRESHOLD: f32 = 45.0; // vertical drag needed to undock
 const STRIP_PAD: f32 = 8.0;    // padding inside dock strip
 const ANIM_SPEED: f32 = 0.18;  // lerp factor per frame (0=frozen, 1=instant)
 
@@ -156,6 +156,7 @@ pub(crate) fn draw_widgets(
         let kind = w.kind;
         let mode = w.display;
         let title_h = 24.0;
+        let mut button_clicked = false; // track if a button consumed the click
 
         // ── Mode toggle icon: ◼ Card, ◯ HUD, ◑ Minimal ──
         let mode_icon = match mode {
@@ -225,6 +226,7 @@ pub(crate) fn draw_widgets(
             // Context menu popup (deferred actions to avoid borrow conflicts)
             if ctx_resp.clicked() {
                 ui.memory_mut(|m| m.toggle_popup(egui::Id::new(("widget_popup", wi))));
+                button_clicked = true;
             }
             let is_locked = w.locked;
             let is_docked = w.dock != WidgetDock::Float;
@@ -272,6 +274,7 @@ pub(crate) fn draw_widgets(
                 mode_icon, egui::FontId::proportional(FONT_SM), toggle_col);
             if toggle_resp.clicked() {
                 mode_toggle = Some(wi);
+                button_clicked = true;
             }
 
             // Body
@@ -333,6 +336,7 @@ pub(crate) fn draw_widgets(
                 mode_icon, egui::FontId::proportional(FONT_XS), toggle_col);
             if toggle_resp.clicked() {
                 mode_toggle = Some(wi);
+                button_clicked = true;
             }
 
             if !w.collapsed {
@@ -383,10 +387,13 @@ pub(crate) fn draw_widgets(
                     // ── Magnetic snap: check if pointer entered a snap zone ──
                     if pointer.y - rect.top() < SNAP_ZONE {
                         wid.dock = WidgetDock::Top;
-                        wid.dock_x = wid.anim_x; // dock at current visual X
+                        // Use pointer X minus half widget width so it centers on cursor
+                        wid.dock_x = (pointer.x - card_w * 0.5)
+                            .clamp(rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
                     } else if rect.bottom() - pointer.y < SNAP_ZONE {
                         wid.dock = WidgetDock::Bottom;
-                        wid.dock_x = wid.anim_x;
+                        wid.dock_x = (pointer.x - card_w * 0.5)
+                            .clamp(rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
                     }
                 }
                 WidgetDock::Top | WidgetDock::Bottom => {
@@ -416,8 +423,8 @@ pub(crate) fn draw_widgets(
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
 
-        // Click: collapse/expand
-        if resp.clicked() {
+        // Click: collapse/expand (only if no button consumed the click)
+        if resp.clicked() && !button_clicked {
             chart.chart_widgets[wi].collapsed = !chart.chart_widgets[wi].collapsed;
         }
 

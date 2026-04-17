@@ -96,7 +96,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, FONT_LG, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -3015,6 +3015,37 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
 }
 
 /// Phase 5: Render the top toolbar (symbol picker, layout controls, settings, account strip).
+fn widget_description(kind: super::ChartWidgetKind) -> &'static str {
+    use super::ChartWidgetKind::*;
+    match kind {
+        TrendStrength  => "Trend health gauge with needle",
+        Momentum       => "RSI gauge with overbought/oversold",
+        Volatility     => "ATR with % of price bar",
+        VolumeProfile  => "Mini volume-at-price bars",
+        SessionTimer   => "Countdown ring to market close",
+        KeyLevels      => "Pivot points with distance %",
+        OptionGreeks   => "Delta/Gamma/Theta/Vega display",
+        RiskReward     => "Position risk-reward bar",
+        MarketBreadth  => "Advance/decline, new highs/lows",
+        Correlation    => "Correlation gauge vs SPY",
+        DarkPool       => "Unusual volume / dark pool prints",
+        PositionPnl    => "Live unrealized P&L for position",
+        EarningsBadge  => "Earnings countdown with expected move",
+        NewsTicker     => "Scrolling headline strip",
+        ExitGauge      => "Position exit urgency meter",
+        PrecursorAlert => "Smart money / unusual options",
+        TradePlan      => "Entry/target/stop suggestion",
+        ChangePoints   => "Regime shift detection timeline",
+        ZoneStrength   => "Supply/demand zone health",
+        PatternScanner => "Latest candlestick patterns",
+        VixMonitor     => "VIX spot, gap, convergence",
+        SignalDashboard=> "All signals in one compact view",
+        DivergenceMonitor => "Active indicator divergences",
+        ConvictionMeter=> "Aggregate signal conviction score",
+        Custom         => "User-defined widget",
+    }
+}
+
 fn render_toolbar(
     ctx: &egui::Context,
     panes: &mut Vec<Chart>,
@@ -3851,28 +3882,98 @@ fn render_toolbar(
                 if hh_resp.clicked() { panes[ap].hit_highlight = !hh; }
             }
 
-            // ── Widgets dropdown — add floating info cards to the chart ──
+            // ── Widgets dropdown — categorized picker with visual previews ──
             ui.menu_button(egui::RichText::new("Widgets").monospace().size(FONT_LG).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                ui.set_min_width(180.0);
-                ui.label(egui::RichText::new("CHART WIDGETS").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                ui.add_space(4.0);
-                let active_kinds: Vec<super::ChartWidgetKind> = panes[ap].chart_widgets.iter().map(|w| w.kind).collect();
-                for &kind in super::ChartWidgetKind::all() {
-                    let is_active = active_kinds.contains(&kind);
-                    let label = format!("{} {} {}", kind.icon(), kind.label(),
-                        if is_active { "\u{2713}" } else { "" });
-                    if ui.selectable_label(is_active, egui::RichText::new(&label).monospace().size(10.0)).clicked() {
-                        if is_active {
-                            panes[ap].chart_widgets.retain(|w| w.kind != kind);
-                        } else {
-                            // Place new widget at a staggered position
-                            let n = panes[ap].chart_widgets.len();
-                            let x = 0.02 + (n as f32 * 0.05).min(0.5);
-                            let y = 0.05 + (n as f32 * 0.08).min(0.6);
-                            panes[ap].chart_widgets.push(super::ChartWidget::new(kind, x, y));
+                ui.set_min_width(220.0);
+                let active_kinds: Vec<super::ChartWidgetKind> = panes[ap].chart_widgets.iter()
+                    .filter(|w| w.visible).map(|w| w.kind).collect();
+
+                let categories: &[(&str, &[super::ChartWidgetKind])] = &[
+                    ("CORE", &[
+                        super::ChartWidgetKind::TrendStrength, super::ChartWidgetKind::Momentum,
+                        super::ChartWidgetKind::Volatility, super::ChartWidgetKind::VolumeProfile,
+                        super::ChartWidgetKind::SessionTimer, super::ChartWidgetKind::KeyLevels,
+                        super::ChartWidgetKind::OptionGreeks, super::ChartWidgetKind::RiskReward,
+                        super::ChartWidgetKind::MarketBreadth,
+                    ]),
+                    ("MARKET DATA", &[
+                        super::ChartWidgetKind::Correlation, super::ChartWidgetKind::DarkPool,
+                        super::ChartWidgetKind::PositionPnl, super::ChartWidgetKind::EarningsBadge,
+                        super::ChartWidgetKind::NewsTicker,
+                    ]),
+                    ("APEX SIGNALS", &[
+                        super::ChartWidgetKind::ExitGauge, super::ChartWidgetKind::PrecursorAlert,
+                        super::ChartWidgetKind::TradePlan, super::ChartWidgetKind::ChangePoints,
+                        super::ChartWidgetKind::ZoneStrength, super::ChartWidgetKind::PatternScanner,
+                        super::ChartWidgetKind::VixMonitor, super::ChartWidgetKind::SignalDashboard,
+                        super::ChartWidgetKind::DivergenceMonitor, super::ChartWidgetKind::ConvictionMeter,
+                    ]),
+                ];
+
+                for (cat_name, kinds) in categories {
+                    ui.add_space(2.0);
+                    ui.label(egui::RichText::new(*cat_name).monospace().size(7.0).color(t.accent.gamma_multiply(0.6)));
+                    ui.add_space(1.0);
+                    for &kind in *kinds {
+                        let is_active = active_kinds.contains(&kind);
+                        // Two-line item: icon+name on top, description underneath
+                        let (_, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 28.0), egui::Sense::click());
+                        let r = resp.rect;
+                        let p = ui.painter();
+
+                        // Hover highlight
+                        if resp.hovered() {
+                            p.rect_filled(r, 3.0, color_alpha(t.accent, ALPHA_GHOST));
                         }
+
+                        // Active checkmark
+                        if is_active {
+                            p.text(egui::pos2(r.right() - 10.0, r.center().y),
+                                egui::Align2::CENTER_CENTER, "\u{2713}",
+                                egui::FontId::proportional(FONT_SM), t.accent);
+                        }
+
+                        // Icon (colored)
+                        p.text(egui::pos2(r.left() + 10.0, r.top() + 9.0),
+                            egui::Align2::LEFT_CENTER, kind.icon(),
+                            egui::FontId::proportional(FONT_MD),
+                            if is_active { t.accent } else { t.dim.gamma_multiply(0.6) });
+
+                        // Name
+                        p.text(egui::pos2(r.left() + 26.0, r.top() + 9.0),
+                            egui::Align2::LEFT_CENTER, kind.label(),
+                            egui::FontId::monospace(FONT_SM),
+                            if is_active { TEXT_PRIMARY } else { t.dim });
+
+                        // One-line description
+                        let desc = widget_description(kind);
+                        p.text(egui::pos2(r.left() + 26.0, r.top() + 21.0),
+                            egui::Align2::LEFT_CENTER, desc,
+                            egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+
+                        if resp.clicked() {
+                            if is_active {
+                                panes[ap].chart_widgets.retain(|w| w.kind != kind);
+                            } else {
+                                let n = panes[ap].chart_widgets.len();
+                                let x = 0.02 + (n as f32 * 0.05).min(0.5);
+                                let y = 0.05 + (n as f32 * 0.08).min(0.6);
+                                panes[ap].chart_widgets.push(super::ChartWidget::new(kind, x, y));
+                            }
+                            ui.close_menu();
+                        }
+                    }
+                }
+
+                // Separator + "Remove All" button
+                ui.add_space(4.0);
+                ui.separator();
+                if !panes[ap].chart_widgets.is_empty() {
+                    if ui.selectable_label(false, egui::RichText::new("\u{1F5D1} Remove All Widgets")
+                        .monospace().size(FONT_SM).color(t.bear)).clicked() {
+                        panes[ap].chart_widgets.clear();
                         ui.close_menu();
                     }
                 }
@@ -16743,6 +16844,8 @@ fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
             },
             // Indicators
             "indicators": indicators,
+            // Chart widgets
+            "chart_widgets": serde_json::to_value(&p.chart_widgets).unwrap_or_default(),
         })
     }).collect();
     // Global settings from Watchlist
@@ -16921,6 +17024,15 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
                     ind.upper_thickness = ind_json.get("upper_thickness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                     ind.lower_thickness = ind_json.get("lower_thickness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                     chart.indicators.push(ind);
+                }
+            }
+
+            // Restore chart widgets
+            if let Some(wv) = p.get("chart_widgets") {
+                if let Ok(widgets) = serde_json::from_value::<Vec<super::ChartWidget>>(wv.clone()) {
+                    chart.chart_widgets = widgets;
+                    // Reset animation state (transient, not meaningful from disk)
+                    for w in &mut chart.chart_widgets { w.anim_init = false; }
                 }
             }
 
