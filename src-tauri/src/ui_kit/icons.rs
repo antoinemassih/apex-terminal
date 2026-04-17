@@ -132,7 +132,7 @@ pub const FONT_NAMES: &[&str] = &[
     "Roboto Mono",     // 1 — clean Google monospace
     "IBM Plex Mono",   // 2 — professional IBM monospace
     "Inter",           // 3 — best-practice sans-serif, widely loved
-    "Manrope",         // 4 — geometric sans-serif, good weight
+    "Plus Jakarta",    // 4 — modern fintech sans-serif
     "Space Grotesk",   // 5 — geometric modern sans-serif
 ];
 
@@ -149,18 +149,18 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
     fonts.font_data.insert("ibm_plex_mono".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexMono-Regular.ttf"))));
     fonts.font_data.insert("inter".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Regular.ttf"))));
-    fonts.font_data.insert("manrope".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Manrope-Regular.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Medium.ttf"))));
+    fonts.font_data.insert("plus_jakarta".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("PlusJakartaSans-Regular.ttf"))));
     fonts.font_data.insert("space_grotesk".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SpaceGrotesk-Regular.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SpaceGrotesk-Medium.ttf"))));
 
     // Pick the primary font based on selection
     let primary = match font_idx {
         1 => "roboto_mono",
         2 => "ibm_plex_mono",
         3 => "inter",
-        4 => "manrope",
+        4 => "plus_jakarta",
         5 => "space_grotesk",
         _ => "jetbrains_mono",
     };
