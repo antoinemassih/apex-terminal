@@ -139,11 +139,15 @@ pub(crate) fn draw_widgets(
     // ══════════════════════════════════════════════════════════════════════════
 
     let mut mode_toggle: Option<usize> = None;
+    let mut collapse_toggle: Option<usize> = None;
+    let mut popup_open: Option<usize> = None;
+    let mut resize_delta: Option<(usize, egui::Vec2)> = None;
     // Deferred context menu actions (to avoid borrow conflicts)
     enum CtxAction { Lock(usize), Delete(usize), ResetSize(usize), DockTop(usize), DockBottom(usize), Undock(usize) }
     let mut ctx_action: Option<CtxAction> = None;
 
     for wi in 0..n {
+        // Copy fields we need to avoid holding a borrow across mutations
         let w = &chart.chart_widgets[wi];
         if !w.visible { continue; }
 
@@ -156,7 +160,9 @@ pub(crate) fn draw_widgets(
         let kind = w.kind;
         let mode = w.display;
         let title_h = 24.0;
-        let mut button_clicked = false; // track if a button consumed the click
+        // Button hit rects for click routing (set during Card rendering, checked after resp)
+        let mut card_ctx_rect: Option<egui::Rect> = None;
+        let mut card_toggle_rect: Option<egui::Rect> = None;
 
         // ── Mode toggle icon: ◼ Card, ◯ HUD, ◑ Minimal ──
         let mode_icon = match mode {
@@ -205,77 +211,41 @@ pub(crate) fn draw_widgets(
 
             // Lock icon (when locked)
             if w.locked {
-                painter.text(egui::pos2(tr.right() - 42.0, tr.center().y),
+                painter.text(egui::pos2(tr.right() - 56.0, tr.center().y),
                     egui::Align2::CENTER_CENTER, "\u{1F512}",
                     egui::FontId::proportional(7.0), t.dim.gamma_multiply(0.4));
             }
 
-            // Context menu button (⋯)
+            // ── Button hit rects (painted only, clicks handled via title bar resp below) ──
             let ctx_rect = egui::Rect::from_center_size(
-                egui::pos2(tr.right() - 42.0 - if w.locked { 14.0 } else { 0.0 }, tr.center().y),
-                egui::vec2(14.0, 14.0));
-            let ctx_resp = ui.interact(ctx_rect,
-                egui::Id::new(("widget_ctx", wi)), egui::Sense::click());
-            if ctx_resp.hovered() {
+                egui::pos2(tr.right() - 42.0, tr.center().y), egui::vec2(16.0, 16.0));
+            let toggle_rect = egui::Rect::from_center_size(
+                egui::pos2(tr.right() - 26.0, tr.center().y), egui::vec2(16.0, 16.0));
+
+            // Paint buttons (hover detected from pointer position directly)
+            let ptr = ui.ctx().pointer_hover_pos();
+            let ctx_hovered = ptr.map(|p| ctx_rect.contains(p)).unwrap_or(false);
+            let toggle_hovered = ptr.map(|p| toggle_rect.contains(p)).unwrap_or(false);
+
+            // Context menu ⋯
+            if ctx_hovered {
                 painter.rect_filled(ctx_rect, 3.0, color_alpha(t.accent, ALPHA_GHOST));
             }
             painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
                 "\u{22EF}", egui::FontId::proportional(FONT_SM),
-                if ctx_resp.hovered() { t.accent } else { t.dim.gamma_multiply(0.4) });
+                if ctx_hovered { t.accent } else { t.dim.gamma_multiply(0.4) });
 
-            // Context menu popup (deferred actions to avoid borrow conflicts)
-            if ctx_resp.clicked() {
-                ui.memory_mut(|m| m.toggle_popup(egui::Id::new(("widget_popup", wi))));
-                button_clicked = true;
-            }
-            let is_locked = w.locked;
-            let is_docked = w.dock != WidgetDock::Float;
-            egui::popup_below_widget(ui, egui::Id::new(("widget_popup", wi)), &ctx_resp,
-                egui::PopupCloseBehavior::CloseOnClickOutside, |ui: &mut egui::Ui| {
-                ui.set_min_width(120.0);
-                if ui.button(if is_locked { "\u{1F513} Unlock" } else { "\u{1F512} Lock" }).clicked() {
-                    ctx_action = Some(CtxAction::Lock(wi));
-                    ui.close_menu();
-                }
-                if ui.button("\u{1F5D1} Delete").clicked() {
-                    ctx_action = Some(CtxAction::Delete(wi));
-                    ui.close_menu();
-                }
-                if ui.button("\u{21BB} Reset Size").clicked() {
-                    ctx_action = Some(CtxAction::ResetSize(wi));
-                    ui.close_menu();
-                }
-                if ui.button("\u{2B06} Dock Top").clicked() {
-                    ctx_action = Some(CtxAction::DockTop(wi));
-                    ui.close_menu();
-                }
-                if ui.button("\u{2B07} Dock Bottom").clicked() {
-                    ctx_action = Some(CtxAction::DockBottom(wi));
-                    ui.close_menu();
-                }
-                if is_docked {
-                    if ui.button("\u{2197} Undock").clicked() {
-                        ctx_action = Some(CtxAction::Undock(wi));
-                        ui.close_menu();
-                    }
-                }
-            });
-
-            // Mode toggle button (always visible in Card)
-            let toggle_rect = egui::Rect::from_center_size(
-                egui::pos2(tr.right() - 28.0, tr.center().y), egui::vec2(14.0, 14.0));
-            let toggle_resp = ui.interact(toggle_rect,
-                egui::Id::new(("widget_mode", wi)), egui::Sense::click());
-            let toggle_col = if toggle_resp.hovered() { t.accent } else { t.dim.gamma_multiply(0.5) };
-            if toggle_resp.hovered() {
+            // Mode toggle ◼/○/◑
+            if toggle_hovered {
                 painter.rect_filled(toggle_rect, 3.0, color_alpha(t.accent, ALPHA_GHOST));
             }
             painter.text(toggle_rect.center(), egui::Align2::CENTER_CENTER,
-                mode_icon, egui::FontId::proportional(FONT_SM), toggle_col);
-            if toggle_resp.clicked() {
-                mode_toggle = Some(wi);
-                button_clicked = true;
-            }
+                mode_icon, egui::FontId::proportional(FONT_SM),
+                if toggle_hovered { t.accent } else { t.dim.gamma_multiply(0.5) });
+
+            // Stash rects for click routing after the main resp is created
+            card_ctx_rect = Some(ctx_rect);
+            card_toggle_rect = Some(toggle_rect);
 
             // Body
             if !w.collapsed {
@@ -290,9 +260,7 @@ pub(crate) fn draw_widgets(
 
                 // Resize handle (bottom-right corner)
                 if let Some(delta) = resize_handle(ui, &painter, card_rect, wi, t) {
-                    let wid = &mut chart.chart_widgets[wi];
-                    wid.w = (wid.w + delta.x).clamp(100.0, 400.0);
-                    wid.h = (wid.h + delta.y).clamp(60.0, 300.0);
+                    resize_delta = Some((wi, delta));
                 }
             }
         } else if mode == WidgetDisplayMode::Hud {
@@ -302,23 +270,20 @@ pub(crate) fn draw_widgets(
                 draw_mini_badge(&painter, card_rect, kind, &wd, t);
             }
 
-            // HUD hover overlay — show mode toggle only on rollover
+            // HUD hover overlay — show mode toggle only on rollover (paint only, click routed via resp)
             if card_hovered {
-                // Faint pill background at top-right
                 let pill = egui::Rect::from_min_size(
                     egui::pos2(card_rect.right() - 20.0, card_rect.top()), egui::vec2(20.0, 16.0));
                 painter.rect_filled(pill, 4.0, Color32::from_rgba_unmultiplied(0, 0, 0, 100));
-                let toggle_resp = ui.interact(pill,
-                    egui::Id::new(("widget_mode", wi)), egui::Sense::click());
-                let toggle_col = if toggle_resp.hovered() { t.accent } else { TEXT_PRIMARY };
+                let ptr = ui.ctx().pointer_hover_pos();
+                let hovered = ptr.map(|p| pill.contains(p)).unwrap_or(false);
                 painter.text(pill.center(), egui::Align2::CENTER_CENTER,
-                    mode_icon, egui::FontId::proportional(FONT_XS), toggle_col);
-                if toggle_resp.clicked() {
-                    mode_toggle = Some(wi);
-                }
+                    mode_icon, egui::FontId::proportional(FONT_XS),
+                    if hovered { t.accent } else { TEXT_PRIMARY });
+                card_toggle_rect = Some(pill);
             }
         } else {
-            // Minimal — faint label + mode toggle
+            // Minimal — faint label + mode toggle (paint only, click routed via resp)
             painter.text(egui::pos2(card_rect.left() + 4.0, card_rect.top() + 8.0),
                 egui::Align2::LEFT_CENTER, kind.icon(),
                 egui::FontId::proportional(FONT_XS), color_alpha(t.accent, ALPHA_MUTED));
@@ -326,18 +291,14 @@ pub(crate) fn draw_widgets(
                 egui::Align2::LEFT_CENTER, kind.label(),
                 egui::FontId::monospace(7.0), color_alpha(t.dim, ALPHA_MUTED));
 
-            // Mode toggle in the label area
             let toggle_rect = egui::Rect::from_center_size(
                 egui::pos2(card_rect.right() - 10.0, card_rect.top() + 8.0), egui::vec2(14.0, 14.0));
-            let toggle_resp = ui.interact(toggle_rect,
-                egui::Id::new(("widget_mode", wi)), egui::Sense::click());
-            let toggle_col = if toggle_resp.hovered() { t.accent } else { t.dim.gamma_multiply(0.3) };
+            let ptr = ui.ctx().pointer_hover_pos();
+            let hovered = ptr.map(|p| toggle_rect.contains(p)).unwrap_or(false);
             painter.text(toggle_rect.center(), egui::Align2::CENTER_CENTER,
-                mode_icon, egui::FontId::proportional(FONT_XS), toggle_col);
-            if toggle_resp.clicked() {
-                mode_toggle = Some(wi);
-                button_clicked = true;
-            }
+                mode_icon, egui::FontId::proportional(FONT_XS),
+                if hovered { t.accent } else { t.dim.gamma_multiply(0.3) });
+            card_toggle_rect = Some(toggle_rect);
 
             if !w.collapsed {
                 let body = egui::Rect::from_min_size(
@@ -423,9 +384,17 @@ pub(crate) fn draw_widgets(
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
 
-        // Click: collapse/expand (only if no button consumed the click)
-        if resp.clicked() && !button_clicked {
-            chart.chart_widgets[wi].collapsed = !chart.chart_widgets[wi].collapsed;
+        // Click routing: check if click landed on a button, otherwise collapse
+        if resp.clicked() {
+            if let Some(click_pos) = resp.interact_pointer_pos() {
+                if card_ctx_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
+                    popup_open = Some(wi);
+                } else if card_toggle_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
+                    mode_toggle = Some(wi);
+                } else {
+                    collapse_toggle = Some(wi);
+                }
+            }
         }
 
         // ── Snap zone glow — fades in as pointer approaches edge ──
@@ -454,9 +423,67 @@ pub(crate) fn draw_widgets(
         }
     }
 
-    // Apply deferred mode toggle
+    // Apply deferred actions (no borrow conflicts here — loop is done)
+    if let Some(wi) = collapse_toggle {
+        chart.chart_widgets[wi].collapsed = !chart.chart_widgets[wi].collapsed;
+    }
     if let Some(wi) = mode_toggle {
         chart.chart_widgets[wi].display = chart.chart_widgets[wi].display.cycle();
+    }
+    if let Some(wi) = popup_open {
+        ui.memory_mut(|m| m.toggle_popup(egui::Id::new(("widget_popup", wi))));
+    }
+    if let Some((wi, delta)) = resize_delta {
+        chart.chart_widgets[wi].w = (chart.chart_widgets[wi].w + delta.x).clamp(100.0, 400.0);
+        chart.chart_widgets[wi].h = (chart.chart_widgets[wi].h + delta.y).clamp(60.0, 300.0);
+    }
+
+    // Context menu popup (rendered outside the loop to avoid borrow conflicts)
+    // Check if any widget has its popup open
+    for wi in 0..n {
+        if !chart.chart_widgets[wi].visible { continue; }
+        let popup_id = egui::Id::new(("widget_popup", wi));
+        if ui.memory(|m| m.is_popup_open(popup_id)) {
+            let is_locked = chart.chart_widgets[wi].locked;
+            let is_docked = chart.chart_widgets[wi].dock != WidgetDock::Float;
+            let anchor_rect = egui::Rect::from_center_size(
+                egui::pos2(chart.chart_widgets[wi].anim_x + chart.chart_widgets[wi].w - 42.0,
+                           chart.chart_widgets[wi].anim_y + 12.0),
+                egui::vec2(14.0, 14.0));
+            let anchor_resp = ui.interact(anchor_rect,
+                egui::Id::new(("widget_ctx_anchor", wi)), egui::Sense::hover());
+            egui::popup_below_widget(ui, popup_id, &anchor_resp,
+                egui::PopupCloseBehavior::CloseOnClickOutside, |ui: &mut egui::Ui| {
+                ui.set_min_width(120.0);
+                if ui.button(if is_locked { "\u{1F513} Unlock" } else { "\u{1F512} Lock" }).clicked() {
+                    ctx_action = Some(CtxAction::Lock(wi));
+                    ui.close_menu();
+                }
+                if ui.button("\u{1F5D1} Delete").clicked() {
+                    ctx_action = Some(CtxAction::Delete(wi));
+                    ui.close_menu();
+                }
+                if ui.button("\u{21BB} Reset Size").clicked() {
+                    ctx_action = Some(CtxAction::ResetSize(wi));
+                    ui.close_menu();
+                }
+                if ui.button("\u{2B06} Dock Top").clicked() {
+                    ctx_action = Some(CtxAction::DockTop(wi));
+                    ui.close_menu();
+                }
+                if ui.button("\u{2B07} Dock Bottom").clicked() {
+                    ctx_action = Some(CtxAction::DockBottom(wi));
+                    ui.close_menu();
+                }
+                if is_docked {
+                    if ui.button("\u{2197} Undock").clicked() {
+                        ctx_action = Some(CtxAction::Undock(wi));
+                        ui.close_menu();
+                    }
+                }
+            });
+            break; // only one popup can be open at a time
+        }
     }
 
     // Apply deferred context menu action
