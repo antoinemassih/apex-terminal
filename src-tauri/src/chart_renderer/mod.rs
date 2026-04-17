@@ -49,6 +49,17 @@ pub(crate) enum ChartWidgetKind {
     PositionPnl,      // live unrealized P&L for active position
     EarningsBadge,    // countdown chip for upcoming earnings
     NewsTicker,       // scrolling headline strip, sentiment-colored
+    // ── ApexSignals widgets ──
+    ExitGauge,        // position exit urgency (hold → exit_now)
+    PrecursorAlert,   // smart money / unusual options detection
+    TradePlan,        // entry / target / stop suggestion card
+    ChangePoints,     // regime shift detection timeline
+    ZoneStrength,     // supply/demand zone health summary
+    PatternScanner,   // recent candlestick patterns with confidence
+    VixMonitor,       // VIX term structure / convergence
+    SignalDashboard,  // aggregate all active signals overview
+    DivergenceMonitor,// active indicator divergences
+    ConvictionMeter,  // aggregate conviction score from all signals
     Custom,           // user-defined (future: extension widget)
 }
 
@@ -69,6 +80,16 @@ impl ChartWidgetKind {
             Self::PositionPnl    => "Position P&L",
             Self::EarningsBadge  => "Earnings",
             Self::NewsTicker     => "News Ticker",
+            Self::ExitGauge      => "Exit Gauge",
+            Self::PrecursorAlert => "Precursor",
+            Self::TradePlan      => "Trade Plan",
+            Self::ChangePoints   => "Change Points",
+            Self::ZoneStrength   => "Zone Strength",
+            Self::PatternScanner => "Patterns",
+            Self::VixMonitor     => "VIX Monitor",
+            Self::SignalDashboard=> "Signal Dashboard",
+            Self::DivergenceMonitor => "Divergences",
+            Self::ConvictionMeter=> "Conviction",
             Self::Custom         => "Custom",
         }
     }
@@ -88,6 +109,16 @@ impl ChartWidgetKind {
             Self::PositionPnl    => "\u{0024}",  // $
             Self::EarningsBadge  => "\u{1F4C5}", // 📅
             Self::NewsTicker     => "\u{1F4F0}", // 📰
+            Self::ExitGauge      => "\u{23F9}",  // ⏹
+            Self::PrecursorAlert => "\u{26A1}",  // ⚡
+            Self::TradePlan      => "\u{1F3AF}", // 🎯
+            Self::ChangePoints   => "\u{21BA}",  // ↺
+            Self::ZoneStrength   => "\u{2591}",  // ░
+            Self::PatternScanner => "\u{25E2}",  // ◢
+            Self::VixMonitor     => "\u{26A0}",  // ⚠
+            Self::SignalDashboard=> "\u{2630}",  // ☰
+            Self::DivergenceMonitor => "\u{21C5}",// ⇅
+            Self::ConvictionMeter=> "\u{2605}",  // ★
             Self::Custom         => "\u{2699}",  // ⚙
         }
     }
@@ -95,7 +126,9 @@ impl ChartWidgetKind {
         &[Self::TrendStrength, Self::Momentum, Self::Volatility, Self::VolumeProfile,
           Self::SessionTimer, Self::KeyLevels, Self::OptionGreeks, Self::RiskReward,
           Self::MarketBreadth, Self::Correlation, Self::DarkPool, Self::PositionPnl,
-          Self::EarningsBadge, Self::NewsTicker]
+          Self::EarningsBadge, Self::NewsTicker, Self::ExitGauge, Self::PrecursorAlert,
+          Self::TradePlan, Self::ChangePoints, Self::ZoneStrength, Self::PatternScanner,
+          Self::VixMonitor, Self::SignalDashboard, Self::DivergenceMonitor, Self::ConvictionMeter]
     }
 }
 
@@ -140,6 +173,7 @@ pub(crate) struct ChartWidget {
     pub h: f32,          // height in pixels
     pub visible: bool,
     pub collapsed: bool,        // just show title bar
+    pub locked: bool,           // prevent accidental dragging
     pub display: WidgetDisplayMode, // Card / HUD / Minimal
     pub dock: WidgetDock,           // Float / Top / Bottom
     pub dock_x: f32,               // horizontal pos in dock strip (pixels from chart left)
@@ -166,9 +200,19 @@ impl ChartWidget {
             ChartWidgetKind::PositionPnl    => (170.0, 90.0),
             ChartWidgetKind::EarningsBadge  => (160.0, 70.0),
             ChartWidgetKind::NewsTicker     => (280.0, 50.0),
+            ChartWidgetKind::ExitGauge      => (160.0, 110.0),
+            ChartWidgetKind::PrecursorAlert => (170.0, 100.0),
+            ChartWidgetKind::TradePlan      => (190.0, 130.0),
+            ChartWidgetKind::ChangePoints   => (180.0, 100.0),
+            ChartWidgetKind::ZoneStrength   => (170.0, 120.0),
+            ChartWidgetKind::PatternScanner => (180.0, 110.0),
+            ChartWidgetKind::VixMonitor     => (170.0, 110.0),
+            ChartWidgetKind::SignalDashboard=> (200.0, 160.0),
+            ChartWidgetKind::DivergenceMonitor => (180.0, 110.0),
+            ChartWidgetKind::ConvictionMeter=> (160.0, 120.0),
             ChartWidgetKind::Custom         => (150.0, 90.0),
         };
-        Self { kind, x, y, w, h, visible: true, collapsed: false,
+        Self { kind, x, y, w, h, visible: true, collapsed: false, locked: false,
                display: WidgetDisplayMode::Card, dock: WidgetDock::Float,
                dock_x: 0.0, anim_x: 0.0, anim_y: 0.0, anim_init: false }
     }

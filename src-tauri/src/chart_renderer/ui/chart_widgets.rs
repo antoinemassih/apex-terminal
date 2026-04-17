@@ -138,7 +138,10 @@ pub(crate) fn draw_widgets(
     // Pass 2 — Render + interact
     // ══════════════════════════════════════════════════════════════════════════
 
-    let mut mode_toggle: Option<usize> = None; // deferred display mode cycle
+    let mut mode_toggle: Option<usize> = None;
+    // Deferred context menu actions (to avoid borrow conflicts)
+    enum CtxAction { Lock(usize), Delete(usize), ResetSize(usize), DockTop(usize), DockBottom(usize), Undock(usize) }
+    let mut ctx_action: Option<CtxAction> = None;
 
     for wi in 0..n {
         let w = &chart.chart_widgets[wi];
@@ -198,6 +201,63 @@ pub(crate) fn draw_widgets(
             let chev = if w.collapsed { "\u{25B6}" } else { "\u{25BC}" };
             painter.text(egui::pos2(tr.right() - 12.0, tr.center().y),
                 egui::Align2::CENTER_CENTER, chev, egui::FontId::proportional(6.0), t.dim.gamma_multiply(0.4));
+
+            // Lock icon (when locked)
+            if w.locked {
+                painter.text(egui::pos2(tr.right() - 42.0, tr.center().y),
+                    egui::Align2::CENTER_CENTER, "\u{1F512}",
+                    egui::FontId::proportional(7.0), t.dim.gamma_multiply(0.4));
+            }
+
+            // Context menu button (⋯)
+            let ctx_rect = egui::Rect::from_center_size(
+                egui::pos2(tr.right() - 42.0 - if w.locked { 14.0 } else { 0.0 }, tr.center().y),
+                egui::vec2(14.0, 14.0));
+            let ctx_resp = ui.interact(ctx_rect,
+                egui::Id::new(("widget_ctx", wi)), egui::Sense::click());
+            if ctx_resp.hovered() {
+                painter.rect_filled(ctx_rect, 3.0, color_alpha(t.accent, ALPHA_GHOST));
+            }
+            painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
+                "\u{22EF}", egui::FontId::proportional(FONT_SM),
+                if ctx_resp.hovered() { t.accent } else { t.dim.gamma_multiply(0.4) });
+
+            // Context menu popup (deferred actions to avoid borrow conflicts)
+            if ctx_resp.clicked() {
+                ui.memory_mut(|m| m.toggle_popup(egui::Id::new(("widget_popup", wi))));
+            }
+            let is_locked = w.locked;
+            let is_docked = w.dock != WidgetDock::Float;
+            egui::popup_below_widget(ui, egui::Id::new(("widget_popup", wi)), &ctx_resp,
+                egui::PopupCloseBehavior::CloseOnClickOutside, |ui: &mut egui::Ui| {
+                ui.set_min_width(120.0);
+                if ui.button(if is_locked { "\u{1F513} Unlock" } else { "\u{1F512} Lock" }).clicked() {
+                    ctx_action = Some(CtxAction::Lock(wi));
+                    ui.close_menu();
+                }
+                if ui.button("\u{1F5D1} Delete").clicked() {
+                    ctx_action = Some(CtxAction::Delete(wi));
+                    ui.close_menu();
+                }
+                if ui.button("\u{21BB} Reset Size").clicked() {
+                    ctx_action = Some(CtxAction::ResetSize(wi));
+                    ui.close_menu();
+                }
+                if ui.button("\u{2B06} Dock Top").clicked() {
+                    ctx_action = Some(CtxAction::DockTop(wi));
+                    ui.close_menu();
+                }
+                if ui.button("\u{2B07} Dock Bottom").clicked() {
+                    ctx_action = Some(CtxAction::DockBottom(wi));
+                    ui.close_menu();
+                }
+                if is_docked {
+                    if ui.button("\u{2197} Undock").clicked() {
+                        ctx_action = Some(CtxAction::Undock(wi));
+                        ui.close_menu();
+                    }
+                }
+            });
 
             // Mode toggle button (always visible in Card)
             let toggle_rect = egui::Rect::from_center_size(
@@ -307,7 +367,7 @@ pub(crate) fn draw_widgets(
 
         let resp = ui.interact(interact_rect, egui::Id::new(("widget_drag", wi)), sense);
 
-        if resp.dragged_by(egui::PointerButton::Primary) {
+        if resp.dragged_by(egui::PointerButton::Primary) && !chart.chart_widgets[wi].locked {
             let d = resp.drag_delta();
             let wid = &mut chart.chart_widgets[wi];
             let pointer = ui.ctx().pointer_interact_pos().unwrap_or(card_rect.center());
@@ -391,6 +451,29 @@ pub(crate) fn draw_widgets(
     if let Some(wi) = mode_toggle {
         chart.chart_widgets[wi].display = chart.chart_widgets[wi].display.cycle();
     }
+
+    // Apply deferred context menu action
+    if let Some(action) = ctx_action {
+        match action {
+            CtxAction::Lock(wi) => chart.chart_widgets[wi].locked = !chart.chart_widgets[wi].locked,
+            CtxAction::Delete(wi) => chart.chart_widgets[wi].visible = false,
+            CtxAction::ResetSize(wi) => {
+                let kind = chart.chart_widgets[wi].kind;
+                let fresh = crate::chart_renderer::ChartWidget::new(kind, 0.0, 0.0);
+                chart.chart_widgets[wi].w = fresh.w;
+                chart.chart_widgets[wi].h = fresh.h;
+            }
+            CtxAction::DockTop(wi) => {
+                chart.chart_widgets[wi].dock = WidgetDock::Top;
+                chart.chart_widgets[wi].dock_x = chart.chart_widgets[wi].anim_x;
+            }
+            CtxAction::DockBottom(wi) => {
+                chart.chart_widgets[wi].dock = WidgetDock::Bottom;
+                chart.chart_widgets[wi].dock_x = chart.chart_widgets[wi].anim_x;
+            }
+            CtxAction::Undock(wi) => chart.chart_widgets[wi].dock = WidgetDock::Float,
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -464,6 +547,43 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
             } else { ("ERN", "—".into(), t.dim) }
         }
         ChartWidgetKind::NewsTicker => ("NEWS", "live".into(), t.accent),
+        ChartWidgetKind::ExitGauge => {
+            let c = match wd.exit_gauge_urgency.as_str() {
+                "exit_now" | "close" => t.bear, "partial" | "tighten" => Color32::from_rgb(255, 191, 0),
+                _ => t.bull };
+            ("EXIT", format!("{:.0}", wd.exit_gauge_score), c)
+        }
+        ChartWidgetKind::PrecursorAlert => {
+            if wd.precursor_active {
+                let c = if wd.precursor_dir > 0 { t.bull } else { t.bear };
+                ("\u{26A1}", format!("{:.0}", wd.precursor_score), c)
+            } else { ("\u{26A1}", "quiet".into(), t.dim) }
+        }
+        ChartWidgetKind::TradePlan => {
+            if let Some((dir, _, _, _, rr, _)) = wd.trade_plan {
+                let c = if dir > 0 { t.bull } else { t.bear };
+                ("PLAN", format!("{:.1}R", rr), c)
+            } else { ("PLAN", "—".into(), t.dim) }
+        }
+        ChartWidgetKind::ChangePoints => ("CP", format!("{}", wd.change_points_count), t.accent),
+        ChartWidgetKind::ZoneStrength => ("ZNS", format!("{}", wd.zone_count), t.accent),
+        ChartWidgetKind::PatternScanner => {
+            if wd.pattern_count > 0 {
+                let c = if wd.pattern_latest_bull { t.bull } else { t.bear };
+                ("PAT", wd.pattern_latest.chars().take(6).collect(), c)
+            } else { ("PAT", "—".into(), t.dim) }
+        }
+        ChartWidgetKind::VixMonitor => {
+            let c = if wd.vix_spot > 25.0 { t.bear } else if wd.vix_spot > 18.0 { Color32::from_rgb(255, 191, 0) } else { t.bull };
+            ("VIX", format!("{:.1}", wd.vix_spot), c)
+        }
+        ChartWidgetKind::SignalDashboard => ("SIG", "dash".into(), t.accent),
+        ChartWidgetKind::DivergenceMonitor => ("DIV", format!("{}", wd.divergence_count), t.accent),
+        ChartWidgetKind::ConvictionMeter => {
+            let score = compute_conviction(wd);
+            let c = if score > 70.0 { t.bull } else if score > 40.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+            ("\u{2605}", format!("{:.0}", score), c)
+        }
         ChartWidgetKind::Custom => ("USR", "—".into(), t.dim),
     }
 }
@@ -489,6 +609,16 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::PositionPnl   => draw_position_pnl(p, body, wd, t),
         ChartWidgetKind::EarningsBadge => draw_earnings_badge(p, body, wd, t),
         ChartWidgetKind::NewsTicker    => draw_news_ticker(p, body, wd, t),
+        ChartWidgetKind::ExitGauge     => draw_exit_gauge(p, body, wd, t),
+        ChartWidgetKind::PrecursorAlert=> draw_precursor_alert(p, body, wd, t),
+        ChartWidgetKind::TradePlan     => draw_trade_plan(p, body, wd, t),
+        ChartWidgetKind::ChangePoints  => draw_change_points(p, body, wd, t),
+        ChartWidgetKind::ZoneStrength  => draw_zone_strength(p, body, wd, t),
+        ChartWidgetKind::PatternScanner=> draw_pattern_scanner(p, body, wd, t),
+        ChartWidgetKind::VixMonitor    => draw_vix_monitor(p, body, wd, t),
+        ChartWidgetKind::SignalDashboard=> draw_signal_dashboard(p, body, wd, t),
+        ChartWidgetKind::DivergenceMonitor => draw_divergence_monitor(p, body, wd, t),
+        ChartWidgetKind::ConvictionMeter=> draw_conviction_meter(p, body, wd, t),
         ChartWidgetKind::Custom        => draw_custom(p, body, t),
     }
 }
@@ -522,6 +652,28 @@ struct WidgetData {
     position_pnl_pct: f32,
     earnings_days: i32,    // -1 = no upcoming earnings
     earnings_label: String,
+    // ApexSignals data
+    exit_gauge_score: f32,
+    exit_gauge_urgency: String,
+    precursor_active: bool,
+    precursor_score: f32,
+    precursor_dir: i8,
+    precursor_desc: String,
+    trade_plan: Option<(i8, f32, f32, f32, f32, f32)>, // (dir, entry, target, stop, rr, conviction)
+    change_points_count: usize,
+    change_points_latest: String,
+    zone_count: usize,
+    zone_fresh: usize,
+    zone_avg_strength: f32,
+    pattern_count: usize,
+    pattern_latest: String,
+    pattern_latest_bull: bool,
+    pattern_latest_conf: f32,
+    vix_spot: f32,
+    vix_gap_pct: f32,
+    vix_convergence: f32,
+    divergence_count: usize,
+    bars_loaded: bool, // false = show loading skeleton
 }
 
 impl WidgetData {
@@ -618,6 +770,26 @@ impl WidgetData {
             })
             .unwrap_or((-1, String::new()));
 
+        // ── ApexSignals data ──
+        let trade_plan = chart.trade_plan.as_ref().map(|tp| (tp.0, tp.1, tp.2, tp.3, tp.5, tp.6));
+
+        let (pattern_count, pattern_latest, pattern_latest_bull, pattern_latest_conf) =
+            if chart.pattern_labels.is_empty() { (0, String::new(), false, 0.0) }
+            else {
+                let last = chart.pattern_labels.last().unwrap();
+                (chart.pattern_labels.len(), last.label.clone(), last.bullish, last.confidence)
+            };
+
+        let zone_count = chart.signal_zones.len();
+        let zone_fresh = chart.signal_zones.iter().filter(|z| z.fresh).count();
+        let zone_avg_strength = if zone_count > 0 {
+            chart.signal_zones.iter().map(|z| z.strength).sum::<f32>() / zone_count as f32
+        } else { 0.0 };
+
+        let change_points_count = chart.change_points.len();
+        let change_points_latest = chart.change_points.last()
+            .map(|(_, t, _)| t.clone()).unwrap_or_default();
+
         WidgetData {
             trend_score: chart.trend_health_score,
             trend_dir: chart.trend_health_direction,
@@ -629,6 +801,19 @@ impl WidgetData {
             correlation_spy, dark_pool_bars, dark_pool_ratio: dp_ratio,
             position_qty, position_avg, position_pnl, position_pnl_pct,
             earnings_days, earnings_label,
+            exit_gauge_score: chart.exit_gauge_score,
+            exit_gauge_urgency: chart.exit_gauge_urgency.clone(),
+            precursor_active: chart.precursor_active,
+            precursor_score: chart.precursor_score,
+            precursor_dir: chart.precursor_direction,
+            precursor_desc: chart.precursor_description.clone(),
+            trade_plan, change_points_count, change_points_latest,
+            zone_count, zone_fresh, zone_avg_strength,
+            pattern_count, pattern_latest, pattern_latest_bull, pattern_latest_conf,
+            vix_spot: chart.vix_spot, vix_gap_pct: chart.vix_gap_pct,
+            vix_convergence: chart.vix_convergence_score,
+            divergence_count: 0, // populated when divergence overlays are active
+            bars_loaded: n > 0,
         }
     }
 }
@@ -1265,6 +1450,392 @@ fn draw_news_ticker(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 // ═══════════════════════════════════════════════════════════════════════════════
 // Resize handle — drawn on Card mode widgets, bottom-right corner
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/// Draw a loading skeleton shimmer when no bar data is loaded yet.
+fn draw_loading_skeleton(p: &egui::Painter, body: egui::Rect, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y;
+    // Pulsing dots
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default().as_millis() as f32;
+    for i in 0..3 {
+        let phase = (now / 400.0 + i as f32 * 0.8).sin() * 0.5 + 0.5;
+        let alpha = (phase * 80.0) as u8;
+        let r = 2.0 + phase * 1.5;
+        p.circle_filled(egui::pos2(cx - 10.0 + i as f32 * 10.0, cy),
+            r, Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), alpha));
+    }
+    p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
+        "Loading\u{2026}", egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.3));
+}
+
+/// Compute aggregate conviction from all signal sources (0-100).
+fn compute_conviction(wd: &WidgetData) -> f32 {
+    let mut score = 0.0f32;
+    let mut weight = 0.0f32;
+
+    // Trend health contributes heavily
+    if wd.trend_score > 0.0 { score += wd.trend_score * 2.0; weight += 2.0; }
+
+    // RSI extremes add conviction for reversals
+    let rsi_signal = if wd.rsi > 70.0 || wd.rsi < 30.0 { 80.0 } else { 40.0 };
+    score += rsi_signal; weight += 1.0;
+
+    // Precursor adds conviction
+    if wd.precursor_active { score += wd.precursor_score * 1.5; weight += 1.5; }
+
+    // Zone strength
+    if wd.zone_count > 0 { score += wd.zone_avg_strength * 10.0; weight += 1.0; }
+
+    // Pattern confidence
+    if wd.pattern_count > 0 { score += wd.pattern_latest_conf * 100.0; weight += 1.0; }
+
+    // Exit gauge inversely correlates (high exit = low conviction to hold)
+    if wd.exit_gauge_score > 0.0 { score += 100.0 - wd.exit_gauge_score; weight += 1.0; }
+
+    if weight > 0.0 { (score / weight).clamp(0.0, 100.0) } else { 50.0 }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ApexSignals widget renderers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn draw_exit_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let cx = body.center().x;
+    let score = wd.exit_gauge_score;
+
+    let color = match wd.exit_gauge_urgency.as_str() {
+        "exit_now" => t.bear,
+        "close"    => Color32::from_rgb(220, 80, 80),
+        "partial"  => Color32::from_rgb(255, 160, 60),
+        "tighten"  => Color32::from_rgb(255, 191, 0),
+        _          => t.bull, // "hold"
+    };
+
+    // Vertical bar gauge
+    let bar_x = cx - 12.0;
+    let bar_w = 24.0;
+    let bar_h = body.height() - 40.0;
+    let bar_y = body.top() + 8.0;
+
+    // Track
+    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, bar_h)),
+        4.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+
+    // Fill from bottom
+    let fill_h = bar_h * (score / 100.0).clamp(0.0, 1.0);
+    p.rect_filled(egui::Rect::from_min_size(
+        egui::pos2(bar_x, bar_y + bar_h - fill_h), egui::vec2(bar_w, fill_h)),
+        4.0, color);
+
+    // Score
+    hero_number(p, egui::pos2(cx + 30.0, body.top() + 20.0), &format!("{:.0}", score), color);
+
+    // Urgency label
+    let label = if wd.exit_gauge_urgency.is_empty() { "HOLD" } else { &wd.exit_gauge_urgency };
+    sub_label(p, egui::pos2(cx, body.bottom() - 10.0), &label.to_uppercase(), color);
+
+    // Zone markers on the bar
+    for (pct, lbl) in [(20.0, "H"), (40.0, "T"), (60.0, "P"), (80.0, "C"), (95.0, "X")] {
+        let y = bar_y + bar_h * (1.0 - pct / 100.0);
+        p.text(egui::pos2(bar_x - 6.0, y), egui::Align2::RIGHT_CENTER,
+            lbl, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.3));
+    }
+}
+
+fn draw_precursor_alert(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let cx = body.center().x;
+
+    if !wd.precursor_active {
+        p.text(egui::pos2(cx, body.center().y - 4.0), egui::Align2::CENTER_CENTER,
+            "NO ACTIVITY", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        sub_label(p, egui::pos2(cx, body.center().y + 14.0), "Smart money quiet", t.dim);
+        return;
+    }
+
+    let dir_col = if wd.precursor_dir > 0 { t.bull } else { t.bear };
+    let dir_label = if wd.precursor_dir > 0 { "BULLISH" } else { "BEARISH" };
+
+    // Flash icon
+    p.text(egui::pos2(cx, body.top() + 12.0), egui::Align2::CENTER_CENTER,
+        "\u{26A1}", egui::FontId::proportional(18.0), dir_col);
+
+    // Score
+    hero_number(p, egui::pos2(cx, body.top() + 34.0), &format!("{:.0}", wd.precursor_score), dir_col);
+
+    // Direction
+    sub_label(p, egui::pos2(cx, body.top() + 52.0), dir_label, dir_col);
+
+    // Description (truncated)
+    if !wd.precursor_desc.is_empty() {
+        let desc: String = wd.precursor_desc.chars().take(30).collect();
+        p.text(egui::pos2(cx, body.bottom() - 8.0), egui::Align2::CENTER_CENTER,
+            &desc, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    }
+}
+
+fn draw_trade_plan(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let cx = body.center().x;
+
+    let Some((dir, entry, target, stop, rr, conviction)) = wd.trade_plan else {
+        p.text(egui::pos2(cx, body.center().y), egui::Align2::CENTER_CENTER,
+            "NO TRADE PLAN", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        return;
+    };
+
+    let dir_col = if dir > 0 { t.bull } else { t.bear };
+    let dir_label = if dir > 0 { "LONG" } else { "SHORT" };
+
+    // Direction pill
+    p.text(egui::pos2(cx, body.top() + 8.0), egui::Align2::CENTER_CENTER,
+        dir_label, egui::FontId::monospace(FONT_SM), dir_col);
+
+    // Entry / Target / Stop rows
+    let left = body.left() + 10.0;
+    let right = body.right() - 10.0;
+    let mut y = body.top() + 24.0;
+    for (label, price, color) in [("ENTRY", entry, TEXT_PRIMARY), ("TARGET", target, t.bull), ("STOP", stop, t.bear)] {
+        p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
+            label, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+        p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
+            &format!("${:.2}", price), egui::FontId::monospace(FONT_SM), color);
+        y += 18.0;
+    }
+
+    // R:R and conviction
+    let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+    p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
+        &format!("{:.1}R", rr), egui::FontId::monospace(FONT_LG), rr_col);
+
+    // Conviction bar
+    let bar_x = left + 40.0;
+    let bar_w = right - bar_x;
+    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y + 2.0), egui::vec2(bar_w, 6.0)),
+        2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y + 2.0),
+        egui::vec2(bar_w * (conviction / 100.0).clamp(0.0, 1.0), 6.0)),
+        2.0, dir_col);
+    p.text(egui::pos2(right, y + 14.0), egui::Align2::RIGHT_CENTER,
+        &format!("{:.0}% conviction", conviction), egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+}
+
+fn draw_change_points(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let cx = body.center().x;
+
+    hero_number(p, egui::pos2(cx, body.top() + 18.0),
+        &format!("{}", wd.change_points_count), t.accent);
+    sub_label(p, egui::pos2(cx, body.top() + 36.0), "REGIME SHIFTS", t.dim);
+
+    if !wd.change_points_latest.is_empty() {
+        p.text(egui::pos2(cx, body.top() + 54.0), egui::Align2::CENTER_CENTER,
+            &format!("Latest: {}", wd.change_points_latest),
+            egui::FontId::monospace(FONT_XS), t.accent);
+    }
+
+    // Visual: dots for each change point
+    let dot_y = body.bottom() - 12.0;
+    let max_dots = ((body.width() - 20.0) / 8.0) as usize;
+    let count = wd.change_points_count.min(max_dots);
+    let start_x = cx - (count as f32 * 8.0) / 2.0;
+    for i in 0..count {
+        let x = start_x + i as f32 * 8.0 + 4.0;
+        p.circle_filled(egui::pos2(x, dot_y), 2.5, color_alpha(t.accent, ALPHA_DIM));
+    }
+}
+
+fn draw_zone_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let left = body.left() + 10.0;
+    let right = body.right() - 10.0;
+
+    // Zone counts
+    let rows = [
+        ("TOTAL", format!("{}", wd.zone_count), t.accent),
+        ("FRESH", format!("{}", wd.zone_fresh), t.bull),
+        ("TESTED", format!("{}", wd.zone_count.saturating_sub(wd.zone_fresh)), Color32::from_rgb(255, 191, 0)),
+    ];
+
+    let mut y = body.top() + 8.0;
+    for (label, value, color) in &rows {
+        p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
+            *label, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+        p.text(egui::pos2(right, y + 4.0), egui::Align2::RIGHT_CENTER,
+            value, egui::FontId::monospace(FONT_LG), *color);
+        y += 22.0;
+    }
+
+    // Average strength bar
+    y += 4.0;
+    p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
+        "STRENGTH", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    let bar_x = left + 56.0;
+    let bar_w = right - bar_x;
+    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y - 2.0), egui::vec2(bar_w, 6.0)),
+        2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    let fill = (wd.zone_avg_strength / 10.0).clamp(0.0, 1.0);
+    let str_col = if fill > 0.7 { t.bull } else if fill > 0.4 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y - 2.0), egui::vec2(bar_w * fill, 6.0)),
+        2.0, str_col);
+}
+
+fn draw_pattern_scanner(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let cx = body.center().x;
+
+    if wd.pattern_count == 0 {
+        p.text(egui::pos2(cx, body.center().y), egui::Align2::CENTER_CENTER,
+            "No patterns", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        return;
+    }
+
+    let pat_col = if wd.pattern_latest_bull { t.bull } else { t.bear };
+
+    // Latest pattern name — hero
+    p.text(egui::pos2(cx, body.top() + 14.0), egui::Align2::CENTER_CENTER,
+        &wd.pattern_latest, egui::FontId::monospace(FONT_LG), pat_col);
+
+    // Confidence bar
+    let bar_y = body.top() + 30.0;
+    let bar_x = body.left() + 12.0;
+    let bar_w = body.width() - 24.0;
+    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, 6.0)),
+        2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y),
+        egui::vec2(bar_w * wd.pattern_latest_conf, 6.0)), 2.0, pat_col);
+    p.text(egui::pos2(cx, bar_y + 14.0), egui::Align2::CENTER_CENTER,
+        &format!("{:.0}% confidence", wd.pattern_latest_conf * 100.0),
+        egui::FontId::monospace(FONT_XS), pat_col);
+
+    // Total count
+    p.text(egui::pos2(cx, body.bottom() - 10.0), egui::Align2::CENTER_CENTER,
+        &format!("{} patterns detected", wd.pattern_count),
+        egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+}
+
+fn draw_vix_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let cx = body.center().x;
+
+    let vix_col = if wd.vix_spot > 30.0 { t.bear }
+        else if wd.vix_spot > 20.0 { Color32::from_rgb(255, 191, 0) }
+        else { t.bull };
+
+    // VIX spot hero
+    hero_number(p, egui::pos2(cx, body.top() + 18.0), &format!("{:.1}", wd.vix_spot), vix_col);
+    sub_label(p, egui::pos2(cx, body.top() + 36.0), "VIX SPOT", t.dim);
+
+    // Gap % and convergence
+    let left = body.left() + 10.0;
+    let right = body.right() - 10.0;
+    let y = body.top() + 52.0;
+
+    let gap_col = if wd.vix_gap_pct.abs() > 5.0 { t.bear } else { t.dim };
+    p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
+        "GAP", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
+        &format!("{:+.1}%", wd.vix_gap_pct), egui::FontId::monospace(FONT_SM), gap_col);
+
+    let conv_col = if wd.vix_convergence > 0.7 { t.bull } else if wd.vix_convergence > 0.3 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+    p.text(egui::pos2(left, y + 16.0), egui::Align2::LEFT_CENTER,
+        "CONV", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    p.text(egui::pos2(right, y + 16.0), egui::Align2::RIGHT_CENTER,
+        &format!("{:.0}%", wd.vix_convergence * 100.0), egui::FontId::monospace(FONT_SM), conv_col);
+}
+
+fn draw_signal_dashboard(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let left = body.left() + 8.0;
+    let right = body.right() - 8.0;
+
+    // Compact signal overview — each row is a signal with status dot + name + value
+    struct Row { name: &'static str, active: bool, value: String, color: Color32 }
+    let rows = [
+        Row { name: "Trend", active: wd.trend_score > 0.0,
+            value: format!("{:.0}", wd.trend_score),
+            color: if wd.trend_score > 66.0 { t.bull } else if wd.trend_score > 33.0 { Color32::from_rgb(255, 191, 0) } else { t.bear } },
+        Row { name: "Exit", active: wd.exit_gauge_score > 0.0,
+            value: wd.exit_gauge_urgency.chars().take(6).collect::<String>().to_uppercase(),
+            color: if wd.exit_gauge_score > 60.0 { t.bear } else { t.bull } },
+        Row { name: "Precursor", active: wd.precursor_active,
+            value: if wd.precursor_active { format!("{:.0}", wd.precursor_score) } else { "—".into() },
+            color: if wd.precursor_dir > 0 { t.bull } else if wd.precursor_active { t.bear } else { t.dim } },
+        Row { name: "Zones", active: wd.zone_count > 0,
+            value: format!("{} ({} fresh)", wd.zone_count, wd.zone_fresh), color: t.accent },
+        Row { name: "Patterns", active: wd.pattern_count > 0,
+            value: if wd.pattern_count > 0 { wd.pattern_latest.chars().take(8).collect() } else { "—".into() },
+            color: if wd.pattern_latest_bull { t.bull } else if wd.pattern_count > 0 { t.bear } else { t.dim } },
+        Row { name: "Changes", active: wd.change_points_count > 0,
+            value: format!("{}", wd.change_points_count), color: t.accent },
+        Row { name: "VIX", active: wd.vix_spot > 0.0,
+            value: format!("{:.1}", wd.vix_spot),
+            color: if wd.vix_spot > 25.0 { t.bear } else { t.bull } },
+    ];
+
+    let row_h = (body.height() - 4.0) / rows.len() as f32;
+    for (i, row) in rows.iter().enumerate() {
+        let y = body.top() + 2.0 + i as f32 * row_h + row_h * 0.5;
+        // Status dot
+        let dot_col = if row.active { row.color } else { color_alpha(t.dim, ALPHA_MUTED) };
+        p.circle_filled(egui::pos2(left + 4.0, y), 2.5, dot_col);
+        // Name
+        p.text(egui::pos2(left + 14.0, y), egui::Align2::LEFT_CENTER,
+            row.name, egui::FontId::monospace(FONT_XS), if row.active { TEXT_PRIMARY } else { t.dim.gamma_multiply(0.4) });
+        // Value
+        p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
+            &row.value, egui::FontId::monospace(FONT_XS), row.color);
+    }
+}
+
+fn draw_divergence_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let cx = body.center().x;
+
+    if wd.divergence_count == 0 {
+        p.text(egui::pos2(cx, body.center().y - 4.0), egui::Align2::CENTER_CENTER,
+            "NO DIVERGENCES", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        sub_label(p, egui::pos2(cx, body.center().y + 14.0), "RSI / MACD aligned", t.dim);
+        return;
+    }
+
+    hero_number(p, egui::pos2(cx, body.top() + 18.0),
+        &format!("{}", wd.divergence_count), Color32::from_rgb(255, 160, 60));
+    sub_label(p, egui::pos2(cx, body.top() + 36.0), "ACTIVE DIVERGENCES", t.dim);
+}
+
+fn draw_conviction_meter(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if !wd.bars_loaded { return draw_loading_skeleton(p, body, t); }
+    let cx = body.center().x;
+    let score = compute_conviction(wd);
+
+    let color = if score > 70.0 { t.bull }
+        else if score > 50.0 { lerp_color(Color32::from_rgb(255, 191, 0), t.bull, (score - 50.0) / 20.0) }
+        else if score > 30.0 { lerp_color(t.bear, Color32::from_rgb(255, 191, 0), (score - 30.0) / 20.0) }
+        else { t.bear };
+
+    // Arc gauge
+    let gauge_cy = body.top() + 38.0;
+    let r = 28.0;
+    draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
+        Stroke::new(3.0, color_alpha(t.toolbar_border, ALPHA_MUTED)), 40);
+    let sweep = (score / 100.0) * PI;
+    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI, Stroke::new(3.5, color), 30);
+
+    // Needle
+    let a = PI - (score / 100.0) * PI;
+    let ne = egui::pos2(cx + (r - 8.0) * a.cos(), gauge_cy - (r - 8.0) * a.sin());
+    p.line_segment([egui::pos2(cx, gauge_cy), ne], Stroke::new(1.5, Color32::WHITE));
+    p.circle_filled(egui::pos2(cx, gauge_cy), 3.0, Color32::WHITE);
+
+    hero_number(p, egui::pos2(cx, gauge_cy + 14.0), &format!("{:.0}", score), color);
+
+    let label = if score > 75.0 { "HIGH CONVICTION" } else if score > 50.0 { "MODERATE" }
+        else if score > 25.0 { "LOW" } else { "NO SIGNAL" };
+    sub_label(p, egui::pos2(cx, gauge_cy + 32.0), label, color);
+}
 
 /// Draw a resize grip and handle drag interaction. Returns true if resizing occurred.
 pub(crate) fn resize_handle(
