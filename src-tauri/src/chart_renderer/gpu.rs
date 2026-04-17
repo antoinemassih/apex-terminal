@@ -1341,6 +1341,9 @@ pub(crate) struct Chart {
     pub(crate) alert_input_price: String,
     // ── P&L equity curve ──
     pub(crate) show_pnl_curve: bool,
+    // Floating chart widgets (info cards on the canvas)
+    pub(crate) chart_widgets: Vec<super::ChartWidget>,
+    pub(crate) dragging_widget: Option<usize>, // index of widget being dragged
     // ── Symbol history breadcrumb (back/forward navigation) ──
     pub(crate) symbol_history: Vec<String>,
     pub(crate) symbol_history_idx: usize,
@@ -1459,7 +1462,7 @@ impl Chart {
             new_bracket_name: String::new(), new_bracket_target: String::new(), new_bracket_stop: String::new(),
             link_group: 0,
             price_alerts: vec![], next_alert_id: 1, alert_input_price: String::new(),
-            show_pnl_curve: false,
+            show_pnl_curve: false, chart_widgets: vec![], dragging_widget: None,
             symbol_history: vec![], symbol_history_idx: 0, symbol_nav_in_progress: false,
             vc_target: 200,
             price_range_animated: None,
@@ -3847,6 +3850,33 @@ fn render_toolbar(
                 let hh_resp = tb_btn_tip(ui, Icon::LIGHTNING, hh, t, "Hit Highlight");
                 if hh_resp.clicked() { panes[ap].hit_highlight = !hh; }
             }
+
+            // ── Widgets dropdown — add floating info cards to the chart ──
+            ui.menu_button(egui::RichText::new("Widgets").monospace().size(FONT_LG).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                ui.set_min_width(180.0);
+                ui.label(egui::RichText::new("CHART WIDGETS").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                ui.add_space(4.0);
+                let active_kinds: Vec<super::ChartWidgetKind> = panes[ap].chart_widgets.iter().map(|w| w.kind).collect();
+                for &kind in super::ChartWidgetKind::all() {
+                    let is_active = active_kinds.contains(&kind);
+                    let label = format!("{} {} {}", kind.icon(), kind.label(),
+                        if is_active { "\u{2713}" } else { "" });
+                    if ui.selectable_label(is_active, egui::RichText::new(&label).monospace().size(10.0)).clicked() {
+                        if is_active {
+                            panes[ap].chart_widgets.retain(|w| w.kind != kind);
+                        } else {
+                            // Place new widget at a staggered position
+                            let n = panes[ap].chart_widgets.len();
+                            let x = 0.02 + (n as f32 * 0.05).min(0.5);
+                            let y = 0.05 + (n as f32 * 0.08).min(0.6);
+                            panes[ap].chart_widgets.push(super::ChartWidget::new(kind, x, y));
+                        }
+                        ui.close_menu();
+                    }
+                }
+            });
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -14811,6 +14841,15 @@ pub(crate) struct Watchlist {
     pub(crate) dragging_tab: Option<TabDragState>,
     // Pane templates (save/load indicator + toggle configs)
     pub(crate) pane_templates: Vec<(String, serde_json::Value)>,  // (name, serialized pane config)
+    // Plays / Playbook system
+    pub(crate) plays: Vec<super::Play>,
+    pub(crate) play_editor_open: bool,
+    pub(crate) play_editor_symbol: String,
+    pub(crate) play_editor_entry: String,
+    pub(crate) play_editor_target: String,
+    pub(crate) play_editor_stop: String,
+    pub(crate) play_editor_notes: String,
+    pub(crate) play_editor_direction: super::PlayDirection,
     pub(crate) pane_template_name: String, // input buffer for naming a new template
     // Discord chat panel
     pub(crate) discord_open: bool,
@@ -14925,6 +14964,10 @@ impl Watchlist {
                layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO, dragging_tab: None,
                pending_overlay_add: false,
                pane_templates: vec![], pane_template_name: String::new(),
+               plays: vec![], play_editor_open: false,
+               play_editor_symbol: String::new(), play_editor_entry: String::new(),
+               play_editor_target: String::new(), play_editor_stop: String::new(),
+               play_editor_notes: String::new(), play_editor_direction: super::PlayDirection::Long,
                discord_open: false,
                discord_messages: vec![],
                discord_input: String::new(),

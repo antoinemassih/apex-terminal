@@ -37,3 +37,5 @@ pub mod signals_panel;
 pub mod feed_panel;
 pub mod option_quick_picker;
 pub mod template_popup;
+pub mod chart_widgets;
+pub mod plays_panel;

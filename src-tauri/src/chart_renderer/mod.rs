@@ -26,9 +26,159 @@ pub(crate) enum AnalysisTab { Rrg, TimeSales, Scanner, Scripts }
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum SignalsTab { Alerts, Signals }
 
-/// Tab selector for the unified Feed sidebar (News + Discord + Screenshots).
+/// Tab selector for the unified Feed sidebar (News + Discord + Screenshots + Plays).
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum FeedTab { News, Discord, Screenshots }
+pub(crate) enum FeedTab { News, Discord, Screenshots, Plays }
+
+// ─── Chart Widgets (floating info cards on the chart canvas) ─────────────────
+
+/// Widget type — what kind of data/visualization the widget shows.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum ChartWidgetKind {
+    TrendStrength,    // gauge: trend health score + direction
+    Momentum,         // gauge: momentum oscillator composite
+    Volatility,       // gauge: ATR / VIX / realized vol
+    VolumeProfile,    // mini volume-at-price heatmap
+    SessionTimer,     // countdown to market open/close
+    KeyLevels,        // S/R levels with distance from price
+    OptionGreeks,     // delta/gamma/theta/vega for active option
+    RiskReward,       // current position R:R ratio
+    MarketBreadth,    // advance/decline, new highs/lows
+    Custom,           // user-defined (future: extension widget)
+}
+
+impl ChartWidgetKind {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::TrendStrength  => "Trend Strength",
+            Self::Momentum       => "Momentum",
+            Self::Volatility     => "Volatility",
+            Self::VolumeProfile  => "Volume Profile",
+            Self::SessionTimer   => "Session Timer",
+            Self::KeyLevels      => "Key Levels",
+            Self::OptionGreeks   => "Option Greeks",
+            Self::RiskReward     => "Risk / Reward",
+            Self::MarketBreadth  => "Market Breadth",
+            Self::Custom         => "Custom",
+        }
+    }
+    pub(crate) fn icon(self) -> &'static str {
+        match self {
+            Self::TrendStrength  => "\u{2191}",  // ↑
+            Self::Momentum       => "\u{21C5}",  // ⇅
+            Self::Volatility     => "\u{2248}",  // ≈
+            Self::VolumeProfile  => "\u{2593}",  // ▓
+            Self::SessionTimer   => "\u{23F1}",  // ⏱
+            Self::KeyLevels      => "\u{2550}",  // ═
+            Self::OptionGreeks   => "\u{0394}",  // Δ
+            Self::RiskReward     => "\u{2696}",  // ⚖
+            Self::MarketBreadth  => "\u{2637}",  // ☷
+            Self::Custom         => "\u{2699}",  // ⚙
+        }
+    }
+    pub(crate) fn all() -> &'static [Self] {
+        &[Self::TrendStrength, Self::Momentum, Self::Volatility, Self::VolumeProfile,
+          Self::SessionTimer, Self::KeyLevels, Self::OptionGreeks, Self::RiskReward,
+          Self::MarketBreadth]
+    }
+}
+
+/// A floating info widget placed on the chart canvas.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ChartWidget {
+    pub kind: ChartWidgetKind,
+    pub x: f32,          // position as fraction of chart width (0.0-1.0)
+    pub y: f32,          // position as fraction of chart height (0.0-1.0)
+    pub w: f32,          // width in pixels
+    pub h: f32,          // height in pixels
+    pub visible: bool,
+    pub collapsed: bool, // just show title bar
+}
+
+impl ChartWidget {
+    pub fn new(kind: ChartWidgetKind, x: f32, y: f32) -> Self {
+        let (w, h) = match kind {
+            ChartWidgetKind::TrendStrength | ChartWidgetKind::Momentum | ChartWidgetKind::Volatility => (140.0, 80.0),
+            ChartWidgetKind::SessionTimer => (140.0, 60.0),
+            ChartWidgetKind::VolumeProfile => (120.0, 160.0),
+            ChartWidgetKind::KeyLevels => (160.0, 120.0),
+            ChartWidgetKind::OptionGreeks => (160.0, 100.0),
+            ChartWidgetKind::RiskReward => (140.0, 80.0),
+            ChartWidgetKind::MarketBreadth => (160.0, 100.0),
+            ChartWidgetKind::Custom => (140.0, 80.0),
+        };
+        Self { kind, x, y, w, h, visible: true, collapsed: false }
+    }
+}
+
+// ─── Plays / Playbook (shareable strategy cards) ─────────────────────────────
+
+/// A Play is a shareable one-click trade card: ticker + entry + exit + stop.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Play {
+    pub id: String,
+    pub title: String,         // "AAPL Bull Call Spread" or "SPY Breakout Long"
+    pub symbol: String,
+    pub direction: PlayDirection,
+    pub entry_price: f32,
+    pub target_price: f32,
+    pub stop_price: f32,
+    pub contract: String,      // empty for equity, "450C 0DTE" for options
+    pub quantity: u32,
+    pub status: PlayStatus,
+    pub author: String,        // who created it
+    pub notes: String,         // strategy rationale
+    pub created_at: i64,       // unix timestamp
+    pub risk_reward: f32,      // computed: (target - entry) / (entry - stop)
+    pub tags: Vec<String>,     // "momentum", "breakout", "earnings", etc.
+}
+
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum PlayDirection { Long, Short }
+
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum PlayStatus {
+    Draft,       // being composed
+    Published,   // shared / visible in feed
+    Active,      // order placed, in progress
+    Won,         // hit target
+    Lost,        // hit stop
+    Expired,     // time-based expiry
+    Cancelled,   // manually cancelled
+}
+
+impl PlayDirection {
+    pub fn label(self) -> &'static str { match self { Self::Long => "LONG", Self::Short => "SHORT" } }
+}
+
+impl PlayStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Draft => "DRAFT", Self::Published => "PUBLISHED", Self::Active => "ACTIVE",
+            Self::Won => "WON", Self::Lost => "LOST", Self::Expired => "EXPIRED", Self::Cancelled => "CANCELLED",
+        }
+    }
+}
+
+impl Play {
+    pub fn new(symbol: &str, direction: PlayDirection, entry: f32, target: f32, stop: f32) -> Self {
+        let rr = if (entry - stop).abs() > 0.001 {
+            (target - entry).abs() / (entry - stop).abs()
+        } else { 0.0 };
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: format!("{} {}", symbol, direction.label()),
+            symbol: symbol.into(),
+            direction, entry_price: entry, target_price: target, stop_price: stop,
+            contract: String::new(), quantity: 1,
+            status: PlayStatus::Draft,
+            author: String::new(), notes: String::new(),
+            created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64,
+            risk_reward: rr,
+            tags: vec![],
+        }
+    }
+}
 
 /// Tab selector for the Book pane (Positions/Orders + Journal).
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

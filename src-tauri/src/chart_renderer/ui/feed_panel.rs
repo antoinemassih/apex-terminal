@@ -33,6 +33,7 @@ pub(crate) fn draw(
                     (FeedTab::News, "News"),
                     (FeedTab::Discord, "Discord"),
                     (FeedTab::Screenshots, "Screenshots"),
+                    (FeedTab::Plays, "Plays"),
                 ], t.accent, t.dim);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.feed_panel_open = false; }
@@ -56,6 +57,9 @@ pub(crate) fn draw(
                 }
                 FeedTab::Screenshots => {
                     super::screenshot_panel::draw_content(ui, watchlist, t, panes, ap);
+                }
+                FeedTab::Plays => {
+                    super::plays_panel::draw_content(ui, watchlist, t);
                 }
             }
         });
