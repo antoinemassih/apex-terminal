@@ -224,6 +224,13 @@ pub(crate) fn draw_widgets(
                     egui::pos2(card_rect.left(), card_rect.top() + title_h + 2.0),
                     egui::vec2(card_w, card_h - title_h - 2.0));
                 draw_widget_body(&painter, body, kind, &wd, t);
+
+                // Resize handle (bottom-right corner)
+                if let Some(delta) = resize_handle(ui, &painter, card_rect, wi, t) {
+                    let wid = &mut chart.chart_widgets[wi];
+                    wid.w = (wid.w + delta.x).clamp(100.0, 400.0);
+                    wid.h = (wid.h + delta.y).clamp(60.0, 300.0);
+                }
             }
         } else if mode == WidgetDisplayMode::Hud {
             if !w.collapsed {
@@ -436,6 +443,27 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
         ChartWidgetKind::OptionGreeks => ("\u{0394}", "0.45".into(), Color32::from_rgb(100, 200, 255)),
         ChartWidgetKind::RiskReward => ("R:R", "2.8:1".into(), t.bull),
         ChartWidgetKind::MarketBreadth => ("A/D", "1842/1156".into(), t.bull),
+        ChartWidgetKind::Correlation => {
+            let c = if wd.correlation_spy > 0.5 { t.bull } else if wd.correlation_spy > 0.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+            ("COR", format!("{:.2}", wd.correlation_spy), c)
+        }
+        ChartWidgetKind::DarkPool => {
+            let c = if wd.dark_pool_ratio > 0.3 { t.accent } else { t.dim };
+            ("DP", format!("{:.0}%", wd.dark_pool_ratio * 100.0), c)
+        }
+        ChartWidgetKind::PositionPnl => {
+            if wd.position_qty != 0 {
+                let c = if wd.position_pnl >= 0.0 { t.bull } else { t.bear };
+                ("P&L", format!("{:+.0}", wd.position_pnl), c)
+            } else { ("P&L", "flat".into(), t.dim) }
+        }
+        ChartWidgetKind::EarningsBadge => {
+            if wd.earnings_days >= 0 {
+                let c = if wd.earnings_days <= 3 { t.bear } else { t.accent };
+                ("ERN", format!("{}d", wd.earnings_days), c)
+            } else { ("ERN", "—".into(), t.dim) }
+        }
+        ChartWidgetKind::NewsTicker => ("NEWS", "live".into(), t.accent),
         ChartWidgetKind::Custom => ("USR", "—".into(), t.dim),
     }
 }
@@ -456,6 +484,11 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::OptionGreeks  => draw_option_greeks(p, body, t),
         ChartWidgetKind::RiskReward    => draw_risk_reward(p, body, wd, t),
         ChartWidgetKind::MarketBreadth => draw_market_breadth(p, body, t),
+        ChartWidgetKind::Correlation   => draw_correlation(p, body, wd, t),
+        ChartWidgetKind::DarkPool      => draw_dark_pool(p, body, wd, t),
+        ChartWidgetKind::PositionPnl   => draw_position_pnl(p, body, wd, t),
+        ChartWidgetKind::EarningsBadge => draw_earnings_badge(p, body, wd, t),
+        ChartWidgetKind::NewsTicker    => draw_news_ticker(p, body, wd, t),
         ChartWidgetKind::Custom        => draw_custom(p, body, t),
     }
 }
@@ -478,6 +511,17 @@ struct WidgetData {
     _day_change_pct: f32,
     vol_bars: [f32; 12],
     price_levels: [(f32, &'static str); 5],
+    // New widget data
+    symbol: String,
+    correlation_spy: f32,  // -1..1 correlation with market
+    dark_pool_bars: [f32; 8], // normalized unusual volume prints
+    dark_pool_ratio: f32,  // dark pool % of total volume
+    position_qty: i32,     // 0 = no position
+    position_avg: f32,
+    position_pnl: f32,
+    position_pnl_pct: f32,
+    earnings_days: i32,    // -1 = no upcoming earnings
+    earnings_label: String,
 }
 
 impl WidgetData {
@@ -520,6 +564,60 @@ impl WidgetData {
         let r2 = pp + (h - l);
         let s2 = pp - (h - l);
 
+        // ── Correlation: compute from close-to-close returns (approximation) ──
+        // In a real build this would correlate with SPY bars; here we use
+        // autocorrelation of returns as a proxy for market coupling.
+        let correlation_spy = compute_autocorrelation(bars, 20);
+
+        // ── Dark pool: simulate unusual volume prints from volume spikes ──
+        let mut dark_pool_bars = [0.0f32; 8];
+        let mut dp_ratio = 0.0f32;
+        if n >= 8 {
+            let avg_vol: f32 = bars[n.saturating_sub(50)..n].iter().map(|b| b.volume).sum::<f32>()
+                / bars[n.saturating_sub(50)..n].len() as f32;
+            let start = n - 8;
+            let max_dp = bars[start..n].iter()
+                .map(|b| (b.volume / avg_vol.max(1.0) - 1.0).max(0.0))
+                .fold(0.0f32, f32::max).max(0.01);
+            for i in 0..8 {
+                let spike = (bars[start + i].volume / avg_vol.max(1.0) - 1.0).max(0.0);
+                dark_pool_bars[i] = spike / max_dp;
+            }
+            // Estimate "dark pool ratio" as fraction of volume above average
+            let total_vol: f32 = bars[n.saturating_sub(20)..n].iter().map(|b| b.volume).sum();
+            let above_avg: f32 = bars[n.saturating_sub(20)..n].iter()
+                .map(|b| (b.volume - avg_vol).max(0.0)).sum();
+            dp_ratio = if total_vol > 0.0 { above_avg / total_vol } else { 0.0 };
+        }
+
+        // ── Position P&L from ACCOUNT_DATA ──
+        let (position_qty, position_avg, position_pnl, position_pnl_pct) =
+            if let Some((_, positions, _)) = crate::chart_renderer::trading::read_account_data() {
+                if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
+                    let pnl_pct = if pos.avg_price > 0.0 {
+                        (last_close - pos.avg_price) / pos.avg_price * 100.0
+                            * if pos.qty < 0 { -1.0 } else { 1.0 }
+                    } else { 0.0 };
+                    (pos.qty, pos.avg_price, pos.unrealized_pnl as f32, pnl_pct)
+                } else { (0, 0.0, 0.0, 0.0) }
+            } else { (0, 0.0, 0.0, 0.0) };
+
+        // ── Earnings from event_markers ──
+        let (earnings_days, earnings_label) = chart.event_markers.iter()
+            .filter(|em| em.event_type == 0) // earnings
+            .min_by_key(|em| {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default().as_secs() as i64;
+                (em.time - now).abs()
+            })
+            .map(|em| {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default().as_secs() as i64;
+                let days = ((em.time - now) as f64 / 86400.0).ceil() as i32;
+                (days, em.label.clone())
+            })
+            .unwrap_or((-1, String::new()));
+
         WidgetData {
             trend_score: chart.trend_health_score,
             trend_dir: chart.trend_health_direction,
@@ -527,8 +625,34 @@ impl WidgetData {
             rsi, momentum, atr, atr_pct, vol_ratio,
             last_close, _prev_close: prev_close, _day_change_pct: day_change_pct, vol_bars,
             price_levels: [(r2, "R2"), (r1, "R1"), (pp, "PP"), (s1, "S1"), (s2, "S2")],
+            symbol: chart.symbol.clone(),
+            correlation_spy, dark_pool_bars, dark_pool_ratio: dp_ratio,
+            position_qty, position_avg, position_pnl, position_pnl_pct,
+            earnings_days, earnings_label,
         }
     }
+}
+
+/// Autocorrelation of returns as a proxy for market correlation.
+fn compute_autocorrelation(bars: &[crate::chart_renderer::types::Bar], period: usize) -> f32 {
+    let n = bars.len();
+    if n < period + 2 { return 0.0; }
+    let mut returns: Vec<f32> = Vec::with_capacity(period);
+    for i in (n - period)..n {
+        if bars[i - 1].close > 0.0 {
+            returns.push((bars[i].close - bars[i - 1].close) / bars[i - 1].close);
+        }
+    }
+    if returns.len() < 4 { return 0.0; }
+    let mean = returns.iter().sum::<f32>() / returns.len() as f32;
+    let var: f32 = returns.iter().map(|r| (r - mean).powi(2)).sum::<f32>() / returns.len() as f32;
+    if var < 1e-10 { return 0.0; }
+    let mut cov = 0.0f32;
+    for i in 1..returns.len() {
+        cov += (returns[i] - mean) * (returns[i - 1] - mean);
+    }
+    cov /= (returns.len() - 1) as f32;
+    (cov / var).clamp(-1.0, 1.0)
 }
 
 fn compute_rsi(bars: &[crate::chart_renderer::types::Bar], period: usize) -> f32 {
@@ -926,4 +1050,250 @@ fn draw_custom(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         "\u{2699}", egui::FontId::proportional(20.0), t.dim.gamma_multiply(0.2));
     p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
         "Drag to configure", egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.3));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// New widget renderers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn draw_correlation(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let corr = wd.correlation_spy;
+
+    // Color: green for positive, red for negative, amber near zero
+    let color = if corr > 0.5 { t.bull }
+        else if corr > 0.0 { lerp_color(Color32::from_rgb(255, 191, 0), t.bull, corr * 2.0) }
+        else if corr > -0.5 { lerp_color(t.bear, Color32::from_rgb(255, 191, 0), (corr + 0.5) * 2.0) }
+        else { t.bear };
+
+    // Arc gauge from -1 to +1 (180° sweep)
+    let gauge_cy = body.top() + 38.0;
+    let r = 28.0;
+
+    // Background track
+    draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
+        Stroke::new(3.0, color_alpha(t.toolbar_border, ALPHA_MUTED)), 40);
+
+    // Colored zones: red left, green right
+    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI * 0.5, PI,
+        Stroke::new(2.5, color_alpha(t.bear, ALPHA_FAINT)), 15);
+    draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI * 0.5,
+        Stroke::new(2.5, color_alpha(t.bull, ALPHA_FAINT)), 15);
+
+    // Needle: corr maps -1..+1 to PI..0
+    let needle_a = PI * 0.5 * (1.0 - corr); // 0 at right, PI at left
+    let ne = egui::pos2(cx + (r - 8.0) * needle_a.cos(), gauge_cy - (r - 8.0) * needle_a.sin());
+    p.line_segment([egui::pos2(cx, gauge_cy), ne], Stroke::new(1.5, Color32::WHITE));
+    p.circle_filled(egui::pos2(cx, gauge_cy), 3.0, Color32::WHITE);
+
+    // Hero correlation value
+    let sign = if corr >= 0.0 { "+" } else { "" };
+    hero_number(p, egui::pos2(cx, gauge_cy + 14.0), &format!("{}{:.2}", sign, corr), color);
+
+    // Label
+    let label = if corr > 0.7 { "STRONG +" } else if corr > 0.3 { "MODERATE +" }
+        else if corr > -0.3 { "DECOUPLED" } else if corr > -0.7 { "MODERATE \u{2212}" }
+        else { "INVERSE" };
+    sub_label(p, egui::pos2(cx, gauge_cy + 32.0), label, color);
+
+    // vs SPY label
+    p.text(egui::pos2(cx, body.bottom() - 6.0), egui::Align2::CENTER_CENTER,
+        "vs SPY", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.3));
+}
+
+fn draw_dark_pool(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let left = body.left() + 10.0;
+    let right = body.right() - 10.0;
+
+    // Dark pool ratio — hero number
+    let ratio_pct = wd.dark_pool_ratio * 100.0;
+    let ratio_col = if ratio_pct > 40.0 { Color32::from_rgb(180, 100, 255) } // purple = heavy dark pool
+        else if ratio_pct > 20.0 { t.accent }
+        else { t.dim };
+    hero_number(p, egui::pos2(body.center().x, body.top() + 18.0),
+        &format!("{:.0}%", ratio_pct), ratio_col);
+    sub_label(p, egui::pos2(body.center().x, body.top() + 36.0), "DARK POOL", t.dim);
+
+    // Volume spike bars
+    let bar_y = body.top() + 50.0;
+    let bar_w = (right - left) / 8.0 - 2.0;
+    let bar_max_h = body.bottom() - bar_y - 16.0;
+
+    for i in 0..8 {
+        let x = left + i as f32 * (bar_w + 2.0);
+        let h = bar_max_h * wd.dark_pool_bars[i].max(0.02);
+
+        // Gradient: low=dim, high=purple
+        let intensity = wd.dark_pool_bars[i];
+        let color = lerp_color(
+            color_alpha(t.dim, ALPHA_MUTED),
+            Color32::from_rgb(160, 80, 220), // purple
+            intensity);
+        let bar_rect = egui::Rect::from_min_size(
+            egui::pos2(x, bar_y + bar_max_h - h), egui::vec2(bar_w, h));
+        p.rect_filled(bar_rect, 2.0, color);
+
+        // Glow on largest bar
+        if intensity > 0.9 {
+            p.rect_filled(bar_rect.expand(1.0), 3.0,
+                Color32::from_rgba_unmultiplied(160, 80, 220, 20));
+        }
+    }
+
+    // "Unusual" label if high ratio
+    if ratio_pct > 30.0 {
+        p.text(egui::pos2(right, body.bottom() - 6.0), egui::Align2::RIGHT_CENTER,
+            "UNUSUAL", egui::FontId::monospace(7.0), Color32::from_rgb(180, 100, 255));
+    }
+}
+
+fn draw_position_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+
+    if wd.position_qty == 0 {
+        // No position
+        p.text(egui::pos2(cx, body.center().y - 4.0), egui::Align2::CENTER_CENTER,
+            "NO POSITION", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        p.text(egui::pos2(cx, body.center().y + 12.0), egui::Align2::CENTER_CENTER,
+            &wd.symbol, egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.3));
+        return;
+    }
+
+    let pnl_col = if wd.position_pnl >= 0.0 { t.bull } else { t.bear };
+    let dir = if wd.position_qty > 0 { "LONG" } else { "SHORT" };
+    let dir_col = if wd.position_qty > 0 { t.bull } else { t.bear };
+
+    // Direction + qty pill
+    let pill_text = format!("{} {}x", dir, wd.position_qty.abs());
+    p.text(egui::pos2(cx, body.top() + 8.0), egui::Align2::CENTER_CENTER,
+        &pill_text, egui::FontId::monospace(FONT_XS), dir_col);
+
+    // Hero P&L
+    let pnl_sign = if wd.position_pnl >= 0.0 { "+" } else { "" };
+    hero_number(p, egui::pos2(cx, body.top() + 30.0),
+        &format!("{}${:.0}", pnl_sign, wd.position_pnl), pnl_col);
+
+    // P&L percentage
+    p.text(egui::pos2(cx, body.top() + 48.0), egui::Align2::CENTER_CENTER,
+        &format!("{:+.2}%", wd.position_pnl_pct), egui::FontId::monospace(FONT_SM), pnl_col);
+
+    // Entry line indicator
+    let left = body.left() + 10.0;
+    let right = body.right() - 10.0;
+    let entry_y = body.bottom() - 10.0;
+    p.text(egui::pos2(left, entry_y), egui::Align2::LEFT_CENTER,
+        "ENTRY", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    p.text(egui::pos2(right, entry_y), egui::Align2::RIGHT_CENTER,
+        &format!("${:.2}", wd.position_avg), egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+}
+
+fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+
+    if wd.earnings_days < 0 {
+        p.text(egui::pos2(cx, body.center().y), egui::Align2::CENTER_CENTER,
+            "NO EARNINGS DATA", egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.4));
+        return;
+    }
+
+    // Urgency color
+    let urgency_col = if wd.earnings_days <= 1 { t.bear }
+        else if wd.earnings_days <= 5 { Color32::from_rgb(255, 191, 0) }
+        else if wd.earnings_days <= 14 { t.accent }
+        else { t.dim };
+
+    // Countdown chip
+    let days_str = if wd.earnings_days == 0 { "TODAY".into() }
+        else if wd.earnings_days == 1 { "TOMORROW".into() }
+        else { format!("{} DAYS", wd.earnings_days) };
+
+    hero_number(p, egui::pos2(cx, body.top() + 16.0), &days_str, urgency_col);
+
+    // Label
+    let detail = if wd.earnings_label.is_empty() { "EARNINGS".into() }
+        else { wd.earnings_label.clone() };
+    sub_label(p, egui::pos2(cx, body.top() + 34.0), &detail, urgency_col);
+
+    // Expected move bar (approximation: ATR * 2 as implied move)
+    if wd.atr > 0.0 && wd.last_close > 0.0 {
+        let implied_move_pct = wd.atr_pct * 2.0;
+        let bar_y = body.bottom() - 12.0;
+        let bar_x = body.left() + 12.0;
+        let bar_w = body.width() - 24.0;
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, 4.0)),
+            2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        // Show expected range centered
+        let range_w = (bar_w * (implied_move_pct / 10.0).clamp(0.0, 1.0)).max(8.0);
+        let range_x = bar_x + (bar_w - range_w) * 0.5;
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(range_x, bar_y), egui::vec2(range_w, 4.0)),
+            2.0, urgency_col);
+        p.text(egui::pos2(cx, bar_y - 4.0), egui::Align2::CENTER_BOTTOM,
+            &format!("\u{00B1}{:.1}%", implied_move_pct), egui::FontId::monospace(7.0), urgency_col);
+    }
+}
+
+fn draw_news_ticker(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let left = body.left() + 8.0;
+    let right = body.right() - 8.0;
+    let cy = body.center().y;
+
+    // Demo headlines — in production these would come from the news feed
+    let headlines: [(&str, Color32); 3] = [
+        ("Fed holds rates steady, signals patience", Color32::from_rgb(255, 191, 0)),
+        (&format!("{} beats Q3 estimates, guides higher", wd.symbol), t.bull),
+        ("10Y yield rises to 4.5%, markets cautious", t.bear),
+    ];
+
+    // Use a time-based index to simulate scrolling
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let idx = (now / 5) as usize % headlines.len(); // rotate every 5 seconds
+    let (headline, sentiment_col) = headlines[idx];
+
+    // Sentiment dot
+    p.circle_filled(egui::pos2(left + 3.0, cy), 3.0, sentiment_col);
+
+    // Headline text (truncated to fit)
+    p.text(egui::pos2(left + 12.0, cy), egui::Align2::LEFT_CENTER,
+        headline, egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+
+    // Timestamp
+    p.text(egui::pos2(right, cy), egui::Align2::RIGHT_CENTER,
+        "just now", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Resize handle — drawn on Card mode widgets, bottom-right corner
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Draw a resize grip and handle drag interaction. Returns true if resizing occurred.
+pub(crate) fn resize_handle(
+    ui: &mut egui::Ui, p: &egui::Painter, card_rect: egui::Rect,
+    wi: usize, t: &Theme,
+) -> Option<egui::Vec2> {
+    let grip_size = 12.0;
+    let grip_rect = egui::Rect::from_min_size(
+        egui::pos2(card_rect.right() - grip_size, card_rect.bottom() - grip_size),
+        egui::vec2(grip_size, grip_size));
+
+    // Draw grip lines (three diagonal lines)
+    let gr = grip_rect;
+    for i in 0..3 {
+        let offset = 3.0 + i as f32 * 3.0;
+        p.line_segment(
+            [egui::pos2(gr.right() - offset, gr.bottom()),
+             egui::pos2(gr.right(), gr.bottom() - offset)],
+            Stroke::new(STROKE_THIN, color_alpha(t.dim, ALPHA_MUTED)));
+    }
+
+    let resp = ui.interact(grip_rect, egui::Id::new(("widget_resize", wi)), egui::Sense::drag());
+    if resp.dragged_by(egui::PointerButton::Primary) {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+        Some(resp.drag_delta())
+    } else {
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+        }
+        None
+    }
 }

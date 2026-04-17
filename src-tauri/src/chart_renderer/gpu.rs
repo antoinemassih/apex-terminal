@@ -14858,6 +14858,8 @@ pub(crate) struct Watchlist {
     pub(crate) play_editor_stop: String,
     pub(crate) play_editor_notes: String,
     pub(crate) play_editor_direction: super::PlayDirection,
+    pub(crate) widget_presets: Vec<super::WidgetPreset>,
+    pub(crate) widget_preset_name: String, // input buffer for naming a new preset
     pub(crate) pane_template_name: String, // input buffer for naming a new template
     // Discord chat panel
     pub(crate) discord_open: bool,
@@ -14976,6 +14978,7 @@ impl Watchlist {
                play_editor_symbol: String::new(), play_editor_entry: String::new(),
                play_editor_target: String::new(), play_editor_stop: String::new(),
                play_editor_notes: String::new(), play_editor_direction: super::PlayDirection::Long,
+               widget_presets: vec![], widget_preset_name: String::new(),
                discord_open: false,
                discord_messages: vec![],
                discord_input: String::new(),

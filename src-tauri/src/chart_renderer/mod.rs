@@ -44,6 +44,11 @@ pub(crate) enum ChartWidgetKind {
     OptionGreeks,     // delta/gamma/theta/vega for active option
     RiskReward,       // current position R:R ratio
     MarketBreadth,    // advance/decline, new highs/lows
+    Correlation,      // live correlation vs SPY/QQQ/sector
+    DarkPool,         // unusual volume / dark pool prints
+    PositionPnl,      // live unrealized P&L for active position
+    EarningsBadge,    // countdown chip for upcoming earnings
+    NewsTicker,       // scrolling headline strip, sentiment-colored
     Custom,           // user-defined (future: extension widget)
 }
 
@@ -59,6 +64,11 @@ impl ChartWidgetKind {
             Self::OptionGreeks   => "Option Greeks",
             Self::RiskReward     => "Risk / Reward",
             Self::MarketBreadth  => "Market Breadth",
+            Self::Correlation    => "Correlation",
+            Self::DarkPool       => "Dark Pool",
+            Self::PositionPnl    => "Position P&L",
+            Self::EarningsBadge  => "Earnings",
+            Self::NewsTicker     => "News Ticker",
             Self::Custom         => "Custom",
         }
     }
@@ -73,13 +83,19 @@ impl ChartWidgetKind {
             Self::OptionGreeks   => "\u{0394}",  // Δ
             Self::RiskReward     => "\u{2696}",  // ⚖
             Self::MarketBreadth  => "\u{2637}",  // ☷
+            Self::Correlation    => "\u{2194}",  // ↔
+            Self::DarkPool       => "\u{2588}",  // █
+            Self::PositionPnl    => "\u{0024}",  // $
+            Self::EarningsBadge  => "\u{1F4C5}", // 📅
+            Self::NewsTicker     => "\u{1F4F0}", // 📰
             Self::Custom         => "\u{2699}",  // ⚙
         }
     }
     pub(crate) fn all() -> &'static [Self] {
         &[Self::TrendStrength, Self::Momentum, Self::Volatility, Self::VolumeProfile,
           Self::SessionTimer, Self::KeyLevels, Self::OptionGreeks, Self::RiskReward,
-          Self::MarketBreadth]
+          Self::MarketBreadth, Self::Correlation, Self::DarkPool, Self::PositionPnl,
+          Self::EarningsBadge, Self::NewsTicker]
     }
 }
 
@@ -145,11 +161,29 @@ impl ChartWidget {
             ChartWidgetKind::OptionGreeks   => (185.0, 120.0),
             ChartWidgetKind::RiskReward     => (170.0, 105.0),
             ChartWidgetKind::MarketBreadth  => (180.0, 120.0),
+            ChartWidgetKind::Correlation    => (160.0, 120.0),
+            ChartWidgetKind::DarkPool       => (170.0, 140.0),
+            ChartWidgetKind::PositionPnl    => (170.0, 90.0),
+            ChartWidgetKind::EarningsBadge  => (160.0, 70.0),
+            ChartWidgetKind::NewsTicker     => (280.0, 50.0),
             ChartWidgetKind::Custom         => (150.0, 90.0),
         };
         Self { kind, x, y, w, h, visible: true, collapsed: false,
                display: WidgetDisplayMode::Card, dock: WidgetDock::Float,
                dock_x: 0.0, anim_x: 0.0, anim_y: 0.0, anim_init: false }
+    }
+}
+
+/// A saved widget layout — restores all widgets for a chart pane.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct WidgetPreset {
+    pub name: String,
+    pub widgets: Vec<ChartWidget>,
+}
+
+impl WidgetPreset {
+    pub fn from_chart(name: &str, widgets: &[ChartWidget]) -> Self {
+        Self { name: name.into(), widgets: widgets.to_vec() }
     }
 }
 
