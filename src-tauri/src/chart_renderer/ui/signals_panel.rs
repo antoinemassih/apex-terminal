@@ -92,6 +92,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
         ("Pattern Labels",  "Candlestick patterns from ApexSignals", &mut chart.show_pattern_labels),
         ("Auto Trendlines", "Signal drawings (auto trendlines)",   &mut chart.show_auto_trendlines),
         ("Hit Highlight",   "Flash indicators/drawings on price touch", &mut chart.hit_highlight),
+        ("Divergences",     "RSI/MACD divergence overlays",        &mut chart.show_divergences),
         ("Dark Pool",       "Dark pool prints overlay",            &mut chart.show_darkpool),
         ("Gamma",           "Gamma exposure levels",               &mut chart.show_gamma),
         ("Events",          "Calendar event markers",              &mut chart.show_events),

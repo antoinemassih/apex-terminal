@@ -1155,6 +1155,8 @@ pub(crate) struct Chart {
     pub(crate) precursor_description: String,
     pub(crate) change_points: Vec<(i64, String, f32)>, // (time, type, confidence)
     pub(crate) trade_plan: Option<(i8, f32, f32, f32, String, f32, f32)>, // (dir, entry, target, stop, contract, rr, conviction)
+    pub(crate) divergence_markers: Vec<super::DivergenceMarker>,
+    pub(crate) show_divergences: bool,
     pub(crate) signal_demo_toggle: bool, // set to true to toggle demo on/off
     // Per-signal visibility toggles (controlled from Signals panel)
     pub(crate) show_trend_health: bool,
@@ -1409,7 +1411,9 @@ impl Chart {
             exit_gauge_score: 0.0, exit_gauge_urgency: String::new(),
             signal_zones: vec![], precursor_active: false, precursor_score: 0.0,
             precursor_direction: 0, precursor_description: String::new(),
-            change_points: vec![], trade_plan: None, signal_demo_toggle: false,
+            change_points: vec![], trade_plan: None,
+            divergence_markers: vec![], show_divergences: true,
+            signal_demo_toggle: false,
             show_trend_health: true, show_exit_gauge: true, show_precursor: true,
             show_signal_zones: true, show_trade_plan: true, show_change_points: true,
             show_vix_alert: true, show_auto_trendlines: true,
@@ -1734,8 +1738,10 @@ impl Chart {
                     PENDING_TOASTS.with(|ts| ts.borrow_mut().push((summary, conviction, true)));
                 }
             }
-            ChartCommand::DivergenceOverlay { .. } => {
-                // TODO: store divergence markers for rendering
+            ChartCommand::DivergenceOverlay { symbol, timeframe, divergences } => {
+                if symbol == self.symbol && timeframe == self.timeframe {
+                    self.divergence_markers = divergences;
+                }
             }
             _ => {}
         }
@@ -8613,6 +8619,68 @@ fn render_chart_pane(
                 "CVD", egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(120));
         }
 
+        // ── Divergence lines on oscillator pane ──
+        if chart.show_divergences && !chart.divergence_markers.is_empty() {
+            for dm in &chart.divergence_markers {
+                if dm.confidence < 0.3 { continue; }
+                let x0 = bx(dm.start_bar as f32);
+                let x1 = bx(dm.end_bar as f32);
+                if x1 < rect.left() - 10.0 || x0 > rect.left() + cw + 10.0 { continue; }
+
+                // Find matching oscillator indicator to get values at bar indices
+                let ind_name_upper = dm.indicator.to_uppercase();
+                if let Some(ind) = chart.indicators.iter().find(|i| {
+                    i.visible && i.kind.label().to_uppercase().starts_with(&ind_name_upper)
+                }) {
+                    let v0 = ind.values.get(dm.start_bar as usize).copied().unwrap_or(f32::NAN);
+                    let v1 = ind.values.get(dm.end_bar as usize).copied().unwrap_or(f32::NAN);
+                    if v0.is_nan() || v1.is_nan() { continue; }
+
+                    // Compute osc_y range for this indicator
+                    let (osc_min_d, osc_max_d) = match ind.kind {
+                        IndicatorType::RSI | IndicatorType::Stochastic | IndicatorType::ADX => (0.0, 100.0),
+                        IndicatorType::WilliamsR => (-100.0, 0.0),
+                        _ => {
+                            let mut lo = f32::MAX; let mut hi = f32::MIN;
+                            for i in (vs as u32)..(vs as u32 + total as u32).min(ind.values.len() as u32) {
+                                if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
+                            }
+                            if lo >= hi { (lo - 1.0, hi + 1.0) } else { let pad = (hi - lo) * 0.1; (lo - pad, hi + pad) }
+                        }
+                    };
+                    let osc_y_d = |v: f32| -> f32 { osc_top + (osc_max_d - v) / (osc_max_d - osc_min_d) * osc_height };
+
+                    let y0 = osc_y_d(v0);
+                    let y1 = osc_y_d(v1);
+                    let is_bullish = dm.div_type.contains("bullish");
+                    let is_hidden = dm.div_type.contains("hidden");
+                    let color = if is_bullish { t.bull } else { t.bear };
+                    let alpha = (180.0 * dm.confidence.clamp(0.3, 1.0)) as u8;
+                    let line_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+                    let stroke_w = if is_hidden { 1.0 } else { 1.5 };
+
+                    if is_hidden {
+                        let steps = ((x1 - x0).abs() / 5.0) as usize;
+                        for s in (0..steps.max(1)).step_by(2) {
+                            let t0 = s as f32 / steps.max(1) as f32;
+                            let t1 = ((s + 1) as f32 / steps.max(1) as f32).min(1.0);
+                            painter.line_segment(
+                                [egui::pos2(x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0),
+                                 egui::pos2(x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1)],
+                                egui::Stroke::new(stroke_w, line_color));
+                        }
+                    } else {
+                        dashed_line(&painter, egui::pos2(x0, y0), egui::pos2(x1, y1),
+                            egui::Stroke::new(stroke_w, line_color), super::LineStyle::Dashed);
+                    }
+
+                    // Small circles at indicator values
+                    painter.circle_filled(egui::pos2(x0, y0), 2.5, line_color);
+                    painter.circle_filled(egui::pos2(x1, y1), 2.5, line_color);
+                }
+            }
+        }
+
         // Oscillator click interaction — allocate rect over the whole panel
         let osc_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), osc_top), egui::vec2(cw, osc_height));
         let osc_resp = ui.allocate_rect(osc_rect, egui::Sense::click());
@@ -8734,6 +8802,75 @@ fn render_chart_pane(
                     painter.line_segment([egui::pos2(rect.left(), y1), egui::pos2(rect.left()+cw, y1)], stroke);
                 }
                 _ => {}
+            }
+        }
+    }
+
+    // ── Divergence overlays (price chart lines) ────────────────────────
+    if chart.show_divergences && !chart.divergence_markers.is_empty() {
+        for dm in &chart.divergence_markers {
+            if dm.confidence < 0.3 { continue; } // skip low-confidence
+            let x0 = bx(dm.start_bar as f32);
+            let x1 = bx(dm.end_bar as f32);
+            // Skip if completely outside viewport
+            if x1 < rect.left() - 10.0 || x0 > rect.left() + cw + 10.0 { continue; }
+
+            let is_bullish = dm.div_type.contains("bullish");
+            let is_hidden = dm.div_type.contains("hidden");
+            let color = if is_bullish { t.bull } else { t.bear };
+            let alpha = (200.0 * dm.confidence.clamp(0.3, 1.0)) as u8;
+            let line_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+
+            // Price chart line: connect the two pivot prices
+            let y0 = py(dm.start_price);
+            let y1 = py(dm.end_price);
+            let stroke_w = if is_hidden { 1.0 } else { 1.5 };
+
+            if is_hidden {
+                // Dotted line for hidden divergences
+                let steps = ((x1 - x0).abs() / 6.0) as usize;
+                for s in (0..steps).step_by(2) {
+                    let t0 = s as f32 / steps as f32;
+                    let t1 = ((s + 1) as f32 / steps as f32).min(1.0);
+                    let sx = x0 + (x1 - x0) * t0;
+                    let sy = y0 + (y1 - y0) * t0;
+                    let ex = x0 + (x1 - x0) * t1;
+                    let ey = y0 + (y1 - y0) * t1;
+                    painter.line_segment([egui::pos2(sx, sy), egui::pos2(ex, ey)],
+                        egui::Stroke::new(stroke_w, line_color));
+                }
+            } else {
+                // Dashed line for regular divergences
+                dashed_line(&painter, egui::pos2(x0, y0), egui::pos2(x1, y1),
+                    egui::Stroke::new(stroke_w, line_color), super::LineStyle::Dashed);
+            }
+
+            // Small circles at the pivot points
+            painter.circle_filled(egui::pos2(x0, y0), 3.0, line_color);
+            painter.circle_filled(egui::pos2(x1, y1), 3.0, line_color);
+
+            // Label at midpoint
+            let mid_x = (x0 + x1) * 0.5;
+            let mid_y = (y0 + y1) * 0.5;
+            let label = if is_hidden {
+                if is_bullish { "H.Bull" } else { "H.Bear" }
+            } else {
+                if is_bullish { "Bull Div" } else { "Bear Div" }
+            };
+            // Label background pill
+            let label_w = label.len() as f32 * 5.0 + 8.0;
+            let pill = egui::Rect::from_center_size(
+                egui::pos2(mid_x, mid_y - 8.0), egui::vec2(label_w, 12.0));
+            painter.rect_filled(pill, 3.0,
+                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 30));
+            painter.text(pill.center(), egui::Align2::CENTER_CENTER,
+                label, egui::FontId::monospace(7.0), line_color);
+
+            // Indicator name (smaller, below)
+            if !dm.indicator.is_empty() {
+                painter.text(egui::pos2(mid_x, mid_y + 4.0), egui::Align2::CENTER_CENTER,
+                    &dm.indicator, egui::FontId::monospace(6.0),
+                    egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha / 2));
             }
         }
     }
