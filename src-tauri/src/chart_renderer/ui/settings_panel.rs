@@ -13,10 +13,14 @@ if !watchlist.settings_open { return; }
 
 let screen = ctx.screen_rect();
 let dialog_w = 600.0_f32;
-let dialog_h = (screen.height() * 0.85).min(800.0).max(400.0);
-dialog_window_themed(ctx, "settings_panel",
-    egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0),
-    dialog_w, t.toolbar_bg, t.toolbar_border, None)
+let dialog_h = (screen.height() * 0.82).min(780.0).max(400.0);
+let border = color_alpha(t.toolbar_border, ALPHA_ACTIVE);
+egui::Window::new("settings_panel".to_string())
+    .fixed_pos(egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0))
+    .fixed_size(egui::vec2(dialog_w, dialog_h))
+    .title_bar(false)
+    .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(0.0)
+        .stroke(egui::Stroke::new(STROKE_STD, border)).corner_radius(RADIUS_LG))
     .show(ctx, |ui| {
         if dialog_header(ui, "SETTINGS", t.dim) { watchlist.settings_open = false; }
 
@@ -37,8 +41,8 @@ dialog_window_themed(ctx, "settings_panel",
         ui.add_space(GAP_SM);
 
         // ── Tab content in a scroll area ──
-        egui::ScrollArea::vertical().max_height(dialog_h - 80.0).show(ui, |ui| {
-            ui.set_width(dialog_w - 20.0);
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.set_width(dialog_w - 24.0);
             let m = 12.0; // left margin
 
             match tab {
