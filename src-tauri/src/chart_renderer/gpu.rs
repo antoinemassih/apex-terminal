@@ -2971,6 +2971,9 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         // Menu item minimum height — prevents cramped items
         style.spacing.interact_size.y                = 22.0;
 
+        // Font rendering: snap all text positions to whole pixels for crispness
+        style.visuals.text_cursor.on_duration = 0.5;
+
         ctx.set_style(style);
     }
     ctx.set_pixels_per_point(watchlist.font_scale);
@@ -15683,8 +15686,12 @@ impl GpuCtx {
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
 
-        // Phase 3: Tessellation
+        // Phase 3: Tessellation — optimize for crisp text
         let t2 = std::time::Instant::now();
+        self.egui_ctx.tessellation_options_mut(|opts| {
+            opts.round_text_to_pixels = true;      // snap glyphs to whole pixels — eliminates subpixel blur
+            opts.feathering_size_in_pixels = 1.0;  // standard AA (lower = crisper but more aliased)
+        });
         let paint_jobs = self.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
         let tessellate_us = t2.elapsed().as_micros() as u64;
 

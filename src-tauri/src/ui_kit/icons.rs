@@ -141,19 +141,31 @@ pub const FONT_NAMES: &[&str] = &[
 pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
     let mut fonts = egui::FontDefinitions::default();
 
-    // Load all 6 fonts into font_data
+    // Load all 6 fonts — use FontTweak for baseline alignment and crispness
+    let tweak_mono = egui::FontTweak {
+        scale: 1.0,
+        y_offset_factor: -0.02, // lift monospace slightly for better vertical centering
+        y_offset: 0.0,
+        baseline_offset_factor: 0.0,
+    };
+    let tweak_sans = egui::FontTweak {
+        scale: 1.02, // slight upscale for sans-serif to match mono visual weight
+        y_offset_factor: -0.01,
+        y_offset: 0.0,
+        baseline_offset_factor: 0.0,
+    };
     fonts.font_data.insert("jetbrains_mono".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("JetBrainsMono-Regular.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("JetBrainsMono-Regular.ttf")).tweak(tweak_mono)));
     fonts.font_data.insert("roboto_mono".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("RobotoMono-Regular.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("RobotoMono-Regular.ttf")).tweak(tweak_mono)));
     fonts.font_data.insert("ibm_plex_mono".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexMono-Regular.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexMono-Regular.ttf")).tweak(tweak_mono)));
     fonts.font_data.insert("inter".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Medium.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Medium.ttf")).tweak(tweak_sans)));
     fonts.font_data.insert("plus_jakarta".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("PlusJakartaSans-Medium.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("PlusJakartaSans-Medium.ttf")).tweak(tweak_sans)));
     fonts.font_data.insert("space_grotesk".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SpaceGrotesk-Medium.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SpaceGrotesk-Medium.ttf")).tweak(tweak_sans)));
 
     // Pick the primary font based on selection
     let primary = match font_idx {
