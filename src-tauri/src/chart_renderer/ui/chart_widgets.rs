@@ -17,9 +17,16 @@ use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
 use std::f32::consts::PI;
 
-// ─── Snap zone: how close to an edge (in pixels) before we show the dock hint ─
-const SNAP_ZONE: f32 = 30.0;
-const STRIP_PAD: f32 = 6.0;  // padding inside the docked strip
+// ─── Docking tuning ──────────────────────────────────────────────────────────
+const SNAP_ZONE: f32 = 40.0;   // pixels from edge to trigger snap hint
+const YANK_THRESHOLD: f32 = 50.0; // vertical drag needed to undock
+const STRIP_PAD: f32 = 8.0;    // padding inside dock strip
+const ANIM_SPEED: f32 = 0.18;  // lerp factor per frame (0=frozen, 1=instant)
+
+/// Smooth lerp helper — moves `current` toward `target` by factor `speed`.
+fn smooth(current: f32, target: f32, speed: f32) -> f32 {
+    current + (target - current) * speed.clamp(0.01, 1.0)
+}
 
 /// Render all visible widgets for a chart pane.
 pub(crate) fn draw_widgets(
@@ -29,17 +36,12 @@ pub(crate) fn draw_widgets(
     t: &Theme,
 ) {
     // ── Auto-hide during draw mode ──
-    let in_draw_mode = !chart.draw_tool.is_empty();
-    if in_draw_mode {
-        // Paint a faint "widgets hidden" indicator so the user knows they'll come back
-        let has_visible = chart.chart_widgets.iter().any(|w| w.visible);
-        if has_visible {
+    if !chart.draw_tool.is_empty() {
+        if chart.chart_widgets.iter().any(|w| w.visible) {
             let p = ui.painter_at(rect);
             p.text(egui::pos2(rect.right() - 8.0, rect.top() + 12.0),
-                egui::Align2::RIGHT_CENTER,
-                "\u{25C9}", // ◉
-                egui::FontId::proportional(FONT_SM),
-                color_alpha(t.dim, ALPHA_MUTED));
+                egui::Align2::RIGHT_CENTER, "\u{25C9}",
+                egui::FontId::proportional(FONT_SM), color_alpha(t.dim, ALPHA_MUTED));
         }
         return;
     }
@@ -47,59 +49,74 @@ pub(crate) fn draw_widgets(
     let painter = ui.painter_at(rect);
     let wd = WidgetData::from_chart(chart);
 
-    // ── Lay out docked widgets first to compute strip positions ──
-    let mut top_x = rect.left() + STRIP_PAD;
-    let mut bottom_x = rect.left() + STRIP_PAD;
-    let top_y = rect.top() + STRIP_PAD;
-    let bottom_y_base = rect.bottom(); // we'll subtract h + pad
+    // ══════════════════════════════════════════════════════════════════════════
+    // Pass 1 — Compute target positions and animate
+    // ══════════════════════════════════════════════════════════════════════════
 
-    // First pass: compute positions for docked widgets
-    struct LayoutInfo { rect: egui::Rect }
-    let mut layouts: Vec<LayoutInfo> = Vec::with_capacity(chart.chart_widgets.len());
+    // We need mutable access to chart.chart_widgets for animation updates,
+    // so we collect target rects first, then update anim state.
+    let n = chart.chart_widgets.len();
+    let mut targets: Vec<(f32, f32)> = Vec::with_capacity(n); // target screen (x, y)
 
-    for wi in 0..chart.chart_widgets.len() {
+    for wi in 0..n {
         let w = &chart.chart_widgets[wi];
-        if !w.visible { layouts.push(LayoutInfo { rect: egui::Rect::NOTHING }); continue; }
+        if !w.visible { targets.push((0.0, 0.0)); continue; }
 
         let card_h = if w.collapsed { 26.0 } else { w.h };
-        let card_w = w.w;
 
-        let card_rect = match w.dock {
+        let (tx, ty) = match w.dock {
             WidgetDock::Top => {
-                let r = egui::Rect::from_min_size(egui::pos2(top_x, top_y), egui::vec2(card_w, card_h));
-                top_x += card_w + STRIP_PAD;
-                r
+                let dx = w.dock_x.clamp(rect.left() + STRIP_PAD, rect.right() - w.w - STRIP_PAD);
+                (dx, rect.top() + STRIP_PAD)
             }
             WidgetDock::Bottom => {
-                let by = bottom_y_base - card_h - STRIP_PAD;
-                let r = egui::Rect::from_min_size(egui::pos2(bottom_x, by), egui::vec2(card_w, card_h));
-                bottom_x += card_w + STRIP_PAD;
-                r
+                let dx = w.dock_x.clamp(rect.left() + STRIP_PAD, rect.right() - w.w - STRIP_PAD);
+                (dx, rect.bottom() - card_h - STRIP_PAD)
             }
             WidgetDock::Float => {
-                let abs_x = rect.left() + w.x * rect.width();
-                let abs_y = rect.top() + w.y * rect.height();
-                egui::Rect::from_min_size(egui::pos2(abs_x, abs_y), egui::vec2(card_w, card_h))
+                (rect.left() + w.x * rect.width(), rect.top() + w.y * rect.height())
             }
         };
-
-        layouts.push(LayoutInfo { rect: card_rect });
+        targets.push((tx, ty));
     }
 
-    // ── Draw dock strip backgrounds if any widgets are docked ──
+    // Update animation state
+    let mut any_animating = false;
+    for wi in 0..n {
+        let w = &mut chart.chart_widgets[wi];
+        if !w.visible { continue; }
+        let (tx, ty) = targets[wi];
+
+        if !w.anim_init {
+            // First frame: snap directly to target (no animation from 0,0)
+            w.anim_x = tx;
+            w.anim_y = ty;
+            w.anim_init = true;
+        } else {
+            w.anim_x = smooth(w.anim_x, tx, ANIM_SPEED);
+            w.anim_y = smooth(w.anim_y, ty, ANIM_SPEED);
+            // Keep animating if not settled
+            if (w.anim_x - tx).abs() > 0.5 || (w.anim_y - ty).abs() > 0.5 {
+                any_animating = true;
+            }
+        }
+    }
+    if any_animating { ui.ctx().request_repaint(); }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Draw dock strip backgrounds
+    // ══════════════════════════════════════════════════════════════════════════
+
     let has_top = chart.chart_widgets.iter().any(|w| w.visible && w.dock == WidgetDock::Top);
     let has_bottom = chart.chart_widgets.iter().any(|w| w.visible && w.dock == WidgetDock::Bottom);
 
     if has_top {
-        // Find the tallest top-docked widget
         let max_h = chart.chart_widgets.iter()
             .filter(|w| w.visible && w.dock == WidgetDock::Top)
             .map(|w| if w.collapsed { 26.0 } else { w.h })
             .fold(0.0f32, f32::max);
-        let strip = egui::Rect::from_min_size(
-            egui::pos2(rect.left(), rect.top()),
-            egui::vec2(rect.width(), max_h + STRIP_PAD * 2.0));
-        painter.rect_filled(strip, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 20));
+        let strip = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), max_h + STRIP_PAD * 2.0));
+        painter.rect_filled(strip, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 18));
         painter.line_segment(
             [egui::pos2(strip.left(), strip.bottom()), egui::pos2(strip.right(), strip.bottom())],
             Stroke::new(STROKE_HAIR, color_alpha(t.toolbar_border, ALPHA_MUTED)));
@@ -110,50 +127,48 @@ pub(crate) fn draw_widgets(
             .map(|w| if w.collapsed { 26.0 } else { w.h })
             .fold(0.0f32, f32::max);
         let strip = egui::Rect::from_min_max(
-            egui::pos2(rect.left(), rect.bottom() - max_h - STRIP_PAD * 2.0),
-            egui::pos2(rect.right(), rect.bottom()));
-        painter.rect_filled(strip, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 20));
+            egui::pos2(rect.left(), rect.bottom() - max_h - STRIP_PAD * 2.0), rect.max);
+        painter.rect_filled(strip, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 18));
         painter.line_segment(
             [egui::pos2(strip.left(), strip.top()), egui::pos2(strip.right(), strip.top())],
             Stroke::new(STROKE_HAIR, color_alpha(t.toolbar_border, ALPHA_MUTED)));
     }
 
-    // ── Second pass: render each widget ──
-    for wi in 0..chart.chart_widgets.len() {
+    // ══════════════════════════════════════════════════════════════════════════
+    // Pass 2 — Render + interact
+    // ══════════════════════════════════════════════════════════════════════════
+
+    for wi in 0..n {
         let w = &chart.chart_widgets[wi];
         if !w.visible { continue; }
-        let card_rect = layouts[wi].rect;
+
+        let card_w = w.w;
+        let card_h = if w.collapsed { 26.0 } else { w.h };
+        let card_rect = egui::Rect::from_min_size(
+            egui::pos2(w.anim_x, w.anim_y), egui::vec2(card_w, card_h));
         if !rect.intersects(card_rect) { continue; }
 
         let kind = w.kind;
         let mode = w.display;
-        let card_w = card_rect.width();
-        let card_h = card_rect.height();
         let title_h = 24.0;
 
-        // ══════════════════════════════════════════════════════════════════════
-        // Card mode — full chrome
-        // ══════════════════════════════════════════════════════════════════════
+        // ── Render based on display mode ──
         if mode == WidgetDisplayMode::Card {
             // Drop shadow
-            let sh1 = card_rect.translate(egui::vec2(0.0, 3.0));
-            painter.rect_filled(sh1.expand(2.0), RADIUS_LG + 2.0,
-                Color32::from_rgba_unmultiplied(0, 0, 0, 30));
-            let sh2 = card_rect.translate(egui::vec2(0.0, 1.5));
-            painter.rect_filled(sh2.expand(1.0), RADIUS_LG + 1.0,
-                Color32::from_rgba_unmultiplied(0, 0, 0, 18));
+            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 3.0)).expand(2.0),
+                RADIUS_LG + 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 30));
+            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 1.5)).expand(1.0),
+                RADIUS_LG + 1.0, Color32::from_rgba_unmultiplied(0, 0, 0, 18));
 
             // Background
             let bg = Color32::from_rgba_unmultiplied(
-                t.toolbar_bg.r().saturating_add(4),
-                t.toolbar_bg.g().saturating_add(4),
+                t.toolbar_bg.r().saturating_add(4), t.toolbar_bg.g().saturating_add(4),
                 t.toolbar_bg.b().saturating_add(6), 230);
             painter.rect_filled(card_rect, RADIUS_LG, bg);
 
             // Top bevel
-            let bevel = egui::Rect::from_min_max(card_rect.min,
-                egui::pos2(card_rect.right(), card_rect.top() + 1.0));
-            painter.rect_filled(bevel,
+            painter.rect_filled(
+                egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
                 egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
                 Color32::from_rgba_unmultiplied(255, 255, 255, 10));
 
@@ -163,20 +178,15 @@ pub(crate) fn draw_widgets(
                 egui::StrokeKind::Outside);
 
             // Title bar
-            let title_rect = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, title_h));
-            painter.text(egui::pos2(title_rect.left() + 10.0, title_rect.center().y),
+            let tr = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, title_h));
+            painter.text(egui::pos2(tr.left() + 10.0, tr.center().y),
                 egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(FONT_MD), t.accent);
-            painter.text(egui::pos2(title_rect.left() + 24.0, title_rect.center().y),
+            painter.text(egui::pos2(tr.left() + 24.0, tr.center().y),
                 egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
-
-            // Collapse chevron
             let chev = if w.collapsed { "\u{25B6}" } else { "\u{25BC}" };
-            painter.text(egui::pos2(title_rect.right() - 12.0, title_rect.center().y),
+            painter.text(egui::pos2(tr.right() - 12.0, tr.center().y),
                 egui::Align2::CENTER_CENTER, chev, egui::FontId::proportional(6.0), t.dim.gamma_multiply(0.4));
-
-            // Mode indicator dot (click cycles Card → HUD → Minimal)
-            painter.circle_filled(egui::pos2(title_rect.right() - 24.0, title_rect.center().y),
-                2.5, t.accent);
+            painter.circle_filled(egui::pos2(tr.right() - 24.0, tr.center().y), 2.5, t.accent);
 
             // Body
             if !w.collapsed {
@@ -184,39 +194,25 @@ pub(crate) fn draw_widgets(
                     [egui::pos2(card_rect.left() + 8.0, card_rect.top() + title_h),
                      egui::pos2(card_rect.right() - 8.0, card_rect.top() + title_h)],
                     Stroke::new(STROKE_HAIR, color_alpha(t.toolbar_border, ALPHA_MUTED)));
-
                 let body = egui::Rect::from_min_size(
                     egui::pos2(card_rect.left(), card_rect.top() + title_h + 2.0),
                     egui::vec2(card_w, card_h - title_h - 2.0));
                 draw_widget_body(&painter, body, kind, &wd, t);
             }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // HUD mode — transparent, just the data, no chrome
-        // ══════════════════════════════════════════════════════════════════════
-        else if mode == WidgetDisplayMode::Hud {
+        } else if mode == WidgetDisplayMode::Hud {
             if !w.collapsed {
-                // Use full card rect as body (no title bar eats space)
                 draw_widget_body(&painter, card_rect, kind, &wd, t);
             } else {
-                // Collapsed HUD = mini badge — one-line key value
                 draw_mini_badge(&painter, card_rect, kind, &wd, t);
             }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════
-        // Minimal mode — no background, but show faint label for identification
-        // ══════════════════════════════════════════════════════════════════════
-        else {
-            // Faint label at top
+        } else {
+            // Minimal
             painter.text(egui::pos2(card_rect.left() + 4.0, card_rect.top() + 8.0),
                 egui::Align2::LEFT_CENTER, kind.icon(),
                 egui::FontId::proportional(FONT_XS), color_alpha(t.accent, ALPHA_MUTED));
             painter.text(egui::pos2(card_rect.left() + 16.0, card_rect.top() + 8.0),
                 egui::Align2::LEFT_CENTER, kind.label(),
                 egui::FontId::monospace(7.0), color_alpha(t.dim, ALPHA_MUTED));
-
             if !w.collapsed {
                 let body = egui::Rect::from_min_size(
                     egui::pos2(card_rect.left(), card_rect.top() + 16.0),
@@ -227,78 +223,110 @@ pub(crate) fn draw_widgets(
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════
-        // Interaction
-        // ══════════════════════════════════════════════════════════════════════
-
-        // HUD mode: click-through — only intercept right-click for context
+        // ── Interaction ──
         let sense = if mode == WidgetDisplayMode::Hud {
-            egui::Sense::click() // no drag in HUD, click to reveal context
+            egui::Sense::click()
         } else {
             egui::Sense::click_and_drag()
         };
 
-        // Interaction area: title bar for Card, full rect for HUD/Minimal
         let interact_rect = if mode == WidgetDisplayMode::Card {
             egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, title_h))
         } else {
-            // Thin grab strip at top for Minimal/HUD
             egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, 14.0))
         };
 
-        let resp = ui.interact(interact_rect,
-            egui::Id::new(("widget_drag", wi)), sense);
+        let resp = ui.interact(interact_rect, egui::Id::new(("widget_drag", wi)), sense);
 
-        // Drag (not in HUD mode)
         if mode != WidgetDisplayMode::Hud && resp.dragged_by(egui::PointerButton::Primary) {
             let d = resp.drag_delta();
+            let is_docked = chart.chart_widgets[wi].dock != WidgetDock::Float;
 
-            // Check for snap zones
-            let abs_bottom = card_rect.top() + d.y + card_h;
-            let abs_top = card_rect.top() + d.y;
+            if is_docked {
+                // ── Docked: slide horizontally, yank out vertically ──
+                let pointer_y = ui.ctx().pointer_interact_pos().map(|p| p.y).unwrap_or(card_rect.center().y);
+                let dock_edge_y = match chart.chart_widgets[wi].dock {
+                    WidgetDock::Top => rect.top() + STRIP_PAD + card_h / 2.0,
+                    WidgetDock::Bottom => rect.bottom() - STRIP_PAD - card_h / 2.0,
+                    _ => 0.0,
+                };
+                let pull_dist = (pointer_y - dock_edge_y).abs();
 
-            if abs_top - rect.top() < SNAP_ZONE && chart.chart_widgets[wi].dock != WidgetDock::Top {
-                chart.chart_widgets[wi].dock = WidgetDock::Top;
-            } else if rect.bottom() - abs_bottom < SNAP_ZONE && chart.chart_widgets[wi].dock != WidgetDock::Bottom {
-                chart.chart_widgets[wi].dock = WidgetDock::Bottom;
-            } else {
-                // Undock if dragged away from edge
-                if chart.chart_widgets[wi].dock != WidgetDock::Float {
+                if pull_dist > YANK_THRESHOLD {
+                    // ── Yank out: undock and place at current animated screen position ──
+                    let ax = chart.chart_widgets[wi].anim_x;
+                    let ay = chart.chart_widgets[wi].anim_y;
                     chart.chart_widgets[wi].dock = WidgetDock::Float;
+                    chart.chart_widgets[wi].x = ((ax - rect.left()) / rect.width()).clamp(0.0, 0.95);
+                    chart.chart_widgets[wi].y = ((ay - rect.top()) / rect.height()).clamp(0.0, 0.95);
+                    // Follow the mouse immediately on yank
+                    chart.chart_widgets[wi].y += d.y / rect.height();
+                } else {
+                    // ── Slide horizontally within the strip ──
+                    chart.chart_widgets[wi].dock_x += d.x;
+                    let max_x = rect.right() - card_w - STRIP_PAD;
+                    chart.chart_widgets[wi].dock_x = chart.chart_widgets[wi].dock_x
+                        .clamp(rect.left() + STRIP_PAD, max_x);
                 }
-                let nx = chart.chart_widgets[wi].x + d.x / rect.width();
-                let ny = chart.chart_widgets[wi].y + d.y / rect.height();
-                chart.chart_widgets[wi].x = nx.clamp(0.0, 0.95);
-                chart.chart_widgets[wi].y = ny.clamp(0.0, 0.95);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            } else {
+                // ── Floating: free drag, check snap zones ──
+                let pointer_y = ui.ctx().pointer_interact_pos().map(|p| p.y).unwrap_or(card_rect.top());
+
+                let near_top = pointer_y - rect.top() < SNAP_ZONE;
+                let near_bottom = rect.bottom() - pointer_y < SNAP_ZONE;
+
+                if near_top {
+                    // ── Snap to top ──
+                    chart.chart_widgets[wi].dock = WidgetDock::Top;
+                    chart.chart_widgets[wi].dock_x = chart.chart_widgets[wi].anim_x;
+                } else if near_bottom {
+                    // ── Snap to bottom ──
+                    chart.chart_widgets[wi].dock = WidgetDock::Bottom;
+                    chart.chart_widgets[wi].dock_x = chart.chart_widgets[wi].anim_x;
+                } else {
+                    // Normal float drag
+                    chart.chart_widgets[wi].x += d.x / rect.width();
+                    chart.chart_widgets[wi].y += d.y / rect.height();
+                    chart.chart_widgets[wi].x = chart.chart_widgets[wi].x.clamp(0.0, 0.95);
+                    chart.chart_widgets[wi].y = chart.chart_widgets[wi].y.clamp(0.0, 0.95);
+                }
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             }
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         } else if resp.hovered() && mode != WidgetDisplayMode::Hud {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+            let is_docked = chart.chart_widgets[wi].dock != WidgetDock::Float;
+            ui.ctx().set_cursor_icon(if is_docked { egui::CursorIcon::ResizeHorizontal } else { egui::CursorIcon::Grab });
         }
 
-        // Left click: collapse/expand
+        // Click: collapse/expand
         if resp.clicked() {
             chart.chart_widgets[wi].collapsed = !chart.chart_widgets[wi].collapsed;
         }
-
-        // Right-click: cycle display mode (Card → HUD → Minimal → Card)
+        // Right-click: cycle display mode
         if resp.secondary_clicked() {
             chart.chart_widgets[wi].display = chart.chart_widgets[wi].display.cycle();
         }
 
-        // ── Snap hint: show dock zone indicator when dragging near edges ──
-        if mode != WidgetDisplayMode::Hud && resp.dragged_by(egui::PointerButton::Primary) {
+        // ── Snap zone visual hints while dragging a floating widget ──
+        if mode != WidgetDisplayMode::Hud
+            && chart.chart_widgets[wi].dock == WidgetDock::Float
+            && resp.dragged_by(egui::PointerButton::Primary)
+        {
             if let Some(pos) = ui.ctx().pointer_interact_pos() {
-                if pos.y - rect.top() < SNAP_ZONE {
-                    // Top snap zone highlight
-                    let hint = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0));
-                    painter.rect_filled(hint, 0.0, color_alpha(t.accent, ALPHA_TINT));
-                } else if rect.bottom() - pos.y < SNAP_ZONE {
-                    // Bottom snap zone highlight
+                let near_top = pos.y - rect.top() < SNAP_ZONE;
+                let near_bottom = rect.bottom() - pos.y < SNAP_ZONE;
+                let hint_alpha = if near_top || near_bottom { ALPHA_TINT } else { 0 };
+                if near_top {
+                    let progress = 1.0 - ((pos.y - rect.top()) / SNAP_ZONE).clamp(0.0, 1.0);
+                    let h = 4.0 * progress;
+                    let hint = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), h.max(1.0)));
+                    painter.rect_filled(hint, 0.0, color_alpha(t.accent, (hint_alpha as f32 * progress) as u8));
+                } else if near_bottom {
+                    let progress = 1.0 - ((rect.bottom() - pos.y) / SNAP_ZONE).clamp(0.0, 1.0);
+                    let h = 4.0 * progress;
                     let hint = egui::Rect::from_min_max(
-                        egui::pos2(rect.left(), rect.bottom() - 3.0),
-                        egui::pos2(rect.right(), rect.bottom()));
-                    painter.rect_filled(hint, 0.0, color_alpha(t.accent, ALPHA_TINT));
+                        egui::pos2(rect.left(), rect.bottom() - h.max(1.0)), rect.max);
+                    painter.rect_filled(hint, 0.0, color_alpha(t.accent, (hint_alpha as f32 * progress) as u8));
                 }
             }
         }

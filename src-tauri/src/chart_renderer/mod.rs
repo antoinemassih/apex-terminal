@@ -126,6 +126,11 @@ pub(crate) struct ChartWidget {
     pub collapsed: bool,        // just show title bar
     pub display: WidgetDisplayMode, // Card / HUD / Minimal
     pub dock: WidgetDock,           // Float / Top / Bottom
+    pub dock_x: f32,               // horizontal pos in dock strip (pixels from chart left)
+    // ── Animation state (transient, not meaningful to persist but serde-friendly) ──
+    pub anim_x: f32,  // current animated screen x
+    pub anim_y: f32,  // current animated screen y
+    pub anim_init: bool, // false until first frame positions are seeded
 }
 
 impl ChartWidget {
@@ -143,7 +148,8 @@ impl ChartWidget {
             ChartWidgetKind::Custom         => (150.0, 90.0),
         };
         Self { kind, x, y, w, h, visible: true, collapsed: false,
-               display: WidgetDisplayMode::Card, dock: WidgetDock::Float }
+               display: WidgetDisplayMode::Card, dock: WidgetDock::Float,
+               dock_x: 0.0, anim_x: 0.0, anim_y: 0.0, anim_init: false }
     }
 }
 
