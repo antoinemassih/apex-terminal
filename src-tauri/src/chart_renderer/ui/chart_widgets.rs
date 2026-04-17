@@ -223,7 +223,16 @@ pub(crate) fn draw_widgets(
             }
         }
 
-        // ── Interaction ──
+        // ══════════════════════════════════════════════════════════════════
+        // Interaction — magnetic dock model
+        //
+        // The widget is always being dragged freely with a grab cursor.
+        // When the pointer enters the snap zone near an edge, vertical
+        // movement locks (magnetic hold) and the widget slides along the
+        // strip. If the user pulls vertically past the yank threshold,
+        // the hold breaks and the widget floats free again.
+        // ══════════════════════════════════════════════════════════════════
+
         let sense = if mode == WidgetDisplayMode::Hud {
             egui::Sense::click()
         } else {
@@ -240,62 +249,51 @@ pub(crate) fn draw_widgets(
 
         if mode != WidgetDisplayMode::Hud && resp.dragged_by(egui::PointerButton::Primary) {
             let d = resp.drag_delta();
-            let is_docked = chart.chart_widgets[wi].dock != WidgetDock::Float;
+            let wid = &mut chart.chart_widgets[wi];
+            let pointer = ui.ctx().pointer_interact_pos().unwrap_or(card_rect.center());
 
-            if is_docked {
-                // ── Docked: slide horizontally, yank out vertically ──
-                let pointer_y = ui.ctx().pointer_interact_pos().map(|p| p.y).unwrap_or(card_rect.center().y);
-                let dock_edge_y = match chart.chart_widgets[wi].dock {
-                    WidgetDock::Top => rect.top() + STRIP_PAD + card_h / 2.0,
-                    WidgetDock::Bottom => rect.bottom() - STRIP_PAD - card_h / 2.0,
-                    _ => 0.0,
-                };
-                let pull_dist = (pointer_y - dock_edge_y).abs();
+            match wid.dock {
+                WidgetDock::Float => {
+                    // ── Free drag: move both axes ──
+                    wid.x += d.x / rect.width();
+                    wid.y += d.y / rect.height();
+                    wid.x = wid.x.clamp(0.0, 0.95);
+                    wid.y = wid.y.clamp(0.0, 0.95);
 
-                if pull_dist > YANK_THRESHOLD {
-                    // ── Yank out: undock and place at current animated screen position ──
-                    let ax = chart.chart_widgets[wi].anim_x;
-                    let ay = chart.chart_widgets[wi].anim_y;
-                    chart.chart_widgets[wi].dock = WidgetDock::Float;
-                    chart.chart_widgets[wi].x = ((ax - rect.left()) / rect.width()).clamp(0.0, 0.95);
-                    chart.chart_widgets[wi].y = ((ay - rect.top()) / rect.height()).clamp(0.0, 0.95);
-                    // Follow the mouse immediately on yank
-                    chart.chart_widgets[wi].y += d.y / rect.height();
-                } else {
-                    // ── Slide horizontally within the strip ──
-                    chart.chart_widgets[wi].dock_x += d.x;
-                    let max_x = rect.right() - card_w - STRIP_PAD;
-                    chart.chart_widgets[wi].dock_x = chart.chart_widgets[wi].dock_x
-                        .clamp(rect.left() + STRIP_PAD, max_x);
+                    // ── Magnetic snap: check if pointer entered a snap zone ──
+                    if pointer.y - rect.top() < SNAP_ZONE {
+                        wid.dock = WidgetDock::Top;
+                        wid.dock_x = wid.anim_x; // dock at current visual X
+                    } else if rect.bottom() - pointer.y < SNAP_ZONE {
+                        wid.dock = WidgetDock::Bottom;
+                        wid.dock_x = wid.anim_x;
+                    }
                 }
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-            } else {
-                // ── Floating: free drag, check snap zones ──
-                let pointer_y = ui.ctx().pointer_interact_pos().map(|p| p.y).unwrap_or(card_rect.top());
+                WidgetDock::Top | WidgetDock::Bottom => {
+                    // ── Magnetically held: slide X freely, Y is locked ──
+                    wid.dock_x += d.x;
+                    wid.dock_x = wid.dock_x.clamp(
+                        rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
 
-                let near_top = pointer_y - rect.top() < SNAP_ZONE;
-                let near_bottom = rect.bottom() - pointer_y < SNAP_ZONE;
+                    // ── Yank out: measure pull distance from strip center ──
+                    let strip_center_y = match wid.dock {
+                        WidgetDock::Top    => rect.top() + STRIP_PAD + card_h * 0.5,
+                        WidgetDock::Bottom => rect.bottom() - STRIP_PAD - card_h * 0.5,
+                        _ => 0.0,
+                    };
+                    let pull = (pointer.y - strip_center_y).abs();
 
-                if near_top {
-                    // ── Snap to top ──
-                    chart.chart_widgets[wi].dock = WidgetDock::Top;
-                    chart.chart_widgets[wi].dock_x = chart.chart_widgets[wi].anim_x;
-                } else if near_bottom {
-                    // ── Snap to bottom ──
-                    chart.chart_widgets[wi].dock = WidgetDock::Bottom;
-                    chart.chart_widgets[wi].dock_x = chart.chart_widgets[wi].anim_x;
-                } else {
-                    // Normal float drag
-                    chart.chart_widgets[wi].x += d.x / rect.width();
-                    chart.chart_widgets[wi].y += d.y / rect.height();
-                    chart.chart_widgets[wi].x = chart.chart_widgets[wi].x.clamp(0.0, 0.95);
-                    chart.chart_widgets[wi].y = chart.chart_widgets[wi].y.clamp(0.0, 0.95);
+                    if pull > YANK_THRESHOLD {
+                        // Break free — place at current animated position
+                        wid.dock = WidgetDock::Float;
+                        wid.x = ((wid.anim_x - rect.left()) / rect.width()).clamp(0.0, 0.95);
+                        wid.y = ((pointer.y - card_h * 0.5 - rect.top()) / rect.height()).clamp(0.0, 0.95);
+                    }
                 }
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             }
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         } else if resp.hovered() && mode != WidgetDisplayMode::Hud {
-            let is_docked = chart.chart_widgets[wi].dock != WidgetDock::Float;
-            ui.ctx().set_cursor_icon(if is_docked { egui::CursorIcon::ResizeHorizontal } else { egui::CursorIcon::Grab });
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
 
         // Click: collapse/expand
@@ -307,26 +305,27 @@ pub(crate) fn draw_widgets(
             chart.chart_widgets[wi].display = chart.chart_widgets[wi].display.cycle();
         }
 
-        // ── Snap zone visual hints while dragging a floating widget ──
-        if mode != WidgetDisplayMode::Hud
-            && chart.chart_widgets[wi].dock == WidgetDock::Float
-            && resp.dragged_by(egui::PointerButton::Primary)
-        {
+        // ── Snap zone glow — fades in as pointer approaches edge ──
+        if mode != WidgetDisplayMode::Hud && resp.dragged_by(egui::PointerButton::Primary) {
             if let Some(pos) = ui.ctx().pointer_interact_pos() {
-                let near_top = pos.y - rect.top() < SNAP_ZONE;
-                let near_bottom = rect.bottom() - pos.y < SNAP_ZONE;
-                let hint_alpha = if near_top || near_bottom { ALPHA_TINT } else { 0 };
-                if near_top {
-                    let progress = 1.0 - ((pos.y - rect.top()) / SNAP_ZONE).clamp(0.0, 1.0);
-                    let h = 4.0 * progress;
-                    let hint = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), h.max(1.0)));
-                    painter.rect_filled(hint, 0.0, color_alpha(t.accent, (hint_alpha as f32 * progress) as u8));
-                } else if near_bottom {
-                    let progress = 1.0 - ((rect.bottom() - pos.y) / SNAP_ZONE).clamp(0.0, 1.0);
-                    let h = 4.0 * progress;
-                    let hint = egui::Rect::from_min_max(
-                        egui::pos2(rect.left(), rect.bottom() - h.max(1.0)), rect.max);
-                    painter.rect_filled(hint, 0.0, color_alpha(t.accent, (hint_alpha as f32 * progress) as u8));
+                let dist_top = pos.y - rect.top();
+                let dist_bot = rect.bottom() - pos.y;
+
+                if dist_top < SNAP_ZONE && chart.chart_widgets[wi].dock == WidgetDock::Float {
+                    let progress = 1.0 - (dist_top / SNAP_ZONE).clamp(0.0, 1.0);
+                    let h = (4.0 * progress).max(1.0);
+                    let a = (ALPHA_TINT as f32 * progress) as u8;
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), h)),
+                        0.0, color_alpha(t.accent, a));
+                } else if dist_bot < SNAP_ZONE && chart.chart_widgets[wi].dock == WidgetDock::Float {
+                    let progress = 1.0 - (dist_bot / SNAP_ZONE).clamp(0.0, 1.0);
+                    let h = (4.0 * progress).max(1.0);
+                    let a = (ALPHA_TINT as f32 * progress) as u8;
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(
+                            egui::pos2(rect.left(), rect.bottom() - h), rect.max),
+                        0.0, color_alpha(t.accent, a));
                 }
             }
         }
