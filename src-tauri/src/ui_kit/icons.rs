@@ -151,7 +151,7 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
     fonts.font_data.insert("inter".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Medium.ttf"))));
     fonts.font_data.insert("plus_jakarta".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("PlusJakartaSans-Regular.ttf"))));
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("PlusJakartaSans-Medium.ttf"))));
     fonts.font_data.insert("space_grotesk".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SpaceGrotesk-Medium.ttf"))));
 
