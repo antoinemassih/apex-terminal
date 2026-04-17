@@ -83,6 +83,37 @@ impl ChartWidgetKind {
     }
 }
 
+/// Widget display density — how much chrome surrounds the data.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum WidgetDisplayMode {
+    Card,    // full glass card with shadow, border, title bar
+    Hud,     // transparent — just the data, no background, no border
+    Minimal, // no background but keep a faint label for grab handle
+}
+
+impl WidgetDisplayMode {
+    pub fn label(self) -> &'static str {
+        match self { Self::Card => "Card", Self::Hud => "HUD", Self::Minimal => "Minimal" }
+    }
+    pub fn cycle(self) -> Self {
+        match self { Self::Card => Self::Hud, Self::Hud => Self::Minimal, Self::Minimal => Self::Card }
+    }
+}
+
+/// Where a widget docks on the chart.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum WidgetDock {
+    Float,  // free-floating, positioned by x/y fractions
+    Top,    // snapped to top strip, auto-laid out left-to-right
+    Bottom, // snapped to bottom strip, auto-laid out left-to-right
+}
+
+impl WidgetDock {
+    pub fn label(self) -> &'static str {
+        match self { Self::Float => "Float", Self::Top => "Top", Self::Bottom => "Bottom" }
+    }
+}
+
 /// A floating info widget placed on the chart canvas.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ChartWidget {
@@ -92,7 +123,9 @@ pub(crate) struct ChartWidget {
     pub w: f32,          // width in pixels
     pub h: f32,          // height in pixels
     pub visible: bool,
-    pub collapsed: bool, // just show title bar
+    pub collapsed: bool,        // just show title bar
+    pub display: WidgetDisplayMode, // Card / HUD / Minimal
+    pub dock: WidgetDock,           // Float / Top / Bottom
 }
 
 impl ChartWidget {
@@ -109,7 +142,8 @@ impl ChartWidget {
             ChartWidgetKind::MarketBreadth  => (180.0, 120.0),
             ChartWidgetKind::Custom         => (150.0, 90.0),
         };
-        Self { kind, x, y, w, h, visible: true, collapsed: false }
+        Self { kind, x, y, w, h, visible: true, collapsed: false,
+               display: WidgetDisplayMode::Card, dock: WidgetDock::Float }
     }
 }
 
