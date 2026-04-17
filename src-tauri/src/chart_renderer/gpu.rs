@@ -4248,9 +4248,10 @@ fn render_toolbar(
             });
     }
 
-    // Window drag handled at top of draw_chart (before toolbar renders)
-    // TB_BTN_CLICKED flag is cleared here for next frame
-    TB_BTN_CLICKED.with(|f| f.set(false));
+    // NOTE: TB_BTN_CLICKED is cleared at the END of draw_chart, AFTER the
+    // window drag handler reads it. Do NOT clear it here — it was causing
+    // the flag to always be false when the drag handler checked it, making
+    // every toolbar click trigger drag_window() and un-maximizing the window.
 
     // ── Layout dropdown popup (manual window — star clicks don't close it) ──
     if watchlist.layout_dropdown_open {
@@ -14247,8 +14248,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         let pressed = ctx.input(|i| i.pointer.primary_pressed());
         let dbl = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
         if let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) {
-            if pos.y < 36.0 && (pressed || dbl) {
-                // Check if any toolbar button was clicked last frame
+            let tb_h = if watchlist.compact_mode { 32.0 } else { 42.0 };
+            if pos.y < tb_h && (pressed || dbl) {
+                // Check if any toolbar button was clicked THIS frame
                 let btn_clicked = TB_BTN_CLICKED.with(|f| f.get());
                 if !btn_clicked {
                     if dbl {
@@ -14260,6 +14262,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         }
     }
+
+    // Clear TB_BTN_CLICKED for next frame — MUST be after the drag handler above reads it
+    TB_BTN_CLICKED.with(|f| f.set(false));
 
     route_commands(rx, panes, active_pane, watchlist);
 
