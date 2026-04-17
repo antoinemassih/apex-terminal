@@ -458,7 +458,7 @@ impl IndicatorType {
             Self::ATR => "ATR",
         }
     }
-    fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
+    pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
     #[allow(dead_code)]
     fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels] }
     #[allow(dead_code)]
@@ -535,7 +535,7 @@ pub(crate) const INDICATOR_TIMEFRAMES: &[&str] = &["", "1m", "5m", "15m", "30m",
 
 #[allow(dead_code)]
 impl Indicator {
-    fn new(id: u32, kind: IndicatorType, period: usize, color: &str) -> Self {
+    pub(crate) fn new(id: u32, kind: IndicatorType, period: usize, color: &str) -> Self {
         Self { id, kind, period, source_tf: String::new(), color: color.into(), thickness: 1.2,
                line_style: LineStyle::Solid, visible: true,
                values: vec![], values2: vec![], values3: vec![], values4: vec![], values5: vec![],
@@ -1115,6 +1115,10 @@ pub(crate) struct Chart {
     pub(crate) drag_zoom_start: Option<egui::Pos2>,
     pub(crate) auto_scroll: bool, pub(crate) last_input: std::time::Instant,
     pub(crate) draw_price_freeze: Option<(f32, f32)>, // locks y-range while drawing so new bars can't rescale
+    // Template popup (opened from pane header T button)
+    pub(crate) template_popup_open: bool,
+    pub(crate) template_popup_pos: egui::Pos2,
+    pub(crate) template_save_name: String,
     // Option quick-picker popup (opened by clicking an options tab)
     pub(crate) option_quick_open: bool,
     pub(crate) option_quick_pos: egui::Pos2,
@@ -1384,6 +1388,7 @@ impl Chart {
             ],
             vs: 0.0, vc: 200, price_lock: None, log_scale: false, drag_zoom_active: false, drag_zoom_start: None,
             auto_scroll: true, draw_price_freeze: None,
+            template_popup_open: false, template_popup_pos: egui::Pos2::ZERO, template_save_name: String::new(),
             option_quick_open: false, option_quick_pos: egui::Pos2::ZERO, option_quick_dte_idx: 0,
             history_loading: false, history_exhausted: false,
             last_input: std::time::Instant::now(), tick_counter: 0,
@@ -2521,13 +2526,14 @@ fn tick_simulation(chart: &mut Chart) {
 
     }
 
-    // ── Draw-mode price freeze: lock Y-range while user is using a draw tool ──
-    let drawing_active = !chart.draw_tool.is_empty()
-        || chart.dragging_drawing.is_some()
+    // ── Draw-mode price freeze: lock Y-range while user is mid-stroke ──
+    // Only freeze when actually placing points — NOT when a tool is merely selected.
+    // Having a tool selected in the toolbar shouldn't block Y-axis auto-fit.
+    let mid_stroke = chart.dragging_drawing.is_some()
         || chart.pending_pt.is_some()
         || chart.pending_pt2.is_some()
         || !chart.pending_pts.is_empty();
-    if drawing_active {
+    if mid_stroke {
         if chart.draw_price_freeze.is_none() && chart.price_lock.is_none() {
             chart.draw_price_freeze = Some(chart.price_range());
         }
@@ -2539,17 +2545,19 @@ fn tick_simulation(chart: &mut Chart) {
     // - User panned backward: when latest bar is within 20 bars of the visible right edge,
     //   smoothly re-engage auto_scroll (vs stays put, AppendBar advances it)
     // - User panned forward past latest (empty future in view): snap back after 5 seconds
+    // - User zoomed in so latest went off-screen right: snap back after 5 seconds
     if !chart.auto_scroll && !chart.bars.is_empty() {
         let latest = chart.bars.len() as f32 - 1.0;
         let right_edge = chart.vs + chart.vc as f32;
-        if latest < chart.vs {
-            // Panned forward — latest is off-screen to the LEFT. Snap back after 5s.
+        if latest < chart.vs || latest >= right_edge {
+            // Latest bar not visible (panned forward past it OR zoomed in past it).
+            // Snap back after inactivity.
             if chart.last_input.elapsed().as_secs() >= AUTO_SCROLL_RESUME_SECS {
                 chart.auto_scroll = true;
                 chart.price_lock = None;
                 chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
             }
-        } else if (latest - right_edge).abs() <= 20.0 {
+        } else if right_edge - latest <= 20.0 {
             // Latest is within 20 bars of the right edge — re-engage smoothly without snapping
             chart.auto_scroll = true;
         }
@@ -3839,191 +3847,74 @@ fn render_toolbar(
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // ── Workspace ──
+            // ── Workspace — clean dropdown (templates moved to pane header ★ button) ──
             {
                 let ws_names = list_workspaces();
-                let btn_label = egui::RichText::new(format!("W:{}", &watchlist.active_workspace)).monospace().size(10.0).color(t.dim);
-                ui.menu_button(btn_label, |ui| {
+                let ws_label = format!("{} {}", Icon::BROWSERS, &watchlist.active_workspace);
+                ui.menu_button(egui::RichText::new(&ws_label).monospace().size(FONT_LG).color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    ui.set_min_width(200.0);
+
+                    ui.label(egui::RichText::new("WORKSPACES").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                    ui.add_space(4.0);
+
+                    // Workspace list
                     for name in &ws_names {
-                        if ui.selectable_label(*name == watchlist.active_workspace,
-                            egui::RichText::new(name).monospace().size(10.0)).clicked() {
-                            watchlist.active_workspace = name.clone();
-                            watchlist.pending_workspace_load = Some(name.clone());
-                            ui.close_menu();
-                        }
+                        let is_active = *name == watchlist.active_workspace;
+                        ui.horizontal(|ui| {
+                            // Active dot
+                            if is_active {
+                                ui.label(egui::RichText::new("●").size(8.0).color(t.accent));
+                            } else {
+                                ui.label(egui::RichText::new("  ").size(8.0));
+                            }
+                            let label_col = if is_active { t.accent } else { egui::Color32::from_rgb(200, 200, 210) };
+                            if ui.selectable_label(is_active,
+                                egui::RichText::new(name).monospace().size(FONT_SM).color(label_col)).clicked() && !is_active {
+                                watchlist.active_workspace = name.clone();
+                                watchlist.pending_workspace_load = Some(name.clone());
+                                ui.close_menu();
+                            }
+                        });
                     }
-                    if !ws_names.is_empty() { ui.separator(); }
-                    // Save current workspace
-                    if !watchlist.active_workspace.is_empty() && watchlist.active_workspace != "Default" {
-                        if ui.button(egui::RichText::new(format!("Save \"{}\"", watchlist.active_workspace)).monospace().size(10.0)).clicked() {
+
+                    ui.add_space(4.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+
+                    // Save current
+                    if !watchlist.active_workspace.is_empty() {
+                        if ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
+                            .monospace().size(FONT_SM).color(t.accent)).clicked() {
                             save_workspace(&watchlist.active_workspace, panes, *layout);
                             ui.close_menu();
                         }
                     }
-                    ui.separator();
-                    // Save as new name
+
+                    // Save as new
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Name:").monospace().size(9.0).color(t.dim));
                         ui.add(egui::TextEdit::singleline(&mut watchlist.workspace_save_name)
-                            .hint_text("Workspace name")
-                            .desired_width(100.0)
-                            .font(egui::FontId::monospace(10.0)));
+                            .hint_text("New workspace…")
+                            .desired_width(130.0)
+                            .font(egui::FontId::monospace(FONT_SM)));
                         let can_save = !watchlist.workspace_save_name.trim().is_empty();
-                        if ui.add_enabled(can_save, egui::Button::new(egui::RichText::new("Save").monospace().size(10.0).color(t.accent))).clicked() {
-                            let name = watchlist.workspace_save_name.trim().to_string();
-                            save_workspace(&name, panes, *layout);
-                            watchlist.active_workspace = name;
-                            watchlist.workspace_save_name.clear();
-                            ui.close_menu();
+                        if can_save {
+                            if ui.add(egui::Button::new(egui::RichText::new("Save As").monospace().size(FONT_SM).color(t.accent)))
+                                .clicked() {
+                                let name = watchlist.workspace_save_name.trim().to_string();
+                                save_workspace(&name, panes, *layout);
+                                watchlist.active_workspace = name;
+                                watchlist.workspace_save_name.clear();
+                                ui.close_menu();
+                            }
                         }
                     });
-                    // ── PANE TEMPLATES ──
-                    ui.separator();
-                    ui.label(egui::RichText::new("PANE TEMPLATES").monospace().size(8.0).color(t.dim));
-                    // Save current pane as template
-                    ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut watchlist.pane_template_name)
-                            .hint_text("Template name")
-                            .desired_width(100.0)
-                            .font(egui::FontId::monospace(10.0)));
-                        let can_save_t = !watchlist.pane_template_name.trim().is_empty();
-                        if ui.add_enabled(can_save_t, egui::Button::new(egui::RichText::new("Save Pane").monospace().size(9.0).color(t.accent))).clicked() {
-                            let p = &panes[ap];
-                            let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
-                                "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
-                                "visible": ind.visible, "thickness": ind.thickness,
-                                "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
-                                "source": ind.source, "offset": ind.offset,
-                                "ob_level": ind.ob_level, "os_level": ind.os_level,
-                                "source_tf": ind.source_tf,
-                                "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
-                            })).collect();
-                            let tmpl = serde_json::json!({
-                                "show_volume": p.show_volume, "show_oscillators": p.show_oscillators,
-                                "ohlc_tooltip": p.ohlc_tooltip, "magnet": p.magnet, "log_scale": p.log_scale,
-                                "show_vwap_bands": p.show_vwap_bands, "show_cvd": p.show_cvd,
-                                "show_delta_volume": p.show_delta_volume, "show_rvol": p.show_rvol,
-                                "show_ma_ribbon": p.show_ma_ribbon, "show_prev_close": p.show_prev_close,
-                                "show_auto_sr": p.show_auto_sr, "show_auto_fib": p.show_auto_fib,
-                                "swing_leg_mode": p.swing_leg_mode, "show_footprint": p.show_footprint,
-                                "show_gamma": p.show_gamma, "show_darkpool": p.show_darkpool, "show_events": p.show_events, "hit_highlight": p.hit_highlight, "show_pnl_curve": p.show_pnl_curve, "show_pattern_labels": p.show_pattern_labels,
-                                "candle_mode": match p.candle_mode {
-                                    CandleMode::Standard => "std", CandleMode::Violin => "vln",
-                                    CandleMode::Gradient => "grd", CandleMode::ViolinGradient => "vg",
-                                    CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
-                    CandleMode::Renko => "rnk", CandleMode::RangeBar => "rng", CandleMode::TickBar => "tck",
-                                },
-                                "renko_brick_size": p.renko_brick_size,
-                                "range_bar_size": p.range_bar_size,
-                                "tick_bar_count": p.tick_bar_count,
-                                "vp_mode": match p.vp_mode {
-                                    VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
-                                    VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
-                                    VolumeProfileMode::Clean => "clean",
-                                },
-                                "session_shading": p.session_shading,
-                                "rth_start_minutes": p.rth_start_minutes,
-                                "rth_end_minutes": p.rth_end_minutes,
-                                "eth_bar_opacity": p.eth_bar_opacity,
-                                "session_bg_tint": p.session_bg_tint,
-                                "session_bg_color": p.session_bg_color,
-                                "session_bg_opacity": p.session_bg_opacity,
-                                "session_break_lines": p.session_break_lines,
-                                "indicators": indicators,
-                            });
-                            let name = watchlist.pane_template_name.trim().to_string();
-                            // Replace existing template with same name
-                            watchlist.pane_templates.retain(|(n, _)| n != &name);
-                            watchlist.pane_templates.push((name, tmpl));
-                            watchlist.pane_template_name.clear();
-                        }
-                    });
-                    // List saved templates
-                    let mut apply_tmpl: Option<usize> = None;
-                    let mut delete_tmpl: Option<usize> = None;
-                    for (ti, (tname, _)) in watchlist.pane_templates.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            if ui.add(egui::Button::new(egui::RichText::new(tname).monospace().size(10.0).color(t.accent))
-                                .frame(false)).clicked() {
-                                apply_tmpl = Some(ti);
-                            }
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(9.0).color(t.bear.gamma_multiply(0.5)))
-                                .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                                delete_tmpl = Some(ti);
-                            }
-                        });
-                    }
-                    if let Some(di) = delete_tmpl {
-                        watchlist.pane_templates.remove(di);
-                    }
-                    if let Some(ai) = apply_tmpl {
-                        let tmpl = watchlist.pane_templates[ai].1.clone();
-                        let p = &mut panes[ap];
-                        let gb = |key: &str, def: bool| -> bool { tmpl.get(key).and_then(|v| v.as_bool()).unwrap_or(def) };
-                        p.show_volume = gb("show_volume", true);
-                        p.show_oscillators = gb("show_oscillators", true);
-                        p.ohlc_tooltip = gb("ohlc_tooltip", true);
-                        p.magnet = gb("magnet", true);
-                        p.log_scale = gb("log_scale", false);
-                        p.show_vwap_bands = gb("show_vwap_bands", true);
-                        p.show_cvd = gb("show_cvd", false);
-                        p.show_delta_volume = gb("show_delta_volume", false);
-                        p.show_rvol = gb("show_rvol", true);
-                        p.show_ma_ribbon = gb("show_ma_ribbon", false);
-                        p.show_prev_close = gb("show_prev_close", true);
-                        p.show_auto_sr = gb("show_auto_sr", false);
-                        p.show_auto_fib = gb("show_auto_fib", false);
-                        p.swing_leg_mode = tmpl.get("swing_leg_mode").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
-                        p.show_footprint = gb("show_footprint", false);
-                        p.show_gamma = gb("show_gamma", false);
-                        p.show_darkpool = gb("show_darkpool", false);
-                        p.show_events = gb("show_events", false);
-                        p.show_pnl_curve = gb("show_pnl_curve", false);
-                        p.show_pattern_labels = gb("show_pattern_labels", true);
-                        // Session shading
-                        p.session_shading = gb("session_shading", false);
-                        p.rth_start_minutes = tmpl.get("rth_start_minutes").and_then(|v| v.as_u64()).unwrap_or(570) as u16;
-                        p.rth_end_minutes = tmpl.get("rth_end_minutes").and_then(|v| v.as_u64()).unwrap_or(960) as u16;
-                        p.eth_bar_opacity = tmpl.get("eth_bar_opacity").and_then(|v| v.as_f64()).unwrap_or(0.35) as f32;
-                        p.session_bg_tint = gb("session_bg_tint", false);
-                        p.session_bg_color = tmpl.get("session_bg_color").and_then(|v| v.as_str()).unwrap_or("#1a1a2e").to_string();
-                        p.session_bg_opacity = tmpl.get("session_bg_opacity").and_then(|v| v.as_f64()).unwrap_or(0.15) as f32;
-                        p.session_break_lines = gb("session_break_lines", true);
-                        p.candle_mode = match tmpl.get("candle_mode").and_then(|v| v.as_str()).unwrap_or("std") {
-                            "vln" => CandleMode::Violin, "grd" => CandleMode::Gradient, "vg" => CandleMode::ViolinGradient,
-                            "ha" => CandleMode::HeikinAshi, "line" => CandleMode::Line, "area" => CandleMode::Area,
-                    "rnk" => CandleMode::Renko, "rng" => CandleMode::RangeBar, "tck" => CandleMode::TickBar,
-                            _ => CandleMode::Standard,
-                        };
-                        p.renko_brick_size = tmpl.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                        p.range_bar_size = tmpl.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                        p.tick_bar_count = tmpl.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
-                        p.alt_bars_dirty = true;
-                        p.vp_mode = match tmpl.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
-                            "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
-                            "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
-                            _ => VolumeProfileMode::Off,
-                        };
-                        if let Some(inds) = tmpl.get("indicators").and_then(|v| v.as_array()) {
-                            p.indicators.clear();
-                            for (idx, ind_json) in inds.iter().enumerate() {
-                                let kind_label = ind_json.get("kind").and_then(|v| v.as_str()).unwrap_or("SMA");
-                                let kind = IndicatorType::all().iter().find(|t| t.label() == kind_label).copied().unwrap_or(IndicatorType::SMA);
-                                let period = ind_json.get("period").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
-                                let color = ind_json.get("color").and_then(|v| v.as_str()).unwrap_or(INDICATOR_COLORS[idx % INDICATOR_COLORS.len()]);
-                                let visible = ind_json.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
-                                let thickness = ind_json.get("thickness").and_then(|v| v.as_f64()).unwrap_or(1.5) as f32;
-                                let id = p.next_indicator_id; p.next_indicator_id += 1;
-                                let mut ind = Indicator::new(id, kind, period, color);
-                                ind.visible = visible; ind.thickness = thickness;
-                                p.indicators.push(ind);
-                            }
-                            p.indicator_bar_count = 0; // force recompute
-                        }
-                        ui.close_menu();
-                    }
+
+                    // Auto-save info
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("Auto-saves every 30s").monospace().size(7.0).color(t.dim.gamma_multiply(0.3)));
                 });
             }
 
@@ -4126,7 +4017,7 @@ fn render_toolbar(
                     ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(1.0, col));
                     ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(1.0, col));
                     if resp.clicked() {
-                        save_state(panes, *layout);
+                        save_state(panes, *layout, watchlist);
                         watchlist.persist();
                         CLOSE_REQUESTED.with(|f| f.set(true));
                     }
@@ -4486,6 +4377,7 @@ fn render_toolbar(
     // ── trendline_filter
     super::ui::trendline_filter::draw(ctx, watchlist, panes, ap, t);
     super::ui::option_quick_picker::draw(ctx, watchlist, panes, ap, t);
+    super::ui::template_popup::draw(ctx, watchlist, panes, ap, t);
 
     // ── indicator_editor
     super::ui::indicator_editor::draw(ctx, watchlist, panes, ap, t);
@@ -5160,6 +5052,38 @@ fn render_chart_pane(
                     chart.overlay_editing = !chart.overlay_editing;
                     if chart.overlay_editing { chart.overlay_editing_idx = None; }
                 }
+                tab_x += ov_w + 4.0;
+            }
+
+            // "T" template button in tab mode
+            {
+                let t_w = 22.0;
+                let t_h = pane_top_offset - 6.0;
+                let t_rect = egui::Rect::from_min_size(
+                    egui::pos2(tab_x, header_rect.center().y - t_h / 2.0),
+                    egui::vec2(t_w, t_h));
+                let t_resp = ui.allocate_rect(t_rect, egui::Sense::click());
+                let t_active = chart.template_popup_open;
+                let (bg, fg, border) = if t_active {
+                    (color_alpha(t.accent, 38), t.accent, color_alpha(t.accent, ALPHA_ACTIVE))
+                } else if t_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
+                     egui::Color32::from_rgb(220, 220, 230),
+                     color_alpha(t.accent, ALPHA_LINE))
+                } else {
+                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
+                     color_alpha(t.toolbar_border, ALPHA_MUTED))
+                };
+                header_painter.rect_filled(t_rect, 4.0, bg);
+                header_painter.rect_stroke(t_rect, 4.0,
+                    egui::Stroke::new(0.5, border), egui::StrokeKind::Outside);
+                header_painter.text(t_rect.center(), egui::Align2::CENTER_CENTER,
+                    Icon::STAR, egui::FontId::proportional((title_font_size - 2.0).max(9.0)), fg);
+                if t_resp.clicked() {
+                    chart.template_popup_open = !chart.template_popup_open;
+                    chart.template_popup_pos = egui::pos2(t_rect.left(), t_rect.bottom() + 4.0);
+                }
             }
         } else {
             // Simple symbol label (no tabs — original single-symbol header)
@@ -5243,6 +5167,38 @@ fn render_chart_pane(
                     if chart.overlay_editing { chart.overlay_editing_idx = None; }
                 }
                 cursor_x += ov_w + 4.0;
+            }
+
+            // "T" template button — opens template popup
+            {
+                let t_w = 22.0;
+                let t_h = pane_top_offset - 6.0;
+                let t_rect = egui::Rect::from_min_size(
+                    egui::pos2(cursor_x, header_rect.center().y - t_h / 2.0),
+                    egui::vec2(t_w, t_h));
+                let t_resp = ui.allocate_rect(t_rect, egui::Sense::click());
+                let t_active = chart.template_popup_open;
+                let (bg, fg, border) = if t_active {
+                    (color_alpha(t.accent, 38), t.accent, color_alpha(t.accent, ALPHA_ACTIVE))
+                } else if t_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
+                     egui::Color32::from_rgb(220, 220, 230),
+                     color_alpha(t.accent, ALPHA_LINE))
+                } else {
+                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
+                     color_alpha(t.toolbar_border, ALPHA_MUTED))
+                };
+                header_painter.rect_filled(t_rect, 4.0, bg);
+                header_painter.rect_stroke(t_rect, 4.0,
+                    egui::Stroke::new(0.5, border), egui::StrokeKind::Outside);
+                header_painter.text(t_rect.center(), egui::Align2::CENTER_CENTER,
+                    Icon::STAR, egui::FontId::proportional((title_font_size - 2.0).max(9.0)), fg);
+                if t_resp.clicked() {
+                    chart.template_popup_open = !chart.template_popup_open;
+                    chart.template_popup_pos = egui::pos2(t_rect.left(), t_rect.bottom() + 4.0);
+                }
+                cursor_x += t_w + 4.0;
             }
 
             // "+ Tab" add tab button — proper clickable tile
@@ -13246,6 +13202,120 @@ fn render_chart_pane(
         ui.separator();
 
         // ══════════════════════════════════════════════════════
+        // ── TEMPLATES section ──
+        ui.separator();
+        {
+            let mut ctx_apply_tmpl: Option<usize> = None;
+            // Apply template submenu
+            if !watchlist.pane_templates.is_empty() {
+                ui.menu_button(format!("{} Apply Template \u{25BA}", Icon::STAR), |ui| {
+                    for (i, (name, _)) in watchlist.pane_templates.iter().enumerate() {
+                        if ui.button(egui::RichText::new(name).monospace().size(10.0)).clicked() {
+                            ctx_apply_tmpl = Some(i);
+                            ui.close_menu();
+                        }
+                    }
+                });
+            }
+            // Deferred apply: happens after the menu_button closure releases borrows
+            if let Some(i) = ctx_apply_tmpl {
+                let tmpl = watchlist.pane_templates[i].1.clone();
+                let gb = |key: &str, def: bool| -> bool { tmpl.get(key).and_then(|v| v.as_bool()).unwrap_or(def) };
+                chart.show_volume = gb("show_volume", true);
+                chart.show_oscillators = gb("show_oscillators", true);
+                chart.ohlc_tooltip = gb("ohlc_tooltip", true);
+                chart.magnet = gb("magnet", true);
+                chart.log_scale = gb("log_scale", false);
+                chart.show_vwap_bands = gb("show_vwap_bands", true);
+                chart.show_cvd = gb("show_cvd", false);
+                chart.show_delta_volume = gb("show_delta_volume", false);
+                chart.show_rvol = gb("show_rvol", true);
+                chart.show_ma_ribbon = gb("show_ma_ribbon", false);
+                chart.show_prev_close = gb("show_prev_close", true);
+                chart.show_auto_sr = gb("show_auto_sr", false);
+                chart.show_auto_fib = gb("show_auto_fib", false);
+                chart.show_footprint = gb("show_footprint", false);
+                chart.show_gamma = gb("show_gamma", false);
+                chart.show_darkpool = gb("show_darkpool", false);
+                chart.show_events = gb("show_events", false);
+                chart.hit_highlight = gb("hit_highlight", false);
+                chart.show_pnl_curve = gb("show_pnl_curve", false);
+                chart.show_pattern_labels = gb("show_pattern_labels", true);
+                chart.candle_mode = match tmpl.get("candle_mode").and_then(|v| v.as_str()).unwrap_or("std") {
+                    "vln" => CandleMode::Violin, "grd" => CandleMode::Gradient, "vg" => CandleMode::ViolinGradient,
+                    "ha" => CandleMode::HeikinAshi, "line" => CandleMode::Line, "area" => CandleMode::Area,
+                    "rnk" => CandleMode::Renko, "rng" => CandleMode::RangeBar, "tck" => CandleMode::TickBar,
+                    _ => CandleMode::Standard,
+                };
+                if let Some(inds) = tmpl.get("indicators").and_then(|v| v.as_array()) {
+                    chart.indicators.clear();
+                    for (idx, ind_json) in inds.iter().enumerate() {
+                        let kind_label = ind_json.get("kind").and_then(|v| v.as_str()).unwrap_or("SMA");
+                        let kind = IndicatorType::all().iter().find(|t| t.label() == kind_label).copied().unwrap_or(IndicatorType::SMA);
+                        let period = ind_json.get("period").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+                        let color = ind_json.get("color").and_then(|v| v.as_str()).unwrap_or(INDICATOR_COLORS[idx % INDICATOR_COLORS.len()]);
+                        let id = chart.next_indicator_id; chart.next_indicator_id += 1;
+                        let mut ind = Indicator::new(id, kind, period, color);
+                        ind.visible = ind_json.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
+                        ind.thickness = ind_json.get("thickness").and_then(|v| v.as_f64()).unwrap_or(1.5) as f32;
+                        ind.param2 = ind_json.get("param2").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        ind.param3 = ind_json.get("param3").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        ind.param4 = ind_json.get("param4").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        ind.upper_color = ind_json.get("upper_color").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        ind.lower_color = ind_json.get("lower_color").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        ind.fill_color_hex = ind_json.get("fill_color_hex").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        ind.upper_thickness = ind_json.get("upper_thickness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        ind.lower_thickness = ind_json.get("lower_thickness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                        ind.line_style = match ind_json.get("line_style").and_then(|v| v.as_str()).unwrap_or("solid") {
+                            "dashed" => LineStyle::Dashed, "dotted" => LineStyle::Dotted, _ => LineStyle::Solid,
+                        };
+                        chart.indicators.push(ind);
+                    }
+                    chart.indicator_bar_count = 0;
+                }
+            }
+            // Save current pane as template
+            if ui.button(format!("{} Save as Template", Icon::STAR)).clicked() {
+                // Open the workspace section which has the template save UI
+                // For now, just create a template with auto-name
+                let name = format!("Template {}", watchlist.pane_templates.len() + 1);
+                let indicators: Vec<serde_json::Value> = chart.indicators.iter().map(|ind| serde_json::json!({
+                    "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
+                    "visible": ind.visible, "thickness": ind.thickness,
+                    "param2": ind.param2, "param3": ind.param3, "param4": ind.param4,
+                    "source": ind.source, "offset": ind.offset,
+                    "ob_level": ind.ob_level, "os_level": ind.os_level,
+                    "source_tf": ind.source_tf,
+                    "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
+                    "upper_color": ind.upper_color, "lower_color": ind.lower_color,
+                    "fill_color_hex": ind.fill_color_hex,
+                    "upper_thickness": ind.upper_thickness, "lower_thickness": ind.lower_thickness,
+                })).collect();
+                let tmpl = serde_json::json!({
+                    "show_volume": chart.show_volume, "show_oscillators": chart.show_oscillators,
+                    "ohlc_tooltip": chart.ohlc_tooltip, "magnet": chart.magnet, "log_scale": chart.log_scale,
+                    "show_vwap_bands": chart.show_vwap_bands, "show_cvd": chart.show_cvd,
+                    "show_delta_volume": chart.show_delta_volume, "show_rvol": chart.show_rvol,
+                    "show_ma_ribbon": chart.show_ma_ribbon, "show_prev_close": chart.show_prev_close,
+                    "show_auto_sr": chart.show_auto_sr, "show_auto_fib": chart.show_auto_fib,
+                    "show_footprint": chart.show_footprint, "show_gamma": chart.show_gamma,
+                    "show_darkpool": chart.show_darkpool, "show_events": chart.show_events,
+                    "hit_highlight": chart.hit_highlight, "show_pnl_curve": chart.show_pnl_curve,
+                    "show_pattern_labels": chart.show_pattern_labels,
+                    "candle_mode": match chart.candle_mode {
+                        CandleMode::Standard => "std", CandleMode::Violin => "vln",
+                        CandleMode::Gradient => "grd", CandleMode::ViolinGradient => "vg",
+                        CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
+                        CandleMode::Renko => "rnk", CandleMode::RangeBar => "rng", CandleMode::TickBar => "tck",
+                    },
+                    "indicators": indicators,
+                });
+                watchlist.pane_templates.push((name, tmpl));
+                save_templates(&watchlist.pane_templates);
+                ui.close_menu();
+            }
+        }
+
         // ── HIDE section ──
         // ══════════════════════════════════════════════════════
         let everything_hidden = chart.hide_all_drawings && chart.hide_all_indicators && chart.hide_signal_drawings;
@@ -15738,10 +15808,42 @@ impl App {
             None => { eprintln!("[native-chart] GPU init failed"); return; }
         };
         let id = w.id();
-        let (panes, layout) = load_state();
-        let wl = Watchlist::new();
+        let (panes, layout, loaded_settings) = load_state();
+        let mut wl = Watchlist::new();
+        // Apply persisted global settings
+        wl.font_scale = loaded_settings.font_scale;
+        wl.compact_mode = loaded_settings.compact_mode;
+        wl.pane_header_size = loaded_settings.pane_header_size;
+        wl.toolbar_auto_hide = loaded_settings.toolbar_auto_hide;
+        wl.show_x_axis = loaded_settings.show_x_axis;
+        wl.show_y_axis = loaded_settings.show_y_axis;
+        wl.shared_x_axis = loaded_settings.shared_x_axis;
+        wl.shared_y_axis = loaded_settings.shared_y_axis;
+        wl.pane_split_h = loaded_settings.pane_split_h;
+        wl.pane_split_v = loaded_settings.pane_split_v;
+        wl.pane_split_h2 = loaded_settings.pane_split_h2;
+        wl.pane_split_v2 = loaded_settings.pane_split_v2;
+        // Load persisted hotkeys (override defaults)
+        load_hotkeys(&mut wl.hotkeys);
+        // Load persisted templates
+        wl.pane_templates = load_templates();
+        // Load persisted alerts
+        let (wl_alerts, pane_alerts_map) = load_alerts();
+        wl.alerts = wl_alerts;
+        if !wl.alerts.is_empty() {
+            wl.next_alert_id = wl.alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1;
+        }
         let wl_syms: Vec<String> = wl.all_symbols();
         let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, maximized_pane: None, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false, last_save: None };
+        // Apply persisted per-symbol alerts to panes
+        for p in &mut cw.panes {
+            if let Some(alerts) = pane_alerts_map.get(&p.symbol) {
+                p.price_alerts = alerts.clone();
+                if let Some(max_id) = p.price_alerts.iter().map(|a| a.id).max() {
+                    p.next_alert_id = max_id + 1;
+                }
+            }
+        }
         // Fetch prices for default watchlist symbols
         fetch_watchlist_prices(wl_syms);
         if let Some(cmd) = initial_cmd {
@@ -15766,7 +15868,7 @@ impl ApplicationHandler for App {
         let _ = cw.gpu.egui_state.on_window_event(&cw.win, &ev);
         match ev {
             WindowEvent::CloseRequested => {
-                save_state(&cw.panes, cw.layout);
+                save_state(&cw.panes, cw.layout, &cw.watchlist);
                 cw.watchlist.persist();
                 self.windows.retain(|w| w.id != wid);
             }
@@ -15898,7 +16000,7 @@ impl ApplicationHandler for App {
                     let now = std::time::Instant::now();
                     let should_save = cw.last_save.map_or(true, |t| now.duration_since(t).as_secs() >= 30);
                     if should_save {
-                        save_state(&cw.panes, cw.layout);
+                        save_state(&cw.panes, cw.layout, &cw.watchlist);
                         cw.last_save = Some(now);
                     }
                 }
@@ -16517,9 +16619,9 @@ fn list_workspaces() -> Vec<String> {
     names
 }
 
-fn save_state(panes: &[Chart], layout: Layout) {
+fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
     let pane_data: Vec<serde_json::Value> = panes.iter().filter(|p| !p.is_option).map(|p| {
-        // Serialize indicators
+        // Serialize indicators — include ALL styling fields
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
             "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
             "visible": ind.visible, "thickness": ind.thickness,
@@ -16528,6 +16630,10 @@ fn save_state(panes: &[Chart], layout: Layout) {
             "ob_level": ind.ob_level, "os_level": ind.os_level,
             "source_tf": ind.source_tf,
             "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
+            // Band styling (BB, Keltner, etc.)
+            "upper_color": ind.upper_color, "lower_color": ind.lower_color,
+            "fill_color_hex": ind.fill_color_hex,
+            "upper_thickness": ind.upper_thickness, "lower_thickness": ind.lower_thickness,
         })).collect();
         serde_json::json!({
             "symbol": p.symbol, "timeframe": p.timeframe,
@@ -16569,25 +16675,71 @@ fn save_state(panes: &[Chart], layout: Layout) {
             "indicators": indicators,
         })
     }).collect();
+    // Global settings from Watchlist
+    let phs = match watchlist.pane_header_size {
+        crate::chart_renderer::PaneHeaderSize::Compact => "compact",
+        crate::chart_renderer::PaneHeaderSize::Normal => "normal",
+        crate::chart_renderer::PaneHeaderSize::Expanded => "expanded",
+    };
     let state = serde_json::json!({
-        "version": 2,
+        "version": 3,
         "layout": layout.label(),
         "theme_idx": panes.first().map(|p| p.theme_idx).unwrap_or(5),
         "panes": pane_data,
         "recent_symbols": panes.first().map(|p| &p.recent_symbols).cloned().unwrap_or_default(),
+        "settings": {
+            "font_scale": watchlist.font_scale,
+            "compact_mode": watchlist.compact_mode,
+            "pane_header_size": phs,
+            "toolbar_auto_hide": watchlist.toolbar_auto_hide,
+            "show_x_axis": watchlist.show_x_axis,
+            "show_y_axis": watchlist.show_y_axis,
+            "shared_x_axis": watchlist.shared_x_axis,
+            "shared_y_axis": watchlist.shared_y_axis,
+            "pane_split_h": watchlist.pane_split_h,
+            "pane_split_v": watchlist.pane_split_v,
+            "pane_split_h2": watchlist.pane_split_h2,
+            "pane_split_v2": watchlist.pane_split_v2,
+        },
     });
     let _ = std::fs::write(state_path(), serde_json::to_string_pretty(&state).unwrap_or_default());
+
+    // ── Persist alerts ──
+    save_alerts(watchlist, panes);
+    // ── Persist hotkeys ──
+    save_hotkeys(watchlist);
+    // ── Persist templates ──
+    save_templates(&watchlist.pane_templates);
 }
 
-fn load_state() -> (Vec<Chart>, Layout) {
+/// Loaded global settings (applied to Watchlist after load)
+struct LoadedSettings {
+    font_scale: f32,
+    compact_mode: bool,
+    pane_header_size: crate::chart_renderer::PaneHeaderSize,
+    toolbar_auto_hide: bool,
+    show_x_axis: bool, show_y_axis: bool,
+    shared_x_axis: bool, shared_y_axis: bool,
+    pane_split_h: f32, pane_split_v: f32, pane_split_h2: f32, pane_split_v2: f32,
+}
+impl Default for LoadedSettings { fn default() -> Self { Self {
+    font_scale: 1.6, compact_mode: false,
+    pane_header_size: crate::chart_renderer::PaneHeaderSize::Compact,
+    toolbar_auto_hide: false,
+    show_x_axis: true, show_y_axis: true,
+    shared_x_axis: false, shared_y_axis: false,
+    pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5,
+}}}
+
+fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
     let path = state_path();
     let data = match std::fs::read_to_string(&path) {
         Ok(d) => d,
-        Err(_) => return (vec![Chart::new()], Layout::One),
+        Err(_) => return (vec![Chart::new()], Layout::One, LoadedSettings::default()),
     };
     let json: serde_json::Value = match serde_json::from_str(&data) {
         Ok(v) => v,
-        Err(_) => return (vec![Chart::new()], Layout::One),
+        Err(_) => return (vec![Chart::new()], Layout::One, LoadedSettings::default()),
     };
 
     let layout = match json.get("layout").and_then(|v| v.as_str()).unwrap_or("1") {
@@ -16690,6 +16842,12 @@ fn load_state() -> (Vec<Chart>, Layout) {
                     ind.line_style = match ind_json.get("line_style").and_then(|v| v.as_str()).unwrap_or("solid") {
                         "dashed" => LineStyle::Dashed, "dotted" => LineStyle::Dotted, _ => LineStyle::Solid,
                     };
+                    // Band styling (BB, Keltner, etc.)
+                    ind.upper_color = ind_json.get("upper_color").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    ind.lower_color = ind_json.get("lower_color").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    ind.fill_color_hex = ind_json.get("fill_color_hex").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    ind.upper_thickness = ind_json.get("upper_thickness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    ind.lower_thickness = ind_json.get("lower_thickness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                     chart.indicators.push(ind);
                 }
             }
@@ -16702,7 +16860,191 @@ fn load_state() -> (Vec<Chart>, Layout) {
     let max = layout.max_panes();
     panes.truncate(max);
 
-    (panes, layout)
+    // Restore global settings (version 3+)
+    let mut settings = LoadedSettings::default();
+    if let Some(s) = json.get("settings") {
+        settings.font_scale = s.get("font_scale").and_then(|v| v.as_f64()).unwrap_or(1.6) as f32;
+        settings.compact_mode = s.get("compact_mode").and_then(|v| v.as_bool()).unwrap_or(false);
+        settings.pane_header_size = match s.get("pane_header_size").and_then(|v| v.as_str()).unwrap_or("compact") {
+            "normal" => crate::chart_renderer::PaneHeaderSize::Normal,
+            "expanded" => crate::chart_renderer::PaneHeaderSize::Expanded,
+            _ => crate::chart_renderer::PaneHeaderSize::Compact,
+        };
+        settings.toolbar_auto_hide = s.get("toolbar_auto_hide").and_then(|v| v.as_bool()).unwrap_or(false);
+        settings.show_x_axis = s.get("show_x_axis").and_then(|v| v.as_bool()).unwrap_or(true);
+        settings.show_y_axis = s.get("show_y_axis").and_then(|v| v.as_bool()).unwrap_or(true);
+        settings.shared_x_axis = s.get("shared_x_axis").and_then(|v| v.as_bool()).unwrap_or(false);
+        settings.shared_y_axis = s.get("shared_y_axis").and_then(|v| v.as_bool()).unwrap_or(false);
+        settings.pane_split_h = s.get("pane_split_h").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+        settings.pane_split_v = s.get("pane_split_v").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+        settings.pane_split_h2 = s.get("pane_split_h2").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+        settings.pane_split_v2 = s.get("pane_split_v2").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    }
+
+    (panes, layout, settings)
+}
+
+// ─── Alerts persistence ──────────────────────────────────────────────────────
+
+fn alerts_path() -> std::path::PathBuf {
+    let mut p = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    p.push("apex-terminal"); let _ = std::fs::create_dir_all(&p);
+    p.push("alerts.json"); p
+}
+
+fn save_alerts(watchlist: &Watchlist, panes: &[Chart]) {
+    use crate::chart_renderer::trading::PriceAlert;
+    // Watchlist-level alerts
+    let wl_alerts: Vec<serde_json::Value> = watchlist.alerts.iter().map(|a| serde_json::json!({
+        "id": a.id, "symbol": a.symbol, "price": a.price, "above": a.above,
+        "triggered": a.triggered, "message": a.message,
+    })).collect();
+    // Per-pane alerts keyed by symbol
+    let mut pane_alerts = serde_json::Map::new();
+    for p in panes {
+        if p.price_alerts.is_empty() { continue; }
+        let arr: Vec<serde_json::Value> = p.price_alerts.iter().map(|a| serde_json::json!({
+            "id": a.id, "price": a.price, "above": a.above,
+            "triggered": a.triggered, "draft": a.draft, "symbol": a.symbol,
+        })).collect();
+        pane_alerts.insert(p.symbol.clone(), serde_json::Value::Array(arr));
+    }
+    let json = serde_json::json!({ "watchlist_alerts": wl_alerts, "pane_alerts": pane_alerts });
+    let _ = std::fs::write(alerts_path(), serde_json::to_string_pretty(&json).unwrap_or_default());
+}
+
+fn load_alerts() -> (Vec<crate::chart_renderer::trading::Alert>, std::collections::HashMap<String, Vec<crate::chart_renderer::trading::PriceAlert>>) {
+    let path = alerts_path();
+    let data = std::fs::read_to_string(&path).unwrap_or_default();
+    let json: serde_json::Value = serde_json::from_str(&data).unwrap_or(serde_json::Value::Null);
+    // Watchlist alerts
+    let wl: Vec<crate::chart_renderer::trading::Alert> = json.get("watchlist_alerts")
+        .and_then(|v| v.as_array()).map(|arr| arr.iter().filter_map(|a| {
+            Some(crate::chart_renderer::trading::Alert {
+                id: a.get("id")?.as_u64()? as u32,
+                symbol: a.get("symbol")?.as_str()?.to_string(),
+                price: a.get("price")?.as_f64()? as f32,
+                above: a.get("above")?.as_bool()?,
+                triggered: a.get("triggered").and_then(|v| v.as_bool()).unwrap_or(false),
+                message: a.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            })
+        }).collect()).unwrap_or_default();
+    // Pane alerts by symbol
+    let mut pa = std::collections::HashMap::new();
+    if let Some(obj) = json.get("pane_alerts").and_then(|v| v.as_object()) {
+        for (sym, arr) in obj {
+            if let Some(alerts) = arr.as_array() {
+                let v: Vec<crate::chart_renderer::trading::PriceAlert> = alerts.iter().filter_map(|a| {
+                    Some(crate::chart_renderer::trading::PriceAlert {
+                        id: a.get("id")?.as_u64()? as u32,
+                        price: a.get("price")?.as_f64()? as f32,
+                        above: a.get("above")?.as_bool()?,
+                        triggered: a.get("triggered").and_then(|v| v.as_bool()).unwrap_or(false),
+                        draft: a.get("draft").and_then(|v| v.as_bool()).unwrap_or(false),
+                        symbol: a.get("symbol").and_then(|v| v.as_str()).unwrap_or(sym).to_string(),
+                    })
+                }).collect();
+                if !v.is_empty() { pa.insert(sym.clone(), v); }
+            }
+        }
+    }
+    (wl, pa)
+}
+
+// ─── Hotkeys persistence ─────────────────────────────────────────────────────
+
+fn hotkeys_path() -> std::path::PathBuf {
+    let mut p = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    p.push("apex-terminal"); let _ = std::fs::create_dir_all(&p);
+    p.push("hotkeys.json"); p
+}
+
+fn save_hotkeys(watchlist: &Watchlist) {
+    let arr: Vec<serde_json::Value> = watchlist.hotkeys.iter().map(|hk| serde_json::json!({
+        "action": hk.action, "key_name": hk.key_name,
+        "ctrl": hk.ctrl, "shift": hk.shift, "alt": hk.alt,
+    })).collect();
+    let _ = std::fs::write(hotkeys_path(), serde_json::to_string_pretty(&serde_json::Value::Array(arr)).unwrap_or_default());
+}
+
+fn load_hotkeys(defaults: &mut Vec<HotKey>) {
+    let path = hotkeys_path();
+    let data = match std::fs::read_to_string(&path) { Ok(d) => d, Err(_) => return };
+    let arr: Vec<serde_json::Value> = match serde_json::from_str(&data) { Ok(v) => v, Err(_) => return };
+    // Override default bindings from saved file (match by action)
+    for saved in &arr {
+        let action = match saved.get("action").and_then(|v| v.as_str()) { Some(a) => a, None => continue };
+        if let Some(hk) = defaults.iter_mut().find(|h| h.action == action) {
+            hk.key_name = saved.get("key_name").and_then(|v| v.as_str()).unwrap_or(&hk.key_name).to_string();
+            hk.ctrl = saved.get("ctrl").and_then(|v| v.as_bool()).unwrap_or(hk.ctrl);
+            hk.shift = saved.get("shift").and_then(|v| v.as_bool()).unwrap_or(hk.shift);
+            hk.alt = saved.get("alt").and_then(|v| v.as_bool()).unwrap_or(hk.alt);
+            // Remap key enum from key_name
+            let keys = [
+                ("A", egui::Key::A), ("B", egui::Key::B), ("C", egui::Key::C), ("D", egui::Key::D),
+                ("E", egui::Key::E), ("F", egui::Key::F), ("G", egui::Key::G), ("H", egui::Key::H),
+                ("I", egui::Key::I), ("J", egui::Key::J), ("K", egui::Key::K), ("L", egui::Key::L),
+                ("M", egui::Key::M), ("N", egui::Key::N), ("O", egui::Key::O), ("P", egui::Key::P),
+                ("Q", egui::Key::Q), ("R", egui::Key::R), ("S", egui::Key::S), ("T", egui::Key::T),
+                ("U", egui::Key::U), ("V", egui::Key::V), ("W", egui::Key::W), ("X", egui::Key::X),
+                ("Y", egui::Key::Y), ("Z", egui::Key::Z),
+                ("F1", egui::Key::F1), ("F2", egui::Key::F2), ("F3", egui::Key::F3), ("F4", egui::Key::F4),
+                ("Del", egui::Key::Delete), ("Bksp", egui::Key::Backspace),
+            ];
+            // Extract the last segment of key_name (after any "Ctrl+Shift+" prefix)
+            let raw = hk.key_name.split('+').last().unwrap_or("");
+            for (name, key) in keys { if raw == name { hk.key = key; break; } }
+        }
+    }
+}
+
+// ─── Templates persistence ───────────────────────────────────────────────────
+
+fn templates_dir() -> std::path::PathBuf {
+    let mut p = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    p.push("apex-terminal"); p.push("templates"); let _ = std::fs::create_dir_all(&p); p
+}
+
+/// Look up an IndicatorType by its label string (used by template_popup).
+pub(crate) fn indicator_type_from_label(label: &str) -> IndicatorType {
+    IndicatorType::all().iter().find(|t| t.label() == label).copied().unwrap_or(IndicatorType::SMA)
+}
+
+pub(crate) fn save_templates(templates: &[(String, serde_json::Value)]) {
+    let dir = templates_dir();
+    // Remove existing files first (in case templates were deleted)
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            if e.path().extension().map_or(false, |x| x == "json") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    for (name, data) in templates {
+        let safe: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
+        let path = dir.join(format!("{}.json", safe));
+        let _ = std::fs::write(path, serde_json::to_string_pretty(data).unwrap_or_default());
+    }
+}
+
+fn load_templates() -> Vec<(String, serde_json::Value)> {
+    let dir = templates_dir();
+    let mut out = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            let path = e.path();
+            if path.extension().map_or(false, |x| x == "json") {
+                let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                if let Ok(data) = std::fs::read_to_string(&path) {
+                    if let Ok(val) = serde_json::from_str(&data) {
+                        out.push((name, val));
+                    }
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
 }
 
 fn watchlists_path() -> std::path::PathBuf {

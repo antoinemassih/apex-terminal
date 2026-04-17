@@ -1,0 +1,1 @@
+seed-trendline-1|SPY|5m|trendline|2|0|100|1|104.5

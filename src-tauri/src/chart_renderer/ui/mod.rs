@@ -36,3 +36,4 @@ pub mod analysis_panel;
 pub mod signals_panel;
 pub mod feed_panel;
 pub mod option_quick_picker;
+pub mod template_popup;
