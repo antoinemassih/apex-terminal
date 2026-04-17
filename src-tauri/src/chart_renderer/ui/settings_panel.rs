@@ -163,6 +163,56 @@ SettingsTab::Appearance => {
     });
     ui.add_space(GAP_LG);
 
+    // ── Font Family ──
+    dialog_section(ui, "FONT", m, t.dim.gamma_multiply(0.5));
+    ui.add_space(GAP_SM);
+    {
+        let font_names = crate::ui_kit::icons::FONT_NAMES;
+        let current_idx = watchlist.font_idx.min(font_names.len() - 1);
+        ui.horizontal(|ui| {
+            ui.add_space(m);
+            ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+            for (i, &name) in font_names.iter().enumerate() {
+                let sel = current_idx == i;
+                let card_w = 128.0;
+                let card_h = 48.0;
+                let (r, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+
+                // Card bg
+                let bg = if sel { color_alpha(t.accent, ALPHA_TINT) }
+                    else if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_SUBTLE) }
+                    else { color_alpha(t.toolbar_border, ALPHA_FAINT) };
+                let border = if sel { t.accent }
+                    else if resp.hovered() { color_alpha(t.accent, ALPHA_LINE) }
+                    else { color_alpha(t.toolbar_border, ALPHA_MUTED) };
+                ui.painter().rect_filled(r, RADIUS_MD, bg);
+                ui.painter().rect_stroke(r, RADIUS_MD,
+                    egui::Stroke::new(if sel { 1.5 } else { 0.5 }, border), egui::StrokeKind::Outside);
+
+                // Font name
+                let name_col = if sel { t.accent } else { TEXT_PRIMARY };
+                ui.painter().text(
+                    egui::pos2(r.center().x, r.top() + 14.0),
+                    egui::Align2::CENTER_CENTER,
+                    name, egui::FontId::monospace(FONT_SM), name_col);
+
+                // Sample text in that font style (visual hint)
+                let sample_col = if sel { TEXT_PRIMARY } else { t.dim.gamma_multiply(0.7) };
+                ui.painter().text(
+                    egui::pos2(r.center().x, r.bottom() - 12.0),
+                    egui::Align2::CENTER_CENTER,
+                    "0123 AAPL $9.50", egui::FontId::monospace(FONT_XS), sample_col);
+
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                if resp.clicked() && !sel {
+                    watchlist.font_idx = i;
+                    crate::ui_kit::icons::init_fonts(ui.ctx(), i);
+                }
+            }
+        });
+    }
+    ui.add_space(GAP_LG);
+
     // ── Layout ──
     dialog_section(ui, "LAYOUT", m, t.dim.gamma_multiply(0.5));
     ui.add_space(GAP_SM);
@@ -263,19 +313,6 @@ SettingsTab::Chart => {
     }
     ui.add_space(GAP_LG);
 
-    // ── Overlays ──
-    dialog_section(ui, "OVERLAYS", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
-    setting_toggle(ui, m, "Previous Close Line", t, &mut chart.show_prev_close);
-    setting_toggle(ui, m, "VWAP Bands", t, &mut chart.show_vwap_bands);
-    setting_toggle(ui, m, "MA Ribbon", t, &mut chart.show_ma_ribbon);
-    setting_toggle(ui, m, "Auto S/R Levels", t, &mut chart.show_auto_sr);
-    setting_toggle(ui, m, "Auto Fibonacci", t, &mut chart.show_auto_fib);
-    setting_toggle(ui, m, "CVD (Cumul. Delta)", t, &mut chart.show_cvd);
-    setting_toggle(ui, m, "Delta Volume", t, &mut chart.show_delta_volume);
-    setting_toggle(ui, m, "RVOL", t, &mut chart.show_rvol);
-    setting_toggle(ui, m, "Footprint", t, &mut chart.show_footprint);
-    setting_toggle(ui, m, "P&L Curve", t, &mut chart.show_pnl_curve);
     ui.add_space(GAP_LG);
 }
 

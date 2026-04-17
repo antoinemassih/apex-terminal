@@ -126,22 +126,38 @@ impl Icon {
     }
 }
 
-/// Initialize Phosphor icon font. Call once during app setup.
-/// Adds Phosphor as fallback for BOTH Proportional and Monospace families,
-/// so icons render correctly even in `.monospace()` text.
-pub fn init_icons(ctx: &egui::Context) {
+/// Available font choices for the UI.
+pub const FONT_NAMES: &[&str] = &["JetBrains Mono", "Roboto Mono", "Source Code Pro", "IBM Plex Mono"];
+
+/// Initialize fonts + Phosphor icons. Call once during app setup.
+/// `font_idx` selects which of the 4 fonts to use as primary (0 = JetBrains Mono).
+pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
     let mut fonts = egui::FontDefinitions::default();
 
-    // Load JetBrains Mono as the primary monospace AND proportional font
-    let jb_mono = include_bytes!("JetBrainsMono-Regular.ttf");
-    fonts.font_data.insert("jetbrains_mono".into(), std::sync::Arc::new(egui::FontData::from_static(jb_mono)));
+    // Load all 4 fonts into font_data
+    fonts.font_data.insert("jetbrains_mono".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("JetBrainsMono-Regular.ttf"))));
+    fonts.font_data.insert("roboto_mono".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("RobotoMono-Regular.ttf"))));
+    fonts.font_data.insert("source_code_pro".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SourceCodePro-Regular.ttf"))));
+    fonts.font_data.insert("ibm_plex_mono".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexMono-Regular.ttf"))));
 
-    // Set JetBrains Mono as primary for both font families
+    // Pick the primary font based on selection
+    let primary = match font_idx {
+        1 => "roboto_mono",
+        2 => "source_code_pro",
+        3 => "ibm_plex_mono",
+        _ => "jetbrains_mono",
+    };
+
+    // Set as primary for both font families
     if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
-        mono_keys.insert(0, "jetbrains_mono".into());
+        mono_keys.insert(0, primary.into());
     }
     if let Some(prop_keys) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-        prop_keys.insert(0, "jetbrains_mono".into());
+        prop_keys.insert(0, primary.into());
     }
 
     // Add Phosphor icon fonts
@@ -149,7 +165,7 @@ pub fn init_icons(ctx: &egui::Context) {
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Bold);
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Fill);
 
-    // Ensure phosphor is a fallback for Monospace too (for icons in monospace text)
+    // Ensure phosphor is a fallback for Monospace too
     if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
         if !mono_keys.contains(&"phosphor".to_string()) {
             mono_keys.push("phosphor".into());
@@ -158,3 +174,6 @@ pub fn init_icons(ctx: &egui::Context) {
 
     ctx.set_fonts(fonts);
 }
+
+/// Legacy alias — calls init_fonts with default font.
+pub fn init_icons(ctx: &egui::Context) { init_fonts(ctx, 0); }

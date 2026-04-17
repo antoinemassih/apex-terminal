@@ -14711,6 +14711,7 @@ pub(crate) struct Watchlist {
     pub(crate) hotkey_editing_id: Option<u32>,
     pub(crate) settings_open: bool,
     pub(crate) font_scale: f32,
+    pub(crate) font_idx: usize, // 0=JetBrains, 1=Roboto, 2=SourceCode, 3=IBMPlex
     // Order defaults (global)
     pub(crate) default_stock_qty: u32,
     pub(crate) default_options_qty: u32,
@@ -14898,7 +14899,7 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
-               settings_open: false, font_scale: 1.6,
+               settings_open: false, font_scale: 1.6, font_idx: 0,
                default_stock_qty: 100, default_options_qty: 1, default_order_type: 0, default_tif: 0, default_outside_rth: false,
                compact_mode: false,
                pane_header_size: crate::chart_renderer::PaneHeaderSize::Compact,
@@ -15817,6 +15818,9 @@ impl App {
         let mut wl = Watchlist::new();
         // Apply persisted global settings
         wl.font_scale = loaded_settings.font_scale;
+        wl.font_idx = loaded_settings.font_idx;
+        // Re-init fonts if the loaded font differs from default
+        if wl.font_idx != 0 { crate::ui_kit::icons::init_fonts(&gpu.egui_ctx, wl.font_idx); }
         wl.compact_mode = loaded_settings.compact_mode;
         wl.pane_header_size = loaded_settings.pane_header_size;
         wl.toolbar_auto_hide = loaded_settings.toolbar_auto_hide;
@@ -16694,6 +16698,7 @@ fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
         "recent_symbols": panes.first().map(|p| &p.recent_symbols).cloned().unwrap_or_default(),
         "settings": {
             "font_scale": watchlist.font_scale,
+            "font_idx": watchlist.font_idx,
             "compact_mode": watchlist.compact_mode,
             "pane_header_size": phs,
             "toolbar_auto_hide": watchlist.toolbar_auto_hide,
@@ -16720,6 +16725,7 @@ fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
 /// Loaded global settings (applied to Watchlist after load)
 struct LoadedSettings {
     font_scale: f32,
+    font_idx: usize,
     compact_mode: bool,
     pane_header_size: crate::chart_renderer::PaneHeaderSize,
     toolbar_auto_hide: bool,
@@ -16728,7 +16734,7 @@ struct LoadedSettings {
     pane_split_h: f32, pane_split_v: f32, pane_split_h2: f32, pane_split_v2: f32,
 }
 impl Default for LoadedSettings { fn default() -> Self { Self {
-    font_scale: 1.6, compact_mode: false,
+    font_scale: 1.6, font_idx: 0, compact_mode: false,
     pane_header_size: crate::chart_renderer::PaneHeaderSize::Compact,
     toolbar_auto_hide: false,
     show_x_axis: true, show_y_axis: true,
@@ -16869,6 +16875,7 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
     let mut settings = LoadedSettings::default();
     if let Some(s) = json.get("settings") {
         settings.font_scale = s.get("font_scale").and_then(|v| v.as_f64()).unwrap_or(1.6) as f32;
+        settings.font_idx = s.get("font_idx").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
         settings.compact_mode = s.get("compact_mode").and_then(|v| v.as_bool()).unwrap_or(false);
         settings.pane_header_size = match s.get("pane_header_size").and_then(|v| v.as_str()).unwrap_or("compact") {
             "normal" => crate::chart_renderer::PaneHeaderSize::Normal,
