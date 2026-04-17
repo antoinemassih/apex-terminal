@@ -132,7 +132,7 @@ pub const FONT_NAMES: &[&str] = &[
     "Roboto Mono",     // 1 — clean Google monospace
     "IBM Plex Mono",   // 2 — professional IBM monospace
     "Inter",           // 3 — best-practice sans-serif, widely loved
-    "Nunito",          // 4 — rounded friendly sans-serif
+    "Manrope",         // 4 — geometric sans-serif, good weight
     "Space Grotesk",   // 5 — geometric modern sans-serif
 ];
 
@@ -150,8 +150,8 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexMono-Regular.ttf"))));
     fonts.font_data.insert("inter".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Regular.ttf"))));
-    fonts.font_data.insert("nunito".into(),
-        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Nunito-Regular.ttf"))));
+    fonts.font_data.insert("manrope".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Manrope-Regular.ttf"))));
     fonts.font_data.insert("space_grotesk".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SpaceGrotesk-Regular.ttf"))));
 
@@ -160,7 +160,7 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
         1 => "roboto_mono",
         2 => "ibm_plex_mono",
         3 => "inter",
-        4 => "nunito",
+        4 => "manrope",
         5 => "space_grotesk",
         _ => "jetbrains_mono",
     };
