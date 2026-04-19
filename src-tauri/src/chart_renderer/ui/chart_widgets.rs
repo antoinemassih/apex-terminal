@@ -42,7 +42,23 @@ pub(crate) fn draw_widgets(
     if draw_faded {
         painter.set_opacity(0.18);
     }
-    let wd = WidgetData::from_chart(chart);
+    // Cache widget data — only recompute when bar count changes
+    let bar_count = chart.bars.len();
+    let cache_valid = chart.widget_cache_bar_count == bar_count && bar_count > 0;
+    let wd = if cache_valid {
+        // Reuse cached data, just update live fields
+        let mut cached = chart.widget_cache.take().unwrap_or_else(|| WidgetData::from_chart(chart));
+        // Update live-changing fields
+        if let Some((_, positions, _)) = crate::chart_renderer::trading::read_account_data() {
+            if !positions.is_empty() {
+                cached.day_pnl = positions.iter().map(|p| p.unrealized_pnl as f32).sum();
+            }
+        }
+        cached
+    } else {
+        chart.widget_cache_bar_count = bar_count;
+        WidgetData::from_chart(chart)
+    };
 
     // ══════════════════════════════════════════════════════════════════════════
     // Pass 1 — Compute target positions and animate
@@ -140,6 +156,8 @@ pub(crate) fn draw_widgets(
     // Deferred context menu actions (to avoid borrow conflicts)
     enum CtxAction { Lock(usize), Delete(usize), ResetSize(usize), DockTop(usize), DockBottom(usize), Undock(usize) }
     let mut ctx_action: Option<CtxAction> = None;
+    let mut widget_btn_action: Option<WidgetBtnAction> = None;
+    let hover_pos = ui.ctx().pointer_hover_pos();
 
     for wi in 0..n {
         // Copy fields we need to avoid holding a borrow across mutations
@@ -251,7 +269,28 @@ pub(crate) fn draw_widgets(
                 let body = egui::Rect::from_min_size(
                     egui::pos2(card_rect.left(), card_rect.top() + title_h + 2.0),
                     egui::vec2(card_w, card_h - title_h - 2.0));
-                draw_widget_body(&painter, body, kind, &wd, t);
+                {
+                        let mut btns = Vec::new();
+                        draw_widget_body(&painter, body, kind, &wd, t, hover_pos, &mut btns);
+                        // Check if pointer is clicking any widget button
+                        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                            if let Some(pos) = hover_pos {
+                                for (btn_rect, action) in &btns {
+                                    if btn_rect.contains(pos) {
+                                        widget_btn_action = Some(*action);
+                                    }
+                                }
+                            }
+                        }
+                        // Paint hover state for hovered buttons
+                        if let Some(pos) = hover_pos {
+                            for (btn_rect, _) in &btns {
+                                if btn_rect.contains(pos) {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                }
+                            }
+                        }
+                    }
 
                 // Resize handle (bottom-right corner)
                 if let Some(delta) = resize_handle(ui, &painter, card_rect, wi, t) {
@@ -260,7 +299,20 @@ pub(crate) fn draw_widgets(
             }
         } else if mode == WidgetDisplayMode::Hud {
             if !w.collapsed {
-                draw_widget_body(&painter, card_rect, kind, &wd, t);
+                let mut btns = Vec::new();
+                draw_widget_body(&painter, card_rect, kind, &wd, t, hover_pos, &mut btns);
+                if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                    if let Some(pos) = hover_pos {
+                        for (btn_rect, action) in &btns {
+                            if btn_rect.contains(pos) { widget_btn_action = Some(*action); }
+                        }
+                    }
+                }
+                if let Some(pos) = hover_pos {
+                    for (btn_rect, _) in &btns {
+                        if btn_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    }
+                }
             } else {
                 draw_mini_badge(&painter, card_rect, kind, &wd, t);
             }
@@ -299,7 +351,28 @@ pub(crate) fn draw_widgets(
                 let body = egui::Rect::from_min_size(
                     egui::pos2(card_rect.left(), card_rect.top() + 16.0),
                     egui::vec2(card_w, card_h - 16.0));
-                draw_widget_body(&painter, body, kind, &wd, t);
+                {
+                        let mut btns = Vec::new();
+                        draw_widget_body(&painter, body, kind, &wd, t, hover_pos, &mut btns);
+                        // Check if pointer is clicking any widget button
+                        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                            if let Some(pos) = hover_pos {
+                                for (btn_rect, action) in &btns {
+                                    if btn_rect.contains(pos) {
+                                        widget_btn_action = Some(*action);
+                                    }
+                                }
+                            }
+                        }
+                        // Paint hover state for hovered buttons
+                        if let Some(pos) = hover_pos {
+                            for (btn_rect, _) in &btns {
+                                if btn_rect.contains(pos) {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                }
+                            }
+                        }
+                    }
             } else {
                 draw_mini_badge(&painter, card_rect, kind, &wd, t);
             }
@@ -501,7 +574,22 @@ pub(crate) fn draw_widgets(
             CtxAction::Undock(wi) => chart.chart_widgets[wi].dock = WidgetDock::Float,
         }
     }
+    // Process widget body button actions
+    if let Some(action) = widget_btn_action {
+        match action {
+            WidgetBtnAction::CloseAllPositions => {
+                // TODO: wire to actual position close via trading module
+                // For now this is a visual placeholder
+            }
+            WidgetBtnAction::ClosePosition(_idx) => {
+                // TODO: wire to close specific position
+            }
+        }
+    }
     } // end !draw_faded
+
+    // Store widget data cache for next frame
+    chart.widget_cache = Some(wd);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -677,8 +765,16 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
 // Widget body dispatcher
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// Action from a button inside a widget body.
+#[derive(Clone, Copy)]
+enum WidgetBtnAction {
+    CloseAllPositions,
+    ClosePosition(usize), // index
+}
+
 fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
-                    wd: &WidgetData, t: &Theme) {
+                    wd: &WidgetData, t: &Theme, hover: Option<egui::Pos2>,
+                    btns: &mut Vec<(egui::Rect, WidgetBtnAction)>) {
     match kind {
         ChartWidgetKind::TrendStrength => draw_trend_gauge(p, body, wd, t),
         ChartWidgetKind::Momentum      => draw_momentum_gauge(p, body, wd, t),
@@ -721,8 +817,8 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::SignalRadar   => draw_signal_radar(p, body, wd, t),
         ChartWidgetKind::CrossAssetPulse => draw_cross_asset(p, body, wd, t),
         ChartWidgetKind::TapeSpeed     => draw_tape_speed(p, body, wd, t),
-        ChartWidgetKind::PositionsPanel=> draw_positions_panel(p, body, wd, t),
-        ChartWidgetKind::DailyPnl      => draw_daily_pnl(p, body, wd, t),
+        ChartWidgetKind::PositionsPanel=> draw_positions_panel(p, body, wd, t, hover, btns),
+        ChartWidgetKind::DailyPnl      => draw_daily_pnl(p, body, wd, t, hover, btns),
         ChartWidgetKind::Custom        => draw_custom(p, body, t),
     }
 }
@@ -731,7 +827,11 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
 // Live data extraction
 // ═══════════════════════════════════════════════════════════════════════════════
 
-struct WidgetData {
+/// Public alias for caching in Chart struct.
+pub(crate) type WidgetDataCache = WidgetData;
+
+#[derive(Clone)]
+pub(crate) struct WidgetData {
     trend_score: f32,
     trend_dir: i8,
     trend_regime: String,
@@ -2289,7 +2389,8 @@ fn draw_tape_speed(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         "TAPE", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
 }
 
-fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme,
+                       hover: Option<egui::Pos2>, btns: &mut Vec<(egui::Rect, WidgetBtnAction)>) {
     let left = body.left() + 6.0;
     let right = body.right() - 6.0;
     let mut y = body.top() + 2.0;
@@ -2321,15 +2422,17 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED)));
     y += 4.0;
 
-    // ── "Close All" button (placeholder) ──
+    // ── "Close All" button ──
     let btn_w = 50.0;
     let btn_rect = egui::Rect::from_min_size(
         egui::pos2(right - btn_w, y), egui::vec2(btn_w, 14.0));
-    p.rect_filled(btn_rect, 3.0, color_alpha(t.bear, 40));
-    p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(0.5, t.bear.gamma_multiply(0.5)),
+    let btn_hov = hover.map(|p| btn_rect.contains(p)).unwrap_or(false);
+    p.rect_filled(btn_rect, 3.0, color_alpha(t.bear, if btn_hov { 80 } else { 40 }));
+    p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(if btn_hov { 1.0 } else { 0.5 }, t.bear.gamma_multiply(if btn_hov { 0.9 } else { 0.5 })),
         egui::StrokeKind::Outside);
     p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
-        "Close All", egui::FontId::monospace(7.0), t.bear);
+        "Close All", egui::FontId::monospace(7.0), if btn_hov { egui::Color32::WHITE } else { t.bear });
+    btns.push((btn_rect, WidgetBtnAction::CloseAllPositions));
 
     p.text(egui::pos2(left, y + 7.0), egui::Align2::LEFT_CENTER,
         &format!("{} positions", wd.all_positions.len()),
@@ -2349,7 +2452,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
 
     // ── Position rows ──
     let row_h = 20.0;
-    for pos in &wd.all_positions {
+    for (pos_idx, pos) in wd.all_positions.iter().enumerate() {
         if y + row_h > body.bottom() - 2.0 { break; } // clip to body
 
         let pnl_col = if pos.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
@@ -2376,11 +2479,17 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         p.text(egui::pos2(right - 40.0, y + row_h * 0.75), egui::Align2::RIGHT_CENTER,
             &pct_str, egui::FontId::monospace(7.0), pnl_col);
 
-        // Close button (placeholder — painted as "x")
+        // Close button — interactive with hover
         let close_rect = egui::Rect::from_center_size(
-            egui::pos2(right - 6.0, y + row_h * 0.5), egui::vec2(12.0, 12.0));
+            egui::pos2(right - 6.0, y + row_h * 0.5), egui::vec2(14.0, 14.0));
+        let close_hov = hover.map(|p| close_rect.contains(p)).unwrap_or(false);
+        if close_hov {
+            p.rect_filled(close_rect, 2.0, color_alpha(t.bear, 60));
+        }
         p.text(close_rect.center(), egui::Align2::CENTER_CENTER,
-            "\u{00D7}", egui::FontId::proportional(FONT_SM), t.dim.gamma_multiply(0.35));
+            "\u{00D7}", egui::FontId::proportional(FONT_SM),
+            if close_hov { t.bear } else { t.dim.gamma_multiply(0.35) });
+        btns.push((close_rect, WidgetBtnAction::ClosePosition(pos_idx)));
 
         // Subtle bottom border
         p.line_segment(
@@ -2391,7 +2500,8 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     }
 }
 
-fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme,
+                  hover: Option<egui::Pos2>, btns: &mut Vec<(egui::Rect, WidgetBtnAction)>) {
     let pnl = wd.day_pnl;
     let col = if pnl >= 0.0 { t.bull } else { t.bear };
     let sign = if pnl >= 0.0 { "+" } else { "" };
@@ -2403,17 +2513,21 @@ fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     p.text(egui::pos2(text_x, text_y), egui::Align2::LEFT_CENTER,
         &label, egui::FontId::proportional(56.0), col);
 
-    // "Close All" button — right side, vertically centered
+    // "Close All" button — right side, vertically centered, interactive
     let btn_w = 60.0;
     let btn_h = 22.0;
     let btn_rect = egui::Rect::from_center_size(
         egui::pos2(body.right() - btn_w * 0.5 - 8.0, body.center().y),
         egui::vec2(btn_w, btn_h));
-    p.rect_filled(btn_rect, 4.0, color_alpha(t.bear, 50));
-    p.rect_stroke(btn_rect, 4.0, egui::Stroke::new(0.5, t.bear.gamma_multiply(0.6)),
+    let btn_hovered = hover.map(|p| btn_rect.contains(p)).unwrap_or(false);
+    let btn_bg = if btn_hovered { color_alpha(t.bear, 100) } else { color_alpha(t.bear, 50) };
+    let btn_border = if btn_hovered { t.bear } else { t.bear.gamma_multiply(0.6) };
+    p.rect_filled(btn_rect, 4.0, btn_bg);
+    p.rect_stroke(btn_rect, 4.0, egui::Stroke::new(if btn_hovered { 1.0 } else { 0.5 }, btn_border),
         egui::StrokeKind::Outside);
     p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
-        "Close All", egui::FontId::monospace(FONT_SM), t.bear);
+        "Close All", egui::FontId::monospace(FONT_SM), if btn_hovered { egui::Color32::WHITE } else { t.bear });
+    btns.push((btn_rect, WidgetBtnAction::CloseAllPositions));
 
     // Subtle "DAY P&L" label top-left
     p.text(egui::pos2(body.left() + 10.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,

@@ -264,7 +264,7 @@ if watchlist.open {
                             for (i, (sym, name)) in watchlist.search_results.clone().iter().enumerate() {
                                 let is_sel = i as i32 == watchlist.search_sel;
                                 let bg = if is_sel { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
-                                let fg = if is_sel { egui::Color32::from_rgb(230, 230, 240) } else { t.dim };
+                                let fg = if is_sel { t.text } else { t.dim };
                                 let resp = ui.add(egui::Button::new(
                                     egui::RichText::new(format!("{:6} {}", sym, name)).monospace().size(10.0).color(fg))
                                     .fill(bg).frame(false).min_size(egui::vec2(ui.available_width(), 20.0)));
@@ -417,9 +417,9 @@ if watchlist.open {
                             p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
                                 egui::Stroke::new(STROKE_THIN, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_TINT)));
                             p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
-                                egui::Stroke::new(STROKE_STD, egui::Color32::from_white_alpha(10)));
+                                egui::Stroke::new(STROKE_STD, color_alpha(t.text,10)));
                             p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
-                                egui::Stroke::new(STROKE_THIN, egui::Color32::from_white_alpha(5)));
+                                egui::Stroke::new(STROKE_THIN, color_alpha(t.text,5)));
                             // Render each pinned row
                             for (idx, (si, ii, pin_sym, pin_price, pin_prev, pin_loaded, avg_range)) in pinned_items.iter().enumerate() {
                                 let row_y = sec_rect.top() + 3.0 + idx as f32 * 30.0;
@@ -442,7 +442,7 @@ if watchlist.open {
                                 p.text(egui::pos2(row_rect.left() + 10.0, yc), egui::Align2::CENTER_CENTER,
                                     Icon::SPARKLE, egui::FontId::proportional(9.0), egui::Color32::from_rgb(255, 193, 37));
                                 // Symbol
-                                let sym_col = if is_active { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(230) };
+                                let sym_col = if is_active { egui::Color32::WHITE } else { color_alpha(t.text,230) };
                                 p.text(egui::pos2(row_rect.left() + 22.0, yc), egui::Align2::LEFT_CENTER,
                                     pin_sym, egui::FontId::monospace(14.0), sym_col);
                                 // Change %
@@ -709,7 +709,7 @@ if watchlist.open {
                                             let _ = badge_resp;
                                             ui.add_space(2.0);
                                             // Full option name (e.g. "SPY 560C 0DTE")
-                                            let sym_color = if is_active { egui::Color32::from_rgb(240, 240, 245) } else { egui::Color32::from_rgb(200, 200, 210) };
+                                            let sym_color = if is_active { t.text } else { egui::Color32::from_rgb(200, 200, 210) };
                                             ui.label(egui::RichText::new(&item_sym).monospace().size(10.5).strong().color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
@@ -767,7 +767,7 @@ if watchlist.open {
                                         painter.rect_filled(rect, 0.0, row_bg);
                                         // Pinned row: very subtle darker tint
                                         if item_pinned {
-                                            painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(4));
+                                            painter.rect_filled(rect, 0.0, color_alpha(t.text,4));
                                         }
 
                                         // Extreme movement background tint (only when move > avg)
@@ -822,7 +822,7 @@ if watchlist.open {
 
                                         // Symbol (shifts right when star is showing)
                                         let sym_x = if row_hovered || item_pinned { star_x + 10.0 } else { left + 18.0 };
-                                        let sym_color = if is_active { egui::Color32::from_rgb(245, 245, 250) } else { egui::Color32::from_rgb(225, 225, 235) };
+                                        let sym_color = if is_active { t.text } else { t.text };
                                         painter.text(egui::pos2(sym_x, y_c), egui::Align2::LEFT_CENTER,
                                             &item_sym, egui::FontId::monospace(sym_font_sz), sym_color);
 
@@ -849,7 +849,7 @@ if watchlist.open {
                                         // Correlation dot (placeholder — green=with market, red=diverging)
                                         // TODO: compute real correlation from price data
                                         // For now show a dim neutral dot
-                                        // painter.circle_filled(egui::pos2(ind_x + 5.0, y_c), 3.0, egui::Color32::from_white_alpha(30));
+                                        // painter.circle_filled(egui::pos2(ind_x + 5.0, y_c), 3.0, color_alpha(t.text,30));
 
                                         // Change % (center-left, prominent)
                                         let mid_x = rect.left() + full_w * 0.45;
@@ -1019,7 +1019,7 @@ if watchlist.open {
                                     ui.painter().rect_filled(float_rect, 4.0, color_alpha(t.accent, ALPHA_MUTED));
                                     ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(STROKE_STD, t.accent), egui::StrokeKind::Outside);
                                     ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
-                                        drag_sym, egui::FontId::monospace(11.0), egui::Color32::from_rgb(240, 240, 245));
+                                        drag_sym, egui::FontId::monospace(11.0), t.text);
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                                 }
                             }
@@ -1233,7 +1233,7 @@ if watchlist.open {
                                         // Contract name
                                         painter.text(egui::pos2(rect.left() + 22.0, y_c), egui::Align2::LEFT_CENTER,
                                             &format!("{} {:.0} {}", item_underlying, item_strike, item_expiry),
-                                            egui::FontId::monospace(14.0), egui::Color32::from_rgb(225, 225, 235));
+                                            egui::FontId::monospace(14.0), t.text);
                                         // Bid x Ask (right-aligned)
                                         if item_bid > 0.0 || item_ask > 0.0 {
                                             painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
@@ -1504,7 +1504,7 @@ if watchlist.open {
 
                         // Strike
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.0}", row.strike), egui::FontId::monospace(14.0), egui::Color32::from_rgb(225, 225, 235));
+                            &format!("{:.0}", row.strike), egui::FontId::monospace(14.0), t.text);
                         x += col_stk + gap;
 
                         // Bid
@@ -1986,7 +1986,7 @@ if watchlist.open {
                                     // Hover highlight
                                     if is_hovered {
                                         painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(col_w, cell_h)),
-                                            2.0, egui::Color32::from_white_alpha(12));
+                                            2.0, color_alpha(t.text,12));
                                     }
                                     // Active symbol border
                                     if is_active {
@@ -2007,7 +2007,7 @@ if watchlist.open {
                                     let edge_col = if is_up { egui::Color32::from_rgba_unmultiplied(46, 204, 113, edge_a) } else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, edge_a) };
                                     painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)), 0.0, edge_col);
                                     // Symbol (bright white for active, slightly dimmer for others)
-                                    let sym_col = if is_active { egui::Color32::WHITE } else if is_hovered { egui::Color32::from_white_alpha(230) } else { egui::Color32::from_white_alpha(190) };
+                                    let sym_col = if is_active { egui::Color32::WHITE } else if is_hovered { color_alpha(t.text,230) } else { color_alpha(t.text,190) };
                                     painter.text(egui::pos2(cx + 7.0, cy + cell_h / 2.0), egui::Align2::LEFT_CENTER,
                                         &item.0, egui::FontId::monospace(font_sz), sym_col);
                                     // Change%

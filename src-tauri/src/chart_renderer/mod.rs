@@ -79,7 +79,8 @@ pub(crate) enum ChartWidgetKind {
     TapeSpeed,        // trade velocity speedometer
     PositionsPanel,   // all account positions with P&L + close buttons
     DailyPnl,         // hero daily P&L number + close all button
-    Custom,           // user-defined (future: extension widget)
+    #[serde(other)]
+    Custom,           // user-defined (future: extension widget / fallback for unknown)
 }
 
 impl ChartWidgetKind {

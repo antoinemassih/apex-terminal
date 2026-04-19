@@ -37,6 +37,8 @@ std::thread_local! {
     static CROSSHAIR_SYNC_TIME: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
     static PENDING_WL_TOOLTIP: std::cell::RefCell<Option<WlTooltipData>> = const { std::cell::RefCell::new(None) };
     static ALERT_BADGE_HITS: std::cell::RefCell<Vec<AlertBadgeHit>> = const { std::cell::RefCell::new(Vec::new()) };
+    #[cfg(feature = "design-mode")]
+    static DESIGN_INSPECTOR: std::cell::RefCell<Option<crate::design_inspector::Inspector>> = const { std::cell::RefCell::new(None) };
 }
 
 #[derive(Clone)]
@@ -1257,6 +1259,9 @@ pub(crate) struct Chart {
     pub(crate) next_trigger_id: u32,
     pub(crate) dragging_trigger: Option<u32>,
     pub(crate) editing_trigger: Option<u32>,
+    // Widget data cache (avoid recomputing every frame)
+    pub(crate) widget_cache_bar_count: usize,
+    pub(crate) widget_cache: Option<super::ui::chart_widgets::WidgetDataCache>,
     // ── Play lines (chart companion for play editor) ──
     pub(crate) play_lines: Vec<super::PlayLine>,
     pub(crate) next_play_line_id: u32,
@@ -1474,6 +1479,7 @@ impl Chart {
             dragging_order: None, dragging_alert: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
+            widget_cache_bar_count: 0, widget_cache: None,
             play_lines: vec![], next_play_line_id: 1, dragging_play_line: None, play_click_to_set: None,
             measuring: false, measure_start: None, measure_active: false, dom_open: false,
             dom_sidebar_open: false, dom_levels: vec![], dom_tick_size: 0.01, dom_center_price: 0.0, dom_width: super::ui::dom_panel::DOM_SIDEBAR_W,
@@ -2988,9 +2994,12 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         let r = egui::CornerRadius::same(4); // RADIUS_MD equivalent for native widgets
         let popup_r = egui::CornerRadius::same(8); // RADIUS_LG for popups
 
-        // Inactive (default, unhovered) — subtle visible fill matches tb_btn and indicator buttons
+        // Theme-adaptive text — controls all egui native widget text
+        style.visuals.override_text_color = Some(t.text);
+
+        // Inactive (default, unhovered)
         style.visuals.widgets.inactive.bg_fill       = color_alpha(t.toolbar_border, 18);
-        style.visuals.widgets.inactive.weak_bg_fill  = t.toolbar_bg; // keep weak fill transparent for labels
+        style.visuals.widgets.inactive.weak_bg_fill  = t.toolbar_bg;
         style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED));
         style.visuals.widgets.inactive.corner_radius = r;
         style.visuals.widgets.inactive.fg_stroke     = egui::Stroke::new(1.0, t.dim);
@@ -2999,7 +3008,7 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.widgets.hovered.bg_fill        = color_alpha(t.toolbar_border, ALPHA_SUBTLE);
         style.visuals.widgets.hovered.bg_stroke      = egui::Stroke::new(0.5, color_alpha(t.accent, ALPHA_LINE));
         style.visuals.widgets.hovered.corner_radius  = r;
-        style.visuals.widgets.hovered.fg_stroke      = egui::Stroke::new(1.0, TEXT_PRIMARY);
+        style.visuals.widgets.hovered.fg_stroke      = egui::Stroke::new(1.0, t.text);
 
         // Active/pressed
         style.visuals.widgets.active.bg_fill         = color_alpha(t.accent, ALPHA_TINT);
@@ -3012,6 +3021,10 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(0.5, color_alpha(t.accent, ALPHA_ACTIVE));
         style.visuals.widgets.open.corner_radius     = r;
         style.visuals.widgets.open.fg_stroke         = egui::Stroke::new(1.0, t.accent);
+
+        // Selection + cursor colors
+        style.visuals.selection.bg_fill              = color_alpha(t.accent, ALPHA_TINT);
+        style.visuals.selection.stroke               = egui::Stroke::new(1.0, t.accent);
 
         // Popup/menu window corners + bg
         style.visuals.window_corner_radius           = popup_r;
@@ -4175,7 +4188,7 @@ fn render_toolbar(
                             } else {
                                 ui.label(egui::RichText::new("  ").size(8.0));
                             }
-                            let label_col = if is_active { t.accent } else { egui::Color32::from_rgb(200, 200, 210) };
+                            let label_col = if is_active { t.accent } else { t.dim };
                             if ui.selectable_label(is_active,
                                 egui::RichText::new(name).monospace().size(FONT_SM).color(label_col)).clicked() && !is_active {
                                 watchlist.active_workspace = name.clone();
@@ -4285,7 +4298,7 @@ fn render_toolbar(
                             ui.painter().rect_filled(sr, 2.0, th.bg);
                             ui.painter().circle_filled(egui::pos2(sr.left() + 4.0, sr.center().y), 2.5, th.bull);
                             ui.painter().circle_filled(egui::pos2(sr.left() + 11.0, sr.center().y), 2.5, th.bear);
-                            let text_col = if sel { th.accent } else { egui::Color32::from_rgb(200, 200, 210) };
+                            let text_col = if sel { th.accent } else { t.dim };
                             let check = if sel { "\u{2713} " } else { "  " };
                             ui.selectable_label(sel, egui::RichText::new(format!("{}{}", check, th.name))
                                 .monospace().size(11.0).color(text_col))
@@ -4333,7 +4346,7 @@ fn render_toolbar(
                     let (resp, r) = win_btn(ui, false);
                     let c = r.center();
                     let s = 4.5;
-                    let col = if resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.7) };
+                    let col = if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.7) };
                     let is_max = win_ref.as_ref().map_or(false, |w| w.is_maximized());
                     if is_max {
                         // Restore icon: two overlapping squares
@@ -4352,7 +4365,7 @@ fn render_toolbar(
                     let (resp, r) = win_btn(ui, false);
                     let c = r.center();
                     let s = 5.0;
-                    let col = if resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.7) };
+                    let col = if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.7) };
                     ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(1.0, col));
                     if resp.clicked() {
                         if let Some(w) = &win_ref { w.set_minimized(true); }
@@ -4474,14 +4487,14 @@ fn render_toolbar(
                             // NAV
                             ui.label(egui::RichText::new("NAV").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
                             ui.label(egui::RichText::new(format!("${:.0}", acct.nav)).monospace().size(13.0).strong()
-                                .color(egui::Color32::from_rgb(220, 220, 230)));
+                                .color(t.text));
 
                             ui.add(egui::Separator::default().spacing(8.0));
 
                             // Buying Power
                             ui.label(egui::RichText::new("BP").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
                             ui.label(egui::RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(13.0)
-                                .color(egui::Color32::from_rgb(200, 200, 210)));
+                                .color(t.dim));
 
                             ui.add(egui::Separator::default().spacing(8.0));
 
@@ -4625,7 +4638,7 @@ fn render_toolbar(
                     }
 
                     // Label + description
-                    let lc = if is_cur { t.accent } else if hovered { egui::Color32::from_rgb(240, 240, 250) } else { egui::Color32::from_rgb(200, 200, 210) };
+                    let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
                     ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(11.0), lc);
                     let dc = if hovered { egui::Color32::from_rgb(180, 180, 195) } else { t.dim.gamma_multiply(0.55) };
                     ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(10.0), dc);
@@ -4828,7 +4841,7 @@ fn render_toolbar(
                     ui.set_max_width(tip_w);
                     ui.label(egui::RichText::new(&tip.sym).monospace().size(16.0).color(egui::Color32::WHITE));
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("${:.2}", tip.price)).monospace().size(13.0).color(egui::Color32::from_white_alpha(220)));
+                        ui.label(egui::RichText::new(format!("${:.2}", tip.price)).monospace().size(13.0).color(color_alpha(t.text,220)));
                         ui.label(egui::RichText::new(format!("{:+.2}%", change_pct)).monospace().size(13.0).color(chg_col));
                     });
                     ui.add_space(4.0); ui.separator(); ui.add_space(4.0);
@@ -4838,7 +4851,7 @@ fn render_toolbar(
                             ui.label(egui::RichText::new(format!("{:.2}", tip.day_low)).monospace().size(9.0).color(dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, 2.0, egui::Color32::from_white_alpha(15));
+                            ui.painter().rect_filled(bar_rect, 2.0, color_alpha(t.text,15));
                             let range = tip.day_high - tip.day_low;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.day_low) / range).clamp(0.0, 1.0);
@@ -4853,7 +4866,7 @@ fn render_toolbar(
                             ui.label(egui::RichText::new(format!("{:.0}", tip.low_52wk)).monospace().size(9.0).color(dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, 2.0, egui::Color32::from_white_alpha(15));
+                            ui.painter().rect_filled(bar_rect, 2.0, color_alpha(t.text,15));
                             let range = tip.high_52wk - tip.low_52wk;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.low_52wk) / range).clamp(0.0, 1.0);
@@ -5031,7 +5044,7 @@ fn render_chart_pane(
             let (bg, fg) = if can_go_back {
                 if back_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    (color_alpha(t.toolbar_border, 60), egui::Color32::from_rgb(220, 220, 230))
+                    (color_alpha(t.toolbar_border, 60), t.text)
                 } else {
                     (egui::Color32::TRANSPARENT, t.dim.gamma_multiply(0.8))
                 }
@@ -5056,7 +5069,7 @@ fn render_chart_pane(
             let (bg, fg) = if can_go_fwd {
                 if fwd_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    (color_alpha(t.toolbar_border, 60), egui::Color32::from_rgb(220, 220, 230))
+                    (color_alpha(t.toolbar_border, 60), t.text)
                 } else {
                     (egui::Color32::TRANSPARENT, t.dim.gamma_multiply(0.8))
                 }
@@ -5177,7 +5190,7 @@ fn render_chart_pane(
                 }
 
                 // Symbol text — title_font size from pane header mode
-                let sym_col = if is_active_tab { egui::Color32::from_rgb(220, 220, 230) } else { t.dim.gamma_multiply(0.7) };
+                let sym_col = if is_active_tab { t.text } else { t.dim.gamma_multiply(0.7) };
                 header_painter.text(
                     egui::pos2(tab_x + tab_pad, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER, sym, title_font.clone(), sym_col);
@@ -5230,7 +5243,7 @@ fn render_chart_pane(
                 let (bg, fg, border) = if plus_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     egui::Color32::from_rgb(220, 220, 230),
+                     t.text,
                      color_alpha(t.accent, ALPHA_LINE))
                 } else {
                     (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
@@ -5349,7 +5362,7 @@ fn render_chart_pane(
                 } else if ov_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     if active { t.accent } else { egui::Color32::from_rgb(220, 220, 230) },
+                     if active { t.accent } else { t.text },
                      color_alpha(t.accent, ALPHA_LINE))
                 } else if has_overlays {
                     (color_alpha(t.toolbar_border, 18), egui::Color32::from_rgb(180, 180, 195),
@@ -5384,7 +5397,7 @@ fn render_chart_pane(
                 } else if t_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     egui::Color32::from_rgb(220, 220, 230),
+                     t.text,
                      color_alpha(t.accent, ALPHA_LINE))
                 } else {
                     (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
@@ -5414,7 +5427,7 @@ fn render_chart_pane(
             );
             let sym_resp = ui.allocate_rect(sym_rect, egui::Sense::click());
             if sym_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let label_color = if is_active { t.bull } else { egui::Color32::from_rgb(220, 220, 230) };
+            let label_color = if is_active { t.bull } else { t.text };
             header_painter.text(
                 egui::pos2(sym_label_x + 2.0, header_rect.center().y),
                 egui::Align2::LEFT_CENTER,
@@ -5463,7 +5476,7 @@ fn render_chart_pane(
                 } else if ov_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     if active { t.accent } else { egui::Color32::from_rgb(220, 220, 230) },
+                     if active { t.accent } else { t.text },
                      color_alpha(t.accent, ALPHA_LINE))
                 } else if has_overlays {
                     (color_alpha(t.toolbar_border, 18), egui::Color32::from_rgb(180, 180, 195),
@@ -5498,7 +5511,7 @@ fn render_chart_pane(
                 } else if t_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     egui::Color32::from_rgb(220, 220, 230),
+                     t.text,
                      color_alpha(t.accent, ALPHA_LINE))
                 } else {
                     (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
@@ -5527,7 +5540,7 @@ fn render_chart_pane(
                 let (bg, fg, border) = if plus_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     egui::Color32::from_rgb(220, 220, 230),
+                     t.text,
                      color_alpha(t.accent, ALPHA_LINE))
                 } else {
                     (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
@@ -5942,7 +5955,7 @@ fn render_chart_pane(
             let zero_y = vol_top + vol_h / 2.0;
             painter.line_segment(
                 [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
-                egui::Stroke::new(0.5, egui::Color32::from_white_alpha(25)));
+                egui::Stroke::new(0.5, color_alpha(t.text,25)));
             for i in start_d..end_d {
                 let x = bx(i as f32);
                 let delta = chart.delta_data[i];
@@ -6243,13 +6256,13 @@ fn render_chart_pane(
                     let sx = bx(i as f32) - bs / 2.0;
                     if chart.session_shading && chart.session_break_lines && !is_crypto {
                         // Dashed session break line
-                        let line_c = egui::Color32::from_white_alpha(40);
+                        let line_c = color_alpha(t.text,40);
                         dashed_line(&painter,
                             egui::pos2(sx, rect.top()+pt), egui::pos2(sx, rect.top()+pt+ch),
                             egui::Stroke::new(0.5, line_c), LineStyle::Dashed);
                     } else {
                         // Default: thin solid separator
-                        let sep_c = egui::Color32::from_white_alpha(15);
+                        let sep_c = color_alpha(t.text,15);
                         let vi = wick_mesh.vertices.len() as u32;
                         wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(sx - 0.25, rect.top()+pt), uv: egui::epaint::WHITE_UV, color: sep_c });
                         wick_mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(sx + 0.25, rect.top()+pt), uv: egui::epaint::WHITE_UV, color: sep_c });
@@ -6591,7 +6604,7 @@ fn render_chart_pane(
                 dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
                     egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(200, 200, 200, 80)), LineStyle::Dashed);
                 painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
-                    &format!("PC {:.2}", pc), egui::FontId::monospace(7.0), egui::Color32::from_white_alpha(80));
+                    &format!("PC {:.2}", pc), egui::FontId::monospace(7.0), color_alpha(t.text,80));
             }
         }
         if let Some(so) = session_open {
@@ -6707,9 +6720,9 @@ fn render_chart_pane(
         // Zero Gamma line (dashed white)
         if zero_y.is_finite() && zero_y > rect.top() + pt && zero_y < rect.top() + pt + ch {
             dashed_line(&painter, egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y),
-                egui::Stroke::new(1.0, egui::Color32::from_white_alpha(70)), LineStyle::Dashed);
+                egui::Stroke::new(1.0, color_alpha(t.text,70)), LineStyle::Dashed);
             painter.text(egui::pos2(rect.left() + 8.0, zero_y - 10.0), egui::Align2::LEFT_BOTTOM,
-                "ZERO GAMMA", egui::FontId::monospace(10.0), egui::Color32::from_white_alpha(100));
+                "ZERO GAMMA", egui::FontId::monospace(10.0), color_alpha(t.text,100));
         }
 
         // HVL — Highest Volume Level (gold diamond marker)
@@ -6869,7 +6882,7 @@ fn render_chart_pane(
                 };
                 painter.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER,
                     &label, egui::FontId::monospace(7.0),
-                    egui::Color32::from_white_alpha(200));
+                    color_alpha(t.text,200));
             }
 
             // Aggregate for level lines (bucket by price rounded to 2 decimal places)
@@ -7823,10 +7836,10 @@ fn render_chart_pane(
                         let b1f = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
                         let bars = (b1f - b0f).abs().round() as i32;
                         let info = format!("{:+.2} ({:+.1}%) {} bars", dp, pct, bars);
-                        let ig = painter.layout_no_wrap(info.clone(), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(180));
+                        let ig = painter.layout_no_wrap(info.clone(), egui::FontId::monospace(8.0), color_alpha(t.text,180));
                         let info_rect = egui::Rect::from_center_size(mid - egui::vec2(0.0, 12.0), ig.size() + egui::vec2(8.0, 4.0));
                         painter.rect_filled(info_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 210));
-                        painter.text(mid - egui::vec2(0.0, 12.0), egui::Align2::CENTER_CENTER, &info, egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(180));
+                        painter.text(mid - egui::vec2(0.0, 12.0), egui::Align2::CENTER_CENTER, &info, egui::FontId::monospace(8.0), color_alpha(t.text,180));
                     }
                 }
             }
@@ -8480,7 +8493,7 @@ fn render_chart_pane(
     // ── Price labels at selected drawing anchors ─────────────────────────
     if let Some(ref sel_id) = chart.selected_id {
         if let Some(d) = chart.drawings.iter().find(|d| &d.id == sel_id) {
-            let label_col = egui::Color32::from_white_alpha(200);
+            let label_col = color_alpha(t.text,200);
             let label_bg = egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220);
             let font = egui::FontId::monospace(8.0);
             // Collect anchor prices to label
@@ -8775,7 +8788,7 @@ fn render_chart_pane(
             let zero_y = cvd_py(0.0_f32);
             if zero_y >= osc_top && zero_y <= osc_bottom {
                 painter.line_segment([egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
-                    egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
+                    egui::Stroke::new(0.5, color_alpha(t.text,30)));
             }
             for i in start_c..end_c.saturating_sub(1) {
                 let y0 = cvd_py(chart.cvd_data[i]);
@@ -8790,7 +8803,7 @@ fn render_chart_pane(
                     egui::Stroke::new(1.5, color));
             }
             painter.text(egui::pos2(rect.left() + 4.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
-                "CVD", egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(120));
+                "CVD", egui::FontId::monospace(8.0), color_alpha(t.text,120));
         }
 
         // ── Divergence lines on oscillator pane ──
@@ -9258,7 +9271,7 @@ fn render_chart_pane(
 
         let text_x = card_x + 10.0;
         let dim = egui::Color32::from_rgb(120, 120, 140);
-        let bright = egui::Color32::from_rgb(220, 220, 230);
+        let bright = t.text;
 
         // Title
         painter.text(egui::pos2(text_x, card_y + 12.0), egui::Align2::LEFT_CENTER,
@@ -9435,7 +9448,7 @@ fn render_chart_pane(
         // Thin dotted lines for entry/target/stop
         if entry_y > rect.top() && entry_y < rect.bottom() {
             dashed_line(&painter, egui::pos2(rect.left(), entry_y), egui::pos2(rect.right(), entry_y),
-                egui::Stroke::new(0.8, color_alpha(egui::Color32::from_rgb(200, 200, 210), 100)), LineStyle::Dotted);
+                egui::Stroke::new(0.8, color_alpha(t.dim, 100)), LineStyle::Dotted);
         }
         if target_y > rect.top() && target_y < rect.bottom() {
             dashed_line(&painter, egui::pos2(rect.left(), target_y), egui::pos2(rect.right(), target_y),
@@ -9450,7 +9463,7 @@ fn render_chart_pane(
         let price_axis_x = rect.right() + 2.0;
         let label_bg = egui::Color32::from_rgba_unmultiplied(18, 18, 24, 220);
         for (price, y, color, label) in [
-            (entry, entry_y, egui::Color32::from_rgb(200, 200, 210), ""),
+            (entry, entry_y, t.dim, ""),
             (target, target_y, egui::Color32::from_rgb(56, 203, 137), "T"),
             (stop, stop_y, egui::Color32::from_rgb(224, 82, 82), "S"),
         ] {
@@ -9485,7 +9498,7 @@ fn render_chart_pane(
 
         // Contract name (bold, first line)
         painter.text(egui::pos2(card_x + 10.0, card_y + 10.0), egui::Align2::LEFT_CENTER,
-            contract, egui::FontId::monospace(10.0), egui::Color32::from_rgb(220, 220, 230));
+            contract, egui::FontId::monospace(10.0), t.text);
         // R:R and conviction (second line)
         let move_pct = ((target - entry) / entry * 100.0).abs();
         painter.text(egui::pos2(card_x + 10.0, card_y + 24.0), egui::Align2::LEFT_CENTER,
@@ -10516,7 +10529,7 @@ fn render_chart_pane(
                                 ui.add_space(m);
                                 ui.label(egui::RichText::new(Icon::LIGHTNING).size(11.0).color(t.accent));
                                 ui.label(egui::RichText::new(opt).monospace().size(11.0).strong()
-                                    .color(egui::Color32::from_rgb(220, 220, 230)));
+                                    .color(t.text));
                             });
                             ui.add_space(2.0);
                             ui.horizontal(|ui| {
@@ -11092,7 +11105,7 @@ fn render_chart_pane(
                 for &p in &ohlc {
                     let y = py(p);
                     if y.is_finite() && y.abs() < 50000.0 {
-                        painter.circle_filled(egui::pos2(bar_x, y), 2.0, egui::Color32::from_white_alpha(60));
+                        painter.circle_filled(egui::pos2(bar_x, y), 2.0, color_alpha(t.text,60));
                     }
                 }
 
@@ -11123,7 +11136,7 @@ fn render_chart_pane(
                     // Horizontal guide line
                     painter.line_segment(
                         [egui::pos2(rect.left(), sy), egui::pos2(rect.left() + cw, sy)],
-                        egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
+                        egui::Stroke::new(0.5, color_alpha(t.text,30)));
                 }
             }
         } }
@@ -11159,11 +11172,11 @@ fn render_chart_pane(
             };
             if !tool_name.is_empty() {
                 let status_text = format!("{}  [ESC cancel] [M magnet {}]", tool_name, if chart.magnet { "ON" } else { "OFF" });
-                let galley = painter.layout_no_wrap(status_text.clone(), egui::FontId::monospace(9.0), egui::Color32::from_white_alpha(180));
+                let galley = painter.layout_no_wrap(status_text.clone(), egui::FontId::monospace(9.0), color_alpha(t.text,180));
                 let status_pos = egui::pos2(rect.left() + (cw - galley.size().x) / 2.0, rect.top() + pt + 6.0);
                 let bg_rect = egui::Rect::from_min_size(status_pos - egui::vec2(6.0, 3.0), galley.size() + egui::vec2(12.0, 6.0));
                 painter.rect_filled(bg_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 200));
-                painter.text(status_pos + egui::vec2(galley.size().x / 2.0, galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &status_text, egui::FontId::monospace(9.0), egui::Color32::from_white_alpha(180));
+                painter.text(status_pos + egui::vec2(galley.size().x / 2.0, galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &status_text, egui::FontId::monospace(9.0), color_alpha(t.text,180));
             }
         }
         if chart.draw_tool == "trendline" {
@@ -11215,8 +11228,8 @@ fn render_chart_pane(
                 painter.rect_filled(
                     egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(pos.y)), egui::pos2(rect.left()+cw, y0.max(pos.y))),
                     0.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 15));
-                painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(1.0, egui::Color32::from_white_alpha(120)));
-                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(1.0, egui::Color32::from_white_alpha(120)));
+                painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(1.0, color_alpha(t.text,120)));
+                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(1.0, color_alpha(t.text,120)));
             }
             // White rectangle cursor
             let sz = 6.0;
@@ -11650,8 +11663,8 @@ fn render_chart_pane(
     if pointer_in_pane && chart.draw_tool.is_empty() {
         if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
             if pos.x >= rect.left() && pos.x < rect.left()+cw && pos.y >= rect.top()+pt && pos.y < rect.top()+pt+ch {
-                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)],egui::Stroke::new(0.5,egui::Color32::from_white_alpha(50)));
-                painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(0.5,egui::Color32::from_white_alpha(50)));
+                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)],egui::Stroke::new(0.5,color_alpha(t.text,50)));
+                painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(0.5,color_alpha(t.text,50)));
                 let hp = min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
                 let d = if hp>=10.0{2}else{4};
                 chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", hp, d);
@@ -11665,12 +11678,12 @@ fn render_chart_pane(
                     let dt = chrono::NaiveDateTime::from_timestamp_opt(ts, 0);
                     if let Some(dt) = dt {
                         let time_str = dt.format("%m/%d %H:%M").to_string();
-                        let time_galley = painter.layout_no_wrap(time_str.clone(), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(160));
+                        let time_galley = painter.layout_no_wrap(time_str.clone(), egui::FontId::monospace(8.0), color_alpha(t.text,160));
                         let time_x = pos.x - time_galley.size().x / 2.0;
                         let time_y = rect.top() + pt + ch + 2.0;
                         let time_bg = egui::Rect::from_min_size(egui::pos2(time_x - 3.0, time_y - 1.0), time_galley.size() + egui::vec2(6.0, 2.0));
                         painter.rect_filled(time_bg, 2.0, t.toolbar_bg);
-                        painter.text(egui::pos2(pos.x, time_y + time_galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &time_str, egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(160));
+                        painter.text(egui::pos2(pos.x, time_y + time_galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &time_str, egui::FontId::monospace(8.0), color_alpha(t.text,160));
                     }
                 }
                 // Measure tooltip — big clean distance display
@@ -11717,10 +11730,10 @@ fn render_chart_pane(
 
                         // Build lines: compact OHLC + volume + change
                         let mut tip_lines: Vec<(String, egui::Color32)> = vec![
-                            (format!("O {:.2}  H {:.2}", o, h), egui::Color32::from_white_alpha(180)),
-                            (format!("L {:.2}  C {:.2}", l, c), egui::Color32::from_white_alpha(180)),
+                            (format!("O {:.2}  H {:.2}", o, h), color_alpha(t.text,180)),
+                            (format!("L {:.2}  C {:.2}", l, c), color_alpha(t.text,180)),
                             (format!("{:+.2} ({:+.1}%)", change, pct), chg_col),
-                            (vol_str, egui::Color32::from_white_alpha(140)),
+                            (vol_str, color_alpha(t.text,140)),
                         ];
 
                         // Detect hovered indicator (within 5px of cursor Y)
@@ -11751,7 +11764,7 @@ fn render_chart_pane(
                                 IndicatorType::MACD => {
                                     if let (Some(&mv), Some(&sv)) = (ind.values.get(bar_idx), ind.values2.get(bar_idx)) {
                                         if !mv.is_nan() && !sv.is_nan() {
-                                            if !has_ind { tip_lines.push(("---".into(), egui::Color32::from_white_alpha(40))); has_ind = true; }
+                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text,40))); has_ind = true; }
                                             let prefix = if is_hovered { "\u{25B6} " } else { "" };
                                             tip_lines.push((format!("{}MACD {:.2}  S {:.2}", prefix, mv, sv), col));
                                         }
@@ -11761,7 +11774,7 @@ fn render_chart_pane(
                                 | IndicatorType::CCI | IndicatorType::WilliamsR | IndicatorType::ATR => {
                                     if let Some(&v) = ind.values.get(bar_idx) {
                                         if !v.is_nan() {
-                                            if !has_ind { tip_lines.push(("---".into(), egui::Color32::from_white_alpha(40))); has_ind = true; }
+                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text,40))); has_ind = true; }
                                             let prefix = if is_hovered { "\u{25B6} " } else { "" };
                                             tip_lines.push((format!("{}{} {:.1}", prefix, label, v), col));
                                         }
@@ -11771,7 +11784,7 @@ fn render_chart_pane(
                                     // Overlay indicators (SMA, EMA, BB, etc.)
                                     if let Some(&v) = ind.values.get(bar_idx) {
                                         if !v.is_nan() {
-                                            if !has_ind { tip_lines.push(("---".into(), egui::Color32::from_white_alpha(40))); has_ind = true; }
+                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text,40))); has_ind = true; }
                                             let prefix = if is_hovered { "\u{25B6} " } else { "" };
                                             tip_lines.push((format!("{}{}{} {:.2}", prefix, label, period, v), col));
                                         }
@@ -11792,7 +11805,7 @@ fn render_chart_pane(
                             if line == "---" {
                                 let sep_y = ty + 4.0 + i as f32 * line_h + line_h / 2.0;
                                 painter.line_segment([egui::pos2(tx + 4.0, sep_y), egui::pos2(tx + tip_w - 4.0, sep_y)],
-                                    egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
+                                    egui::Stroke::new(0.5, color_alpha(t.text,30)));
                             } else {
                                 painter.text(egui::pos2(tx + 6.0, ty + 4.0 + i as f32 * line_h + line_h / 2.0), egui::Align2::LEFT_CENTER, line, font.clone(), *col);
                             }
@@ -11905,12 +11918,12 @@ fn render_chart_pane(
                             painter.text(egui::pos2(hx + 50.0, hy + 14.0), egui::Align2::LEFT_CENTER,
                                 &format!("\u{0394} {:+.0}", total_delta), hdr_font.clone(), dir_col);
                             painter.text(egui::pos2(hx + 150.0, hy + 14.0), egui::Align2::LEFT_CENTER,
-                                &format!("Buy {:.0}%  Sell {:.0}%", buy_pct, 100.0 - buy_pct), hdr_med.clone(), egui::Color32::from_white_alpha(180));
+                                &format!("Buy {:.0}%  Sell {:.0}%", buy_pct, 100.0 - buy_pct), hdr_med.clone(), color_alpha(t.text,180));
                             // Conviction bar (visual)
                             let conv_x = hx + 320.0;
                             let conv_w = 80.0;
                             painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w, 12.0)),
-                                3.0, egui::Color32::from_white_alpha(15));
+                                3.0, color_alpha(t.text,15));
                             painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w * conviction / 100.0, 12.0)),
                                 3.0, color_alpha(dir_col, if conviction > 60.0 { 150 } else { 60 }));
                             painter.text(egui::pos2(conv_x + conv_w + 6.0, hy + 14.0), egui::Align2::LEFT_CENTER,
@@ -11919,7 +11932,7 @@ fn render_chart_pane(
                             if rvol > 1.5 {
                                 painter.text(egui::pos2(hdr_rect.right() - 10.0, hy + 14.0), egui::Align2::RIGHT_CENTER,
                                     &format!("{:.1}x vol", rvol), hdr_med.clone(),
-                                    if rvol > 2.5 { egui::Color32::from_rgb(255, 193, 37) } else { egui::Color32::from_white_alpha(160) });
+                                    if rvol > 2.5 { egui::Color32::from_rgb(255, 193, 37) } else { color_alpha(t.text,160) });
                             }
 
                             // Row 2: Volume concentration (visual bar) + POC price
@@ -11932,7 +11945,7 @@ fn render_chart_pane(
                             painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conc_bar_x + upper_w, conc_y), egui::vec2(conc_bar_w - upper_w, 10.0)),
                                 2.0, egui::Color32::from_rgba_unmultiplied(180, 130, 255, 80));
                             painter.text(egui::pos2(conc_bar_x + conc_bar_w + 6.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
-                                &format!("Upper {:.0}%  Lower {:.0}%", upper_pct, 100.0 - upper_pct), hdr_sm.clone(), egui::Color32::from_white_alpha(130));
+                                &format!("Upper {:.0}%  Lower {:.0}%", upper_pct, 100.0 - upper_pct), hdr_sm.clone(), color_alpha(t.text,130));
                             painter.text(egui::pos2(hx + 320.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
                                 &format!("POC {:.2}", fp_levels[poc_idx].price), hdr_med.clone(), egui::Color32::from_rgb(255, 193, 37));
 
@@ -11969,7 +11982,7 @@ fn render_chart_pane(
                             painter.rect_stroke(egui::Rect::from_min_max(
                                 egui::pos2(bar_x - candle_w, bar_top_y - 2.0),
                                 egui::pos2(bar_x + candle_w, bar_bot_y + 2.0)),
-                                2.0, egui::Stroke::new(1.5, egui::Color32::from_white_alpha(100)), egui::StrokeKind::Outside);
+                                2.0, egui::Stroke::new(1.5, color_alpha(t.text,100)), egui::StrokeKind::Outside);
 
                             let card_w = 200.0;
                             let card_h = 48.0;
@@ -11986,11 +11999,11 @@ fn render_chart_pane(
                                 let arm_end_x = if go_left { card_x + card_w } else { card_x };
 
                                 // Callout line: horizontal from candle edge to card
-                                let line_col = egui::Color32::from_white_alpha(60);
+                                let line_col = color_alpha(t.text,60);
                                 painter.line_segment([egui::pos2(elbow_x, y), egui::pos2(arm_end_x, y)], egui::Stroke::new(1.0, line_col));
                                 // Dot at the candle connection point
-                                painter.circle_filled(egui::pos2(elbow_x, y), 3.5, egui::Color32::from_white_alpha(100));
-                                painter.circle_stroke(egui::pos2(elbow_x, y), 3.5, egui::Stroke::new(0.5, egui::Color32::from_white_alpha(40)));
+                                painter.circle_filled(egui::pos2(elbow_x, y), 3.5, color_alpha(t.text,100));
+                                painter.circle_stroke(egui::pos2(elbow_x, y), 3.5, egui::Stroke::new(0.5, color_alpha(t.text,40)));
 
                                 // Card background
                                 let card_rect = egui::Rect::from_min_size(egui::pos2(card_x, y - card_h / 2.0), egui::vec2(card_w, card_h));
@@ -12058,11 +12071,11 @@ fn render_chart_pane(
                                 // Sell/Buy labels inside the bars (if wide enough)
                                 if sell_bar_w > 30.0 {
                                     painter.text(egui::pos2(cx + sell_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
-                                        &format!("{:.0}", info.sell), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(200));
+                                        &format!("{:.0}", info.sell), egui::FontId::monospace(8.0), color_alpha(t.text,200));
                                 }
                                 if buy_bar_w > 30.0 {
                                     painter.text(egui::pos2(cx + sell_bar_w + buy_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
-                                        &format!("{:.0}", info.buy), egui::FontId::monospace(8.0), egui::Color32::from_white_alpha(200));
+                                        &format!("{:.0}", info.buy), egui::FontId::monospace(8.0), color_alpha(t.text,200));
                                 }
                                 // Delta — large, right side
                                 let delta_col = if info.delta > 0.0 { t.bull } else { t.bear };
@@ -12087,7 +12100,7 @@ fn render_chart_pane(
             if sync_x >= rect.left() && sync_x <= rect.left() + cw {
                 painter.line_segment(
                     [egui::pos2(sync_x, rect.top()+pt), egui::pos2(sync_x, rect.top()+pt+ch)],
-                    egui::Stroke::new(0.5, egui::Color32::from_white_alpha(30)));
+                    egui::Stroke::new(0.5, color_alpha(t.text,30)));
             }
         }
     }
@@ -14952,7 +14965,7 @@ fn render_chart_pane(
             *cx += btn_size.x + 2.0;
             let resp = ui.allocate_rect(r, egui::Sense::click());
             let hovered = resp.hovered();
-            let col = if hovered { egui::Color32::from_rgb(220, 220, 230) } else { t.dim.gamma_multiply(0.8) };
+            let col = if hovered { t.text } else { t.dim.gamma_multiply(0.8) };
             if hovered {
                 ui.painter().rect_filled(r, 3.0, color_alpha(t.toolbar_border, 60));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -15000,7 +15013,7 @@ fn render_chart_pane(
             cx += lw + 2.0;
             let resp = ui.allocate_rect(sr, egui::Sense::click());
             let is_active = (chart.replay_speed - spd).abs() < 0.01;
-            let col = if is_active { t.bull } else if resp.hovered() { egui::Color32::from_rgb(200, 200, 210) } else { t.dim.gamma_multiply(0.6) };
+            let col = if is_active { t.bull } else if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.6) };
             if resp.hovered() {
                 ui.painter().rect_filled(sr, 3.0, color_alpha(t.toolbar_border, 40));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -15047,7 +15060,7 @@ fn render_chart_pane(
         ui.painter().circle_filled(
             egui::pos2(dot_x, progress_rect.center().y),
             4.0,
-            egui::Color32::from_rgb(220, 220, 230),
+            t.text,
         );
         let progress_sense_rect = progress_rect.expand2(egui::vec2(0.0, 6.0));
         let prog_resp = ui.allocate_rect(progress_sense_rect, egui::Sense::click_and_drag());
@@ -15087,7 +15100,7 @@ fn render_chart_pane(
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             ui.painter().rect_filled(btn_rect, 4.0, color_alpha(t.toolbar_border, 60));
             // Redraw icon brighter on hover
-            let hc = egui::Color32::from_rgb(200, 200, 210);
+            let hc = t.dim;
             ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + 1.5, c.y - s - 0.5), egui::vec2(s * 1.5, s * 1.5)), 1.0, egui::Stroke::new(1.2, hc), egui::StrokeKind::Outside);
             ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s - 0.5, c.y - s + 1.5), egui::vec2(s * 1.5, s * 1.5)), 1.0, egui::Stroke::new(1.2, hc), egui::StrokeKind::Outside);
         }
@@ -15504,6 +15517,38 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
     });
     span_end(); // chart_panes
+
+    // ── Design Mode Inspector (F12 toggle) ──
+    #[cfg(feature = "design-mode")]
+    {
+        // F12 toggle
+        if ctx.input(|i| i.key_pressed(egui::Key::F12)) {
+            DESIGN_INSPECTOR.with(|insp| {
+                let mut insp = insp.borrow_mut();
+                if insp.is_none() {
+                    let toml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .parent().unwrap()
+                        .join("apex-terminal-designmode")
+                        .join("design.toml");
+                    *insp = Some(crate::design_inspector::Inspector::new(toml_path));
+                }
+                if let Some(ref mut inspector) = *insp {
+                    inspector.toggle();
+                }
+            });
+        }
+        // Render inspector panel
+        DESIGN_INSPECTOR.with(|insp| {
+            let mut insp = insp.borrow_mut();
+            if let Some(ref mut inspector) = *insp {
+                if let Some(mut tokens) = crate::design_tokens::get() {
+                    if inspector.show(ctx, &mut tokens) {
+                        crate::design_tokens::update(tokens);
+                    }
+                }
+            }
+        });
+    }
 
     handle_deferred(ctx, panes, active_pane, layout, watchlist);
 }

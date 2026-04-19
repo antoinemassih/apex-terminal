@@ -14,14 +14,33 @@
 use egui::{self, Color32, RichText, Stroke};
 
 // ─── Font size tokens ─────────────────────────────────────────────────────────
-pub const FONT_XS:  f32 = 8.0;   // column headers, status chips
-pub const FONT_SM:  f32 = 10.0;  // body text, labels, most buttons
-pub const FONT_MD:  f32 = 11.0;  // panel section headers
-pub const FONT_LG:  f32 = 13.0;  // primary headings, toolbar buttons
-pub const FONT_XL:  f32 = 14.0;  // large price values in cards
-pub const FONT_2XL: f32 = 15.0;  // featured prices (chain, big display)
+// In design-mode, these read from the global DesignTokens at runtime.
+// Without design-mode, they compile to the same constants as before (zero overhead).
+pub fn font_xs()  -> f32 { crate::dt_f32!(font.xs, 8.0) }
+pub fn font_sm()  -> f32 { crate::dt_f32!(font.sm, 10.0) }
+pub fn font_md()  -> f32 { crate::dt_f32!(font.md, 11.0) }
+pub fn font_lg()  -> f32 { crate::dt_f32!(font.lg, 13.0) }
+pub fn font_xl()  -> f32 { crate::dt_f32!(font.xl, 14.0) }
+pub fn font_2xl() -> f32 { crate::dt_f32!(font.xxl, 15.0) }
+
+// Keep the old names as non-const for backwards compat with all call sites.
+// Without design-mode feature, the compiler inlines these to the literal values.
+pub const FONT_XS:  f32 = 8.0;
+pub const FONT_SM:  f32 = 10.0;
+pub const FONT_MD:  f32 = 11.0;
+pub const FONT_LG:  f32 = 13.0;
+pub const FONT_XL:  f32 = 14.0;
+pub const FONT_2XL: f32 = 15.0;
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
+pub fn gap_xs()  -> f32 { crate::dt_f32!(spacing.xs, 2.0) }
+pub fn gap_sm()  -> f32 { crate::dt_f32!(spacing.sm, 4.0) }
+pub fn gap_md()  -> f32 { crate::dt_f32!(spacing.md, 6.0) }
+pub fn gap_lg()  -> f32 { crate::dt_f32!(spacing.lg, 8.0) }
+pub fn gap_xl()  -> f32 { crate::dt_f32!(spacing.xl, 10.0) }
+pub fn gap_2xl() -> f32 { crate::dt_f32!(spacing.xxl, 12.0) }
+pub fn gap_3xl() -> f32 { crate::dt_f32!(spacing.xxxl, 20.0) }
+
 pub const GAP_XS:  f32 = 2.0;
 pub const GAP_SM:  f32 = 4.0;
 pub const GAP_MD:  f32 = 6.0;
@@ -31,35 +50,61 @@ pub const GAP_2XL: f32 = 12.0;
 pub const GAP_3XL: f32 = 20.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
-pub const RADIUS_SM: f32 = 3.0;   // small buttons, badges, chips
-pub const RADIUS_MD: f32 = 4.0;   // primary buttons, cards
-pub const RADIUS_LG: f32 = 8.0;   // dialogs, panels, modals
+pub fn radius_sm() -> f32 { crate::dt_f32!(radius.sm, 3.0) }
+pub fn radius_md() -> f32 { crate::dt_f32!(radius.md, 4.0) }
+pub fn radius_lg() -> f32 { crate::dt_f32!(radius.lg, 8.0) }
+
+pub const RADIUS_SM: f32 = 3.0;
+pub const RADIUS_MD: f32 = 4.0;
+pub const RADIUS_LG: f32 = 8.0;
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
-pub const STROKE_HAIR:   f32 = 0.3;   // ultra-fine grid/DOM separators
-pub const STROKE_THIN:   f32 = 0.5;   // separators, card borders, badges
-pub const STROKE_STD:    f32 = 1.0;   // panel frames, dialog windows
-pub const STROKE_BOLD:   f32 = 1.5;   // emphasis outlines
-pub const STROKE_THICK:  f32 = 2.0;   // tab underlines, accent stripes
+pub fn stroke_hair()  -> f32 { crate::dt_f32!(stroke.hair, 0.3) }
+pub fn stroke_thin()  -> f32 { crate::dt_f32!(stroke.thin, 0.5) }
+pub fn stroke_std()   -> f32 { crate::dt_f32!(stroke.std, 1.0) }
+pub fn stroke_bold()  -> f32 { crate::dt_f32!(stroke.bold, 1.5) }
+pub fn stroke_thick() -> f32 { crate::dt_f32!(stroke.thick, 2.0) }
+
+pub const STROKE_HAIR:   f32 = 0.3;
+pub const STROKE_THIN:   f32 = 0.5;
+pub const STROKE_STD:    f32 = 1.0;
+pub const STROKE_BOLD:   f32 = 1.5;
+pub const STROKE_THICK:  f32 = 2.0;
 
 // ─── Semantic alpha tokens ────────────────────────────────────────────────────
+pub fn alpha_faint()  -> u8 { crate::dt_u8!(alpha.faint, 10) }
+pub fn alpha_ghost()  -> u8 { crate::dt_u8!(alpha.ghost, 15) }
+pub fn alpha_soft()   -> u8 { crate::dt_u8!(alpha.soft, 20) }
+pub fn alpha_subtle() -> u8 { crate::dt_u8!(alpha.subtle, 25) }
+pub fn alpha_tint()   -> u8 { crate::dt_u8!(alpha.tint, 30) }
+pub fn alpha_muted()  -> u8 { crate::dt_u8!(alpha.muted, 40) }
+pub fn alpha_line()   -> u8 { crate::dt_u8!(alpha.line, 50) }
+pub fn alpha_dim()    -> u8 { crate::dt_u8!(alpha.dim, 60) }
+pub fn alpha_strong() -> u8 { crate::dt_u8!(alpha.strong, 80) }
+pub fn alpha_active() -> u8 { crate::dt_u8!(alpha.active, 100) }
+pub fn alpha_heavy()  -> u8 { crate::dt_u8!(alpha.heavy, 120) }
+
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.
-pub const ALPHA_FAINT:  u8 = 10;   // barely-visible tints
-pub const ALPHA_GHOST:  u8 = 15;   // hover row bg, chart bar fills
-pub const ALPHA_SOFT:   u8 = 20;   // soft hover states, selector backgrounds
-pub const ALPHA_SUBTLE: u8 = 25;   // section backgrounds, dim overlays
-pub const ALPHA_TINT:   u8 = 30;   // action button fill (enabled)
-pub const ALPHA_MUTED:  u8 = 40;   // section separators, secondary borders
-pub const ALPHA_LINE:   u8 = 50;   // card borders, row dividers
-pub const ALPHA_DIM:    u8 = 60;   // mid-tone chart elements
-pub const ALPHA_STRONG: u8 = 80;   // panel frame borders
-pub const ALPHA_ACTIVE: u8 = 100;  // active/enabled button borders
-pub const ALPHA_HEAVY:  u8 = 120;  // dialog borders, high-contrast lines
+pub const ALPHA_FAINT:  u8 = 10;
+pub const ALPHA_GHOST:  u8 = 15;
+pub const ALPHA_SOFT:   u8 = 20;
+pub const ALPHA_SUBTLE: u8 = 25;
+pub const ALPHA_TINT:   u8 = 30;
+pub const ALPHA_MUTED:  u8 = 40;
+pub const ALPHA_LINE:   u8 = 50;
+pub const ALPHA_DIM:    u8 = 60;
+pub const ALPHA_STRONG: u8 = 80;
+pub const ALPHA_ACTIVE: u8 = 100;
+pub const ALPHA_HEAVY:  u8 = 120;
 
 // ─── Drop shadow tokens ───────────────────────────────────────────────────────
-pub const SHADOW_OFFSET: f32 = 2.0;   // drop shadow x/y offset
-pub const SHADOW_ALPHA:  u8  = 60;    // drop shadow darkness (pure black)
-pub const SHADOW_SPREAD: f32 = 4.0;   // corner radius for shadow rect
+pub fn shadow_offset() -> f32 { crate::dt_f32!(shadow.offset, 2.0) }
+pub fn shadow_alpha()  -> u8  { crate::dt_u8!(shadow.alpha, 60) }
+pub fn shadow_spread() -> f32 { crate::dt_f32!(shadow.spread, 4.0) }
+
+pub const SHADOW_OFFSET: f32 = 2.0;
+pub const SHADOW_ALPHA:  u8  = 60;
+pub const SHADOW_SPREAD: f32 = 4.0;
 
 // ─── Fixed text colors (fallback for code without Theme access) ──────────────
 // Prefer `t.text` when Theme is in scope — these are dark-theme defaults.
@@ -85,16 +130,16 @@ pub fn mono_bold(text: &str, size: f32, color: Color32) -> RichText {
 pub fn panel_frame(toolbar_bg: Color32, toolbar_border: Color32) -> egui::Frame {
     egui::Frame::NONE
         .fill(toolbar_bg)
-        .inner_margin(egui::Margin { left: GAP_XL as i8, right: GAP_XL as i8, top: GAP_XL as i8, bottom: GAP_LG as i8 })
-        .stroke(Stroke::new(STROKE_STD, color_alpha(toolbar_border, ALPHA_HEAVY)))
+        .inner_margin(egui::Margin { left: gap_xl() as i8, right: gap_xl() as i8, top: gap_xl() as i8, bottom: gap_lg() as i8 })
+        .stroke(Stroke::new(stroke_std(), color_alpha(toolbar_border, alpha_heavy())))
 }
 
 /// Compact panel frame — tighter margins for narrow info-dense panels (scanner, tape).
 pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui::Frame {
     egui::Frame::NONE
         .fill(toolbar_bg)
-        .inner_margin(egui::Margin { left: GAP_LG as i8, right: GAP_LG as i8, top: GAP_LG as i8, bottom: GAP_MD as i8 })
-        .stroke(Stroke::new(STROKE_STD, color_alpha(toolbar_border, ALPHA_HEAVY)))
+        .inner_margin(egui::Margin { left: gap_lg() as i8, right: gap_lg() as i8, top: gap_lg() as i8, bottom: gap_md() as i8 })
+        .stroke(Stroke::new(stroke_std(), color_alpha(toolbar_border, alpha_heavy())))
 }
 
 // ─── Toolbar button ───────────────────────────────────────────────────────────
@@ -104,37 +149,36 @@ pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui
 /// Hover state: subtle bg tint + accent border.
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let bg = if active {
-        color_alpha(accent, 32)
+        color_alpha(accent, alpha_tint())
     } else {
-        color_alpha(toolbar_border, 18)
+        color_alpha(toolbar_border, alpha_ghost())
     };
     let fg = if active { accent } else { dim };
     let border = if active {
-        color_alpha(accent, ALPHA_ACTIVE)
+        color_alpha(accent, alpha_active())
     } else {
-        color_alpha(toolbar_border, ALPHA_MUTED)
+        color_alpha(toolbar_border, alpha_muted())
     };
 
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_LG).color(fg))
-        .fill(bg).stroke(Stroke::new(STROKE_THIN, border)).corner_radius(RADIUS_MD)
-        .min_size(egui::vec2(0.0, 24.0)));
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_lg()).color(fg))
+        .fill(bg).stroke(Stroke::new(stroke_thin(), border)).corner_radius(radius_md())
+        .min_size(egui::vec2(0.0, crate::dt_f32!(toolbar.btn_min_height, 24.0))));
 
     if active {
-        // Bottom underline only — cleaner, no glow halo
         let r = resp.rect;
         ui.painter().line_segment(
-            [egui::pos2(r.left() + RADIUS_MD, r.bottom() + 0.5),
-             egui::pos2(r.right() - RADIUS_MD, r.bottom() + 0.5)],
-            Stroke::new(STROKE_STD, color_alpha(accent, ALPHA_DIM)));
+            [egui::pos2(r.left() + radius_md(), r.bottom() + 0.5),
+             egui::pos2(r.right() - radius_md(), r.bottom() + 0.5)],
+            Stroke::new(stroke_std(), color_alpha(accent, alpha_dim())));
     } else if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        // Hover: crisp bg tint + accent border repainted
-        ui.painter().rect_filled(resp.rect, RADIUS_MD,
-            color_alpha(toolbar_border, ALPHA_SUBTLE));
-        ui.painter().rect_stroke(resp.rect, RADIUS_MD,
-            Stroke::new(STROKE_THIN, color_alpha(accent, ALPHA_LINE)), egui::StrokeKind::Inside);
+        ui.painter().rect_filled(resp.rect, radius_md(),
+            color_alpha(toolbar_border, alpha_subtle()));
+        ui.painter().rect_stroke(resp.rect, radius_md(),
+            Stroke::new(stroke_thin(), color_alpha(accent, alpha_line())), egui::StrokeKind::Inside);
+        let text_col = ui.style().visuals.override_text_color.unwrap_or(TEXT_PRIMARY);
         ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
-            label, egui::FontId::monospace(FONT_LG), TEXT_PRIMARY);
+            label, egui::FontId::monospace(font_lg()), text_col);
     }
     resp
 }
@@ -143,9 +187,9 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
 
 /// Standard popup window frame — dark background, no title bar.
 pub fn popup_frame(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, fill: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
-    let mut frame = egui::Frame::popup(&ctx.style()).fill(fill).inner_margin(GAP_LG);
+    let mut frame = egui::Frame::popup(&ctx.style()).fill(fill).inner_margin(gap_lg());
     if let Some(bc) = border_color {
-        frame = frame.stroke(Stroke::new(STROKE_STD, bc));
+        frame = frame.stroke(Stroke::new(stroke_std(), bc));
     }
     egui::Window::new(id.to_string())
         .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
@@ -160,17 +204,17 @@ pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32,
         .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
         .title_bar(false)
         .frame(egui::Frame::popup(&ctx.style()).fill(fill).inner_margin(0.0)
-            .stroke(Stroke::new(STROKE_STD, border)).corner_radius(RADIUS_LG))
+            .stroke(Stroke::new(stroke_std(), border)).corner_radius(radius_lg()))
 }
 
 /// Theme-aware dialog window.
 pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, toolbar_bg: Color32, toolbar_border: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
-    let border = border_color.unwrap_or(color_alpha(toolbar_border, ALPHA_ACTIVE));
+    let border = border_color.unwrap_or(color_alpha(toolbar_border, alpha_active()));
     egui::Window::new(id.to_string())
         .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
         .title_bar(false)
         .frame(egui::Frame::popup(&ctx.style()).fill(toolbar_bg).inner_margin(0.0)
-            .stroke(Stroke::new(STROKE_STD, border)).corner_radius(RADIUS_LG))
+            .stroke(Stroke::new(stroke_std(), border)).corner_radius(radius_lg()))
 }
 
 /// Dialog header bar — auto-darkened bg, FONT_LG title, X close. Returns true if closed.
@@ -181,20 +225,21 @@ pub fn dialog_header(ui: &mut egui::Ui, title: &str, dim: Color32) -> bool {
 /// Dialog header bar with explicit header background.
 pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, header_bg: Option<Color32>) -> bool {
     use super::super::super::ui_kit::icons::Icon;
+    let darken = crate::dt_u8!(dialog.header_darken, 8);
     let fill = header_bg.unwrap_or_else(|| {
         let bg = ui.visuals().window_fill();
-        Color32::from_rgb(bg.r().saturating_sub(8), bg.g().saturating_sub(8), bg.b().saturating_sub(8))
+        Color32::from_rgb(bg.r().saturating_sub(darken), bg.g().saturating_sub(darken), bg.b().saturating_sub(darken))
     });
     let mut closed = false;
+    let rlg = radius_lg() as u8;
     egui::Frame::NONE.fill(fill)
-        .inner_margin(egui::Margin { left: GAP_XL as i8, right: GAP_LG as i8, top: GAP_LG as i8, bottom: GAP_LG as i8 })
-        .corner_radius(egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 })
+        .inner_margin(egui::Margin { left: gap_xl() as i8, right: gap_lg() as i8, top: gap_lg() as i8, bottom: gap_lg() as i8 })
+        .corner_radius(egui::CornerRadius { nw: rlg, ne: rlg, sw: 0, se: 0 })
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(title).monospace().size(FONT_LG).strong().color(TEXT_PRIMARY));
+                ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Clean X close button — uses icon_btn which has pointer cursor + hover highlight
-                    if icon_btn(ui, Icon::X, dim.gamma_multiply(0.7), FONT_XL).clicked() {
+                    if icon_btn(ui, Icon::X, dim.gamma_multiply(0.7), font_xl()).clicked() {
                         closed = true;
                     }
                 });
@@ -211,8 +256,8 @@ pub fn separator(ui: &mut egui::Ui, color: Color32) {
     let rect = ui.available_rect_before_wrap();
     ui.painter().line_segment(
         [egui::pos2(rect.left(), ui.cursor().min.y), egui::pos2(rect.right(), ui.cursor().min.y)],
-        Stroke::new(STROKE_THIN, color));
-    ui.add_space(1.0);
+        Stroke::new(stroke_thin(), color));
+    ui.add_space(crate::dt_f32!(separator.after_space, 1.0));
 }
 
 /// Inset separator with margins on both sides.
@@ -221,8 +266,8 @@ pub fn dialog_separator(ui: &mut egui::Ui, margin: f32, color: Color32) {
     ui.painter().line_segment(
         [egui::pos2(rect.left() + margin, ui.cursor().min.y),
          egui::pos2(rect.right() - margin, ui.cursor().min.y)],
-        Stroke::new(STROKE_THIN, color));
-    ui.add_space(1.0);
+        Stroke::new(stroke_thin(), color));
+    ui.add_space(crate::dt_f32!(separator.after_space, 1.0));
 }
 
 /// Inset separator + soft gradient shadow below (3 fading lines).
@@ -231,24 +276,29 @@ pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
     let y = ui.cursor().min.y;
     let left = rect.left() + margin;
     let right = rect.right() - margin;
-    ui.painter().line_segment([egui::pos2(left, y), egui::pos2(right, y)], Stroke::new(STROKE_THIN, color));
+    ui.painter().line_segment([egui::pos2(left, y), egui::pos2(right, y)], Stroke::new(stroke_thin(), color));
     // Fading shadow gradient: 3 strokes at decreasing black alpha
+    #[cfg(feature = "design-mode")]
+    let shadow_alphas = {
+        if let Some(t) = crate::design_tokens::get() { t.shadow.gradient } else { [20u8, 12, 4] }
+    };
+    #[cfg(not(feature = "design-mode"))]
     let shadow_alphas = [20u8, 12, 4];
     for (i, &a) in shadow_alphas.iter().enumerate() {
         ui.painter().line_segment(
             [egui::pos2(left, y + (i + 1) as f32), egui::pos2(right, y + (i + 1) as f32)],
-            Stroke::new(STROKE_THIN, Color32::from_rgba_unmultiplied(0, 0, 0, a)));
+            Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(0, 0, 0, a)));
     }
-    ui.add_space(GAP_SM);
+    ui.add_space(crate::dt_f32!(separator.shadow_space, 4.0));
 }
 
 /// Indented section label with left margin — used inside dialogs.
 pub fn dialog_section(ui: &mut egui::Ui, text: &str, margin: f32, color: Color32) {
     ui.horizontal(|ui| {
         ui.add_space(margin);
-        ui.label(RichText::new(text).monospace().size(FONT_SM).strong().color(color));
+        ui.label(RichText::new(text).monospace().size(font_sm()).strong().color(color));
     });
-    ui.add_space(GAP_XS + 1.0);
+    ui.add_space(gap_xs() + 1.0);
 }
 
 // ─── Labels ───────────────────────────────────────────────────────────────────
@@ -256,13 +306,13 @@ pub fn dialog_section(ui: &mut egui::Ui, text: &str, margin: f32, color: Color32
 /// Section header — FONT_SM bold.
 #[inline]
 pub fn section_label(ui: &mut egui::Ui, text: &str, color: Color32) {
-    ui.label(RichText::new(text).monospace().size(FONT_SM).strong().color(color));
+    ui.label(RichText::new(text).monospace().size(font_sm()).strong().color(color));
 }
 
 /// Dim info label — FONT_SM regular.
 #[inline]
 pub fn dim_label(ui: &mut egui::Ui, text: &str, color: Color32) {
-    ui.label(RichText::new(text).monospace().size(FONT_SM).color(color));
+    ui.label(RichText::new(text).monospace().size(font_sm()).color(color));
 }
 
 /// Column header cell — FONT_XS dim monospace, fixed width.
@@ -273,8 +323,8 @@ pub fn col_header(ui: &mut egui::Ui, text: &str, width: f32, color: Color32, rig
     } else {
         egui::Layout::left_to_right(egui::Align::Center)
     };
-    ui.allocate_ui_with_layout(egui::vec2(width, 12.0), layout, |ui| {
-        ui.label(RichText::new(text).monospace().size(FONT_XS).color(color));
+    ui.allocate_ui_with_layout(egui::vec2(width, crate::dt_f32!(table.header_height, 12.0)), layout, |ui| {
+        ui.label(RichText::new(text).monospace().size(font_xs()).color(color));
     });
 }
 
@@ -297,38 +347,41 @@ pub fn segmented_control(
 ) -> Option<usize> {
     let mut clicked = None;
 
+    let td = crate::dt_u8!(segmented.trough_darken, 12);
     let trough = Color32::from_rgb(
-        toolbar_bg.r().saturating_sub(12),
-        toolbar_bg.g().saturating_sub(12),
-        toolbar_bg.b().saturating_sub(12),
+        toolbar_bg.r().saturating_sub(td),
+        toolbar_bg.g().saturating_sub(td),
+        toolbar_bg.b().saturating_sub(td),
     );
-    let border_col = color_alpha(toolbar_border, ALPHA_STRONG);
+    let border_col = color_alpha(toolbar_border, alpha_strong());
 
-    // Reserve a painter slot — trough bg will be painted BEHIND buttons
     let bg_slot = ui.painter().add(egui::Shape::Noop);
 
     let prev_spacing = ui.spacing().item_spacing.x;
-    ui.spacing_mut().item_spacing.x = 2.0;
+    ui.spacing_mut().item_spacing.x = gap_xs();
 
     let mut union_rect: Option<egui::Rect> = None;
     let n = labels.len();
+    let rsm = radius_sm() as u8;
+    let seg_btn_h = crate::dt_f32!(segmented.btn_min_height, 24.0);
+    let seg_pad_x = crate::dt_f32!(segmented.btn_padding_x, 7.0);
 
     for (i, label) in labels.iter().enumerate() {
         let active = i == active_idx;
         let fg = if active { accent } else { dim };
-        let bg = if active { color_alpha(accent, ALPHA_TINT + 5) } else { Color32::TRANSPARENT };
+        let bg = if active { color_alpha(accent, alpha_tint() + 5) } else { Color32::TRANSPARENT };
         let cr = match (i, n) {
-            (0, 1) => egui::CornerRadius::same(RADIUS_SM as u8),
-            (0, _) => egui::CornerRadius { nw: RADIUS_SM as u8, sw: RADIUS_SM as u8, ne: 0, se: 0 },
-            (x, n) if x == n - 1 => egui::CornerRadius { nw: 0, sw: 0, ne: RADIUS_SM as u8, se: RADIUS_SM as u8 },
+            (0, 1) => egui::CornerRadius::same(rsm),
+            (0, _) => egui::CornerRadius { nw: rsm, sw: rsm, ne: 0, se: 0 },
+            (x, n) if x == n - 1 => egui::CornerRadius { nw: 0, sw: 0, ne: rsm, se: rsm },
             _ => egui::CornerRadius::ZERO,
         };
         let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(7.0, prev_pad.y);
+        ui.spacing_mut().button_padding = egui::vec2(seg_pad_x, prev_pad.y);
         let resp = ui.add(
-            egui::Button::new(RichText::new(*label).monospace().size(FONT_LG).strong().color(fg))
+            egui::Button::new(RichText::new(*label).monospace().size(font_lg()).strong().color(fg))
                 .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
-                .min_size(egui::vec2(0.0, 24.0))
+                .min_size(egui::vec2(0.0, seg_btn_h))
         );
         ui.spacing_mut().button_padding = prev_pad;
         union_rect = Some(union_rect.map_or(resp.rect, |r: egui::Rect| r.union(resp.rect)));
@@ -338,13 +391,12 @@ pub fn segmented_control(
 
     ui.spacing_mut().item_spacing.x = prev_spacing;
 
-    // Fill trough background behind buttons — no vertical expand so it stays the exact
-    // button height (centered by the parent horizontal_centered layout)
     if let Some(ur) = union_rect {
-        let trough_rect = ur.expand2(egui::vec2(4.0, 0.0));
-        let r = RADIUS_MD as f32 + 1.0;
+        let trough_expand = crate::dt_f32!(segmented.trough_expand_x, 4.0);
+        let trough_rect = ur.expand2(egui::vec2(trough_expand, 0.0));
+        let r = radius_md() + 1.0;
         ui.painter().set(bg_slot, egui::Shape::rect_filled(trough_rect, r, trough));
-        ui.painter().rect_stroke(trough_rect, r, Stroke::new(STROKE_THIN, border_col), egui::StrokeKind::Outside);
+        ui.painter().rect_stroke(trough_rect, r, Stroke::new(stroke_thin(), border_col), egui::StrokeKind::Outside);
     }
 
     clicked
@@ -356,9 +408,11 @@ pub fn segmented_control(
 /// Internally zeroes button_padding so egui doesn't add asymmetric whitespace around the icon.
 /// Returns the full Response so callers can chain `.clicked()`, `.on_hover_text()`, etc.
 pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egui::Response {
-    let side = (size + 10.0).max(26.0); // 5px padding on each side, min 26px square
+    let icon_pad = crate::dt_f32!(icon_button.icon_padding, 5.0);
+    let min = crate::dt_f32!(icon_button.min_size, 26.0);
+    let side = (size + icon_pad * 2.0).max(min);
     let prev_pad = ui.spacing().button_padding;
-    ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0); // suppress egui's own padding — we control the square
+    ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
     let resp = ui.add(
         egui::Button::new(RichText::new(icon).size(size).color(color))
             .frame(false)
@@ -367,9 +421,9 @@ pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egu
     ui.spacing_mut().button_padding = prev_pad;
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        ui.painter().rect_filled(resp.rect, RADIUS_SM, color_alpha(color, ALPHA_GHOST));
-        ui.painter().rect_stroke(resp.rect, RADIUS_SM,
-            egui::Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_MUTED)), egui::StrokeKind::Inside);
+        ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(color, alpha_ghost()));
+        ui.painter().rect_stroke(resp.rect, radius_sm(),
+            egui::Stroke::new(stroke_thin(), color_alpha(color, alpha_muted())), egui::StrokeKind::Inside);
     }
     resp
 }
@@ -377,7 +431,7 @@ pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egu
 /// Close button (X icon) — square icon_btn, standard panel close.
 #[inline]
 pub fn close_button(ui: &mut egui::Ui, dim: Color32) -> bool {
-    icon_btn(ui, super::super::super::ui_kit::icons::Icon::X, dim, FONT_LG).clicked()
+    icon_btn(ui, super::super::super::ui_kit::icons::Icon::X, dim, font_lg()).clicked()
 }
 
 /// Panel header — FONT_LG title + close button. Returns true if closed.
@@ -389,9 +443,9 @@ pub fn panel_header(ui: &mut egui::Ui, title: &str, accent: Color32, dim: Color3
 pub fn panel_header_sub(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>, accent: Color32, dim: Color32) -> bool {
     let mut closed = false;
     ui.horizontal(|ui| {
-        ui.label(RichText::new(title).monospace().size(FONT_LG).strong().color(accent));
+        ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(accent));
         if let Some(sub) = subtitle {
-            ui.label(RichText::new(sub).monospace().size(FONT_SM).color(dim));
+            ui.label(RichText::new(sub).monospace().size(font_sm()).color(dim));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if close_button(ui, dim) { closed = true; }
@@ -408,18 +462,19 @@ pub fn tab_bar<T: PartialEq + Copy>(
     accent: Color32,
     dim: Color32,
 ) {
+    let tab_ul = crate::dt_f32!(tab.underline_thickness, 2.0);
     for (tab, label) in tabs {
         let active = *current == *tab;
         let color = if active { accent } else { dim };
         let resp = ui.add(
-            egui::Button::new(RichText::new(*label).monospace().size(FONT_LG).strong().color(color))
+            egui::Button::new(RichText::new(*label).monospace().size(font_lg()).strong().color(color))
                 .frame(false)
         );
         if resp.clicked() { *current = *tab; }
         if active {
             let r = resp.rect;
             ui.painter().rect_filled(
-                egui::Rect::from_min_max(egui::pos2(r.left(), r.max.y - 2.0), egui::pos2(r.right(), r.max.y)),
+                egui::Rect::from_min_max(egui::pos2(r.left(), r.max.y - tab_ul), egui::pos2(r.right(), r.max.y)),
                 0.0, accent);
         }
     }
@@ -432,27 +487,25 @@ pub fn tab_bar<T: PartialEq + Copy>(
 pub fn tooltip_frame(toolbar_bg: Color32, toolbar_border: Color32) -> egui::Frame {
     egui::Frame::NONE
         .fill(toolbar_bg)
-        .stroke(Stroke::new(STROKE_THIN, color_alpha(toolbar_border, ALPHA_STRONG)))
-        .inner_margin(GAP_LG)
-        .corner_radius(RADIUS_LG)
+        .stroke(Stroke::new(stroke_thin(), color_alpha(toolbar_border, alpha_strong())))
+        .inner_margin(crate::dt_f32!(tooltip.padding, 8.0))
+        .corner_radius(crate::dt_f32!(tooltip.corner_radius, 8.0))
 }
 
 /// Single stat row inside a tooltip — label left, value right.
-/// Keeps all stat tables consistent: label at FONT_XS dim, value at FONT_SM colored.
 pub fn stat_row(ui: &mut egui::Ui, label: &str, value: &str, label_color: Color32, value_color: Color32) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(label).monospace().size(FONT_XS).color(label_color));
+        ui.label(RichText::new(label).monospace().size(crate::dt_f32!(tooltip.stat_label_size, 8.0)).color(label_color));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(RichText::new(value).monospace().size(FONT_SM).strong().color(value_color));
+            ui.label(RichText::new(value).monospace().size(crate::dt_f32!(tooltip.stat_value_size, 10.0)).strong().color(value_color));
         });
     });
 }
 
 /// Paint a drop shadow behind a painter-based tooltip rect (call BEFORE painting the bg).
-/// Used in OHLC tooltip, drawing significance tooltip, etc.
 pub fn paint_tooltip_shadow(painter: &egui::Painter, rect: egui::Rect, radius: f32) {
-    let shadow_rect = rect.translate(egui::vec2(SHADOW_OFFSET, SHADOW_OFFSET));
-    painter.rect_filled(shadow_rect, radius, Color32::from_rgba_unmultiplied(0, 0, 0, SHADOW_ALPHA));
+    let shadow_rect = rect.translate(egui::vec2(shadow_offset(), shadow_offset()));
+    painter.rect_filled(shadow_rect, radius, Color32::from_rgba_unmultiplied(0, 0, 0, shadow_alpha()));
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
@@ -477,10 +530,10 @@ pub fn color_alpha(c: Color32, alpha: u8) -> Color32 {
 /// Form row: right-aligned fixed-width label + content widget.
 pub fn form_row(ui: &mut egui::Ui, label: &str, label_width: f32, dim: Color32, add_content: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
-        ui.allocate_ui(egui::vec2(label_width, 18.0), |ui| {
+        ui.allocate_ui(egui::vec2(label_width, crate::dt_f32!(form.row_height, 18.0)), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(GAP_SM);
-                ui.label(RichText::new(label).monospace().size(FONT_SM).color(dim));
+                ui.add_space(gap_sm());
+                ui.label(RichText::new(label).monospace().size(font_sm()).color(dim));
             });
         });
         add_content(ui);
@@ -491,33 +544,37 @@ pub fn form_row(ui: &mut egui::Ui, label: &str, label_width: f32, dim: Color32, 
 
 /// Status badge — small tinted pill (e.g. "DRAFT", "PLACED", "TRIGGERED").
 pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
-    ui.add(egui::Button::new(RichText::new(text).monospace().size(8.0).strong().color(color))
-        .fill(color_alpha(color, ALPHA_SUBTLE))
-        .stroke(Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_DIM)))
-        .corner_radius(RADIUS_SM)
-        .min_size(egui::vec2(0.0, 16.0)));
+    ui.add(egui::Button::new(RichText::new(text).monospace().size(crate::dt_f32!(badge.font_size, 8.0)).strong().color(color))
+        .fill(color_alpha(color, alpha_subtle()))
+        .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
+        .corner_radius(radius_sm())
+        .min_size(egui::vec2(0.0, crate::dt_f32!(badge.height, 16.0))));
 }
 
 /// Order card — left accent stripe + subtle bg. Returns true if the card area was clicked.
 pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: impl FnOnce(&mut egui::Ui)) -> bool {
+    let ml = crate::dt_i8!(card.margin_left, 9);
+    let mr = crate::dt_i8!(card.margin_right, 6);
+    let my = crate::dt_i8!(card.margin_y, 5);
+    let cr = crate::dt_f32!(card.radius, 4.0);
     let available_w = ui.available_width();
     let resp = egui::Frame::NONE
         .fill(bg)
-        .inner_margin(egui::Margin { left: 9, right: 6, top: 5, bottom: 5 })
-        .corner_radius(4.0)
+        .inner_margin(egui::Margin { left: ml, right: mr, top: my, bottom: my })
+        .corner_radius(cr)
         .show(ui, |ui| {
             ui.set_min_width(available_w - 15.0);
             let outer = ui.min_rect();
             let stripe = egui::Rect::from_min_max(
-                egui::pos2(outer.left() - 9.0, outer.top() - 5.0),
-                egui::pos2(outer.left() - 6.0, outer.bottom() + 5.0));
-            ui.painter().rect_filled(stripe, egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, accent);
+                egui::pos2(outer.left() - ml as f32, outer.top() - my as f32),
+                egui::pos2(outer.left() - ml as f32 + crate::dt_f32!(card.stripe_width, 3.0), outer.bottom() + my as f32));
+            ui.painter().rect_filled(stripe, egui::CornerRadius { nw: cr as u8, sw: cr as u8, ne: 0, se: 0 }, accent);
             add_content(ui);
         });
     let card_rect = resp.response.rect;
     let click_resp = ui.interact(card_rect, ui.id().with(("card_click", card_rect.min.x as i32, card_rect.min.y as i32)), egui::Sense::click());
     if click_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     click_resp.clicked()
 }
 
@@ -525,57 +582,58 @@ pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: 
 
 /// Action button — tinted bg, for Place/Cancel/Clear. Disabled = greyed out.
 pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
-    let bg     = if enabled { color_alpha(color, ALPHA_MUTED)  } else { color_alpha(color, ALPHA_FAINT)  };
-    let fg     = if enabled { color                            } else { color_alpha(color, ALPHA_ACTIVE) };
-    let border = if enabled { color_alpha(color, ALPHA_ACTIVE) } else { color_alpha(color, ALPHA_LINE)   };
+    let bg     = if enabled { color_alpha(color, alpha_muted())  } else { color_alpha(color, alpha_faint())  };
+    let fg     = if enabled { color                              } else { color_alpha(color, alpha_active()) };
+    let border = if enabled { color_alpha(color, alpha_active()) } else { color_alpha(color, alpha_line())   };
     let resp = ui.add_enabled(enabled,
-        egui::Button::new(RichText::new(label).monospace().size(FONT_SM).strong().color(fg))
-            .fill(bg).stroke(Stroke::new(STROKE_THIN, border))
-            .corner_radius(RADIUS_MD).min_size(egui::vec2(0.0, 24.0)));
+        egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(fg))
+            .fill(bg).stroke(Stroke::new(stroke_thin(), border))
+            .corner_radius(radius_md()).min_size(egui::vec2(0.0, crate::dt_f32!(button.action_height, 24.0))));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
 
 /// Trade button — deep saturated bg for BUY/SELL. White bold text.
 pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> bool {
+    let bright = crate::dt_f32!(button.trade_brightness, 0.55);
     let bg = Color32::from_rgb(
-        (color.r() as f32 * 0.55) as u8,
-        (color.g() as f32 * 0.55) as u8,
-        (color.b() as f32 * 0.55) as u8);
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_LG).strong().color(Color32::WHITE))
-        .fill(bg).min_size(egui::vec2(width, 30.0)).corner_radius(RADIUS_MD));
+        (color.r() as f32 * bright) as u8,
+        (color.g() as f32 * bright) as u8,
+        (color.b() as f32 * bright) as u8);
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_lg()).strong().color(Color32::WHITE))
+        .fill(bg).min_size(egui::vec2(width, crate::dt_f32!(button.trade_height, 30.0))).corner_radius(radius_md()));
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        // Brighten on hover
+        let hb = crate::dt_f32!(button.trade_hover_brightness, 0.7);
         let hover_bg = Color32::from_rgb(
-            (color.r() as f32 * 0.7).min(255.0) as u8,
-            (color.g() as f32 * 0.7).min(255.0) as u8,
-            (color.b() as f32 * 0.7).min(255.0) as u8);
-        ui.painter().rect_filled(resp.rect, RADIUS_MD, hover_bg);
+            (color.r() as f32 * hb).min(255.0) as u8,
+            (color.g() as f32 * hb).min(255.0) as u8,
+            (color.b() as f32 * hb).min(255.0) as u8);
+        ui.painter().rect_filled(resp.rect, radius_md(), hover_bg);
         ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
-            label, egui::FontId::monospace(FONT_LG), Color32::WHITE);
+            label, egui::FontId::monospace(font_lg()), Color32::WHITE);
     }
     resp.clicked()
 }
 
 /// Small action button — for inline header actions like "Clear All", "Close All".
 pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool {
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_SM).strong().color(color))
-        .fill(color_alpha(color, ALPHA_SOFT))
-        .corner_radius(RADIUS_SM)
-        .stroke(Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_DIM)))
-        .min_size(egui::vec2(0.0, 18.0)));
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(color))
+        .fill(color_alpha(color, alpha_soft()))
+        .corner_radius(radius_sm())
+        .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
+        .min_size(egui::vec2(0.0, crate::dt_f32!(button.small_height, 18.0))));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
 
 /// Simple button — subtle border, for form actions (Create, Cancel).
 pub fn simple_btn(ui: &mut egui::Ui, label: &str, color: Color32, min_width: f32) -> bool {
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(FONT_SM).color(color))
-        .fill(color_alpha(color, ALPHA_FAINT))
-        .stroke(Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_MUTED)))
-        .corner_radius(RADIUS_SM)
-        .min_size(egui::vec2(min_width, 20.0)));
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).color(color))
+        .fill(color_alpha(color, alpha_faint()))
+        .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_muted())))
+        .corner_radius(radius_sm())
+        .min_size(egui::vec2(min_width, crate::dt_f32!(button.simple_height, 20.0))));
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
@@ -632,23 +690,30 @@ pub fn draw_line_rgba(rgba: &mut [u8], width: u32, x0: f32, y0: f32, x1: f32, y1
 
 /// Draggable divider between two split sections. Returns vertical drag delta.
 pub fn split_divider(ui: &mut egui::Ui, _id_salt: &str, dim: Color32) -> f32 {
+    let div_h = crate::dt_f32!(split_divider.height, 6.0);
+    let inset = crate::dt_f32!(split_divider.inset, 8.0);
+    let dot_r = crate::dt_f32!(split_divider.dot_radius, 1.5);
+    let dot_sp = crate::dt_f32!(split_divider.dot_spacing, 8.0);
+    let active_sw = crate::dt_f32!(split_divider.active_stroke, 2.0);
+    let inactive_sw = crate::dt_f32!(split_divider.inactive_stroke, 1.0);
+
     let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 6.0), egui::Sense::drag());
+        egui::vec2(ui.available_width(), div_h), egui::Sense::drag());
     let p = ui.painter();
 
     let active = resp.hovered() || resp.dragged();
-    let color = if active { dim.gamma_multiply(0.6) } else { color_alpha(dim, ALPHA_FAINT) };
+    let color = if active { dim.gamma_multiply(0.6) } else { color_alpha(dim, alpha_faint()) };
 
     p.line_segment(
-        [egui::pos2(rect.left() + 8.0, rect.center().y),
-         egui::pos2(rect.right() - 8.0, rect.center().y)],
-        Stroke::new(if active { 2.0 } else { 1.0 }, color));
+        [egui::pos2(rect.left() + inset, rect.center().y),
+         egui::pos2(rect.right() - inset, rect.center().y)],
+        Stroke::new(if active { active_sw } else { inactive_sw }, color));
 
     if active {
         let cy = rect.center().y;
         let cx = rect.center().x;
-        for dx in [-8.0, 0.0, 8.0] {
-            p.circle_filled(egui::pos2(cx + dx, cy), 1.5, dim.gamma_multiply(0.4));
+        for dx in [-dot_sp, 0.0, dot_sp] {
+            p.circle_filled(egui::pos2(cx + dx, cy), dot_r, dim.gamma_multiply(0.4));
         }
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
     }
