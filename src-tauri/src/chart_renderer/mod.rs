@@ -20,15 +20,15 @@ pub use types::*;
 
 /// Tab selector for the unified Analysis sidebar.
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum AnalysisTab { Rrg, TimeSales, Scanner, Scripts }
+pub(crate) enum AnalysisTab { Rrg, TimeSales, Scanner, Scripts, Seasonality }
 
 /// Tab selector for the unified Signals sidebar (Alerts + Signals).
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum SignalsTab { Alerts, Signals }
 
-/// Tab selector for the unified Feed sidebar (News + Discord + Screenshots + Plays).
+/// Tab selector for the unified Feed sidebar (News + Discord + Screenshots).
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum FeedTab { News, Discord, Screenshots, Plays }
+pub(crate) enum FeedTab { News, Discord, Screenshots }
 
 // ─── Chart Widgets (floating info cards on the chart canvas) ─────────────────
 
@@ -60,6 +60,25 @@ pub(crate) enum ChartWidgetKind {
     SignalDashboard,  // aggregate all active signals overview
     DivergenceMonitor,// active indicator divergences
     ConvictionMeter,  // aggregate conviction score from all signals
+    RsiMulti,         // concentric rings RSI across 7 timeframes
+    TrendAlign,       // multi-TF trend alignment dot grid
+    VolumeShelf,      // volume shelf map — ranked S/R levels
+    Confluence,       // S/R confluence meter — clustered levels
+    FlowCompass,      // institutional flow compass — directional bias
+    VolRegime,        // volatility regime panel — squeeze/expansion
+    MomentumHeat,     // momentum heatmap — ROC across lookbacks
+    BreadthThermo,    // breadth thermometer — dot matrix market health
+    SectorRotation,   // sector rotation radar — 2x2 quadrant
+    OptionsSentiment, // options sentiment composite gauge
+    RelStrength,      // relative strength radar — vs peers/market
+    RiskDash,         // risk dashboard — position sizing helper
+    EarningsMom,      // earnings momentum — EPS/revenue trends
+    LiquidityScore,   // liquidity score gauge
+    SignalRadar,      // radial map of all active ApexSignals
+    CrossAssetPulse,  // compact multi-asset dashboard grid
+    TapeSpeed,        // trade velocity speedometer
+    PositionsPanel,   // all account positions with P&L + close buttons
+    DailyPnl,         // hero daily P&L number + close all button
     Custom,           // user-defined (future: extension widget)
 }
 
@@ -90,6 +109,25 @@ impl ChartWidgetKind {
             Self::SignalDashboard=> "Signal Dashboard",
             Self::DivergenceMonitor => "Divergences",
             Self::ConvictionMeter=> "Conviction",
+            Self::RsiMulti       => "RSI Multi",
+            Self::TrendAlign     => "Trend Align",
+            Self::VolumeShelf    => "Vol Shelves",
+            Self::Confluence     => "Confluence",
+            Self::FlowCompass    => "Flow",
+            Self::VolRegime      => "Vol Regime",
+            Self::MomentumHeat   => "Momentum",
+            Self::BreadthThermo  => "Breadth",
+            Self::SectorRotation => "Sectors",
+            Self::OptionsSentiment => "Options",
+            Self::RelStrength    => "Rel Strength",
+            Self::RiskDash       => "Risk",
+            Self::EarningsMom    => "Earnings",
+            Self::LiquidityScore => "Liquidity",
+            Self::SignalRadar    => "Signal Radar",
+            Self::CrossAssetPulse => "Market Pulse",
+            Self::TapeSpeed      => "Tape Speed",
+            Self::PositionsPanel => "Positions",
+            Self::DailyPnl       => "Daily P&L",
             Self::Custom         => "Custom",
         }
     }
@@ -119,6 +157,25 @@ impl ChartWidgetKind {
             Self::SignalDashboard=> "\u{2630}",  // ☰
             Self::DivergenceMonitor => "\u{21C5}",// ⇅
             Self::ConvictionMeter=> "\u{2605}",  // ★
+            Self::RsiMulti       => "\u{25CE}",  // ◎
+            Self::TrendAlign     => "\u{2593}",  // ▓
+            Self::VolumeShelf    => "\u{2586}",  // ▆
+            Self::Confluence     => "\u{2261}",  // ≡
+            Self::FlowCompass    => "\u{29BF}",  // ⦿
+            Self::VolRegime      => "\u{224B}",  // ≋
+            Self::MomentumHeat   => "\u{2588}",  // █
+            Self::BreadthThermo  => "\u{25A3}",  // ▣
+            Self::SectorRotation => "\u{25D4}",  // ◔
+            Self::OptionsSentiment => "\u{25D5}", // ◕
+            Self::RelStrength    => "\u{29BE}",  // ⦾
+            Self::RiskDash       => "\u{26A0}",  // ⚠
+            Self::EarningsMom    => "\u{2197}",  // ↗
+            Self::LiquidityScore => "\u{25C9}",  // ◉
+            Self::SignalRadar    => "\u{25C8}",  // ◈
+            Self::CrossAssetPulse => "\u{229E}", // ⊞
+            Self::TapeSpeed      => "\u{23F1}",  // ⏱
+            Self::PositionsPanel => "\u{1F4BC}", // 💼
+            Self::DailyPnl       => "\u{1F4B0}", // 💰
             Self::Custom         => "\u{2699}",  // ⚙
         }
     }
@@ -128,7 +185,13 @@ impl ChartWidgetKind {
           Self::MarketBreadth, Self::Correlation, Self::DarkPool, Self::PositionPnl,
           Self::EarningsBadge, Self::NewsTicker, Self::ExitGauge, Self::PrecursorAlert,
           Self::TradePlan, Self::ChangePoints, Self::ZoneStrength, Self::PatternScanner,
-          Self::VixMonitor, Self::SignalDashboard, Self::DivergenceMonitor, Self::ConvictionMeter]
+          Self::VixMonitor, Self::SignalDashboard, Self::DivergenceMonitor, Self::ConvictionMeter,
+          Self::RsiMulti, Self::TrendAlign, Self::VolumeShelf, Self::Confluence,
+          Self::FlowCompass, Self::VolRegime, Self::MomentumHeat, Self::BreadthThermo,
+          Self::SectorRotation, Self::OptionsSentiment, Self::RelStrength,
+          Self::RiskDash, Self::EarningsMom, Self::LiquidityScore,
+          Self::SignalRadar, Self::CrossAssetPulse, Self::TapeSpeed,
+          Self::PositionsPanel, Self::DailyPnl]
     }
 }
 
@@ -210,6 +273,25 @@ impl ChartWidget {
             ChartWidgetKind::SignalDashboard=> (200.0, 160.0),
             ChartWidgetKind::DivergenceMonitor => (180.0, 110.0),
             ChartWidgetKind::ConvictionMeter=> (160.0, 120.0),
+            ChartWidgetKind::RsiMulti       => (220.0, 220.0),
+            ChartWidgetKind::TrendAlign     => (200.0, 170.0),
+            ChartWidgetKind::VolumeShelf    => (190.0, 160.0),
+            ChartWidgetKind::Confluence     => (190.0, 150.0),
+            ChartWidgetKind::FlowCompass    => (180.0, 180.0),
+            ChartWidgetKind::VolRegime      => (200.0, 190.0),
+            ChartWidgetKind::MomentumHeat   => (200.0, 100.0),
+            ChartWidgetKind::BreadthThermo  => (190.0, 170.0),
+            ChartWidgetKind::SectorRotation => (200.0, 190.0),
+            ChartWidgetKind::OptionsSentiment => (180.0, 160.0),
+            ChartWidgetKind::RelStrength    => (190.0, 180.0),
+            ChartWidgetKind::RiskDash       => (200.0, 140.0),
+            ChartWidgetKind::EarningsMom    => (200.0, 150.0),
+            ChartWidgetKind::LiquidityScore => (170.0, 140.0),
+            ChartWidgetKind::SignalRadar    => (210.0, 210.0),
+            ChartWidgetKind::CrossAssetPulse => (200.0, 160.0),
+            ChartWidgetKind::TapeSpeed      => (170.0, 140.0),
+            ChartWidgetKind::PositionsPanel => (220.0, 200.0),
+            ChartWidgetKind::DailyPnl       => (260.0, 80.0),
             ChartWidgetKind::Custom         => (150.0, 90.0),
         };
         Self { kind, x, y, w, h, visible: true, collapsed: false, locked: false,
@@ -233,6 +315,109 @@ impl WidgetPreset {
 
 // ─── Plays / Playbook (shareable strategy cards) ─────────────────────────────
 
+/// Play type — determines which chart elements are spawned and which form fields appear.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum PlayType {
+    Directional,  // simple long/short: entry + target + stop
+    Bracket,      // entry + TP + SL as unified bracket
+    Scalp,        // entry + tight target, no stop, time-limited
+    Swing,        // entry + T1/T2/T3 partial exits
+    Spread,       // two legs with net debit/credit
+    Event,        // catalyst-tied with pre/post levels
+}
+
+impl PlayType {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Directional => "Directional",
+            Self::Bracket     => "Bracket",
+            Self::Scalp       => "Scalp",
+            Self::Swing       => "Swing",
+            Self::Spread      => "Spread",
+            Self::Event       => "Event",
+        }
+    }
+    pub fn icon(self) -> &'static str {
+        match self {
+            Self::Directional => "\u{2191}",  // ↑
+            Self::Bracket     => "\u{2696}",  // ⚖
+            Self::Scalp       => "\u{26A1}",  // ⚡
+            Self::Swing       => "\u{301C}",  // 〜
+            Self::Spread      => "\u{2194}",  // ↔
+            Self::Event       => "\u{1F4C5}", // 📅
+        }
+    }
+    pub fn all() -> &'static [Self] {
+        &[Self::Directional, Self::Bracket, Self::Scalp, Self::Swing, Self::Spread, Self::Event]
+    }
+}
+
+/// A target level in a multi-target play (Swing).
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PlayTarget {
+    pub price: f32,
+    pub pct: f32,       // allocation % (0.0-1.0), all targets must sum to 1.0
+    pub label: String,  // "T1", "T2", "T3"
+}
+
+/// A leg in a spread play.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct SpreadLeg {
+    pub contract: String,       // "450C 0DTE"
+    pub side: PlayDirection,    // buy or sell this leg
+    pub price: f32,
+    pub quantity: u32,
+}
+
+/// Play line kind — which price level this line represents on the chart.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum PlayLineKind {
+    Entry,
+    Target,   // T1 / primary target
+    Stop,
+    Target2,
+    Target3,
+}
+
+impl PlayLineKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Entry   => "ENTRY",
+            Self::Target  => "TARGET",
+            Self::Stop    => "STOP",
+            Self::Target2 => "T2",
+            Self::Target3 => "T3",
+        }
+    }
+    pub fn short(self) -> &'static str {
+        match self {
+            Self::Entry   => "E",
+            Self::Target  => "T",
+            Self::Stop    => "S",
+            Self::Target2 => "T2",
+            Self::Target3 => "T3",
+        }
+    }
+}
+
+/// A draggable price line on the chart, synced with the play editor form.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PlayLine {
+    pub id: u32,
+    pub kind: PlayLineKind,
+    pub price: f32,
+}
+
+/// A saved play template (preset).
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PlayTemplate {
+    pub name: String,
+    pub play_type: PlayType,
+    pub direction: PlayDirection,
+    pub rr_ratio: f32,          // auto-compute stop from entry+target
+    pub default_tags: Vec<String>,
+}
+
 /// A Play is a shareable one-click trade card: ticker + entry + exit + stop.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Play {
@@ -240,9 +425,12 @@ pub(crate) struct Play {
     pub title: String,         // "AAPL Bull Call Spread" or "SPY Breakout Long"
     pub symbol: String,
     pub direction: PlayDirection,
+    pub play_type: PlayType,
     pub entry_price: f32,
     pub target_price: f32,
     pub stop_price: f32,
+    pub targets: Vec<PlayTarget>,     // T2/T3 for Swing plays
+    pub spread_legs: Vec<SpreadLeg>,  // legs for Spread plays
     pub contract: String,      // empty for equity, "450C 0DTE" for options
     pub quantity: u32,
     pub status: PlayStatus,
@@ -251,6 +439,7 @@ pub(crate) struct Play {
     pub created_at: i64,       // unix timestamp
     pub risk_reward: f32,      // computed: (target - entry) / (entry - stop)
     pub tags: Vec<String>,     // "momentum", "breakout", "earnings", etc.
+    pub template_name: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -281,7 +470,7 @@ impl PlayStatus {
 }
 
 impl Play {
-    pub fn new(symbol: &str, direction: PlayDirection, entry: f32, target: f32, stop: f32) -> Self {
+    pub fn new(symbol: &str, direction: PlayDirection, play_type: PlayType, entry: f32, target: f32, stop: f32) -> Self {
         let rr = if (entry - stop).abs() > 0.001 {
             (target - entry).abs() / (entry - stop).abs()
         } else { 0.0 };
@@ -289,13 +478,15 @@ impl Play {
             id: uuid::Uuid::new_v4().to_string(),
             title: format!("{} {}", symbol, direction.label()),
             symbol: symbol.into(),
-            direction, entry_price: entry, target_price: target, stop_price: stop,
+            direction, play_type, entry_price: entry, target_price: target, stop_price: stop,
+            targets: vec![], spread_legs: vec![],
             contract: String::new(), quantity: 1,
             status: PlayStatus::Draft,
             author: String::new(), notes: String::new(),
             created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64,
             risk_reward: rr,
             tags: vec![],
+            template_name: None,
         }
     }
 }

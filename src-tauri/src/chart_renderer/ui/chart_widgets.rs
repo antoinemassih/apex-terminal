@@ -35,18 +35,13 @@ pub(crate) fn draw_widgets(
     rect: egui::Rect,
     t: &Theme,
 ) {
-    // ── Auto-hide during draw mode ──
-    if !chart.draw_tool.is_empty() {
-        if chart.chart_widgets.iter().any(|w| w.visible) {
-            let p = ui.painter_at(rect);
-            p.text(egui::pos2(rect.right() - 8.0, rect.top() + 12.0),
-                egui::Align2::RIGHT_CENTER, "\u{25C9}",
-                egui::FontId::proportional(FONT_SM), color_alpha(t.dim, ALPHA_MUTED));
-        }
-        return;
-    }
+    // ── Fade during draw mode (non-interactive but still visible) ──
+    let draw_faded = !chart.draw_tool.is_empty();
 
-    let painter = ui.painter_at(rect);
+    let mut painter = ui.painter_at(rect);
+    if draw_faded {
+        painter.set_opacity(0.18);
+    }
     let wd = WidgetData::from_chart(chart);
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -172,7 +167,7 @@ pub(crate) fn draw_widgets(
         };
 
         // Check if pointer is hovering anywhere on the card (for HUD overlay)
-        let card_hovered = ui.rect_contains_pointer(card_rect);
+        let card_hovered = !draw_faded && ui.rect_contains_pointer(card_rect);
 
         // ── Render based on display mode ──
         if mode == WidgetDisplayMode::Card {
@@ -204,7 +199,7 @@ pub(crate) fn draw_widgets(
             painter.text(egui::pos2(tr.left() + 10.0, tr.center().y),
                 egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(FONT_MD), t.accent);
             painter.text(egui::pos2(tr.left() + 24.0, tr.center().y),
-                egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+                egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(FONT_SM), t.text);
             let chev = if w.collapsed { "\u{25B6}" } else { "\u{25BC}" };
             painter.text(egui::pos2(tr.right() - 12.0, tr.center().y),
                 egui::Align2::CENTER_CENTER, chev, egui::FontId::proportional(6.0), t.dim.gamma_multiply(0.4));
@@ -279,7 +274,7 @@ pub(crate) fn draw_widgets(
                 let hovered = ptr.map(|p| pill.contains(p)).unwrap_or(false);
                 painter.text(pill.center(), egui::Align2::CENTER_CENTER,
                     mode_icon, egui::FontId::proportional(FONT_XS),
-                    if hovered { t.accent } else { TEXT_PRIMARY });
+                    if hovered { t.accent } else { t.text });
                 card_toggle_rect = Some(pill);
             }
         } else {
@@ -311,15 +306,10 @@ pub(crate) fn draw_widgets(
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // Interaction — magnetic dock model
-        //
-        // The widget is always being dragged freely with a grab cursor.
-        // When the pointer enters the snap zone near an edge, vertical
-        // movement locks (magnetic hold) and the widget slides along the
-        // strip. If the user pulls vertically past the yank threshold,
-        // the hold breaks and the widget floats free again.
+        // Interaction — magnetic dock model (disabled when draw-faded)
         // ══════════════════════════════════════════════════════════════════
 
+        if !draw_faded {
         let sense = egui::Sense::click_and_drag();
 
         // Interaction area: title bar for Card, thin grab strip for others
@@ -421,9 +411,12 @@ pub(crate) fn draw_widgets(
                 }
             }
         }
+        } // end !draw_faded
     }
 
     // Apply deferred actions (no borrow conflicts here — loop is done)
+    // Skip all interactions when faded (draw mode active)
+    if !draw_faded {
     if let Some(wi) = collapse_toggle {
         chart.chart_widgets[wi].collapsed = !chart.chart_widgets[wi].collapsed;
     }
@@ -508,6 +501,7 @@ pub(crate) fn draw_widgets(
             CtxAction::Undock(wi) => chart.chart_widgets[wi].dock = WidgetDock::Float,
         }
     }
+    } // end !draw_faded
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -550,7 +544,7 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
             let close_utc = 20 * 3600i64;
             let rem = if day_secs < close_utc { close_utc - day_secs } else { 86400 - day_secs + close_utc };
             let h = rem / 3600; let m = (rem % 3600) / 60;
-            ("TMR", format!("{:02}:{:02}", h, m), TEXT_PRIMARY)
+            ("TMR", format!("{:02}:{:02}", h, m), t.text)
         }
         ChartWidgetKind::VolumeProfile => ("VOL", "profile".into(), t.dim),
         ChartWidgetKind::KeyLevels => {
@@ -618,6 +612,63 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
             let c = if score > 70.0 { t.bull } else if score > 40.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
             ("\u{2605}", format!("{:.0}", score), c)
         }
+        ChartWidgetKind::RsiMulti => {
+            let avg: f32 = wd.rsi_multi.iter().sum::<f32>() / 7.0;
+            let c = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+            ("RSI", format!("{:.0}", avg), c)
+        }
+        ChartWidgetKind::TrendAlign => {
+            let aligned = wd.trend_grid.iter().filter(|r| r.iter().all(|&v| v)).count();
+            let c = if aligned >= 5 { t.bull } else if aligned >= 3 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+            ("TRD", format!("{}/7", aligned), c)
+        }
+        ChartWidgetKind::VolumeShelf => ("VOL", format!("{}", wd.vol_shelves.len()), t.accent),
+        ChartWidgetKind::Confluence => ("S/R", format!("{}", wd.confluence_zones.len()), t.accent),
+        ChartWidgetKind::FlowCompass => ("FLW", "—".into(), t.accent),
+        ChartWidgetKind::VolRegime => ("VOL", wd.vol_regime_label.into(), t.accent),
+        ChartWidgetKind::MomentumHeat => {
+            let avg: f32 = wd.roc_bars.iter().sum::<f32>() / 8.0;
+            let c = if avg > 0.0 { t.bull } else { t.bear };
+            ("ROC", format!("{:+.1}", avg), c)
+        }
+        ChartWidgetKind::BreadthThermo => {
+            let c = if wd.breadth_score > 60.0 { t.bull } else if wd.breadth_score < 40.0 { t.bear } else { t.dim };
+            ("BRD", format!("{:.0}", wd.breadth_score), c)
+        }
+        ChartWidgetKind::SectorRotation => ("SEC", "radar".into(), t.accent),
+        ChartWidgetKind::OptionsSentiment => ("OPT", "—".into(), t.accent),
+        ChartWidgetKind::RelStrength => {
+            let c = if wd.rs_rank > 70.0 { t.bull } else if wd.rs_rank < 30.0 { t.bear } else { t.dim };
+            ("RS", format!("{:.0}", wd.rs_rank), c)
+        }
+        ChartWidgetKind::RiskDash => ("RSK", "calc".into(), t.accent),
+        ChartWidgetKind::EarningsMom => ("ERN", "—".into(), t.accent),
+        ChartWidgetKind::SignalRadar => {
+            let active = if wd.trend_score > 0.0 { 1 } else { 0 }
+                + if wd.precursor_active { 1 } else { 0 }
+                + if wd.trade_plan.is_some() { 1 } else { 0 }
+                + if wd.exit_gauge_score > 0.0 { 1 } else { 0 };
+            ("SIG", format!("{}/10", active), t.accent)
+        }
+        ChartWidgetKind::CrossAssetPulse => ("MKT", "live".into(), t.accent),
+        ChartWidgetKind::TapeSpeed => {
+            let speed = wd.vol_ratio;
+            let c = if speed > 2.0 { t.bear } else if speed > 1.2 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
+            ("SPD", format!("{:.1}x", speed), c)
+        }
+        ChartWidgetKind::LiquidityScore => {
+            let c = if wd.liquidity_score > 70.0 { t.bull } else if wd.liquidity_score < 30.0 { t.bear } else { t.dim };
+            ("LIQ", format!("{:.0}", wd.liquidity_score), c)
+        }
+        ChartWidgetKind::PositionsPanel => {
+            let n = wd.all_positions.len();
+            let c = if wd.day_pnl >= 0.0 { t.bull } else { t.bear };
+            ("POS", format!("{} / {:+.0}", n, wd.day_pnl), c)
+        }
+        ChartWidgetKind::DailyPnl => {
+            let c = if wd.day_pnl >= 0.0 { t.bull } else { t.bear };
+            ("P&L", format!("{:+.0}", wd.day_pnl), c)
+        }
         ChartWidgetKind::Custom => ("USR", "—".into(), t.dim),
     }
 }
@@ -653,6 +704,25 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::SignalDashboard=> draw_signal_dashboard(p, body, wd, t),
         ChartWidgetKind::DivergenceMonitor => draw_divergence_monitor(p, body, wd, t),
         ChartWidgetKind::ConvictionMeter=> draw_conviction_meter(p, body, wd, t),
+        ChartWidgetKind::RsiMulti      => draw_rsi_multi(p, body, wd, t),
+        ChartWidgetKind::TrendAlign    => draw_trend_align(p, body, wd, t),
+        ChartWidgetKind::VolumeShelf   => draw_volume_shelf(p, body, wd, t),
+        ChartWidgetKind::Confluence    => draw_confluence(p, body, wd, t),
+        ChartWidgetKind::FlowCompass   => draw_flow_compass(p, body, wd, t),
+        ChartWidgetKind::VolRegime     => draw_vol_regime(p, body, wd, t),
+        ChartWidgetKind::MomentumHeat  => draw_momentum_heat(p, body, wd, t),
+        ChartWidgetKind::BreadthThermo => draw_breadth_thermo(p, body, wd, t),
+        ChartWidgetKind::SectorRotation=> draw_sector_rotation(p, body, wd, t),
+        ChartWidgetKind::OptionsSentiment => draw_options_sentiment(p, body, wd, t),
+        ChartWidgetKind::RelStrength   => draw_rel_strength(p, body, wd, t),
+        ChartWidgetKind::RiskDash      => draw_risk_dash(p, body, wd, t),
+        ChartWidgetKind::EarningsMom   => draw_earnings_mom(p, body, wd, t),
+        ChartWidgetKind::LiquidityScore=> draw_liquidity_score(p, body, wd, t),
+        ChartWidgetKind::SignalRadar   => draw_signal_radar(p, body, wd, t),
+        ChartWidgetKind::CrossAssetPulse => draw_cross_asset(p, body, wd, t),
+        ChartWidgetKind::TapeSpeed     => draw_tape_speed(p, body, wd, t),
+        ChartWidgetKind::PositionsPanel=> draw_positions_panel(p, body, wd, t),
+        ChartWidgetKind::DailyPnl      => draw_daily_pnl(p, body, wd, t),
         ChartWidgetKind::Custom        => draw_custom(p, body, t),
     }
 }
@@ -708,6 +778,39 @@ struct WidgetData {
     vix_convergence: f32,
     divergence_count: usize,
     bars_loaded: bool, // false = show loading skeleton
+    // RSI Multi-timeframe: [5m, 15m, 30m, 1h, 4h, 1d, 1w]
+    rsi_multi: [f32; 7],
+    // Trend alignment: 7 TFs × 4 indicators (EMA slope, MACD, price>VWAP, RSI>50)
+    trend_grid: [[bool; 4]; 7],
+    // Momentum ROC across 8 lookbacks
+    roc_bars: [f32; 8],
+    // Volume shelves: (price, volume_pct, is_support)
+    vol_shelves: Vec<(f32, f32, bool)>,
+    // Confluence zones: (price, count, distance_pct)
+    confluence_zones: Vec<(f32, u8, f32)>,
+    // Volatility regime metrics
+    bb_width: f32,      // Bollinger bandwidth
+    atr_percentile: f32, // ATR vs 100-bar range
+    vol_regime_label: &'static str,
+    // Breadth (simulated from chart data)
+    breadth_score: f32,
+    // Relative strength
+    rs_rank: f32, // 0-100 percentile
+    // Liquidity
+    liquidity_score: f32,
+    // All account positions (for PositionsPanel)
+    all_positions: Vec<PositionRow>,
+    day_pnl: f32,
+}
+
+/// One row in the positions panel.
+#[derive(Clone)]
+struct PositionRow {
+    symbol: String,
+    qty: i32,
+    market_value: f64,
+    unrealized_pnl: f32,
+    pnl_pct: f32,
 }
 
 impl WidgetData {
@@ -824,6 +927,42 @@ impl WidgetData {
         let change_points_latest = chart.change_points.last()
             .map(|(_, t, _)| t.clone()).unwrap_or_default();
 
+        // ── All positions for PositionsPanel ──
+        let (all_positions, day_pnl) = {
+            let live = crate::chart_renderer::trading::read_account_data()
+                .and_then(|(summary, positions, _)| {
+                    if positions.is_empty() { None }
+                    else {
+                        let rows: Vec<PositionRow> = positions.iter().map(|p| {
+                            let pnl_pct = if p.avg_price > 0.0 {
+                                (p.current_price - p.avg_price) / p.avg_price * 100.0
+                                    * if p.qty < 0 { -1.0 } else { 1.0 }
+                            } else { 0.0 };
+                            PositionRow {
+                                symbol: p.symbol.clone(),
+                                qty: p.qty,
+                                market_value: p.market_value,
+                                unrealized_pnl: p.unrealized_pnl as f32,
+                                pnl_pct,
+                            }
+                        }).collect();
+                        Some((rows, summary.daily_pnl as f32))
+                    }
+                });
+            live.unwrap_or_else(|| {
+                // Placeholder positions when no account connected
+                let rows = vec![
+                    PositionRow { symbol: "AAPL".into(),  qty: 100,  market_value: 21_450.0, unrealized_pnl: 325.0,  pnl_pct: 1.54 },
+                    PositionRow { symbol: "NVDA".into(),  qty: 50,   market_value: 5_680.0,  unrealized_pnl: -142.0, pnl_pct: -2.44 },
+                    PositionRow { symbol: "TSLA".into(),  qty: -30,  market_value: 7_920.0,  unrealized_pnl: 418.0,  pnl_pct: 5.57 },
+                    PositionRow { symbol: "SPY".into(),   qty: 200,  market_value: 110_400.0,unrealized_pnl: -89.0,  pnl_pct: -0.08 },
+                    PositionRow { symbol: "MSFT".into(),  qty: 75,   market_value: 31_500.0, unrealized_pnl: 210.0,  pnl_pct: 0.67 },
+                ];
+                let total: f32 = rows.iter().map(|r| r.unrealized_pnl).sum();
+                (rows, total)
+            })
+        };
+
         WidgetData {
             trend_score: chart.trend_health_score,
             trend_dir: chart.trend_health_direction,
@@ -848,6 +987,34 @@ impl WidgetData {
             vix_convergence: chart.vix_convergence_score,
             divergence_count: 0, // populated when divergence overlays are active
             bars_loaded: n > 0,
+            // ── Computed analytics for new widgets ──
+            trend_grid: compute_trend_grid(bars),
+            roc_bars: compute_roc_bars(bars),
+            vol_shelves: compute_vol_shelves(bars),
+            confluence_zones: compute_confluence(bars, last_close),
+            bb_width: compute_bb_width(bars),
+            atr_percentile: compute_atr_percentile(bars),
+            vol_regime_label: {
+                let bbw = compute_bb_width(bars);
+                let atrp = compute_atr_percentile(bars);
+                if bbw < 0.03 && atrp < 30.0 { "SQUEEZE" }
+                else if bbw > 0.08 || atrp > 70.0 { "EXPANSION" }
+                else if atrp > 50.0 { "ELEVATED" }
+                else { "NORMAL" }
+            },
+            breadth_score: compute_breadth(bars),
+            rs_rank: compute_rs_rank(bars),
+            liquidity_score: compute_liquidity(bars),
+            rsi_multi: [
+                compute_rsi(bars, 7),    // 5m  — fast
+                compute_rsi(bars, 10),   // 15m — medium-fast
+                compute_rsi(bars, 14),   // 30m — standard
+                compute_rsi(bars, 21),   // 1h  — medium
+                compute_rsi(bars, 42),   // 4h  — slow
+                compute_rsi(bars, 70),   // 1d  — daily
+                compute_rsi(bars, 140),  // 1w  — weekly
+            ],
+            all_positions, day_pnl,
         }
     }
 }
@@ -933,17 +1100,45 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
 }
 
 fn hero_number(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
+    // Proportional font for display numbers — editorial infographic style
     p.text(pos + egui::vec2(0.0, 0.5), egui::Align2::CENTER_CENTER,
-        text, egui::FontId::monospace(22.0),
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 25));
+        text, egui::FontId::proportional(26.0),
+        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 20));
     p.text(pos, egui::Align2::CENTER_CENTER,
-        text, egui::FontId::monospace(22.0), color);
+        text, egui::FontId::proportional(26.0), color);
 }
 
 fn sub_label(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
+    // Uppercase tracked label — editorial style
     p.text(pos, egui::Align2::CENTER_CENTER,
         text, egui::FontId::monospace(FONT_XS),
         Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 140));
+}
+
+/// Donut ring gauge — thick arc with value in center (infographic style).
+fn donut_ring(p: &egui::Painter, center: egui::Pos2, radius: f32, thickness: f32,
+              value: f32, max: f32, color: Color32, track_color: Color32) {
+    let segs = 48;
+    let tau = std::f32::consts::TAU;
+
+    // Track (full circle)
+    draw_arc(p, center, radius, 0.0, tau, egui::Stroke::new(thickness, track_color), segs);
+
+    // Value arc (starting from top, going clockwise)
+    let frac = (value / max).clamp(0.0, 1.0);
+    // Rotate so 0 is at top: start at -PI/2, go clockwise
+    let start = -std::f32::consts::FRAC_PI_2;
+    for i in 0..segs {
+        let t0 = i as f32 / segs as f32;
+        let t1 = (i + 1) as f32 / segs as f32;
+        if t0 >= frac { break; }
+        let t1 = t1.min(frac);
+        let a0 = start + t0 * tau;
+        let a1 = start + t1 * tau;
+        let p0 = egui::pos2(center.x + radius * a0.cos(), center.y + radius * a0.sin());
+        let p1 = egui::pos2(center.x + radius * a1.cos(), center.y + radius * a1.sin());
+        p.line_segment([p0, p1], egui::Stroke::new(thickness, color));
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -960,38 +1155,26 @@ fn draw_trend_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
         lerp_color(t.bear, Color32::from_rgb(255, 191, 0), (score - 33.0) / 33.0)
     } else { t.bear };
 
-    let gauge_cy = body.top() + 38.0;
+    // Donut ring gauge (infographic style)
+    let gauge_cy = body.top() + 42.0;
     let r = 28.0;
+    let track = color_alpha(t.toolbar_border, ALPHA_MUTED);
+    donut_ring(p, egui::pos2(cx, gauge_cy), r, 5.0, score, 100.0, color, track);
 
-    draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI, Stroke::new(3.0,
-        color_alpha(t.toolbar_border, ALPHA_MUTED)), 40);
-    let sweep = (score / 100.0) * PI;
-    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI, Stroke::new(3.5, color), 30);
+    // Score in center of donut
+    p.text(egui::pos2(cx, gauge_cy), egui::Align2::CENTER_CENTER,
+        &format!("{:.0}", score), egui::FontId::proportional(22.0), color);
 
-    for pct in [0.0, 0.25, 0.5, 0.75, 1.0] {
-        let a = PI - pct * PI;
-        let inner = r - 5.0;
-        let outer = r + 2.0;
-        let p1 = egui::pos2(cx + inner * a.cos(), gauge_cy - inner * a.sin());
-        let p2 = egui::pos2(cx + outer * a.cos(), gauge_cy - outer * a.sin());
-        p.line_segment([p1, p2], Stroke::new(STROKE_THIN, color_alpha(t.dim, ALPHA_DIM)));
-    }
-
-    let needle_a = PI - (score / 100.0) * PI;
-    let needle_end = egui::pos2(cx + (r - 8.0) * needle_a.cos(), gauge_cy - (r - 8.0) * needle_a.sin());
-    p.line_segment([egui::pos2(cx, gauge_cy), needle_end], Stroke::new(1.5, Color32::WHITE));
-    p.circle_filled(egui::pos2(cx, gauge_cy), 3.0, Color32::WHITE);
-
-    hero_number(p, egui::pos2(cx, gauge_cy + 14.0), &format!("{:.0}", score), color);
-
+    // Regime label below donut
     let regime = if wd.trend_regime.is_empty() {
         if score > 66.0 { "STRONG" } else if score > 33.0 { "MIXED" } else { "WEAK" }
     } else { &wd.trend_regime };
-    sub_label(p, egui::pos2(cx, gauge_cy + 32.0), regime, color);
+    sub_label(p, egui::pos2(cx, gauge_cy + r + 14.0), regime, color);
 
+    // Direction arrow
     let dir_icon = match wd.trend_dir { d if d > 0 => "\u{25B2}", d if d < 0 => "\u{25BC}", _ => "\u{25C6}" };
     let dir_col = match wd.trend_dir { d if d > 0 => t.bull, d if d < 0 => t.bear, _ => t.dim };
-    p.text(egui::pos2(cx + 30.0, gauge_cy + 14.0), egui::Align2::LEFT_CENTER,
+    p.text(egui::pos2(cx, gauge_cy + r + 26.0), egui::Align2::CENTER_CENTER,
         dir_icon, egui::FontId::proportional(FONT_SM), dir_col);
 }
 
@@ -1004,30 +1187,20 @@ fn draw_momentum_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
         else if rsi < 30.0 { t.bear }
         else { Color32::from_rgb(255, 191, 0) };
 
-    let gauge_cy = body.top() + 36.0;
+    // Donut ring for RSI
+    let gauge_cy = body.top() + 40.0;
     let r = 26.0;
+    let track = color_alpha(t.toolbar_border, ALPHA_MUTED);
+    donut_ring(p, egui::pos2(cx, gauge_cy), r, 5.0, rsi, 100.0, rsi_color, track);
 
-    draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
-        Stroke::new(2.5, color_alpha(t.toolbar_border, ALPHA_MUTED)), 40);
-    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI * 0.7, PI,
-        Stroke::new(2.5, color_alpha(t.bear, ALPHA_MUTED)), 10);
-    draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI * 0.3,
-        Stroke::new(2.5, color_alpha(t.bull, ALPHA_MUTED)), 10);
-
-    let sweep = (rsi / 100.0) * PI;
-    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI,
-        Stroke::new(3.0, rsi_color), 30);
-
-    let a = PI - (rsi / 100.0) * PI;
-    let ne = egui::pos2(cx + (r - 7.0) * a.cos(), gauge_cy - (r - 7.0) * a.sin());
-    p.line_segment([egui::pos2(cx, gauge_cy), ne], Stroke::new(1.5, Color32::WHITE));
-    p.circle_filled(egui::pos2(cx, gauge_cy), 2.5, Color32::WHITE);
-
-    hero_number(p, egui::pos2(cx, gauge_cy + 12.0), &format!("{:.0}", rsi), rsi_color);
+    // RSI value in center
+    p.text(egui::pos2(cx, gauge_cy), egui::Align2::CENTER_CENTER,
+        &format!("{:.0}", rsi), egui::FontId::proportional(20.0), rsi_color);
 
     let zone = if rsi > 70.0 { "OVERBOUGHT" } else if rsi < 30.0 { "OVERSOLD" } else { "NEUTRAL" };
-    sub_label(p, egui::pos2(cx, gauge_cy + 30.0), zone, rsi_color);
+    sub_label(p, egui::pos2(cx, gauge_cy + r + 12.0), zone, rsi_color);
 
+    // Momentum ROC at bottom
     let mom_col = if mom > 0.0 { t.bull } else { t.bear };
     let mom_sign = if mom > 0.0 { "+" } else { "" };
     p.text(egui::pos2(body.right() - 8.0, body.bottom() - 8.0), egui::Align2::RIGHT_CENTER,
@@ -1128,7 +1301,7 @@ fn draw_session_timer(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         Stroke::new(2.5, progress_color), 40);
 
     let time_str = format!("{:02}:{:02}:{:02}", h, m, s);
-    hero_number(p, egui::pos2(cx, body.top() + 48.0), &time_str, TEXT_PRIMARY);
+    hero_number(p, egui::pos2(cx, body.top() + 48.0), &time_str, t.text);
     sub_label(p, egui::pos2(cx, body.top() + 66.0), "TO CLOSE", t.dim);
 }
 
@@ -1178,7 +1351,7 @@ fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     }
 }
 
-fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, _t: &Theme) {
+fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     let greeks: [(&str, f32, Color32); 4] = [
         ("\u{0394} Delta", 0.45, Color32::from_rgb(100, 200, 255)),
         ("\u{0393} Gamma", 0.032, Color32::from_rgb(180, 130, 255)),
@@ -1197,7 +1370,7 @@ fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, _t: &Theme) {
             *name, egui::FontId::monospace(FONT_SM), *color);
         let val_str = if val.abs() < 0.01 { format!("{:.3}", val) } else { format!("{:.2}", val) };
         p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
-            &val_str, egui::FontId::monospace(FONT_LG), TEXT_PRIMARY);
+            &val_str, egui::FontId::monospace(FONT_LG), t.text);
         let bar_x = left + 64.0;
         let bar_w = (val.abs() * bar_max_w * 2.0).min(bar_max_w);
         let bar_rect = egui::Rect::from_min_size(
@@ -1260,6 +1433,991 @@ fn draw_market_breadth(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(left, bar_y), egui::vec2(bar_w * bar_pct, 3.0)),
             1.0, color_alpha(*color, ALPHA_DIM));
     }
+}
+
+fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y - 4.0;
+    let tf_labels = ["5m", "15m", "30m", "1h", "4h", "1D", "1W"];
+
+    // Ring geometry: outermost = fastest (5m), innermost = slowest (1W)
+    let max_r = (body.width().min(body.height()) * 0.44).min(88.0);
+    let ring_gap = 2.0;
+    let ring_w = ((max_r - 14.0) / 7.0 - ring_gap).max(3.0);
+    let pi2 = std::f32::consts::TAU;
+    let start_angle = -std::f32::consts::FRAC_PI_2; // top
+
+    // Zone markers: thin reference arcs at RSI 30 and 70
+    let os_frac = 30.0 / 100.0; // oversold
+    let ob_frac = 70.0 / 100.0; // overbought
+
+    for (i, &rsi) in wd.rsi_multi.iter().enumerate() {
+        let ring_idx = i; // 0=5m(outer), 6=1W(inner)
+        let r = max_r - ring_idx as f32 * (ring_w + ring_gap);
+        let frac = (rsi / 100.0).clamp(0.0, 1.0);
+
+        // Color: gradient from bear (oversold) through amber to bull (overbought)
+        let color = if rsi > 70.0 {
+            t.bull
+        } else if rsi > 55.0 {
+            lerp_color(egui::Color32::from_rgb(255, 191, 0), t.bull, (rsi - 55.0) / 15.0)
+        } else if rsi > 45.0 {
+            egui::Color32::from_rgb(255, 191, 0) // amber neutral
+        } else if rsi > 30.0 {
+            lerp_color(t.bear, egui::Color32::from_rgb(255, 191, 0), (rsi - 30.0) / 15.0)
+        } else {
+            t.bear
+        };
+
+        // Track ring (full circle, very faint)
+        let track_alpha = if ring_idx == 0 { ALPHA_MUTED } else { ALPHA_FAINT };
+        draw_arc_ring(p, egui::pos2(cx, cy), r, ring_w, 0.0, pi2,
+            color_alpha(t.toolbar_border, track_alpha), 64);
+
+        // Value arc
+        let sweep = frac * pi2;
+        if sweep > 0.01 {
+            draw_arc_ring(p, egui::pos2(cx, cy), r, ring_w, start_angle, sweep, color, 48);
+        }
+
+        // Oversold/overbought tick marks on the track
+        for zone_frac in [os_frac, ob_frac] {
+            let a = start_angle + zone_frac * pi2;
+            let inner = r - ring_w * 0.5 - 1.0;
+            let outer = r + ring_w * 0.5 + 1.0;
+            let p1 = egui::pos2(cx + inner * a.cos(), cy + inner * a.sin());
+            let p2 = egui::pos2(cx + outer * a.cos(), cy + outer * a.sin());
+            p.line_segment([p1, p2], egui::Stroke::new(0.5, color_alpha(t.dim, ALPHA_FAINT)));
+        }
+
+        // Timeframe label — positioned at the end of the arc
+        let label_angle = start_angle + sweep + 0.15;
+        let label_r = r;
+        let lx = cx + label_r * label_angle.cos();
+        let ly = cy + label_r * label_angle.sin();
+        // Only show if there's room (sweep > 30%)
+        if frac > 0.15 {
+            p.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER,
+                tf_labels[i], egui::FontId::monospace(6.0),
+                color.gamma_multiply(0.7));
+        }
+
+        // Small dot at arc tip
+        let tip_angle = start_angle + sweep;
+        let dot_x = cx + r * tip_angle.cos();
+        let dot_y = cy + r * tip_angle.sin();
+        p.circle_filled(egui::pos2(dot_x, dot_y), ring_w * 0.35, color);
+    }
+
+    // Center: average RSI as hero number
+    let avg: f32 = wd.rsi_multi.iter().sum::<f32>() / 7.0;
+    let avg_col = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+    p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
+        &format!("{:.0}", avg), egui::FontId::proportional(24.0), avg_col);
+    p.text(egui::pos2(cx, cy + 12.0), egui::Align2::CENTER_CENTER,
+        "RSI", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+
+    // Legend: oversold/overbought zones at bottom
+    let legend_y = body.bottom() - 10.0;
+    let legend_lx = body.left() + 8.0;
+    p.circle_filled(egui::pos2(legend_lx, legend_y), 3.0, t.bear);
+    p.text(egui::pos2(legend_lx + 8.0, legend_y), egui::Align2::LEFT_CENTER,
+        "<30", egui::FontId::monospace(6.0), t.bear.gamma_multiply(0.7));
+    p.circle_filled(egui::pos2(legend_lx + 35.0, legend_y), 3.0, egui::Color32::from_rgb(255, 191, 0));
+    p.text(egui::pos2(legend_lx + 43.0, legend_y), egui::Align2::LEFT_CENTER,
+        "30-70", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+    p.circle_filled(egui::pos2(legend_lx + 80.0, legend_y), 3.0, t.bull);
+    p.text(egui::pos2(legend_lx + 88.0, legend_y), egui::Align2::LEFT_CENTER,
+        ">70", egui::FontId::monospace(6.0), t.bull.gamma_multiply(0.7));
+
+    // Timeframe labels on the right side of each ring (static positions)
+    let label_x = body.right() - 6.0;
+    for (i, label) in tf_labels.iter().enumerate() {
+        let r = max_r - i as f32 * (ring_w + ring_gap);
+        let ly = cy - r;
+        let rsi = wd.rsi_multi[i];
+        let color = if rsi > 70.0 { t.bull } else if rsi < 30.0 { t.bear } else { t.dim };
+        p.text(egui::pos2(label_x, ly), egui::Align2::RIGHT_CENTER,
+            &format!("{} {:.0}", label, rsi), egui::FontId::monospace(6.5), color);
+    }
+}
+
+/// Draw a thick arc ring (donut segment).
+// ═══════════════════════════════════════════════════════════════════════════════
+// Compute helpers for analytics widgets
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn compute_trend_grid(bars: &[crate::chart_renderer::types::Bar]) -> [[bool; 4]; 7] {
+    let n = bars.len();
+    let periods = [7, 10, 14, 21, 42, 70, 140]; // map to 7 timeframes
+    let mut grid = [[false; 4]; 7];
+    for (ti, &p) in periods.iter().enumerate() {
+        if n < p + 5 { continue; }
+        // Col 0: EMA slope positive
+        let ema_now = bars[n-1..n].iter().map(|b| b.close).sum::<f32>();
+        let ema_prev = bars[n-3..n-2].iter().map(|b| b.close).sum::<f32>();
+        grid[ti][0] = ema_now > ema_prev;
+        // Col 1: Close > SMA
+        let sma: f32 = bars[n.saturating_sub(p)..n].iter().map(|b| b.close).sum::<f32>() / p.min(n) as f32;
+        grid[ti][1] = bars[n-1].close > sma;
+        // Col 2: RSI > 50
+        grid[ti][2] = compute_rsi(bars, p) > 50.0;
+        // Col 3: Higher high
+        if n > p + 1 {
+            grid[ti][3] = bars[n-1].high > bars[n.saturating_sub(p/2+1)].high;
+        }
+    }
+    grid
+}
+
+fn compute_roc_bars(bars: &[crate::chart_renderer::types::Bar]) -> [f32; 8] {
+    let n = bars.len();
+    let lookbacks = [1, 2, 5, 10, 20, 60, 120, 252];
+    let mut roc = [0.0f32; 8];
+    for (i, &lb) in lookbacks.iter().enumerate() {
+        if n > lb && bars[n - lb - 1].close > 0.0 {
+            roc[i] = (bars[n-1].close - bars[n-lb-1].close) / bars[n-lb-1].close * 100.0;
+        }
+    }
+    roc
+}
+
+fn compute_vol_shelves(bars: &[crate::chart_renderer::types::Bar]) -> Vec<(f32, f32, bool)> {
+    let n = bars.len();
+    if n < 20 { return vec![]; }
+    let recent = &bars[n.saturating_sub(100)..n];
+    let lo = recent.iter().map(|b| b.low).fold(f32::INFINITY, f32::min);
+    let hi = recent.iter().map(|b| b.high).fold(f32::NEG_INFINITY, f32::max);
+    let range = (hi - lo).max(0.01);
+    let bins = 10;
+    let mut vol = vec![0.0f32; bins];
+    for b in recent {
+        let mid = (b.high + b.low) / 2.0;
+        let idx = ((mid - lo) / range * (bins - 1) as f32) as usize;
+        vol[idx.min(bins - 1)] += b.volume;
+    }
+    let max_vol = vol.iter().cloned().fold(0.0f32, f32::max).max(1.0);
+    let last = bars[n-1].close;
+    let mut shelves: Vec<(f32, f32, bool)> = vol.iter().enumerate()
+        .filter(|(_, &v)| v > max_vol * 0.3)
+        .map(|(i, &v)| {
+            let price = lo + (i as f32 + 0.5) * range / bins as f32;
+            (price, v / max_vol, price < last)
+        }).collect();
+    shelves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    shelves.truncate(5);
+    shelves
+}
+
+fn compute_confluence(bars: &[crate::chart_renderer::types::Bar], last: f32) -> Vec<(f32, u8, f32)> {
+    let n = bars.len();
+    if n < 20 || last < 0.01 { return vec![]; }
+    let mut levels: Vec<f32> = Vec::new();
+    // SMAs
+    for p in [20, 50, 100, 200] {
+        if n >= p { levels.push(bars[n.saturating_sub(p)..n].iter().map(|b| b.close).sum::<f32>() / p as f32); }
+    }
+    // Pivots
+    let (h, l) = (bars[n.saturating_sub(20)..n].iter().map(|b| b.high).fold(f32::NEG_INFINITY, f32::max),
+                  bars[n.saturating_sub(20)..n].iter().map(|b| b.low).fold(f32::INFINITY, f32::min));
+    let pp = (h + l + last) / 3.0;
+    levels.extend_from_slice(&[pp, 2.0 * pp - l, 2.0 * pp - h]);
+    // Previous highs/lows
+    if n > 1 { levels.push(bars[n-2].high); levels.push(bars[n-2].low); }
+    // Cluster: group levels within 0.3% of each other
+    levels.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mut zones: Vec<(f32, u8, f32)> = Vec::new();
+    let mut i = 0;
+    while i < levels.len() {
+        let base = levels[i];
+        let mut count = 1u8;
+        let mut sum = base;
+        while i + (count as usize) < levels.len() && (levels[i + (count as usize)] - base).abs() / last < 0.003 {
+            sum += levels[i + (count as usize)]; count += 1;
+        }
+        if count >= 2 {
+            let avg = sum / count as f32;
+            zones.push((avg, count, (avg - last).abs() / last * 100.0));
+        }
+        i += count as usize;
+    }
+    zones.sort_by(|a, b| b.1.cmp(&a.1));
+    zones.truncate(5);
+    zones
+}
+
+fn compute_bb_width(bars: &[crate::chart_renderer::types::Bar]) -> f32 {
+    let n = bars.len();
+    if n < 20 { return 0.05; }
+    let p = 20;
+    let sma: f32 = bars[n-p..n].iter().map(|b| b.close).sum::<f32>() / p as f32;
+    let var: f32 = bars[n-p..n].iter().map(|b| (b.close - sma).powi(2)).sum::<f32>() / p as f32;
+    let std = var.sqrt();
+    if sma > 0.0 { (4.0 * std) / sma } else { 0.05 }
+}
+
+fn compute_atr_percentile(bars: &[crate::chart_renderer::types::Bar]) -> f32 {
+    let n = bars.len();
+    if n < 100 { return 50.0; }
+    let current_atr = compute_atr(bars, 14);
+    let mut atrs: Vec<f32> = Vec::new();
+    for i in 14..n.min(100) {
+        atrs.push(compute_atr(&bars[..i+1], 14));
+    }
+    atrs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let rank = atrs.partition_point(|&a| a < current_atr);
+    (rank as f32 / atrs.len().max(1) as f32 * 100.0).clamp(0.0, 100.0)
+}
+
+fn compute_breadth(bars: &[crate::chart_renderer::types::Bar]) -> f32 {
+    let n = bars.len();
+    if n < 50 { return 50.0; }
+    // Simulate breadth from % of recent bars closing above various MAs
+    let mut score = 0.0f32;
+    let last = bars[n-1].close;
+    for p in [10, 20, 50] {
+        if n >= p {
+            let sma: f32 = bars[n-p..n].iter().map(|b| b.close).sum::<f32>() / p as f32;
+            if last > sma { score += 33.3; }
+        }
+    }
+    score.clamp(0.0, 100.0)
+}
+
+fn compute_rs_rank(bars: &[crate::chart_renderer::types::Bar]) -> f32 {
+    let n = bars.len();
+    if n < 60 { return 50.0; }
+    // RS approximation: relative performance vs its own history
+    let ret_20 = if bars[n-21].close > 0.0 { (bars[n-1].close / bars[n-21].close - 1.0) * 100.0 } else { 0.0 };
+    let ret_60 = if n > 60 && bars[n-61].close > 0.0 { (bars[n-1].close / bars[n-61].close - 1.0) * 100.0 } else { 0.0 };
+    let composite = ret_20 * 0.6 + ret_60 * 0.4;
+    (50.0 + composite * 5.0).clamp(0.0, 100.0)
+}
+
+fn compute_liquidity(bars: &[crate::chart_renderer::types::Bar]) -> f32 {
+    let n = bars.len();
+    if n < 20 { return 50.0; }
+    let recent = &bars[n-20..n];
+    let avg_vol: f32 = recent.iter().map(|b| b.volume).sum::<f32>() / 20.0;
+    let vol_std: f32 = (recent.iter().map(|b| (b.volume - avg_vol).powi(2)).sum::<f32>() / 20.0).sqrt();
+    let cv = if avg_vol > 0.0 { vol_std / avg_vol } else { 1.0 }; // coefficient of variation
+    let spread_proxy = recent.iter().map(|b| (b.high - b.low) / b.close.max(0.01)).sum::<f32>() / 20.0;
+    let vol_score = (avg_vol / 1_000_000.0).min(1.0) * 40.0;
+    let consistency_score = (1.0 - cv).max(0.0) * 30.0;
+    let spread_score = (1.0 - spread_proxy * 20.0).max(0.0) * 30.0;
+    (vol_score + consistency_score + spread_score).clamp(0.0, 100.0)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// New widget renderers — visually inspired by design references
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Trend Alignment — dot grid (inspired by chart9 dot matrix)
+fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let tf_labels = ["5m", "15m", "30m", "1h", "4h", "1D", "1W"];
+    let ind_labels = ["EMA", "SMA", "RSI", "HH"];
+    let rows = 7; let cols = 4;
+    let dot_r = 4.5;
+    let gap_x = (body.width() - 32.0) / cols as f32;
+    let gap_y = (body.height() - 24.0) / rows as f32;
+    let ox = body.left() + 28.0;
+    let oy = body.top() + 18.0;
+
+    // Column headers
+    for (j, label) in ind_labels.iter().enumerate() {
+        p.text(egui::pos2(ox + j as f32 * gap_x + gap_x * 0.5, oy - 6.0),
+            egui::Align2::CENTER_CENTER, label, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+    }
+
+    let mut bull_count = 0u32;
+    let total = (rows * cols) as u32;
+
+    for (i, tf) in tf_labels.iter().enumerate() {
+        // Row label
+        p.text(egui::pos2(body.left() + 14.0, oy + i as f32 * gap_y + gap_y * 0.5),
+            egui::Align2::CENTER_CENTER, tf, egui::FontId::monospace(6.5), t.dim.gamma_multiply(0.6));
+
+        for j in 0..cols {
+            let bullish = wd.trend_grid[i][j];
+            if bullish { bull_count += 1; }
+            let cx = ox + j as f32 * gap_x + gap_x * 0.5;
+            let cy = oy + i as f32 * gap_y + gap_y * 0.5;
+            let color = if bullish { t.bull } else { color_alpha(t.dim, ALPHA_MUTED) };
+            p.circle_filled(egui::pos2(cx, cy), dot_r, color);
+        }
+    }
+
+    // Alignment score bottom-right
+    let pct = bull_count as f32 / total as f32 * 100.0;
+    let sc = if pct > 70.0 { t.bull } else if pct > 40.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+    p.text(egui::pos2(body.right() - 6.0, body.bottom() - 8.0), egui::Align2::RIGHT_CENTER,
+        &format!("{:.0}%", pct), egui::FontId::proportional(16.0), sc);
+}
+
+/// Volume Shelf — horizontal bars ranked by volume (chart4 stacked bars style)
+fn draw_volume_shelf(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if wd.vol_shelves.is_empty() {
+        p.text(body.center(), egui::Align2::CENTER_CENTER, "NO DATA", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        return;
+    }
+    let row_h = (body.height() - 8.0) / wd.vol_shelves.len().min(5) as f32;
+    let max_w = body.width() - 60.0;
+
+    for (i, (price, strength, is_support)) in wd.vol_shelves.iter().enumerate() {
+        let y = body.top() + 4.0 + i as f32 * row_h;
+        let color = if *is_support { t.bull } else { t.bear };
+        let bar_w = max_w * strength;
+        let label = if *is_support { "S" } else { "R" };
+
+        // Bar
+        let bar_rect = egui::Rect::from_min_size(egui::pos2(body.left() + 50.0, y + 2.0), egui::vec2(bar_w, row_h - 6.0));
+        p.rect_filled(bar_rect, 3.0, color_alpha(color, ALPHA_DIM));
+
+        // Price label
+        p.text(egui::pos2(body.left() + 6.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
+            &format!("{:.1}", price), egui::FontId::monospace(FONT_XS), t.text);
+        // S/R label inside bar
+        p.text(egui::pos2(body.left() + 52.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
+            label, egui::FontId::monospace(7.0), color);
+    }
+}
+
+/// Confluence Meter — stacked level bars with count badges
+fn draw_confluence(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if wd.confluence_zones.is_empty() {
+        p.text(body.center(), egui::Align2::CENTER_CENTER, "NO CLUSTERS", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        return;
+    }
+    let row_h = (body.height() - 4.0) / wd.confluence_zones.len().min(5) as f32;
+
+    for (i, (price, count, dist)) in wd.confluence_zones.iter().enumerate() {
+        let y = body.top() + 2.0 + i as f32 * row_h;
+        let bar_w = (*count as f32 / 5.0).min(1.0) * (body.width() - 70.0);
+        let proximity_alpha = (1.0 - dist / 3.0).max(0.2);
+        let color = color_alpha(t.accent, (proximity_alpha * 180.0) as u8);
+
+        // Confluence bar
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 55.0, y + 3.0),
+            egui::vec2(bar_w, row_h - 8.0)), 2.0, color);
+
+        // Price
+        p.text(egui::pos2(body.left() + 6.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
+            &format!("{:.1}", price), egui::FontId::monospace(FONT_XS), t.text);
+        // Count badge
+        p.text(egui::pos2(body.left() + 48.0, y + row_h * 0.5), egui::Align2::CENTER_CENTER,
+            &format!("{}x", count), egui::FontId::monospace(7.0), t.accent);
+        // Distance
+        p.text(egui::pos2(body.right() - 6.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
+            &format!("{:.1}%", dist), egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+    }
+}
+
+/// Flow Compass — circular compass with directional needle (chart12 radial tick style)
+fn draw_flow_compass(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y - 6.0;
+    let r = (body.width().min(body.height()) * 0.36).min(65.0);
+
+    // Dark circle background
+    p.circle_filled(egui::pos2(cx, cy), r + 2.0, color_alpha(t.toolbar_border, ALPHA_DIM));
+
+    // Radial tick marks (chart12 style)
+    let ticks = 36;
+    for i in 0..ticks {
+        let a = (i as f32 / ticks as f32) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+        let is_major = i % 9 == 0;
+        let inner = if is_major { r - 10.0 } else { r - 5.0 };
+        let outer = r + 2.0;
+        let p1 = egui::pos2(cx + inner * a.cos(), cy + inner * a.sin());
+        let p2 = egui::pos2(cx + outer * a.cos(), cy + outer * a.sin());
+        let w = if is_major { 1.5 } else { 0.5 };
+        p.line_segment([p1, p2], egui::Stroke::new(w, color_alpha(t.dim, ALPHA_LINE)));
+    }
+
+    // Cardinal labels
+    let bias = wd.momentum; // use momentum as flow proxy
+    for (label, angle_offset) in [("BUY", 0.0f32), ("SELL", std::f32::consts::PI)] {
+        let a = angle_offset - std::f32::consts::FRAC_PI_2;
+        let lx = cx + (r + 14.0) * a.cos();
+        let ly = cy + (r + 14.0) * a.sin();
+        p.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER, label,
+            egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+    }
+
+    // Needle
+    let needle_angle = (bias / 10.0).clamp(-1.0, 1.0) * std::f32::consts::FRAC_PI_2 - std::f32::consts::FRAC_PI_2;
+    let needle_end = egui::pos2(cx + (r - 14.0) * needle_angle.cos(), cy + (r - 14.0) * needle_angle.sin());
+    let needle_col = if bias > 0.0 { t.bull } else { t.bear };
+    p.line_segment([egui::pos2(cx, cy), needle_end], egui::Stroke::new(2.5, needle_col));
+    p.circle_filled(egui::pos2(cx, cy), 4.0, needle_col);
+    p.circle_filled(needle_end, 3.0, needle_col);
+
+    // Center label
+    p.text(egui::pos2(cx, body.bottom() - 8.0), egui::Align2::CENTER_CENTER,
+        if bias > 2.0 { "BULLISH FLOW" } else if bias < -2.0 { "BEARISH FLOW" } else { "NEUTRAL" },
+        egui::FontId::monospace(7.0), needle_col);
+}
+
+/// Volatility Regime — concentric rings (like RSI Multi but for vol metrics)
+fn draw_vol_regime(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y - 8.0;
+    let max_r = (body.width().min(body.height()) * 0.36).min(70.0);
+
+    let metrics = [
+        ("BBW", wd.bb_width * 1000.0, 100.0),     // Bollinger bandwidth
+        ("ATR%", wd.atr_pct, 5.0),                 // ATR as % of price
+        ("RVOL", wd.vol_ratio * 50.0, 100.0),      // Relative volume
+        ("ATRp", wd.atr_percentile, 100.0),         // ATR percentile
+    ];
+
+    for (i, (label, val, max)) in metrics.iter().enumerate() {
+        let r = max_r - i as f32 * 14.0;
+        let frac = (val / max).clamp(0.0, 1.0);
+        let color = if frac > 0.7 { t.bear } else if frac > 0.4 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
+
+        draw_arc_ring(p, egui::pos2(cx, cy), r, 5.0, 0.0, std::f32::consts::TAU,
+            color_alpha(t.toolbar_border, ALPHA_FAINT), 48);
+        let sweep = frac * std::f32::consts::TAU;
+        draw_arc_ring(p, egui::pos2(cx, cy), r, 5.0, -std::f32::consts::FRAC_PI_2, sweep, color, 40);
+
+        // Label at right
+        p.text(egui::pos2(body.right() - 6.0, cy - r), egui::Align2::RIGHT_CENTER,
+            &format!("{} {:.0}", label, val), egui::FontId::monospace(6.0), color.gamma_multiply(0.7));
+    }
+
+    // Center: regime label
+    let regime_col = match wd.vol_regime_label {
+        "SQUEEZE" => t.bull, "EXPANSION" => t.bear, _ => t.dim
+    };
+    p.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER, wd.vol_regime_label,
+        egui::FontId::proportional(14.0), regime_col);
+}
+
+/// Momentum Heatmap — color strip barcode (chart9 dot grid adapted)
+fn draw_momentum_heat(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let labels = ["1D", "2D", "5D", "10D", "20D", "60D", "120D", "1Y"];
+    let cols = 8;
+    let col_w = body.width() / cols as f32;
+    let bar_h = body.height() - 20.0;
+    let max_abs = wd.roc_bars.iter().map(|v| v.abs()).fold(0.0f32, f32::max).max(0.01);
+
+    for (i, &roc) in wd.roc_bars.iter().enumerate() {
+        let x = body.left() + i as f32 * col_w;
+        let intensity = (roc.abs() / max_abs).clamp(0.0, 1.0);
+        let color = if roc > 0.0 { t.bull } else { t.bear };
+        let alpha = (intensity * 200.0 + 30.0) as u8;
+
+        // Color block
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(x + 1.0, body.top()), egui::vec2(col_w - 2.0, bar_h)),
+            2.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha));
+
+        // ROC value
+        p.text(egui::pos2(x + col_w * 0.5, body.top() + bar_h * 0.5), egui::Align2::CENTER_CENTER,
+            &format!("{:+.0}", roc), egui::FontId::monospace(7.0),
+            if intensity > 0.5 { egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200) } else { t.text });
+
+        // Label
+        p.text(egui::pos2(x + col_w * 0.5, body.bottom() - 6.0), egui::Align2::CENTER_CENTER,
+            labels[i], egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+    }
+}
+
+/// Breadth Thermometer — dot matrix grid (chart9 purple/green inspiration)
+fn draw_breadth_thermo(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let score = wd.breadth_score;
+    let total_dots = 100;
+    let cols = 10;
+    let rows = 10;
+    let dot_r = 3.5;
+    let filled = (score / 100.0 * total_dots as f32) as usize;
+
+    let grid_w = body.width() - 50.0;
+    let grid_h = body.height() - 20.0;
+    let gap_x = grid_w / cols as f32;
+    let gap_y = grid_h / rows as f32;
+    let ox = body.left() + 6.0;
+    let oy = body.top() + 4.0;
+
+    let bull_col = t.bull;
+    let empty_col = color_alpha(t.dim, ALPHA_MUTED);
+
+    for row in 0..rows {
+        for col in 0..cols {
+            let idx = row * cols + col;
+            let cx = ox + col as f32 * gap_x + gap_x * 0.5;
+            let cy = oy + row as f32 * gap_y + gap_y * 0.5;
+            let color = if idx < filled { bull_col } else { empty_col };
+            p.circle_filled(egui::pos2(cx, cy), dot_r, color);
+        }
+    }
+
+    // Score on the right
+    let sc = if score > 60.0 { t.bull } else if score < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+    p.text(egui::pos2(body.right() - 8.0, body.center().y - 8.0), egui::Align2::RIGHT_CENTER,
+        &format!("{:.0}", score), egui::FontId::proportional(24.0), sc);
+    p.text(egui::pos2(body.right() - 8.0, body.center().y + 12.0), egui::Align2::RIGHT_CENTER,
+        if score > 60.0 { "HEALTHY" } else if score < 40.0 { "WEAK" } else { "MIXED" },
+        egui::FontId::monospace(7.0), sc);
+}
+
+/// Sector Rotation — 2x2 quadrant radar
+fn draw_sector_rotation(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y - 4.0;
+    let hw = body.width() * 0.38;
+    let hh = body.height() * 0.36;
+
+    // Quadrant lines
+    p.line_segment([egui::pos2(cx - hw, cy), egui::pos2(cx + hw, cy)],
+        egui::Stroke::new(0.5, color_alpha(t.dim, ALPHA_MUTED)));
+    p.line_segment([egui::pos2(cx, cy - hh), egui::pos2(cx, cy + hh)],
+        egui::Stroke::new(0.5, color_alpha(t.dim, ALPHA_MUTED)));
+
+    // Quadrant labels
+    p.text(egui::pos2(cx + hw * 0.5, cy - hh - 4.0), egui::Align2::CENTER_CENTER, "LEADING", egui::FontId::monospace(6.0), t.bull.gamma_multiply(0.6));
+    p.text(egui::pos2(cx - hw * 0.5, cy - hh - 4.0), egui::Align2::CENTER_CENTER, "IMPROVING", egui::FontId::monospace(6.0), t.accent.gamma_multiply(0.6));
+    p.text(egui::pos2(cx - hw * 0.5, cy + hh + 6.0), egui::Align2::CENTER_CENTER, "LAGGING", egui::FontId::monospace(6.0), t.bear.gamma_multiply(0.6));
+    p.text(egui::pos2(cx + hw * 0.5, cy + hh + 6.0), egui::Align2::CENTER_CENTER, "WEAKENING", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+
+    // Sector dots (placeholder positions)
+    let sectors = [("XLK", 0.6, 0.3), ("XLF", 0.3, -0.2), ("XLE", -0.4, 0.5),
+                   ("XLV", -0.2, -0.3), ("XLI", 0.4, -0.1), ("XLU", -0.5, -0.4),
+                   ("XLC", 0.1, 0.4), ("XLRE", -0.3, 0.1)];
+    for (label, rs, mom) in sectors {
+        let sx = cx + rs * hw;
+        let sy = cy - mom * hh;
+        let col = if rs > 0.0 && mom > 0.0 { t.bull }
+            else if rs < 0.0 && mom < 0.0 { t.bear }
+            else { t.dim };
+        p.circle_filled(egui::pos2(sx, sy), 4.0, col);
+        p.text(egui::pos2(sx, sy - 7.0), egui::Align2::CENTER_CENTER, label,
+            egui::FontId::monospace(6.0), col.gamma_multiply(0.8));
+    }
+}
+
+/// Options Sentiment — donut gauge composite
+fn draw_options_sentiment(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y - 8.0;
+    let r = (body.width().min(body.height()) * 0.32).min(55.0);
+
+    // Placeholder sentiment: 62% bullish
+    let sentiment = 62.0f32;
+    let color = if sentiment > 60.0 { t.bull } else if sentiment < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+
+    donut_ring(p, egui::pos2(cx, cy), r, 8.0, sentiment, 100.0, color,
+        color_alpha(t.toolbar_border, ALPHA_MUTED));
+
+    p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
+        &format!("{:.0}%", sentiment), egui::FontId::proportional(22.0), color);
+    p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
+        "BULLISH", egui::FontId::monospace(7.0), color);
+
+    // Metrics below
+    let my = cy + r + 16.0;
+    for (i, (label, val)) in [("P/C", "0.82"), ("Skew", "-1.2"), ("GEX", "+$1.2B")].iter().enumerate() {
+        let x = body.left() + 10.0 + i as f32 * 55.0;
+        p.text(egui::pos2(x, my), egui::Align2::LEFT_CENTER, label, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
+        p.text(egui::pos2(x, my + 10.0), egui::Align2::LEFT_CENTER, val, egui::FontId::monospace(FONT_XS), t.text);
+    }
+}
+
+/// Relative Strength Radar — concentric rings for RS rank
+fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y - 6.0;
+    let max_r = (body.width().min(body.height()) * 0.35).min(65.0);
+
+    let metrics = [
+        ("vs Market", wd.rs_rank),
+        ("vs Sector", (wd.rs_rank * 0.9 + 5.0).clamp(0.0, 100.0)),
+        ("vs Peers", (wd.rs_rank * 1.1 - 3.0).clamp(0.0, 100.0)),
+    ];
+
+    for (i, (label, val)) in metrics.iter().enumerate() {
+        let r = max_r - i as f32 * 18.0;
+        let color = if *val > 70.0 { t.bull } else if *val < 30.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+        donut_ring(p, egui::pos2(cx, cy), r, 6.0, *val, 100.0, color,
+            color_alpha(t.toolbar_border, ALPHA_FAINT));
+        p.text(egui::pos2(body.right() - 6.0, cy - r), egui::Align2::RIGHT_CENTER,
+            &format!("{} {:.0}", label, val), egui::FontId::monospace(6.0), color.gamma_multiply(0.7));
+    }
+
+    // Center
+    let avg = metrics.iter().map(|(_, v)| v).sum::<f32>() / 3.0;
+    let ac = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { t.dim };
+    p.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER,
+        &format!("{:.0}", avg), egui::FontId::proportional(20.0), ac);
+}
+
+/// Risk Dashboard — position sizing calculator
+fn draw_risk_dash(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let left = body.left() + 8.0;
+    let mut y = body.top() + 4.0;
+    let account = 100_000.0f32; // placeholder
+    let risk_pct = 1.0; // 1% risk
+    let dollar_risk = account * risk_pct / 100.0;
+    let stop_dist = wd.atr; // use ATR as stop distance
+    let shares = if stop_dist > 0.0 { (dollar_risk / stop_dist).floor() } else { 0.0 };
+    let notional = shares * wd.last_close;
+
+    // Hero: suggested shares
+    p.text(egui::pos2(body.center().x, y + 16.0), egui::Align2::CENTER_CENTER,
+        &format!("{:.0}", shares), egui::FontId::proportional(28.0), t.accent);
+    p.text(egui::pos2(body.center().x, y + 34.0), egui::Align2::CENTER_CENTER,
+        "SHARES", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+    y += 48.0;
+
+    // Stats grid
+    let stats = [
+        ("Risk $", format!("${:.0}", dollar_risk)),
+        ("Stop", format!("${:.2}", stop_dist)),
+        ("Notional", format!("${:.0}", notional)),
+        ("% Acct", format!("{:.1}%", notional / account * 100.0)),
+    ];
+    for (i, (label, val)) in stats.iter().enumerate() {
+        let x = if i % 2 == 0 { left } else { body.center().x + 4.0 };
+        let row_y = y + (i / 2) as f32 * 18.0;
+        p.text(egui::pos2(x, row_y), egui::Align2::LEFT_CENTER, label, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
+        p.text(egui::pos2(x + 50.0, row_y), egui::Align2::LEFT_CENTER, val, egui::FontId::monospace(FONT_XS), t.text);
+    }
+}
+
+/// Earnings Momentum — mini 2x2 grid (style3 card grid inspiration)
+fn draw_earnings_mom(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
+    let hw = body.width() * 0.5;
+    let hh = body.height() * 0.5;
+    let cells = [
+        ("EPS", "+12%", t.bull),
+        ("REV", "+8%", t.bull),
+        ("REVISIONS", "\u{2191}3", egui::Color32::from_rgb(255, 191, 0)),
+        ("FWD P/E", "22.4x", t.dim),
+    ];
+
+    for (i, (label, val, color)) in cells.iter().enumerate() {
+        let col = i % 2;
+        let row = i / 2;
+        let x = body.left() + col as f32 * hw;
+        let y = body.top() + row as f32 * hh;
+        let cell = egui::Rect::from_min_size(egui::pos2(x + 2.0, y + 2.0), egui::vec2(hw - 4.0, hh - 4.0));
+
+        p.rect_filled(cell, 3.0, color_alpha(*color, ALPHA_FAINT));
+        p.text(egui::pos2(cell.left() + 6.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
+            label, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+        p.text(egui::pos2(cell.center().x, cell.center().y + 4.0), egui::Align2::CENTER_CENTER,
+            val, egui::FontId::proportional(18.0), *color);
+    }
+}
+
+/// Liquidity Score — single donut gauge (chart3 pie style)
+fn draw_liquidity_score(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y - 4.0;
+    let r = (body.width().min(body.height()) * 0.34).min(50.0);
+    let score = wd.liquidity_score;
+    let color = if score > 70.0 { t.bull } else if score < 30.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+    let label = if score > 70.0 { "LIQUID" } else if score < 30.0 { "ILLIQUID" } else { "MODERATE" };
+
+    donut_ring(p, egui::pos2(cx, cy), r, 8.0, score, 100.0, color,
+        color_alpha(t.toolbar_border, ALPHA_MUTED));
+
+    p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
+        &format!("{:.0}", score), egui::FontId::proportional(24.0), color);
+    p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
+        label, egui::FontId::monospace(7.0), color);
+}
+
+fn draw_arc_ring(p: &egui::Painter, center: egui::Pos2, radius: f32, width: f32,
+                 start: f32, sweep: f32, color: egui::Color32, segments: usize) {
+    if sweep.abs() < 0.001 { return; }
+    for i in 0..segments {
+        let t0 = i as f32 / segments as f32;
+        let t1 = (i + 1) as f32 / segments as f32;
+        if t0 * sweep.abs() > sweep.abs() { break; }
+        let a0 = start + t0 * sweep;
+        let a1 = start + t1.min(1.0) * sweep;
+        let p0 = egui::pos2(center.x + radius * a0.cos(), center.y + radius * a0.sin());
+        let p1 = egui::pos2(center.x + radius * a1.cos(), center.y + radius * a1.sin());
+        p.line_segment([p0, p1], egui::Stroke::new(width, color));
+    }
+}
+
+/// Signal Radar — radial map of all active ApexSignals (chart26 radial inspiration)
+fn draw_signal_radar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y - 6.0;
+    let r = (body.width().min(body.height()) * 0.38).min(80.0);
+
+    // Signal definitions: (name, active, intensity)
+    let signals: Vec<(&str, bool, f32)> = vec![
+        ("Trend", wd.trend_score > 0.0, wd.trend_score / 100.0),
+        ("Exit", wd.exit_gauge_score > 0.0, wd.exit_gauge_score / 100.0),
+        ("Precur", wd.precursor_active, wd.precursor_score / 100.0),
+        ("Plan", wd.trade_plan.is_some(), 0.8),
+        ("Zones", wd.zone_count > 0, wd.zone_avg_strength),
+        ("Pattern", wd.pattern_count > 0, wd.pattern_latest_conf),
+        ("ChgPt", wd.change_points_count > 0, 0.7),
+        ("VIX", wd.vix_spot > 20.0, (wd.vix_spot / 40.0).min(1.0)),
+        ("Diverg", wd.divergence_count > 0, 0.6),
+        ("DarkPl", wd.dark_pool_ratio > 0.2, wd.dark_pool_ratio),
+    ];
+    let n = signals.len();
+    let active_count = signals.iter().filter(|(_, a, _)| *a).count();
+
+    // Concentric reference rings
+    for ring in [0.33, 0.66, 1.0] {
+        let rr = r * ring;
+        let segs = 40;
+        for i in 0..segs {
+            let a0 = (i as f32 / segs as f32) * std::f32::consts::TAU;
+            let a1 = ((i + 1) as f32 / segs as f32) * std::f32::consts::TAU;
+            p.line_segment([
+                egui::pos2(cx + rr * a0.cos(), cy + rr * a0.sin()),
+                egui::pos2(cx + rr * a1.cos(), cy + rr * a1.sin())],
+                egui::Stroke::new(0.3, color_alpha(t.toolbar_border, ALPHA_FAINT)));
+        }
+    }
+
+    // Signal spokes + dots
+    for (i, (name, active, intensity)) in signals.iter().enumerate() {
+        let angle = (i as f32 / n as f32) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+        let spoke_r = r * if *active { intensity.max(0.3) } else { 0.15 };
+        let end = egui::pos2(cx + spoke_r * angle.cos(), cy + spoke_r * angle.sin());
+
+        // Spoke line
+        let spoke_col = if *active { t.accent } else { color_alpha(t.dim, ALPHA_FAINT) };
+        p.line_segment([egui::pos2(cx, cy), end], egui::Stroke::new(1.0, spoke_col));
+
+        // Dot at tip
+        let dot_r = if *active { 4.0 } else { 2.0 };
+        let dot_col = if *active { t.accent } else { color_alpha(t.dim, ALPHA_MUTED) };
+        p.circle_filled(end, dot_r, dot_col);
+
+        // Label
+        let label_r = r + 10.0;
+        let lx = cx + label_r * angle.cos();
+        let ly = cy + label_r * angle.sin();
+        p.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER, name,
+            egui::FontId::monospace(5.5), if *active { t.accent.gamma_multiply(0.8) } else { t.dim.gamma_multiply(0.3) });
+    }
+
+    // Center: active count
+    p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
+        &format!("{}", active_count), egui::FontId::proportional(20.0), t.accent);
+    p.text(egui::pos2(cx, cy + 10.0), egui::Align2::CENTER_CENTER,
+        "ACTIVE", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+}
+
+/// Cross-Asset Pulse — compact 2x4 market grid (style3 card grid)
+fn draw_cross_asset(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
+    let assets = [
+        ("SPY", "+0.42%", true),  ("QQQ", "+0.68%", true),
+        ("DXY", "-0.15%", false), ("VIX", "+2.3%", true),
+        ("TNX", "-0.08%", false), ("GLD", "+0.31%", true),
+        ("CL", "-1.2%", false),   ("BTC", "+1.8%", true),
+    ];
+    let cols = 4;
+    let rows = 2;
+    let cell_w = body.width() / cols as f32;
+    let cell_h = body.height() / rows as f32;
+
+    for (i, (sym, chg, positive)) in assets.iter().enumerate() {
+        let col = i % cols;
+        let row = i / cols;
+        let x = body.left() + col as f32 * cell_w;
+        let y = body.top() + row as f32 * cell_h;
+        let cell = egui::Rect::from_min_size(egui::pos2(x + 1.0, y + 1.0),
+            egui::vec2(cell_w - 2.0, cell_h - 2.0));
+
+        let col_c = if *positive { t.bull } else { t.bear };
+        p.rect_filled(cell, 3.0, color_alpha(col_c, ALPHA_FAINT));
+
+        // Symbol
+        p.text(egui::pos2(cell.left() + 4.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
+            sym, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+        // Change
+        p.text(egui::pos2(cell.center().x, cell.center().y + 4.0), egui::Align2::CENTER_CENTER,
+            chg, egui::FontId::proportional(13.0), col_c);
+    }
+}
+
+/// Tape Speed — speedometer gauge showing trade velocity
+fn draw_tape_speed(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cx = body.center().x;
+    let cy = body.center().y + 4.0;
+    let r = (body.width().min(body.height()) * 0.34).min(50.0);
+    let speed = wd.vol_ratio; // 1.0 = average, 2.0 = 2x average
+
+    // Semi-circle track
+    let pi = std::f32::consts::PI;
+    let segs = 30;
+    for i in 0..segs {
+        let t0 = i as f32 / segs as f32;
+        let t1 = (i + 1) as f32 / segs as f32;
+        let a0 = pi + t0 * pi;
+        let a1 = pi + t1 * pi;
+        // Color gradient: blue → green → yellow → red
+        let col = if t0 < 0.3 { t.accent }
+            else if t0 < 0.6 { t.bull }
+            else if t0 < 0.8 { egui::Color32::from_rgb(255, 191, 0) }
+            else { t.bear };
+        p.line_segment([
+            egui::pos2(cx + r * a0.cos(), cy + r * a0.sin()),
+            egui::pos2(cx + r * a1.cos(), cy + r * a1.sin())],
+            egui::Stroke::new(5.0, col));
+    }
+
+    // Needle
+    let needle_frac = (speed / 4.0).clamp(0.0, 1.0); // 4x = max
+    let needle_a = pi + needle_frac * pi;
+    let needle_end = egui::pos2(cx + (r - 10.0) * needle_a.cos(), cy + (r - 10.0) * needle_a.sin());
+    let needle_col = if speed > 2.5 { t.bear } else if speed > 1.5 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
+    p.line_segment([egui::pos2(cx, cy), needle_end], egui::Stroke::new(2.0, needle_col));
+    p.circle_filled(egui::pos2(cx, cy), 4.0, needle_col);
+
+    // Speed value
+    p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
+        &format!("{:.1}x", speed), egui::FontId::proportional(18.0), needle_col);
+
+    // Labels
+    p.text(egui::pos2(cx - r + 4.0, cy + 4.0), egui::Align2::LEFT_CENTER,
+        "0", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
+    p.text(egui::pos2(cx + r - 4.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
+        "4x", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
+    p.text(egui::pos2(cx, cy - r - 4.0), egui::Align2::CENTER_CENTER,
+        "TAPE", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+}
+
+fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let left = body.left() + 6.0;
+    let right = body.right() - 6.0;
+    let mut y = body.top() + 2.0;
+
+    if wd.all_positions.is_empty() {
+        // No positions
+        p.text(egui::pos2(body.center().x, body.center().y - 10.0),
+            egui::Align2::CENTER_CENTER, "NO POSITIONS",
+            egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        p.text(egui::pos2(body.center().x, body.center().y + 8.0),
+            egui::Align2::CENTER_CENTER, "Account is flat",
+            egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.3));
+        return;
+    }
+
+    // ── Day total P&L header ──
+    let total_col = if wd.day_pnl >= 0.0 { t.bull } else { t.bear };
+    p.text(egui::pos2(left, y + 5.0), egui::Align2::LEFT_CENTER,
+        "DAY P&L", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+    let pnl_sign = if wd.day_pnl >= 0.0 { "+" } else { "" };
+    p.text(egui::pos2(right, y + 5.0), egui::Align2::RIGHT_CENTER,
+        &format!("{}${:.0}", pnl_sign, wd.day_pnl),
+        egui::FontId::monospace(FONT_MD), total_col);
+    y += 16.0;
+
+    // Separator
+    p.line_segment(
+        [egui::pos2(left, y), egui::pos2(right, y)],
+        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+    y += 4.0;
+
+    // ── "Close All" button (placeholder) ──
+    let btn_w = 50.0;
+    let btn_rect = egui::Rect::from_min_size(
+        egui::pos2(right - btn_w, y), egui::vec2(btn_w, 14.0));
+    p.rect_filled(btn_rect, 3.0, color_alpha(t.bear, 40));
+    p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(0.5, t.bear.gamma_multiply(0.5)),
+        egui::StrokeKind::Outside);
+    p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
+        "Close All", egui::FontId::monospace(7.0), t.bear);
+
+    p.text(egui::pos2(left, y + 7.0), egui::Align2::LEFT_CENTER,
+        &format!("{} positions", wd.all_positions.len()),
+        egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    y += 20.0;
+
+    // ── Column headers ──
+    p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
+        "SYMBOL", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+    p.text(egui::pos2(left + 70.0, y + 4.0), egui::Align2::LEFT_CENTER,
+        "QTY", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+    p.text(egui::pos2(right - 40.0, y + 4.0), egui::Align2::RIGHT_CENTER,
+        "P&L", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+    p.text(egui::pos2(right, y + 4.0), egui::Align2::RIGHT_CENTER,
+        "", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+    y += 12.0;
+
+    // ── Position rows ──
+    let row_h = 20.0;
+    for pos in &wd.all_positions {
+        if y + row_h > body.bottom() - 2.0 { break; } // clip to body
+
+        let pnl_col = if pos.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
+        let dir_col = if pos.qty > 0 { t.bull } else { t.bear };
+
+        // Symbol
+        p.text(egui::pos2(left, y + row_h * 0.35), egui::Align2::LEFT_CENTER,
+            &pos.symbol, egui::FontId::monospace(FONT_SM), t.text);
+        // Market value below symbol
+        let mv_str = format!("${:.0}", pos.market_value);
+        p.text(egui::pos2(left, y + row_h * 0.75), egui::Align2::LEFT_CENTER,
+            &mv_str, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+
+        // Qty with direction color
+        let qty_label = format!("{}{}", if pos.qty > 0 { "+" } else { "" }, pos.qty);
+        p.text(egui::pos2(left + 70.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
+            &qty_label, egui::FontId::monospace(FONT_XS), dir_col);
+
+        // P&L value + pct
+        let pnl_str = format!("{:+.0}", pos.unrealized_pnl);
+        p.text(egui::pos2(right - 40.0, y + row_h * 0.35), egui::Align2::RIGHT_CENTER,
+            &pnl_str, egui::FontId::monospace(FONT_SM), pnl_col);
+        let pct_str = format!("{:+.1}%", pos.pnl_pct);
+        p.text(egui::pos2(right - 40.0, y + row_h * 0.75), egui::Align2::RIGHT_CENTER,
+            &pct_str, egui::FontId::monospace(7.0), pnl_col);
+
+        // Close button (placeholder — painted as "x")
+        let close_rect = egui::Rect::from_center_size(
+            egui::pos2(right - 6.0, y + row_h * 0.5), egui::vec2(12.0, 12.0));
+        p.text(close_rect.center(), egui::Align2::CENTER_CENTER,
+            "\u{00D7}", egui::FontId::proportional(FONT_SM), t.dim.gamma_multiply(0.35));
+
+        // Subtle bottom border
+        p.line_segment(
+            [egui::pos2(left, y + row_h - 0.5), egui::pos2(right, y + row_h - 0.5)],
+            egui::Stroke::new(0.3, color_alpha(t.toolbar_border, 20)));
+
+        y += row_h;
+    }
+}
+
+fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let pnl = wd.day_pnl;
+    let col = if pnl >= 0.0 { t.bull } else { t.bear };
+    let sign = if pnl >= 0.0 { "+" } else { "" };
+    let label = format!("{}${:.0}", sign, pnl);
+
+    // Hero number — proportional display font, vertically centered
+    let text_y = body.center().y;
+    let text_x = body.left() + 10.0;
+    p.text(egui::pos2(text_x, text_y), egui::Align2::LEFT_CENTER,
+        &label, egui::FontId::proportional(56.0), col);
+
+    // "Close All" button — right side, vertically centered
+    let btn_w = 60.0;
+    let btn_h = 22.0;
+    let btn_rect = egui::Rect::from_center_size(
+        egui::pos2(body.right() - btn_w * 0.5 - 8.0, body.center().y),
+        egui::vec2(btn_w, btn_h));
+    p.rect_filled(btn_rect, 4.0, color_alpha(t.bear, 50));
+    p.rect_stroke(btn_rect, 4.0, egui::Stroke::new(0.5, t.bear.gamma_multiply(0.6)),
+        egui::StrokeKind::Outside);
+    p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
+        "Close All", egui::FontId::monospace(FONT_SM), t.bear);
+
+    // Subtle "DAY P&L" label top-left
+    p.text(egui::pos2(body.left() + 10.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
+        "DAY P&L", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
 }
 
 fn draw_custom(p: &egui::Painter, body: egui::Rect, t: &Theme) {
@@ -1403,7 +2561,7 @@ fn draw_position_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     p.text(egui::pos2(left, entry_y), egui::Align2::LEFT_CENTER,
         "ENTRY", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
     p.text(egui::pos2(right, entry_y), egui::Align2::RIGHT_CENTER,
-        &format!("${:.2}", wd.position_avg), egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+        &format!("${:.2}", wd.position_avg), egui::FontId::monospace(FONT_SM), t.text);
 }
 
 fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
@@ -1474,7 +2632,7 @@ fn draw_news_ticker(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
     // Headline text (truncated to fit)
     p.text(egui::pos2(left + 12.0, cy), egui::Align2::LEFT_CENTER,
-        headline, egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+        headline, egui::FontId::monospace(FONT_SM), t.text);
 
     // Timestamp
     p.text(egui::pos2(right, cy), egui::Align2::RIGHT_CENTER,
@@ -1631,7 +2789,7 @@ fn draw_trade_plan(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     let left = body.left() + 10.0;
     let right = body.right() - 10.0;
     let mut y = body.top() + 24.0;
-    for (label, price, color) in [("ENTRY", entry, TEXT_PRIMARY), ("TARGET", target, t.bull), ("STOP", stop, t.bear)] {
+    for (label, price, color) in [("ENTRY", entry, t.text), ("TARGET", target, t.bull), ("STOP", stop, t.bear)] {
         p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
             label, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
         p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
@@ -1817,7 +2975,7 @@ fn draw_signal_dashboard(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
         p.circle_filled(egui::pos2(left + 4.0, y), 2.5, dot_col);
         // Name
         p.text(egui::pos2(left + 14.0, y), egui::Align2::LEFT_CENTER,
-            row.name, egui::FontId::monospace(FONT_XS), if row.active { TEXT_PRIMARY } else { t.dim.gamma_multiply(0.4) });
+            row.name, egui::FontId::monospace(FONT_XS), if row.active { t.text } else { t.dim.gamma_multiply(0.4) });
         // Value
         p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
             &row.value, egui::FontId::monospace(FONT_XS), row.color);

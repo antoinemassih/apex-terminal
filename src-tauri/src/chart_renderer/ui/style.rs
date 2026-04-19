@@ -61,11 +61,10 @@ pub const SHADOW_OFFSET: f32 = 2.0;   // drop shadow x/y offset
 pub const SHADOW_ALPHA:  u8  = 60;    // drop shadow darkness (pure black)
 pub const SHADOW_SPREAD: f32 = 4.0;   // corner radius for shadow rect
 
-// ─── Fixed color constants ────────────────────────────────────────────────────
-/// Primary text in cards, labels, list rows.
-pub const TEXT_PRIMARY:   Color32 = Color32::from_rgb(220, 220, 230);
-/// Secondary text in dimmed/triggered card labels.
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(200, 200, 210);
+// ─── Fixed text colors (fallback for code without Theme access) ──────────────
+// Prefer `t.text` when Theme is in scope — these are dark-theme defaults.
+pub static TEXT_PRIMARY: Color32 = Color32::from_rgb(220, 220, 230);
+pub static TEXT_SECONDARY: Color32 = Color32::from_rgb(200, 200, 210);
 
 // ─── Raw text helpers ─────────────────────────────────────────────────────────
 
@@ -625,4 +624,34 @@ pub fn draw_line_rgba(rgba: &mut [u8], width: u32, x0: f32, y0: f32, x1: f32, y1
             }
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Split-section sidebar helpers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Draggable divider between two split sections. Returns vertical drag delta.
+pub fn split_divider(ui: &mut egui::Ui, _id_salt: &str, dim: Color32) -> f32 {
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 6.0), egui::Sense::drag());
+    let p = ui.painter();
+
+    let active = resp.hovered() || resp.dragged();
+    let color = if active { dim.gamma_multiply(0.6) } else { color_alpha(dim, ALPHA_FAINT) };
+
+    p.line_segment(
+        [egui::pos2(rect.left() + 8.0, rect.center().y),
+         egui::pos2(rect.right() - 8.0, rect.center().y)],
+        Stroke::new(if active { 2.0 } else { 1.0 }, color));
+
+    if active {
+        let cy = rect.center().y;
+        let cx = rect.center().x;
+        for dx in [-8.0, 0.0, 8.0] {
+            p.circle_filled(egui::pos2(cx + dx, cy), 1.5, dim.gamma_multiply(0.4));
+        }
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+
+    if resp.dragged() { resp.drag_delta().y } else { 0.0 }
 }

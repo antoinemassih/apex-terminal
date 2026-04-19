@@ -39,3 +39,5 @@ pub mod option_quick_picker;
 pub mod template_popup;
 pub mod chart_widgets;
 pub mod plays_panel;
+pub mod playbook_panel;
+pub mod seasonality_panel;
