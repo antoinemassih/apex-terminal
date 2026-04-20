@@ -651,6 +651,56 @@ pub(crate) struct EventMarker {
     pub(crate) impact: i8,       // -1=bearish, 0=neutral, 1=bullish
 }
 
+/// Fundamental data for a symbol.
+#[derive(Clone, Default)]
+pub(crate) struct FundamentalData {
+    pub pe_ratio: f32,
+    pub forward_pe: f32,
+    pub eps_ttm: f32,
+    pub market_cap: f64,        // in billions
+    pub dividend_yield: f32,
+    pub revenue_growth: f32,    // YoY %
+    pub profit_margin: f32,     // %
+    pub debt_to_equity: f32,
+    pub short_interest: f32,    // %
+    pub institutional_pct: f32, // %
+    pub insider_pct: f32,       // %
+    pub beta: f32,
+    pub avg_volume: f64,
+    pub shares_outstanding: f64,
+    // Analyst consensus
+    pub analyst_target_mean: f32,
+    pub analyst_target_high: f32,
+    pub analyst_target_low: f32,
+    pub analyst_buy: u8,
+    pub analyst_hold: u8,
+    pub analyst_sell: u8,
+    // Earnings history (last 4 quarters)
+    pub earnings: Vec<EarningsQuarter>,
+}
+
+#[derive(Clone)]
+pub(crate) struct EarningsQuarter {
+    pub quarter: String,       // "Q1 2026"
+    pub eps_actual: f32,
+    pub eps_estimate: f32,
+    pub revenue_actual: f64,   // in millions
+    pub revenue_estimate: f64,
+    pub date: i64,
+}
+
+/// Economic calendar event.
+#[derive(Clone)]
+pub(crate) struct EconEvent {
+    pub time: i64,
+    pub name: String,
+    pub importance: u8,        // 0=low, 1=medium, 2=high, 3=critical
+    pub actual: Option<f64>,
+    pub forecast: f64,
+    pub previous: f64,
+    pub country: String,
+}
+
 /// Convert a fractional bar index to a timestamp using interpolation.
 /// Convert DTE (trading days) to calendar date, skipping weekends
 pub(crate) fn trading_date(dte: i32) -> (u32, u32, u32) {
@@ -1368,6 +1418,11 @@ pub(crate) struct Chart {
     pub(crate) show_liquidity_voids: bool,
     pub(crate) show_corr_ribbon: bool,
     // Dark Pool overlay
+    // Fundamental data + research
+    pub(crate) fundamentals: FundamentalData,
+    pub(crate) show_analyst_targets: bool,
+    pub(crate) show_pe_band: bool,
+    pub(crate) econ_calendar: Vec<EconEvent>,
     pub(crate) show_darkpool: bool,
     pub(crate) darkpool_prints: Vec<DarkPoolPrint>,
     pub(crate) vwap_data: Vec<f32>,
@@ -1512,6 +1567,8 @@ impl Chart {
             show_gamma: false, hit_highlight: false, hit_highlights: vec![], hit_cooldowns: vec![],
             show_events: false, event_markers: vec![],
             show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
+            fundamentals: FundamentalData::default(), show_analyst_targets: false,
+            show_pe_band: false, econ_calendar: vec![],
             show_vol_shelves: false, show_confluence: false,
             show_momentum_heat: false, show_trend_strip: false, show_breadth_tint: false,
             show_vol_cone: false, show_price_memory: false, show_liquidity_voids: false, show_corr_ribbon: false,
@@ -1554,7 +1611,11 @@ impl Chart {
                 self.vol_analytics_computed = 0; // force vol analytics recompute
                 self.price_range_animated = None; // reset — no slide animation on symbol/tf change
                 // Drawings: fetch asynchronously via single worker thread
-                if is_new_symbol { self.drawings_requested = false; self.drawings.clear(); }
+                if is_new_symbol {
+                    self.drawings_requested = false; self.drawings.clear();
+                    self.fundamentals = generate_placeholder_fundamentals(&self.symbol, &self.bars);
+                    self.econ_calendar = generate_placeholder_econ();
+                }
                 if !self.drawings_requested {
                     self.drawings_requested = true;
                     fetch_drawings_background(self.symbol.clone());
@@ -3091,6 +3152,53 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
 }
 
 /// Phase 5: Render the top toolbar (symbol picker, layout controls, settings, account strip).
+fn generate_placeholder_fundamentals(symbol: &str, bars: &[super::types::Bar]) -> FundamentalData {
+    let price = bars.last().map(|b| b.close).unwrap_or(150.0);
+    // Seed from symbol name for consistency
+    let seed: u32 = symbol.bytes().map(|b| b as u32).sum::<u32>();
+    let r = |base: f32, range: f32| -> f32 { base + ((seed as f32 * 7.3 + base * 3.1).sin() * 0.5 + 0.5) * range };
+    FundamentalData {
+        pe_ratio: r(18.0, 20.0),
+        forward_pe: r(16.0, 18.0),
+        eps_ttm: price / r(18.0, 20.0),
+        market_cap: r(50.0, 2500.0) as f64,
+        dividend_yield: r(0.0, 3.0),
+        revenue_growth: r(-5.0, 30.0),
+        profit_margin: r(5.0, 30.0),
+        debt_to_equity: r(0.2, 2.0),
+        short_interest: r(1.0, 8.0),
+        institutional_pct: r(50.0, 40.0),
+        insider_pct: r(1.0, 15.0),
+        beta: r(0.6, 1.2),
+        avg_volume: r(5.0, 50.0) as f64 * 1_000_000.0,
+        shares_outstanding: r(500.0, 3000.0) as f64 * 1_000_000.0,
+        analyst_target_mean: price * r(1.02, 0.15),
+        analyst_target_high: price * r(1.15, 0.20),
+        analyst_target_low: price * r(0.80, 0.15),
+        analyst_buy: (r(5.0, 20.0)) as u8,
+        analyst_hold: (r(3.0, 10.0)) as u8,
+        analyst_sell: (r(0.0, 5.0)) as u8,
+        earnings: vec![
+            EarningsQuarter { quarter: "Q1 2026".into(), eps_actual: r(1.2, 1.5), eps_estimate: r(1.1, 1.3), revenue_actual: r(20.0, 60.0) as f64 * 1000.0, revenue_estimate: r(19.0, 58.0) as f64 * 1000.0, date: 0 },
+            EarningsQuarter { quarter: "Q4 2025".into(), eps_actual: r(1.0, 1.4), eps_estimate: r(1.0, 1.2), revenue_actual: r(18.0, 55.0) as f64 * 1000.0, revenue_estimate: r(17.0, 53.0) as f64 * 1000.0, date: 0 },
+            EarningsQuarter { quarter: "Q3 2025".into(), eps_actual: r(0.9, 1.3), eps_estimate: r(0.95, 1.1), revenue_actual: r(17.0, 50.0) as f64 * 1000.0, revenue_estimate: r(16.5, 48.0) as f64 * 1000.0, date: 0 },
+            EarningsQuarter { quarter: "Q2 2025".into(), eps_actual: r(0.85, 1.2), eps_estimate: r(0.9, 1.0), revenue_actual: r(16.0, 48.0) as f64 * 1000.0, revenue_estimate: r(15.5, 46.0) as f64 * 1000.0, date: 0 },
+        ],
+    }
+}
+
+fn generate_placeholder_econ() -> Vec<EconEvent> {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+    vec![
+        EconEvent { time: now + 86400 * 2, name: "FOMC Rate Decision".into(), importance: 3, actual: None, forecast: 4.5, previous: 4.5, country: "US".into() },
+        EconEvent { time: now + 86400 * 5, name: "CPI (MoM)".into(), importance: 2, actual: None, forecast: 0.3, previous: 0.4, country: "US".into() },
+        EconEvent { time: now + 86400 * 8, name: "Non-Farm Payrolls".into(), importance: 3, actual: None, forecast: 180.0, previous: 195.0, country: "US".into() },
+        EconEvent { time: now + 86400 * 12, name: "PPI (YoY)".into(), importance: 1, actual: None, forecast: 2.2, previous: 2.4, country: "US".into() },
+        EconEvent { time: now + 86400 * 15, name: "Retail Sales".into(), importance: 2, actual: None, forecast: 0.5, previous: 0.7, country: "US".into() },
+        EconEvent { time: now + 86400 * 20, name: "GDP (QoQ)".into(), importance: 3, actual: None, forecast: 2.1, previous: 2.3, country: "US".into() },
+    ]
+}
+
 fn widget_description(kind: super::ChartWidgetKind) -> &'static str {
     use super::ChartWidgetKind::*;
     match kind {
@@ -3135,6 +3243,8 @@ fn widget_description(kind: super::ChartWidgetKind) -> &'static str {
         SignalRadar    => "Radial map of all active signals",
         CrossAssetPulse => "Multi-asset market dashboard",
         TapeSpeed      => "Trade velocity speedometer",
+        Fundamentals   => "PE, EPS, margins, ownership",
+        EconCalendar   => "Upcoming economic events",
         PositionsPanel => "All positions with P&L + close",
         DailyPnl       => "Hero daily P&L with close all",
         Custom         => "User-defined widget",
@@ -3329,7 +3439,11 @@ fn render_toolbar(
     if toolbar_visible {
     egui::TopBottomPanel::top("tb")
         .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 10, right: 0, top: 0, bottom: 0 }))
-        .exact_height(if watchlist.compact_mode { 32.0 } else { 42.0 })
+        .exact_height(if watchlist.compact_mode {
+            crate::dt_f32!(toolbar.height_compact, 28.0) + 4.0
+        } else {
+            crate::dt_f32!(toolbar.height, 36.0) + 6.0
+        })
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         crate::design_tokens::register_hit(
@@ -3351,7 +3465,7 @@ fn render_toolbar(
         }
 
         ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.spacing_mut().item_spacing.x = crate::dt_f32!(spacing.md, 6.0);
 
             // ── Logo ──
             let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(15.0, 15.0), egui::Sense::hover());
@@ -3878,6 +3992,9 @@ fn render_toolbar(
                     overlay_toggle!(show_price_memory, "Price Memory");
                     overlay_toggle!(show_liquidity_voids, "Liquidity Voids");
                     ui.separator();
+                    overlay_toggle!(show_analyst_targets, "Analyst Targets");
+                    overlay_toggle!(show_pe_band, "PE Valuation Band");
+                    ui.separator();
                     let gamma = panes[ap].show_gamma;
                     if ui.selectable_label(gamma, egui::RichText::new(format!("{} Gamma Levels (GEX)", check(gamma))).monospace().size(10.0)).clicked() {
                         panes[ap].show_gamma = !panes[ap].show_gamma;
@@ -4097,7 +4214,8 @@ fn render_toolbar(
                     ("Position", "\u{0024}", &[W::PositionPnl, W::PositionsPanel, W::DailyPnl,
                         W::RiskDash, W::RiskReward]),
                     ("Info", "\u{1F4F0}", &[W::VolumeProfile, W::SessionTimer, W::KeyLevels,
-                        W::OptionGreeks, W::MarketBreadth, W::EarningsBadge, W::EarningsMom, W::NewsTicker]),
+                        W::OptionGreeks, W::MarketBreadth, W::EarningsBadge, W::EarningsMom,
+                        W::Fundamentals, W::EconCalendar, W::NewsTicker]),
                     ("Signals", "\u{26A1}", &[W::ExitGauge, W::PrecursorAlert, W::TradePlan,
                         W::ChangePoints, W::ZoneStrength, W::PatternScanner, W::VixMonitor,
                         W::SignalDashboard, W::DivergenceMonitor]),
@@ -5763,9 +5881,9 @@ fn render_chart_pane(
     let skip_x_labels = watchlist.shared_x_axis && pane_has_bottom_neighbor;
     let skip_y_axis = watchlist.shared_y_axis && pane_has_right_neighbor;
     let (w,h) = (rect.width(), rect.height());
-    let pr = if !watchlist.show_y_axis || skip_y_axis { 0.0_f32 } else { 42.0_f32 };
-    let pt = if watchlist.compact_mode { 1.0_f32 } else { 4.0_f32 };
-    let pb = 0.0_f32;
+    let pr = if !watchlist.show_y_axis || skip_y_axis { 0.0_f32 } else { crate::dt_f32!(chart.padding_right, 80.0) * 0.525 };
+    let pt = if watchlist.compact_mode { 1.0_f32 } else { crate::dt_f32!(chart.padding_top, 4.0) };
+    let pb = crate::dt_f32!(chart.padding_bottom, 30.0) * 0.0; // scaled — 0 by default, token controls base
     // Reserve space for oscillator sub-panel if any oscillator indicators or CVD is active
     let has_oscillators = chart.show_oscillators && chart.indicators.iter().any(|i| i.visible && i.kind.category() == IndicatorCategory::Oscillator);
     let needs_osc_panel = has_oscillators || chart.show_cvd;
@@ -9997,6 +10115,67 @@ fn render_chart_pane(
             painter.rect_filled(egui::Rect::from_min_size(
                 egui::pos2(bx, ribbon_y), egui::vec2(bs.max(1.0), ribbon_h)),
                 0.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha));
+        }
+    }
+
+    // Analyst Price Targets — horizontal lines at mean/high/low targets
+    if chart.show_analyst_targets && chart.fundamentals.analyst_target_mean > 0.0 {
+        let f = &chart.fundamentals;
+        for (price, label, color, dash) in [
+            (f.analyst_target_mean, "PT Mean", t.accent, 8.0f32),
+            (f.analyst_target_high, "PT High", t.bull, 5.0),
+            (f.analyst_target_low, "PT Low", t.bear, 5.0),
+        ] {
+            let y = py(price);
+            if y > rect.top() + pt && y < rect.top() + pt + ch {
+                let mut dx = rect.left();
+                while dx < rect.left() + cw {
+                    let end = (dx + dash).min(rect.left() + cw);
+                    painter.line_segment([egui::pos2(dx, y), egui::pos2(end, y)],
+                        egui::Stroke::new(0.8, color_alpha(color, 100)));
+                    dx += dash * 2.0;
+                }
+                // Label
+                painter.text(egui::pos2(rect.left() + 4.0, y - 7.0), egui::Align2::LEFT_BOTTOM,
+                    &format!("{} ${:.0}", label, price), egui::FontId::monospace(7.0),
+                    color_alpha(color, 140));
+            }
+        }
+    }
+
+    // PE Band — shaded channel showing historical PE valuation range
+    if chart.show_pe_band && chart.fundamentals.pe_ratio > 0.0 && !chart.bars.is_empty() {
+        let pe = chart.fundamentals.pe_ratio;
+        let eps = chart.fundamentals.eps_ttm;
+        if eps > 0.0 {
+            let pe_fair = eps * pe;
+            let pe_high = eps * (pe * 1.2); // 20% premium
+            let pe_low = eps * (pe * 0.8);  // 20% discount
+            let y_fair = py(pe_fair);
+            let y_high = py(pe_high);
+            let y_low = py(pe_low);
+            // Premium zone (above fair value)
+            if y_high > rect.top() && y_fair < rect.bottom() {
+                painter.rect_filled(egui::Rect::from_min_max(
+                    egui::pos2(rect.left(), y_high.max(rect.top())),
+                    egui::pos2(rect.left() + cw, y_fair.min(rect.bottom()))),
+                    0.0, egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 6));
+            }
+            // Discount zone (below fair value)
+            if y_fair > rect.top() && y_low < rect.bottom() {
+                painter.rect_filled(egui::Rect::from_min_max(
+                    egui::pos2(rect.left(), y_fair.max(rect.top())),
+                    egui::pos2(rect.left() + cw, y_low.min(rect.bottom()))),
+                    0.0, egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 6));
+            }
+            // Fair value line
+            if y_fair > rect.top() && y_fair < rect.bottom() {
+                painter.line_segment([egui::pos2(rect.left(), y_fair), egui::pos2(rect.left() + cw, y_fair)],
+                    egui::Stroke::new(0.5, color_alpha(t.dim, 60)));
+                painter.text(egui::pos2(rect.left() + 4.0, y_fair - 7.0), egui::Align2::LEFT_BOTTOM,
+                    &format!("Fair Value ${:.0} (PE {:.1})", pe_fair, pe), egui::FontId::monospace(7.0),
+                    color_alpha(t.dim, 100));
+            }
         }
     }
 

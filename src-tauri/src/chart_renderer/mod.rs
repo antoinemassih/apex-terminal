@@ -77,6 +77,8 @@ pub(crate) enum ChartWidgetKind {
     SignalRadar,      // radial map of all active ApexSignals
     CrossAssetPulse,  // compact multi-asset dashboard grid
     TapeSpeed,        // trade velocity speedometer
+    Fundamentals,     // key fundamental metrics card
+    EconCalendar,     // upcoming economic events countdown
     PositionsPanel,   // all account positions with P&L + close buttons
     DailyPnl,         // hero daily P&L number + close all button
     #[serde(other)]
@@ -127,6 +129,8 @@ impl ChartWidgetKind {
             Self::SignalRadar    => "Signal Radar",
             Self::CrossAssetPulse => "Market Pulse",
             Self::TapeSpeed      => "Tape Speed",
+            Self::Fundamentals   => "Fundamentals",
+            Self::EconCalendar   => "Calendar",
             Self::PositionsPanel => "Positions",
             Self::DailyPnl       => "Daily P&L",
             Self::Custom         => "Custom",
@@ -175,6 +179,8 @@ impl ChartWidgetKind {
             Self::SignalRadar    => "\u{25C8}",  // ◈
             Self::CrossAssetPulse => "\u{229E}", // ⊞
             Self::TapeSpeed      => "\u{23F1}",  // ⏱
+            Self::Fundamentals   => "\u{1F4CA}", // 📊
+            Self::EconCalendar   => "\u{1F4C5}", // 📅
             Self::PositionsPanel => "\u{1F4BC}", // 💼
             Self::DailyPnl       => "\u{1F4B0}", // 💰
             Self::Custom         => "\u{2699}",  // ⚙
@@ -192,6 +198,7 @@ impl ChartWidgetKind {
           Self::SectorRotation, Self::OptionsSentiment, Self::RelStrength,
           Self::RiskDash, Self::EarningsMom, Self::LiquidityScore,
           Self::SignalRadar, Self::CrossAssetPulse, Self::TapeSpeed,
+          Self::Fundamentals, Self::EconCalendar,
           Self::PositionsPanel, Self::DailyPnl]
     }
 }
@@ -291,6 +298,8 @@ impl ChartWidget {
             ChartWidgetKind::SignalRadar    => (210.0, 210.0),
             ChartWidgetKind::CrossAssetPulse => (200.0, 160.0),
             ChartWidgetKind::TapeSpeed      => (170.0, 140.0),
+            ChartWidgetKind::Fundamentals   => (200.0, 180.0),
+            ChartWidgetKind::EconCalendar   => (210.0, 160.0),
             ChartWidgetKind::PositionsPanel => (220.0, 200.0),
             ChartWidgetKind::DailyPnl       => (260.0, 80.0),
             ChartWidgetKind::Custom         => (150.0, 90.0),
@@ -502,13 +511,16 @@ pub(crate) enum PaneHeaderSize { Compact, Normal, Expanded }
 
 impl PaneHeaderSize {
     pub(crate) fn header_h(self) -> f32 {
-        match self { Self::Compact => 22.0, Self::Normal => 28.0, Self::Expanded => 34.0 }
+        let base = crate::dt_f32!(pane_header.height_compact, 22.0);
+        match self { Self::Compact => base, Self::Normal => base + 6.0, Self::Expanded => base + 12.0 }
     }
     pub(crate) fn tabs_header_h(self) -> f32 {
-        match self { Self::Compact => 32.0, Self::Normal => 36.0, Self::Expanded => 42.0 }
+        let base = crate::dt_f32!(pane_header.height, 36.0);
+        match self { Self::Compact => base - 4.0, Self::Normal => base, Self::Expanded => base + 6.0 }
     }
     pub(crate) fn title_font(self) -> f32 {
-        match self { Self::Compact => 12.0, Self::Normal => 14.0, Self::Expanded => 16.0 }
+        let base = crate::dt_f32!(font.input, 12.0);
+        match self { Self::Compact => base, Self::Normal => base + 2.0, Self::Expanded => base + 4.0 }
     }
     pub(crate) fn label(self) -> &'static str {
         match self { Self::Compact => "Compact", Self::Normal => "Normal", Self::Expanded => "Expanded" }

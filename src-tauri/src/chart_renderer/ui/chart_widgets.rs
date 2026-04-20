@@ -744,6 +744,8 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
             let c = if speed > 2.0 { t.bear } else if speed > 1.2 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
             ("SPD", format!("{:.1}x", speed), c)
         }
+        ChartWidgetKind::Fundamentals => ("PE", format!("{:.1}", wd.pe_ratio), t.accent),
+        ChartWidgetKind::EconCalendar => ("CAL", format!("{}", wd.econ_count), t.accent),
         ChartWidgetKind::LiquidityScore => {
             let c = if wd.liquidity_score > 70.0 { t.bull } else if wd.liquidity_score < 30.0 { t.bear } else { t.dim };
             ("LIQ", format!("{:.0}", wd.liquidity_score), c)
@@ -817,6 +819,8 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::SignalRadar   => draw_signal_radar(p, body, wd, t),
         ChartWidgetKind::CrossAssetPulse => draw_cross_asset(p, body, wd, t),
         ChartWidgetKind::TapeSpeed     => draw_tape_speed(p, body, wd, t),
+        ChartWidgetKind::Fundamentals  => draw_fundamentals(p, body, wd, t),
+        ChartWidgetKind::EconCalendar  => draw_econ_calendar(p, body, wd, t),
         ChartWidgetKind::PositionsPanel=> draw_positions_panel(p, body, wd, t, hover, btns),
         ChartWidgetKind::DailyPnl      => draw_daily_pnl(p, body, wd, t, hover, btns),
         ChartWidgetKind::Custom        => draw_custom(p, body, t),
@@ -878,6 +882,22 @@ pub(crate) struct WidgetData {
     vix_convergence: f32,
     divergence_count: usize,
     bars_loaded: bool, // false = show loading skeleton
+    // Fundamentals
+    pe_ratio: f32,
+    eps_ttm: f32,
+    market_cap_b: f32,
+    dividend_yield: f32,
+    revenue_growth: f32,
+    profit_margin: f32,
+    short_interest: f32,
+    institutional_pct: f32,
+    analyst_target: f32,
+    analyst_buy: u8,
+    analyst_hold: u8,
+    analyst_sell: u8,
+    econ_count: usize,
+    econ_next_name: String,
+    econ_next_days: i32,
     // RSI Multi-timeframe: [5m, 15m, 30m, 1h, 4h, 1d, 1w]
     rsi_multi: [f32; 7],
     // Trend alignment: 7 TFs × 4 indicators (EMA slope, MACD, price>VWAP, RSI>50)
@@ -1087,6 +1107,25 @@ impl WidgetData {
             vix_convergence: chart.vix_convergence_score,
             divergence_count: 0, // populated when divergence overlays are active
             bars_loaded: n > 0,
+            // ── Fundamental data ──
+            pe_ratio: chart.fundamentals.pe_ratio,
+            eps_ttm: chart.fundamentals.eps_ttm,
+            market_cap_b: chart.fundamentals.market_cap as f32,
+            dividend_yield: chart.fundamentals.dividend_yield,
+            revenue_growth: chart.fundamentals.revenue_growth,
+            profit_margin: chart.fundamentals.profit_margin,
+            short_interest: chart.fundamentals.short_interest,
+            institutional_pct: chart.fundamentals.institutional_pct,
+            analyst_target: chart.fundamentals.analyst_target_mean,
+            analyst_buy: chart.fundamentals.analyst_buy,
+            analyst_hold: chart.fundamentals.analyst_hold,
+            analyst_sell: chart.fundamentals.analyst_sell,
+            econ_count: chart.econ_calendar.len(),
+            econ_next_name: chart.econ_calendar.first().map(|e| e.name.clone()).unwrap_or_default(),
+            econ_next_days: chart.econ_calendar.first().map(|e| {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+                ((e.time - now) as f64 / 86400.0).ceil() as i32
+            }).unwrap_or(-1),
             // ── Computed analytics for new widgets ──
             trend_grid: compute_trend_grid(bars),
             roc_bars: compute_roc_bars(bars),
@@ -2387,6 +2426,100 @@ fn draw_tape_speed(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         "4x", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
     p.text(egui::pos2(cx, cy - r - 4.0), egui::Align2::CENTER_CENTER,
         "TAPE", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+}
+
+/// Fundamentals Card — key metrics in a compact grid (style2/style3 color-block inspiration)
+fn draw_fundamentals(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let cols = 2;
+    let metrics: Vec<(&str, String, Color32)> = vec![
+        ("P/E", format!("{:.1}", wd.pe_ratio), t.accent),
+        ("EPS", format!("${:.2}", wd.eps_ttm), t.text),
+        ("MKT CAP", format!("${:.0}B", wd.market_cap_b), t.text),
+        ("DIV YIELD", format!("{:.1}%", wd.dividend_yield), if wd.dividend_yield > 2.0 { t.bull } else { t.dim }),
+        ("REV GROWTH", format!("{:+.1}%", wd.revenue_growth), if wd.revenue_growth > 0.0 { t.bull } else { t.bear }),
+        ("MARGIN", format!("{:.1}%", wd.profit_margin), if wd.profit_margin > 15.0 { t.bull } else { t.dim }),
+        ("SHORT INT", format!("{:.1}%", wd.short_interest), if wd.short_interest > 5.0 { t.bear } else { t.dim }),
+        ("INST OWN", format!("{:.0}%", wd.institutional_pct), t.dim),
+    ];
+
+    let cell_w = body.width() / cols as f32;
+    let cell_h = body.height() / (metrics.len() / cols) as f32;
+
+    for (i, (label, value, color)) in metrics.iter().enumerate() {
+        let col = i % cols;
+        let row = i / cols;
+        let x = body.left() + col as f32 * cell_w;
+        let y = body.top() + row as f32 * cell_h;
+
+        // Label
+        p.text(egui::pos2(x + 6.0, y + 6.0), egui::Align2::LEFT_CENTER,
+            label, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
+        // Value
+        p.text(egui::pos2(x + 6.0, y + cell_h * 0.6), egui::Align2::LEFT_CENTER,
+            value, egui::FontId::proportional(14.0), *color);
+    }
+
+    // Analyst consensus bar at bottom
+    let total = (wd.analyst_buy + wd.analyst_hold + wd.analyst_sell) as f32;
+    if total > 0.0 {
+        let bar_y = body.bottom() - 12.0;
+        let bar_w = body.width() - 12.0;
+        let buy_w = bar_w * wd.analyst_buy as f32 / total;
+        let hold_w = bar_w * wd.analyst_hold as f32 / total;
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0, bar_y), egui::vec2(buy_w, 6.0)),
+            2.0, t.bull);
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0 + buy_w, bar_y), egui::vec2(hold_w, 6.0)),
+            0.0, egui::Color32::from_rgb(255, 191, 0));
+        let sell_w = bar_w - buy_w - hold_w;
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0 + buy_w + hold_w, bar_y), egui::vec2(sell_w, 6.0)),
+            2.0, t.bear);
+        p.text(egui::pos2(body.left() + 6.0, bar_y - 4.0), egui::Align2::LEFT_BOTTOM,
+            &format!("{}B {}H {}S  PT ${:.0}", wd.analyst_buy, wd.analyst_hold, wd.analyst_sell, wd.analyst_target),
+            egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
+    }
+}
+
+/// Economic Calendar — upcoming events countdown (chart8 lollipop + color block style)
+fn draw_econ_calendar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    if wd.econ_count == 0 {
+        p.text(body.center(), egui::Align2::CENTER_CENTER, "NO EVENTS",
+            egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.4));
+        return;
+    }
+
+    // Next event hero
+    if wd.econ_next_days >= 0 {
+        p.text(egui::pos2(body.left() + 8.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
+            "NEXT EVENT", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+        p.text(egui::pos2(body.left() + 8.0, body.top() + 26.0), egui::Align2::LEFT_CENTER,
+            &format!("{}d", wd.econ_next_days), egui::FontId::proportional(28.0), t.accent);
+        p.text(egui::pos2(body.left() + 55.0, body.top() + 20.0), egui::Align2::LEFT_CENTER,
+            &wd.econ_next_name, egui::FontId::monospace(FONT_SM), t.text);
+    }
+
+    // Event list below
+    let list_top = body.top() + 48.0;
+    let row_h = 16.0;
+    let events_placeholder = [
+        ("FOMC", 2, 3u8), ("CPI", 5, 2), ("NFP", 8, 3),
+        ("PPI", 12, 1), ("Retail", 15, 2), ("GDP", 20, 3),
+    ];
+    for (i, (name, days, importance)) in events_placeholder.iter().enumerate() {
+        let y = list_top + i as f32 * row_h;
+        if y + row_h > body.bottom() { break; }
+
+        let imp_color = match importance {
+            3 => t.bear, 2 => egui::Color32::from_rgb(255, 191, 0), _ => t.dim
+        };
+        // Importance dot
+        p.circle_filled(egui::pos2(body.left() + 10.0, y + row_h * 0.5), 2.5, imp_color);
+        // Name
+        p.text(egui::pos2(body.left() + 18.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
+            name, egui::FontId::monospace(FONT_XS), t.text);
+        // Days
+        p.text(egui::pos2(body.right() - 8.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
+            &format!("{}d", days), egui::FontId::monospace(FONT_XS), t.dim);
+    }
 }
 
 fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme,
