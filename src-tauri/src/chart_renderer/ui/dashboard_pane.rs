@@ -11,7 +11,7 @@ pub(crate) fn render(
     watchlist: &mut Watchlist,
 ) {
     let t = &THEMES[theme_idx];
-    let rect_idx = if watchlist.maximized_pane.is_some() { 0 } else { pane_idx };
+    let rect_idx = 0;
     if rect_idx >= pane_rects.len() { return; }
     let rect = pane_rects[rect_idx];
 

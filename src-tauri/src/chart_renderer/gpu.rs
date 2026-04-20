@@ -5914,6 +5914,29 @@ fn render_chart_pane(
         egui::pos2(full_rect.left() + dom_w, full_rect.top()),
         egui::vec2(full_rect.width() - dom_w, full_rect.height()),
     );
+
+    // ── Non-chart pane types: render their content in the body area, then return ──
+    // The header/tabs above have already rendered, so these panes get the full header UX
+    // We pass `rect` (body below header, minus DOM) as a single-element slice
+    match chart.pane_type {
+        PaneType::Portfolio => {
+            let body_rects = [rect];
+            super::ui::portfolio_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist, account_data_cached);
+            return;
+        }
+        PaneType::Dashboard => {
+            let body_rects = [rect];
+            super::ui::dashboard_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
+            return;
+        }
+        PaneType::Heatmap => {
+            let body_rects = [rect];
+            super::ui::heatmap_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
+            return;
+        }
+        PaneType::Chart => {} // continue to chart rendering below
+    }
+
     // Shared X-axis: detect if this pane has a bottom neighbor (skip X labels on upper panes)
     let pane_has_bottom_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.top() - pane_rect.bottom()).abs() < 5.0);
     let pane_has_right_neighbor = visible_count > 1 && pane_rects.iter().any(|r| (r.left() - pane_rect.right()).abs() < 5.0);
@@ -15805,12 +15828,9 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         for render_i in 0..visible_count {
         // When maximized, render the maximized pane using rect index 0
         let pane_idx = if let Some(max_idx) = watchlist.maximized_pane { max_idx } else { render_i };
-        match panes[pane_idx].pane_type {
-            PaneType::Chart => render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached),
-            PaneType::Portfolio => super::ui::portfolio_pane::render(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached),
-            PaneType::Dashboard => super::ui::dashboard_pane::render(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist),
-            PaneType::Heatmap => super::ui::heatmap_pane::render(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist),
-        }
+        // All pane types go through render_chart_pane which renders the header/tabs first,
+        // then dispatches to the type-specific content
+        render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached);
         } // end for pane_idx
 
         // ── Cross-pane tab drag: ghost rendering + drop handling ──
