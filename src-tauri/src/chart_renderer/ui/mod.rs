@@ -41,3 +41,6 @@ pub mod chart_widgets;
 pub mod plays_panel;
 pub mod playbook_panel;
 pub mod seasonality_panel;
+pub mod portfolio_pane;
+pub mod dashboard_pane;
+pub mod heatmap_pane;

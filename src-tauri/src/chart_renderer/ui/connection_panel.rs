@@ -24,7 +24,7 @@ if *conn_panel_open {
                     let dot_color = if ok { rgb(46,204,113) } else { rgb(231,76,60) };
                     ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0), 3.5, dot_color);
                     ui.add_space(12.0);
-                    ui.label(egui::RichText::new(name).monospace().size(10.0).strong().color(egui::Color32::from_rgb(200,200,210)));
+                    ui.label(egui::RichText::new(name).monospace().size(10.0).strong().color(t.text));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         status_badge(ui, status, if ok { t.bull } else { t.bear });
@@ -37,7 +37,8 @@ if *conn_panel_open {
                 ui.add_space(3.0);
             };
 
-            let redis_ok = crate::bar_cache::get("__ping_test", "").is_none();
+            // Don't probe Redis on UI thread — just check if the connection was established at startup
+            let redis_ok = crate::bar_cache::is_connected();
             let ib_ok = read_account_data().as_ref().map(|(a, _, _)| a.connected).unwrap_or(false);
             svc_row(ui, "ApexIB", if ib_ok { "OK" } else { "OFF" }, ib_ok, APEXIB_URL);
             svc_row(ui, "Redis Cache", if redis_ok { "OK" } else { "OFF" }, redis_ok, "192.168.1.89:6379");

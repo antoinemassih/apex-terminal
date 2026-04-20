@@ -1122,7 +1122,19 @@ pub(crate) struct DarkPoolPrint {
     pub(crate) side: i8, // 1=buy, -1=sell, 0=unknown
 }
 
+/// What type of content a pane displays.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum PaneType {
+    Chart,          // standard candlestick/line chart (default)
+    Portfolio,      // portfolio positions table + risk analytics
+    Dashboard,      // masonry grid of widgets (no chart)
+    Heatmap,        // market/sector heatmap treemap
+}
+
+impl Default for PaneType { fn default() -> Self { Self::Chart } }
+
 pub(crate) struct Chart {
+    pub(crate) pane_type: PaneType,
     pub(crate) symbol: String, pub(crate) timeframe: String,
     // Option chart metadata
     pub(crate) is_option: bool,
@@ -1425,7 +1437,8 @@ impl Chart {
         c
     }
     fn new() -> Self {
-        Self { symbol: "AAPL".into(), timeframe: "5m".into(),
+        Self { pane_type: PaneType::Chart,
+            symbol: "AAPL".into(), timeframe: "5m".into(),
             is_option: false, underlying: String::new(), option_type: String::new(),
             option_strike: 0.0, option_expiry: String::new(), option_con_id: 0,
             bars: vec![], timestamps: vec![], drawings: vec![], indicator_bar_count: 0,
@@ -3319,6 +3332,9 @@ fn render_toolbar(
         .exact_height(if watchlist.compact_mode { 32.0 } else { 42.0 })
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
+        crate::design_tokens::register_hit(
+            [tb_rect.min.x, tb_rect.min.y, tb_rect.width(), tb_rect.height()],
+            "TOOLBAR", "Toolbar");
         // Bottom border line
         ui.painter().line_segment(
             [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
@@ -4920,6 +4936,9 @@ fn render_chart_pane(
 ) {
     use crate::monitoring::{span_begin, span_end};
     let pane_rect = if pane_idx < pane_rects.len() { pane_rects[pane_idx] } else { pane_rects[0] };
+    crate::design_tokens::register_hit(
+        [pane_rect.min.x, pane_rect.min.y, pane_rect.width(), pane_rect.height()],
+        "CHART_PANE", "Chart");
     let chart = &mut panes[pane_idx];
     // ── Sync orders from OrderManager (single source of truth) ──
     // Merge: OrderManager orders take precedence, keep local-only orders too
@@ -5002,6 +5021,9 @@ fn render_chart_pane(
     let show_header = true;
     if show_header {
         let header_rect = egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), pane_top_offset));
+        crate::design_tokens::register_hit(
+            [header_rect.min.x, header_rect.min.y, header_rect.width(), header_rect.height()],
+            "PANE_HEADER", "Pane Header");
         ui.allocate_rect(header_rect, egui::Sense::hover()); // reserve space
         let header_painter = ui.painter_at(header_rect);
         header_painter.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(1.2));
@@ -5411,6 +5433,54 @@ fn render_chart_pane(
                 if t_resp.clicked() {
                     chart.template_popup_open = !chart.template_popup_open;
                     chart.template_popup_pos = egui::pos2(t_rect.left(), t_rect.bottom() + 4.0);
+                }
+            }
+
+            // Pane type selector (small icon showing current type)
+            {
+                let ptype_icon = match chart.pane_type {
+                    PaneType::Chart => Icon::CHART_LINE,
+                    PaneType::Portfolio => Icon::LIST,
+                    PaneType::Dashboard => "\u{2637}",
+                    PaneType::Heatmap => "\u{2593}",
+                };
+                let pt_size = egui::vec2(pane_top_offset - 6.0, pane_top_offset - 6.0);
+                let pt_pos = egui::pos2(header_rect.right() - pt_size.x - 4.0, header_rect.top() + 3.0);
+                let pt_rect = egui::Rect::from_min_size(pt_pos, pt_size);
+                let pt_resp = ui.allocate_rect(pt_rect, egui::Sense::click());
+                let pt_hov = pt_resp.hovered();
+                let (bg, fg) = if pt_hov {
+                    (color_alpha(t.accent, ALPHA_TINT), t.accent)
+                } else {
+                    (egui::Color32::TRANSPARENT, t.dim.gamma_multiply(0.5))
+                };
+                header_painter.rect_filled(pt_rect, 4.0, bg);
+                header_painter.text(pt_rect.center(), egui::Align2::CENTER_CENTER,
+                    ptype_icon, egui::FontId::proportional((title_font_size - 2.0).max(9.0)), fg);
+
+                // Context menu for pane type selection
+                pt_resp.context_menu(|ui| {
+                    for (ptype, label, icon) in [
+                        (PaneType::Chart, "Chart", Icon::CHART_LINE),
+                        (PaneType::Portfolio, "Portfolio", Icon::LIST),
+                        (PaneType::Dashboard, "Dashboard", "\u{2637}"),
+                        (PaneType::Heatmap, "Heatmap", "\u{2593}"),
+                    ] {
+                        let active = chart.pane_type == ptype;
+                        if ui.selectable_label(active, egui::RichText::new(format!("{} {}", icon, label)).monospace().size(10.0)).clicked() {
+                            chart.pane_type = ptype;
+                            ui.close_menu();
+                        }
+                    }
+                });
+                if pt_resp.clicked() {
+                    // Cycle through pane types on click
+                    chart.pane_type = match chart.pane_type {
+                        PaneType::Chart => PaneType::Portfolio,
+                        PaneType::Portfolio => PaneType::Dashboard,
+                        PaneType::Dashboard => PaneType::Heatmap,
+                        PaneType::Heatmap => PaneType::Chart,
+                    };
                 }
             }
         } else {
@@ -15415,7 +15485,12 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         for render_i in 0..visible_count {
         // When maximized, render the maximized pane using rect index 0
         let pane_idx = if let Some(max_idx) = watchlist.maximized_pane { max_idx } else { render_i };
-        render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached);
+        match panes[pane_idx].pane_type {
+            PaneType::Chart => render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached),
+            PaneType::Portfolio => super::ui::portfolio_pane::render(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached),
+            PaneType::Dashboard => super::ui::dashboard_pane::render(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist),
+            PaneType::Heatmap => super::ui::heatmap_pane::render(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist),
+        }
         } // end for pane_idx
 
         // ── Cross-pane tab drag: ghost rendering + drop handling ──
@@ -15518,29 +15593,29 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     });
     span_end(); // chart_panes
 
-    // ── Design Mode Inspector (F12 toggle) ──
+    // ── Design Mode Inspector — opens automatically, Ctrl+Shift+D to hide/show ──
     #[cfg(feature = "design-mode")]
-    {
-        // F12 toggle
-        if ctx.input(|i| i.key_pressed(egui::Key::F12)) {
-            DESIGN_INSPECTOR.with(|insp| {
-                let mut insp = insp.borrow_mut();
-                if insp.is_none() {
-                    let toml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .parent().unwrap()
-                        .join("apex-terminal-designmode")
-                        .join("design.toml");
-                    *insp = Some(crate::design_inspector::Inspector::new(toml_path));
-                }
-                if let Some(ref mut inspector) = *insp {
-                    inspector.toggle();
-                }
-            });
-        }
-        // Render inspector panel
+    if crate::design_tokens::is_active() {
         DESIGN_INSPECTOR.with(|insp| {
             let mut insp = insp.borrow_mut();
+            // Auto-create and auto-open on first frame
+            if insp.is_none() {
+                let toml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .parent().unwrap()
+                    .join("apex-terminal-designmode")
+                    .join("design.toml");
+                let mut inspector = crate::design_inspector::Inspector::new(toml_path);
+                inspector.open = true; // open by default
+                *insp = Some(inspector);
+                eprintln!("[design-mode] Inspector panel opened automatically");
+            }
             if let Some(ref mut inspector) = *insp {
+                // Ctrl+Shift+D toggles visibility
+                if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::D)) {
+                    inspector.toggle();
+                    eprintln!("[design-mode] Inspector toggled: {}", if inspector.open { "OPEN" } else { "CLOSED" });
+                }
+                // Render
                 if let Some(mut tokens) = crate::design_tokens::get() {
                     if inspector.show(ctx, &mut tokens) {
                         crate::design_tokens::update(tokens);

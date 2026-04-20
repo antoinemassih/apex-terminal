@@ -61,6 +61,14 @@ fn with_conn<T>(f: impl Fn(&mut Connection) -> redis::RedisResult<T>) -> Option<
     f(conn).ok()
 }
 
+/// Check if Redis connection was established (non-blocking).
+pub fn is_connected() -> bool {
+    CONN.get()
+        .and_then(|m| m.lock().ok())
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
+}
+
 /// Get cached bars. Returns None if cache miss or Redis unavailable.
 pub fn get(symbol: &str, timeframe: &str) -> Option<Vec<Bar>> {
     let k = key(symbol, timeframe);
