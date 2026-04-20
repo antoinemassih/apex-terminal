@@ -6982,30 +6982,42 @@ fn render_chart_pane(
             let x = bx(bar_f);
             if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
 
+            let is_earnings = em.event_type == 0;
             let base_col = match em.event_type {
-                0 => t.accent,
-                1 => egui::Color32::from_rgb(46, 204, 113),
-                2 => egui::Color32::from_rgb(52, 152, 219),
-                3 => egui::Color32::from_rgb(243, 156, 18),
+                0 => { // Earnings — color by beat/miss
+                    match em.impact { 1 => t.bull, -1 => t.bear, _ => t.accent }
+                }
+                1 => egui::Color32::from_rgb(46, 204, 113),  // dividend
+                2 => egui::Color32::from_rgb(52, 152, 219),  // split
+                3 => egui::Color32::from_rgb(243, 156, 18),  // economic
                 _ => t.accent,
             };
 
             dashed_line(&painter, egui::pos2(x, chart_top), egui::pos2(x, chart_bot),
-                egui::Stroke::new(0.7, color_alpha(base_col, 50)), LineStyle::Dashed);
+                egui::Stroke::new(if is_earnings { 1.0 } else { 0.7 }, color_alpha(base_col, if is_earnings { 70 } else { 50 })),
+                LineStyle::Dashed);
 
-            let sq_sz = 7.0;
+            let sq_sz = if is_earnings { 9.0 } else { 7.0 };
             let sq_rect = egui::Rect::from_center_size(egui::pos2(x, marker_y), egui::vec2(sq_sz, sq_sz));
-            painter.rect_filled(sq_rect, 2.0, color_alpha(base_col, 200));
+            painter.rect_filled(sq_rect, if is_earnings { 3.0 } else { 2.0 }, color_alpha(base_col, 200));
 
+            // Impact indicator
             let impact_col = match em.impact {
                 1 => t.bull, -1 => t.bear, _ => t.dim,
             };
-            painter.circle_filled(egui::pos2(x, marker_y + sq_sz + 2.0), 2.0, color_alpha(impact_col, 160));
+            if is_earnings {
+                // Show beat/miss arrow instead of dot
+                let arrow_icon = match em.impact { 1 => "\u{25B2}", -1 => "\u{25BC}", _ => "\u{25C6}" };
+                painter.text(egui::pos2(x, marker_y + sq_sz + 3.0), egui::Align2::CENTER_TOP,
+                    arrow_icon, egui::FontId::proportional(7.0), impact_col);
+            } else {
+                painter.circle_filled(egui::pos2(x, marker_y + sq_sz + 2.0), 2.0, color_alpha(impact_col, 160));
+            }
 
             let label_icon = match em.event_type {
                 0 => "E", 1 => "$", 2 => "S", 3 => "F", _ => "?",
             };
-            painter.text(egui::pos2(x, marker_y + sq_sz + 7.0), egui::Align2::CENTER_TOP,
+            painter.text(egui::pos2(x, marker_y + sq_sz + (if is_earnings { 12.0 } else { 7.0 })), egui::Align2::CENTER_TOP,
                 label_icon, egui::FontId::monospace(7.0), color_alpha(base_col, 180));
 
             if let Some(hp) = hover_pos {
@@ -12062,6 +12074,40 @@ fn render_chart_pane(
                             (format!("{:+.2} ({:+.1}%)", change, pct), chg_col),
                             (vol_str, color_alpha(t.text,140)),
                         ];
+
+                        // Volume X-Ray — buy/sell split, delta, RVOL
+                        if v > 0.0 {
+                            // Estimate buy/sell from close position within bar
+                            let range = (h - l).max(0.001);
+                            let buy_ratio = (c - l) / range; // close near high = more buying
+                            let buy_vol = v * buy_ratio;
+                            let sell_vol = v * (1.0 - buy_ratio);
+                            let delta = buy_vol - sell_vol;
+
+                            // RVOL
+                            let avg_vol = if bar_idx > 20 {
+                                chart.bars[bar_idx.saturating_sub(21)..bar_idx].iter()
+                                    .map(|b| b.volume).sum::<f32>() / 20.0
+                            } else { v };
+                            let rvol = if avg_vol > 0.0 { v / avg_vol } else { 1.0 };
+
+                            tip_lines.push(("---".into(), color_alpha(t.text, 40)));
+
+                            // Buy/Sell bar visual as text
+                            let buy_pct = (buy_ratio * 100.0) as u32;
+                            let buy_str = if buy_vol >= 1_000_000.0 { format!("{:.1}M", buy_vol / 1_000_000.0) }
+                                else { format!("{:.0}K", buy_vol / 1_000.0) };
+                            let sell_str = if sell_vol >= 1_000_000.0 { format!("{:.1}M", sell_vol / 1_000_000.0) }
+                                else { format!("{:.0}K", sell_vol / 1_000.0) };
+                            tip_lines.push((format!("Buy {}  Sell {}", buy_str, sell_str),
+                                if buy_ratio > 0.5 { t.bull } else { t.bear }));
+                            let delta_str = if delta.abs() >= 1_000_000.0 { format!("{:+.1}M", delta / 1_000_000.0) }
+                                else { format!("{:+.0}K", delta / 1_000.0) };
+                            tip_lines.push((format!("Delta {}  B/S {:.0}%", delta_str, buy_pct),
+                                if delta > 0.0 { t.bull } else { t.bear }));
+                            let rvol_col = if rvol > 2.0 { t.accent } else if rvol > 1.2 { t.bull } else { t.dim };
+                            tip_lines.push((format!("RVOL {:.1}x", rvol), rvol_col));
+                        }
 
                         // Detect hovered indicator (within 5px of cursor Y)
                         let mut hovered_ind_id: Option<u32> = None;
