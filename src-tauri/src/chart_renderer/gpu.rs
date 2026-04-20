@@ -701,6 +701,18 @@ pub(crate) struct EconEvent {
     pub country: String,
 }
 
+/// SEC filing / insider transaction.
+#[derive(Clone)]
+pub(crate) struct InsiderTrade {
+    pub name: String,
+    pub title: String,
+    pub transaction: String, // "Buy", "Sell", "Grant"
+    pub shares: i64,
+    pub price: f32,
+    pub date: i64,
+    pub value: f64,
+}
+
 /// Convert a fractional bar index to a timestamp using interpolation.
 /// Convert DTE (trading days) to calendar date, skipping weekends
 pub(crate) fn trading_date(dte: i32) -> (u32, u32, u32) {
@@ -1422,6 +1434,8 @@ pub(crate) struct Chart {
     pub(crate) fundamentals: FundamentalData,
     pub(crate) show_analyst_targets: bool,
     pub(crate) show_pe_band: bool,
+    pub(crate) show_insider_trades: bool,
+    pub(crate) insider_trades: Vec<InsiderTrade>,
     pub(crate) econ_calendar: Vec<EconEvent>,
     pub(crate) show_darkpool: bool,
     pub(crate) darkpool_prints: Vec<DarkPoolPrint>,
@@ -1568,7 +1582,8 @@ impl Chart {
             show_events: false, event_markers: vec![],
             show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             fundamentals: FundamentalData::default(), show_analyst_targets: false,
-            show_pe_band: false, econ_calendar: vec![],
+            show_pe_band: false, show_insider_trades: false, insider_trades: vec![],
+            econ_calendar: vec![],
             show_vol_shelves: false, show_confluence: false,
             show_momentum_heat: false, show_trend_strip: false, show_breadth_tint: false,
             show_vol_cone: false, show_price_memory: false, show_liquidity_voids: false, show_corr_ribbon: false,
@@ -1615,6 +1630,7 @@ impl Chart {
                     self.drawings_requested = false; self.drawings.clear();
                     self.fundamentals = generate_placeholder_fundamentals(&self.symbol, &self.bars);
                     self.econ_calendar = generate_placeholder_econ();
+                    self.insider_trades = generate_placeholder_insiders(&self.symbol);
                 }
                 if !self.drawings_requested {
                     self.drawings_requested = true;
@@ -3199,6 +3215,28 @@ fn generate_placeholder_econ() -> Vec<EconEvent> {
     ]
 }
 
+fn generate_placeholder_insiders(symbol: &str) -> Vec<InsiderTrade> {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+    let seed: u32 = symbol.bytes().map(|b| b as u32).sum();
+    let names = ["John Smith (CEO)", "Jane Doe (CFO)", "Robert Lee (CTO)", "Sarah Chen (VP Sales)", "Michael Park (Director)"];
+    let mut trades = Vec::new();
+    for i in 0..6u32 {
+        let s = seed.wrapping_mul(i + 1).wrapping_add(7919);
+        let is_buy = s % 3 == 0;
+        let shares = ((s % 50 + 5) * 1000) as i64 * if is_buy { 1 } else { -1 };
+        let price = 100.0 + (s % 200) as f32;
+        trades.push(InsiderTrade {
+            name: names[(s as usize) % names.len()].into(),
+            title: "".into(),
+            transaction: if is_buy { "Buy" } else { "Sell" }.into(),
+            shares, price,
+            date: now - (i as i64 + 1) * 86400 * ((s % 15 + 3) as i64),
+            value: (shares.abs() as f64) * price as f64,
+        });
+    }
+    trades
+}
+
 fn widget_description(kind: super::ChartWidgetKind) -> &'static str {
     use super::ChartWidgetKind::*;
     match kind {
@@ -3994,6 +4032,7 @@ fn render_toolbar(
                     ui.separator();
                     overlay_toggle!(show_analyst_targets, "Analyst Targets");
                     overlay_toggle!(show_pe_band, "PE Valuation Band");
+                    overlay_toggle!(show_insider_trades, "Insider Trades");
                     ui.separator();
                     let gamma = panes[ap].show_gamma;
                     if ui.selectable_label(gamma, egui::RichText::new(format!("{} Gamma Levels (GEX)", check(gamma))).monospace().size(10.0)).clicked() {
@@ -10176,6 +10215,45 @@ fn render_chart_pane(
                     &format!("Fair Value ${:.0} (PE {:.1})", pe_fair, pe), egui::FontId::monospace(7.0),
                     color_alpha(t.dim, 100));
             }
+        }
+    }
+
+    // Insider Trade markers on chart
+    if chart.show_insider_trades && !chart.insider_trades.is_empty() && !chart.timestamps.is_empty() {
+        for trade in &chart.insider_trades {
+            // Find the closest bar to this trade date
+            let bar_idx = chart.timestamps.partition_point(|&ts| ts < trade.date);
+            if bar_idx >= chart.bars.len() { continue; }
+            let x = rect.left() + (bar_idx as f32 - chart.vs) * bs;
+            if x < rect.left() || x > rect.left() + cw { continue; }
+
+            let is_buy = trade.shares > 0;
+            let color = if is_buy { t.bull } else { t.bear };
+            let y_base = rect.top() + pt + ch - 2.0;
+
+            // Arrow marker at bottom of chart
+            let arrow_h = 10.0;
+            if is_buy {
+                // Up arrow
+                painter.line_segment([egui::pos2(x, y_base), egui::pos2(x, y_base - arrow_h)],
+                    egui::Stroke::new(1.5, color));
+                painter.line_segment([egui::pos2(x - 3.0, y_base - arrow_h + 3.0), egui::pos2(x, y_base - arrow_h)],
+                    egui::Stroke::new(1.5, color));
+                painter.line_segment([egui::pos2(x + 3.0, y_base - arrow_h + 3.0), egui::pos2(x, y_base - arrow_h)],
+                    egui::Stroke::new(1.5, color));
+            } else {
+                // Down arrow
+                painter.line_segment([egui::pos2(x, y_base - arrow_h), egui::pos2(x, y_base)],
+                    egui::Stroke::new(1.5, color));
+                painter.line_segment([egui::pos2(x - 3.0, y_base - 3.0), egui::pos2(x, y_base)],
+                    egui::Stroke::new(1.5, color));
+                painter.line_segment([egui::pos2(x + 3.0, y_base - 3.0), egui::pos2(x, y_base)],
+                    egui::Stroke::new(1.5, color));
+            }
+            // Small label
+            let label = if is_buy { "B" } else { "S" };
+            painter.text(egui::pos2(x, y_base - arrow_h - 4.0), egui::Align2::CENTER_BOTTOM,
+                label, egui::FontId::monospace(6.0), color);
         }
     }
 

@@ -44,3 +44,4 @@ pub mod seasonality_panel;
 pub mod portfolio_pane;
 pub mod dashboard_pane;
 pub mod heatmap_pane;
+pub mod research_panel;

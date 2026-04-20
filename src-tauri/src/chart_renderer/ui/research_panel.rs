@@ -1,0 +1,207 @@
+//! Research panel — fundamentals, insider trades, analyst ratings, filings.
+
+use egui;
+use super::style::*;
+use super::super::gpu::{Chart, Theme};
+
+pub(crate) fn draw_content(
+    ui: &mut egui::Ui,
+    panes: &[Chart],
+    ap: usize,
+    t: &Theme,
+) {
+    if panes.is_empty() { return; }
+    let chart = &panes[ap];
+    let f = &chart.fundamentals;
+
+    ui.add_space(GAP_SM);
+    section_label(ui, &format!("RESEARCH — {}", chart.symbol), t.accent);
+    ui.add_space(GAP_SM);
+
+    // ── Valuation ──
+    section_label(ui, "VALUATION", t.dim);
+    ui.add_space(GAP_XS);
+    let metrics = [
+        ("P/E (TTM)", format!("{:.1}", f.pe_ratio)),
+        ("Forward P/E", format!("{:.1}", f.forward_pe)),
+        ("EPS (TTM)", format!("${:.2}", f.eps_ttm)),
+        ("Market Cap", format!("${:.0}B", f.market_cap)),
+        ("Div Yield", format!("{:.2}%", f.dividend_yield)),
+        ("Beta", format!("{:.2}", f.beta)),
+    ];
+    for (label, value) in &metrics {
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            dim_label(ui, label, t.dim);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new(value).monospace().size(FONT_SM).color(t.text));
+            });
+        });
+    }
+
+    ui.add_space(GAP_SM);
+    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    ui.add_space(GAP_SM);
+
+    // ── Financials ──
+    section_label(ui, "FINANCIALS", t.dim);
+    ui.add_space(GAP_XS);
+    let financials = [
+        ("Revenue Growth", format!("{:+.1}%", f.revenue_growth), if f.revenue_growth > 0.0 { t.bull } else { t.bear }),
+        ("Profit Margin", format!("{:.1}%", f.profit_margin), if f.profit_margin > 15.0 { t.bull } else { t.dim }),
+        ("Debt/Equity", format!("{:.2}", f.debt_to_equity), if f.debt_to_equity > 1.5 { t.bear } else { t.dim }),
+    ];
+    for (label, value, color) in &financials {
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            dim_label(ui, label, t.dim);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new(value).monospace().size(FONT_SM).color(*color));
+            });
+        });
+    }
+
+    ui.add_space(GAP_SM);
+    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    ui.add_space(GAP_SM);
+
+    // ── Ownership ──
+    section_label(ui, "OWNERSHIP", t.dim);
+    ui.add_space(GAP_XS);
+    let ownership = [
+        ("Institutional", format!("{:.1}%", f.institutional_pct)),
+        ("Insider", format!("{:.1}%", f.insider_pct)),
+        ("Short Interest", format!("{:.1}%", f.short_interest)),
+        ("Shares Out", format!("{:.0}M", f.shares_outstanding / 1_000_000.0)),
+    ];
+    for (label, value) in &ownership {
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            dim_label(ui, label, t.dim);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new(value).monospace().size(FONT_SM).color(t.text));
+            });
+        });
+    }
+
+    ui.add_space(GAP_SM);
+    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    ui.add_space(GAP_SM);
+
+    // ── Analyst Consensus ──
+    section_label(ui, "ANALYST CONSENSUS", t.dim);
+    ui.add_space(GAP_XS);
+    let total = (f.analyst_buy + f.analyst_hold + f.analyst_sell) as f32;
+    if total > 0.0 {
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            let bar_w = ui.available_width() - GAP_SM;
+            let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 10.0), egui::Sense::hover());
+            let p = ui.painter();
+            let buy_w = bar_w * f.analyst_buy as f32 / total;
+            let hold_w = bar_w * f.analyst_hold as f32 / total;
+            let sell_w = bar_w - buy_w - hold_w;
+            p.rect_filled(egui::Rect::from_min_size(bar_rect.min, egui::vec2(buy_w, 10.0)),
+                egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }, t.bull);
+            p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_rect.left() + buy_w, bar_rect.top()),
+                egui::vec2(hold_w, 10.0)), 0.0, egui::Color32::from_rgb(255, 191, 0));
+            p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_rect.left() + buy_w + hold_w, bar_rect.top()),
+                egui::vec2(sell_w, 10.0)), egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }, t.bear);
+        });
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            ui.label(egui::RichText::new(format!("{} Buy", f.analyst_buy)).monospace().size(FONT_XS).color(t.bull));
+            ui.label(egui::RichText::new(format!("{} Hold", f.analyst_hold)).monospace().size(FONT_XS).color(egui::Color32::from_rgb(255, 191, 0)));
+            ui.label(egui::RichText::new(format!("{} Sell", f.analyst_sell)).monospace().size(FONT_XS).color(t.bear));
+        });
+        ui.add_space(GAP_XS);
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            dim_label(ui, "Price Targets:", t.dim);
+        });
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM + 4.0);
+            ui.label(egui::RichText::new(format!("Low ${:.0}", f.analyst_target_low)).monospace().size(FONT_XS).color(t.bear));
+            ui.label(egui::RichText::new(format!("Mean ${:.0}", f.analyst_target_mean)).monospace().size(FONT_XS).color(t.accent));
+            ui.label(egui::RichText::new(format!("High ${:.0}", f.analyst_target_high)).monospace().size(FONT_XS).color(t.bull));
+        });
+    }
+
+    ui.add_space(GAP_SM);
+    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    ui.add_space(GAP_SM);
+
+    // ── Earnings History ──
+    section_label(ui, "EARNINGS HISTORY", t.dim);
+    ui.add_space(GAP_XS);
+    for eq in &f.earnings {
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            let surprise = if eq.eps_estimate > 0.0 {
+                (eq.eps_actual - eq.eps_estimate) / eq.eps_estimate * 100.0
+            } else { 0.0 };
+            let beat = surprise > 0.0;
+            let col = if beat { t.bull } else { t.bear };
+            ui.label(egui::RichText::new(&eq.quarter).monospace().size(FONT_XS).color(t.dim));
+            ui.label(egui::RichText::new(format!("${:.2}", eq.eps_actual)).monospace().size(FONT_XS).color(t.text));
+            ui.label(egui::RichText::new(format!("vs ${:.2}", eq.eps_estimate)).monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.5)));
+            ui.label(egui::RichText::new(format!("{}{:.1}%", if beat { "+" } else { "" }, surprise)).monospace().size(FONT_XS).color(col));
+        });
+    }
+
+    ui.add_space(GAP_SM);
+    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    ui.add_space(GAP_SM);
+
+    // ── Insider Trades ──
+    section_label(ui, "INSIDER TRANSACTIONS", t.dim);
+    ui.add_space(GAP_XS);
+    for trade in &chart.insider_trades {
+        let is_buy = trade.shares > 0;
+        let col = if is_buy { t.bull } else { t.bear };
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            // Direction dot
+            let dot_pos = egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0);
+            ui.painter().circle_filled(dot_pos, 3.0, col);
+            ui.add_space(10.0);
+            ui.label(egui::RichText::new(&trade.transaction).monospace().size(FONT_XS).color(col));
+            ui.label(egui::RichText::new(format!("{}K", trade.shares.abs() / 1000)).monospace().size(FONT_XS).color(t.text));
+            ui.label(egui::RichText::new(format!("${:.0}K", trade.value / 1000.0)).monospace().size(FONT_XS).color(t.dim));
+        });
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM + 14.0);
+            ui.label(egui::RichText::new(&trade.name).monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+        });
+        ui.add_space(GAP_XS);
+    }
+
+    ui.add_space(GAP_SM);
+    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    ui.add_space(GAP_SM);
+
+    // ── Economic Calendar ──
+    section_label(ui, "ECONOMIC CALENDAR", t.dim);
+    ui.add_space(GAP_XS);
+    for event in &chart.econ_calendar {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+        let days = ((event.time - now) as f64 / 86400.0).ceil() as i32;
+        let imp_col = match event.importance { 3 => t.bear, 2 => egui::Color32::from_rgb(255, 191, 0), _ => t.dim };
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            let dot_pos = egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0);
+            ui.painter().circle_filled(dot_pos, 3.0, imp_col);
+            ui.add_space(10.0);
+            ui.label(egui::RichText::new(&event.name).monospace().size(FONT_XS).color(t.text));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new(format!("{}d", days)).monospace().size(FONT_XS).color(t.dim));
+            });
+        });
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM + 14.0);
+            ui.label(egui::RichText::new(format!("Forecast: {:.1}  Prev: {:.1}", event.forecast, event.previous))
+                .monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
+        });
+        ui.add_space(GAP_XS);
+    }
+}

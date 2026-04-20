@@ -12,6 +12,7 @@ const ALL_TABS: &[(AnalysisTab, &str)] = &[
     (AnalysisTab::Scanner, "Scanner"),
     (AnalysisTab::Scripts, "Scripts"),
     (AnalysisTab::Seasonality, "Seasonality"),
+    (AnalysisTab::Research, "Research"),
 ];
 
 pub(crate) fn draw(
@@ -129,6 +130,7 @@ pub(crate) fn draw(
                         }
                         AnalysisTab::Scripts => super::script_panel::draw_content(ui, watchlist, t),
                         AnalysisTab::Seasonality => super::seasonality_panel::draw_content(ui, watchlist, panes, ap, t),
+                        AnalysisTab::Research => super::research_panel::draw_content(ui, panes, ap, t),
                     }
                 });
 

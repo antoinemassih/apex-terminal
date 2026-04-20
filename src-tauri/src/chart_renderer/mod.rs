@@ -20,7 +20,7 @@ pub use types::*;
 
 /// Tab selector for the unified Analysis sidebar.
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum AnalysisTab { Rrg, TimeSales, Scanner, Scripts, Seasonality }
+pub(crate) enum AnalysisTab { Rrg, TimeSales, Scanner, Scripts, Seasonality, Research }
 
 /// Tab selector for the unified Signals sidebar (Alerts + Signals).
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

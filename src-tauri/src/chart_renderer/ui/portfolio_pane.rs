@@ -182,5 +182,125 @@ pub(crate) fn render(
                 &format!("{} {:.0}%", label, frac * 100.0), egui::FontId::monospace(7.0), color);
             angle += sweep;
         }
+
+        // ── Risk Metrics ──
+        let risk_y = donut_cy + donut_r + 30.0;
+        if risk_y + 80.0 < inner.bottom() {
+            painter.text(egui::pos2(sector_x, risk_y), egui::Align2::LEFT_CENTER,
+                "RISK METRICS", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+
+            let portfolio_beta = 1.12f32; // placeholder
+            let var_95 = total_value * 0.018; // 1.8% daily VaR placeholder
+            let margin_util = 42.0f32; // placeholder %
+
+            let risk_items = [
+                ("Beta", format!("{:.2}", portfolio_beta), t.text),
+                ("VaR (95%)", format!("${:.0}", var_95), t.bear),
+                ("Margin", format!("{:.0}%", margin_util),
+                    if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull }),
+                ("Sharpe", format!("{:.2}", 1.45), t.accent),
+            ];
+            for (i, (label, value, color)) in risk_items.iter().enumerate() {
+                let ry = risk_y + 16.0 + i as f32 * 16.0;
+                painter.text(egui::pos2(sector_x, ry), egui::Align2::LEFT_CENTER,
+                    label, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+                painter.text(egui::pos2(sector_x + 110.0, ry), egui::Align2::LEFT_CENTER,
+                    value, egui::FontId::monospace(FONT_SM), *color);
+            }
+
+            // Margin gauge
+            let gauge_y = risk_y + 82.0;
+            if gauge_y + 12.0 < inner.bottom() {
+                let gauge_w = 130.0;
+                painter.rect_filled(egui::Rect::from_min_size(
+                    egui::pos2(sector_x, gauge_y), egui::vec2(gauge_w, 6.0)),
+                    3.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                let fill_w = gauge_w * (margin_util / 100.0).min(1.0);
+                let gauge_col = if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
+                painter.rect_filled(egui::Rect::from_min_size(
+                    egui::pos2(sector_x, gauge_y), egui::vec2(fill_w, 6.0)),
+                    3.0, gauge_col);
+                painter.text(egui::pos2(sector_x, gauge_y - 4.0), egui::Align2::LEFT_BOTTOM,
+                    "MARGIN UTILIZATION", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
+            }
+        }
+
+        // ── Correlation Mini-Matrix ──
+        let corr_y = risk_y + 110.0;
+        if corr_y + 100.0 < inner.bottom() {
+            painter.text(egui::pos2(sector_x, corr_y), egui::Align2::LEFT_CENTER,
+                "CORRELATION (top 5)", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+
+            let syms: Vec<&str> = positions.iter().take(5).map(|p| p.symbol.as_str()).collect();
+            let n = syms.len();
+            let cell_sz = 18.0;
+            let grid_x = sector_x;
+            let grid_y = corr_y + 14.0;
+
+            // Labels
+            for (i, sym) in syms.iter().enumerate() {
+                painter.text(egui::pos2(grid_x + 28.0 + i as f32 * cell_sz + cell_sz * 0.5, grid_y - 2.0),
+                    egui::Align2::CENTER_BOTTOM, &sym[..sym.len().min(3)],
+                    egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+                painter.text(egui::pos2(grid_x + 26.0, grid_y + i as f32 * cell_sz + cell_sz * 0.5),
+                    egui::Align2::RIGHT_CENTER, &sym[..sym.len().min(4)],
+                    egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+            }
+
+            // Cells
+            for row in 0..n {
+                for col in 0..n {
+                    let cx = grid_x + 28.0 + col as f32 * cell_sz;
+                    let cy_pos = grid_y + row as f32 * cell_sz;
+                    let corr = if row == col { 1.0f32 }
+                        else { ((row as f32 * 3.7 + col as f32 * 5.3).sin() * 0.4 + 0.5).clamp(-0.3, 1.0) };
+                    // Color: blue (negative) → white → red (positive)
+                    let intensity = corr.abs();
+                    let cell_col = if corr > 0.0 {
+                        egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), (intensity * 150.0) as u8)
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), (intensity * 150.0) as u8)
+                    };
+                    let cell_rect = egui::Rect::from_min_size(egui::pos2(cx, cy_pos), egui::vec2(cell_sz - 1.0, cell_sz - 1.0));
+                    painter.rect_filled(cell_rect, 2.0, cell_col);
+                    if row != col && cell_sz > 14.0 {
+                        painter.text(cell_rect.center(), egui::Align2::CENTER_CENTER,
+                            &format!("{:.1}", corr), egui::FontId::monospace(6.0), t.text);
+                    }
+                }
+            }
+        }
+
+        // ── Scenario Simulator ──
+        let scenario_y = corr_y + 120.0;
+        if scenario_y + 60.0 < inner.bottom() {
+            painter.text(egui::pos2(sector_x, scenario_y), egui::Align2::LEFT_CENTER,
+                "SCENARIO: SPY -5%", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+
+            let spy_change = -5.0f32;
+            let p_beta = 1.12f32;
+            let portfolio_impact = total_value * (p_beta as f64 * spy_change as f64 / 100.0);
+            let impact_pct = p_beta * spy_change;
+            let impact_col = if portfolio_impact >= 0.0 { t.bull } else { t.bear };
+
+            painter.text(egui::pos2(sector_x, scenario_y + 18.0), egui::Align2::LEFT_CENTER,
+                &format!("${:+.0}", portfolio_impact), egui::FontId::proportional(20.0), impact_col);
+            painter.text(egui::pos2(sector_x, scenario_y + 36.0), egui::Align2::LEFT_CENTER,
+                &format!("{:+.1}% portfolio impact", impact_pct), egui::FontId::monospace(FONT_XS), impact_col);
+
+            // Per-position impact (top 3)
+            let mut impacts: Vec<(&str, f64)> = positions.iter()
+                .map(|p| (p.symbol.as_str(), p.market_value * spy_change as f64 / 100.0 * 1.1)) // rough beta-adjusted
+                .collect();
+            impacts.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            let imp_y = scenario_y + 50.0;
+            for (i, (sym, imp)) in impacts.iter().take(3).enumerate() {
+                if imp_y + i as f32 * 12.0 > inner.bottom() { break; }
+                let c = if *imp >= 0.0 { t.bull } else { t.bear };
+                painter.text(egui::pos2(sector_x, imp_y + i as f32 * 12.0), egui::Align2::LEFT_CENTER,
+                    &format!("{}: ${:+.0}", sym, imp), egui::FontId::monospace(7.0), c);
+            }
+        }
     }
 }
