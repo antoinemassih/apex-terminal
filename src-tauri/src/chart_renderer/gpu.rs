@@ -5640,53 +5640,6 @@ fn render_chart_pane(
                 }
             }
 
-            // Pane type selector (small icon showing current type)
-            {
-                let ptype_icon = match chart.pane_type {
-                    PaneType::Chart => Icon::CHART_LINE,
-                    PaneType::Portfolio => Icon::LIST,
-                    PaneType::Dashboard => "\u{2637}",
-                    PaneType::Heatmap => "\u{2593}",
-                };
-                let pt_size = egui::vec2(pane_top_offset - 6.0, pane_top_offset - 6.0);
-                let pt_pos = egui::pos2(header_rect.right() - pt_size.x - 4.0, header_rect.top() + 3.0);
-                let pt_rect = egui::Rect::from_min_size(pt_pos, pt_size);
-                let pt_resp = ui.allocate_rect(pt_rect, egui::Sense::click());
-                let pt_hov = pt_resp.hovered();
-                let (bg, fg) = if pt_hov {
-                    (color_alpha(t.accent, ALPHA_TINT), t.accent)
-                } else {
-                    (egui::Color32::TRANSPARENT, t.dim.gamma_multiply(0.5))
-                };
-                header_painter.rect_filled(pt_rect, 4.0, bg);
-                header_painter.text(pt_rect.center(), egui::Align2::CENTER_CENTER,
-                    ptype_icon, egui::FontId::proportional((title_font_size - 2.0).max(9.0)), fg);
-
-                // Context menu for pane type selection
-                pt_resp.context_menu(|ui| {
-                    for (ptype, label, icon) in [
-                        (PaneType::Chart, "Chart", Icon::CHART_LINE),
-                        (PaneType::Portfolio, "Portfolio", Icon::LIST),
-                        (PaneType::Dashboard, "Dashboard", "\u{2637}"),
-                        (PaneType::Heatmap, "Heatmap", "\u{2593}"),
-                    ] {
-                        let active = chart.pane_type == ptype;
-                        if ui.selectable_label(active, egui::RichText::new(format!("{} {}", icon, label)).monospace().size(10.0)).clicked() {
-                            chart.pane_type = ptype;
-                            ui.close_menu();
-                        }
-                    }
-                });
-                if pt_resp.clicked() {
-                    // Cycle through pane types on click
-                    chart.pane_type = match chart.pane_type {
-                        PaneType::Chart => PaneType::Portfolio,
-                        PaneType::Portfolio => PaneType::Dashboard,
-                        PaneType::Dashboard => PaneType::Heatmap,
-                        PaneType::Heatmap => PaneType::Chart,
-                    };
-                }
-            }
         } else {
             // Simple symbol label (no tabs — original single-symbol header)
             // Clickable symbol — opens this pane's picker, with bigger/clearer title

@@ -45,6 +45,31 @@ pub(crate) fn draw(
                             });
                         });
                         ui.add_space(GAP_SM);
+
+                        // ── Pane Type selector ──
+                        section_label(ui, "PANE TYPE", t.dim);
+                        ui.add_space(GAP_XS);
+                        ui.horizontal(|ui| {
+                            for (ptype, label, icon) in [
+                                (super::super::gpu::PaneType::Chart, "Chart", Icon::CHART_LINE),
+                                (super::super::gpu::PaneType::Portfolio, "Portfolio", Icon::LIST),
+                                (super::super::gpu::PaneType::Dashboard, "Dashboard", "\u{2637}"),
+                                (super::super::gpu::PaneType::Heatmap, "Heatmap", "\u{2593}"),
+                            ] {
+                                let active = panes[pi].pane_type == ptype;
+                                let fg = if active { t.accent } else { t.dim.gamma_multiply(0.5) };
+                                let bg = if active { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
+                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
+                                    .monospace().size(FONT_XS).color(fg))
+                                    .fill(bg).corner_radius(RADIUS_SM)
+                                    .stroke(egui::Stroke::new(if active { STROKE_THIN } else { 0.0 },
+                                        if active { color_alpha(t.accent, ALPHA_LINE) } else { egui::Color32::TRANSPARENT }))
+                                    .min_size(egui::vec2(0.0, 20.0))).clicked() {
+                                    panes[pi].pane_type = ptype;
+                                }
+                            }
+                        });
+                        ui.add_space(GAP_SM);
                         separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
                         ui.add_space(GAP_SM);
 
