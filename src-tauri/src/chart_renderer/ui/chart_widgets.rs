@@ -746,6 +746,7 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
         }
         ChartWidgetKind::Fundamentals => ("PE", format!("{:.1}", wd.pe_ratio), t.accent),
         ChartWidgetKind::EconCalendar => ("CAL", format!("{}", wd.econ_count), t.accent),
+        ChartWidgetKind::Latency => ("LAT", "ok".into(), t.bull),
         ChartWidgetKind::LiquidityScore => {
             let c = if wd.liquidity_score > 70.0 { t.bull } else if wd.liquidity_score < 30.0 { t.bear } else { t.dim };
             ("LIQ", format!("{:.0}", wd.liquidity_score), c)
@@ -821,6 +822,7 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::TapeSpeed     => draw_tape_speed(p, body, wd, t),
         ChartWidgetKind::Fundamentals  => draw_fundamentals(p, body, wd, t),
         ChartWidgetKind::EconCalendar  => draw_econ_calendar(p, body, wd, t),
+        ChartWidgetKind::Latency       => draw_latency(p, body, t),
         ChartWidgetKind::PositionsPanel=> draw_positions_panel(p, body, wd, t, hover, btns),
         ChartWidgetKind::DailyPnl      => draw_daily_pnl(p, body, wd, t, hover, btns),
         ChartWidgetKind::Custom        => draw_custom(p, body, t),
@@ -2519,6 +2521,43 @@ fn draw_econ_calendar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         // Days
         p.text(egui::pos2(body.right() - 8.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
             &format!("{}d", days), egui::FontId::monospace(FONT_XS), t.dim);
+    }
+}
+
+/// Latency widget — frame time + data feed status
+fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
+    let cx = body.center().x;
+
+    // Frame time (approximate from 60fps target)
+    let frame_ms = 16.7f32; // placeholder — 60fps
+    let frame_col = if frame_ms < 8.0 { t.bull } else if frame_ms < 20.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+
+    p.text(egui::pos2(body.left() + 8.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
+        "RENDER", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    p.text(egui::pos2(body.left() + 8.0, body.top() + 22.0), egui::Align2::LEFT_CENTER,
+        &format!("{:.1}ms", frame_ms), egui::FontId::proportional(18.0), frame_col);
+    p.text(egui::pos2(body.left() + 75.0, body.top() + 22.0), egui::Align2::LEFT_CENTER,
+        "60fps", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+
+    // Data feed latency
+    let data_ms = 45.0f32; // placeholder
+    let data_col = if data_ms < 50.0 { t.bull } else if data_ms < 200.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+
+    p.text(egui::pos2(body.left() + 8.0, body.top() + 40.0), egui::Align2::LEFT_CENTER,
+        "DATA FEED", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    p.text(egui::pos2(body.left() + 8.0, body.top() + 56.0), egui::Align2::LEFT_CENTER,
+        &format!("{:.0}ms", data_ms), egui::FontId::proportional(16.0), data_col);
+
+    // Service dots
+    let dot_y = body.top() + 74.0;
+    let services = [("GPU", true), ("IB", false), ("Redis", false), ("Yahoo", true)];
+    let mut dx = body.left() + 8.0;
+    for (name, ok) in services {
+        let col = if ok { t.bull } else { t.dim.gamma_multiply(0.3) };
+        p.circle_filled(egui::pos2(dx + 3.0, dot_y), 2.5, col);
+        p.text(egui::pos2(dx + 9.0, dot_y), egui::Align2::LEFT_CENTER,
+            name, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+        dx += name.len() as f32 * 5.0 + 16.0;
     }
 }
 

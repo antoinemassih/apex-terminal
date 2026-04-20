@@ -713,6 +713,27 @@ pub(crate) struct InsiderTrade {
     pub value: f64,
 }
 
+/// A completed trade for the journal.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct JournalEntry {
+    pub id: String,
+    pub symbol: String,
+    pub side: String,          // "Long" or "Short"
+    pub qty: i32,
+    pub entry_price: f64,
+    pub exit_price: f64,
+    pub pnl: f64,
+    pub pnl_pct: f64,
+    pub entry_time: i64,
+    pub exit_time: i64,
+    pub duration_mins: i64,
+    pub setup_type: String,    // "breakout", "scalp", "swing", etc.
+    pub notes: String,
+    pub tags: Vec<String>,
+    pub timeframe: String,
+    pub r_multiple: f64,       // P&L in terms of risk units
+}
+
 /// Convert a fractional bar index to a timestamp using interpolation.
 /// Convert DTE (trading days) to calendar date, skipping weekends
 pub(crate) fn trading_date(dte: i32) -> (u32, u32, u32) {
@@ -3237,6 +3258,20 @@ fn generate_placeholder_insiders(symbol: &str) -> Vec<InsiderTrade> {
     trades
 }
 
+fn generate_placeholder_journal() -> Vec<JournalEntry> {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+    vec![
+        JournalEntry { id: "j1".into(), symbol: "AAPL".into(), side: "Long".into(), qty: 100, entry_price: 188.50, exit_price: 192.30, pnl: 380.0, pnl_pct: 2.02, entry_time: now - 86400 * 2, exit_time: now - 86400 * 2 + 3600 * 4, duration_mins: 240, setup_type: "breakout".into(), notes: "Clean break above 188 resistance with volume".into(), tags: vec!["momentum".into()], timeframe: "5m".into(), r_multiple: 1.8 },
+        JournalEntry { id: "j2".into(), symbol: "NVDA".into(), side: "Long".into(), qty: 50, entry_price: 118.20, exit_price: 115.80, pnl: -120.0, pnl_pct: -2.03, entry_time: now - 86400 * 3, exit_time: now - 86400 * 3 + 3600 * 2, duration_mins: 120, setup_type: "scalp".into(), notes: "Stopped out on reversal".into(), tags: vec!["scalp".into()], timeframe: "1m".into(), r_multiple: -1.0 },
+        JournalEntry { id: "j3".into(), symbol: "TSLA".into(), side: "Short".into(), qty: 30, entry_price: 248.00, exit_price: 238.50, pnl: 285.0, pnl_pct: 3.83, entry_time: now - 86400 * 4, exit_time: now - 86400 * 3, duration_mins: 1440, setup_type: "swing".into(), notes: "Bearish divergence on daily RSI".into(), tags: vec!["swing".into(), "divergence".into()], timeframe: "1D".into(), r_multiple: 2.4 },
+        JournalEntry { id: "j4".into(), symbol: "SPY".into(), side: "Long".into(), qty: 200, entry_price: 562.00, exit_price: 565.80, pnl: 760.0, pnl_pct: 0.68, entry_time: now - 86400 * 5, exit_time: now - 86400 * 5 + 3600 * 6, duration_mins: 360, setup_type: "breakout".into(), notes: "Gap and go above PDH".into(), tags: vec!["momentum".into(), "gap".into()], timeframe: "5m".into(), r_multiple: 1.5 },
+        JournalEntry { id: "j5".into(), symbol: "MSFT".into(), side: "Long".into(), qty: 75, entry_price: 420.00, exit_price: 418.50, pnl: -112.5, pnl_pct: -0.36, entry_time: now - 86400 * 6, exit_time: now - 86400 * 6 + 3600, duration_mins: 60, setup_type: "scalp".into(), notes: "Weak follow-through".into(), tags: vec!["scalp".into()], timeframe: "1m".into(), r_multiple: -0.5 },
+        JournalEntry { id: "j6".into(), symbol: "AMZN".into(), side: "Long".into(), qty: 40, entry_price: 186.00, exit_price: 191.20, pnl: 208.0, pnl_pct: 2.80, entry_time: now - 86400 * 7, exit_time: now - 86400 * 6, duration_mins: 1440, setup_type: "swing".into(), notes: "Bounce off 50 SMA with ApexSignals precursor".into(), tags: vec!["swing".into(), "signals".into()], timeframe: "1D".into(), r_multiple: 2.1 },
+        JournalEntry { id: "j7".into(), symbol: "META".into(), side: "Short".into(), qty: 25, entry_price: 502.00, exit_price: 508.00, pnl: -150.0, pnl_pct: -1.20, entry_time: now - 86400 * 8, exit_time: now - 86400 * 8 + 3600 * 3, duration_mins: 180, setup_type: "mean-rev".into(), notes: "Failed breakdown, squeezed out".into(), tags: vec!["mean-rev".into()], timeframe: "15m".into(), r_multiple: -1.2 },
+        JournalEntry { id: "j8".into(), symbol: "GOOG".into(), side: "Long".into(), qty: 60, entry_price: 170.00, exit_price: 174.50, pnl: 270.0, pnl_pct: 2.65, entry_time: now - 86400 * 10, exit_time: now - 86400 * 8, duration_mins: 2880, setup_type: "swing".into(), notes: "Earnings drift play".into(), tags: vec!["earnings".into(), "swing".into()], timeframe: "1D".into(), r_multiple: 1.9 },
+    ]
+}
+
 fn widget_description(kind: super::ChartWidgetKind) -> &'static str {
     use super::ChartWidgetKind::*;
     match kind {
@@ -3283,6 +3318,7 @@ fn widget_description(kind: super::ChartWidgetKind) -> &'static str {
         TapeSpeed      => "Trade velocity speedometer",
         Fundamentals   => "PE, EPS, margins, ownership",
         EconCalendar   => "Upcoming economic events",
+        Latency        => "Frame time + data feed latency",
         PositionsPanel => "All positions with P&L + close",
         DailyPnl       => "Hero daily P&L with close all",
         Custom         => "User-defined widget",
@@ -4254,7 +4290,7 @@ fn render_toolbar(
                         W::RiskDash, W::RiskReward]),
                     ("Info", "\u{1F4F0}", &[W::VolumeProfile, W::SessionTimer, W::KeyLevels,
                         W::OptionGreeks, W::MarketBreadth, W::EarningsBadge, W::EarningsMom,
-                        W::Fundamentals, W::EconCalendar, W::NewsTicker]),
+                        W::Fundamentals, W::EconCalendar, W::Latency, W::NewsTicker]),
                     ("Signals", "\u{26A1}", &[W::ExitGauge, W::PrecursorAlert, W::TradePlan,
                         W::ChangePoints, W::ZoneStrength, W::PatternScanner, W::VixMonitor,
                         W::SignalDashboard, W::DivergenceMonitor]),
@@ -4585,6 +4621,11 @@ fn render_toolbar(
                 // Playbook
                 if tb_btn_tip(ui, &format!("{} Playbook", Icon::STAR), watchlist.playbook_panel_open, t, "Playbook (Trade Ideas)").clicked() {
                     watchlist.playbook_panel_open = !watchlist.playbook_panel_open;
+                }
+
+                // Journal
+                if tb_btn_tip(ui, &format!("{} Journal", Icon::NOTEBOOK), watchlist.journal_panel_open, t, "Trade Journal").clicked() {
+                    watchlist.journal_panel_open = !watchlist.journal_panel_open;
                 }
 
                 // Watchlist toggle
@@ -4971,6 +5012,9 @@ fn render_toolbar(
 
     // ── Playbook sidebar
     super::ui::playbook_panel::draw(ctx, watchlist, panes, ap, t);
+
+    // ── Journal sidebar
+    super::ui::journal_panel::draw(ctx, watchlist, t);
 
     // ── Script / Backtesting panel
     super::ui::script_panel::draw(ctx, watchlist, t);
@@ -16346,6 +16390,9 @@ pub(crate) struct Watchlist {
     pub(crate) feed_splits: Vec<SplitSection<crate::chart_renderer::FeedTab>>,
     // Playbook sidebar
     pub(crate) playbook_panel_open: bool,
+    // Trade Journal
+    pub(crate) journal_panel_open: bool,
+    pub(crate) journal_entries: Vec<JournalEntry>,
     // Book pane tab (Positions/Orders + Journal)
     pub(crate) book_tab: crate::chart_renderer::BookTab,
 }
@@ -16464,6 +16511,8 @@ impl Watchlist {
                feed_tab: crate::chart_renderer::FeedTab::News,
                feed_splits: vec![SplitSection::new(crate::chart_renderer::FeedTab::News, 1.0)],
                playbook_panel_open: false,
+               journal_panel_open: false,
+               journal_entries: generate_placeholder_journal(),
                book_tab: crate::chart_renderer::BookTab::Book }
     }
 

@@ -1,121 +1,246 @@
-//! Trade Journal placeholder panel — coming soon.
+//! Trade Journal panel — behavioral analytics, trade log, performance stats.
 
 use egui;
 use super::style::*;
-use super::super::gpu::{Watchlist, Theme};
+use super::super::gpu::{Watchlist, Theme, JournalEntry};
 
-const PLANNED_FEATURES: &[(&str, &str)] = &[
-    ("\u{2022}", "Auto-log trades from IB"),
-    ("\u{2022}", "Entry/exit with chart snapshot"),
-    ("\u{2022}", "P&L tracking per trade"),
-    ("\u{2022}", "Win rate, profit factor, expectancy"),
-    ("\u{2022}", "Filter by: symbol, strategy, date range"),
-    ("\u{2022}", "Tags and notes per trade"),
-    ("\u{2022}", "Equity curve visualization"),
-    ("\u{2022}", "Performance by day of week / time of day"),
-];
-
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
-    if !watchlist.journal_open { return; }
-
-    let mut close = false;
-    egui::Window::new("trade_journal")
-        .default_pos(egui::pos2(350.0, 120.0))
-        .default_size(egui::vec2(320.0, 420.0))
-        .resizable(true)
-        .movable(true)
-        .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-            .corner_radius(RADIUS_LG))
-        .show(ctx, |ui| {
-            let w = ui.available_width();
-
-            // ── Header ──────────────────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.add_space(10.0);
-                ui.label(egui::RichText::new("TRADE JOURNAL")
-                    .monospace().size(11.0).strong().color(t.accent));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(6.0);
-                    if close_button(ui, t.dim) { close = true; }
-                });
-            });
-            ui.add_space(4.0);
-
-            // Divider
-            let div_rect = egui::Rect::from_min_size(
-                egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
-                egui::vec2(w, 1.0),
-            );
-            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
-            ui.add_space(12.0);
-
-            draw_content(ui, watchlist, t);
-        });
-    if close { watchlist.journal_open = false; }
+/// Inline content for the Book tab's Journal section.
+pub(crate) fn draw_content(
+    ui: &mut egui::Ui,
+    watchlist: &mut Watchlist,
+    t: &Theme,
+) {
+    let entries = &watchlist.journal_entries;
+    if entries.is_empty() {
+        ui.label(egui::RichText::new("No trades logged").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+        return;
+    }
+    draw_summary(ui, entries, t);
+    ui.add_space(GAP_SM);
+    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+    ui.add_space(GAP_SM);
+    section_label(ui, &format!("RECENT TRADES ({})", entries.len().min(5)), t.dim);
+    ui.add_space(GAP_XS);
+    for entry in entries.iter().take(5) {
+        draw_card(ui, entry, t);
+    }
 }
 
-/// Tab body content (no Window wrapper, no header). Used by orders_panel Journal tab.
-pub(crate) fn draw_content(ui: &mut egui::Ui, _watchlist: &mut Watchlist, t: &Theme) {
-    let w = ui.available_width();
-    egui::ScrollArea::vertical()
-        .id_salt("journal_content")
-        .show(ui, |ui| {
-            ui.set_min_width(w - 4.0);
-            let m = 14.0;
+/// Standalone sidebar panel.
+pub(crate) fn draw(
+    ctx: &egui::Context,
+    watchlist: &mut Watchlist,
+    t: &Theme,
+) {
+    if !watchlist.journal_panel_open { return; }
 
-            // Badge
-            ui.vertical_centered(|ui| {
-                let badge_text = "COMING SOON";
-                let badge_rect = ui.allocate_space(egui::vec2(100.0, 22.0)).1;
-                ui.painter().rect_filled(badge_rect, 4.0, color_alpha(t.accent, ALPHA_SOFT));
-                ui.painter().rect_stroke(badge_rect, 4.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_DIM)), egui::StrokeKind::Outside);
-                ui.painter().text(
-                    badge_rect.center(), egui::Align2::CENTER_CENTER,
-                    badge_text, egui::FontId::monospace(9.0), t.accent,
-                );
-            });
-
-            ui.add_space(12.0);
-
-            // Description
-            ui.horizontal(|ui| {
-                ui.add_space(m);
-                ui.label(egui::RichText::new("Track every trade with automatic logging,")
-                    .monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
-            });
-            ui.horizontal(|ui| {
-                ui.add_space(m);
-                ui.label(egui::RichText::new("chart snapshots, and performance analytics.")
-                    .monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
-            });
-
-            ui.add_space(14.0);
-
-            // Section header
-            ui.horizontal(|ui| {
-                ui.add_space(m);
-                ui.label(egui::RichText::new("PLANNED FEATURES")
-                    .monospace().size(8.0).strong().color(t.dim.gamma_multiply(0.5)));
-            });
-            ui.add_space(6.0);
-
-            // Feature list
-            for (bullet, feature) in PLANNED_FEATURES {
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.label(egui::RichText::new(*bullet)
-                        .monospace().size(9.0).color(t.accent.gamma_multiply(0.6)));
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new(*feature)
-                        .monospace().size(9.0).color(t.dim.gamma_multiply(0.8)));
+    egui::SidePanel::right("journal_panel")
+        .default_width(320.0)
+        .min_width(280.0)
+        .max_width(480.0)
+        .resizable(true)
+        .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
+        .show(ctx, |ui| {
+            let header = ui.horizontal(|ui| {
+                ui.set_min_height(26.0);
+                ui.label(egui::RichText::new("TRADE JOURNAL").monospace().size(FONT_SM).strong().color(t.accent));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if close_button(ui, t.dim) { watchlist.journal_panel_open = false; }
                 });
-                ui.add_space(2.0);
+            });
+            let line_y = header.response.rect.max.y;
+            ui.painter().line_segment(
+                [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
+                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            ui.add_space(GAP_SM);
+
+            let entries = &watchlist.journal_entries;
+            if entries.is_empty() {
+                ui.add_space(GAP_3XL);
+                ui.vertical_centered(|ui| {
+                    ui.label(egui::RichText::new("No trades logged").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+                });
+                return;
             }
 
-            ui.add_space(20.0);
+            egui::ScrollArea::vertical().id_salt("journal_main").show(ui, |ui| {
+                draw_summary(ui, entries, t);
+                ui.add_space(GAP_SM);
+                separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                ui.add_space(GAP_SM);
+                draw_insights(ui, entries, t);
+                ui.add_space(GAP_SM);
+                separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                ui.add_space(GAP_SM);
+                section_label(ui, &format!("TRADE LOG ({})", entries.len()), t.dim);
+                ui.add_space(GAP_XS);
+                for entry in entries {
+                    draw_card(ui, entry, t);
+                }
+            });
         });
+}
+
+fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
+    let total_pnl: f64 = entries.iter().map(|e| e.pnl).sum();
+    let wins = entries.iter().filter(|e| e.pnl > 0.0).count();
+    let losses = entries.iter().filter(|e| e.pnl <= 0.0).count();
+    let win_rate = if !entries.is_empty() { wins as f32 / entries.len() as f32 * 100.0 } else { 0.0 };
+    let avg_win = if wins > 0 { entries.iter().filter(|e| e.pnl > 0.0).map(|e| e.pnl).sum::<f64>() / wins as f64 } else { 0.0 };
+    let avg_loss = if losses > 0 { entries.iter().filter(|e| e.pnl <= 0.0).map(|e| e.pnl).sum::<f64>() / losses as f64 } else { 0.0 };
+    let avg_r = if !entries.is_empty() { entries.iter().map(|e| e.r_multiple).sum::<f64>() / entries.len() as f64 } else { 0.0 };
+    let pf = if avg_loss.abs() > 0.001 { avg_win / avg_loss.abs() } else { 0.0 };
+    let pnl_col = if total_pnl >= 0.0 { t.bull } else { t.bear };
+
+    ui.horizontal(|ui| {
+        ui.add_space(GAP_SM);
+        ui.vertical(|ui| {
+            ui.label(egui::RichText::new("TOTAL P&L").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+            let sign = if total_pnl >= 0.0 { "+" } else { "" };
+            ui.label(egui::RichText::new(format!("{}${:.0}", sign, total_pnl)).size(28.0).color(pnl_col));
+        });
+    });
+    ui.add_space(GAP_SM);
+
+    let col_w = (ui.available_width() - GAP_SM * 2.0) / 4.0;
+    for row_items in [
+        vec![("Win Rate", format!("{:.0}%", win_rate), if win_rate > 50.0 { t.bull } else { t.bear }),
+             ("Avg R", format!("{:.1}R", avg_r), if avg_r > 0.0 { t.bull } else { t.bear }),
+             ("PF", format!("{:.1}", pf), if pf > 1.0 { t.bull } else { t.bear }),
+             ("Trades", format!("{}", entries.len()), t.text)],
+        vec![("Wins", format!("{}", wins), t.bull),
+             ("Losses", format!("{}", losses), t.bear),
+             ("Avg Win", format!("${:.0}", avg_win), t.bull),
+             ("Avg Loss", format!("${:.0}", avg_loss), t.bear)],
+    ] {
+        ui.horizontal(|ui| {
+            ui.add_space(GAP_SM);
+            for (label, value, color) in &row_items {
+                ui.vertical(|ui| {
+                    ui.set_width(col_w);
+                    ui.label(egui::RichText::new(*label).monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
+                    ui.label(egui::RichText::new(value).monospace().size(FONT_SM).strong().color(*color));
+                });
+            }
+        });
+    }
+}
+
+fn draw_insights(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
+    // By setup type
+    section_label(ui, "BY SETUP TYPE", t.dim);
+    ui.add_space(GAP_XS);
+    let mut setups: Vec<(String, u32, u32, f64)> = Vec::new();
+    for e in entries {
+        if let Some(s) = setups.iter_mut().find(|(n, _, _, _)| *n == e.setup_type) {
+            s.1 += 1; if e.pnl > 0.0 { s.2 += 1; } s.3 += e.pnl;
+        } else {
+            setups.push((e.setup_type.clone(), 1, if e.pnl > 0.0 { 1 } else { 0 }, e.pnl));
+        }
+    }
+    setups.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+    for (setup, total, wins, pnl) in &setups {
+        let wr = if *total > 0 { *wins as f32 / *total as f32 * 100.0 } else { 0.0 };
+        draw_insight_row(ui, setup, *total, wr, *pnl, t);
+    }
+
+    ui.add_space(GAP_SM);
+    section_label(ui, "BY HOLDING TIME", t.dim);
+    ui.add_space(GAP_XS);
+    for (label, min_m, max_m) in [("< 2 hrs", 0i64, 120i64), ("2h - 1d", 120, 1440), ("> 1 day", 1440, i64::MAX)] {
+        let trades: Vec<&JournalEntry> = entries.iter().filter(|e| e.duration_mins >= min_m && e.duration_mins < max_m).collect();
+        if trades.is_empty() { continue; }
+        let w = trades.iter().filter(|e| e.pnl > 0.0).count() as u32;
+        let wr = w as f32 / trades.len() as f32 * 100.0;
+        let p: f64 = trades.iter().map(|e| e.pnl).sum();
+        draw_insight_row(ui, label, trades.len() as u32, wr, p, t);
+    }
+
+    ui.add_space(GAP_SM);
+    section_label(ui, "BY DIRECTION", t.dim);
+    ui.add_space(GAP_XS);
+    for dir in ["Long", "Short"] {
+        let trades: Vec<&JournalEntry> = entries.iter().filter(|e| e.side == dir).collect();
+        if trades.is_empty() { continue; }
+        let w = trades.iter().filter(|e| e.pnl > 0.0).count() as u32;
+        let wr = w as f32 / trades.len() as f32 * 100.0;
+        let p: f64 = trades.iter().map(|e| e.pnl).sum();
+        draw_insight_row(ui, dir, trades.len() as u32, wr, p, t);
+    }
+}
+
+fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f64, t: &Theme) {
+    let col = if wr > 50.0 { t.bull } else { t.bear };
+    ui.horizontal(|ui| {
+        ui.add_space(GAP_SM);
+        ui.label(egui::RichText::new(label).monospace().size(FONT_XS).color(t.text));
+        let bar_w = 40.0;
+        let (br, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
+        let p = ui.painter();
+        p.rect_filled(br, 2.0, color_alpha(t.toolbar_border, ALPHA_FAINT));
+        p.rect_filled(egui::Rect::from_min_size(br.min, egui::vec2(bar_w * wr / 100.0, 8.0)),
+            2.0, color_alpha(col, ALPHA_DIM));
+        ui.label(egui::RichText::new(format!("{:.0}%", wr)).monospace().size(7.0).color(col));
+        ui.label(egui::RichText::new(format!("{}t", total)).monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
+        let pc = if pnl >= 0.0 { t.bull } else { t.bear };
+        ui.label(egui::RichText::new(format!("${:+.0}", pnl)).monospace().size(7.0).color(pc));
+    });
+}
+
+fn draw_card(ui: &mut egui::Ui, entry: &JournalEntry, t: &Theme) {
+    let card_w = ui.available_width();
+    let card_h = if entry.notes.is_empty() { 52.0 } else { 66.0 };
+    let (card_rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+    let p = ui.painter();
+    let is_win = entry.pnl > 0.0;
+    let pnl_col = if is_win { t.bull } else { t.bear };
+    let dir_col = if entry.side == "Long" { t.bull } else { t.bear };
+
+    let bg = if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        color_alpha(t.toolbar_border, ALPHA_SUBTLE)
+    } else { color_alpha(t.toolbar_border, 8) };
+    p.rect_filled(card_rect, RADIUS_SM, bg);
+    p.rect_filled(egui::Rect::from_min_max(
+        egui::pos2(card_rect.left(), card_rect.top() + 3.0),
+        egui::pos2(card_rect.left() + 3.0, card_rect.bottom() - 3.0)), 1.0, pnl_col);
+
+    let cx = card_rect.left() + 10.0;
+    let mut cy = card_rect.top() + 8.0;
+
+    p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
+        &entry.symbol, egui::FontId::monospace(FONT_SM), t.text);
+    p.text(egui::pos2(cx + 50.0, cy + 4.0), egui::Align2::LEFT_CENTER,
+        &entry.side, egui::FontId::monospace(FONT_XS), dir_col);
+    let sign = if entry.pnl >= 0.0 { "+" } else { "" };
+    p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
+        &format!("{}${:.0} ({:+.1}%)", sign, entry.pnl, entry.pnl_pct),
+        egui::FontId::monospace(FONT_SM), pnl_col);
+    cy += 16.0;
+
+    p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
+        &entry.setup_type, egui::FontId::monospace(7.0), t.accent.gamma_multiply(0.7));
+    let dur = if entry.duration_mins >= 1440 { format!("{:.0}d", entry.duration_mins as f64 / 1440.0) }
+        else if entry.duration_mins >= 60 { format!("{:.0}h", entry.duration_mins as f64 / 60.0) }
+        else { format!("{}m", entry.duration_mins) };
+    p.text(egui::pos2(cx + 60.0, cy + 4.0), egui::Align2::LEFT_CENTER,
+        &dur, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+    let r_col = if entry.r_multiple > 0.0 { t.bull } else { t.bear };
+    p.text(egui::pos2(cx + 90.0, cy + 4.0), egui::Align2::LEFT_CENTER,
+        &format!("{:+.1}R", entry.r_multiple), egui::FontId::monospace(7.0), r_col);
+    cy += 14.0;
+
+    p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
+        &format!("{:.2} \u{2192} {:.2}", entry.entry_price, entry.exit_price),
+        egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+    p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
+        &entry.timeframe, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+
+    if !entry.notes.is_empty() {
+        cy += 14.0;
+        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
+            &entry.notes, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+    }
+
+    ui.add_space(GAP_XS);
 }

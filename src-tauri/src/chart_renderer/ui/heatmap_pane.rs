@@ -94,11 +94,26 @@ pub(crate) fn render(
         let bg = egui::Color32::from_rgba_unmultiplied(
             base_color.r(), base_color.g(), base_color.b(), alpha);
 
-        // Cell
+        // Cell — interactive (click to load symbol)
         let inset = egui::Rect::from_min_max(
             egui::pos2(cell_rect.left() + 1.0, cell_rect.top() + 1.0),
             egui::pos2(cell_rect.right() - 1.0, cell_rect.bottom() - 1.0));
-        painter.rect_filled(inset, 2.0, bg);
+        let cell_resp = ui.allocate_rect(inset, egui::Sense::click());
+        let cell_hovered = cell_resp.hovered();
+        let draw_bg = if cell_hovered {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(),
+                (alpha as u16 + 40).min(255) as u8)
+        } else { bg };
+        painter.rect_filled(inset, 2.0, draw_bg);
+        if cell_hovered {
+            painter.rect_stroke(inset, 2.0, egui::Stroke::new(1.5, t.text), egui::StrokeKind::Outside);
+        }
+        if cell_resp.clicked() {
+            // Load this symbol into pane 0 (or the active chart pane)
+            panes[pane_idx].pane_type = PaneType::Chart;
+            panes[pane_idx].pending_symbol_change = Some(cell.symbol.to_string());
+        }
 
         // Symbol label (only if cell is big enough)
         if inset.width() > 30.0 && inset.height() > 20.0 {
