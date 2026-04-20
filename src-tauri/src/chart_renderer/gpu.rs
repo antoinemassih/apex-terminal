@@ -6571,102 +6571,62 @@ fn render_chart_pane(
                 body_mesh.indices.extend_from_slice(&[vi, vi+1, vi+2, vi, vi+2, vi+3]);
             }
             CandleMode::Violin | CandleMode::ViolinGradient => {
-                // Teardrop / raindrop chart — smooth volume-shaped candle
-                let micro = bar_micro_profile(b, 16);
+                // Volume-profile candle: width = volume at each price level
+                // Rendered as overlapping rounded rects for a smooth blob shape
+                let micro = bar_micro_profile(b, 12);
                 let is_bull = b.close >= b.open;
                 let base_color = if is_bull { t.bull } else { t.bear };
-                let max_half_w = (bs * 0.42).max(1.5);
+                let max_half_w = (bs * 0.40).max(1.5);
                 let bar_top_y = py(b.high);
                 let bar_bot_y = py(b.low);
                 let body_top = py(b.open.max(b.close));
                 let body_bot = py(b.open.min(b.close));
-                let bar_range = (bar_bot_y - bar_top_y).abs().max(1.0);
 
-                // Wick (thin center line for full H-L range)
+                // Thin wick line
                 painter.line_segment([egui::pos2(x, bar_top_y), egui::pos2(x, bar_bot_y)],
-                    egui::Stroke::new(0.6, color_alpha(base_color, 80)));
+                    egui::Stroke::new(0.8, color_alpha(base_color, 60)));
 
-                // Build smooth teardrop outline from micro profile
-                // Left edge points (going top to bottom)
-                let n = micro.len();
-                let mut left_pts: Vec<egui::Pos2> = Vec::with_capacity(n + 2);
-                let mut right_pts: Vec<egui::Pos2> = Vec::with_capacity(n + 2);
-
-                // Top point (wick tip)
-                left_pts.push(egui::pos2(x, bar_top_y));
-                right_pts.push(egui::pos2(x, bar_top_y));
+                // Each level: a rounded rect centered on x, width from volume
+                let slice_h = (bar_bot_y - bar_top_y).abs() / micro.len() as f32;
 
                 for (level_price, width_frac, buy_ratio) in &micro {
                     let y = py(*level_price);
+                    let in_body = y >= body_top && y <= body_bot;
+
+                    // Width from volume concentration
                     let hw = max_half_w * width_frac;
+                    if hw < 0.5 { continue; }
 
-                    // In ViolinGradient mode, asymmetric: buy volume goes right, sell goes left
-                    let (left_w, right_w) = if chart.candle_mode == CandleMode::ViolinGradient {
-                        let br = *buy_ratio;
-                        (hw * (1.0 - br) * 1.6 + hw * 0.2, hw * br * 1.6 + hw * 0.2)
-                    } else {
-                        (hw, hw)
-                    };
-
-                    left_pts.push(egui::pos2(x - left_w, y));
-                    right_pts.push(egui::pos2(x + right_w, y));
-                }
-
-                // Bottom point (wick tip)
-                left_pts.push(egui::pos2(x, bar_bot_y));
-                right_pts.push(egui::pos2(x, bar_bot_y));
-
-                // Draw filled teardrop: connect left edge (top→bottom) and right edge (bottom→top)
-                // Using triangle strips for smooth fill
-                for i in 0..left_pts.len().saturating_sub(1) {
-                    let y_mid = (left_pts[i].y + left_pts[i+1].y) * 0.5;
-                    let in_body = y_mid >= body_top && y_mid <= body_bot;
-
-                    let alpha = if in_body { 200u8 } else { 50 };
-
-                    // Compute color based on position
+                    // Color
+                    let alpha = if in_body { 190u8 } else { 40 };
                     let color = if chart.candle_mode == CandleMode::ViolinGradient {
-                        let frac = i as f32 / left_pts.len().max(1) as f32;
-                        let buy_r = micro.get(i.saturating_sub(1).min(micro.len().saturating_sub(1)))
-                            .map(|m| m.2).unwrap_or(0.5);
-                        let alignment = if is_bull { buy_r } else { 1.0 - buy_r };
-                        let brightness = 0.3 + alignment * 0.7;
-                        let r = (base_color.r() as f32 * brightness) as u8;
-                        let g = (base_color.g() as f32 * brightness) as u8;
-                        let bv = (base_color.b() as f32 * brightness) as u8;
-                        egui::Color32::from_rgba_unmultiplied(r, g, bv, alpha)
+                        let alignment = if is_bull { *buy_ratio } else { 1.0 - *buy_ratio };
+                        let brightness = 0.35 + alignment * 0.65;
+                        egui::Color32::from_rgba_unmultiplied(
+                            (base_color.r() as f32 * brightness) as u8,
+                            (base_color.g() as f32 * brightness) as u8,
+                            (base_color.b() as f32 * brightness) as u8, alpha)
                     } else {
-                        egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(), alpha)
+                        egui::Color32::from_rgba_unmultiplied(
+                            base_color.r(), base_color.g(), base_color.b(), alpha)
                     };
 
-                    // Left half — quad from center to left edge
-                    let quad_l = egui::Rect::from_min_max(
-                        egui::pos2(left_pts[i].x.min(left_pts[i+1].x), left_pts[i].y),
-                        egui::pos2(x, left_pts[i+1].y));
-                    if quad_l.width() > 0.3 { painter.rect_filled(quad_l, 0.0, color); }
-
-                    // Right half
-                    let quad_r = egui::Rect::from_min_max(
-                        egui::pos2(x, right_pts[i].y),
-                        egui::pos2(right_pts[i].x.max(right_pts[i+1].x), right_pts[i+1].y));
-                    if quad_r.width() > 0.3 { painter.rect_filled(quad_r, 0.0, color); }
+                    // Rounded rect for this level — overlap creates smooth shape
+                    let h = (slice_h * 1.3).max(2.0); // slight overlap between levels
+                    let r = (hw * 0.5).min(h * 0.4); // corner radius for smoothness
+                    painter.rect_filled(
+                        egui::Rect::from_center_size(egui::pos2(x, y), egui::vec2(hw * 2.0, h)),
+                        r, color);
                 }
 
-                // Outline stroke for teardrop shape
-                let outline_alpha = if is_bull { 120u8 } else { 100 };
-                let outline_col = egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(), outline_alpha);
-                for pts in [&left_pts, &right_pts] {
-                    for i in 0..pts.len().saturating_sub(1) {
-                        painter.line_segment([pts[i], pts[i+1]], egui::Stroke::new(0.6, outline_col));
-                    }
-                }
-
-                // Open/Close ticks — small horizontal marks at open and close
-                let tick_w = max_half_w * 0.6;
-                painter.line_segment([egui::pos2(x - tick_w, py(b.open)), egui::pos2(x, py(b.open))],
-                    egui::Stroke::new(1.0, color_alpha(base_color, 180)));
-                painter.line_segment([egui::pos2(x, py(b.close)), egui::pos2(x + tick_w, py(b.close))],
-                    egui::Stroke::new(1.0, color_alpha(base_color, 180)));
+                // Open/Close marks — crisp horizontal ticks
+                let oc_w = max_half_w * 0.7;
+                painter.line_segment(
+                    [egui::pos2(x - oc_w, py(b.open)), egui::pos2(x + oc_w, py(b.open))],
+                    egui::Stroke::new(1.2, color_alpha(base_color, 200)));
+                painter.line_segment(
+                    [egui::pos2(x - oc_w, py(b.close)), egui::pos2(x + oc_w, py(b.close))],
+                    egui::Stroke::new(1.2, color_alpha(base_color, 200)));
             }
             CandleMode::Gradient => {
                 let micro = bar_micro_profile(b, 10);
