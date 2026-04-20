@@ -80,6 +80,8 @@ pub(crate) enum ChartWidgetKind {
     Fundamentals,     // key fundamental metrics card
     EconCalendar,     // upcoming economic events countdown
     Latency,          // frame time + data feed latency
+    PayoffChart,      // options payoff curve diagram
+    OptionsFlow,      // unusual options activity feed
     PositionsPanel,   // all account positions with P&L + close buttons
     DailyPnl,         // hero daily P&L number + close all button
     #[serde(other)]
@@ -133,6 +135,8 @@ impl ChartWidgetKind {
             Self::Fundamentals   => "Fundamentals",
             Self::EconCalendar   => "Calendar",
             Self::Latency        => "Latency",
+            Self::PayoffChart    => "Payoff",
+            Self::OptionsFlow    => "Flow",
             Self::PositionsPanel => "Positions",
             Self::DailyPnl       => "Daily P&L",
             Self::Custom         => "Custom",
@@ -184,6 +188,8 @@ impl ChartWidgetKind {
             Self::Fundamentals   => "\u{1F4CA}", // 📊
             Self::EconCalendar   => "\u{1F4C5}", // 📅
             Self::Latency        => "\u{23F1}",  // ⏱
+            Self::PayoffChart    => "\u{1F4C8}", // 📈
+            Self::OptionsFlow    => "\u{1F4A7}", // 💧
             Self::PositionsPanel => "\u{1F4BC}", // 💼
             Self::DailyPnl       => "\u{1F4B0}", // 💰
             Self::Custom         => "\u{2699}",  // ⚙
@@ -202,6 +208,7 @@ impl ChartWidgetKind {
           Self::RiskDash, Self::EarningsMom, Self::LiquidityScore,
           Self::SignalRadar, Self::CrossAssetPulse, Self::TapeSpeed,
           Self::Fundamentals, Self::EconCalendar, Self::Latency,
+          Self::PayoffChart, Self::OptionsFlow,
           Self::PositionsPanel, Self::DailyPnl]
     }
 }
@@ -304,6 +311,8 @@ impl ChartWidget {
             ChartWidgetKind::Fundamentals   => (200.0, 180.0),
             ChartWidgetKind::EconCalendar   => (210.0, 160.0),
             ChartWidgetKind::Latency        => (160.0, 100.0),
+            ChartWidgetKind::PayoffChart    => (220.0, 160.0),
+            ChartWidgetKind::OptionsFlow    => (200.0, 180.0),
             ChartWidgetKind::PositionsPanel => (220.0, 200.0),
             ChartWidgetKind::DailyPnl       => (260.0, 80.0),
             ChartWidgetKind::Custom         => (150.0, 90.0),

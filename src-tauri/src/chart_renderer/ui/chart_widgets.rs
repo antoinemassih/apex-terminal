@@ -747,6 +747,8 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
         ChartWidgetKind::Fundamentals => ("PE", format!("{:.1}", wd.pe_ratio), t.accent),
         ChartWidgetKind::EconCalendar => ("CAL", format!("{}", wd.econ_count), t.accent),
         ChartWidgetKind::Latency => ("LAT", "ok".into(), t.bull),
+        ChartWidgetKind::PayoffChart => ("OPT", "P&L".into(), t.accent),
+        ChartWidgetKind::OptionsFlow => ("FLW", "scan".into(), t.accent),
         ChartWidgetKind::LiquidityScore => {
             let c = if wd.liquidity_score > 70.0 { t.bull } else if wd.liquidity_score < 30.0 { t.bear } else { t.dim };
             ("LIQ", format!("{:.0}", wd.liquidity_score), c)
@@ -823,6 +825,8 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::Fundamentals  => draw_fundamentals(p, body, wd, t),
         ChartWidgetKind::EconCalendar  => draw_econ_calendar(p, body, wd, t),
         ChartWidgetKind::Latency       => draw_latency(p, body, t),
+        ChartWidgetKind::PayoffChart   => draw_payoff_chart(p, body, wd, t),
+        ChartWidgetKind::OptionsFlow   => draw_options_flow(p, body, t),
         ChartWidgetKind::PositionsPanel=> draw_positions_panel(p, body, wd, t, hover, btns),
         ChartWidgetKind::DailyPnl      => draw_daily_pnl(p, body, wd, t, hover, btns),
         ChartWidgetKind::Custom        => draw_custom(p, body, t),
@@ -2558,6 +2562,111 @@ fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         p.text(egui::pos2(dx + 9.0, dot_y), egui::Align2::LEFT_CENTER,
             name, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
         dx += name.len() as f32 * 5.0 + 16.0;
+    }
+}
+
+/// Options Payoff Chart — P&L curve for a position
+fn draw_payoff_chart(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    let left = body.left() + 6.0;
+    let right = body.right() - 6.0;
+    let chart_top = body.top() + 18.0;
+    let chart_bot = body.bottom() - 14.0;
+    let chart_w = right - left;
+    let chart_h = chart_bot - chart_top;
+
+    p.text(egui::pos2(left, body.top() + 6.0), egui::Align2::LEFT_CENTER,
+        "PAYOFF CURVE", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+
+    // Placeholder: long call payoff curve
+    let strike = wd.last_close;
+    let premium = strike * 0.03; // 3% premium
+    let price_low = strike * 0.90;
+    let price_high = strike * 1.15;
+    let range = price_high - price_low;
+
+    // Zero line
+    let zero_y = chart_top + chart_h * 0.6; // put zero at 60% down
+    p.line_segment([egui::pos2(left, zero_y), egui::pos2(right, zero_y)],
+        egui::Stroke::new(0.5, color_alpha(t.dim, ALPHA_MUTED)));
+    p.text(egui::pos2(left - 2.0, zero_y), egui::Align2::RIGHT_CENTER,
+        "0", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.3));
+
+    // Draw payoff curve
+    let max_profit = strike * 0.10; // scale
+    let points = 50;
+    let mut prev_pos: Option<egui::Pos2> = None;
+    for i in 0..=points {
+        let frac = i as f32 / points as f32;
+        let price = price_low + frac * range;
+        let pnl = if price > strike { price - strike - premium } else { -premium };
+        let px = left + frac * chart_w;
+        let py = zero_y - (pnl / max_profit) * (chart_h * 0.35);
+        let py = py.clamp(chart_top, chart_bot);
+        let pos = egui::pos2(px, py);
+        if let Some(prev) = prev_pos {
+            let col = if pnl > 0.0 { t.bull } else { t.bear };
+            p.line_segment([prev, pos], egui::Stroke::new(1.5, col));
+        }
+        prev_pos = Some(pos);
+    }
+
+    // Strike line
+    let strike_x = left + ((strike - price_low) / range) * chart_w;
+    p.line_segment([egui::pos2(strike_x, chart_top), egui::pos2(strike_x, chart_bot)],
+        egui::Stroke::new(0.5, color_alpha(t.accent, 60)));
+    p.text(egui::pos2(strike_x, chart_bot + 6.0), egui::Align2::CENTER_CENTER,
+        &format!("${:.0}", strike), egui::FontId::monospace(6.0), t.accent.gamma_multiply(0.6));
+
+    // Max loss label
+    p.text(egui::pos2(left + 4.0, zero_y + 10.0), egui::Align2::LEFT_CENTER,
+        &format!("Max Loss: -${:.0}", premium), egui::FontId::monospace(7.0), t.bear);
+    // Breakeven
+    let be = strike + premium;
+    p.text(egui::pos2(right - 4.0, zero_y - 4.0), egui::Align2::RIGHT_BOTTOM,
+        &format!("BE ${:.0}", be), egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+}
+
+/// Options Flow — unusual activity feed
+fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
+    p.text(egui::pos2(body.left() + 6.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
+        "UNUSUAL FLOW", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+
+    let flows = [
+        ("CALL", "450C 0DTE", "$2.4M", true, "sweep"),
+        ("PUT",  "440P 1DTE", "$1.8M", false, "block"),
+        ("CALL", "460C 5DTE", "$3.1M", true, "sweep"),
+        ("CALL", "455C 0DTE", "$890K", true, "multi"),
+        ("PUT",  "435P 3DTE", "$1.2M", false, "block"),
+        ("CALL", "470C 10DTE", "$2.7M", true, "sweep"),
+    ];
+
+    let row_h = (body.height() - 20.0) / flows.len().min(6) as f32;
+    let mut y = body.top() + 18.0;
+
+    for (side, contract, value, bullish, flow_type) in flows {
+        if y + row_h > body.bottom() { break; }
+        let col = if bullish { t.bull } else { t.bear };
+
+        // Side pill
+        let pill_w = 28.0;
+        let pill_rect = egui::Rect::from_min_size(egui::pos2(body.left() + 6.0, y + 2.0), egui::vec2(pill_w, row_h - 4.0));
+        p.rect_filled(pill_rect, 2.0, color_alpha(col, ALPHA_TINT));
+        p.text(pill_rect.center(), egui::Align2::CENTER_CENTER,
+            side, egui::FontId::monospace(6.0), col);
+
+        // Contract
+        p.text(egui::pos2(body.left() + 38.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
+            contract, egui::FontId::monospace(FONT_XS), t.text);
+
+        // Value
+        p.text(egui::pos2(body.right() - 30.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
+            value, egui::FontId::monospace(FONT_XS), col);
+
+        // Flow type
+        p.text(egui::pos2(body.right() - 6.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
+            flow_type, egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
+
+        y += row_h;
     }
 }
 

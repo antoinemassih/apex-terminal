@@ -3319,6 +3319,8 @@ fn widget_description(kind: super::ChartWidgetKind) -> &'static str {
         Fundamentals   => "PE, EPS, margins, ownership",
         EconCalendar   => "Upcoming economic events",
         Latency        => "Frame time + data feed latency",
+        PayoffChart    => "Options payoff curve diagram",
+        OptionsFlow    => "Unusual options activity",
         PositionsPanel => "All positions with P&L + close",
         DailyPnl       => "Hero daily P&L with close all",
         Custom         => "User-defined widget",
@@ -4290,7 +4292,8 @@ fn render_toolbar(
                         W::RiskDash, W::RiskReward]),
                     ("Info", "\u{1F4F0}", &[W::VolumeProfile, W::SessionTimer, W::KeyLevels,
                         W::OptionGreeks, W::MarketBreadth, W::EarningsBadge, W::EarningsMom,
-                        W::Fundamentals, W::EconCalendar, W::Latency, W::NewsTicker]),
+                        W::Fundamentals, W::EconCalendar, W::Latency,
+                        W::PayoffChart, W::OptionsFlow, W::NewsTicker]),
                     ("Signals", "\u{26A1}", &[W::ExitGauge, W::PrecursorAlert, W::TradePlan,
                         W::ChangePoints, W::ZoneStrength, W::PatternScanner, W::VixMonitor,
                         W::SignalDashboard, W::DivergenceMonitor]),
@@ -16218,6 +16221,16 @@ pub(crate) struct Watchlist {
     pub(crate) pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
     // Watchlist filter
     pub(crate) filter_open: bool,
+    // Watchlist column config
+    pub(crate) wl_col_sparkline: bool,
+    pub(crate) wl_col_volume: bool,
+    pub(crate) wl_col_rvol: bool,
+    pub(crate) wl_col_atr: bool,
+    pub(crate) wl_col_52w_range: bool,
+    pub(crate) wl_col_day_range: bool,
+    pub(crate) wl_col_earnings: bool,
+    pub(crate) wl_col_market_cap: bool,
+    pub(crate) wl_columns_open: bool, // settings popup
     pub(crate) filter_text: String,
     pub(crate) filter_preset: String,
     pub(crate) custom_filters: Vec<(String, f32, f32)>, // (name, min_change%, max_change%)
@@ -16422,6 +16435,9 @@ impl Watchlist {
                show_x_axis: true, show_y_axis: true,
                toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false, shared_y_axis: false,
                trendline_filter_open: false, account_strip_open: false, object_tree_open: false, broadcast_mode: false, pending_opt_chart: None,
+               wl_col_sparkline: true, wl_col_volume: false, wl_col_rvol: true,
+               wl_col_atr: false, wl_col_52w_range: false, wl_col_day_range: true,
+               wl_col_earnings: true, wl_col_market_cap: false, wl_columns_open: false,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(), alerts_panel_open: false,
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,

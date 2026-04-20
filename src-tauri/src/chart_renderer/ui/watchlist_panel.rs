@@ -14,11 +14,16 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
 // ── Watchlist side panel ───────────────────────────────────────────────────
 if watchlist.open {
     egui::SidePanel::right("watchlist")
-        .default_width(260.0)
+        .default_width(crate::dt_f32!(panel.width_md, 260.0))
         .min_width(140.0)
         .max_width(500.0)
         .resizable(true)
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 }))
+        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin {
+            left: crate::dt_f32!(spacing.md, 6.0) as i8,
+            right: crate::dt_f32!(spacing.md, 6.0) as i8,
+            top: crate::dt_f32!(spacing.md, 6.0) as i8,
+            bottom: crate::dt_f32!(spacing.md, 6.0) as i8,
+        }))
         .show(ctx, |ui| {
             // Force content to never exceed the panel's actual width
             let panel_w = ui.available_width();
@@ -209,6 +214,13 @@ if watchlist.open {
                     let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
                     if btn_resp.clicked() { watchlist.filter_open = !watchlist.filter_open; }
                     if btn_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    // Columns config button (sliders icon)
+                    let col_btn_rect = egui::Rect::from_min_size(egui::pos2(btn_rect.left() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
+                    let col_icon_col = if watchlist.wl_columns_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                    ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(11.0), col_icon_col);
+                    let col_resp = ui.interact(col_btn_rect, egui::Id::new("wl_columns_btn"), egui::Sense::click());
+                    if col_resp.clicked() { watchlist.wl_columns_open = !watchlist.wl_columns_open; }
+                    if col_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     // Refocus after adding a symbol
                     if watchlist.search_refocus {
                         watchlist.search_refocus = false;
@@ -293,6 +305,41 @@ if watchlist.open {
                             ui.label(egui::RichText::new(format!("{} {}", Icon::FUNNEL, watchlist.filter_preset)).monospace().size(8.0).color(t.accent));
                         });
                     }
+                    // Column config popup
+                    if watchlist.wl_columns_open {
+                        ui.add_space(2.0);
+                        egui::Frame::NONE
+                            .fill(color_alpha(t.toolbar_border, ALPHA_FAINT))
+                            .inner_margin(egui::Margin::same(GAP_SM as i8))
+                            .corner_radius(RADIUS_SM)
+                            .show(ui, |ui| {
+                                ui.label(egui::RichText::new("COLUMNS").monospace().size(7.0).color(t.accent.gamma_multiply(0.6)));
+                                ui.add_space(GAP_XS);
+                                for (label, flag) in [
+                                    ("Sparkline", &mut watchlist.wl_col_sparkline),
+                                    ("Volume", &mut watchlist.wl_col_volume),
+                                    ("RVOL", &mut watchlist.wl_col_rvol),
+                                    ("ATR", &mut watchlist.wl_col_atr),
+                                    ("52W Range", &mut watchlist.wl_col_52w_range),
+                                    ("Day Range", &mut watchlist.wl_col_day_range),
+                                    ("Earnings", &mut watchlist.wl_col_earnings),
+                                    ("Market Cap", &mut watchlist.wl_col_market_cap),
+                                ] {
+                                    ui.horizontal(|ui| {
+                                        let icon = if *flag { Icon::EYE } else { Icon::EYE_SLASH };
+                                        let col = if *flag { t.accent } else { t.dim.gamma_multiply(0.3) };
+                                        if ui.add(egui::Button::new(egui::RichText::new(icon).size(FONT_SM).color(col))
+                                            .frame(false).min_size(egui::vec2(18.0, 16.0))).clicked() {
+                                            *flag = !*flag;
+                                        }
+                                        ui.label(egui::RichText::new(label).monospace().size(FONT_XS).color(
+                                            if *flag { t.text } else { t.dim.gamma_multiply(0.4) }));
+                                    });
+                                }
+                            });
+                        ui.add_space(2.0);
+                    }
+
                     if watchlist.filter_open {
                         ui.add_space(2.0);
                         // Search
@@ -855,6 +902,51 @@ if watchlist.open {
                                         let mid_x = rect.left() + full_w * 0.45;
                                         painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
                                             &change_str, egui::FontId::monospace(chg_font_sz), color);
+
+                                        // ── Optional columns (between change% and price) ──
+                                        let mut extra_x = mid_x + change_str.len() as f32 * 8.0 + 8.0;
+
+                                        // Sparkline
+                                        if watchlist.wl_col_sparkline && _item_price_history.len() > 3 {
+                                            let spark_w = 32.0;
+                                            let spark_h = 12.0;
+                                            let spark_y = y_c - spark_h * 0.5;
+                                            let history = &_item_price_history;
+                                            let min_p = history.iter().cloned().fold(f32::INFINITY, f32::min);
+                                            let max_p = history.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                                            let p_range = (max_p - min_p).max(0.01);
+                                            let step = spark_w / (history.len() - 1) as f32;
+                                            for j in 1..history.len() {
+                                                let x0 = extra_x + (j - 1) as f32 * step;
+                                                let y0 = spark_y + spark_h - (history[j - 1] - min_p) / p_range * spark_h;
+                                                let x1 = extra_x + j as f32 * step;
+                                                let y1 = spark_y + spark_h - (history[j] - min_p) / p_range * spark_h;
+                                                painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)],
+                                                    egui::Stroke::new(1.0, color_alpha(color, 120)));
+                                            }
+                                            extra_x += spark_w + 6.0;
+                                        }
+
+                                        // RVOL badge
+                                        if watchlist.wl_col_rvol && item_rvol > 0.0 {
+                                            let rv_col = if item_rvol > 2.0 { egui::Color32::from_rgb(255, 193, 37) }
+                                                else if item_rvol > 1.2 { t.bull } else { t.dim.gamma_multiply(0.4) };
+                                            painter.text(egui::pos2(extra_x, y_c), egui::Align2::LEFT_CENTER,
+                                                &format!("{:.1}x", item_rvol), egui::FontId::monospace(7.0), rv_col);
+                                            extra_x += 26.0;
+                                        }
+
+                                        // Day range bar
+                                        if watchlist.wl_col_day_range && item_day_high > item_day_low {
+                                            let range_w = 24.0;
+                                            let range_y = y_c;
+                                            let range_full = item_day_high - item_day_low;
+                                            let pos_in_range = if range_full > 0.0 { (item_price - item_day_low) / range_full } else { 0.5 };
+                                            painter.line_segment([egui::pos2(extra_x, range_y), egui::pos2(extra_x + range_w, range_y)],
+                                                egui::Stroke::new(2.0, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                                            painter.circle_filled(egui::pos2(extra_x + range_w * pos_in_range.clamp(0.0, 1.0), range_y), 2.5, color);
+                                            extra_x += range_w + 6.0;
+                                        }
 
                                         // Price (right-aligned, leave room for X button)
                                         let price_x = rect.right() - 24.0;
