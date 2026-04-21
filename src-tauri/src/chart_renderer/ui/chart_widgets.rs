@@ -181,16 +181,26 @@ pub(crate) fn draw_widgets(
         let mode_icon = if mode == WidgetDisplayMode::Card { "\u{25FC}" } else { "\u{25CB}" };
         let card_hovered = !draw_faded && ui.rect_contains_pointer(card_rect);
 
-        // Card mode: solid background
+        // Card mode: solid background with rich shadow + bevel
         if mode == WidgetDisplayMode::Card {
-            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0),
-                RADIUS_LG + 1.0, Color32::from_rgba_unmultiplied(0, 0, 0, 20));
+            // Shadow
+            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 3.0)).expand(2.0),
+                RADIUS_LG + 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 22));
+            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 1.5)).expand(1.0),
+                RADIUS_LG + 1.0, Color32::from_rgba_unmultiplied(0, 0, 0, 12));
+            // Background
             let bg = Color32::from_rgba_unmultiplied(
                 t.toolbar_bg.r().saturating_add(4), t.toolbar_bg.g().saturating_add(4),
-                t.toolbar_bg.b().saturating_add(6), 230);
+                t.toolbar_bg.b().saturating_add(6), 235);
             painter.rect_filled(card_rect, RADIUS_LG, bg);
+            // Top bevel highlight
+            painter.rect_filled(
+                egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
+                egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
+                Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 40 } else { 8 }));
+            // Crisp border
             painter.rect_stroke(card_rect, RADIUS_LG,
-                Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_LINE)),
+                Stroke::new(0.8, color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 35 })),
                 egui::StrokeKind::Outside);
         }
 
@@ -1194,6 +1204,7 @@ fn donut_ring(p: &egui::Painter, center: egui::Pos2, radius: f32, thickness: f32
 
 fn draw_trend_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let cx = body.center().x;
+    let cy = body.center().y;
     let score = if wd.trend_score > 0.0 { wd.trend_score } else { 72.0 };
 
     let color = if score > 66.0 {
@@ -1202,31 +1213,30 @@ fn draw_trend_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
         lerp_color(t.bear, Color32::from_rgb(255, 191, 0), (score - 33.0) / 33.0)
     } else { t.bear };
 
-    // Donut ring gauge (infographic style)
-    let gauge_cy = body.top() + 42.0;
-    let r = 28.0;
+    // Donut ring centered in body
+    let r = (body.width().min(body.height()) * 0.32).min(34.0);
     let track = color_alpha(t.toolbar_border, ALPHA_MUTED);
-    donut_ring(p, egui::pos2(cx, gauge_cy), r, 5.0, score, 100.0, color, track);
+    donut_ring(p, egui::pos2(cx, cy - 4.0), r, 6.0, score, 100.0, color, track);
 
-    // Score in center of donut
-    p.text(egui::pos2(cx, gauge_cy), egui::Align2::CENTER_CENTER,
-        &format!("{:.0}", score), egui::FontId::proportional(22.0), color);
+    // Hero number in center
+    hero_number(p, egui::pos2(cx, cy - 4.0), &format!("{:.0}", score), color);
 
-    // Regime label below donut
+    // Regime label below
     let regime = if wd.trend_regime.is_empty() {
         if score > 66.0 { "STRONG" } else if score > 33.0 { "MIXED" } else { "WEAK" }
     } else { &wd.trend_regime };
-    sub_label(p, egui::pos2(cx, gauge_cy + r + 14.0), regime, color);
+    sub_label(p, egui::pos2(cx, cy + r + 10.0), regime, color);
 
     // Direction arrow
     let dir_icon = match wd.trend_dir { d if d > 0 => "\u{25B2}", d if d < 0 => "\u{25BC}", _ => "\u{25C6}" };
     let dir_col = match wd.trend_dir { d if d > 0 => t.bull, d if d < 0 => t.bear, _ => t.dim };
-    p.text(egui::pos2(cx, gauge_cy + r + 26.0), egui::Align2::CENTER_CENTER,
+    p.text(egui::pos2(cx, cy + r + 22.0), egui::Align2::CENTER_CENTER,
         dir_icon, egui::FontId::proportional(FONT_SM), dir_col);
 }
 
 fn draw_momentum_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let cx = body.center().x;
+    let cy = body.center().y;
     let rsi = wd.rsi;
     let mom = wd.momentum;
 
@@ -1234,33 +1244,29 @@ fn draw_momentum_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
         else if rsi < 30.0 { t.bear }
         else { Color32::from_rgb(255, 191, 0) };
 
-    // Donut ring for RSI
-    let gauge_cy = body.top() + 40.0;
-    let r = 26.0;
+    let r = (body.width().min(body.height()) * 0.30).min(30.0);
     let track = color_alpha(t.toolbar_border, ALPHA_MUTED);
-    donut_ring(p, egui::pos2(cx, gauge_cy), r, 5.0, rsi, 100.0, rsi_color, track);
+    donut_ring(p, egui::pos2(cx, cy - 4.0), r, 6.0, rsi, 100.0, rsi_color, track);
 
-    // RSI value in center
-    p.text(egui::pos2(cx, gauge_cy), egui::Align2::CENTER_CENTER,
-        &format!("{:.0}", rsi), egui::FontId::proportional(20.0), rsi_color);
+    hero_number(p, egui::pos2(cx, cy - 4.0), &format!("{:.0}", rsi), rsi_color);
 
     let zone = if rsi > 70.0 { "OVERBOUGHT" } else if rsi < 30.0 { "OVERSOLD" } else { "NEUTRAL" };
-    sub_label(p, egui::pos2(cx, gauge_cy + r + 12.0), zone, rsi_color);
+    sub_label(p, egui::pos2(cx, cy + r + 10.0), zone, rsi_color);
 
-    // Momentum ROC at bottom
     let mom_col = if mom > 0.0 { t.bull } else { t.bear };
-    let mom_sign = if mom > 0.0 { "+" } else { "" };
-    p.text(egui::pos2(body.right() - 8.0, body.bottom() - 8.0), egui::Align2::RIGHT_CENTER,
-        &format!("{}{:.1}%", mom_sign, mom), egui::FontId::monospace(FONT_XS), mom_col);
-    p.text(egui::pos2(body.left() + 8.0, body.bottom() - 8.0), egui::Align2::LEFT_CENTER,
+    p.text(egui::pos2(body.right() - 8.0, body.bottom() - 6.0), egui::Align2::RIGHT_CENTER,
+        &format!("{:+.1}%", mom), egui::FontId::monospace(FONT_XS), mom_col);
+    p.text(egui::pos2(body.left() + 8.0, body.bottom() - 6.0), egui::Align2::LEFT_CENTER,
         "ROC", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
 }
 
 fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let cx = body.center().x;
+    // Label at top
+    sub_label(p, egui::pos2(cx, body.top() + 8.0), "ATR (14)", t.dim);
+    // Hero number
     let atr_str = if wd.atr > 1.0 { format!("{:.2}", wd.atr) } else { format!("{:.4}", wd.atr) };
-    hero_number(p, egui::pos2(cx, body.top() + 18.0), &atr_str, t.accent);
-    sub_label(p, egui::pos2(cx, body.top() + 36.0), "ATR (14)", t.dim);
+    hero_number(p, egui::pos2(cx, body.top() + 28.0), &atr_str, t.accent);
 
     let bar_y = body.top() + 50.0;
     let bar_x = body.left() + 12.0;

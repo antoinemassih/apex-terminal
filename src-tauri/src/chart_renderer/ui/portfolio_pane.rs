@@ -62,7 +62,7 @@ pub(crate) fn render(
     painter.text(egui::pos2(inner.left(), metrics_y), egui::Align2::LEFT_CENTER,
         "TOTAL VALUE", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
     painter.text(egui::pos2(inner.left(), metrics_y + 18.0), egui::Align2::LEFT_CENTER,
-        &format!("${:.0}", total_value), egui::FontId::proportional(28.0), t.text);
+        &format!("${:.0}", total_value), egui::FontId::proportional(34.0), t.text);
 
     // P&L
     let pnl_x = inner.left() + 180.0;
@@ -71,7 +71,7 @@ pub(crate) fn render(
     let sign = if total_pnl >= 0.0 { "+" } else { "" };
     painter.text(egui::pos2(pnl_x, metrics_y + 18.0), egui::Align2::LEFT_CENTER,
         &format!("{}${:.0} ({:+.2}%)", sign, total_pnl, total_pnl_pct),
-        egui::FontId::proportional(24.0), pnl_col);
+        egui::FontId::proportional(28.0), pnl_col);
 
     // Positions count
     let count_x = inner.left() + 420.0;

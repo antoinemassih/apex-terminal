@@ -680,10 +680,10 @@ fn draw_play_card(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: &mut Opt
     };
     p.rect_filled(card_rect, RADIUS_LG, bg);
 
-    // Bevel
+    // Top bevel highlight
     p.rect_filled(egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
         egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
-        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 8));
+        egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 40 } else { 8 }));
 
     p.rect_stroke(card_rect, RADIUS_LG, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)), egui::StrokeKind::Outside);
 

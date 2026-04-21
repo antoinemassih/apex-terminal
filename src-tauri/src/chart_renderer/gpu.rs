@@ -3526,12 +3526,8 @@ fn render_toolbar(
 
     if toolbar_visible {
     egui::TopBottomPanel::top("tb")
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 10, right: 0, top: 0, bottom: 0 }))
-        .exact_height(if watchlist.compact_mode {
-            crate::dt_f32!(toolbar.height_compact, 28.0) + 4.0
-        } else {
-            crate::dt_f32!(toolbar.height, 36.0) + 6.0
-        })
+        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 8, right: 0, top: 0, bottom: 0 }))
+        .exact_height(if watchlist.compact_mode { 28.0 } else { 34.0 })
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         crate::design_tokens::register_hit(
@@ -3553,10 +3549,10 @@ fn render_toolbar(
         }
 
         ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = crate::dt_f32!(spacing.md, 6.0);
+            ui.spacing_mut().item_spacing.x = 4.0;
 
             // ── Logo ──
-            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(15.0, 15.0), egui::Sense::hover());
+            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
             let lp = ui.painter_at(logo_rect);
             let lc = logo_rect.center();
             lp.add(egui::Shape::line(vec![
@@ -12220,12 +12216,22 @@ fn render_chart_pane(
 
                         let line_h = 12.0;
                         let tip_h = tip_lines.len() as f32 * line_h + 8.0;
-                        let tip_w = 160.0;
+                        let tip_w = 170.0;
                         let tx = if tooltip_x + tip_w > rect.left() + cw { pos.x - tip_w - 16.0 } else { tooltip_x };
                         let ty = (tooltip_y - tip_h).max(rect.top() + pt).min(rect.top() + pt + ch - tip_h);
                         let tip_rect = egui::Rect::from_min_size(egui::pos2(tx, ty), egui::vec2(tip_w, tip_h));
-                        painter.rect_filled(tip_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
-                        painter.rect_stroke(tip_rect, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Outside);
+                        // Rich tooltip: shadow + bevel + crisp border
+                        painter.rect_filled(tip_rect.translate(egui::vec2(0.0, 3.0)).expand(1.0), 8.0,
+                            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 25));
+                        painter.rect_filled(tip_rect, 8.0,
+                            egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 240));
+                        // Top bevel
+                        painter.rect_filled(egui::Rect::from_min_max(tip_rect.min, egui::pos2(tip_rect.right(), tip_rect.top() + 1.0)),
+                            egui::CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 },
+                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 30 } else { 8 }));
+                        painter.rect_stroke(tip_rect, 8.0,
+                            egui::Stroke::new(0.8, color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 40 })),
+                            egui::StrokeKind::Outside);
                         for (i, (line, col)) in tip_lines.iter().enumerate() {
                             if line == "---" {
                                 let sep_y = ty + 4.0 + i as f32 * line_h + line_h / 2.0;

@@ -898,10 +898,10 @@ if watchlist.open {
                                         // For now show a dim neutral dot
                                         // painter.circle_filled(egui::pos2(ind_x + 5.0, y_c), 3.0, color_alpha(t.text,30));
 
-                                        // Change % (center-left, prominent)
+                                        // Change % — proportional font, editorial style
                                         let mid_x = rect.left() + full_w * 0.45;
                                         painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
-                                            &change_str, egui::FontId::monospace(chg_font_sz), color);
+                                            &change_str, egui::FontId::proportional(chg_font_sz), color);
 
                                         // ── Optional columns (between change% and price) ──
                                         let mut extra_x = mid_x + change_str.len() as f32 * 8.0 + 8.0;
@@ -948,10 +948,10 @@ if watchlist.open {
                                             extra_x += range_w + 6.0;
                                         }
 
-                                        // Price (right-aligned, leave room for X button)
+                                        // Price — proportional font, right-aligned
                                         let price_x = rect.right() - 24.0;
                                         painter.text(egui::pos2(price_x, y_c), egui::Align2::RIGHT_CENTER,
-                                            &price_str, egui::FontId::monospace(14.0), color.gamma_multiply(0.6));
+                                            &price_str, egui::FontId::proportional(14.0), t.text);
 
                                         // Faint row separator line
                                         painter.line_segment(
