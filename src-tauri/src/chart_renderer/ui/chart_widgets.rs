@@ -194,10 +194,14 @@ pub(crate) fn draw_widgets(
                 egui::StrokeKind::Outside);
         }
 
-        // Widget body fills entire card
+        // Widget body
+        let hdr_h: f32 = if card_hovered && !w.collapsed { 26.0 } else { 0.0 };
         if !w.collapsed {
+            let body = egui::Rect::from_min_max(
+                egui::pos2(card_rect.left(), card_rect.top() + hdr_h),
+                card_rect.max);
             let mut btns = Vec::new();
-            draw_widget_body(&painter, card_rect, kind, &wd, t, hover_pos, &mut btns);
+            draw_widget_body(&painter, body, kind, &wd, t, hover_pos, &mut btns);
             if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                 if let Some(pos) = hover_pos {
                     for (btn_rect, action) in &btns {
@@ -219,45 +223,55 @@ pub(crate) fn draw_widgets(
             draw_mini_badge(&painter, card_rect, kind, &wd, t);
         }
 
-        // Hover header — overlays TOP of widget (must stay within clip rect)
-        let hdr_h = 24.0;
-        let mut hdr_rect_for_click: Option<egui::Rect> = None;
+        // ── Header bar — shown ABOVE body on hover, pushes body down ──
         if card_hovered && !w.collapsed {
             let hdr = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, hdr_h));
-            hdr_rect_for_click = Some(hdr);
+            // Header background
             painter.rect_filled(hdr,
                 egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
-                Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
             painter.line_segment(
                 [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
-                Stroke::new(0.3, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            // Label
             painter.text(egui::pos2(hdr.left() + 8.0, hdr.center().y),
                 egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(FONT_MD), t.accent);
             painter.text(egui::pos2(hdr.left() + 24.0, hdr.center().y),
                 egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(FONT_XS), t.text);
             if w.locked {
-                let lx = hdr.left() + 24.0 + kind.label().len() as f32 * 7.0 + 6.0;
-                painter.text(egui::pos2(lx, hdr.center().y), egui::Align2::LEFT_CENTER,
-                    "\u{1F512}", egui::FontId::proportional(8.0), t.dim.gamma_multiply(0.5));
+                painter.text(egui::pos2(hdr.left() + 24.0 + kind.label().len() as f32 * 7.0 + 6.0, hdr.center().y),
+                    egui::Align2::LEFT_CENTER, "\u{1F512}", egui::FontId::proportional(8.0), t.dim.gamma_multiply(0.5));
             }
-            let btn_w = 30.0;
+
+            // ── Buttons — large, visible, with hover backgrounds ──
+            let btn_w = 32.0;
             let btn_h = 22.0;
             let ptr = ui.ctx().pointer_hover_pos();
-            let ctx_rect = egui::Rect::from_min_size(
-                egui::pos2(hdr.right() - btn_w * 2.0 - 8.0, hdr.center().y - btn_h * 0.5), egui::vec2(btn_w, btn_h));
+
+            // Context menu ⋯
+            let ctx_rect = egui::Rect::from_center_size(
+                egui::pos2(hdr.right() - btn_w - 20.0, hdr.center().y), egui::vec2(btn_w, btn_h));
             let ctx_hov = ptr.map(|p| ctx_rect.contains(p)).unwrap_or(false);
             painter.rect_filled(ctx_rect, 5.0,
-                if ctx_hov { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, 20) });
+                if ctx_hov { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 25) });
+            painter.rect_stroke(ctx_rect, 5.0,
+                Stroke::new(0.5, if ctx_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
+                egui::StrokeKind::Outside);
             painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
                 "\u{22EF}", egui::FontId::proportional(16.0),
                 if ctx_hov { t.accent } else { t.dim });
             if ctx_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             card_ctx_rect = Some(ctx_rect);
-            let tog_rect = egui::Rect::from_min_size(
-                egui::pos2(hdr.right() - btn_w - 4.0, hdr.center().y - btn_h * 0.5), egui::vec2(btn_w, btn_h));
+
+            // Mode toggle
+            let tog_rect = egui::Rect::from_center_size(
+                egui::pos2(hdr.right() - 18.0, hdr.center().y), egui::vec2(btn_w, btn_h));
             let tog_hov = ptr.map(|p| tog_rect.contains(p)).unwrap_or(false);
             painter.rect_filled(tog_rect, 5.0,
-                if tog_hov { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, 20) });
+                if tog_hov { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 25) });
+            painter.rect_stroke(tog_rect, 5.0,
+                Stroke::new(0.5, if tog_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
+                egui::StrokeKind::Outside);
             painter.text(tog_rect.center(), egui::Align2::CENTER_CENTER,
                 mode_icon, egui::FontId::proportional(14.0),
                 if tog_hov { t.accent } else { t.dim });
@@ -265,66 +279,44 @@ pub(crate) fn draw_widgets(
             card_toggle_rect = Some(tog_rect);
         }
 
-
         // ══════════════════════════════════════════════════════════════════
-        // Interaction — magnetic dock model (disabled when draw-faded)
+        // Interaction
         // ══════════════════════════════════════════════════════════════════
 
         if !draw_faded {
         let sense = egui::Sense::click_and_drag();
 
-        // Interaction area: header above card (when visible) + top strip of card for drag
-        let interact_rect = if let Some(hdr) = hdr_rect_for_click {
-            // When header is visible, interaction covers the header
-            hdr
-        } else {
-            // When no header, thin grab strip at top of card
-            egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, 16.0))
-        };
-
+        // Interact area = top strip for drag (always available)
+        let interact_rect = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, 16.0));
         let resp = ui.interact(interact_rect, egui::Id::new(("widget_drag", wi)), sense);
 
         if resp.dragged_by(egui::PointerButton::Primary) && !chart.chart_widgets[wi].locked {
             let d = resp.drag_delta();
             let wid = &mut chart.chart_widgets[wi];
             let pointer = ui.ctx().pointer_interact_pos().unwrap_or(card_rect.center());
-
             match wid.dock {
                 WidgetDock::Float => {
-                    // ── Free drag: move both axes ──
                     wid.x += d.x / rect.width();
                     wid.y += d.y / rect.height();
                     wid.x = wid.x.clamp(0.0, 0.95);
                     wid.y = wid.y.clamp(0.0, 0.95);
-
-                    // ── Magnetic snap: check if pointer entered a snap zone ──
                     if pointer.y - rect.top() < SNAP_ZONE {
                         wid.dock = WidgetDock::Top;
-                        // Use pointer X minus half widget width so it centers on cursor
-                        wid.dock_x = (pointer.x - card_w * 0.5)
-                            .clamp(rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
+                        wid.dock_x = (pointer.x - card_w * 0.5).clamp(rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
                     } else if rect.bottom() - pointer.y < SNAP_ZONE {
                         wid.dock = WidgetDock::Bottom;
-                        wid.dock_x = (pointer.x - card_w * 0.5)
-                            .clamp(rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
+                        wid.dock_x = (pointer.x - card_w * 0.5).clamp(rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
                     }
                 }
                 WidgetDock::Top | WidgetDock::Bottom => {
-                    // ── Magnetically held: slide X freely, Y is locked ──
                     wid.dock_x += d.x;
-                    wid.dock_x = wid.dock_x.clamp(
-                        rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
-
-                    // ── Yank out: measure pull distance from strip center ──
+                    wid.dock_x = wid.dock_x.clamp(rect.left() + STRIP_PAD, rect.right() - card_w - STRIP_PAD);
                     let strip_center_y = match wid.dock {
-                        WidgetDock::Top    => rect.top() + STRIP_PAD + card_h * 0.5,
+                        WidgetDock::Top => rect.top() + STRIP_PAD + card_h * 0.5,
                         WidgetDock::Bottom => rect.bottom() - STRIP_PAD - card_h * 0.5,
                         _ => 0.0,
                     };
-                    let pull = (pointer.y - strip_center_y).abs();
-
-                    if pull > YANK_THRESHOLD {
-                        // Break free — place at current animated position
+                    if (pointer.y - strip_center_y).abs() > YANK_THRESHOLD {
                         wid.dock = WidgetDock::Float;
                         wid.x = ((wid.anim_x - rect.left()) / rect.width()).clamp(0.0, 0.95);
                         wid.y = ((pointer.y - card_h * 0.5 - rect.top()) / rect.height()).clamp(0.0, 0.95);
@@ -332,23 +324,32 @@ pub(crate) fn draw_widgets(
                 }
             }
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-        } else if resp.hovered() {
+        } else if resp.hovered() && !card_hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
 
-        // Click routing: check pointer release position against button rects
-        if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-            if let Some(click_pos) = ui.input(|i| i.pointer.latest_pos()) {
+        // Click routing — check pointer position against button rects
+        if resp.clicked() {
+            if let Some(click_pos) = resp.interact_pointer_pos() {
                 if card_ctx_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
                     popup_open = Some(wi);
                 } else if card_toggle_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
                     mode_toggle = Some(wi);
+                } else if !card_hovered {
+                    // Only collapse when clicking outside the header
+                    collapse_toggle = Some(wi);
                 }
             }
         }
-        // Collapse on click (only when no header visible — clicking grab strip)
-        if resp.clicked() && hdr_rect_for_click.is_none() {
-            collapse_toggle = Some(wi);
+        // Also check raw pointer click on buttons (for when resp doesn't capture it)
+        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+            if let Some(pos) = hover_pos {
+                if card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false) && popup_open.is_none() {
+                    popup_open = Some(wi);
+                } else if card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false) && mode_toggle.is_none() {
+                    mode_toggle = Some(wi);
+                }
+            }
         }
 
         // ── Snap zone glow — fades in as pointer approaches edge ──
