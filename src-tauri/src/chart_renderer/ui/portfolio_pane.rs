@@ -16,9 +16,13 @@ pub(crate) fn render(
     if rect_idx >= pane_rects.len() { return; }
     let rect = pane_rects[rect_idx];
 
-    // Background
+    // Background + click to activate
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, t.bg);
+    let body_resp = ui.allocate_rect(rect, egui::Sense::click());
+    if body_resp.clicked() || body_resp.hovered() {
+        *active_pane = pane_idx;
+    }
 
     let margin = 16.0;
     let inner = egui::Rect::from_min_max(

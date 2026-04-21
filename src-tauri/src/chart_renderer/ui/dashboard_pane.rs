@@ -16,8 +16,12 @@ pub(crate) fn render(
     if pane_rects.is_empty() { return; }
     let rect = pane_rects[0];
 
-    // Background
+    // Background + click to activate
     ui.painter_at(rect).rect_filled(rect, 0.0, t.bg);
+    let body_resp = ui.allocate_rect(rect, egui::Sense::click());
+    if body_resp.clicked() || body_resp.hovered() {
+        *_active_pane = pane_idx;
+    }
 
     // Count visible widgets
     let widget_count = panes[pane_idx].chart_widgets.iter().filter(|w| w.visible).count();
