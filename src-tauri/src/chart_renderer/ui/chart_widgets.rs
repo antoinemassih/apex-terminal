@@ -219,13 +219,11 @@ pub(crate) fn draw_widgets(
             draw_mini_badge(&painter, card_rect, kind, &wd, t);
         }
 
-        // Hover header — appears ABOVE the widget, not overlapping it
-        let hdr_h = 26.0;
+        // Hover header — overlays TOP of widget (must stay within clip rect)
+        let hdr_h = 24.0;
         let mut hdr_rect_for_click: Option<egui::Rect> = None;
         if card_hovered && !w.collapsed {
-            let hdr = egui::Rect::from_min_size(
-                egui::pos2(card_rect.left(), card_rect.top() - hdr_h - 2.0),
-                egui::vec2(card_w, hdr_h));
+            let hdr = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, hdr_h));
             hdr_rect_for_click = Some(hdr);
             painter.rect_filled(hdr,
                 egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
@@ -338,19 +336,19 @@ pub(crate) fn draw_widgets(
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
 
-        // Click routing: buttons checked first, then collapse only if clicking card body
-        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-            if let Some(click_pos) = ui.ctx().pointer_interact_pos() {
-                // Check header buttons first
+        // Click routing: check pointer release position against button rects
+        if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+            if let Some(click_pos) = ui.input(|i| i.pointer.latest_pos()) {
                 if card_ctx_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
                     popup_open = Some(wi);
                 } else if card_toggle_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
                     mode_toggle = Some(wi);
-                } else if interact_rect.contains(click_pos) && hdr_rect_for_click.is_none() {
-                    // Only collapse when clicking the grab strip (no header visible)
-                    collapse_toggle = Some(wi);
                 }
             }
+        }
+        // Collapse on click (only when no header visible — clicking grab strip)
+        if resp.clicked() && hdr_rect_for_click.is_none() {
+            collapse_toggle = Some(wi);
         }
 
         // ── Snap zone glow — fades in as pointer approaches edge ──
