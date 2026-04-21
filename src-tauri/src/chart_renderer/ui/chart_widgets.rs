@@ -188,10 +188,12 @@ pub(crate) fn draw_widgets(
                 RADIUS_LG + 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 22));
             painter.rect_filled(card_rect.translate(egui::vec2(0.0, 1.5)).expand(1.0),
                 RADIUS_LG + 1.0, Color32::from_rgba_unmultiplied(0, 0, 0, 12));
-            // Background
-            let bg = Color32::from_rgba_unmultiplied(
-                t.toolbar_bg.r().saturating_add(4), t.toolbar_bg.g().saturating_add(4),
-                t.toolbar_bg.b().saturating_add(6), 235);
+            // Background with category tint
+            let (tr, tg, tb, ta) = kind.category_tint();
+            let bg_r = ((t.toolbar_bg.r() as u16 * (255 - ta as u16) + tr as u16 * ta as u16) / 255) as u8;
+            let bg_g = ((t.toolbar_bg.g() as u16 * (255 - ta as u16) + tg as u16 * ta as u16) / 255) as u8;
+            let bg_b = ((t.toolbar_bg.b() as u16 * (255 - ta as u16) + tb as u16 * ta as u16) / 255) as u8;
+            let bg = Color32::from_rgba_unmultiplied(bg_r.saturating_add(4), bg_g.saturating_add(4), bg_b.saturating_add(4), 235);
             painter.rect_filled(card_rect, RADIUS_LG, bg);
             // Top bevel highlight
             painter.rect_filled(

@@ -211,6 +211,32 @@ impl ChartWidgetKind {
           Self::PayoffChart, Self::OptionsFlow,
           Self::PositionsPanel, Self::DailyPnl]
     }
+
+    /// Subtle background tint color by widget category (for dashboard tiles).
+    /// Returns (r, g, b, alpha) — the alpha is very low for a subtle wash.
+    pub(crate) fn category_tint(self) -> (u8, u8, u8, u8) {
+        match self {
+            // Gauges — warm cream
+            Self::TrendStrength | Self::Momentum | Self::Volatility | Self::ConvictionMeter
+            | Self::LiquidityScore | Self::RsiMulti => (200, 180, 140, 15),
+            // Analytics — sage green
+            Self::TrendAlign | Self::VolumeShelf | Self::Confluence | Self::MomentumHeat
+            | Self::VolRegime | Self::BreadthThermo | Self::RelStrength => (140, 180, 140, 12),
+            // Market — peach/salmon
+            Self::Correlation | Self::DarkPool | Self::FlowCompass | Self::SectorRotation
+            | Self::OptionsSentiment | Self::SignalRadar | Self::CrossAssetPulse | Self::TapeSpeed
+            => (200, 160, 140, 12),
+            // Position/P&L — no tint (clean white)
+            Self::PositionPnl | Self::PositionsPanel | Self::DailyPnl | Self::RiskDash
+            | Self::RiskReward => (0, 0, 0, 0),
+            // Signals — light blue
+            Self::ExitGauge | Self::PrecursorAlert | Self::TradePlan | Self::ChangePoints
+            | Self::ZoneStrength | Self::PatternScanner | Self::VixMonitor | Self::SignalDashboard
+            | Self::DivergenceMonitor => (140, 160, 200, 12),
+            // Info — light grey
+            _ => (160, 160, 160, 8),
+        }
+    }
 }
 
 /// Widget display density — how much chrome surrounds the data.
@@ -525,16 +551,13 @@ pub(crate) enum PaneHeaderSize { Compact, Normal, Expanded }
 
 impl PaneHeaderSize {
     pub(crate) fn header_h(self) -> f32 {
-        let base = crate::dt_f32!(pane_header.height_compact, 22.0);
-        match self { Self::Compact => base, Self::Normal => base + 6.0, Self::Expanded => base + 12.0 }
+        match self { Self::Compact => 18.0, Self::Normal => 22.0, Self::Expanded => 28.0 }
     }
     pub(crate) fn tabs_header_h(self) -> f32 {
-        let base = crate::dt_f32!(pane_header.height, 36.0);
-        match self { Self::Compact => base - 4.0, Self::Normal => base, Self::Expanded => base + 6.0 }
+        match self { Self::Compact => 26.0, Self::Normal => 30.0, Self::Expanded => 36.0 }
     }
     pub(crate) fn title_font(self) -> f32 {
-        let base = crate::dt_f32!(font.input, 12.0);
-        match self { Self::Compact => base, Self::Normal => base + 2.0, Self::Expanded => base + 4.0 }
+        match self { Self::Compact => 10.0, Self::Normal => 11.0, Self::Expanded => 13.0 }
     }
     pub(crate) fn label(self) -> &'static str {
         match self { Self::Compact => "Compact", Self::Normal => "Normal", Self::Expanded => "Expanded" }

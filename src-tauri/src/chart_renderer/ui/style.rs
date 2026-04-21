@@ -32,12 +32,12 @@ pub fn font_2xl() -> f32 { crate::dt_f32!(font.xxl, 15.0) }
 
 // Keep the old names as non-const for backwards compat with all call sites.
 // Without design-mode feature, the compiler inlines these to the literal values.
-pub const FONT_XS:  f32 = 8.0;
-pub const FONT_SM:  f32 = 10.0;
-pub const FONT_MD:  f32 = 11.0;
-pub const FONT_LG:  f32 = 13.0;
-pub const FONT_XL:  f32 = 14.0;
-pub const FONT_2XL: f32 = 15.0;
+pub const FONT_XS:  f32 = 7.0;
+pub const FONT_SM:  f32 = 9.0;
+pub const FONT_MD:  f32 = 10.0;
+pub const FONT_LG:  f32 = 11.0;
+pub const FONT_XL:  f32 = 12.0;
+pub const FONT_2XL: f32 = 13.0;
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
 pub fn gap_xs()  -> f32 { crate::dt_f32!(spacing.xs, 2.0) }
@@ -48,13 +48,13 @@ pub fn gap_xl()  -> f32 { crate::dt_f32!(spacing.xl, 10.0) }
 pub fn gap_2xl() -> f32 { crate::dt_f32!(spacing.xxl, 12.0) }
 pub fn gap_3xl() -> f32 { crate::dt_f32!(spacing.xxxl, 20.0) }
 
-pub const GAP_XS:  f32 = 2.0;
-pub const GAP_SM:  f32 = 4.0;
-pub const GAP_MD:  f32 = 6.0;
-pub const GAP_LG:  f32 = 8.0;
-pub const GAP_XL:  f32 = 10.0;
-pub const GAP_2XL: f32 = 12.0;
-pub const GAP_3XL: f32 = 20.0;
+pub const GAP_XS:  f32 = 1.0;
+pub const GAP_SM:  f32 = 3.0;
+pub const GAP_MD:  f32 = 5.0;
+pub const GAP_LG:  f32 = 6.0;
+pub const GAP_XL:  f32 = 8.0;
+pub const GAP_2XL: f32 = 10.0;
+pub const GAP_3XL: f32 = 16.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 pub fn radius_sm() -> f32 { crate::dt_f32!(radius.sm, 3.0) }
@@ -167,9 +167,9 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         color_alpha(toolbar_border, alpha_muted())
     };
 
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_lg()).color(fg))
-        .fill(bg).stroke(Stroke::new(stroke_thin(), border)).corner_radius(radius_md())
-        .min_size(egui::vec2(0.0, crate::dt_f32!(toolbar.btn_min_height, 24.0))));
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).color(fg))
+        .fill(bg).stroke(Stroke::new(0.5, border)).corner_radius(3.0)
+        .min_size(egui::vec2(0.0, 20.0)));
     hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
 
     if active {
@@ -324,7 +324,15 @@ pub fn dialog_section(ui: &mut egui::Ui, text: &str, margin: f32, color: Color32
 /// Section header — FONT_SM bold.
 #[inline]
 pub fn section_label(ui: &mut egui::Ui, text: &str, color: Color32) {
-    ui.label(RichText::new(text).monospace().size(font_sm()).strong().color(color));
+    ui.horizontal(|ui| {
+        // Left accent stripe
+        let r = ui.available_rect_before_wrap();
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(egui::pos2(r.left(), ui.cursor().min.y), egui::vec2(2.5, 12.0)),
+            1.0, color);
+        ui.add_space(6.0);
+        ui.label(RichText::new(text).monospace().size(7.0).strong().color(color));
+    });
 }
 
 /// Dim info label — FONT_SM regular.
@@ -381,8 +389,8 @@ pub fn segmented_control(
     let mut union_rect: Option<egui::Rect> = None;
     let n = labels.len();
     let rsm = radius_sm() as u8;
-    let seg_btn_h = crate::dt_f32!(segmented.btn_min_height, 24.0);
-    let seg_pad_x = crate::dt_f32!(segmented.btn_padding_x, 7.0);
+    let seg_btn_h = 20.0;
+    let seg_pad_x = 5.0;
 
     for (i, label) in labels.iter().enumerate() {
         let active = i == active_idx;
@@ -397,7 +405,7 @@ pub fn segmented_control(
         let prev_pad = ui.spacing().button_padding;
         ui.spacing_mut().button_padding = egui::vec2(seg_pad_x, prev_pad.y);
         let resp = ui.add(
-            egui::Button::new(RichText::new(*label).monospace().size(font_lg()).strong().color(fg))
+            egui::Button::new(RichText::new(*label).monospace().size(11.0).strong().color(fg))
                 .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
                 .min_size(egui::vec2(0.0, seg_btn_h))
         );
@@ -426,9 +434,7 @@ pub fn segmented_control(
 /// Internally zeroes button_padding so egui doesn't add asymmetric whitespace around the icon.
 /// Returns the full Response so callers can chain `.clicked()`, `.on_hover_text()`, etc.
 pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egui::Response {
-    let icon_pad = crate::dt_f32!(icon_button.icon_padding, 5.0);
-    let min = crate::dt_f32!(icon_button.min_size, 26.0);
-    let side = (size + icon_pad * 2.0).max(min);
+    let side = (size + 8.0).max(22.0);
     let prev_pad = ui.spacing().button_padding;
     ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
     let resp = ui.add(
@@ -462,9 +468,9 @@ pub fn panel_header(ui: &mut egui::Ui, title: &str, accent: Color32, dim: Color3
 pub fn panel_header_sub(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>, accent: Color32, dim: Color32) -> bool {
     let mut closed = false;
     ui.horizontal(|ui| {
-        ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(accent));
+        ui.label(RichText::new(title).monospace().size(11.0).strong().color(accent));
         if let Some(sub) = subtitle {
-            ui.label(RichText::new(sub).monospace().size(font_sm()).color(dim));
+            ui.label(RichText::new(sub).monospace().size(9.0).color(dim));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if close_button(ui, dim) { closed = true; }
@@ -606,9 +612,9 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
     let fg     = if enabled { color                              } else { color_alpha(color, alpha_active()) };
     let border = if enabled { color_alpha(color, alpha_active()) } else { color_alpha(color, alpha_line())   };
     let resp = ui.add_enabled(enabled,
-        egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(fg))
-            .fill(bg).stroke(Stroke::new(stroke_thin(), border))
-            .corner_radius(radius_md()).min_size(egui::vec2(0.0, crate::dt_f32!(button.action_height, 24.0))));
+        egui::Button::new(RichText::new(label).monospace().size(9.0).strong().color(fg))
+            .fill(bg).stroke(Stroke::new(0.5, border))
+            .corner_radius(3.0).min_size(egui::vec2(0.0, 20.0)));
     hit(&resp.rect, "ACTION_BTN", "Buttons");
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
@@ -621,8 +627,8 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
         (color.r() as f32 * bright) as u8,
         (color.g() as f32 * bright) as u8,
         (color.b() as f32 * bright) as u8);
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_lg()).strong().color(Color32::WHITE))
-        .fill(bg).min_size(egui::vec2(width, crate::dt_f32!(button.trade_height, 30.0))).corner_radius(radius_md()));
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(Color32::WHITE))
+        .fill(bg).min_size(egui::vec2(width, 24.0)).corner_radius(3.0));
     hit(&resp.rect, "TRADE_BTN", "Buttons");
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -644,7 +650,7 @@ pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool 
         .fill(color_alpha(color, alpha_soft()))
         .corner_radius(radius_sm())
         .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
-        .min_size(egui::vec2(0.0, crate::dt_f32!(button.small_height, 18.0))));
+        .min_size(egui::vec2(0.0, 16.0)));
     hit(&resp.rect, "SMALL_BTN", "Buttons");
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
@@ -656,7 +662,7 @@ pub fn simple_btn(ui: &mut egui::Ui, label: &str, color: Color32, min_width: f32
         .fill(color_alpha(color, alpha_faint()))
         .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_muted())))
         .corner_radius(radius_sm())
-        .min_size(egui::vec2(min_width, crate::dt_f32!(button.simple_height, 20.0))));
+        .min_size(egui::vec2(min_width, 18.0)));
     hit(&resp.rect, "SIMPLE_BTN", "Buttons");
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
