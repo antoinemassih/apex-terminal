@@ -324,15 +324,7 @@ pub fn dialog_section(ui: &mut egui::Ui, text: &str, margin: f32, color: Color32
 /// Section header — FONT_SM bold.
 #[inline]
 pub fn section_label(ui: &mut egui::Ui, text: &str, color: Color32) {
-    ui.horizontal(|ui| {
-        // Left accent stripe
-        let r = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(
-            egui::Rect::from_min_size(egui::pos2(r.left(), ui.cursor().min.y), egui::vec2(2.5, 12.0)),
-            1.0, color);
-        ui.add_space(6.0);
-        ui.label(RichText::new(text).monospace().size(7.0).strong().color(color));
-    });
+    ui.label(RichText::new(text).monospace().size(7.0).strong().color(color));
 }
 
 /// Dim info label — FONT_SM regular.

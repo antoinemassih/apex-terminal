@@ -3089,7 +3089,6 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
     let t = &THEMES[theme_idx];
     {
         let mut style = (*ctx.style()).clone();
-        style.visuals.window_fill = t.toolbar_bg;
         style.visuals.panel_fill = t.toolbar_bg;
         style.visuals.extreme_bg_color = t.bg;
         // ── Rich visual system — editorial design language ──
