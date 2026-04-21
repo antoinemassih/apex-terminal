@@ -177,206 +177,92 @@ pub(crate) fn draw_widgets(
         let mut card_ctx_rect: Option<egui::Rect> = None;
         let mut card_toggle_rect: Option<egui::Rect> = None;
 
-        // ── Mode toggle icon: ◼ Card, ◯ HUD, ◑ Minimal ──
-        let mode_icon = match mode {
-            WidgetDisplayMode::Card    => "\u{25FC}", // ◼
-            WidgetDisplayMode::Hud     => "\u{25CB}", // ○
-            WidgetDisplayMode::Minimal => "\u{25D1}", // ◑
-        };
-
-        // Check if pointer is hovering anywhere on the card (for HUD overlay)
+        // Mode icon
+        let mode_icon = if mode == WidgetDisplayMode::Card { "\u{25FC}" } else { "\u{25CB}" };
         let card_hovered = !draw_faded && ui.rect_contains_pointer(card_rect);
 
-        // ── Render based on display mode ──
+        // Card mode: solid background
         if mode == WidgetDisplayMode::Card {
-            // Drop shadow
-            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 3.0)).expand(2.0),
-                RADIUS_LG + 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 30));
-            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 1.5)).expand(1.0),
-                RADIUS_LG + 1.0, Color32::from_rgba_unmultiplied(0, 0, 0, 18));
-
-            // Background
+            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0),
+                RADIUS_LG + 1.0, Color32::from_rgba_unmultiplied(0, 0, 0, 20));
             let bg = Color32::from_rgba_unmultiplied(
                 t.toolbar_bg.r().saturating_add(4), t.toolbar_bg.g().saturating_add(4),
                 t.toolbar_bg.b().saturating_add(6), 230);
             painter.rect_filled(card_rect, RADIUS_LG, bg);
-
-            // Top bevel
-            painter.rect_filled(
-                egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
-                egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
-                Color32::from_rgba_unmultiplied(255, 255, 255, 10));
-
-            // Border
             painter.rect_stroke(card_rect, RADIUS_LG,
                 Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_LINE)),
                 egui::StrokeKind::Outside);
+        }
 
-            // Title bar
-            let tr = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, title_h));
-            painter.text(egui::pos2(tr.left() + 10.0, tr.center().y),
-                egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(FONT_MD), t.accent);
-            painter.text(egui::pos2(tr.left() + 24.0, tr.center().y),
-                egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(FONT_SM), t.text);
-            let chev = if w.collapsed { "\u{25B6}" } else { "\u{25BC}" };
-            painter.text(egui::pos2(tr.right() - 12.0, tr.center().y),
-                egui::Align2::CENTER_CENTER, chev, egui::FontId::proportional(6.0), t.dim.gamma_multiply(0.4));
-
-            // Lock icon (when locked)
-            if w.locked {
-                painter.text(egui::pos2(tr.right() - 56.0, tr.center().y),
-                    egui::Align2::CENTER_CENTER, "\u{1F512}",
-                    egui::FontId::proportional(7.0), t.dim.gamma_multiply(0.4));
-            }
-
-            // ── Button hit rects (painted only, clicks handled via title bar resp below) ──
-            let ctx_rect = egui::Rect::from_center_size(
-                egui::pos2(tr.right() - 42.0, tr.center().y), egui::vec2(16.0, 16.0));
-            let toggle_rect = egui::Rect::from_center_size(
-                egui::pos2(tr.right() - 26.0, tr.center().y), egui::vec2(16.0, 16.0));
-
-            // Paint buttons (hover detected from pointer position directly)
-            let ptr = ui.ctx().pointer_hover_pos();
-            let ctx_hovered = ptr.map(|p| ctx_rect.contains(p)).unwrap_or(false);
-            let toggle_hovered = ptr.map(|p| toggle_rect.contains(p)).unwrap_or(false);
-
-            // Context menu ⋯
-            if ctx_hovered {
-                painter.rect_filled(ctx_rect, 3.0, color_alpha(t.accent, ALPHA_GHOST));
-            }
-            painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
-                "\u{22EF}", egui::FontId::proportional(FONT_SM),
-                if ctx_hovered { t.accent } else { t.dim.gamma_multiply(0.4) });
-
-            // Mode toggle ◼/○/◑
-            if toggle_hovered {
-                painter.rect_filled(toggle_rect, 3.0, color_alpha(t.accent, ALPHA_GHOST));
-            }
-            painter.text(toggle_rect.center(), egui::Align2::CENTER_CENTER,
-                mode_icon, egui::FontId::proportional(FONT_SM),
-                if toggle_hovered { t.accent } else { t.dim.gamma_multiply(0.5) });
-
-            // Stash rects for click routing after the main resp is created
-            card_ctx_rect = Some(ctx_rect);
-            card_toggle_rect = Some(toggle_rect);
-
-            // Body
-            if !w.collapsed {
-                painter.line_segment(
-                    [egui::pos2(card_rect.left() + 8.0, card_rect.top() + title_h),
-                     egui::pos2(card_rect.right() - 8.0, card_rect.top() + title_h)],
-                    Stroke::new(STROKE_HAIR, color_alpha(t.toolbar_border, ALPHA_MUTED)));
-                let body = egui::Rect::from_min_size(
-                    egui::pos2(card_rect.left(), card_rect.top() + title_h + 2.0),
-                    egui::vec2(card_w, card_h - title_h - 2.0));
-                {
-                        let mut btns = Vec::new();
-                        draw_widget_body(&painter, body, kind, &wd, t, hover_pos, &mut btns);
-                        // Check if pointer is clicking any widget button
-                        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                            if let Some(pos) = hover_pos {
-                                for (btn_rect, action) in &btns {
-                                    if btn_rect.contains(pos) {
-                                        widget_btn_action = Some(*action);
-                                    }
-                                }
-                            }
-                        }
-                        // Paint hover state for hovered buttons
-                        if let Some(pos) = hover_pos {
-                            for (btn_rect, _) in &btns {
-                                if btn_rect.contains(pos) {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                }
-                            }
-                        }
+        // Widget body fills entire card
+        if !w.collapsed {
+            let mut btns = Vec::new();
+            draw_widget_body(&painter, card_rect, kind, &wd, t, hover_pos, &mut btns);
+            if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                if let Some(pos) = hover_pos {
+                    for (btn_rect, action) in &btns {
+                        if btn_rect.contains(pos) { widget_btn_action = Some(*action); }
                     }
-
-                // Resize handle (bottom-right corner)
+                }
+            }
+            if let Some(pos) = hover_pos {
+                for (btn_rect, _) in &btns {
+                    if btn_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                }
+            }
+            if mode == WidgetDisplayMode::Card {
                 if let Some(delta) = resize_handle(ui, &painter, card_rect, wi, t) {
                     resize_delta = Some((wi, delta));
                 }
             }
-        } else if mode == WidgetDisplayMode::Hud {
-            if !w.collapsed {
-                let mut btns = Vec::new();
-                draw_widget_body(&painter, card_rect, kind, &wd, t, hover_pos, &mut btns);
-                if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                    if let Some(pos) = hover_pos {
-                        for (btn_rect, action) in &btns {
-                            if btn_rect.contains(pos) { widget_btn_action = Some(*action); }
-                        }
-                    }
-                }
-                if let Some(pos) = hover_pos {
-                    for (btn_rect, _) in &btns {
-                        if btn_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    }
-                }
-            } else {
-                draw_mini_badge(&painter, card_rect, kind, &wd, t);
-            }
-
-            // HUD hover overlay — show mode toggle only on rollover (paint only, click routed via resp)
-            if card_hovered {
-                let pill = egui::Rect::from_min_size(
-                    egui::pos2(card_rect.right() - 20.0, card_rect.top()), egui::vec2(20.0, 16.0));
-                painter.rect_filled(pill, 4.0, Color32::from_rgba_unmultiplied(0, 0, 0, 100));
-                let ptr = ui.ctx().pointer_hover_pos();
-                let hovered = ptr.map(|p| pill.contains(p)).unwrap_or(false);
-                painter.text(pill.center(), egui::Align2::CENTER_CENTER,
-                    mode_icon, egui::FontId::proportional(FONT_XS),
-                    if hovered { t.accent } else { t.text });
-                card_toggle_rect = Some(pill);
-            }
         } else {
-            // Minimal — faint label + mode toggle (paint only, click routed via resp)
-            painter.text(egui::pos2(card_rect.left() + 4.0, card_rect.top() + 8.0),
-                egui::Align2::LEFT_CENTER, kind.icon(),
-                egui::FontId::proportional(FONT_XS), color_alpha(t.accent, ALPHA_MUTED));
-            painter.text(egui::pos2(card_rect.left() + 16.0, card_rect.top() + 8.0),
-                egui::Align2::LEFT_CENTER, kind.label(),
-                egui::FontId::monospace(7.0), color_alpha(t.dim, ALPHA_MUTED));
-
-            let toggle_rect = egui::Rect::from_center_size(
-                egui::pos2(card_rect.right() - 10.0, card_rect.top() + 8.0), egui::vec2(14.0, 14.0));
-            let ptr = ui.ctx().pointer_hover_pos();
-            let hovered = ptr.map(|p| toggle_rect.contains(p)).unwrap_or(false);
-            painter.text(toggle_rect.center(), egui::Align2::CENTER_CENTER,
-                mode_icon, egui::FontId::proportional(FONT_XS),
-                if hovered { t.accent } else { t.dim.gamma_multiply(0.3) });
-            card_toggle_rect = Some(toggle_rect);
-
-            if !w.collapsed {
-                let body = egui::Rect::from_min_size(
-                    egui::pos2(card_rect.left(), card_rect.top() + 16.0),
-                    egui::vec2(card_w, card_h - 16.0));
-                {
-                        let mut btns = Vec::new();
-                        draw_widget_body(&painter, body, kind, &wd, t, hover_pos, &mut btns);
-                        // Check if pointer is clicking any widget button
-                        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                            if let Some(pos) = hover_pos {
-                                for (btn_rect, action) in &btns {
-                                    if btn_rect.contains(pos) {
-                                        widget_btn_action = Some(*action);
-                                    }
-                                }
-                            }
-                        }
-                        // Paint hover state for hovered buttons
-                        if let Some(pos) = hover_pos {
-                            for (btn_rect, _) in &btns {
-                                if btn_rect.contains(pos) {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                }
-                            }
-                        }
-                    }
-            } else {
-                draw_mini_badge(&painter, card_rect, kind, &wd, t);
-            }
+            draw_mini_badge(&painter, card_rect, kind, &wd, t);
         }
+
+        // Hover header overlay (both Card and HUD)
+        if card_hovered && !w.collapsed {
+            let hdr_h = 28.0;
+            let hdr = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, hdr_h));
+            painter.rect_filled(hdr,
+                egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
+                Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+            painter.line_segment(
+                [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
+                Stroke::new(0.3, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            painter.text(egui::pos2(hdr.left() + 8.0, hdr.center().y),
+                egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(FONT_MD), t.accent);
+            painter.text(egui::pos2(hdr.left() + 24.0, hdr.center().y),
+                egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(FONT_XS), t.text);
+            if w.locked {
+                let lx = hdr.left() + 24.0 + kind.label().len() as f32 * 7.0 + 6.0;
+                painter.text(egui::pos2(lx, hdr.center().y), egui::Align2::LEFT_CENTER,
+                    "\u{1F512}", egui::FontId::proportional(8.0), t.dim.gamma_multiply(0.5));
+            }
+            let btn_w = 30.0;
+            let btn_h = 22.0;
+            let ptr = ui.ctx().pointer_hover_pos();
+            let ctx_rect = egui::Rect::from_min_size(
+                egui::pos2(hdr.right() - btn_w * 2.0 - 8.0, hdr.center().y - btn_h * 0.5), egui::vec2(btn_w, btn_h));
+            let ctx_hov = ptr.map(|p| ctx_rect.contains(p)).unwrap_or(false);
+            painter.rect_filled(ctx_rect, 5.0,
+                if ctx_hov { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, 20) });
+            painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
+                "\u{22EF}", egui::FontId::proportional(16.0),
+                if ctx_hov { t.accent } else { t.dim });
+            if ctx_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            card_ctx_rect = Some(ctx_rect);
+            let tog_rect = egui::Rect::from_min_size(
+                egui::pos2(hdr.right() - btn_w - 4.0, hdr.center().y - btn_h * 0.5), egui::vec2(btn_w, btn_h));
+            let tog_hov = ptr.map(|p| tog_rect.contains(p)).unwrap_or(false);
+            painter.rect_filled(tog_rect, 5.0,
+                if tog_hov { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, 20) });
+            painter.text(tog_rect.center(), egui::Align2::CENTER_CENTER,
+                mode_icon, egui::FontId::proportional(14.0),
+                if tog_hov { t.accent } else { t.dim });
+            if tog_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            card_toggle_rect = Some(tog_rect);
+        }
+
 
         // ══════════════════════════════════════════════════════════════════
         // Interaction — magnetic dock model (disabled when draw-faded)
