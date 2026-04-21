@@ -25,10 +25,8 @@ pub(crate) fn render(
 
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, t.bg);
-    // Click to activate pane
-    let body_resp = ui.allocate_rect(rect, egui::Sense::click());
-    if body_resp.clicked() || body_resp.hovered() {
-        *_active_pane = pane_idx;
+    if let Some(pos) = ui.ctx().pointer_hover_pos() {
+        if rect.contains(pos) { *_active_pane = pane_idx; }
     }
 
     // Header

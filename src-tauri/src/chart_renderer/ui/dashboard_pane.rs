@@ -16,11 +16,13 @@ pub(crate) fn render(
     if pane_rects.is_empty() { return; }
     let rect = pane_rects[0];
 
-    // Background + click to activate
+    // Background
     ui.painter_at(rect).rect_filled(rect, 0.0, t.bg);
-    let body_resp = ui.allocate_rect(rect, egui::Sense::click());
-    if body_resp.clicked() || body_resp.hovered() {
-        *_active_pane = pane_idx;
+    // Activate pane on hover (don't allocate rect — that blocks widget clicks)
+    if let Some(pos) = ui.ctx().pointer_hover_pos() {
+        if rect.contains(pos) {
+            *_active_pane = pane_idx;
+        }
     }
 
     // Count visible widgets
