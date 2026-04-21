@@ -94,10 +94,10 @@ pub(crate) const THEMES: &[Theme] = &[
     Theme { name: "Everforest",  bg: rgb(39,46,38),   bull: rgb(167,192,128), bear: rgb(230,126,128), dim: rgb(157,169,140), toolbar_bg: rgb(33,40,32),  toolbar_border: rgb(52,60,50),  accent: rgb(131,165,152), text: rgb(220,220,230) },
     Theme { name: "Vesper",      bg: rgb(16,16,16),   bull: rgb(166,218,149), bear: rgb(238,130,98),  dim: rgb(120,120,120), toolbar_bg: rgb(11,11,11),  toolbar_border: rgb(36,36,36),  accent: rgb(255,199,119), text: rgb(220,220,230) },
     Theme { name: "Rosé Pine",   bg: rgb(25,23,36),   bull: rgb(156,207,216), bear: rgb(235,111,146), dim: rgb(110,106,134), toolbar_bg: rgb(20,18,30),  toolbar_border: rgb(38,35,53),  accent: rgb(196,167,231), text: rgb(220,220,230) },
-    // ── Light themes (inspired by Bauhaus / editorial design) ──
-    Theme { name: "Bauhaus",     bg: rgb(235,226,208), bull: rgb(30,120,70),   bear: rgb(195,60,45),   dim: rgb(120,110,95),  toolbar_bg: rgb(225,216,198), toolbar_border: rgb(195,185,165), accent: rgb(232,93,38),   text: rgb(28,26,22) },
-    Theme { name: "Peach",       bg: rgb(240,230,220), bull: rgb(30,100,70),   bear: rgb(185,50,55),   dim: rgb(125,115,105), toolbar_bg: rgb(230,220,210), toolbar_border: rgb(200,190,180), accent: rgb(220,120,90),  text: rgb(32,28,24) },
-    Theme { name: "Ivory",       bg: rgb(244,240,230), bull: rgb(25,130,85),   bear: rgb(200,60,50),   dim: rgb(130,125,115), toolbar_bg: rgb(236,232,222), toolbar_border: rgb(205,200,190), accent: rgb(218,170,35),  text: rgb(30,28,24) },
+    // ── Light themes ──
+    Theme { name: "Bauhaus",     bg: rgb(242,242,238), bull: rgb(20,120,60),   bear: rgb(200,55,45),   dim: rgb(120,125,130), toolbar_bg: rgb(248,248,245), toolbar_border: rgb(225,225,220), accent: rgb(232,93,38),   text: rgb(22,22,24) },
+    Theme { name: "Peach",       bg: rgb(243,241,238), bull: rgb(22,130,70),   bear: rgb(195,50,55),   dim: rgb(115,120,125), toolbar_bg: rgb(250,248,246), toolbar_border: rgb(228,225,220), accent: rgb(210,95,70),   text: rgb(20,20,22) },
+    Theme { name: "Ivory",       bg: rgb(240,242,238), bull: rgb(80,160,50),   bear: rgb(210,60,50),   dim: rgb(118,122,128), toolbar_bg: rgb(248,250,246), toolbar_border: rgb(222,226,218), accent: rgb(160,190,40),  text: rgb(18,20,22) },
 ];
 
 impl Theme {
@@ -3092,13 +3092,16 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.window_fill = t.toolbar_bg;
         style.visuals.panel_fill = t.toolbar_bg;
         style.visuals.extreme_bg_color = t.bg;
-        // Drop shadow on popup menus/ComboBoxes — subtle depth, not overwhelming
+        // Drop shadow on popup menus/ComboBoxes
+        let shadow_alpha = if t.is_light() { 30 } else { 70 };
         style.visuals.popup_shadow = egui::epaint::Shadow {
-            offset: [0, 3],
-            blur: 12,
+            offset: [0, if t.is_light() { 4 } else { 3 }],
+            blur: if t.is_light() { 16 } else { 12 },
             spread: 0,
-            color: egui::Color32::from_black_alpha(70),
+            color: egui::Color32::from_black_alpha(shadow_alpha),
         };
+        // Light themes need dark-on-light mode
+        style.visuals.dark_mode = !t.is_light();
         style.interaction.tooltip_delay = 0.15;
 
         // ── Design token injection — makes menu_button / ComboBox / all egui widgets match tb_btn ──
