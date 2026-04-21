@@ -216,17 +216,18 @@ impl ChartWidgetKind {
 /// Widget display density — how much chrome surrounds the data.
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum WidgetDisplayMode {
-    Card,    // full glass card with shadow, border, title bar
-    Hud,     // transparent — just the data, no background, no border
-    Minimal, // no background but keep a faint label for grab handle
+    Card,    // solid background card
+    Hud,     // transparent — just the visualization
+    #[serde(other)]
+    Minimal, // legacy fallback → treated as HUD
 }
 
 impl WidgetDisplayMode {
     pub fn label(self) -> &'static str {
-        match self { Self::Card => "Card", Self::Hud => "HUD", Self::Minimal => "Minimal" }
+        match self { Self::Card => "Card", Self::Hud | Self::Minimal => "HUD" }
     }
     pub fn cycle(self) -> Self {
-        match self { Self::Card => Self::Hud, Self::Hud => Self::Minimal, Self::Minimal => Self::Card }
+        match self { Self::Card => Self::Hud, Self::Hud | Self::Minimal => Self::Card }
     }
 }
 

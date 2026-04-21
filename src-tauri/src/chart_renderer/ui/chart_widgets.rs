@@ -523,28 +523,28 @@ pub(crate) fn draw_widgets(
                 ui.set_min_width(120.0);
                 if ui.button(if is_locked { "\u{1F513} Unlock" } else { "\u{1F512} Lock" }).clicked() {
                     ctx_action = Some(CtxAction::Lock(wi));
-                    ui.close_menu();
+                    ui.memory_mut(|m| m.close_popup());
                 }
                 if ui.button("\u{1F5D1} Delete").clicked() {
                     ctx_action = Some(CtxAction::Delete(wi));
-                    ui.close_menu();
+                    ui.memory_mut(|m| m.close_popup());
                 }
                 if ui.button("\u{21BB} Reset Size").clicked() {
                     ctx_action = Some(CtxAction::ResetSize(wi));
-                    ui.close_menu();
+                    ui.memory_mut(|m| m.close_popup());
                 }
                 if ui.button("\u{2B06} Dock Top").clicked() {
                     ctx_action = Some(CtxAction::DockTop(wi));
-                    ui.close_menu();
+                    ui.memory_mut(|m| m.close_popup());
                 }
                 if ui.button("\u{2B07} Dock Bottom").clicked() {
                     ctx_action = Some(CtxAction::DockBottom(wi));
-                    ui.close_menu();
+                    ui.memory_mut(|m| m.close_popup());
                 }
                 if is_docked {
                     if ui.button("\u{2197} Undock").clicked() {
                         ctx_action = Some(CtxAction::Undock(wi));
-                        ui.close_menu();
+                        ui.memory_mut(|m| m.close_popup());
                     }
                 }
             });
