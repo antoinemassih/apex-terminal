@@ -3112,51 +3112,51 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
             color: egui::Color32::from_black_alpha(if is_light { 40 } else { 100 }),
         };
 
-        // Corner radii — generous, modern
-        let r = egui::CornerRadius::same(6);
-        let popup_r = egui::CornerRadius::same(12);
+        // Corner radii — reduced for dropdowns, moderate for buttons
+        let r = egui::CornerRadius::same(4);
+        let popup_r = egui::CornerRadius::same(6); // halved from 12
 
-        // ── Widget styling — crisp borders, subtle fills ──
+        // ── Widget styling ──
 
-        // Inactive — barely visible fill, fine border
+        // Inactive — subtle fill, visible border
         style.visuals.widgets.inactive.bg_fill       = color_alpha(t.toolbar_border, if is_light { 12 } else { 18 });
         style.visuals.widgets.inactive.weak_bg_fill  = egui::Color32::TRANSPARENT;
-        style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(0.5, color_alpha(t.toolbar_border, if is_light { 40 } else { 30 }));
+        style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(0.8, color_alpha(t.toolbar_border, if is_light { 50 } else { 35 }));
         style.visuals.widgets.inactive.corner_radius = r;
         style.visuals.widgets.inactive.fg_stroke     = egui::Stroke::new(1.0, t.dim);
 
-        // Hovered — clear feedback with accent hint
-        style.visuals.widgets.hovered.bg_fill        = color_alpha(t.toolbar_border, if is_light { 30 } else { 40 });
-        style.visuals.widgets.hovered.bg_stroke      = egui::Stroke::new(0.8, color_alpha(t.accent, if is_light { 80 } else { 60 }));
+        // Hovered — clear feedback, beveled feel
+        style.visuals.widgets.hovered.bg_fill        = color_alpha(t.toolbar_border, if is_light { 35 } else { 45 });
+        style.visuals.widgets.hovered.bg_stroke      = egui::Stroke::new(1.0, color_alpha(t.accent, if is_light { 90 } else { 70 }));
         style.visuals.widgets.hovered.corner_radius  = r;
         style.visuals.widgets.hovered.fg_stroke      = egui::Stroke::new(1.0, t.text);
 
-        // Active/pressed — accent fill
-        style.visuals.widgets.active.bg_fill         = color_alpha(t.accent, if is_light { 25 } else { 35 });
+        // Active/pressed
+        style.visuals.widgets.active.bg_fill         = color_alpha(t.accent, if is_light { 30 } else { 40 });
         style.visuals.widgets.active.bg_stroke       = egui::Stroke::new(1.0, color_alpha(t.accent, ALPHA_STRONG));
         style.visuals.widgets.active.corner_radius   = r;
         style.visuals.widgets.active.fg_stroke       = egui::Stroke::new(1.0, t.accent);
 
         // Open (menu/combo open state)
-        style.visuals.widgets.open.bg_fill           = color_alpha(t.accent, if is_light { 20 } else { 30 });
-        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(0.8, color_alpha(t.accent, ALPHA_ACTIVE));
+        style.visuals.widgets.open.bg_fill           = color_alpha(t.accent, if is_light { 25 } else { 35 });
+        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(1.0, color_alpha(t.accent, ALPHA_ACTIVE));
         style.visuals.widgets.open.corner_radius     = r;
         style.visuals.widgets.open.fg_stroke         = egui::Stroke::new(1.0, t.accent);
 
         // Selection
-        style.visuals.selection.bg_fill              = color_alpha(t.accent, if is_light { 20 } else { 30 });
+        style.visuals.selection.bg_fill              = color_alpha(t.accent, if is_light { 25 } else { 35 });
         style.visuals.selection.stroke               = egui::Stroke::new(1.0, t.accent);
 
-        // Popup/menu window styling — beveled, rich
+        // Popup/menu window — more visible border, reduced rounding
         style.visuals.window_fill                    = t.toolbar_bg;
-        style.visuals.window_stroke                  = egui::Stroke::new(1.0, color_alpha(t.toolbar_border, if is_light { 60 } else { 50 }));
+        style.visuals.window_stroke                  = egui::Stroke::new(1.2, color_alpha(t.toolbar_border, if is_light { 80 } else { 60 }));
         style.visuals.window_corner_radius           = popup_r;
         style.visuals.menu_corner_radius             = popup_r;
 
-        // Generous spacing — editorial breathing room
-        style.spacing.button_padding                 = egui::vec2(10.0, 5.0);
-        style.spacing.menu_margin                    = egui::Margin::same(8);
-        style.spacing.interact_size.y                = 24.0;
+        // Spacing — more padding, balanced sides, taller items
+        style.spacing.button_padding                 = egui::vec2(12.0, 6.0);
+        style.spacing.menu_margin                    = egui::Margin { left: 10, right: 10, top: 8, bottom: 8 };
+        style.spacing.interact_size.y                = 26.0;
         style.spacing.item_spacing                   = egui::vec2(6.0, 4.0);
 
         // Crisp text rendering
@@ -3526,7 +3526,7 @@ fn render_toolbar(
     if toolbar_visible {
     egui::TopBottomPanel::top("tb")
         .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 8, right: 0, top: 0, bottom: 0 }))
-        .exact_height(if watchlist.compact_mode { 28.0 } else { 34.0 })
+        .exact_height(if watchlist.compact_mode { 30.0 } else { 38.0 })
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         crate::design_tokens::register_hit(
@@ -4633,10 +4633,6 @@ fn render_toolbar(
                     watchlist.playbook_panel_open = !watchlist.playbook_panel_open;
                 }
 
-                // Journal
-                if tb_btn_tip(ui, &format!("{} Journal", Icon::NOTEBOOK), watchlist.journal_panel_open, t, "Trade Journal").clicked() {
-                    watchlist.journal_panel_open = !watchlist.journal_panel_open;
-                }
 
                 // Watchlist toggle
                 if tb_btn_tip(ui, &format!("{} Watchlist", Icon::LIST), watchlist.open, t, "Watchlist").clicked() {

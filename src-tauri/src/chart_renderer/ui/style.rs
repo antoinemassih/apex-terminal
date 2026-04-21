@@ -26,18 +26,18 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 pub fn font_xs()  -> f32 { crate::dt_f32!(font.xs, 8.0) }
 pub fn font_sm()  -> f32 { crate::dt_f32!(font.sm, 10.0) }
 pub fn font_md()  -> f32 { crate::dt_f32!(font.md, 11.0) }
-pub fn font_lg()  -> f32 { crate::dt_f32!(font.lg, 13.0) }
-pub fn font_xl()  -> f32 { crate::dt_f32!(font.xl, 14.0) }
+pub fn font_lg()  -> f32 { crate::dt_f32!(font.lg, 14.0) }
+pub fn font_xl()  -> f32 { crate::dt_f32!(font.xl, 15.0) }
 pub fn font_2xl() -> f32 { crate::dt_f32!(font.xxl, 15.0) }
 
 // Keep the old names as non-const for backwards compat with all call sites.
 // Without design-mode feature, the compiler inlines these to the literal values.
-pub const FONT_XS:  f32 = 7.0;
-pub const FONT_SM:  f32 = 9.0;
-pub const FONT_MD:  f32 = 10.0;
-pub const FONT_LG:  f32 = 11.0;
-pub const FONT_XL:  f32 = 12.0;
-pub const FONT_2XL: f32 = 13.0;
+pub const FONT_XS:  f32 = 8.0;
+pub const FONT_SM:  f32 = 10.0;
+pub const FONT_MD:  f32 = 11.0;
+pub const FONT_LG:  f32 = 12.0;
+pub const FONT_XL:  f32 = 13.0;
+pub const FONT_2XL: f32 = 14.0;
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
 pub fn gap_xs()  -> f32 { crate::dt_f32!(spacing.xs, 2.0) }
@@ -167,26 +167,25 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         color_alpha(toolbar_border, alpha_muted())
     };
 
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).color(fg))
-        .fill(bg).stroke(Stroke::new(0.5, border)).corner_radius(3.0)
-        .min_size(egui::vec2(0.0, 20.0)));
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_lg()).color(fg))
+        .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(4.0)
+        .min_size(egui::vec2(0.0, 24.0)));
     hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
 
     if active {
         let r = resp.rect;
         ui.painter().line_segment(
-            [egui::pos2(r.left() + radius_md(), r.bottom() + 0.5),
-             egui::pos2(r.right() - radius_md(), r.bottom() + 0.5)],
-            Stroke::new(stroke_std(), color_alpha(accent, alpha_dim())));
+            [egui::pos2(r.left() + 4.0, r.bottom() + 0.5),
+             egui::pos2(r.right() - 4.0, r.bottom() + 0.5)],
+            Stroke::new(1.5, color_alpha(accent, alpha_dim())));
     } else if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        ui.painter().rect_filled(resp.rect, radius_md(),
-            color_alpha(toolbar_border, alpha_subtle()));
-        ui.painter().rect_stroke(resp.rect, radius_md(),
-            Stroke::new(stroke_thin(), color_alpha(accent, alpha_line())), egui::StrokeKind::Inside);
-        let text_col = ui.style().visuals.override_text_color.unwrap_or(TEXT_PRIMARY);
-        ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
-            label, egui::FontId::monospace(font_lg()), text_col);
+        // Bevel highlight on top edge
+        let r = resp.rect;
+        ui.painter().rect_filled(
+            egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 1.0)),
+            egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
+            Color32::from_rgba_unmultiplied(255, 255, 255, 10));
     }
     resp
 }
