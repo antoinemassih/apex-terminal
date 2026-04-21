@@ -13,6 +13,13 @@
 
 use egui::{self, Color32, RichText, Stroke};
 
+/// Register an element hit for inspect mode. No-op when design-mode is off.
+#[inline(always)]
+fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
+    crate::design_tokens::register_hit(
+        [r.min.x, r.min.y, r.width(), r.height()], family, category);
+}
+
 // ─── Font size tokens ─────────────────────────────────────────────────────────
 // In design-mode, these read from the global DesignTokens at runtime.
 // Without design-mode, they compile to the same constants as before (zero overhead).
@@ -163,6 +170,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_lg()).color(fg))
         .fill(bg).stroke(Stroke::new(stroke_thin(), border)).corner_radius(radius_md())
         .min_size(egui::vec2(0.0, crate::dt_f32!(toolbar.btn_min_height, 24.0))));
+    hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
 
     if active {
         let r = resp.rect;
@@ -170,7 +178,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
             [egui::pos2(r.left() + radius_md(), r.bottom() + 0.5),
              egui::pos2(r.right() - radius_md(), r.bottom() + 0.5)],
             Stroke::new(stroke_std(), color_alpha(accent, alpha_dim())));
-    } else if resp.hovered() {
+    } else if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         ui.painter().rect_filled(resp.rect, radius_md(),
             color_alpha(toolbar_border, alpha_subtle()));
@@ -207,14 +215,23 @@ pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32,
             .stroke(Stroke::new(stroke_std(), border)).corner_radius(radius_lg()))
 }
 
-/// Theme-aware dialog window.
+/// Theme-aware dialog window — rich shadow, beveled border, crisp edges.
 pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, toolbar_bg: Color32, toolbar_border: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
-    let border = border_color.unwrap_or(color_alpha(toolbar_border, alpha_active()));
+    let border = border_color.unwrap_or(color_alpha(toolbar_border, 80));
     egui::Window::new(id.to_string())
         .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
         .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style()).fill(toolbar_bg).inner_margin(0.0)
-            .stroke(Stroke::new(stroke_std(), border)).corner_radius(radius_lg()))
+        .frame(egui::Frame::popup(&ctx.style())
+            .fill(toolbar_bg)
+            .inner_margin(0.0)
+            .stroke(Stroke::new(1.0, border))
+            .corner_radius(12.0)
+            .shadow(egui::epaint::Shadow {
+                offset: [0, 8],
+                blur: 28,
+                spread: 2,
+                color: Color32::from_black_alpha(80),
+            }))
 }
 
 /// Dialog header bar — auto-darkened bg, FONT_LG title, X close. Returns true if closed.
@@ -231,13 +248,14 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
         Color32::from_rgb(bg.r().saturating_sub(darken), bg.g().saturating_sub(darken), bg.b().saturating_sub(darken))
     });
     let mut closed = false;
-    let rlg = radius_lg() as u8;
+    let rlg = 12u8;
     egui::Frame::NONE.fill(fill)
-        .inner_margin(egui::Margin { left: gap_xl() as i8, right: gap_lg() as i8, top: gap_lg() as i8, bottom: gap_lg() as i8 })
+        .inner_margin(egui::Margin { left: 12, right: 10, top: 10, bottom: 10 })
         .corner_radius(egui::CornerRadius { nw: rlg, ne: rlg, sw: 0, se: 0 })
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(TEXT_PRIMARY));
+                let text_col = ui.style().visuals.override_text_color.unwrap_or(TEXT_PRIMARY);
+                ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(text_col));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if icon_btn(ui, Icon::X, dim.gamma_multiply(0.7), font_xl()).clicked() {
                         closed = true;
@@ -419,7 +437,8 @@ pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egu
             .min_size(egui::vec2(side, side))
     );
     ui.spacing_mut().button_padding = prev_pad;
-    if resp.hovered() {
+    hit(&resp.rect, "ICON_BTN", "Icon Buttons");
+    if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(color, alpha_ghost()));
         ui.painter().rect_stroke(resp.rect, radius_sm(),
@@ -544,11 +563,12 @@ pub fn form_row(ui: &mut egui::Ui, label: &str, label_width: f32, dim: Color32, 
 
 /// Status badge — small tinted pill (e.g. "DRAFT", "PLACED", "TRIGGERED").
 pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
-    ui.add(egui::Button::new(RichText::new(text).monospace().size(crate::dt_f32!(badge.font_size, 8.0)).strong().color(color))
+    let resp = ui.add(egui::Button::new(RichText::new(text).monospace().size(crate::dt_f32!(badge.font_size, 8.0)).strong().color(color))
         .fill(color_alpha(color, alpha_subtle()))
         .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
         .corner_radius(radius_sm())
         .min_size(egui::vec2(0.0, crate::dt_f32!(badge.height, 16.0))));
+    hit(&resp.rect, "BADGE", "Badges");
 }
 
 /// Order card — left accent stripe + subtle bg. Returns true if the card area was clicked.
@@ -589,7 +609,8 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
         egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(fg))
             .fill(bg).stroke(Stroke::new(stroke_thin(), border))
             .corner_radius(radius_md()).min_size(egui::vec2(0.0, crate::dt_f32!(button.action_height, 24.0))));
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    hit(&resp.rect, "ACTION_BTN", "Buttons");
+    if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
 
@@ -602,6 +623,7 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
         (color.b() as f32 * bright) as u8);
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_lg()).strong().color(Color32::WHITE))
         .fill(bg).min_size(egui::vec2(width, crate::dt_f32!(button.trade_height, 30.0))).corner_radius(radius_md()));
+    hit(&resp.rect, "TRADE_BTN", "Buttons");
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         let hb = crate::dt_f32!(button.trade_hover_brightness, 0.7);
@@ -623,7 +645,8 @@ pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool 
         .corner_radius(radius_sm())
         .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
         .min_size(egui::vec2(0.0, crate::dt_f32!(button.small_height, 18.0))));
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    hit(&resp.rect, "SMALL_BTN", "Buttons");
+    if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
 
@@ -634,7 +657,8 @@ pub fn simple_btn(ui: &mut egui::Ui, label: &str, color: Color32, min_width: f32
         .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_muted())))
         .corner_radius(radius_sm())
         .min_size(egui::vec2(min_width, crate::dt_f32!(button.simple_height, 20.0))));
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    hit(&resp.rect, "SIMPLE_BTN", "Buttons");
+    if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
 

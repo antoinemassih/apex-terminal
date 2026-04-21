@@ -3092,66 +3092,75 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         style.visuals.window_fill = t.toolbar_bg;
         style.visuals.panel_fill = t.toolbar_bg;
         style.visuals.extreme_bg_color = t.bg;
-        // Drop shadow on popup menus/ComboBoxes
-        let shadow_alpha = if t.is_light() { 30 } else { 70 };
-        style.visuals.popup_shadow = egui::epaint::Shadow {
-            offset: [0, if t.is_light() { 4 } else { 3 }],
-            blur: if t.is_light() { 16 } else { 12 },
-            spread: 0,
-            color: egui::Color32::from_black_alpha(shadow_alpha),
-        };
-        // Light themes need dark-on-light mode
-        style.visuals.dark_mode = !t.is_light();
-        style.interaction.tooltip_delay = 0.15;
-
-        // ── Design token injection — makes menu_button / ComboBox / all egui widgets match tb_btn ──
-        let r = egui::CornerRadius::same(4); // RADIUS_MD equivalent for native widgets
-        let popup_r = egui::CornerRadius::same(8); // RADIUS_LG for popups
-
-        // Theme-adaptive text — controls all egui native widget text
+        // ── Rich visual system — editorial design language ──
+        let is_light = t.is_light();
+        style.visuals.dark_mode = !is_light;
         style.visuals.override_text_color = Some(t.text);
+        style.interaction.tooltip_delay = 0.12;
 
-        // Inactive (default, unhovered)
-        style.visuals.widgets.inactive.bg_fill       = color_alpha(t.toolbar_border, 18);
-        style.visuals.widgets.inactive.weak_bg_fill  = t.toolbar_bg;
-        style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        // Popup/dropdown shadows — rich depth with soft falloff
+        style.visuals.popup_shadow = egui::epaint::Shadow {
+            offset: [0, if is_light { 6 } else { 4 }],
+            blur: if is_light { 24 } else { 18 },
+            spread: if is_light { 2 } else { 1 },
+            color: egui::Color32::from_black_alpha(if is_light { 35 } else { 90 }),
+        };
+        // Window shadows (dialogs, popups)
+        style.visuals.window_shadow = egui::epaint::Shadow {
+            offset: [0, 8],
+            blur: 28,
+            spread: 2,
+            color: egui::Color32::from_black_alpha(if is_light { 40 } else { 100 }),
+        };
+
+        // Corner radii — generous, modern
+        let r = egui::CornerRadius::same(6);
+        let popup_r = egui::CornerRadius::same(12);
+
+        // ── Widget styling — crisp borders, subtle fills ──
+
+        // Inactive — barely visible fill, fine border
+        style.visuals.widgets.inactive.bg_fill       = color_alpha(t.toolbar_border, if is_light { 12 } else { 18 });
+        style.visuals.widgets.inactive.weak_bg_fill  = egui::Color32::TRANSPARENT;
+        style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(0.5, color_alpha(t.toolbar_border, if is_light { 40 } else { 30 }));
         style.visuals.widgets.inactive.corner_radius = r;
         style.visuals.widgets.inactive.fg_stroke     = egui::Stroke::new(1.0, t.dim);
 
-        // Hovered — accent tint + accent border
-        style.visuals.widgets.hovered.bg_fill        = color_alpha(t.toolbar_border, ALPHA_SUBTLE);
-        style.visuals.widgets.hovered.bg_stroke      = egui::Stroke::new(0.5, color_alpha(t.accent, ALPHA_LINE));
+        // Hovered — clear feedback with accent hint
+        style.visuals.widgets.hovered.bg_fill        = color_alpha(t.toolbar_border, if is_light { 30 } else { 40 });
+        style.visuals.widgets.hovered.bg_stroke      = egui::Stroke::new(0.8, color_alpha(t.accent, if is_light { 80 } else { 60 }));
         style.visuals.widgets.hovered.corner_radius  = r;
         style.visuals.widgets.hovered.fg_stroke      = egui::Stroke::new(1.0, t.text);
 
-        // Active/pressed
-        style.visuals.widgets.active.bg_fill         = color_alpha(t.accent, ALPHA_TINT);
-        style.visuals.widgets.active.bg_stroke       = egui::Stroke::new(0.5, color_alpha(t.accent, ALPHA_STRONG));
+        // Active/pressed — accent fill
+        style.visuals.widgets.active.bg_fill         = color_alpha(t.accent, if is_light { 25 } else { 35 });
+        style.visuals.widgets.active.bg_stroke       = egui::Stroke::new(1.0, color_alpha(t.accent, ALPHA_STRONG));
         style.visuals.widgets.active.corner_radius   = r;
         style.visuals.widgets.active.fg_stroke       = egui::Stroke::new(1.0, t.accent);
 
-        // Open (ComboBox/menu open state)
-        style.visuals.widgets.open.bg_fill           = color_alpha(t.accent, ALPHA_TINT);
-        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(0.5, color_alpha(t.accent, ALPHA_ACTIVE));
+        // Open (menu/combo open state)
+        style.visuals.widgets.open.bg_fill           = color_alpha(t.accent, if is_light { 20 } else { 30 });
+        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(0.8, color_alpha(t.accent, ALPHA_ACTIVE));
         style.visuals.widgets.open.corner_radius     = r;
         style.visuals.widgets.open.fg_stroke         = egui::Stroke::new(1.0, t.accent);
 
-        // Selection + cursor colors
-        style.visuals.selection.bg_fill              = color_alpha(t.accent, ALPHA_TINT);
+        // Selection
+        style.visuals.selection.bg_fill              = color_alpha(t.accent, if is_light { 20 } else { 30 });
         style.visuals.selection.stroke               = egui::Stroke::new(1.0, t.accent);
 
-        // Popup/menu window corners + bg
+        // Popup/menu window styling — beveled, rich
+        style.visuals.window_fill                    = t.toolbar_bg;
+        style.visuals.window_stroke                  = egui::Stroke::new(1.0, color_alpha(t.toolbar_border, if is_light { 60 } else { 50 }));
         style.visuals.window_corner_radius           = popup_r;
         style.visuals.menu_corner_radius             = popup_r;
 
-        // Button padding — 8px horizontal, 4px vertical — generous padding for dropdown items
-        style.spacing.button_padding                 = egui::vec2(8.0, 4.0);
-        // Inner margin inside popup/menu content — breathing room around the item list
-        style.spacing.menu_margin                    = egui::Margin::same(6);
-        // Menu item minimum height — prevents cramped items
-        style.spacing.interact_size.y                = 22.0;
+        // Generous spacing — editorial breathing room
+        style.spacing.button_padding                 = egui::vec2(10.0, 5.0);
+        style.spacing.menu_margin                    = egui::Margin::same(8);
+        style.spacing.interact_size.y                = 24.0;
+        style.spacing.item_spacing                   = egui::vec2(6.0, 4.0);
 
-        // Font rendering: snap all text positions to whole pixels for crispness
+        // Crisp text rendering
         style.visuals.text_cursor.on_duration = 0.5;
 
         ctx.set_style(style);
@@ -15936,36 +15945,75 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     });
     span_end(); // chart_panes
 
-    // ── Design Mode Inspector — opens automatically, Ctrl+Shift+D to hide/show ──
+    // ── Design Mode — egui style editor (affects ALL widgets globally) ──
     #[cfg(feature = "design-mode")]
     if crate::design_tokens::is_active() {
-        DESIGN_INSPECTOR.with(|insp| {
-            let mut insp = insp.borrow_mut();
-            // Auto-create and auto-open on first frame
-            if insp.is_none() {
-                let toml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .parent().unwrap()
-                    .join("apex-terminal-designmode")
-                    .join("design.toml");
-                let mut inspector = crate::design_inspector::Inspector::new(toml_path);
-                inspector.open = true; // open by default
-                *insp = Some(inspector);
-                eprintln!("[design-mode] Inspector panel opened automatically");
-            }
-            if let Some(ref mut inspector) = *insp {
-                // Ctrl+Shift+D toggles visibility
-                if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::D)) {
-                    inspector.toggle();
-                    eprintln!("[design-mode] Inspector toggled: {}", if inspector.open { "OPEN" } else { "CLOSED" });
-                }
-                // Render
-                if let Some(mut tokens) = crate::design_tokens::get() {
-                    if inspector.show(ctx, &mut tokens) {
-                        crate::design_tokens::update(tokens);
-                    }
-                }
-            }
-        });
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static DESIGN_PANEL_OPEN: AtomicBool = AtomicBool::new(true);
+
+        // Ctrl+Shift+D toggles
+        if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::D)) {
+            let was = DESIGN_PANEL_OPEN.load(Ordering::Relaxed);
+            DESIGN_PANEL_OPEN.store(!was, Ordering::Relaxed);
+        }
+
+        if DESIGN_PANEL_OPEN.load(Ordering::Relaxed) {
+            egui::SidePanel::right("design_mode_panel")
+                .min_width(300.0)
+                .max_width(450.0)
+                .default_width(340.0)
+                .frame(egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(18, 18, 24))
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 42, 54)))
+                    .inner_margin(8.0))
+                .show(ctx, |ui| {
+                    ui.label(egui::RichText::new("DESIGN MODE")
+                        .monospace().size(14.0).strong()
+                        .color(egui::Color32::from_rgb(203, 166, 247)));
+                    ui.label(egui::RichText::new("Every change affects ALL widgets globally")
+                        .monospace().size(9.0)
+                        .color(egui::Color32::from_rgb(120, 120, 130)));
+                    ui.add_space(8.0);
+                    ui.separator();
+
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        // ── Global font scale ──
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new("GLOBAL SCALE").monospace().size(11.0).strong()
+                            .color(egui::Color32::from_rgb(166, 227, 161)));
+                        ui.add_space(4.0);
+
+                        let mut pixels_per_point = ctx.pixels_per_point();
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("UI Scale").monospace().size(10.0)
+                                .color(egui::Color32::from_rgb(170, 170, 180)));
+                            if ui.add(egui::DragValue::new(&mut pixels_per_point)
+                                .range(0.5..=4.0).speed(0.01).suffix("x")).changed() {
+                                ctx.set_pixels_per_point(pixels_per_point);
+                            }
+                        });
+
+                        ui.add_space(12.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+
+                        // ── egui's built-in full style editor ──
+                        // This controls: spacing, colors, rounding, stroke widths,
+                        // button padding, interaction sizes, text styles, visuals —
+                        // everything egui renders.
+                        ui.label(egui::RichText::new("EGUI STYLE EDITOR").monospace().size(11.0).strong()
+                            .color(egui::Color32::from_rgb(166, 227, 161)));
+                        ui.label(egui::RichText::new("Controls spacing, colors, rounding, padding for all widgets")
+                            .monospace().size(9.0)
+                            .color(egui::Color32::from_rgb(120, 120, 130)));
+                        ui.add_space(6.0);
+
+                        let mut style = (*ctx.style()).clone();
+                        style.ui(ui);
+                        ctx.set_style(style);
+                    });
+                });
+        }
     }
 
     handle_deferred(ctx, panes, active_pane, layout, watchlist);

@@ -1143,20 +1143,23 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
     )
 }
 
+/// Hero number — large proportional display font, the focal point of every widget.
 fn hero_number(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
-    // Proportional font for display numbers — editorial infographic style
-    p.text(pos + egui::vec2(0.0, 0.5), egui::Align2::CENTER_CENTER,
-        text, egui::FontId::proportional(26.0),
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 20));
     p.text(pos, egui::Align2::CENTER_CENTER,
-        text, egui::FontId::proportional(26.0), color);
+        text, egui::FontId::proportional(28.0), color);
 }
 
-fn sub_label(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
-    // Uppercase tracked label — editorial style
+/// Even larger hero for primary KPIs.
+fn hero_number_lg(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
     p.text(pos, egui::Align2::CENTER_CENTER,
-        text, egui::FontId::monospace(FONT_XS),
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 140));
+        text, egui::FontId::proportional(36.0), color);
+}
+
+/// Small uppercase label — editorial style, tracked monospace.
+fn sub_label(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
+    p.text(pos, egui::Align2::CENTER_CENTER,
+        text, egui::FontId::monospace(7.0),
+        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 160));
 }
 
 /// Donut ring gauge — thick arc with value in center (infographic style).
