@@ -772,9 +772,16 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
 
 /// Action from a button inside a widget body.
 #[derive(Clone, Copy)]
-enum WidgetBtnAction {
+pub(crate) enum WidgetBtnAction {
     CloseAllPositions,
     ClosePosition(usize), // index
+}
+
+/// Public entry point for rendering a widget body (used by dashboard pane).
+pub(crate) fn draw_widget_body_pub(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
+                    wd: &WidgetData, t: &Theme, hover: Option<egui::Pos2>,
+                    btns: &mut Vec<(egui::Rect, WidgetBtnAction)>) {
+    draw_widget_body(p, body, kind, wd, t, hover, btns);
 }
 
 fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
@@ -940,7 +947,7 @@ struct PositionRow {
 }
 
 impl WidgetData {
-    fn from_chart(chart: &Chart) -> Self {
+    pub(crate) fn from_chart(chart: &Chart) -> Self {
         let bars = &chart.bars;
         let n = bars.len();
         let last_close = if n > 0 { bars[n - 1].close } else { 0.0 };
