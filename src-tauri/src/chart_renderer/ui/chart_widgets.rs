@@ -219,10 +219,14 @@ pub(crate) fn draw_widgets(
             draw_mini_badge(&painter, card_rect, kind, &wd, t);
         }
 
-        // Hover header overlay (both Card and HUD)
+        // Hover header — appears ABOVE the widget, not overlapping it
+        let hdr_h = 26.0;
+        let mut hdr_rect_for_click: Option<egui::Rect> = None;
         if card_hovered && !w.collapsed {
-            let hdr_h = 28.0;
-            let hdr = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, hdr_h));
+            let hdr = egui::Rect::from_min_size(
+                egui::pos2(card_rect.left(), card_rect.top() - hdr_h - 2.0),
+                egui::vec2(card_w, hdr_h));
+            hdr_rect_for_click = Some(hdr);
             painter.rect_filled(hdr,
                 egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
                 Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
@@ -271,11 +275,12 @@ pub(crate) fn draw_widgets(
         if !draw_faded {
         let sense = egui::Sense::click_and_drag();
 
-        // Interaction area: title bar for Card, thin grab strip for others
-        let interact_rect = if mode == WidgetDisplayMode::Card {
-            egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, title_h))
+        // Interaction area: header above card (when visible) + top strip of card for drag
+        let interact_rect = if let Some(hdr) = hdr_rect_for_click {
+            // When header is visible, interaction covers the header
+            hdr
         } else {
-            // HUD/Minimal: thin strip at top — visible as hover overlay in HUD
+            // When no header, thin grab strip at top of card
             egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, 16.0))
         };
 
@@ -333,14 +338,16 @@ pub(crate) fn draw_widgets(
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
 
-        // Click routing: check if click landed on a button, otherwise collapse
-        if resp.clicked() {
-            if let Some(click_pos) = resp.interact_pointer_pos() {
+        // Click routing: buttons checked first, then collapse only if clicking card body
+        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+            if let Some(click_pos) = ui.ctx().pointer_interact_pos() {
+                // Check header buttons first
                 if card_ctx_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
                     popup_open = Some(wi);
                 } else if card_toggle_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
                     mode_toggle = Some(wi);
-                } else {
+                } else if interact_rect.contains(click_pos) && hdr_rect_for_click.is_none() {
+                    // Only collapse when clicking the grab strip (no header visible)
                     collapse_toggle = Some(wi);
                 }
             }
