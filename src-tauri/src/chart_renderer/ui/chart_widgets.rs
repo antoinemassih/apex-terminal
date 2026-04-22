@@ -315,30 +315,40 @@ pub(crate) fn draw_widgets(
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // Interaction — full card rect, route by position
+        // Interaction — three separate zones: buttons, resize grip, drag body
+        // Order matters: last-created wins in egui z-order
         // ══════════════════════════════════════════════════════════════════
 
         if !draw_faded {
 
-        // Use FULL card rect for interaction — no more tiny strip
-        let resp = ui.interact(card_rect, egui::Id::new(("widget_card", wi)), egui::Sense::click_and_drag());
+        // 1. Context menu button (if visible)
+        if let Some(ctx_r) = card_ctx_rect {
+            let ctx_resp = ui.interact(ctx_r, egui::Id::new(("wctx", wi)), egui::Sense::click());
+            if ctx_resp.clicked() { popup_open = Some(wi); }
+        }
 
-        // Determine if drag started in the resize grip area (bottom-right 16px)
-        let drag_start_in_resize = resp.drag_started().then(|| {
-            resp.interact_pointer_pos().map(|p| {
-                p.x > card_rect.right() - 16.0 && p.y > card_rect.bottom() - 16.0
-            }).unwrap_or(false)
-        }).unwrap_or(false);
+        // 2. Mode toggle button (if visible)
+        if let Some(tog_r) = card_toggle_rect {
+            let tog_resp = ui.interact(tog_r, egui::Id::new(("wtog", wi)), egui::Sense::click());
+            if tog_resp.clicked() { mode_toggle = Some(wi); }
+        }
 
-        // ── Resize (bottom-right grip drag) ──
-        if drag_start_in_resize && resp.dragged_by(egui::PointerButton::Primary) {
-            let d = resp.drag_delta();
-            resize_delta = Some((wi, d));
+        // 3. Resize grip (bottom-right 18px corner)
+        let grip_rect = egui::Rect::from_min_size(
+            egui::pos2(card_rect.right() - 18.0, card_rect.bottom() - 18.0),
+            egui::vec2(18.0, 18.0));
+        let grip_resp = ui.interact(grip_rect, egui::Id::new(("wgrip", wi)), egui::Sense::drag());
+        if grip_resp.dragged_by(egui::PointerButton::Primary) {
+            resize_delta = Some((wi, grip_resp.drag_delta()));
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+        } else if grip_resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
         }
-        // ── Move drag (anywhere else on the card) ──
-        else if resp.dragged_by(egui::PointerButton::Primary) && !chart.chart_widgets[wi].locked && !drag_start_in_resize {
-            let d = resp.drag_delta();
+
+        // 4. Card body drag (for moving the widget)
+        let drag_resp = ui.interact(card_rect, egui::Id::new(("wdrag", wi)), egui::Sense::drag());
+        if drag_resp.dragged_by(egui::PointerButton::Primary) && !chart.chart_widgets[wi].locked {
+            let d = drag_resp.drag_delta();
             let wid = &mut chart.chart_widgets[wi];
             let pointer = ui.ctx().pointer_interact_pos().unwrap_or(card_rect.center());
             match wid.dock {
@@ -371,37 +381,17 @@ pub(crate) fn draw_widgets(
                 }
             }
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-        }
-        // ── Hover cursor ──
-        else if resp.hovered() {
-            // Check if hovering resize grip
-            if let Some(pos) = hover_pos {
-                if pos.x > card_rect.right() - 16.0 && pos.y > card_rect.bottom() - 16.0 {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
-                } else if card_hovered {
-                    // Over the card but not buttons — show grab
-                    let on_button = card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false)
-                        || card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false);
-                    if !on_button {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                    }
-                }
-            }
-        }
-
-        // ── Click routing ──
-        if resp.clicked() {
-            if let Some(click_pos) = resp.interact_pointer_pos() {
-                if card_ctx_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
-                    popup_open = Some(wi);
-                } else if card_toggle_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
-                    mode_toggle = Some(wi);
-                }
+        } else if drag_resp.hovered() {
+            let on_button = card_ctx_rect.map(|r| hover_pos.map(|p| r.contains(p)).unwrap_or(false)).unwrap_or(false)
+                || card_toggle_rect.map(|r| hover_pos.map(|p| r.contains(p)).unwrap_or(false)).unwrap_or(false);
+            let on_grip = hover_pos.map(|p| grip_rect.contains(p)).unwrap_or(false);
+            if !on_button && !on_grip {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
             }
         }
 
         // ── Snap zone glow — fades in as pointer approaches edge ──
-        if resp.dragged_by(egui::PointerButton::Primary) {
+        if drag_resp.dragged_by(egui::PointerButton::Primary) {
             if let Some(pos) = ui.ctx().pointer_interact_pos() {
                 let dist_top = pos.y - rect.top();
                 let dist_bot = rect.bottom() - pos.y;
