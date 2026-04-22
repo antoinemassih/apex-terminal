@@ -319,31 +319,38 @@ pub(crate) fn draw_widgets(
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // Interaction — single card interaction, route by pointer position
+        // Interaction
         // ══════════════════════════════════════════════════════════════════
 
         if !draw_faded {
 
-        // Interaction rect includes header zone above card (when hovered)
-        let interact_rect = if card_hovered {
-            egui::Rect::from_min_max(
-                egui::pos2(card_rect.left(), card_rect.top() - hdr_h - 2.0),
-                card_rect.max)
-        } else { card_rect };
-        let resp = ui.interact(interact_rect, egui::Id::new(("widget", wi)), egui::Sense::click_and_drag());
+        // ── 1. Button clicks — dedicated interactions (created FIRST = highest priority) ──
+        if let Some(ctx_r) = card_ctx_rect {
+            let btn = ui.interact(ctx_r, egui::Id::new(("wbtn_ctx", wi)), egui::Sense::click());
+            if btn.clicked() { popup_open = Some(wi); }
+            if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        }
+        if let Some(tog_r) = card_toggle_rect {
+            let btn = ui.interact(tog_r, egui::Id::new(("wbtn_tog", wi)), egui::Sense::click());
+            if btn.clicked() { mode_toggle = Some(wi); }
+            if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        }
 
-        // Track whether this widget is in resize mode (persists across frames via egui memory)
+        // ── 2. Card drag/resize (created AFTER buttons, so buttons get click priority) ──
+        let full_interact = egui::Rect::from_min_max(
+            egui::pos2(card_rect.left(), card_rect.top() - if card_hovered { hdr_h + 2.0 } else { 0.0 }),
+            card_rect.max);
+        let resp = ui.interact(full_interact, egui::Id::new(("widget", wi)), egui::Sense::drag());
+
+        // Track resize mode via egui memory
         let resize_id = egui::Id::new(("widget_resizing", wi));
         let mut is_resizing = ui.memory(|m| m.data.get_temp::<bool>(resize_id).unwrap_or(false));
-
-        // On drag start, decide: resize or move
         if resp.drag_started() {
             if let Some(pos) = resp.interact_pointer_pos() {
                 is_resizing = pos.x > card_rect.right() - 20.0 && pos.y > card_rect.bottom() - 20.0;
                 ui.memory_mut(|m| m.data.insert_temp(resize_id, is_resizing));
             }
         }
-        // Clear resize state when drag ends
         if resp.drag_stopped() {
             ui.memory_mut(|m| m.data.insert_temp(resize_id, false));
             is_resizing = false;
@@ -351,14 +358,11 @@ pub(crate) fn draw_widgets(
 
         if resp.dragged_by(egui::PointerButton::Primary) {
             let d = resp.drag_delta();
-            // Check if drag started in the header zone (primary drag handle)
-            let drag_from_header = resp.interact_pointer_pos().map(|p| p.y < card_rect.top()).unwrap_or(false)
-                || ui.ctx().pointer_interact_pos().map(|p| p.y < card_rect.top() + 10.0).unwrap_or(false);
             if is_resizing {
                 // ── Resize ──
                 resize_delta = Some((wi, d));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
-            } else if !chart.chart_widgets[wi].locked && (drag_from_header || !card_hovered) {
+            } else if !chart.chart_widgets[wi].locked {
                 // ── Move/Drag ──
                 let wid = &mut chart.chart_widgets[wi];
                 let pointer = ui.ctx().pointer_interact_pos().unwrap_or(card_rect.center());
@@ -404,31 +408,6 @@ pub(crate) fn draw_widgets(
             }
         }
 
-        // ── Click routing ──
-        // Use resp.clicked() OR raw release with position check
-        let mut btn_handled = false;
-        if resp.clicked() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                if card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false) {
-                    popup_open = Some(wi); btn_handled = true;
-                } else if card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false) {
-                    mode_toggle = Some(wi); btn_handled = true;
-                }
-            }
-        }
-        // Fallback: raw pointer release within button rects (for when clicked() misses)
-        if !btn_handled && ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-            if let Some(pos) = hover_pos {
-                // Only process if this widget's interact_rect contains the pointer
-                if interact_rect.contains(pos) {
-                    if card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false) && popup_open.is_none() {
-                        popup_open = Some(wi);
-                    } else if card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false) && mode_toggle.is_none() {
-                        mode_toggle = Some(wi);
-                    }
-                }
-            }
-        }
 
         // ── Snap zone glow — fades in as pointer approaches edge ──
         if resp.dragged_by(egui::PointerButton::Primary) && !is_resizing {
