@@ -243,10 +243,15 @@ pub(crate) fn draw_widgets(
                     if btn_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 }
             }
-            // Resize handle — always available on hover
+            // Resize grip visual (bottom-right)
             if card_hovered {
-                if let Some(delta) = resize_handle(ui, &painter, card_rect, wi, t) {
-                    resize_delta = Some((wi, delta));
+                let gr = card_rect;
+                for i in 0..3 {
+                    let offset = 4.0 + i as f32 * 3.5;
+                    painter.line_segment(
+                        [egui::pos2(gr.right() - offset, gr.bottom() - 1.0),
+                         egui::pos2(gr.right() - 1.0, gr.bottom() - offset)],
+                        Stroke::new(1.0, color_alpha(t.dim, ALPHA_MUTED)));
                 }
             }
         } else {
@@ -310,18 +315,29 @@ pub(crate) fn draw_widgets(
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // Interaction
+        // Interaction — full card rect, route by position
         // ══════════════════════════════════════════════════════════════════
 
         if !draw_faded {
-        let sense = egui::Sense::click_and_drag();
 
-        // Interact area: full header when hovered, thin strip otherwise
-        let interact_h = if card_hovered { hdr_h.max(26.0) } else { 20.0 };
-        let interact_rect = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, interact_h));
-        let resp = ui.interact(interact_rect, egui::Id::new(("widget_drag", wi)), sense);
+        // Use FULL card rect for interaction — no more tiny strip
+        let resp = ui.interact(card_rect, egui::Id::new(("widget_card", wi)), egui::Sense::click_and_drag());
 
-        if resp.dragged_by(egui::PointerButton::Primary) && !chart.chart_widgets[wi].locked {
+        // Determine if drag started in the resize grip area (bottom-right 16px)
+        let drag_start_in_resize = resp.drag_started().then(|| {
+            resp.interact_pointer_pos().map(|p| {
+                p.x > card_rect.right() - 16.0 && p.y > card_rect.bottom() - 16.0
+            }).unwrap_or(false)
+        }).unwrap_or(false);
+
+        // ── Resize (bottom-right grip drag) ──
+        if drag_start_in_resize && resp.dragged_by(egui::PointerButton::Primary) {
+            let d = resp.drag_delta();
+            resize_delta = Some((wi, d));
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+        }
+        // ── Move drag (anywhere else on the card) ──
+        else if resp.dragged_by(egui::PointerButton::Primary) && !chart.chart_widgets[wi].locked && !drag_start_in_resize {
             let d = resp.drag_delta();
             let wid = &mut chart.chart_widgets[wi];
             let pointer = ui.ctx().pointer_interact_pos().unwrap_or(card_rect.center());
@@ -355,29 +371,30 @@ pub(crate) fn draw_widgets(
                 }
             }
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-        } else if resp.hovered() && !card_hovered {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+        }
+        // ── Hover cursor ──
+        else if resp.hovered() {
+            // Check if hovering resize grip
+            if let Some(pos) = hover_pos {
+                if pos.x > card_rect.right() - 16.0 && pos.y > card_rect.bottom() - 16.0 {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+                } else if card_hovered {
+                    // Over the card but not buttons — show grab
+                    let on_button = card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false)
+                        || card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false);
+                    if !on_button {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                    }
+                }
+            }
         }
 
-        // Click routing — check pointer position against button rects
+        // ── Click routing ──
         if resp.clicked() {
             if let Some(click_pos) = resp.interact_pointer_pos() {
                 if card_ctx_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
                     popup_open = Some(wi);
                 } else if card_toggle_rect.map(|r| r.contains(click_pos)).unwrap_or(false) {
-                    mode_toggle = Some(wi);
-                } else if !card_hovered {
-                    // Only collapse when clicking outside the header
-                    collapse_toggle = Some(wi);
-                }
-            }
-        }
-        // Also check raw pointer click on buttons (for when resp doesn't capture it)
-        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-            if let Some(pos) = hover_pos {
-                if card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false) && popup_open.is_none() {
-                    popup_open = Some(wi);
-                } else if card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false) && mode_toggle.is_none() {
                     mode_toggle = Some(wi);
                 }
             }
