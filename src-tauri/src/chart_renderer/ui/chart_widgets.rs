@@ -179,7 +179,11 @@ pub(crate) fn draw_widgets(
 
         // Mode icon
         let mode_icon = if mode == WidgetDisplayMode::Card { "\u{25FC}" } else { "\u{25CB}" };
-        let card_hovered = !draw_faded && ui.rect_contains_pointer(card_rect);
+        // Hover area includes the header zone above the card (so header doesn't vanish)
+        let hover_zone = egui::Rect::from_min_max(
+            egui::pos2(card_rect.left(), card_rect.top() - 30.0),
+            card_rect.max);
+        let card_hovered = !draw_faded && ui.rect_contains_pointer(hover_zone);
 
         // Card mode: data-driven pastel background
         if mode == WidgetDisplayMode::Card {
