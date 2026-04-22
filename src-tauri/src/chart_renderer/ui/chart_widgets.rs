@@ -181,28 +181,37 @@ pub(crate) fn draw_widgets(
         let mode_icon = if mode == WidgetDisplayMode::Card { "\u{25FC}" } else { "\u{25CB}" };
         let card_hovered = !draw_faded && ui.rect_contains_pointer(card_rect);
 
-        // Card mode: solid background with rich shadow + bevel
+        // Card mode: data-driven pastel background
         if mode == WidgetDisplayMode::Card {
             // Shadow
             painter.rect_filled(card_rect.translate(egui::vec2(0.0, 3.0)).expand(2.0),
-                RADIUS_LG + 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 22));
+                12.0, Color32::from_rgba_unmultiplied(0, 0, 0, 20));
             painter.rect_filled(card_rect.translate(egui::vec2(0.0, 1.5)).expand(1.0),
-                RADIUS_LG + 1.0, Color32::from_rgba_unmultiplied(0, 0, 0, 12));
-            // Background with category tint
-            let (tr, tg, tb, ta) = kind.category_tint();
-            let bg_r = ((t.toolbar_bg.r() as u16 * (255 - ta as u16) + tr as u16 * ta as u16) / 255) as u8;
-            let bg_g = ((t.toolbar_bg.g() as u16 * (255 - ta as u16) + tg as u16 * ta as u16) / 255) as u8;
-            let bg_b = ((t.toolbar_bg.b() as u16 * (255 - ta as u16) + tb as u16 * ta as u16) / 255) as u8;
-            let bg = Color32::from_rgba_unmultiplied(bg_r.saturating_add(4), bg_g.saturating_add(4), bg_b.saturating_add(4), 235);
-            painter.rect_filled(card_rect, RADIUS_LG, bg);
-            // Top bevel highlight
+                11.0, Color32::from_rgba_unmultiplied(0, 0, 0, 10));
+
+            // Sentiment-driven background: the color reflects the data state
+            let sentiment = widget_sentiment(kind, &wd);
+            let (sr, sg, sb) = match sentiment {
+                s if s > 0.6  => (t.bull.r(), t.bull.g(), t.bull.b()),   // strong positive — green
+                s if s > 0.2  => (140, 200, 140),                        // mild positive — sage
+                s if s > -0.2 => (t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b()), // neutral — base
+                s if s > -0.6 => (220, 180, 100),                        // caution — amber
+                _             => (t.bear.r(), t.bear.g(), t.bear.b()),   // alert — red
+            };
+            let tint_strength: u8 = if sentiment.abs() > 0.2 { 18 } else { 0 };
+            let bg_r = ((t.toolbar_bg.r() as u16 * (255 - tint_strength as u16) + sr as u16 * tint_strength as u16) / 255) as u8;
+            let bg_g = ((t.toolbar_bg.g() as u16 * (255 - tint_strength as u16) + sg as u16 * tint_strength as u16) / 255) as u8;
+            let bg_b = ((t.toolbar_bg.b() as u16 * (255 - tint_strength as u16) + sb as u16 * tint_strength as u16) / 255) as u8;
+            painter.rect_filled(card_rect, 10.0, Color32::from_rgba_unmultiplied(bg_r, bg_g, bg_b, 240));
+
+            // Top bevel
             painter.rect_filled(
                 egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
-                egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
-                Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 40 } else { 8 }));
-            // Crisp border
-            painter.rect_stroke(card_rect, RADIUS_LG,
-                Stroke::new(0.8, color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 35 })),
+                egui::CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 },
+                Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 50 } else { 10 }));
+            // Border
+            painter.rect_stroke(card_rect, 10.0,
+                Stroke::new(0.8, color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 30 })),
                 egui::StrokeKind::Outside);
         }
 
@@ -1155,6 +1164,28 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
     )
 }
 
+/// Compute a sentiment score (-1.0 to 1.0) from widget data.
+/// Drives the pastel background color: green (positive) → grey (neutral) → amber → red (alert).
+fn widget_sentiment(kind: ChartWidgetKind, wd: &WidgetData) -> f32 {
+    match kind {
+        ChartWidgetKind::TrendStrength => (wd.trend_score - 50.0) / 50.0,
+        ChartWidgetKind::Momentum => (wd.rsi - 50.0) / 50.0,
+        ChartWidgetKind::Volatility => -(wd.atr_pct / 3.0).clamp(-1.0, 1.0),
+        ChartWidgetKind::ConvictionMeter => (compute_conviction(wd) - 50.0) / 50.0,
+        ChartWidgetKind::ExitGauge => -(wd.exit_gauge_score / 50.0 - 1.0),
+        ChartWidgetKind::PositionPnl | ChartWidgetKind::DailyPnl => {
+            if wd.position_pnl > 0.0 { (wd.position_pnl_pct / 5.0).clamp(0.0, 1.0) }
+            else if wd.position_pnl < 0.0 { (wd.position_pnl_pct / 5.0).clamp(-1.0, 0.0) }
+            else { 0.0 }
+        }
+        ChartWidgetKind::BreadthThermo => (wd.breadth_score - 50.0) / 50.0,
+        ChartWidgetKind::RelStrength => (wd.rs_rank - 50.0) / 50.0,
+        ChartWidgetKind::LiquidityScore => (wd.liquidity_score - 50.0) / 50.0,
+        ChartWidgetKind::VixMonitor => if wd.vix_spot > 25.0 { -0.8 } else if wd.vix_spot > 18.0 { -0.3 } else { 0.3 },
+        _ => 0.0, // neutral for widgets without clear directional data
+    }
+}
+
 /// Hero number — large proportional display font, the focal point of every widget.
 fn hero_number(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
     p.text(pos, egui::Align2::CENTER_CENTER,
@@ -1295,35 +1326,42 @@ fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, 
 }
 
 fn draw_volume_profile(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
-    let bar_x = body.left() + 10.0;
-    let max_w = body.width() - 20.0;
+    // Thin lollipop-style horizontal bars (editorial reference design)
+    let pad = 10.0;
+    let bar_x = body.left() + pad;
+    let max_w = body.width() - pad * 2.0;
     let n = wd.vol_bars.len();
-    let total_h = body.height() - 12.0;
-    let bar_h = (total_h / n as f32).min(12.0);
-    let gap = ((total_h - bar_h * n as f32) / (n as f32 - 1.0).max(1.0)).max(1.0);
+    let total_h = body.height() - pad;
+    let step = total_h / n as f32;
 
     let max_idx = wd.vol_bars.iter().enumerate()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(i, _)| i).unwrap_or(0);
 
     for i in 0..n {
-        let y = body.top() + 6.0 + i as f32 * (bar_h + gap);
+        let y = body.top() + pad * 0.5 + i as f32 * step + step * 0.5;
         let w = max_w * wd.vol_bars[i].max(0.03);
         let is_poc = i == max_idx;
 
+        // Color: gradient from cool to warm, POC in accent
         let color = if is_poc { t.accent } else {
-            let t_val = i as f32 / n as f32;
-            lerp_color(Color32::from_rgb(80, 120, 200), Color32::from_rgb(140, 80, 180), t_val)
+            let frac = i as f32 / n as f32;
+            if frac < 0.33 { t.bull }
+            else if frac < 0.66 { Color32::from_rgb(220, 180, 60) }
+            else { t.bear }
         };
-        let alpha = if is_poc { ALPHA_STRONG } else { ALPHA_DIM };
-        let bar_rect = egui::Rect::from_min_size(egui::pos2(bar_x, y), egui::vec2(w, bar_h));
-        p.rect_filled(bar_rect, 2.0, color_alpha(color, alpha));
+
+        // Thin line + circle at tip (lollipop style)
+        let line_alpha = if is_poc { 200u8 } else { 100 };
+        let circle_r = if is_poc { 4.0 } else { 2.5 };
+        p.line_segment([egui::pos2(bar_x, y), egui::pos2(bar_x + w, y)],
+            egui::Stroke::new(if is_poc { 2.0 } else { 1.0 },
+                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), line_alpha)));
+        p.circle_filled(egui::pos2(bar_x + w, y), circle_r, color);
 
         if is_poc {
-            p.rect_filled(bar_rect.expand(1.0), 3.0,
-                Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 20));
-            p.text(egui::pos2(bar_x + w + 4.0, y + bar_h / 2.0),
-                egui::Align2::LEFT_CENTER, "POC", egui::FontId::monospace(7.0), t.accent);
+            p.text(egui::pos2(bar_x + w + 8.0, y),
+                egui::Align2::LEFT_CENTER, "POC", egui::FontId::monospace(FONT_XS), t.accent);
         }
     }
 }

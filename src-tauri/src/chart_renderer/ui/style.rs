@@ -61,9 +61,9 @@ pub fn radius_sm() -> f32 { crate::dt_f32!(radius.sm, 3.0) }
 pub fn radius_md() -> f32 { crate::dt_f32!(radius.md, 4.0) }
 pub fn radius_lg() -> f32 { crate::dt_f32!(radius.lg, 8.0) }
 
-pub const RADIUS_SM: f32 = 3.0;
-pub const RADIUS_MD: f32 = 4.0;
-pub const RADIUS_LG: f32 = 8.0;
+pub const RADIUS_SM: f32 = 4.0;
+pub const RADIUS_MD: f32 = 6.0;
+pub const RADIUS_LG: f32 = 12.0;
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
 pub fn stroke_hair()  -> f32 { crate::dt_f32!(stroke.hair, 0.3) }
