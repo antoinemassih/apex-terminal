@@ -12,14 +12,14 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, chart: &mut C
 if !watchlist.settings_open { return; }
 
 let screen = ctx.screen_rect();
-let dialog_w = 600.0_f32;
+let dialog_w = 580.0_f32;
 let dialog_h = (screen.height() * 0.82).min(780.0).max(400.0);
 let border = color_alpha(t.toolbar_border, ALPHA_ACTIVE);
 egui::Window::new("settings_panel".to_string())
     .fixed_pos(egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0))
     .fixed_size(egui::vec2(dialog_w, dialog_h))
     .title_bar(false)
-    .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(0.0)
+    .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(0.0).outer_margin(0.0)
         .stroke(egui::Stroke::new(STROKE_STD, border)).corner_radius(RADIUS_LG))
     .show(ctx, |ui| {
         if dialog_header(ui, "SETTINGS", t.dim) { watchlist.settings_open = false; }
@@ -42,8 +42,8 @@ egui::Window::new("settings_panel".to_string())
 
         // ── Tab content in a scroll area ──
         egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.set_width(dialog_w - 24.0);
-            let m = 12.0; // left margin
+            ui.set_width(dialog_w - 20.0);
+            let m = 10.0; // left margin
 
             match tab {
 
@@ -57,8 +57,8 @@ SettingsTab::Appearance => {
     dialog_section(ui, "THEME", m, t.dim.gamma_multiply(0.5));
     ui.add_space(GAP_SM);
     {
-        let card_w = 85.0;
-        let card_h = 52.0;
+        let card_w = 80.0;
+        let card_h = 48.0;
         let cols = 6;
         for row_start in (0..THEMES.len()).step_by(cols) {
             ui.horizontal(|ui| {
@@ -169,8 +169,8 @@ SettingsTab::Appearance => {
     {
         let font_names = crate::ui_kit::icons::FONT_NAMES;
         let current_idx = watchlist.font_idx.min(font_names.len() - 1);
-        let card_w = 170.0;
-        let card_h = 50.0;
+        let card_w = 160.0;
+        let card_h = 46.0;
         let cols = 3;
         let is_mono = [true, true, true, false, false, false]; // first 3 are mono
 
@@ -294,7 +294,7 @@ SettingsTab::Chart => {
             setting_toggle(ui, m, "Background Tint", t, &mut chart.session_bg_tint);
             if chart.session_bg_tint {
                 ui.horizontal(|ui| {
-                    ui.add_space(m + 10.0);
+                    ui.add_space(m + 8.0);
                     for (label, hex) in [("Navy", "#1a1a2e"), ("Purple", "#2d1b4e"), ("Green", "#1a2e1a"), ("Red", "#2e1a1a"), ("Blue", "#1a2e3e")] {
                         let active = chart.session_bg_color == hex;
                         let c = hex_to_color(hex, 1.0);
@@ -347,7 +347,7 @@ SettingsTab::Trading => {
         }
     }
     ui.horizontal(|ui| {
-        ui.add_space(m + 4.0);
+        ui.add_space(m + 2.0);
         let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
         let (label, color) = if paper {
             ("Paper mode — orders go to simulated account", egui::Color32::from_rgb(46, 204, 113))
@@ -472,7 +472,7 @@ SettingsTab::Shortcuts => {
     // Column header
     ui.horizontal(|ui| {
         ui.add_space(m);
-        ui.allocate_ui(egui::vec2(240.0, 16.0), |ui| {
+        ui.allocate_ui(egui::vec2(220.0, 16.0), |ui| {
             ui.label(egui::RichText::new("ACTION").monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.4)));
         });
         ui.label(egui::RichText::new("SHORTCUT").monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.4)));
@@ -493,13 +493,13 @@ SettingsTab::Shortcuts => {
 fn setting_row(ui: &mut egui::Ui, margin: f32, label: &str, t: &Theme, add_widget: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
         ui.add_space(margin);
-        ui.allocate_ui(egui::vec2(200.0, 20.0), |ui| {
+        ui.allocate_ui(egui::vec2(190.0, 20.0), |ui| {
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.label(egui::RichText::new(label).monospace().size(FONT_SM).color(egui::Color32::from_white_alpha(180)));
             });
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(12.0);
+            ui.add_space(10.0);
             add_widget(ui);
         });
     });

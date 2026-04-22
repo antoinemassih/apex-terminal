@@ -14,8 +14,8 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
     // Use a simple egui::Window instead of dialog_window_themed to avoid potential panics
     let screen = _ctx.screen_rect();
     egui::Window::new("connections")
-        .fixed_pos(egui::pos2(screen.right() - 260.0, 40.0))
-        .fixed_size(egui::vec2(240.0, 0.0))
+        .fixed_pos(egui::pos2(screen.right() - 240.0, 40.0))
+        .fixed_size(egui::vec2(220.0, 0.0))
         .title_bar(false)
         .frame(egui::Frame::popup(&_ctx.style())
             .fill(t.toolbar_bg)
@@ -24,8 +24,8 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
             .corner_radius(RADIUS_LG))
         .show(_ctx, |ui| {
             if dialog_header(ui, "CONNECTIONS", t.dim) { *conn_panel_open = false; }
-            ui.add_space(8.0);
-            let m = 10.0;
+            ui.add_space(6.0);
+            let m = 8.0;
 
             ui.horizontal(|ui| {
                 ui.add_space(m);
@@ -50,7 +50,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
                     let dot = if *ok { rgb(46, 204, 113) } else { rgb(231, 76, 60) };
                     ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0), 3.5, dot);
                     ui.add_space(12.0);
-                    ui.label(egui::RichText::new(*name).monospace().size(10.0).strong().color(t.text));
+                    ui.label(egui::RichText::new(*name).monospace().size(9.0).strong().color(t.text));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         status_badge(ui, status, if *ok { t.bull } else { t.bear });
@@ -63,6 +63,6 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
                 ui.add_space(3.0);
             }
 
-            ui.add_space(8.0);
+            ui.add_space(6.0);
         });
 }

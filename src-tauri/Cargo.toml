@@ -1,6 +1,6 @@
 [package]
 name = "_scaffold"
-version = "0.9.4"
+version = "0.9.6"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -56,4 +56,11 @@ windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_UI_Wi
 
 # System monitoring (NVML FFI)
 libloading = "0.8"
+
+# Design mode (optional) — hot-reloadable design tokens
+toml = { version = "0.8", optional = true }
+
+[features]
+default = []
+design-mode = ["dep:toml"]
 

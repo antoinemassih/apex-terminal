@@ -20,8 +20,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
     // Determine panel width based on indicator complexity
     let ind_kind = panes[ap].indicators.iter().find(|i| i.id == edit_id).map(|i| i.kind);
     let panel_w = match ind_kind {
-        Some(IndicatorType::MACD) | Some(IndicatorType::Ichimoku) => 310.0,
-        _ => 270.0,
+        Some(IndicatorType::MACD) | Some(IndicatorType::Ichimoku) => 290.0,
+        _ => 250.0,
     };
 
     egui::Window::new(format!("ind_editor_{}", edit_id))
@@ -39,7 +39,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
         .show(ctx, |ui| {
             if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
                 let ind_color = hex_to_color(&ind.color, 1.0);
-                let m = 10.0;
+                let m = 8.0;
 
                 // ── Header: color dot + name + X ──
                 let header_resp = ui.horizontal(|ui| {
@@ -49,10 +49,10 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 26.0)),
                         egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 },
                         color_alpha(t.toolbar_border, ALPHA_TINT));
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                     ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, ind_color);
-                    ui.add_space(12.0);
-                    ui.label(egui::RichText::new(ind.display_name()).monospace().size(10.0).strong().color(TEXT_PRIMARY));
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new(ind.display_name()).monospace().size(9.0).strong().color(TEXT_PRIMARY));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(4.0);
                         if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.7), FONT_LG).on_hover_text("Close").clicked() {
@@ -340,7 +340,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     }
                 });
 
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_MUTED));
                 ui.add_space(6.0);
 
@@ -390,7 +390,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
                             else if i == styles.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
                             else { egui::CornerRadius::ZERO };
-                        if ui.add(egui::Button::new(egui::RichText::new(*sym).monospace().size(11.0).color(fg))
+                        if ui.add(egui::Button::new(egui::RichText::new(*sym).monospace().size(10.0).color(fg))
                             .fill(bg).corner_radius(rounding).min_size(egui::vec2(28.0, 18.0))
                             .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_HEAVY) } else { color_alpha(t.toolbar_border, ALPHA_LINE) })))
                             .clicked() { ind.line_style = *ls; }
@@ -479,7 +479,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     });
                 }
 
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_MUTED));
                 ui.add_space(4.0);
 
@@ -488,14 +488,14 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     ui.add_space(m);
                     let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
                     let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
-                    let vr = ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(11.0).color(vis_fg))
+                    let vr = ui.add(egui::Button::new(egui::RichText::new(vis_icon).size(10.0).color(vis_fg))
                         .fill(if ind.visible { color_alpha(t.toolbar_border, ALPHA_SOFT) } else { egui::Color32::TRANSPARENT })
                         .corner_radius(3.0).min_size(egui::vec2(24.0, 22.0)));
                     if vr.on_hover_text("Toggle Visibility").clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         let del_color = egui::Color32::from_rgb(224, 85, 96);
-                        let dr = ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(11.0).color(del_color))
+                        let dr = ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(10.0).color(del_color))
                             .fill(color_alpha(del_color, ALPHA_GHOST)).corner_radius(3.0)
                             .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(del_color, ALPHA_DIM)))
                             .min_size(egui::vec2(24.0, 22.0)));

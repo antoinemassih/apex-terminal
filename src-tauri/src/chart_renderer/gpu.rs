@@ -149,7 +149,7 @@ pub(crate) enum Layout {
 }
 
 impl Layout {
-    fn max_panes(self) -> usize { match self {
+    pub(crate) fn max_panes(self) -> usize { match self {
         Layout::One=>1, Layout::Two|Layout::TwoH=>2,
         Layout::Three|Layout::ThreeL=>3, Layout::Four|Layout::FourL=>4,
         Layout::FiveC|Layout::FiveL|Layout::FiveW|Layout::FiveR=>5,
@@ -1520,7 +1520,7 @@ pub(crate) struct Chart {
 }
 
 impl Chart {
-    fn new_with(symbol: &str, timeframe: &str) -> Self {
+    pub(crate) fn new_with(symbol: &str, timeframe: &str) -> Self {
         let mut c = Self::new();
         c.symbol = symbol.into();
         c.timeframe = timeframe.into();
@@ -3532,6 +3532,19 @@ fn render_toolbar(
         crate::design_tokens::register_hit(
             [tb_rect.min.x, tb_rect.min.y, tb_rect.width(), tb_rect.height()],
             "TOOLBAR", "Toolbar");
+
+        // Window drag handle — spans the full toolbar. Uses Sense::drag only,
+        // so later-drawn buttons (which sense click) get priority for clicks.
+        // Double-click toggles maximize.
+        let drag_resp = ui.interact(tb_rect, egui::Id::new("tb_window_drag"), egui::Sense::click_and_drag());
+        if drag_resp.drag_started() {
+            let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
+            if let Some(w) = &win_ref { let _ = w.drag_window(); }
+        }
+        if drag_resp.double_clicked() {
+            let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
+            if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+        }
         // Bottom border line
         ui.painter().line_segment(
             [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
@@ -4911,7 +4924,7 @@ fn render_toolbar(
     }
 
     // ── command_palette
-    super::ui::command_palette::draw(ctx, watchlist, panes, ap, t);
+    super::ui::command_palette::draw(ctx, watchlist, panes, layout, active_pane, t);
 
     // ── hotkey_editor
     super::ui::hotkey_editor::draw(ctx, watchlist, panes, ap, t);
@@ -15698,26 +15711,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         }
     }
 
-    // ── Window drag + double-click maximize (before any UI renders) ──
-    {
-        let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
-        let pressed = ctx.input(|i| i.pointer.primary_pressed());
-        let dbl = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
-        if let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) {
-            let tb_h = if watchlist.compact_mode { 32.0 } else { 42.0 };
-            if pos.y < tb_h && (pressed || dbl) {
-                // Check if any toolbar button was clicked THIS frame
-                let btn_clicked = TB_BTN_CLICKED.with(|f| f.get());
-                if !btn_clicked {
-                    if dbl {
-                        if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
-                    } else if pressed {
-                        if let Some(w) = &win_ref { let _ = w.drag_window(); }
-                    }
-                }
-            }
-        }
-    }
+    // Window drag is now handled directly inside the toolbar panel via
+    // ui.interact(..., Sense::click_and_drag()) — see earlier in this file.
 
     // Clear TB_BTN_CLICKED for next frame — MUST be after the drag handler above reads it
     TB_BTN_CLICKED.with(|f| f.set(false));
@@ -16336,8 +16331,12 @@ pub(crate) struct Watchlist {
     // Command palette
     pub(crate) cmd_palette_open: bool,
     pub(crate) cmd_palette_query: String,
-    pub(crate) cmd_palette_results: Vec<(String, String, String)>, // (symbol/cmd, name, type)
+    pub(crate) cmd_palette_results: Vec<(String, String, String)>, // (id, name, category)
     pub(crate) cmd_palette_sel: i32, // selected result index (-1 = none)
+    pub(crate) cmd_palette_recent: Vec<String>, // recent symbol/command ids (most-recent first)
+    pub(crate) cmd_palette_freq: std::collections::HashMap<String, u32>, // frequency counter
+    pub(crate) cmd_palette_ai_mode: bool, // AI chat overlay (Gemma 4 placeholder)
+    pub(crate) cmd_palette_ai_input: String,
     // Layout favorites (shown as buttons in toolbar; rest in dropdown)
     pub(crate) layout_favorites: Vec<String>,
     pub(crate) layout_dropdown_open: bool,
@@ -16492,6 +16491,8 @@ impl Watchlist {
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
                pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5, pane_divider_dragging: false,
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
+               cmd_palette_recent: vec![], cmd_palette_freq: std::collections::HashMap::new(),
+               cmd_palette_ai_mode: false, cmd_palette_ai_input: String::new(),
                layout_favorites: vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()],
                layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO, dragging_tab: None,
                pending_overlay_add: false,

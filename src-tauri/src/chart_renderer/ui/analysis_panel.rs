@@ -27,7 +27,7 @@ pub(crate) fn draw(
     let mut pending_symbol: Option<String> = None;
 
     egui::SidePanel::right("analysis_panel")
-        .default_width(280.0)
+        .default_width(260.0)
         .min_width(220.0)
         .max_width(480.0)
         .resizable(true)

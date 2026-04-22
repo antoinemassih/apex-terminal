@@ -21,7 +21,7 @@ pub(crate) fn draw(
     if !watchlist.signals_panel_open { return; }
 
     egui::SidePanel::right("signals_panel")
-        .default_width(280.0)
+        .default_width(260.0)
         .min_width(240.0)
         .max_width(420.0)
         .resizable(true)

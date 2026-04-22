@@ -107,7 +107,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     // ── AI Prompt input ─────────────────────────────────────
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("\u{2728}")
-            .monospace().size(10.0).color(t.accent));
+            .monospace().size(9.0).color(t.accent));
         ui.add_space(4.0);
         ui.add_sized(
             egui::vec2(w - 36.0, 22.0),
@@ -252,9 +252,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
             // ── Header ──────────────────────────────────────────────
             ui.horizontal(|ui| {
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(egui::RichText::new("APEX SCRIPT")
-                    .monospace().size(11.0).strong().color(t.accent));
+                    .monospace().size(10.0).strong().color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(6.0);
                     if close_button(ui, t.dim) { close = true; }
@@ -266,9 +266,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
             // ── AI Prompt input ─────────────────────────────────────
             ui.horizontal(|ui| {
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(egui::RichText::new("\u{2728}") // sparkle emoji
-                    .monospace().size(10.0).color(t.accent));
+                    .monospace().size(9.0).color(t.accent));
                 ui.add_space(4.0);
                 let prompt_response = ui.add_sized(
                     egui::vec2(w - 36.0, 22.0),
@@ -294,7 +294,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
             // ── Preset examples ─────────────────────────────────────
             ui.horizontal(|ui| {
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.label(egui::RichText::new("Examples:")
                     .monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
                 ui.add_space(4.0);
@@ -324,7 +324,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
             // Dark background frame for code area
             ui.horizontal(|ui| {
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 let (rect, _) = ui.allocate_exact_size(
                     egui::vec2(w - 16.0, editor_height),
                     egui::Sense::hover(),
@@ -353,7 +353,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
             // ── Button row ──────────────────────────────────────────
             ui.horizontal(|ui| {
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 // Run button (accent/green)
                 if action_button(ui, "\u{25B6} Run", t.bull, t).clicked() {
                     // Mock run — just echo the source
@@ -411,7 +411,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
             // ── Result tabs ─────────────────────────────────────────
             ui.horizontal(|ui| {
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 result_tab_btn(ui, "Output", ScriptResultTab::Output, &mut watchlist.script_result_tab, t);
                 ui.add_space(2.0);
                 result_tab_btn(ui, "Backtest", ScriptResultTab::Backtest, &mut watchlist.script_result_tab, t);
@@ -436,7 +436,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 // ── Output tab ──────────────────────────────────────────────────────────────
 
 fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
-    let m = 12.0;
+    let m = 10.0;
     if watchlist.script_output.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
@@ -451,13 +451,13 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
                 .monospace().size(9.0).color(t.dim.gamma_multiply(0.85)));
         });
     }
-    ui.add_space(10.0);
+    ui.add_space(8.0);
 }
 
 // ── Backtest tab ────────────────────────────────────────────────────────────
 
 fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme) {
-    let m = 10.0;
+    let m = 8.0;
     let result = match &watchlist.script_backtest {
         Some(r) => r,
         None => {
@@ -502,13 +502,13 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
                 egui::pos2(rect.center().x, rect.min.y + 26.0),
                 egui::Align2::CENTER_CENTER,
                 value,
-                egui::FontId::monospace(10.0),
+                egui::FontId::monospace(9.0),
                 *color,
             );
         }
     });
 
-    ui.add_space(8.0);
+    ui.add_space(6.0);
 
     // ── Trade list header ───────────────────────────────────
     ui.horizontal(|ui| {
@@ -615,7 +615,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         );
     }
 
-    ui.add_space(12.0);
+    ui.add_space(10.0);
 }
 
 // ── Helper widgets ──────────────────────────────────────────────────────────

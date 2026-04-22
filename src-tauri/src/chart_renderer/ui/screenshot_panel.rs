@@ -107,7 +107,7 @@ pub(crate) fn draw(
     if !watchlist.screenshot_open { return; }
 
     egui::SidePanel::right("screenshot_library")
-        .default_width(280.0)
+        .default_width(260.0)
         .min_width(220.0)
         .max_width(400.0)
         .resizable(true)
@@ -117,7 +117,7 @@ pub(crate) fn draw(
         .show(ctx, |ui| {
             // Header
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("SCREENSHOTS").monospace().size(10.0).strong().color(t.accent));
+                ui.label(egui::RichText::new("SCREENSHOTS").monospace().size(9.0).strong().color(t.accent));
                 ui.label(egui::RichText::new(format!("({})", watchlist.screenshot_entries.len())).monospace().size(9.0).color(t.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.screenshot_open = false; }
@@ -139,7 +139,7 @@ pub(crate) fn draw_content(
     if watchlist.screenshot_entries.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new("No screenshots yet").monospace().size(10.0).color(t.dim));
+            ui.label(egui::RichText::new("No screenshots yet").monospace().size(9.0).color(t.dim));
             ui.add_space(4.0);
             ui.label(egui::RichText::new("Press Ctrl+Shift+S to capture").monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
         });
@@ -161,12 +161,12 @@ pub(crate) fn draw_content(
             card.show(ui, |ui| {
                 ui.horizontal(|ui| {
                     // Symbol + timeframe
-                    ui.label(egui::RichText::new(&entry.symbol).monospace().size(11.0).strong().color(t.accent));
+                    ui.label(egui::RichText::new(&entry.symbol).monospace().size(10.0).strong().color(t.accent));
                     ui.label(egui::RichText::new(&entry.timeframe).monospace().size(9.0).color(t.dim));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Delete button
                         if ui.add(egui::Button::new(
-                            egui::RichText::new("\u{e9a8}").size(10.0).color(t.bear.gamma_multiply(0.5)) // X icon
+                            egui::RichText::new("\u{e9a8}").size(9.0).color(t.bear.gamma_multiply(0.5)) // X icon
                         ).frame(false).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Delete").clicked() {
                             remove_id = Some(entry.id.clone());
                         }

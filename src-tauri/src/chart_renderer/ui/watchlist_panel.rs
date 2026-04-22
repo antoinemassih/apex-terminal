@@ -14,15 +14,12 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
 // ── Watchlist side panel ───────────────────────────────────────────────────
 if watchlist.open {
     egui::SidePanel::right("watchlist")
-        .default_width(crate::dt_f32!(panel.width_md, 260.0))
+        .default_width(240.0)
         .min_width(140.0)
         .max_width(500.0)
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin {
-            left: crate::dt_f32!(spacing.md, 6.0) as i8,
-            right: crate::dt_f32!(spacing.md, 6.0) as i8,
-            top: crate::dt_f32!(spacing.md, 6.0) as i8,
-            bottom: crate::dt_f32!(spacing.md, 6.0) as i8,
+            left: 4, right: 4, top: 4, bottom: 4,
         }))
         .show(ctx, |ui| {
             // Force content to never exceed the panel's actual width
@@ -95,30 +92,30 @@ if watchlist.open {
                             let active_idx = watchlist.active_watchlist_idx;
                             let active_name = wl_names.get(active_idx).cloned().unwrap_or_else(|| "Default".into());
                             let combo_resp = egui::ComboBox::from_id_salt("wl_selector")
-                                .selected_text(egui::RichText::new(&active_name).monospace().size(10.0).color(t.accent))
+                                .selected_text(egui::RichText::new(&active_name).monospace().size(9.0).color(t.accent))
                                 .width(ui.available_width() - 60.0)
                                 .show_ui(ui, |ui| {
                                     for (i, name) in wl_names.iter().enumerate() {
                                         let is_active = i == active_idx;
                                         let label_color = if is_active { t.accent } else { egui::Color32::from_rgb(200, 200, 210) };
                                         let resp = ui.selectable_label(is_active,
-                                            egui::RichText::new(name).monospace().size(10.0).color(label_color));
+                                            egui::RichText::new(name).monospace().size(9.0).color(label_color));
                                         if resp.clicked() && !is_active {
                                             wl_switch_to = Some(i);
                                         }
                                         // Right-click context menu on each watchlist entry
                                         resp.context_menu(|ui| {
-                                            if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                            if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
                                                 wl_rename_idx = Some(i);
                                                 ui.close_menu();
                                             }
-                                            if ui.button(egui::RichText::new("Duplicate").monospace().size(10.0)).clicked() {
+                                            if ui.button(egui::RichText::new("Duplicate").monospace().size(9.0)).clicked() {
                                                 wl_dup_idx = Some(i);
                                                 ui.close_menu();
                                             }
                                             if wl_count > 1 {
                                                 ui.separator();
-                                                if ui.button(egui::RichText::new("Delete").monospace().size(10.0)
+                                                if ui.button(egui::RichText::new("Delete").monospace().size(9.0)
                                                     .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
                                                     wl_delete_idx = Some(i);
                                                     ui.close_menu();
@@ -129,17 +126,17 @@ if watchlist.open {
                                 });
                             // Right-click the combo box header for rename/dup/delete
                             combo_resp.response.context_menu(|ui| {
-                                if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
                                     wl_rename_idx = Some(active_idx);
                                     ui.close_menu();
                                 }
-                                if ui.button(egui::RichText::new("Duplicate").monospace().size(10.0)).clicked() {
+                                if ui.button(egui::RichText::new("Duplicate").monospace().size(9.0)).clicked() {
                                     wl_dup_idx = Some(active_idx);
                                     ui.close_menu();
                                 }
                                 if wl_count > 1 {
                                     ui.separator();
-                                    if ui.button(egui::RichText::new("Delete").monospace().size(10.0)
+                                    if ui.button(egui::RichText::new("Delete").monospace().size(9.0)
                                         .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
                                         wl_delete_idx = Some(active_idx);
                                         ui.close_menu();
@@ -157,7 +154,7 @@ if watchlist.open {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
                             let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
-                            let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(11.0).color(opt_color))
+                            let opt_resp = ui.add(egui::Button::new(egui::RichText::new(opt_icon).size(10.0).color(opt_color))
                                 .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)));
                             if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -278,7 +275,7 @@ if watchlist.open {
                                 let bg = if is_sel { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
                                 let fg = if is_sel { t.text } else { t.dim };
                                 let resp = ui.add(egui::Button::new(
-                                    egui::RichText::new(format!("{:6} {}", sym, name)).monospace().size(10.0).color(fg))
+                                    egui::RichText::new(format!("{:6} {}", sym, name)).monospace().size(9.0).color(fg))
                                     .fill(bg).frame(false).min_size(egui::vec2(ui.available_width(), 20.0)));
                                 if resp.clicked() {
                                     watchlist.add_symbol(sym);
@@ -568,7 +565,7 @@ if watchlist.open {
 
                                     // Collapse chevron
                                     let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                    if ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false)).clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(chevron).size(9.0).color(t.dim.gamma_multiply(0.6))).frame(false)).clicked() {
                                         toggle_collapse = Some(si);
                                     }
 
@@ -596,7 +593,7 @@ if watchlist.open {
                                 // Right-click context menu on section header
                                 header_resp.response.context_menu(|ui| {
                                     // Rename
-                                    if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                    if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
                                         watchlist.rename_buf = sec_title.clone();
                                         ui.close_menu();
@@ -618,7 +615,7 @@ if watchlist.open {
                                             }
                                         });
                                     }
-                                    if ui.button(egui::RichText::new("No color").monospace().size(10.0).color(t.dim)).clicked() {
+                                    if ui.button(egui::RichText::new("No color").monospace().size(9.0).color(t.dim)).clicked() {
                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                             sec.color = None;
                                         }
@@ -627,7 +624,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     if sec_item_count == 0 {
-                                        if ui.button(egui::RichText::new("Delete section").monospace().size(10.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                                        if ui.button(egui::RichText::new("Delete section").monospace().size(9.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                                             remove_section = Some(si);
                                             ui.close_menu();
                                         }
@@ -643,7 +640,7 @@ if watchlist.open {
 
                                     // Collapse chevron (keep visible during rename)
                                     let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                    ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false));
+                                    ui.add(egui::Button::new(egui::RichText::new(chevron).size(9.0).color(t.dim.gamma_multiply(0.6))).frame(false));
 
                                     let te = ui.add(egui::TextEdit::singleline(&mut watchlist.rename_buf)
                                         .desired_width((ui.available_width() - 10.0).max(40.0)).font(egui::FontId::monospace(9.0)));
@@ -764,7 +761,7 @@ if watchlist.open {
                                                     remove_sym = Some(item_sym.clone());
                                                 }
                                                 // Bid x Ask (or price fallback)
-                                                ui.label(egui::RichText::new(&price_str).monospace().size(11.0).color(opt_color));
+                                                ui.label(egui::RichText::new(&price_str).monospace().size(10.0).color(opt_color));
                                             });
                                         });
 
@@ -1236,7 +1233,7 @@ if watchlist.open {
                                     // ui.set_min_width removed — was preventing sidebar resize
                                     ui.set_min_height(20.0);
                                     let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                    if ui.add(egui::Button::new(egui::RichText::new(chevron).size(10.0).color(t.dim.gamma_multiply(0.6))).frame(false)).clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(chevron).size(9.0).color(t.dim.gamma_multiply(0.6))).frame(false)).clicked() {
                                         opt_toggle_collapse = Some(si);
                                     }
                                     ui.label(egui::RichText::new(&sec_title).monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.6)));
@@ -1255,7 +1252,7 @@ if watchlist.open {
                                 // Right-click context menu on option section header (same as stock sections)
                                 header_resp.response.context_menu(|ui| {
                                     // Rename
-                                    if ui.button(egui::RichText::new("Rename").monospace().size(10.0)).clicked() {
+                                    if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
                                         watchlist.rename_buf = sec_title.clone();
                                         ui.close_menu();
@@ -1277,7 +1274,7 @@ if watchlist.open {
                                             }
                                         });
                                     }
-                                    if ui.button(egui::RichText::new("No color").monospace().size(10.0).color(t.dim)).clicked() {
+                                    if ui.button(egui::RichText::new("No color").monospace().size(9.0).color(t.dim)).clicked() {
                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                             sec.color = None;
                                         }
@@ -1286,7 +1283,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     if sec_item_count == 0 {
-                                        if ui.button(egui::RichText::new("Delete section").monospace().size(10.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                                        if ui.button(egui::RichText::new("Delete section").monospace().size(9.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
                                             opt_remove_section = Some(si);
                                             ui.close_menu();
                                         }
@@ -1367,7 +1364,7 @@ if watchlist.open {
                             // Empty state
                             if option_section_ids.is_empty() {
                                 ui.add_space(8.0);
-                                ui.label(egui::RichText::new("No options saved").monospace().size(10.0).color(t.dim.gamma_multiply(0.35)));
+                                ui.label(egui::RichText::new("No options saved").monospace().size(9.0).color(t.dim.gamma_multiply(0.35)));
                                 ui.label(egui::RichText::new("Shift+click contracts in the CHAIN tab").monospace().size(8.0).color(t.dim.gamma_multiply(0.25)));
                                 ui.add_space(8.0);
                             }
@@ -1503,7 +1500,7 @@ if watchlist.open {
                     if !watchlist.chain_sym_input.is_empty() && !watchlist.search_results.is_empty() {
                         egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(28, 28, 34)).corner_radius(4.0).show(ui, |ui| {
                             for (sym, name) in watchlist.search_results.clone() {
-                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(11.0).color(t.dim))
+                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(10.0).color(t.dim))
                                     .frame(false).min_size(egui::vec2(ui.available_width(), 20.0))).clicked() {
                                     watchlist.chain_symbol = sym;
                                     watchlist.chain_sym_input.clear();
@@ -1529,7 +1526,7 @@ if watchlist.open {
                     if watchlist.chain_loading {
                         ui.horizontal(|ui| {
                             ui.spinner();
-                            ui.label(egui::RichText::new("Loading chain...").monospace().size(10.0).color(t.dim));
+                            ui.label(egui::RichText::new("Loading chain...").monospace().size(9.0).color(t.dim));
                         });
                     }
 
@@ -1671,7 +1668,7 @@ if watchlist.open {
                         ui.horizontal(|ui| {
                             // min_width removed — was preventing sidebar resize
                             ui.label(egui::RichText::new(&exp_label).monospace().size(12.0).strong().color(t.accent));
-                            ui.label(egui::RichText::new(&date_str).monospace().size(11.0).color(t.dim.gamma_multiply(0.6)));
+                            ui.label(egui::RichText::new(&date_str).monospace().size(10.0).color(t.dim.gamma_multiply(0.6)));
                         });
                         ui.add_space(2.0);
 
@@ -1689,7 +1686,7 @@ if watchlist.open {
                         // The offset shifts the center. The price badge always shows real price.
                         // We select num_strikes above the shifted center and num_strikes below.
                         if all_strikes.is_empty() {
-                            ui.label(egui::RichText::new("No strikes available").monospace().size(10.0).color(t.dim.gamma_multiply(0.4)));
+                            ui.label(egui::RichText::new("No strikes available").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
                             return;
                         }
 
@@ -1935,7 +1932,7 @@ if watchlist.open {
                     // Index preset dropdown + expand/collapse
                     ui.horizontal(|ui| {
                         egui::ComboBox::from_id_salt("heat_idx")
-                            .selected_text(egui::RichText::new(&watchlist.heat_index).monospace().size(10.0))
+                            .selected_text(egui::RichText::new(&watchlist.heat_index).monospace().size(9.0))
                             .width(100.0)
                             .show_ui(ui, |ui| {
                                 for idx in &["Watchlist", "S&P 500", "Dow 30", "Nasdaq 100"] {
@@ -1947,7 +1944,7 @@ if watchlist.open {
                             });
                         // Expand / Collapse / Columns / Sort — all with hover cursor
                         let hbtn = |ui: &mut egui::Ui, label: &str, col: egui::Color32, tip: &str| -> bool {
-                            let resp = ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(10.0).color(col))
+                            let resp = ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(col))
                                 .min_size(egui::vec2(20.0, 18.0)).corner_radius(RADIUS_MD));
                             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                             resp.on_hover_text(tip).clicked()
@@ -2020,7 +2017,7 @@ if watchlist.open {
 
                     if heat_items.is_empty() {
                         ui.add_space(24.0);
-                        ui.label(egui::RichText::new("No data — add symbols to watchlist").monospace().size(10.0).color(t.dim));
+                        ui.label(egui::RichText::new("No data — add symbols to watchlist").monospace().size(9.0).color(t.dim));
                     } else {
                         let mut heat_click_sym_outer: Option<String> = None;
                         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -2136,7 +2133,7 @@ if watchlist.open {
                                     let caret = if is_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
                                     let header_text = format!("{} {}  ({})  {:+.2}%", caret, sector, items.len(), avg_chg);
                                     let header_btn = ui.add(egui::Button::new(
-                                        egui::RichText::new(&header_text).monospace().size(11.0).color(sector_col)
+                                        egui::RichText::new(&header_text).monospace().size(10.0).color(sector_col)
                                     ).fill(color_alpha(sector_col, ALPHA_FAINT)).corner_radius(RADIUS_MD).min_size(egui::vec2(ui.available_width(), 22.0)));
                                     if header_btn.clicked() {
                                         if is_collapsed { watchlist.heat_collapsed.remove(sector); }

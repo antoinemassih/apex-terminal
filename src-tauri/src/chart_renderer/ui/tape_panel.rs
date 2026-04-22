@@ -10,7 +10,7 @@ const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, 
 pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
     let panel_w = ui.available_width();
 
-    ui.label(egui::RichText::new(format!("TIME & SALES  {}", active_symbol)).monospace().size(10.0).strong().color(t.accent));
+    ui.label(egui::RichText::new(format!("TIME & SALES  {}", active_symbol)).monospace().size(9.0).strong().color(t.accent));
     ui.add_space(2.0);
 
     // Column headers

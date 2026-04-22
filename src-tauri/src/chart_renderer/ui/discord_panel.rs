@@ -105,9 +105,9 @@ if watchlist.discord_open {
 
 if watchlist.discord_open {
     egui::SidePanel::left("discord_chat")
-        .default_width(280.0)
-        .min_width(220.0)
-        .max_width(420.0)
+        .default_width(260.0)
+        .min_width(200.0)
+        .max_width(400.0)
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
@@ -127,12 +127,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     {
             if !watchlist.discord_authenticated {
                 // ── Not authenticated: Connect button ──
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    ui.add_space(8.0);
-                    ui.label(egui::RichText::new("DISCORD").monospace().size(11.0).strong().color(discord_blurple));
+                    ui.add_space(6.0);
+                    ui.label(egui::RichText::new("DISCORD").monospace().size(10.0).strong().color(discord_blurple));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
                         if close_button(ui, t.dim) { watchlist.discord_open = false; }
                     });
                 });
@@ -143,19 +143,19 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     |ui| {
                         ui.add_space(avail.y * 0.25);
                         ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(36.0).color(discord_blurple.gamma_multiply(0.5)));
-                        ui.add_space(12.0);
+                        ui.add_space(10.0);
                         if !crate::discord::is_configured() {
-                            ui.label(egui::RichText::new("Discord not configured").monospace().size(10.0).color(t.dim));
+                            ui.label(egui::RichText::new("Discord not configured").monospace().size(9.0).color(t.dim));
                             ui.label(egui::RichText::new("Add discord.env with credentials").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
                         } else if watchlist.discord_connecting {
-                            ui.label(egui::RichText::new("Waiting for authorization...").monospace().size(10.0).color(t.dim));
+                            ui.label(egui::RichText::new("Waiting for authorization...").monospace().size(9.0).color(t.dim));
                             ui.add_space(6.0);
                             ui.spinner();
                             ui.add_space(4.0);
                             ui.label(egui::RichText::new("Complete sign-in in your browser").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
                         } else {
                             if ui.add(egui::Button::new(
-                                egui::RichText::new("  Connect Discord  ").monospace().size(12.0).strong().color(egui::Color32::WHITE))
+                                egui::RichText::new("  Connect Discord  ").monospace().size(10.0).strong().color(egui::Color32::WHITE))
                                 .fill(discord_blurple)
                                 .corner_radius(RADIUS_LG)
                                 .min_size(egui::vec2(180.0, 36.0))
@@ -175,17 +175,17 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 // ── Header ──
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                     if !watchlist.discord_channel.is_empty() {
-                        ui.label(egui::RichText::new(&watchlist.discord_channel).monospace().size(11.0).strong().color(egui::Color32::WHITE));
+                        ui.label(egui::RichText::new(&watchlist.discord_channel).monospace().size(10.0).strong().color(egui::Color32::WHITE));
                     } else {
-                        ui.label(egui::RichText::new("DISCORD").monospace().size(11.0).strong().color(discord_blurple));
+                        ui.label(egui::RichText::new("DISCORD").monospace().size(10.0).strong().color(discord_blurple));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(6.0);
                         if close_button(ui, t.dim) { watchlist.discord_open = false; }
                         if ui.add(egui::Button::new(
-                            egui::RichText::new("×").monospace().size(10.0).color(rgb(231, 76, 60)))
+                            egui::RichText::new("×").monospace().size(9.0).color(rgb(231, 76, 60)))
                             .fill(egui::Color32::TRANSPARENT).frame(false)
                         ).on_hover_text("Disconnect").clicked() {
                             crate::discord::disconnect();
@@ -258,7 +258,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         .take(2)
                                         .collect::<String>()
                                         .to_uppercase();
-                                    let font = egui::FontId::monospace(if abbrev.len() > 1 { 10.0 } else { 13.0 });
+                                    let font = egui::FontId::monospace(if abbrev.len() > 1 { 9.0 } else { 11.0 });
                                     let text_col = if selected || hovered { egui::Color32::WHITE } else { egui::Color32::from_gray(180) };
                                     ui.painter().text(icon_rect.center(), egui::Align2::CENTER_CENTER, &abbrev, font, text_col);
                                 }
@@ -315,7 +315,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 
                             if watchlist.discord_channels_loading {
                                 ui.horizontal(|ui| {
-                                    ui.add_space(8.0);
+                                    ui.add_space(6.0);
                                     ui.spinner();
                                     ui.label(egui::RichText::new("Loading channels...").monospace().size(9.0).color(t.dim));
                                 });
@@ -328,13 +328,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     |ui| {
                                         ui.add_space(avail.y * 0.2);
                                         ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(28.0).color(t.dim.gamma_multiply(0.5)));
-                                        ui.add_space(8.0);
-                                        ui.label(egui::RichText::new("Bot not in this server").monospace().size(10.0).color(t.dim));
+                                        ui.add_space(6.0);
+                                        ui.label(egui::RichText::new("Bot not in this server").monospace().size(9.0).color(t.dim));
                                         ui.add_space(4.0);
                                         ui.label(egui::RichText::new("Add the Apex bot to enable\nchannels & messaging").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                                        ui.add_space(10.0);
+                                        ui.add_space(8.0);
                                         if ui.add(egui::Button::new(
-                                            egui::RichText::new("  Add Bot to Server  ").monospace().size(10.0).strong().color(egui::Color32::WHITE))
+                                            egui::RichText::new("  Add Bot to Server  ").monospace().size(9.0).strong().color(egui::Color32::WHITE))
                                             .fill(discord_blurple)
                                             .corner_radius(4.0)
                                             .min_size(egui::vec2(160.0, 30.0))
@@ -348,7 +348,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         }
                                         ui.add_space(8.0);
                                         ui.label(egui::RichText::new("Server admins can also\nadd the bot themselves").monospace().size(7.5).color(t.dim.gamma_multiply(0.4)));
-                                        ui.add_space(12.0);
+                                        ui.add_space(10.0);
                                         if ui.add(egui::Button::new(
                                             egui::RichText::new("Retry").monospace().size(8.0).color(t.dim))
                                             .fill(color_alpha(t.toolbar_border, ALPHA_TINT))
@@ -417,7 +417,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.horizontal(|ui| {
                                 ui.add_space(6.0);
                                 if ui.add(egui::Button::new(
-                                    egui::RichText::new(Icon::CARET_RIGHT).size(10.0).color(t.dim))
+                                    egui::RichText::new(Icon::CARET_RIGHT).size(9.0).color(t.dim))
                                     .fill(egui::Color32::TRANSPARENT).frame(false)
                                 ).on_hover_text("Back to channels").clicked() {
                                     watchlist.discord_selected_channel = None;
@@ -454,7 +454,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     } else if watchlist.discord_messages.is_empty() {
                                         ui.add_space(20.0);
                                         ui.horizontal(|ui| {
-                                            ui.add_space(8.0);
+                                            ui.add_space(6.0);
                                             ui.label(egui::RichText::new("No messages in this channel").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
                                         });
                                     }
@@ -500,7 +500,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.add_space(8.0);
+                                ui.add_space(6.0);
                                 let input = ui.add(
                                     egui::TextEdit::singleline(&mut watchlist.discord_input)
                                         .desired_width(content_w - 60.0)

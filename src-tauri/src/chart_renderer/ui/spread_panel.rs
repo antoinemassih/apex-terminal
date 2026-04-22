@@ -218,8 +218,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
 
             // ── Header ──
             ui.horizontal(|ui| {
-                ui.add_space(10.0);
-                ui.label(egui::RichText::new("SPREAD BUILDER").monospace().size(11.0).strong().color(t.accent));
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("SPREAD BUILDER").monospace().size(10.0).strong().color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(6.0);
                     if close_button(ui, t.dim) { close = true; }
@@ -236,12 +236,12 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
 
             egui::ScrollArea::vertical().id_salt("spread_body").show(ui, |ui| {
                 ui.set_min_width(w - 4.0);
-                let m = 10.0;
+                let m = 8.0;
 
                 // ── Symbol ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("Symbol").monospace().size(10.0).color(t.dim));
+                    ui.label(egui::RichText::new("Symbol").monospace().size(9.0).color(t.dim));
                     ui.add_space(4.0);
                     let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.spread_state.symbol)
                         .desired_width(80.0)
@@ -269,28 +269,28 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Strategy selector ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("Strategy").monospace().size(10.0).color(t.dim));
+                    ui.label(egui::RichText::new("Strategy").monospace().size(9.0).color(t.dim));
                     ui.add_space(4.0);
                     let current_label = watchlist.spread_state.strategy.label();
                     let combo = egui::ComboBox::from_id_salt("spread_strategy_combo")
-                        .selected_text(egui::RichText::new(current_label).monospace().size(10.0))
+                        .selected_text(egui::RichText::new(current_label).monospace().size(9.0))
                         .width(180.0);
                     combo.show_ui(ui, |ui| {
                         for strat in SpreadStrategy::all() {
                             let label = strat.label();
                             if ui.selectable_label(watchlist.spread_state.strategy == *strat,
-                                egui::RichText::new(label).monospace().size(10.0)).clicked() {
+                                egui::RichText::new(label).monospace().size(9.0)).clicked() {
                                 pending_strategy = Some(strat.clone());
                             }
                         }
                     });
                 });
-                ui.add_space(8.0);
+                ui.add_space(6.0);
 
                 // ── Legs ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("LEGS").monospace().size(10.0).strong().color(t.dim));
+                    ui.label(egui::RichText::new("LEGS").monospace().size(9.0).strong().color(t.dim));
                 });
                 ui.add_space(4.0);
 
@@ -396,7 +396,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         add_leg = true;
                     }
                 });
-                ui.add_space(10.0);
+                ui.add_space(8.0);
 
                 // ── Spread Metrics ──
                 let (net_dc, max_profit, max_loss, break_even) = compute_spread_metrics(&watchlist.spread_state.legs);
@@ -416,18 +416,18 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         ui.label(egui::RichText::new(*label).monospace().size(9.0).color(t.dim));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(m);
-                            ui.label(egui::RichText::new(value).monospace().size(10.0).strong().color(*col));
+                            ui.label(egui::RichText::new(value).monospace().size(9.0).strong().color(*col));
                         });
                     });
                 }
-                ui.add_space(8.0);
+                ui.add_space(6.0);
 
                 // ── Qty multiplier ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("Qty").monospace().size(10.0).color(t.dim));
-                    ui.add_space(8.0);
-                    if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0).color(t.dim))
+                    ui.label(egui::RichText::new("Qty").monospace().size(9.0).color(t.dim));
+                    ui.add_space(6.0);
+                    if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0).color(t.dim))
                         .fill(color_alpha(t.toolbar_border, ALPHA_MUTED)).corner_radius(RADIUS_MD)
                         .min_size(egui::vec2(22.0, 18.0))
                     ).clicked() && watchlist.spread_state.combo_qty > 1 {
@@ -435,21 +435,21 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     }
                     ui.label(egui::RichText::new(format!("{}", watchlist.spread_state.combo_qty))
                         .monospace().size(12.0).strong().color(egui::Color32::from_gray(240)));
-                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0).color(t.dim))
+                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0).color(t.dim))
                         .fill(color_alpha(t.toolbar_border, ALPHA_MUTED)).corner_radius(RADIUS_MD)
                         .min_size(egui::vec2(22.0, 18.0))
                     ).clicked() {
                         watchlist.spread_state.combo_qty += 1;
                     }
                 });
-                ui.add_space(10.0);
+                ui.add_space(8.0);
 
                 // ── Submit button ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let btn_col = t.accent;
                     if ui.add(egui::Button::new(
-                        egui::RichText::new("SUBMIT SPREAD").monospace().size(11.0).strong().color(egui::Color32::WHITE))
+                        egui::RichText::new("SUBMIT SPREAD").monospace().size(10.0).strong().color(egui::Color32::WHITE))
                         .fill(btn_col)
                         .corner_radius(4.0)
                         .min_size(egui::vec2(w - m * 2.0, 30.0))

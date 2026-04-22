@@ -67,7 +67,7 @@ pub(crate) fn draw(
                         color: egui::Color32::from_black_alpha(80),
                     })
                     .show(ui, |ui| {
-                        ui.set_width(280.0);
+                        ui.set_width(260.0);
 
                         // ── Header: underlying symbol + close ──
                         ui.horizontal(|ui| {
@@ -180,7 +180,7 @@ pub(crate) fn draw(
 
                         // Column headers: CALL | STRIKE | PUT
                         ui.horizontal(|ui| {
-                            let cw = 270.0 / 3.0;
+                            let cw = 250.0 / 3.0;
                             col_header(ui, "CALL",   cw, t.dim.gamma_multiply(0.5), false);
                             col_header(ui, "STRIKE", cw, t.dim.gamma_multiply(0.5), false);
                             col_header(ui, "PUT",    cw, t.dim.gamma_multiply(0.5), false);

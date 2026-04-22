@@ -12,11 +12,11 @@ const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Trendline filter dropdown ────────────────────────────────────────────
 if watchlist.trendline_filter_open {
-    dialog_window_themed(ctx, "trendline_filter", egui::pos2(300.0, 40.0), 210.0, t.toolbar_bg, t.toolbar_border, None)
+    dialog_window_themed(ctx, "trendline_filter", egui::pos2(300.0, 40.0), 190.0, t.toolbar_bg, t.toolbar_border, None)
         .show(ctx, |ui| {
             if dialog_header(ui, "DRAWING FILTERS", t.dim) { watchlist.trendline_filter_open = false; }
-            ui.add_space(8.0);
-            let m = 10.0;
+            ui.add_space(6.0);
+            let m = 8.0;
             let chart = &mut panes[ap];
 
             // Per-type visibility toggles
@@ -37,13 +37,13 @@ if watchlist.trendline_filter_open {
                 }).count();
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new(format!("{} ({})", label, count)).monospace().size(10.0).color(egui::Color32::from_rgb(200,200,210)));
+                    ui.label(egui::RichText::new(format!("{} ({})", label, count)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
                 });
             }
 
-            ui.add_space(8.0);
+            ui.add_space(6.0);
             dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_LINE));
-            ui.add_space(8.0);
+            ui.add_space(6.0);
 
             // Visibility toggles
             dialog_section(ui, "VISIBILITY", m, t.dim.gamma_multiply(0.5));
@@ -67,9 +67,9 @@ if watchlist.trendline_filter_open {
 
             // Groups
             if !chart.groups.is_empty() {
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_LINE));
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 dialog_section(ui, "GROUPS", m, t.dim.gamma_multiply(0.5));
                 for g in chart.groups.clone() {
                     let hidden = chart.hidden_groups.contains(&g.id);
@@ -80,7 +80,7 @@ if watchlist.trendline_filter_open {
                     }
                 }
             }
-            ui.add_space(8.0);
+            ui.add_space(6.0);
         });
 }
 
@@ -185,19 +185,19 @@ if chart.picker_open {
 
     let picker_win_resp = egui::Window::new(format!("picker_{}", picker_pane_idx))
         .fixed_pos(chart.picker_pos)
-        .fixed_size(egui::vec2(340.0, 420.0))
+        .fixed_size(egui::vec2(320.0, 420.0))
         .title_bar(false)
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)))
             .corner_radius(RADIUS_LG)
-            .inner_margin(egui::Margin::same(8)))
+            .inner_margin(egui::Margin::same(6)))
         .show(ctx, |ui| {
             let input = ui.add(
                 egui::TextEdit::singleline(&mut chart.picker_query)
                     .hint_text("Search any stock, ETF, index...")
-                    .desired_width(320.0)
-                    .font(egui::FontId::monospace(13.0))
+                    .desired_width(300.0)
+                    .font(egui::FontId::monospace(11.0))
             );
             input.request_focus();
 

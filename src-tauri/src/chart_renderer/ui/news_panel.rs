@@ -12,7 +12,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
     let mut close_news = false;
     egui::Window::new("news_feed")
         .default_pos(egui::pos2(300.0, 100.0))
-        .default_size(egui::vec2(300.0, 400.0))
+        .default_size(egui::vec2(280.0, 400.0))
         .resizable(true)
         .movable(true)
         .title_bar(false)
@@ -26,9 +26,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
 
             // Header
             ui.horizontal(|ui| {
-                ui.add_space(10.0);
-                ui.label(egui::RichText::new("NEWS").monospace().size(11.0).strong().color(t.accent));
                 ui.add_space(8.0);
+                ui.label(egui::RichText::new("NEWS").monospace().size(10.0).strong().color(t.accent));
+                ui.add_space(6.0);
                 let filter_label = if watchlist.news_filter_symbol { active_symbol } else { "All" };
                 let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
                 if ui.add(egui::Button::new(
@@ -79,7 +79,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
             }
 
             for news in &filtered {
-                let m = 10.0;
+                let m = 8.0;
                 let item_rect = egui::Rect::from_min_size(
                     egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
                     egui::vec2(w, 52.0),
@@ -95,7 +95,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                 );
                 ui.painter().text(
                     headline_rect.left_top(), egui::Align2::LEFT_TOP,
-                    &news.headline, egui::FontId::monospace(10.0),
+                    &news.headline, egui::FontId::monospace(9.0),
                     egui::Color32::from_gray(230),
                 );
 

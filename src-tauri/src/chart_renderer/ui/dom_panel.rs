@@ -6,10 +6,10 @@ use super::style::*;
 use super::super::gpu::Theme;
 use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
 
-pub(crate) const DOM_SIDEBAR_W: f32 = 240.0;
+pub(crate) const DOM_SIDEBAR_W: f32 = 220.0;
 const DOM_MIN_W: f32 = 180.0;
 const DOM_MAX_W: f32 = 450.0;
-const ROW_H: f32 = 20.0;
+const ROW_H: f32 = 18.0;
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum DomOrderType { Market, Limit }
@@ -80,42 +80,42 @@ pub(crate) fn draw(
     let xb = x0+cd; let xp = xb+cb; let xa = xp+cp; let xv = xa+ca; let xo = xv+cv;
 
     // Header
-    let hy = inner.top()+2.0;
+    let hy = inner.top()+1.0;
     let hf = egui::FontId::monospace(8.5);
     let hc = t.dim.gamma_multiply(0.45);
-    if show_delta { painter.text(egui::pos2(x0+cd*0.5, hy+6.0), egui::Align2::CENTER_CENTER, "\u{0394}", hf.clone(), hc); }
-    painter.text(egui::pos2(xb+cb*0.5, hy+6.0), egui::Align2::CENTER_CENTER, "BID", hf.clone(), t.bull.gamma_multiply(0.5));
+    if show_delta { painter.text(egui::pos2(x0+cd*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "\u{0394}", hf.clone(), hc); }
+    painter.text(egui::pos2(xb+cb*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "BID", hf.clone(), t.bull.gamma_multiply(0.5));
     // PRICE header — double-click to recenter
-    let price_hdr_rect = egui::Rect::from_min_size(egui::pos2(xp, hy), egui::vec2(cp, 14.0));
+    let price_hdr_rect = egui::Rect::from_min_size(egui::pos2(xp, hy), egui::vec2(cp, 12.0));
     let price_hdr_resp = ui.allocate_rect(price_hdr_rect, egui::Sense::click());
-    painter.text(egui::pos2(xp+cp*0.5, hy+6.0), egui::Align2::CENTER_CENTER, "PRICE", hf.clone(), hc);
+    painter.text(egui::pos2(xp+cp*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "PRICE", hf.clone(), hc);
     if price_hdr_resp.double_clicked() {
         *center_price = (current_price / tick_size).round() * tick_size;
     }
     if price_hdr_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    painter.text(egui::pos2(xa+ca*0.5, hy+6.0), egui::Align2::CENTER_CENTER, "ASK", hf.clone(), t.bear.gamma_multiply(0.5));
-    if show_vol { painter.text(egui::pos2(xv+cv*0.5, hy+6.0), egui::Align2::CENTER_CENTER, "VOL", hf.clone(), hc); }
+    painter.text(egui::pos2(xa+ca*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "ASK", hf.clone(), t.bear.gamma_multiply(0.5));
+    if show_vol { painter.text(egui::pos2(xv+cv*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "VOL", hf.clone(), hc); }
     // ORD header + column mode toggle [+/-]
     let ord_label_w = co * 0.5;
-    painter.text(egui::pos2(xo+ord_label_w*0.5, hy+6.0), egui::Align2::CENTER_CENTER, "ORD", hf.clone(), hc);
+    painter.text(egui::pos2(xo+ord_label_w*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "ORD", hf.clone(), hc);
     // [+] button
-    let plus_r = egui::Rect::from_min_size(egui::pos2(xo+ord_label_w+1.0, hy+1.0), egui::vec2(10.0, 11.0));
+    let plus_r = egui::Rect::from_min_size(egui::pos2(xo+ord_label_w+1.0, hy+1.0), egui::vec2(10.0, 9.0));
     let plus_resp = ui.allocate_rect(plus_r, egui::Sense::click());
     painter.text(plus_r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(8.0), if plus_resp.hovered() { t.accent } else { hc });
     if plus_resp.clicked() && mode < 2 { *dom_col_mode = mode + 1; }
     if plus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     // [-] button
-    let minus_r = egui::Rect::from_min_size(egui::pos2(plus_r.right()+1.0, hy+1.0), egui::vec2(10.0, 11.0));
+    let minus_r = egui::Rect::from_min_size(egui::pos2(plus_r.right()+1.0, hy+1.0), egui::vec2(10.0, 9.0));
     let minus_resp = ui.allocate_rect(minus_r, egui::Sense::click());
     painter.text(minus_r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(8.0), if minus_resp.hovered() { t.accent } else { hc });
     if minus_resp.clicked() && mode > 0 { *dom_col_mode = mode - 1; }
     if minus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
-    let sep_y = hy+14.0;
+    let sep_y = hy+12.0;
     painter.line_segment([egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)], egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)));
 
     // ── Bottom controls ──
-    let ctrl_h = 58.0;
+    let ctrl_h = 54.0;
     let ctrl_top = inner.bottom() - ctrl_h;
     painter.rect_filled(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), ctrl_top), egui::pos2(dom_rect.right(), dom_rect.bottom())), 0.0, t.toolbar_bg);
     // Inset shadow
@@ -128,7 +128,7 @@ pub(crate) fn draw(
 
     // Row 1 (16px): [-] qty [+]  [MKT/LMT]  [A]
     //               ← half width →  ← rest →
-    let r1y = ctrl_top+4.0; let r1h = 16.0;
+    let r1y = ctrl_top+2.0; let r1h = 14.0;
     let half_w = aw * 0.48;
     let mut cx = inner.left()+1.0;
 
@@ -136,7 +136,7 @@ pub(crate) fn draw(
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
     painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) });
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(11.0), t.dim);
+    painter.text(r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(10.0), t.dim);
     if resp.clicked() && *order_qty > 1 { *order_qty -= 1; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     cx = r.right()+1.0;
@@ -152,7 +152,7 @@ pub(crate) fn draw(
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
     painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) });
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(11.0), t.dim);
+    painter.text(r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(10.0), t.dim);
     if resp.clicked() { *order_qty += 1; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     cx = r.right()+4.0;
@@ -179,8 +179,8 @@ pub(crate) fn draw(
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
     // Row 2+3 (32px total): [BUY] [FLATTEN/CANCEL stacked] [SELL]
-    let r2y = r1y+r1h+3.0;
-    let action_h = 32.0;
+    let r2y = r1y+r1h+2.0;
+    let action_h = 30.0;
     let side_w = aw * 0.34;
     let mid_w = aw - side_w*2.0 - 6.0;
     let mid_half_h = action_h * 0.5 - 1.0;
@@ -226,7 +226,7 @@ pub(crate) fn draw(
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Sell, p, *order_qty)); }
 
     // ── Price ladder ──
-    let body_top = sep_y+2.0;
+    let body_top = sep_y+1.0;
     let body_h = (ctrl_top - body_top - 2.0).max(60.0);
     let max_rows = (body_h / ROW_H) as i32;
     let half = max_rows / 2;
@@ -241,7 +241,7 @@ pub(crate) fn draw(
     let mv = levels.iter().map(|l| l.volume).max().unwrap_or(1).max(1);
     let ao: Vec<&OrderLevel> = orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).collect();
     let font = egui::FontId::monospace(12.5);
-    let font_sm = egui::FontId::monospace(10.0);
+    let font_sm = egui::FontId::monospace(9.0);
     let lp = ui.painter_at(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), body_top), egui::pos2(dom_rect.right(), body_top+body_h)));
 
     for ri in (-half..=half).rev() {
@@ -285,7 +285,7 @@ pub(crate) fn draw(
         // Bid bar + split-color text
         if bs > 0 {
             let fr = bs as f32/ms; let bw = fr*cb*0.85;
-            let bar_rect = egui::Rect::from_min_size(egui::pos2(xb+cb-bw-1.0, ry+2.0), egui::vec2(bw, ROW_H-4.0));
+            let bar_rect = egui::Rect::from_min_size(egui::pos2(xb+cb-bw-1.0, ry+1.0), egui::vec2(bw, ROW_H-2.0));
             lp.rect_filled(bar_rect, 1.5, color_alpha(t.bull, (60.0+fr*140.0) as u8));
             if show_numbers {
                 let txt = fmt_size(bs);
@@ -304,12 +304,12 @@ pub(crate) fn draw(
         let pc = if ic { egui::Color32::WHITE } else if is { t.accent } else if ia { t.bull.gamma_multiply(0.7) } else { t.bear.gamma_multiply(0.7) };
         let ps = if tick_size >= 1.0 { format!("{:.0}", price) }
             else { let s = format!("{:.2}", price); if s.len() > 5 && cp < 60.0 { format!("{:.1}", price) } else { s } };
-        lp.text(egui::pos2(xp+cp*0.5, cy), egui::Align2::CENTER_CENTER, &ps, if ic { egui::FontId::monospace(13.0) } else { font.clone() }, pc);
+        lp.text(egui::pos2(xp+cp*0.5, cy), egui::Align2::CENTER_CENTER, &ps, if ic { egui::FontId::monospace(11.0) } else { font.clone() }, pc);
 
         // Ask bar + split-color text
         if ask > 0 {
             let fr = ask as f32/ms; let bw = fr*ca*0.85;
-            let bar_rect = egui::Rect::from_min_size(egui::pos2(xa+1.0, ry+2.0), egui::vec2(bw, ROW_H-4.0));
+            let bar_rect = egui::Rect::from_min_size(egui::pos2(xa+1.0, ry+1.0), egui::vec2(bw, ROW_H-2.0));
             lp.rect_filled(bar_rect, 1.5, color_alpha(t.bear, (60.0+fr*140.0) as u8));
             if show_numbers {
                 let txt = fmt_size(ask);
@@ -326,7 +326,7 @@ pub(crate) fn draw(
         // Volume (with split-color)
         if show_vol && vol > 0 {
             let vf = vol as f32/mv as f32; let vw = vf*cv*0.8;
-            let vol_bar = egui::Rect::from_min_size(egui::pos2(xv+1.0, ry+2.5), egui::vec2(vw, ROW_H-5.0));
+            let vol_bar = egui::Rect::from_min_size(egui::pos2(xv+1.0, ry+1.0), egui::vec2(vw, ROW_H-2.0));
             lp.rect_filled(vol_bar, 1.0, color_alpha(t.dim, ALPHA_SUBTLE));
             let vs = if vol >= 1_000_000 { format!("{:.1}M", vol as f64/1e6) } else if vol >= 1_000 { format!("{:.0}K", vol as f64/1e3) } else { format!("{}", vol) };
             let txt_pos = egui::pos2(xv+cv*0.5, cy);
@@ -347,7 +347,7 @@ pub(crate) fn draw(
             let oc = ord.color(t.bull, t.bear);
             let side_ch = match ord.side { OrderSide::Buy | OrderSide::TriggerBuy => "B", _ => "S" };
             let label = format!("{}{}", side_ch, ord.qty);
-            let br = egui::Rect::from_min_size(egui::pos2(xo+1.0, ry+2.0), egui::vec2(co-3.0, ROW_H-4.0));
+            let br = egui::Rect::from_min_size(egui::pos2(xo+1.0, ry+1.0), egui::vec2(co-3.0, ROW_H-2.0));
 
             // Draggable badge
             let drag_resp = ui.allocate_rect(br, egui::Sense::click_and_drag());
@@ -409,7 +409,7 @@ pub(crate) fn draw(
                 if let Some(drag_ord) = ao.iter().find(|o| o.id == did) {
                     let oc = drag_ord.color(t.bull, t.bear);
                     let side_ch = match drag_ord.side { OrderSide::Buy | OrderSide::TriggerBuy => "B", _ => "S" };
-                    let gr = egui::Rect::from_min_size(egui::pos2(xo+1.0, ry+2.0), egui::vec2(co-3.0, ROW_H-4.0));
+                    let gr = egui::Rect::from_min_size(egui::pos2(xo+1.0, ry+1.0), egui::vec2(co-3.0, ROW_H-2.0));
                     lp.rect_filled(gr, 2.0, color_alpha(oc, 160));
                     lp.rect_stroke(gr, 2.0, egui::Stroke::new(STROKE_BOLD, oc), egui::StrokeKind::Outside);
                     draw_order_label(&lp, gr, side_ch, drag_ord.qty, oc);

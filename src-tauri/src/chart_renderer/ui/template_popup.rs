@@ -35,7 +35,7 @@ pub(crate) fn draw(
                         color: egui::Color32::from_black_alpha(80),
                     })
                     .show(ui, |ui| {
-                        ui.set_width(240.0);
+                        ui.set_width(220.0);
 
                         // Header
                         ui.horizontal(|ui| {

@@ -53,10 +53,10 @@ if let Some(edit_id) = watchlist.hotkey_editing_id {
 // ── Hotkey editor dialog ────────────────────────────────────────────────
 if watchlist.hotkey_editor_open {
     let screen = ctx.screen_rect();
-    dialog_window_themed(ctx, "hotkey_editor", egui::pos2(screen.center().x - 280.0, 40.0), 560.0, t.toolbar_bg, t.toolbar_border, None)
+    dialog_window_themed(ctx, "hotkey_editor", egui::pos2(screen.center().x - 270.0, 40.0), 540.0, t.toolbar_bg, t.toolbar_border, None)
         .show(ctx, |ui| {
             if dialog_header(ui, "KEYBOARD SHORTCUTS", t.dim) { watchlist.hotkey_editor_open = false; }
-            ui.add_space(8.0);
+            ui.add_space(6.0);
             draw_content(ui, watchlist, t);
         });
 }
@@ -81,8 +81,8 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 ui.add_space(2.0);
             }
             ui.horizontal(|ui| {
-                ui.add_space(10.0);
-                ui.label(egui::RichText::new(hk_name.as_str()).monospace().size(10.0).color(egui::Color32::from_white_alpha(180)));
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new(hk_name.as_str()).monospace().size(9.0).color(egui::Color32::from_white_alpha(180)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if *is_editing {
                         ui.label(egui::RichText::new("Press a key...").monospace().size(9.0).color(t.accent));
@@ -93,16 +93,16 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     }
                     let key_bg = if *is_editing { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, ALPHA_TINT) };
                     let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
-                    ui.add(egui::Button::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(10.0).color(key_fg))
+                    ui.add(egui::Button::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(9.0).color(key_fg))
                         .fill(key_bg).corner_radius(3.0).min_size(egui::vec2(80.0, 18.0)));
                 });
             });
         }
     }
-    ui.add_space(10.0);
+    ui.add_space(8.0);
     ui.horizontal(|ui| {
-        ui.add_space(10.0);
-        if ui.button(egui::RichText::new("Reset Defaults").monospace().size(10.0).color(t.dim)).clicked() {
+        ui.add_space(8.0);
+        if ui.button(egui::RichText::new("Reset Defaults").monospace().size(9.0).color(t.dim)).clicked() {
             watchlist.hotkeys = default_hotkeys();
         }
     });

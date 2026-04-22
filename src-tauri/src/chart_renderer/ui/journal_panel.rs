@@ -35,9 +35,9 @@ pub(crate) fn draw(
     if !watchlist.journal_panel_open { return; }
 
     egui::SidePanel::right("journal_panel")
-        .default_width(320.0)
-        .min_width(280.0)
-        .max_width(480.0)
+        .default_width(300.0)
+        .min_width(260.0)
+        .max_width(460.0)
         .resizable(true)
         .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
         .show(ctx, |ui| {
@@ -205,7 +205,7 @@ fn draw_card(ui: &mut egui::Ui, entry: &JournalEntry, t: &Theme) {
         egui::pos2(card_rect.left(), card_rect.top() + 3.0),
         egui::pos2(card_rect.left() + 3.0, card_rect.bottom() - 3.0)), 1.0, pnl_col);
 
-    let cx = card_rect.left() + 10.0;
+    let cx = card_rect.left() + 8.0;
     let mut cy = card_rect.top() + 8.0;
 
     p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,

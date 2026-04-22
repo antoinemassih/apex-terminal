@@ -14,8 +14,8 @@ pub(crate) fn draw(
     if !watchlist.playbook_panel_open { return; }
 
     egui::SidePanel::right("playbook_panel")
-        .default_width(300.0)
-        .min_width(260.0)
+        .default_width(280.0)
+        .min_width(240.0)
         .max_width(440.0)
         .resizable(true)
         .frame(panel_frame(t.toolbar_bg, t.toolbar_border))

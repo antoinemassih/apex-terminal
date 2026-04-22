@@ -9,6 +9,9 @@ pub mod monitoring;
 pub mod discord;
 pub mod crypto_feed;
 pub mod signals_feed;
+pub mod design_tokens;
+#[cfg(feature = "design-mode")]
+pub mod design_inspector;
 
 use drawings::DbPool;
 use sqlx::postgres::PgPoolOptions;

@@ -24,8 +24,8 @@ pub(crate) fn draw(
     let active_symbol = if !panes.is_empty() { panes[ap].symbol.clone() } else { String::new() };
 
     egui::SidePanel::right("feed_panel")
-        .default_width(320.0)
-        .min_width(280.0)
+        .default_width(300.0)
+        .min_width(260.0)
         .max_width(480.0)
         .resizable(true)
         .frame(panel_frame(t.toolbar_bg, t.toolbar_border))

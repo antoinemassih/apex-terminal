@@ -271,6 +271,8 @@ impl WidgetDock {
     }
 }
 
+fn default_opacity() -> f32 { 1.0 }
+
 /// A floating info widget placed on the chart canvas.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ChartWidget {
@@ -285,6 +287,8 @@ pub(crate) struct ChartWidget {
     pub display: WidgetDisplayMode, // Card / HUD / Minimal
     pub dock: WidgetDock,           // Float / Top / Bottom
     pub dock_x: f32,               // horizontal pos in dock strip (pixels from chart left)
+    #[serde(default = "default_opacity")]
+    pub opacity: f32,              // 0.0-1.0 — fades widget toward background
     // ── Animation state (transient, not meaningful to persist but serde-friendly) ──
     pub anim_x: f32,  // current animated screen x
     pub anim_y: f32,  // current animated screen y
@@ -369,7 +373,7 @@ impl ChartWidget {
         };
         Self { kind, x, y, w, h, visible: true, collapsed: false, locked: false,
                display: WidgetDisplayMode::Card, dock: WidgetDock::Float,
-               dock_x: 0.0, anim_x: 0.0, anim_y: 0.0, anim_init: false }
+               dock_x: 0.0, anim_x: 0.0, anim_y: 0.0, anim_init: false, opacity: 1.0 }
     }
 }
 

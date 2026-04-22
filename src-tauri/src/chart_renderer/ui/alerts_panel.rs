@@ -16,9 +16,9 @@ pub(crate) fn draw(
 if !watchlist.alerts_panel_open { return; }
 
 egui::SidePanel::right("alerts_panel")
-    .default_width(260.0)
-    .min_width(200.0)
-    .max_width(320.0)
+    .default_width(240.0)
+    .min_width(180.0)
+    .max_width(300.0)
     .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
     .show(ctx, |ui| {
         if panel_header(ui, &format!("{} ALERTS", Icon::BELL), t.accent, t.dim) {
@@ -145,9 +145,9 @@ pub(crate) fn draw_content(
                 let dir_color = if alert.above { t.bull } else { t.bear };
                 order_card(ui, t.dim, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong().color(TEXT_PRIMARY));
+                        ui.label(egui::RichText::new(&alert.symbol).monospace().size(9.0).strong().color(TEXT_PRIMARY));
                         ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
-                            .monospace().size(10.0).color(dir_color));
+                            .monospace().size(9.0).color(dir_color));
                         status_badge(ui, "DRAFT", t.dim);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_MD).on_hover_text("Cancel").clicked() {
@@ -220,10 +220,10 @@ pub(crate) fn draw_content(
                 let dir_color = if alert.above { t.bull } else { t.bear };
                 order_card(ui, dir_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
+                        ui.label(egui::RichText::new(&alert.symbol).monospace().size(9.0).strong()
                             .color(TEXT_PRIMARY));
                         ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
-                            .monospace().size(10.0).color(dir_color));
+                            .monospace().size(9.0).color(dir_color));
                         status_badge(ui, "ACTIVE", egui::Color32::from_rgb(255, 191, 0));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_MD).clicked()
@@ -242,10 +242,10 @@ pub(crate) fn draw_content(
                     let dir_color = if alert.above { t.bull } else { t.bear };
                     order_card(ui, dir_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
+                            ui.label(egui::RichText::new(&alert.symbol).monospace().size(9.0).strong()
                                 .color(TEXT_PRIMARY));
                             ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
-                                .monospace().size(10.0).color(dir_color));
+                                .monospace().size(9.0).color(dir_color));
                             status_badge(ui, "ACTIVE", egui::Color32::from_rgb(255, 191, 0));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui.add(egui::Button::new(
@@ -293,10 +293,10 @@ pub(crate) fn draw_content(
                     let dir = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
                     order_card(ui, t.accent, color_alpha(t.toolbar_border, 8), |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
+                            ui.label(egui::RichText::new(&alert.symbol).monospace().size(9.0).strong()
                                 .color(TEXT_SECONDARY));
                             ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
-                                .monospace().size(10.0).color(t.accent));
+                                .monospace().size(9.0).color(t.accent));
                             status_badge(ui, "TRIGGERED", t.accent);
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.4), FONT_MD).clicked()
@@ -313,10 +313,10 @@ pub(crate) fn draw_content(
                         let dir = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
                         order_card(ui, t.accent, color_alpha(t.toolbar_border, 8), |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(&alert.symbol).monospace().size(10.0).strong()
+                                ui.label(egui::RichText::new(&alert.symbol).monospace().size(9.0).strong()
                                     .color(TEXT_SECONDARY));
                                 ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price))
-                                    .monospace().size(10.0).color(t.accent));
+                                    .monospace().size(9.0).color(t.accent));
                                 status_badge(ui, "TRIGGERED", t.accent);
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     if ui.add(egui::Button::new(

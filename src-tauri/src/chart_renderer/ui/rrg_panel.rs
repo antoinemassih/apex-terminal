@@ -195,7 +195,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     let use_demo = sectors.is_empty();
 
     // Header
-    ui.label(egui::RichText::new("RRG — Relative Rotation").monospace().size(11.0).color(t.dim));
+    ui.label(egui::RichText::new("RRG — Relative Rotation").monospace().size(10.0).color(t.dim));
     super::style::separator(ui, t.toolbar_border);
     ui.add_space(2.0);
 
@@ -284,8 +284,8 @@ pub(crate) fn draw(
     if !watchlist.rrg_open { return; }
 
     egui::SidePanel::right("rrg_panel")
-        .default_width(340.0)
-        .min_width(260.0)
+        .default_width(320.0)
+        .min_width(240.0)
         .max_width(500.0)
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)

@@ -1,0 +1,29 @@
+[package]
+name = "apex-design"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "apex-design"
+path = "src/main.rs"
+
+[build-dependencies]
+winresource = "0.1"
+
+[dependencies]
+# Core lib — reuse data, networking, rendering
+_scaffold = { path = "../src-tauri", features = ["design-mode"] }
+
+# Design mode deps
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+notify = "7"
+egui = "0.31"
+
+# Same window/render deps as core
+winit = "0.30"
+wgpu = "24"
+egui-wgpu = "0.31"
+egui-winit = "0.31"
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }

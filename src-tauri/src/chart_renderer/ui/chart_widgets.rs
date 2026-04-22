@@ -232,6 +232,12 @@ pub(crate) fn draw_widgets(
             let body = card_rect;
             let mut btns = Vec::new();
             draw_widget_body(&painter, body, kind, &wd, t, hover_pos, &mut btns);
+            // Opacity fade: overlay bg-colored rect to dim the widget toward background
+            if w.opacity < 0.999 {
+                let fade = ((1.0 - w.opacity).clamp(0.0, 1.0) * 255.0) as u8;
+                painter.rect_filled(card_rect, 10.0,
+                    egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), fade));
+            }
             if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                 if let Some(pos) = hover_pos {
                     for (btn_rect, action) in &btns {

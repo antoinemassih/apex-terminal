@@ -71,7 +71,7 @@ pub(crate) fn draw_content(
 
     // ── Header ──
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("SCANNERS").monospace().size(10.0).strong().color(t.accent));
+        ui.label(egui::RichText::new("SCANNERS").monospace().size(9.0).strong().color(t.accent));
         if let Some(last) = watchlist.scanner_last_fetch {
             let elapsed = last.elapsed().as_secs();
             let remaining = if elapsed < REFRESH_INTERVAL_SECS { REFRESH_INTERVAL_SECS - elapsed } else { 0 };
@@ -99,7 +99,7 @@ pub(crate) fn draw_content(
     // ── Custom scanner builder (collapsible) ──
     if watchlist.scanner_builder_open {
         ui.group(|ui| {
-            ui.set_width(panel_w - 8.0);
+            ui.set_width(panel_w - 6.0);
             ui.label(egui::RichText::new("New Scanner").monospace().size(9.0).strong().color(t.accent));
             ui.add_space(2.0);
 
@@ -350,7 +350,7 @@ pub(crate) fn draw(
     let mut pending_symbol: Option<String> = None;
 
     egui::SidePanel::right("scanner_panel")
-        .default_width(260.0)
+        .default_width(240.0)
         .min_width(180.0)
         .max_width(420.0)
         .resizable(true)

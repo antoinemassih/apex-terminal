@@ -13,7 +13,7 @@ if panes[ap].overlay_editing {
     let mut delete_idx: Option<usize> = None;
     egui::Window::new("overlay_mgr")
         .default_pos(egui::pos2(200.0, 80.0))
-        .default_size(egui::vec2(280.0, 0.0))
+        .default_size(egui::vec2(260.0, 0.0))
         .resizable(false)
         .movable(true)
         .title_bar(false)
@@ -23,7 +23,7 @@ if panes[ap].overlay_editing {
             .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
             .corner_radius(RADIUS_LG))
         .show(ctx, |ui| {
-            let m = 10.0;
+            let m = 8.0;
             // Header
             if dialog_header(ui, "SYMBOL OVERLAYS", t.dim) { close_ov = true; }
             ui.add_space(6.0);
@@ -42,7 +42,7 @@ if panes[ap].overlay_editing {
                     ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 10.0), 4.0, oc);
                     ui.add_space(12.0);
                     let status = if ov_loading { " ..." } else if ov_empty { " (no data)" } else { "" };
-                    ui.label(egui::RichText::new(format!("{}{}", ov_sym, status)).monospace().size(11.0).color(oc));
+                    ui.label(egui::RichText::new(format!("{}{}", ov_sym, status)).monospace().size(10.0).color(oc));
                     // Color cycle (click to cycle through colors)
                     let (cr, cresp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
                     ui.painter().circle_filled(cr.center(), 5.0, oc);
@@ -55,7 +55,7 @@ if panes[ap].overlay_editing {
                     // Candle toggle
                     let candle_icon = if ov_candles { Icon::CHART_BAR } else { Icon::CHART_LINE };
                     let candle_col = if ov_candles { t.accent } else { t.dim.gamma_multiply(0.5) };
-                    if ui.add(egui::Button::new(egui::RichText::new(candle_icon).size(11.0).color(candle_col))
+                    if ui.add(egui::Button::new(egui::RichText::new(candle_icon).size(10.0).color(candle_col))
                         .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
@@ -81,8 +81,8 @@ if panes[ap].overlay_editing {
                 ui.add_space(m);
                 ui.add(egui::TextEdit::singleline(&mut panes[ap].overlay_input)
                     .hint_text("Symbol...")
-                    .desired_width(260.0 - m * 2.0)
-                    .font(egui::FontId::monospace(11.0)));
+                    .desired_width(240.0 - m * 2.0)
+                    .font(egui::FontId::monospace(10.0)));
             });
             let query = panes[ap].overlay_input.trim().to_uppercase();
             if !query.is_empty() {
@@ -91,8 +91,8 @@ if panes[ap].overlay_editing {
                 for si in &results {
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} — {}", si.symbol, si.name)).monospace().size(10.0).color(t.dim))
-                            .frame(false).min_size(egui::vec2(250.0, 20.0))).clicked() {
+                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} — {}", si.symbol, si.name)).monospace().size(9.0).color(t.dim))
+                            .frame(false).min_size(egui::vec2(230.0, 20.0))).clicked() {
                             let color = OVERLAY_COLORS[panes[ap].symbol_overlays.len() % OVERLAY_COLORS.len()].to_string();
                             panes[ap].symbol_overlays.push(SymbolOverlay {
                                 symbol: si.symbol.to_string(), color, bars: vec![], timestamps: vec![], loading: true, show_candles: false, visible: true,
@@ -113,7 +113,7 @@ if panes[ap].overlay_editing {
             }
 
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close_ov = true; }
-            ui.add_space(8.0);
+            ui.add_space(6.0);
         });
     if let Some(di) = delete_idx { panes[ap].symbol_overlays.remove(di); }
     if close_ov { panes[ap].overlay_editing = false; panes[ap].overlay_editing_idx = None; panes[ap].overlay_input.clear(); }
