@@ -191,18 +191,26 @@ pub(crate) fn draw_widgets(
 
             // Sentiment-driven background: the color reflects the data state
             let sentiment = widget_sentiment(kind, &wd);
-            let (sr, sg, sb) = match sentiment {
-                s if s > 0.6  => (t.bull.r(), t.bull.g(), t.bull.b()),   // strong positive — green
-                s if s > 0.2  => (140, 200, 140),                        // mild positive — sage
-                s if s > -0.2 => (t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b()), // neutral — base
-                s if s > -0.6 => (220, 180, 100),                        // caution — amber
-                _             => (t.bear.r(), t.bear.g(), t.bear.b()),   // alert — red
+            let is_light = t.is_light();
+            // Pastel tint colors — more prominent on light themes
+            let (sr, sg, sb) = if is_light {
+                match sentiment {
+                    s if s > 0.6  => (200, 235, 200),  // soft green
+                    s if s > 0.2  => (215, 235, 210),  // sage
+                    s if s > -0.2 => (238, 238, 234),  // warm neutral
+                    s if s > -0.6 => (240, 225, 195),  // warm amber
+                    _             => (240, 210, 205),   // soft rose
+                }
+            } else {
+                match sentiment {
+                    s if s > 0.6  => (t.bull.r() / 3 + t.toolbar_bg.r() * 2 / 3, t.bull.g() / 3 + t.toolbar_bg.g() * 2 / 3, t.bull.b() / 3 + t.toolbar_bg.b() * 2 / 3),
+                    s if s > 0.2  => (t.toolbar_bg.r().saturating_add(8), t.toolbar_bg.g().saturating_add(12), t.toolbar_bg.b().saturating_add(6)),
+                    s if s > -0.2 => (t.toolbar_bg.r().saturating_add(5), t.toolbar_bg.g().saturating_add(5), t.toolbar_bg.b().saturating_add(5)),
+                    s if s > -0.6 => (t.toolbar_bg.r().saturating_add(15), t.toolbar_bg.g().saturating_add(10), t.toolbar_bg.b()),
+                    _             => (t.bear.r() / 4 + t.toolbar_bg.r() * 3 / 4, t.bear.g() / 4 + t.toolbar_bg.g() * 3 / 4, t.bear.b() / 4 + t.toolbar_bg.b() * 3 / 4),
+                }
             };
-            let tint_strength: u8 = if sentiment.abs() > 0.2 { 18 } else { 0 };
-            let bg_r = ((t.toolbar_bg.r() as u16 * (255 - tint_strength as u16) + sr as u16 * tint_strength as u16) / 255) as u8;
-            let bg_g = ((t.toolbar_bg.g() as u16 * (255 - tint_strength as u16) + sg as u16 * tint_strength as u16) / 255) as u8;
-            let bg_b = ((t.toolbar_bg.b() as u16 * (255 - tint_strength as u16) + sb as u16 * tint_strength as u16) / 255) as u8;
-            painter.rect_filled(card_rect, 10.0, Color32::from_rgba_unmultiplied(bg_r, bg_g, bg_b, 240));
+            painter.rect_filled(card_rect, 10.0, Color32::from_rgb(sr, sg, sb));
 
             // Top bevel
             painter.rect_filled(
@@ -235,7 +243,8 @@ pub(crate) fn draw_widgets(
                     if btn_rect.contains(pos) { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 }
             }
-            if mode == WidgetDisplayMode::Card {
+            // Resize handle — always available on hover
+            if card_hovered {
                 if let Some(delta) = resize_handle(ui, &painter, card_rect, wi, t) {
                     resize_delta = Some((wi, delta));
                 }
@@ -307,8 +316,9 @@ pub(crate) fn draw_widgets(
         if !draw_faded {
         let sense = egui::Sense::click_and_drag();
 
-        // Interact area = top strip for drag (always available)
-        let interact_rect = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, 16.0));
+        // Interact area: full header when hovered, thin strip otherwise
+        let interact_h = if card_hovered { hdr_h.max(26.0) } else { 20.0 };
+        let interact_rect = egui::Rect::from_min_size(card_rect.min, egui::vec2(card_w, interact_h));
         let resp = ui.interact(interact_rect, egui::Id::new(("widget_drag", wi)), sense);
 
         if resp.dragged_by(egui::PointerButton::Primary) && !chart.chart_widgets[wi].locked {
@@ -413,8 +423,8 @@ pub(crate) fn draw_widgets(
         ui.memory_mut(|m| m.toggle_popup(egui::Id::new(("widget_popup", wi))));
     }
     if let Some((wi, delta)) = resize_delta {
-        chart.chart_widgets[wi].w = (chart.chart_widgets[wi].w + delta.x).clamp(100.0, 400.0);
-        chart.chart_widgets[wi].h = (chart.chart_widgets[wi].h + delta.y).clamp(60.0, 300.0);
+        chart.chart_widgets[wi].w = (chart.chart_widgets[wi].w + delta.x).clamp(120.0, 600.0);
+        chart.chart_widgets[wi].h = (chart.chart_widgets[wi].h + delta.y).clamp(80.0, 500.0);
     }
 
     // Context menu popup (rendered outside the loop to avoid borrow conflicts)
