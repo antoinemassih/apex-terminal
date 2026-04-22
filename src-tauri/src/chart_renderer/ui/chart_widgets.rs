@@ -351,11 +351,14 @@ pub(crate) fn draw_widgets(
 
         if resp.dragged_by(egui::PointerButton::Primary) {
             let d = resp.drag_delta();
+            // Check if drag started in the header zone (primary drag handle)
+            let drag_from_header = resp.interact_pointer_pos().map(|p| p.y < card_rect.top()).unwrap_or(false)
+                || ui.ctx().pointer_interact_pos().map(|p| p.y < card_rect.top() + 10.0).unwrap_or(false);
             if is_resizing {
                 // ── Resize ──
                 resize_delta = Some((wi, d));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
-            } else if !chart.chart_widgets[wi].locked {
+            } else if !chart.chart_widgets[wi].locked && (drag_from_header || !card_hovered) {
                 // ── Move/Drag ──
                 let wid = &mut chart.chart_widgets[wi];
                 let pointer = ui.ctx().pointer_interact_pos().unwrap_or(card_rect.center());
@@ -401,9 +404,12 @@ pub(crate) fn draw_widgets(
             }
         }
 
-        // ── Click routing — buttons checked by position ──
-        if resp.clicked() {
-            if let Some(pos) = resp.interact_pointer_pos() {
+        // ── Click routing — use raw pointer release for reliability ──
+        // resp.clicked() is unreliable with click_and_drag sense (tiny mouse movement = drag not click)
+        let just_released = ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
+        let no_significant_drag = !resp.dragged() || resp.drag_delta().length() < 3.0;
+        if just_released && no_significant_drag {
+            if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
                 if card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false) {
                     popup_open = Some(wi);
                 } else if card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false) {
