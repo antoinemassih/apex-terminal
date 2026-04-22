@@ -404,16 +404,28 @@ pub(crate) fn draw_widgets(
             }
         }
 
-        // ── Click routing — use raw pointer release for reliability ──
-        // resp.clicked() is unreliable with click_and_drag sense (tiny mouse movement = drag not click)
-        let just_released = ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
-        let no_significant_drag = !resp.dragged() || resp.drag_delta().length() < 3.0;
-        if just_released && no_significant_drag {
-            if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
+        // ── Click routing ──
+        // Use resp.clicked() OR raw release with position check
+        let mut btn_handled = false;
+        if resp.clicked() {
+            if let Some(pos) = resp.interact_pointer_pos() {
                 if card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false) {
-                    popup_open = Some(wi);
+                    popup_open = Some(wi); btn_handled = true;
                 } else if card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false) {
-                    mode_toggle = Some(wi);
+                    mode_toggle = Some(wi); btn_handled = true;
+                }
+            }
+        }
+        // Fallback: raw pointer release within button rects (for when clicked() misses)
+        if !btn_handled && ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+            if let Some(pos) = hover_pos {
+                // Only process if this widget's interact_rect contains the pointer
+                if interact_rect.contains(pos) {
+                    if card_ctx_rect.map(|r| r.contains(pos)).unwrap_or(false) && popup_open.is_none() {
+                        popup_open = Some(wi);
+                    } else if card_toggle_rect.map(|r| r.contains(pos)).unwrap_or(false) && mode_toggle.is_none() {
+                        mode_toggle = Some(wi);
+                    }
                 }
             }
         }
@@ -470,10 +482,11 @@ pub(crate) fn draw_widgets(
         if ui.memory(|m| m.is_popup_open(popup_id)) {
             let is_locked = chart.chart_widgets[wi].locked;
             let is_docked = chart.chart_widgets[wi].dock != WidgetDock::Float;
+            // Anchor popup below the header (which floats above the card)
             let anchor_rect = egui::Rect::from_center_size(
-                egui::pos2(chart.chart_widgets[wi].anim_x + chart.chart_widgets[wi].w - 42.0,
-                           chart.chart_widgets[wi].anim_y + 12.0),
-                egui::vec2(14.0, 14.0));
+                egui::pos2(chart.chart_widgets[wi].anim_x + chart.chart_widgets[wi].w - 50.0,
+                           chart.chart_widgets[wi].anim_y - 4.0),
+                egui::vec2(20.0, 20.0));
             let anchor_resp = ui.interact(anchor_rect,
                 egui::Id::new(("widget_ctx_anchor", wi)), egui::Sense::hover());
             egui::popup_below_widget(ui, popup_id, &anchor_resp,
