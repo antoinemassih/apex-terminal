@@ -324,8 +324,13 @@ pub(crate) fn draw_widgets(
 
         if !draw_faded {
 
-        // Single interaction on full card
-        let resp = ui.interact(card_rect, egui::Id::new(("widget", wi)), egui::Sense::click_and_drag());
+        // Interaction rect includes header zone above card (when hovered)
+        let interact_rect = if card_hovered {
+            egui::Rect::from_min_max(
+                egui::pos2(card_rect.left(), card_rect.top() - hdr_h - 2.0),
+                card_rect.max)
+        } else { card_rect };
+        let resp = ui.interact(interact_rect, egui::Id::new(("widget", wi)), egui::Sense::click_and_drag());
 
         // Track whether this widget is in resize mode (persists across frames via egui memory)
         let resize_id = egui::Id::new(("widget_resizing", wi));
