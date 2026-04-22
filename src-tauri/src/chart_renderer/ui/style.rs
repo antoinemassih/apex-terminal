@@ -167,7 +167,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         color_alpha(toolbar_border, alpha_muted())
     };
 
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_lg()).color(fg))
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(12.0).color(fg))
         .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(4.0)
         .min_size(egui::vec2(0.0, 24.0)));
     hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
@@ -396,7 +396,7 @@ pub fn segmented_control(
         let prev_pad = ui.spacing().button_padding;
         ui.spacing_mut().button_padding = egui::vec2(seg_pad_x, prev_pad.y);
         let resp = ui.add(
-            egui::Button::new(RichText::new(*label).monospace().size(11.0).strong().color(fg))
+            egui::Button::new(RichText::new(*label).monospace().size(12.0).strong().color(fg))
                 .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
                 .min_size(egui::vec2(0.0, seg_btn_h))
         );

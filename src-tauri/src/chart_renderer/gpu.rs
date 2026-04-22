@@ -3634,7 +3634,7 @@ fn render_toolbar(
             ui.add_space(4.0);
             // ── Range dropdown (sets interval + visible bars) ──
             {
-                let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(11.0).color(t.dim), |ui| {
+                let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(13.0).strong().color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.label(egui::RichText::new("RANGE").monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
@@ -3765,7 +3765,7 @@ fn render_toolbar(
                 CandleMode::Renko => "RNK", CandleMode::RangeBar => "RNG", CandleMode::TickBar => "TCK",
             };
             let prev_candle_mode = panes[ap].candle_mode;
-            ui.menu_button(egui::RichText::new(cm_label).monospace().size(11.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new(cm_label).monospace().size(13.0).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 for (mode, label) in [
@@ -3854,7 +3854,7 @@ fn render_toolbar(
             }
 
             // Moving Averages dropdown (always creates new instance — supports multiple)
-            ui.menu_button(egui::RichText::new("MAs").monospace().size(11.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("MAs").monospace().size(13.0).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
@@ -3934,7 +3934,7 @@ fn render_toolbar(
             });
 
             // Oscillators dropdown (multi-select)
-            ui.menu_button(egui::RichText::new("Osc").monospace().size(11.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Osc").monospace().size(13.0).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let osc_types = [(IndicatorType::RSI, "RSI"), (IndicatorType::MACD, "MACD"),
@@ -3984,7 +3984,7 @@ fn render_toolbar(
             });
 
             // Volume dropdown
-            ui.menu_button(egui::RichText::new("Vol").monospace().size(11.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Vol").monospace().size(13.0).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let vol = panes[ap].show_volume;
@@ -4017,7 +4017,7 @@ fn render_toolbar(
             });
 
             // Overlays dropdown — two-layer with categories
-            ui.menu_button(egui::RichText::new("Overlay").monospace().size(11.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Overlay").monospace().size(13.0).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(150.0);
@@ -4196,7 +4196,7 @@ fn render_toolbar(
             });
 
             // Tools dropdown — display tools and cursor enhancements
-            ui.menu_button(egui::RichText::new("Tools").monospace().size(11.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Tools").monospace().size(13.0).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
@@ -4252,7 +4252,7 @@ fn render_toolbar(
             }
 
             // ── Suites dropdown (advanced analysis tools) ──
-            ui.menu_button(egui::RichText::new("Suites").monospace().size(11.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Suites").monospace().size(13.0).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let sl_mode = panes[ap].swing_leg_mode;
@@ -4280,7 +4280,7 @@ fn render_toolbar(
             }
 
             // ── Widgets dropdown — two-layer categorized picker with mini previews ──
-            ui.menu_button(egui::RichText::new("Widgets").monospace().size(11.0).color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Widgets").monospace().size(13.0).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(160.0);
@@ -4389,7 +4389,7 @@ fn render_toolbar(
             {
                 let ws_names = list_workspaces();
                 let ws_label = format!("{} {}", Icon::BROWSERS, &watchlist.active_workspace);
-                ui.menu_button(egui::RichText::new(&ws_label).monospace().size(11.0).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(&ws_label).monospace().size(13.0).strong().color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.set_min_width(200.0);
@@ -4503,7 +4503,7 @@ fn render_toolbar(
             // ── Theme dropdown — menu_button shows full list without internal scrolling ──
             {
                 let mut ti = panes[ap].theme_idx;
-                let current_label = egui::RichText::new(THEMES[ti].name).monospace().size(11.0).color(t.dim);
+                let current_label = egui::RichText::new(THEMES[ti].name).monospace().size(13.0).strong().color(t.dim);
                 ui.menu_button(current_label, |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
