@@ -18231,6 +18231,31 @@ pub(crate) fn fetch_search_background(query: String, source: String) {
 /// Fetch daily previous close for all watchlist symbols (background thread).
 /// Tries ApexIB first (bars endpoint), falls back to Yahoo Finance.
 pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
+    // Filter: this fn only knows how to fetch equities (Redis/ApexIB/Yahoo).
+    // Option contracts (OCC tickers, "AAPL 287.5C 2026-04-30" labels) and
+    // crypto pairs go through their own feeds — sending them here means a
+    // silent 404 on Yahoo. Drop them before the fetch loop.
+    let symbols: Vec<String> = symbols.into_iter()
+        .filter(|s| {
+            let s_upper = s.to_uppercase();
+            // Crypto: ApexCrypto handles BTCUSDT etc.
+            if crate::data::is_crypto(s) { return false; }
+            // Option OCC: "O:SPY..." prefix.
+            if s_upper.starts_with("O:") { return false; }
+            // Option display label: "UND STRIKE C/P EXPIRY" or "UND STRIKEC EXPIRY".
+            // Heuristic: contains a space AND ends with a digit-or-Y/E (date) AND
+            // has a C/P somewhere in the middle — distinguishes from "BRK.B".
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let middle = parts[1];
+                if middle.ends_with('C') || middle.ends_with('P')
+                    || middle.contains('C') || middle.contains('P') {
+                    if middle.chars().any(|c| c.is_ascii_digit()) { return false; }
+                }
+            }
+            true
+        })
+        .collect();
     std::thread::spawn(move || {
         let ib_client = apexib_client();
         let client = reqwest::blocking::Client::builder()
