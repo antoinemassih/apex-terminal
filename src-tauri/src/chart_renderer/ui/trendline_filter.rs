@@ -203,7 +203,7 @@ if chart.picker_open {
 
             if chart.picker_searching {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    super::chart_widgets::refined_spinner(ui, t.accent);
                     ui.label(egui::RichText::new("Searching...").small().color(t.dim));
                 });
             }

@@ -578,13 +578,14 @@ pub(crate) enum PaneHeaderSize { Compact, Normal, Expanded }
 
 impl PaneHeaderSize {
     pub(crate) fn header_h(self) -> f32 {
-        match self { Self::Compact => 18.0, Self::Normal => 22.0, Self::Expanded => 28.0 }
+        match self { Self::Compact => 22.0, Self::Normal => 26.0, Self::Expanded => 32.0 }
     }
     pub(crate) fn tabs_header_h(self) -> f32 {
-        match self { Self::Compact => 26.0, Self::Normal => 30.0, Self::Expanded => 36.0 }
+        // Tabs header — only slightly bigger than non-tabs so it doesn't dominate.
+        match self { Self::Compact => 28.0, Self::Normal => 32.0, Self::Expanded => 38.0 }
     }
     pub(crate) fn title_font(self) -> f32 {
-        match self { Self::Compact => 10.0, Self::Normal => 11.0, Self::Expanded => 13.0 }
+        match self { Self::Compact => 11.0, Self::Normal => 12.0, Self::Expanded => 14.0 }
     }
     pub(crate) fn label(self) -> &'static str {
         match self { Self::Compact => "Compact", Self::Normal => "Normal", Self::Expanded => "Expanded" }

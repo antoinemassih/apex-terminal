@@ -150,7 +150,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                         } else if watchlist.discord_connecting {
                             ui.label(egui::RichText::new("Waiting for authorization...").monospace().size(9.0).color(t.dim));
                             ui.add_space(6.0);
-                            ui.spinner();
+                            super::chart_widgets::refined_spinner(ui, t.accent);
                             ui.add_space(4.0);
                             ui.label(egui::RichText::new("Complete sign-in in your browser").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
                         } else {
@@ -316,7 +316,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             if watchlist.discord_channels_loading {
                                 ui.horizontal(|ui| {
                                     ui.add_space(6.0);
-                                    ui.spinner();
+                                    super::chart_widgets::refined_spinner(ui, t.accent);
                                     ui.label(egui::RichText::new("Loading channels...").monospace().size(9.0).color(t.dim));
                                 });
                             } else if watchlist.discord_channels.is_empty() {
@@ -448,7 +448,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add_space(20.0);
                                         ui.horizontal(|ui| {
                                             ui.add_space(8.0);
-                                            ui.spinner();
+                                            super::chart_widgets::refined_spinner(ui, t.accent);
                                             ui.label(egui::RichText::new("Loading messages...").monospace().size(9.0).color(t.dim));
                                         });
                                     } else if watchlist.discord_messages.is_empty() {

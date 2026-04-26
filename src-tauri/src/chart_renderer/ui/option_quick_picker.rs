@@ -242,8 +242,13 @@ pub(crate) fn draw(
                                             // STRIKE cell
                                             let (srect, _) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::hover());
                                             let strike_col = if is_atm { t.accent } else { TEXT_PRIMARY };
+                                            let strike_txt = if (strike - strike.round()).abs() < 0.005 {
+                                                format!("{:.0}", strike)
+                                            } else {
+                                                format!("{:.1}", strike)
+                                            };
                                             ui.painter().text(srect.center(), egui::Align2::CENTER_CENTER,
-                                                format!("{:.0}", strike),
+                                                strike_txt,
                                                 egui::FontId::monospace(FONT_SM),
                                                 strike_col);
                                             // PUT cell
@@ -283,9 +288,43 @@ pub(crate) fn draw(
             panes[pi].option_quick_open = false;
         }
 
-        // Handle strike click → load new contract into this pane
+        // Handle strike click → swap the contract on this pane (not a split).
         if let Some((strike, is_call)) = pending_load {
-            watchlist.pending_opt_chart = Some((underlying.clone(), strike, is_call, String::new()));
+            let rows = if current_dte == 0 {
+                if is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 }
+            } else {
+                if is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 }
+            };
+            let occ = rows.iter()
+                .find(|r| (r.strike - strike).abs() < 0.01)
+                .map(|r| r.contract.clone())
+                .unwrap_or_default();
+            // If the user is already on an option pane, replace the contract in
+            // place instead of routing through pending_opt_chart (which splits).
+            if panes[pi].is_option {
+                let occ_final = if occ.starts_with("O:") {
+                    occ.clone()
+                } else {
+                    crate::chart_renderer::gpu::synthesize_occ(&underlying, strike, is_call, "")
+                };
+                let strike_str = if (strike - strike.round()).abs() < 0.005 {
+                    format!("{:.0}", strike)
+                } else { format!("{:.1}", strike) };
+                let opt_sym = format!("{} {}{}", underlying, strike_str, if is_call { "C" } else { "P" });
+                panes[pi].symbol = opt_sym.clone();
+                panes[pi].option_type = if is_call { "C".into() } else { "P".into() };
+                panes[pi].option_strike = strike;
+                panes[pi].option_contract = occ_final.clone();
+                panes[pi].bars.clear();
+                panes[pi].timestamps.clear();
+                let tf = panes[pi].timeframe.clone();
+                if !occ_final.is_empty() && crate::apex_data::is_enabled() {
+                    crate::chart_renderer::gpu::fetch_option_bars_background(occ_final, opt_sym, tf);
+                }
+            } else {
+                watchlist.pending_opt_chart = Some((underlying.clone(), strike, is_call, String::new()));
+                watchlist.pending_opt_chart_contract = Some(occ);
+            }
             panes[pi].option_quick_open = false;
         }
     }

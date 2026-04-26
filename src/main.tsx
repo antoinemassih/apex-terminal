@@ -5,6 +5,7 @@ import { RenderEngine } from './engine'
 import { IndicatorEngine } from './indicators'
 import { DataStore, BarCache } from './data'
 import { IBKRProvider } from './data/IBKRProvider'
+import { ApexDataProvider } from './data/ApexDataProvider'
 import { LocalDrawingRepository } from './data/DrawingRepository'
 import { TauriDrawingRepository } from './data/TauriDrawingRepository'
 import { OcocoClient } from './data/OcocoClient'
@@ -65,7 +66,13 @@ async function bootstrap() {
   await initDrawingStore(drawingRepo)
 
   // Data provider (swap implementation here for different data sources)
-  const provider = new IBKRProvider()
+  //   IBKRProvider       — Interactive Brokers via ibserver (legacy)
+  //   ApexDataProvider   — in-house apex-data service (current default)
+  // Configure apex-data URL via window.APEX_DATA_URL or localStorage 'apex-data-url'.
+  const provider = new ApexDataProvider()
+  // To fall back to IBKR: comment the line above and uncomment the next.
+  // const provider = new IBKRProvider()
+  void IBKRProvider // keep import live for quick revert
 
   const dataStore = new DataStore(indicatorEngine, provider, barCache)
 

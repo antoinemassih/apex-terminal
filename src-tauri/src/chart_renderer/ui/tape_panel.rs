@@ -38,8 +38,8 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
             if entries.is_empty() {
                 ui.add_space(20.0);
                 ui.label(egui::RichText::new("Waiting for trades...").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                if !crate::data::is_crypto(active_symbol) {
-                    ui.label(egui::RichText::new("T&S available for crypto symbols").monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
+                if !crate::data::is_crypto(active_symbol) && !crate::apex_data::is_enabled() {
+                    ui.label(egui::RichText::new("Enable ApexData in settings for stock T&S").monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
                 }
             }
 

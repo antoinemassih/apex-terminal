@@ -1,4 +1,7 @@
+#![recursion_limit = "512"]
+
 pub mod data;
+pub mod apex_data;
 pub mod drawings;
 mod ib_ws;
 pub mod chart_renderer;
@@ -161,6 +164,81 @@ pub fn run() {
 
             // Signals real-time feed — connects to ApexSignals WebSocket for patterns/alerts/trendlines
             signals_feed::start();
+
+            // ApexData — REST + WebSocket market data.
+            // Routes live `bar` / `snapshot` frames into the chart pipeline, and
+            // `quote` / `trade` frames into the watchlist/tape global queues.
+            apex_data::ws::start();
+            apex_data::live_state::start_pollers();
+            apex_data::ws::subscribe_to_frames(|frame| {
+                use apex_data::ws::Frame;
+                match frame {
+                    Frame::Bar(upd) | Frame::Snapshot { bar: upd, .. } => {
+                        crate::apex_log!("ws.bar", "symbol={} tf={} close={} closed={}",
+                            upd.bar.symbol, upd.bar.timeframe, upd.bar.close, upd.is_closed);
+                        let gb = chart_renderer::Bar {
+                            open: upd.bar.open as f32, high: upd.bar.high as f32,
+                            low:  upd.bar.low  as f32, close: upd.bar.close as f32,
+                            volume: upd.bar.volume as f32, _pad: 0.0,
+                        };
+                        let ts_sec = upd.bar.time / 1000;
+                        let cmd = if upd.is_closed {
+                            chart_renderer::ChartCommand::AppendBar {
+                                symbol: upd.bar.symbol.clone(),
+                                timeframe: upd.bar.timeframe.clone(),
+                                bar: gb, timestamp: ts_sec,
+                            }
+                        } else {
+                            chart_renderer::ChartCommand::UpdateLastBar {
+                                symbol: upd.bar.symbol.clone(),
+                                timeframe: upd.bar.timeframe.clone(),
+                                bar: gb,
+                            }
+                        };
+                        send_to_native_chart(cmd);
+                    }
+                    Frame::Quote(q)  => { apex_data::live_state::push_quote(q.clone()); }
+                    Frame::Trade(t)  => {
+                        apex_data::live_state::push_trade(t.clone());
+                        // Also push into the chart tape panel. ApexData trades don't carry
+                        // a buy/sell flag (NBBO-only feed per spec §12), so mark `is_buy`
+                        // based on whether price is at/above mid via the cached quote.
+                        let is_buy = apex_data::live_state::get_quote(&t.symbol)
+                            .map(|q| {
+                                let mid = (q.bid + q.ask) * 0.5;
+                                t.price >= mid
+                            }).unwrap_or(true);
+                        send_to_native_chart(chart_renderer::ChartCommand::TapeEntry {
+                            symbol: t.symbol.clone(), price: t.price as f32,
+                            qty: t.qty as f32, time: t.time, is_buy,
+                        });
+                    }
+                    Frame::Fmv { symbol, fmv, time_ms } => {
+                        apex_data::live_state::push_fmv(apex_data::live_state::Fmv {
+                            symbol: symbol.clone(), fmv: *fmv, time_ms: *time_ms,
+                        });
+                    }
+                    Frame::ChainDelta(d) => {
+                        apex_data::live_state::merge_chain_delta(&d.underlying, &d.rows);
+                        crate::apex_log!("ws.chain", "{} delta: {} rows", d.underlying, d.rows.len());
+                    }
+                    Frame::Resync { reason } => {
+                        eprintln!("[apex_data] resync: {reason}");
+                    }
+                    Frame::Connection(connected) => {
+                        apex_data::live_state::set_connected(*connected);
+                    }
+                    Frame::Error { code, message } => {
+                        eprintln!("[apex_data] server error {code}: {message}");
+                        // Surface sub_rejected (cap reached, no feed handle) as a toast.
+                        // Other soft errors stay in stderr — too noisy for the UI.
+                        if code == "sub_rejected" {
+                            apex_data::live_state::push_toast(format!("ApexData: {message}"));
+                        }
+                    }
+                    _ => {}
+                }
+            });
 
             // IB WebSocket hot path — Rust-native, msgpack binary
             let ib_handle = ib_ws::spawn(app.handle().clone());

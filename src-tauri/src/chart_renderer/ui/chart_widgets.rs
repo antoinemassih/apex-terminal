@@ -330,23 +330,28 @@ pub(crate) fn draw_widgets(
 
         if !draw_faded {
 
-        // ── 1. Button clicks — dedicated interactions (created FIRST = highest priority) ──
-        if let Some(ctx_r) = card_ctx_rect {
-            let btn = ui.interact(ctx_r, egui::Id::new(("wbtn_ctx", wi)), egui::Sense::click());
-            if btn.clicked() { popup_open = Some(wi); }
-            if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        }
-        if let Some(tog_r) = card_toggle_rect {
-            let btn = ui.interact(tog_r, egui::Id::new(("wbtn_tog", wi)), egui::Sense::click());
-            if btn.clicked() { mode_toggle = Some(wi); }
-            if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        }
-
-        // ── 2. Card drag/resize (created AFTER buttons, so buttons get click priority) ──
+        // ── 1. Card drag/resize FIRST — registered earlier so later button
+        //      interactions (smaller overlapping rects) win click priority in egui. ──
+        //      The card senses drag only (not click), so clicks on buttons aren't
+        //      eaten by the card interaction.
         let full_interact = egui::Rect::from_min_max(
             egui::pos2(card_rect.left(), card_rect.top() - if card_hovered { hdr_h + 2.0 } else { 0.0 }),
             card_rect.max);
         let resp = ui.interact(full_interact, egui::Id::new(("widget", wi)), egui::Sense::drag());
+
+        // ── 2. Button clicks — dedicated interactions registered AFTER the card
+        //      so they win over the card's drag sense for overlapping pointer events. ──
+        //      Route pointer over these rects away from drag by also sinking drags on them.
+        if let Some(ctx_r) = card_ctx_rect {
+            let btn = ui.interact(ctx_r, egui::Id::new(("wbtn_ctx", wi)), egui::Sense::click_and_drag());
+            if btn.clicked() { popup_open = Some(wi); }
+            if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        }
+        if let Some(tog_r) = card_toggle_rect {
+            let btn = ui.interact(tog_r, egui::Id::new(("wbtn_tog", wi)), egui::Sense::click_and_drag());
+            if btn.clicked() { mode_toggle = Some(wi); }
+            if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        }
 
         // Track resize mode via egui memory
         let resize_id = egui::Id::new(("widget_resizing", wi));
@@ -750,7 +755,7 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::VolumeProfile => draw_volume_profile(p, body, wd, t),
         ChartWidgetKind::SessionTimer  => draw_session_timer(p, body, t),
         ChartWidgetKind::KeyLevels     => draw_key_levels(p, body, wd, t),
-        ChartWidgetKind::OptionGreeks  => draw_option_greeks(p, body, t),
+        ChartWidgetKind::OptionGreeks  => draw_option_greeks(p, body, wd, t),
         ChartWidgetKind::RiskReward    => draw_risk_reward(p, body, wd, t),
         ChartWidgetKind::MarketBreadth => draw_market_breadth(p, body, t),
         ChartWidgetKind::Correlation   => draw_correlation(p, body, wd, t),
@@ -851,6 +856,13 @@ pub(crate) struct WidgetData {
     vix_convergence: f32,
     divergence_count: usize,
     bars_loaded: bool, // false = show loading skeleton
+    // ApexData greeks (populated when an ATM 0DTE call is known for the pane)
+    greeks_contract: String,   // "" when no contract is being watched
+    greeks_iv:    Option<f32>,
+    greeks_delta: Option<f32>,
+    greeks_gamma: Option<f32>,
+    greeks_theta: Option<f32>, // theta/day
+    greeks_vega:  Option<f32>, // vega/1%
     // Fundamentals
     pe_ratio: f32,
     eps_ttm: f32,
@@ -1052,6 +1064,8 @@ impl WidgetData {
             })
         };
 
+        let greeks_row = crate::apex_data::live_state::get_greeks_for_underlying(&chart.symbol);
+
         WidgetData {
             trend_score: chart.trend_health_score,
             trend_dir: chart.trend_health_direction,
@@ -1076,6 +1090,14 @@ impl WidgetData {
             vix_convergence: chart.vix_convergence_score,
             divergence_count: 0, // populated when divergence overlays are active
             bars_loaded: n > 0,
+            // Greeks — read from ApexData live cache by underlying (ATM 0DTE call
+            // is registered for polling by the frame hook in gpu.rs).
+            greeks_contract: greeks_row.as_ref().map(|g| g.contract.clone()).unwrap_or_default(),
+            greeks_iv:    greeks_row.as_ref().and_then(|g| g.iv           ).map(|v| v as f32),
+            greeks_delta: greeks_row.as_ref().and_then(|g| g.delta        ).map(|v| v as f32),
+            greeks_gamma: greeks_row.as_ref().and_then(|g| g.gamma        ).map(|v| v as f32),
+            greeks_theta: greeks_row.as_ref().and_then(|g| g.theta_per_day).map(|v| v as f32),
+            greeks_vega:  greeks_row.as_ref().and_then(|g| g.vega_per_pct ).map(|v| v as f32),
             // ── Fundamental data ──
             pe_ratio: chart.fundamentals.pe_ratio,
             eps_ttm: chart.fundamentals.eps_ttm,
@@ -1487,12 +1509,19 @@ fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     }
 }
 
-fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, t: &Theme) {
+fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    // Pull live values from ApexData. When no contract is registered or greeks
+    // haven't been computed yet (deep OTM / fresh listing), fall back to the
+    // display defaults so the widget still shows a shape.
+    let delta = wd.greeks_delta.unwrap_or(0.45);
+    let gamma = wd.greeks_gamma.unwrap_or(0.032);
+    let theta = wd.greeks_theta.unwrap_or(-0.12);
+    let vega  = wd.greeks_vega .unwrap_or(0.085);
     let greeks: [(&str, f32, Color32); 4] = [
-        ("\u{0394} Delta", 0.45, Color32::from_rgb(100, 200, 255)),
-        ("\u{0393} Gamma", 0.032, Color32::from_rgb(180, 130, 255)),
-        ("\u{0398} Theta", -0.12, Color32::from_rgb(255, 140, 100)),
-        ("\u{03BD} Vega",  0.085, Color32::from_rgb(100, 230, 180)),
+        ("\u{0394} Delta", delta, Color32::from_rgb(100, 200, 255)),
+        ("\u{0393} Gamma", gamma, Color32::from_rgb(180, 130, 255)),
+        ("\u{0398} Theta", theta, Color32::from_rgb(255, 140, 100)),
+        ("\u{03BD} Vega",  vega,  Color32::from_rgb(100, 230, 180)),
     ];
 
     let row_h = (body.height() - 8.0) / 4.0;
@@ -3031,20 +3060,72 @@ fn draw_news_ticker(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
 /// Draw a loading skeleton shimmer when no bar data is loaded yet.
 fn draw_loading_skeleton(p: &egui::Painter, body: egui::Rect, t: &Theme) {
-    let cx = body.center().x;
-    let cy = body.center().y;
-    // Pulsing dots
+    let center = body.center();
+    let radius = (body.width().min(body.height()) * 0.10).clamp(8.0, 16.0);
+    draw_refined_spinner(p, center, radius, t.accent);
+    p.text(egui::pos2(center.x, center.y + radius + 12.0), egui::Align2::CENTER_CENTER,
+        "Loading\u{2026}", egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.4));
+}
+
+/// Smooth rotating arc with a soft fade tail — a refined, understated loading indicator.
+/// The arc sweeps ~290° and rotates once every ~1.6s. Alpha fades along the tail using a
+/// gentle easing curve so the head feels bright while the tail dissolves into the background.
+pub(crate) fn draw_refined_spinner(p: &egui::Painter, center: egui::Pos2, radius: f32, color: egui::Color32) {
+    // Two rounded-rect "tiles" chase each other around the perimeter of a square, stretching
+    // from a corner-square into an edge-rectangle as they travel. Second tile is offset by
+    // half the period so the pair forms a balanced, continuous motion.
+    let container = radius * 2.2;
+    let g_ratio = 35.0 / 65.0; // matches the CSS keyframes
+    let gap = container * g_ratio;
+
+    // Keyframes as (top, right, bottom, left) insets from the container rect.
+    let kf: [(f32, f32, f32, f32); 9] = [
+        (0.0,  gap,  gap,  0.0),
+        (0.0,  gap,  0.0,  0.0),
+        (gap,  gap,  0.0,  0.0),
+        (gap,  0.0,  0.0,  0.0),
+        (gap,  0.0,  0.0,  gap),
+        (0.0,  0.0,  0.0,  gap),
+        (0.0,  0.0,  gap,  gap),
+        (0.0,  0.0,  gap,  0.0),
+        (0.0,  gap,  gap,  0.0),
+    ];
+
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default().as_millis() as f32;
-    for i in 0..3 {
-        let phase = (now / 400.0 + i as f32 * 0.8).sin() * 0.5 + 0.5;
-        let alpha = (phase * 80.0) as u8;
-        let r = 2.0 + phase * 1.5;
-        p.circle_filled(egui::pos2(cx - 10.0 + i as f32 * 10.0, cy),
-            r, Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), alpha));
-    }
-    p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
-        "Loading\u{2026}", egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.3));
+        .unwrap_or_default().as_secs_f32();
+    let period = 2.5_f32;
+    let container_rect = egui::Rect::from_center_size(center, egui::vec2(container, container));
+    let stroke_w = (container * 0.046).max(1.5);
+    let rounding = (container * 0.08).max(2.0);
+
+    let draw_one = |phase: f32| {
+        let t = phase.rem_euclid(1.0) * 8.0;
+        let i = (t.floor() as usize).min(7);
+        let frac = t - i as f32;
+        let a = kf[i];
+        let b = kf[i + 1];
+        let top    = a.0 + (b.0 - a.0) * frac;
+        let right  = a.1 + (b.1 - a.1) * frac;
+        let bottom = a.2 + (b.2 - a.2) * frac;
+        let left   = a.3 + (b.3 - a.3) * frac;
+        let r = egui::Rect::from_min_max(
+            egui::pos2(container_rect.left() + left, container_rect.top() + top),
+            egui::pos2(container_rect.right() - right, container_rect.bottom() - bottom),
+        );
+        p.rect_stroke(r, rounding, egui::Stroke::new(stroke_w, color), egui::StrokeKind::Inside);
+    };
+
+    let phase = now / period;
+    draw_one(phase);
+    draw_one(phase + 0.5);
+}
+
+/// Ui-level refined spinner — drop-in replacement for `ui.spinner()`.
+pub(crate) fn refined_spinner(ui: &mut egui::Ui, color: egui::Color32) {
+    let size = ui.spacing().interact_size.y.max(14.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+    draw_refined_spinner(ui.painter(), rect.center(), size * 0.42, color);
+    ui.ctx().request_repaint();
 }
 
 /// Compute aggregate conviction from all signal sources (0-100).

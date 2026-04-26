@@ -1,2 +1,2 @@
-// Manifest only — icon is embedded by Tauri's build step
+// Manifest only — Tauri auto-embeds the icon resources.
 1 24 "apex-native.manifest"

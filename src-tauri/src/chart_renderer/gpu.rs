@@ -80,6 +80,15 @@ pub(crate) struct Theme {
     pub(crate) text: egui::Color32, // primary text color (light on dark, dark on light)
 }
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
+
+/// UI style presets — placeholder names for now. Selected style is shown
+/// alongside the theme as e.g. "GruvBox/Meridien". Actual visual differences
+/// will be wired later.
+pub(crate) const STYLE_NAMES: &[&str] = &[
+    "Meridien", "Aperture", "Octave", "Cadence", "Chord",
+    "Lattice",  "Tangent",  "Tempo",  "Contour", "Relay",
+];
+
 pub(crate) const THEMES: &[Theme] = &[
     Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: rgb(28,32,40),  accent: rgb(62,120,180),  text: rgb(220,220,230) },
     Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: rgb(50,56,70),  accent: rgb(136,192,208), text: rgb(220,220,230) },
@@ -1226,7 +1235,15 @@ pub(crate) struct Chart {
     pub(crate) option_strike: f32,
     pub(crate) option_expiry: String, // "20260402"
     pub(crate) option_con_id: i64,
+    /// OCC ticker for the option contract (e.g. "O:SPY251219C00450000").
+    /// Non-empty when this chart shows a specific contract; used as the ApexData
+    /// fetch key while `symbol` carries the human-readable display label.
+    pub(crate) option_contract: String,
     pub(crate) bars: Vec<Bar>, pub(crate) timestamps: Vec<i64>, pub(crate) drawings: Vec<Drawing>,
+    /// Per-(symbol, timeframe) cache of bars/timestamps. Tab switches stash the
+    /// current data here and restore from here when re-entering, so a tab swap
+    /// shows the previous chart instantly while a fresh fetch runs in the bg.
+    pub(crate) tab_cache: std::collections::HashMap<(String, String), (Vec<Bar>, Vec<i64>, std::time::Instant)>,
     pub(crate) indicators: Vec<Indicator>,
     pub(crate) indicator_bar_count: usize, // bar count when indicators were last computed
     pub(crate) next_indicator_id: u32,
@@ -1250,6 +1267,14 @@ pub(crate) struct Chart {
     pub(crate) tick_counter: u64, pub(crate) last_candle_time: std::time::Instant, pub(crate) sim_price: f32, pub(crate) sim_seed: u64,
     pub(crate) theme_idx: usize,
     pub(crate) draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker", "fibonacci", "channel"
+    /// Drawing-tool picker (opened by 2nd middle-click while a tool is active).
+    pub(crate) draw_picker_open: bool,
+    pub(crate) draw_picker_pos: egui::Pos2,
+    /// Currently hovered category label in the picker (drives the flyout submenu).
+    pub(crate) draw_picker_hover_cat: Option<String>,
+    /// Top-Y of the hovered category row, in screen coords — used to align
+    /// the flyout to the row that spawned it (not the top of the menu).
+    pub(crate) draw_picker_hover_cat_y: f32,
     pub(crate) pending_pt: Option<(f32,f32)>,  // first click (bar, price)
     pub(crate) pending_pt2: Option<(f32,f32)>, // second click for channel (bar, price)
     pub(crate) pending_pts: Vec<(f32,f32)>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
@@ -1530,8 +1555,8 @@ impl Chart {
         Self { pane_type: PaneType::Chart,
             symbol: "AAPL".into(), timeframe: "5m".into(),
             is_option: false, underlying: String::new(), option_type: String::new(),
-            option_strike: 0.0, option_expiry: String::new(), option_con_id: 0,
-            bars: vec![], timestamps: vec![], drawings: vec![], indicator_bar_count: 0,
+            option_strike: 0.0, option_expiry: String::new(), option_con_id: 0, option_contract: String::new(),
+            bars: vec![], timestamps: vec![], drawings: vec![], tab_cache: std::collections::HashMap::new(), indicator_bar_count: 0,
             next_indicator_id: 5, editing_indicator: None,
             indicators: vec![
                 Indicator::new(1, IndicatorType::SMA, 20, "#00bef0"),
@@ -1548,7 +1573,7 @@ impl Chart {
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
             theme_idx: 5, // Gruvbox
-            draw_tool: String::new(), pending_pt: None, pending_pt2: None, pending_pts: vec![], magnet: true,
+            draw_tool: String::new(), draw_picker_open: false, draw_picker_pos: egui::Pos2::ZERO, draw_picker_hover_cat: None, draw_picker_hover_cat_y: 0.0, pending_pt: None, pending_pt2: None, pending_pts: vec![], magnet: true,
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
@@ -1596,7 +1621,7 @@ impl Chart {
             renko_brick_size: 0.0, range_bar_size: 0.0, tick_bar_count: 500,
             alt_bars: vec![], alt_timestamps: vec![], alt_bars_dirty: true, alt_bars_source_len: 0,
             show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
-            show_vwap_bands: true, show_cvd: false, show_delta_volume: false, show_rvol: true,
+            show_vwap_bands: false, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, show_auto_fib: false, swing_leg_mode: 0,
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
             show_gamma: false, hit_highlight: false, hit_highlights: vec![], hit_cooldowns: vec![],
@@ -2436,8 +2461,38 @@ fn make_window_icon() -> Option<winit::window::Icon> {
 /// Create HICON in memory using CreateIconIndirect — no file needed.
 #[cfg(target_os = "windows")]
 fn make_window_icon_hicon() -> Option<isize> {
-    use windows_sys::Win32::Graphics::Gdi::*;
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    // Bake the Apex triangle .ico into the binary at compile time and parse it
+    // with CreateIconFromResourceEx. Avoids the .rc / tauri-build collision.
+    const APEX_ICO: &[u8] = include_bytes!("../../icons/apex-native.ico");
+    unsafe {
+        // Find the best 32x32 32-bit image inside the .ico directory
+        let dir_id = LookupIconIdFromDirectoryEx(
+            APEX_ICO.as_ptr(),
+            1,                       // fIcon
+            32, 32,                  // desired size
+            LR_DEFAULTCOLOR,
+        );
+        if dir_id > 0 {
+            let offset = dir_id as usize;
+            if offset < APEX_ICO.len() {
+                let hicon = CreateIconFromResourceEx(
+                    APEX_ICO[offset..].as_ptr(),
+                    (APEX_ICO.len() - offset) as u32,
+                    1,               // fIcon
+                    0x00030000,      // version
+                    32, 32,
+                    LR_DEFAULTCOLOR,
+                );
+                if !hicon.is_null() {
+                    eprintln!("[native-chart] Loaded Apex .ico via CreateIconFromResourceEx");
+                    return Some(hicon as isize);
+                }
+            }
+        }
+        eprintln!("[native-chart] .ico parse failed (dir_id={}) — falling back to procedural", dir_id);
+    }
+    use windows_sys::Win32::Graphics::Gdi::*;
 
     let s: i32 = 32;
     // Build BGRA pixel data (pre-multiplied alpha)
@@ -2632,6 +2687,10 @@ fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing> {
 fn tick_simulation(chart: &mut Chart) {
     // Skip simulation for crypto — real data comes from ApexCrypto
     if crate::data::is_crypto(&chart.symbol) { return; }
+    // Skip simulation when ApexData is the active feed (Polygon-backed).
+    // Off-hours we just want the chart to sit still; ticks/bars come from
+    // WS Trade/Bar frames or not at all.
+    if crate::apex_data::is_enabled() { return; }
     if !chart.bars.is_empty() {
         // Init sim_price from last bar's close — and immediately create a new
         // candle so the simulation never overwrites historical data.
@@ -2938,17 +2997,34 @@ fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Chart], active
     span_begin("cmd_routing");
     while let Ok(cmd) = rx.try_recv() {
         match &cmd {
-            // Pane-targeted commands: route by symbol
+            // Pane-targeted commands: route by symbol OR option_contract.
+            // Option panes carry a display label in `symbol` ("SPY 450C 0DTE") and the
+            // real OCC ticker in `option_contract` — live bar frames arrive keyed by
+            // OCC, so match both.
             ChartCommand::UpdateLastBar { symbol, .. } | ChartCommand::AppendBar { symbol, .. } => {
-                // Broadcast to ALL panes with this symbol (each checks timeframe internally)
                 let s = symbol.clone();
-                for p in panes.iter_mut() { if p.symbol == s { p.process(cmd.clone()); } }
+                for p in panes.iter_mut() {
+                    if p.symbol == s || (!p.option_contract.is_empty() && p.option_contract == s) {
+                        p.process(cmd.clone());
+                    }
+                }
             }
             ChartCommand::LoadBars { symbol, .. } | ChartCommand::PrependBars { symbol, .. } | ChartCommand::LoadDrawings { symbol, .. } => {
                 let s = symbol.clone();
-                if let Some(p) = panes.iter_mut().find(|p| p.symbol == s) { p.process(cmd); }
-                else if let Some(p) = panes.get_mut(*active_pane) {
-                    if !p.is_option { p.process(cmd); }
+                crate::apex_log!("route.load", "cmd symbol='{s}' panes=[{}]",
+                    panes.iter().map(|p| format!("{}|{}", p.symbol, p.option_contract)).collect::<Vec<_>>().join(","));
+                if let Some(p) = panes.iter_mut().find(|p|
+                    p.symbol == s || (!p.option_contract.is_empty() && p.option_contract == s))
+                {
+                    crate::apex_log!("route.load", "matched pane symbol='{}' option_contract='{}'", p.symbol, p.option_contract);
+                    p.process(cmd);
+                } else if let Some(p) = panes.get_mut(*active_pane) {
+                    if !p.is_option {
+                        crate::apex_log!("route.load", "fallback to active_pane (stock)");
+                        p.process(cmd);
+                    } else {
+                        crate::apex_log!("route.load", "DROPPED — no matching pane (active is option)");
+                    }
                 }
             }
             // Watchlist-targeted commands: handle directly
@@ -3057,11 +3133,18 @@ fn check_history_pagination(panes: &mut [Chart], active_pane: usize) {
         if !chart.auto_scroll && chart.vs < threshold && !chart.history_loading && !chart.history_exhausted
             && !chart.bars.is_empty() && chart.timestamps.len() > 1 {
             chart.history_loading = true;
-            let sym = chart.symbol.clone();
+            let display_sym = chart.symbol.clone();
             let tf = chart.timeframe.clone();
             let earliest_ts = chart.timestamps[0];
-            eprintln!("[history] TRIGGERED for {} {} (vs={:.1}, bars={})", sym, tf, chart.vs, chart.bars.len());
-            fetch_history_background(sym, tf, earliest_ts);
+            eprintln!("[history] TRIGGERED for {} {} (vs={:.1}, bars={})", display_sym, tf, chart.vs, chart.bars.len());
+            // Option panes paginate by OCC (the real feed key) but PrependBars
+            // is matched against the pane's display symbol — pass both.
+            if chart.is_option && !chart.option_contract.is_empty() {
+                fetch_option_history_background(
+                    chart.option_contract.clone(), display_sym, tf, earliest_ts);
+            } else {
+                fetch_history_background(display_sym, tf, earliest_ts);
+            }
         }
     }
 }
@@ -3179,6 +3262,18 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
                 for msg in order_toasts {
                     let is_fill = msg.starts_with("FILLED");
                     v.push((msg, 0.0, is_fill));
+                }
+            });
+        }
+    }
+    // Drain ApexData toasts (sub_rejected, feed errors) into PENDING_TOASTS
+    {
+        let apex_toasts = crate::apex_data::live_state::drain_toasts();
+        if !apex_toasts.is_empty() {
+            PENDING_TOASTS.with(|ts| {
+                let mut v = ts.borrow_mut();
+                for msg in apex_toasts {
+                    v.push((msg, 0.0, false)); // bearish/warn color
                 }
             });
         }
@@ -4513,32 +4608,55 @@ fn render_toolbar(
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // ── Theme dropdown — menu_button shows full list without internal scrolling ──
+            // ── Theme + Style dropdown — two columns separated by a divider ──
             {
                 let mut ti = panes[ap].theme_idx;
-                let current_label = egui::RichText::new(THEMES[ti].name).monospace().size(12.0).strong().color(t.dim);
+                let mut si = watchlist.style_idx.min(STYLE_NAMES.len() - 1);
+                let combined = format!("{}/{}", THEMES[ti].name, STYLE_NAMES[si]);
+                let current_label = egui::RichText::new(combined).monospace().size(12.0).strong().color(t.dim);
                 ui.menu_button(current_label, |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                    ui.set_min_width(160.0);
-                    ui.label(egui::RichText::new("THEME").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                    for (i, th) in THEMES.iter().enumerate() {
-                        let sel = i == ti;
-                        let row = ui.horizontal(|ui| {
-                            // Swatch
-                            let (sr, _) = ui.allocate_exact_size(egui::vec2(16.0, 14.0), egui::Sense::hover());
-                            ui.painter().rect_filled(sr, 2.0, th.bg);
-                            ui.painter().circle_filled(egui::pos2(sr.left() + 4.0, sr.center().y), 2.5, th.bull);
-                            ui.painter().circle_filled(egui::pos2(sr.left() + 11.0, sr.center().y), 2.5, th.bear);
-                            let text_col = if sel { th.accent } else { t.dim };
-                            let check = if sel { "\u{2713} " } else { "  " };
-                            ui.selectable_label(sel, egui::RichText::new(format!("{}{}", check, th.name))
-                                .monospace().size(11.0).color(text_col))
+                    ui.horizontal_top(|ui| {
+                        // ── THEME column ──
+                        ui.vertical(|ui| {
+                            ui.set_min_width(160.0);
+                            ui.label(egui::RichText::new("THEME").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            for (i, th) in THEMES.iter().enumerate() {
+                                let sel = i == ti;
+                                let row = ui.horizontal(|ui| {
+                                    let (sr, _) = ui.allocate_exact_size(egui::vec2(16.0, 14.0), egui::Sense::hover());
+                                    ui.painter().rect_filled(sr, 2.0, th.bg);
+                                    ui.painter().circle_filled(egui::pos2(sr.left() + 4.0, sr.center().y), 2.5, th.bull);
+                                    ui.painter().circle_filled(egui::pos2(sr.left() + 11.0, sr.center().y), 2.5, th.bear);
+                                    let text_col = if sel { th.accent } else { t.dim };
+                                    let check = if sel { "\u{2713} " } else { "  " };
+                                    ui.selectable_label(sel, egui::RichText::new(format!("{}{}", check, th.name))
+                                        .monospace().size(11.0).color(text_col))
+                                });
+                                if row.inner.clicked() { ti = i; }
+                            }
                         });
-                        if row.inner.clicked() { ti = i; ui.close_menu(); }
-                    }
+                        // Vertical separator
+                        ui.add(egui::Separator::default().vertical().spacing(8.0));
+                        // ── STYLE column ──
+                        ui.vertical(|ui| {
+                            ui.set_min_width(120.0);
+                            ui.label(egui::RichText::new("STYLE").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            for (i, name) in STYLE_NAMES.iter().enumerate() {
+                                let sel = i == si;
+                                let text_col = if sel { t.accent } else { t.dim };
+                                let check = if sel { "\u{2713} " } else { "  " };
+                                let r = ui.selectable_label(sel,
+                                    egui::RichText::new(format!("{}{}", check, name))
+                                        .monospace().size(11.0).color(text_col));
+                                if r.clicked() { si = i; }
+                            }
+                        });
+                    });
                 });
                 if ti != panes[ap].theme_idx { for p in panes.iter_mut() { p.theme_idx = ti; } }
+                if si != watchlist.style_idx { watchlist.style_idx = si; }
             }
 
             }); // end scrollable middle
@@ -4931,6 +5049,7 @@ fn render_toolbar(
 
     // ── Settings panel
     super::ui::settings_panel::draw(ctx, watchlist, &mut panes[ap], t);
+    super::ui::apex_diagnostics::draw(ctx, watchlist, t);
 
     // ── trendline_filter
     super::ui::trendline_filter::draw(ctx, watchlist, panes, ap, t);
@@ -5246,7 +5365,22 @@ fn render_chart_pane(
             "PANE_HEADER", "Pane Header");
         ui.allocate_rect(header_rect, egui::Sense::hover()); // reserve space
         let header_painter = ui.painter_at(header_rect);
-        header_painter.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(1.2));
+        // Active header is DARKER than inactive for contrast against text.
+        let header_bg = if is_active && visible_count > 1 {
+            t.bg.gamma_multiply(0.6)
+        } else {
+            t.bg.gamma_multiply(1.2)
+        };
+        header_painter.rect_filled(header_rect, 0.0, header_bg);
+        // Active-pane indicator — thick accent underline beneath the header
+        if is_active && visible_count > 1 {
+            let underline_y = header_rect.bottom() - 1.0;
+            header_painter.line_segment(
+                [egui::pos2(header_rect.left(), underline_y),
+                 egui::pos2(header_rect.right(), underline_y)],
+                egui::Stroke::new(3.0, t.accent),
+            );
+        }
 
         // Link group colored dot button
         let link_dot_size = 10.0;
@@ -5359,10 +5493,8 @@ fn render_chart_pane(
                     if is_option_sym {
                         // For options, show the mark price (we don't cache bid/ask per tab yet)
                         format!("${:.2}", price)
-                    } else if *price >= 1.0 {
-                        format!("${:.2}", price)
                     } else {
-                        format!("${:.4}", price)
+                        format!("${:.2}", price)
                     }
                 } else {
                     String::new()
@@ -5404,11 +5536,11 @@ fn render_chart_pane(
                     hovered_tab = Some(ti);
                 }
 
-                // Tab background
+                // Tab background — active darker (better text contrast).
                 let tab_bg = if is_active_tab {
-                    t.bg.gamma_multiply(1.4)
+                    t.bg.gamma_multiply(0.5)
                 } else if tab_resp.hovered() {
-                    t.bg.gamma_multiply(1.1)
+                    t.bg.gamma_multiply(0.75)
                 } else {
                     t.bg.gamma_multiply(0.9)
                 };
@@ -5431,21 +5563,82 @@ fn render_chart_pane(
                         egui::Stroke::new(0.5, t.dim.gamma_multiply(0.3)));
                 }
 
-                // Symbol text — title_font size from pane header mode
-                let sym_col = if is_active_tab { t.text } else { t.dim.gamma_multiply(0.7) };
-                header_painter.text(
-                    egui::pos2(tab_x + tab_pad, tab_rect.center().y),
-                    egui::Align2::LEFT_CENTER, sym, title_font.clone(), sym_col);
+                // For an active option tab, show "UNDER STRIKE" instead of the
+                // long display label (the side and expiry move into badges).
+                let display_sym: String = if is_active_tab && chart.is_option && !chart.underlying.is_empty() {
+                    let strike = chart.option_strike;
+                    let strike_str = if (strike - strike.round()).abs() < 0.005 {
+                        format!("{:.0}", strike)
+                    } else { format!("{:.1}", strike) };
+                    format!("{} {}", chart.underlying, strike_str)
+                } else { sym.to_string() };
+                // Symbol — always bold for active tab; accent when this is the
+                // active pane. Bolder via 4-direction double-draw.
+                let sym_col = if is_active_tab {
+                    if is_active && visible_count > 1 { t.accent } else { t.text }
+                } else { t.dim.gamma_multiply(0.7) };
+                let sym_pos = egui::pos2(tab_x + tab_pad, tab_rect.center().y);
+                let bold_draw = |painter: &egui::Painter, p: egui::Pos2, txt: &str, font: egui::FontId, c: egui::Color32| {
+                    // Light bold — single 0.5px x-offset double-draw.
+                    painter.text(egui::pos2(p.x + 0.5, p.y), egui::Align2::LEFT_CENTER, txt, font.clone(), c);
+                    painter.text(p, egui::Align2::LEFT_CENTER, txt, font, c);
+                };
+                if is_active_tab {
+                    bold_draw(&header_painter, sym_pos, &display_sym, title_font.clone(), sym_col);
+                } else {
+                    header_painter.text(sym_pos, egui::Align2::LEFT_CENTER, &display_sym, title_font.clone(), sym_col);
+                }
+                let display_galley = header_painter.layout_no_wrap(display_sym.clone(), title_font.clone(), sym_col);
 
-                // Price — colored text only, no bounding badge
-                let badge_col = if *chg >= 0.0 { t.bull } else { t.bear };
-                let badge_alpha = if is_active_tab { 255u8 } else { 180 };
-                let badge_draw_col = egui::Color32::from_rgba_unmultiplied(
-                    badge_col.r(), badge_col.g(), badge_col.b(), badge_alpha);
-                let badge_x = tab_x + tab_pad + sym_galley.size().x + gap;
-                header_painter.text(
-                    egui::pos2(badge_x, tab_rect.center().y),
-                    egui::Align2::LEFT_CENTER, &badge_text, price_font.clone(), badge_draw_col);
+                let mut cursor_x = tab_x + tab_pad + display_galley.size().x + gap;
+
+                // Option-only: badges go BEFORE the price (C → 0D → price).
+                // Shown on ALL tabs (active or not) for visual consistency.
+                if chart.is_option {
+                    let bh = (tab_rect.height() - 6.0).min(16.0);
+                    let by = tab_rect.center().y - bh / 2.0;
+                    let badge_font = egui::FontId::monospace(9.5);
+                    // Dark text color for high contrast against the lighter
+                    // accent-tint badge backgrounds.
+                    let dark_fg = egui::Color32::from_rgb(24, 24, 28);
+                    let side = chart.option_type.as_str();
+                    if side == "C" || side == "P" {
+                        let g = header_painter.layout_no_wrap(side.to_string(), badge_font.clone(), dark_fg);
+                        let bw = g.size().x + 8.0; // narrower
+                        let r = egui::Rect::from_min_size(egui::pos2(cursor_x, by), egui::vec2(bw, bh));
+                        let accent_color = if side == "C" { t.bull } else { t.bear };
+                        header_painter.rect_filled(r, 3.0, color_alpha(accent_color, 200));
+                        header_painter.text(r.center(), egui::Align2::CENTER_CENTER,
+                            side, badge_font.clone(), dark_fg);
+                        cursor_x += bw + 4.0;
+                    }
+                    if !chart.option_expiry.is_empty() {
+                        use chrono::NaiveDate;
+                        let today = chrono::Utc::now().date_naive();
+                        let dte = NaiveDate::parse_from_str(&chart.option_expiry, "%Y-%m-%d")
+                            .ok().map(|d| (d - today).num_days()).unwrap_or(0);
+                        let dte_lbl = if dte <= 0 { "0D".to_string() } else { format!("{}D", dte) };
+                        let g = header_painter.layout_no_wrap(dte_lbl.clone(), badge_font.clone(), dark_fg);
+                        let bw = g.size().x + 6.0;
+                        let r = egui::Rect::from_min_size(egui::pos2(cursor_x, by), egui::vec2(bw, bh));
+                        header_painter.rect_filled(r, 3.0, color_alpha(t.accent, 200));
+                        header_painter.text(r.center(), egui::Align2::CENTER_CENTER,
+                            &dte_lbl, badge_font, dark_fg);
+                        cursor_x += bw + 6.0;
+                    }
+                }
+
+                // Price last — bolder via double-draw when active.
+                let price_col = if *chg >= 0.0 { t.bull } else { t.bear };
+                let price_alpha = if is_active_tab { 255u8 } else { 180 };
+                let price_draw_col = egui::Color32::from_rgba_unmultiplied(
+                    price_col.r(), price_col.g(), price_col.b(), price_alpha);
+                let price_pos = egui::pos2(cursor_x, tab_rect.center().y);
+                if is_active_tab {
+                    bold_draw(&header_painter, price_pos, &badge_text, price_font.clone(), price_draw_col);
+                } else {
+                    header_painter.text(price_pos, egui::Align2::LEFT_CENTER, &badge_text, price_font.clone(), price_draw_col);
+                }
 
                 // Close button (x) — show on hover or if active
                 let show_close = tab_count > 1 && (prev_hovered == Some(ti) || is_active_tab);
@@ -5589,41 +5782,7 @@ fn render_chart_pane(
                 }
             }
 
-            // OV button after tab bar — bordered tile matching non-tab mode
-            {
-                let has_overlays = !chart.symbol_overlays.is_empty();
-                let ov_w = 32.0;
-                let ov_h = pane_top_offset - 6.0;
-                let ov_rect = egui::Rect::from_min_size(
-                    egui::pos2(tab_x, header_rect.center().y - ov_h / 2.0),
-                    egui::vec2(ov_w, ov_h));
-                let ov_resp = ui.allocate_rect(ov_rect, egui::Sense::click());
-                let active = chart.overlay_editing || has_overlays;
-                let (bg, fg, border) = if chart.overlay_editing {
-                    (color_alpha(t.accent, 38), t.accent, color_alpha(t.accent, ALPHA_ACTIVE))
-                } else if ov_resp.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     if active { t.accent } else { t.text },
-                     color_alpha(t.accent, ALPHA_LINE))
-                } else if has_overlays {
-                    (color_alpha(t.toolbar_border, 18), egui::Color32::from_rgb(180, 180, 195),
-                     color_alpha(t.toolbar_border, ALPHA_MUTED))
-                } else {
-                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
-                     color_alpha(t.toolbar_border, ALPHA_MUTED))
-                };
-                header_painter.rect_filled(ov_rect, 4.0, bg);
-                header_painter.rect_stroke(ov_rect, 4.0,
-                    egui::Stroke::new(0.5, border), egui::StrokeKind::Outside);
-                header_painter.text(ov_rect.center(), egui::Align2::CENTER_CENTER,
-                    "OV", egui::FontId::monospace((title_font_size - 2.0).max(9.0)), fg);
-                if ov_resp.clicked() {
-                    chart.overlay_editing = !chart.overlay_editing;
-                    if chart.overlay_editing { chart.overlay_editing_idx = None; }
-                }
-                tab_x += ov_w + 4.0;
-            }
+            // (OV button moved to chart-pane top-left badge strip)
 
             // "T" template button in tab mode
             {
@@ -5657,10 +5816,18 @@ fn render_chart_pane(
             }
 
         } else {
-            // Simple symbol label (no tabs — original single-symbol header)
-            // Clickable symbol — opens this pane's picker, with bigger/clearer title
+            // Simple symbol label (no tabs — original single-symbol header).
+            // TF is now drawn in the chart-pane top-left badge strip, so the
+            // header just shows the ticker. For options we show "UNDER STRIKE"
+            // and append 0D / C-P badges after the (no-price-here) ticker.
             let title_font = egui::FontId::monospace(title_font_size);
-            let sym_label = format!("{} {}", chart.symbol, chart.timeframe);
+            let sym_label = if chart.is_option && !chart.underlying.is_empty() {
+                let strike = chart.option_strike;
+                let strike_str = if (strike - strike.round()).abs() < 0.005 {
+                    format!("{:.0}", strike)
+                } else { format!("{:.1}", strike) };
+                format!("{} {}", chart.underlying, strike_str)
+            } else { chart.symbol.clone() };
             let sym_galley = header_painter.layout_no_wrap(
                 sym_label.clone(), title_font.clone(),
                 egui::Color32::from_rgb(180, 180, 190));
@@ -5671,13 +5838,43 @@ fn render_chart_pane(
             let sym_resp = ui.allocate_rect(sym_rect, egui::Sense::click());
             if sym_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             let label_color = if is_active { t.bull } else { t.text };
-            header_painter.text(
-                egui::pos2(sym_label_x + 2.0, header_rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                &sym_label,
-                title_font.clone(),
-                label_color,
-            );
+            // Light bold — single 0.5px x-offset double-draw.
+            let p0 = egui::pos2(sym_label_x + 2.0, header_rect.center().y);
+            header_painter.text(egui::pos2(p0.x + 0.5, p0.y),
+                egui::Align2::LEFT_CENTER, &sym_label, title_font.clone(), label_color);
+            header_painter.text(p0, egui::Align2::LEFT_CENTER, &sym_label, title_font.clone(), label_color);
+            // Layout cursor: symbol → [C] → [0D] → price
+            let mut cursor_x = sym_label_x + sym_galley.size().x + 10.0;
+            if chart.is_option {
+                let bh = (header_rect.height() - 6.0).min(16.0);
+                let by = header_rect.center().y - bh / 2.0;
+                let bf = egui::FontId::monospace(9.5);
+                let dark_fg = egui::Color32::from_rgb(24, 24, 28);
+                let side = chart.option_type.as_str();
+                if side == "C" || side == "P" {
+                    let g = header_painter.layout_no_wrap(side.to_string(), bf.clone(), dark_fg);
+                    let w = g.size().x + 8.0;
+                    let r = egui::Rect::from_min_size(egui::pos2(cursor_x, by), egui::vec2(w, bh));
+                    let accent_color = if side == "C" { t.bull } else { t.bear };
+                    header_painter.rect_filled(r, 3.0, color_alpha(accent_color, 200));
+                    header_painter.text(r.center(), egui::Align2::CENTER_CENTER,
+                        side, bf.clone(), dark_fg);
+                    cursor_x += w + 4.0;
+                }
+                if !chart.option_expiry.is_empty() {
+                    use chrono::NaiveDate;
+                    let today = chrono::Utc::now().date_naive();
+                    let dte = NaiveDate::parse_from_str(&chart.option_expiry, "%Y-%m-%d")
+                        .ok().map(|d| (d - today).num_days()).unwrap_or(0);
+                    let lbl = if dte <= 0 { "0D".to_string() } else { format!("{}D", dte) };
+                    let g = header_painter.layout_no_wrap(lbl.clone(), bf.clone(), dark_fg);
+                    let w = g.size().x + 6.0;
+                    let r = egui::Rect::from_min_size(egui::pos2(cursor_x, by), egui::vec2(w, bh));
+                    header_painter.rect_filled(r, 3.0, color_alpha(t.accent, 200));
+                    header_painter.text(r.center(), egui::Align2::CENTER_CENTER, &lbl, bf, dark_fg);
+                    cursor_x += w + 6.0;
+                }
+            }
             if sym_resp.clicked() {
                 *active_pane = pane_idx;
                 chart.picker_open = !chart.picker_open;
@@ -5687,16 +5884,13 @@ fn render_chart_pane(
                 chart.picker_pos = egui::pos2(sym_rect.left(), sym_rect.bottom());
             }
 
-            // Price — colored text only, no bounding badge
-            let sym_text_w = sym_galley.size().x;
-            let mut cursor_x = sym_label_x + sym_text_w + 10.0;
+            // Price — drawn AFTER the badges so it never overlaps.
             if let Some(last) = chart.bars.last() {
                 let price = last.close;
                 let chg_col = if let Some(first) = chart.bars.first() {
                     if first.open > 0.0 && last.close >= first.open { t.bull } else { t.bear }
                 } else { t.dim };
-                let price_text = if price >= 1.0 { format!("${:.2}", price) }
-                    else { format!("${:.4}", price) };
+                let price_text = format!("${:.2}", price);
                 let price_font = egui::FontId::monospace(title_font_size - 1.0);
                 let price_galley = header_painter.layout_no_wrap(price_text.clone(), price_font.clone(), chg_col);
                 header_painter.text(egui::pos2(cursor_x, header_rect.center().y),
@@ -5704,41 +5898,7 @@ fn render_chart_pane(
                 cursor_x += price_galley.size().x + 10.0;
             }
 
-            // OV button (symbol overlay manager) — proper clickable tile
-            {
-                let has_overlays = !chart.symbol_overlays.is_empty();
-                let ov_w = 32.0;
-                let ov_h = pane_top_offset - 6.0;
-                let ov_rect = egui::Rect::from_min_size(
-                    egui::pos2(cursor_x, header_rect.center().y - ov_h / 2.0),
-                    egui::vec2(ov_w, ov_h));
-                let ov_resp = ui.allocate_rect(ov_rect, egui::Sense::click());
-                let active = chart.overlay_editing || has_overlays;
-                let (bg, fg, border) = if chart.overlay_editing {
-                    (color_alpha(t.accent, 38), t.accent, color_alpha(t.accent, ALPHA_ACTIVE))
-                } else if ov_resp.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     if active { t.accent } else { t.text },
-                     color_alpha(t.accent, ALPHA_LINE))
-                } else if has_overlays {
-                    (color_alpha(t.toolbar_border, 18), egui::Color32::from_rgb(180, 180, 195),
-                     color_alpha(t.toolbar_border, ALPHA_MUTED))
-                } else {
-                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
-                     color_alpha(t.toolbar_border, ALPHA_MUTED))
-                };
-                header_painter.rect_filled(ov_rect, 4.0, bg);
-                header_painter.rect_stroke(ov_rect, 4.0,
-                    egui::Stroke::new(0.5, border), egui::StrokeKind::Outside);
-                header_painter.text(ov_rect.center(), egui::Align2::CENTER_CENTER,
-                    "OV", egui::FontId::monospace((title_font_size - 2.0).max(9.0)), fg);
-                if ov_resp.clicked() {
-                    chart.overlay_editing = !chart.overlay_editing;
-                    if chart.overlay_editing { chart.overlay_editing_idx = None; }
-                }
-                cursor_x += ov_w + 4.0;
-            }
+            // (OV button moved to chart-pane top-left badge strip)
 
             // "T" template button — opens template popup
             {
@@ -5969,26 +6129,28 @@ fn render_chart_pane(
     let (cw,ch) = (w-pr, h-pt-pb-osc_h);
     if cw<=0.0 || ch<=0.0 { return; }
     if n==0 {
-        // ── Subtle loading indicator ──
+        // ── Refined loading indicator ──
         if !chart.symbol.is_empty() {
-            let time = ui.ctx().input(|i| i.time);
             let center = egui::pos2(rect.left() + cw / 2.0, rect.top() + pt + ch / 2.0);
             let lp = ui.painter();
-            // Subtle spinning dots
-            let r = 12.0_f32;
-            let angle = time as f32 * 5.0;
-            for k in 0..8 {
-                let a = angle + k as f32 * std::f32::consts::TAU / 8.0;
-                let alpha = 30 + (k as u8) * 18;
-                lp.circle_filled(
-                    egui::pos2(center.x + a.cos() * r, center.y + a.sin() * r),
-                    1.8, color_alpha(t.dim, alpha));
-            }
-            let text_alpha = (100.0 + 40.0 * (time * 2.0).sin()) as u8;
-            lp.text(egui::pos2(center.x, center.y + 24.0), egui::Align2::CENTER_CENTER,
+            crate::chart_renderer::ui::chart_widgets::draw_refined_spinner(lp, center, 14.0, t.accent);
+            let time = ui.ctx().input(|i| i.time);
+            let text_alpha = (110.0 + 30.0 * (time * 1.4).sin()) as u8;
+            lp.text(egui::pos2(center.x, center.y + 28.0), egui::Align2::CENTER_CENTER,
                 &format!("{} {}", chart.symbol, chart.timeframe),
                 egui::FontId::monospace(10.0), color_alpha(t.dim, text_alpha));
             ui.ctx().request_repaint();
+        }
+        // Empty / loading panes still need to be selectable — without this the
+        // bar-rendering early-return skips the interaction code that sets
+        // active_pane, so the user can never click into a blank pane.
+        if visible_count > 1 {
+            let body = egui::Rect::from_min_size(
+                egui::pos2(rect.left(), rect.top() + pt),
+                egui::vec2(cw + pr, ch),
+            );
+            let resp = ui.allocate_rect(body, egui::Sense::click());
+            if resp.clicked() { *active_pane = pane_idx; }
         }
         return;
     }
@@ -6075,9 +6237,11 @@ fn render_chart_pane(
     while p<=max_p { let y=py(p);
         painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
         if watchlist.show_y_axis {
-            let d=if p>=10.0{2}else{4};
-            chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", p, d);
-            painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),t.dim);
+            chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.2}", p);
+            let f = egui::FontId::monospace(11.5);
+            // poor-man's bold: 0.5px x-offset double-draw
+            painter.text(egui::pos2(rect.left()+cw+3.5,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,f.clone(),t.text);
+            painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,f,t.text);
         }
         p+=step;
     }
@@ -6104,9 +6268,8 @@ fn render_chart_pane(
 
             // Y-axis price badge (only if axis is visible) — dark text on colored fill
             if watchlist.show_y_axis {
-                let d = if last_price >= 10.0 { 2 } else { 4 };
-                let price_text = format!("{:.prec$}", last_price, prec = d);
-                let badge_font = egui::FontId::monospace(9.5);
+                let price_text = format!("{:.2}", last_price);
+                let badge_font = egui::FontId::monospace(13.0);
                 // Dark foreground derived from the price color — high contrast but tinted
                 let fg_col = egui::Color32::from_rgb(
                     (price_col.r() as f32 * 0.15) as u8,
@@ -6131,6 +6294,11 @@ fn render_chart_pane(
                     ],
                     price_col,
                     egui::Stroke::NONE));
+                // Bolder via 0.5px x-offset double-draw
+                painter.text(
+                    egui::pos2(badge_rect.left() + pad_x + 0.5, price_y),
+                    egui::Align2::LEFT_CENTER,
+                    &price_text, badge_font.clone(), fg_col);
                 painter.text(
                     egui::pos2(badge_rect.left() + pad_x, price_y),
                     egui::Align2::LEFT_CENTER,
@@ -7407,14 +7575,14 @@ fn render_chart_pane(
             let price_y = py(last_price);
 
             // Collect visible strikes with their natural Y positions
-            struct StrikeInfo { strike: f32, bid: f32, ask: f32, is_call: bool, natural_y: f32, display_y: f32 }
+            struct StrikeInfo { strike: f32, bid: f32, ask: f32, is_call: bool, natural_y: f32, display_y: f32, contract: String }
             let mut strikes: Vec<StrikeInfo> = Vec::new();
             for (row, is_call) in calls.iter().map(|r| (r, true)).chain(puts.iter().map(|r| (r, false))) {
                 let sy = py(row.strike);
                 if !sy.is_finite() || sy < rect.top() + pt + 5.0 || sy > rect.top() + pt + ch - 5.0 { continue; }
                 if is_call && row.strike <= last_price { continue; }
                 if !is_call && row.strike > last_price { continue; }
-                strikes.push(StrikeInfo { strike: row.strike, bid: row.bid, ask: row.ask, is_call, natural_y: sy, display_y: sy });
+                strikes.push(StrikeInfo { strike: row.strike, bid: row.bid, ask: row.ask, is_call, natural_y: sy, display_y: sy, contract: row.contract.clone() });
             }
             // Sort by natural_y (top to bottom)
             strikes.sort_by(|a, b| a.natural_y.partial_cmp(&b.natural_y).unwrap_or(std::cmp::Ordering::Equal));
@@ -7495,6 +7663,7 @@ fn render_chart_pane(
                         if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                             if chart_btn_rect.contains(pos) {
                                 watchlist.pending_opt_chart = Some((chart.symbol.clone(), si.strike, si.is_call, String::new()));
+                                watchlist.pending_opt_chart_contract = Some(si.contract.clone());
                             } else if pill_rect.contains(pos) {
                                 // Open floating order pane
                                 let opt_type = if si.is_call { "C" } else { "P" };
@@ -11175,12 +11344,31 @@ fn render_chart_pane(
 
                 // ── DOM ladder (when open, between header and order body) ──
                 if chart.dom_open {
-                    // No scroll — show all 21 rows directly
-                    let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
+                    // For option panes, pull the live mid + NBBO from the feed.
+                    // For equity panes, fall back to last bar close + simulated sizes.
+                    let live_q = if chart.is_option && !chart.option_contract.is_empty() {
+                        crate::apex_data::live_state::get_quote(&chart.option_contract)
+                    } else {
+                        crate::apex_data::live_state::get_quote(&chart.symbol)
+                    };
+                    let live_bid = live_q.as_ref().map(|q| q.bid as f32).unwrap_or(0.0);
+                    let live_ask = live_q.as_ref().map(|q| q.ask as f32).unwrap_or(0.0);
+                    let live_bid_sz = live_q.as_ref().map(|q| q.bid_size as u32).unwrap_or(0);
+                    let live_ask_sz = live_q.as_ref().map(|q| q.ask_size as u32).unwrap_or(0);
+                    let current_price = if live_bid > 0.0 && live_ask > 0.0 {
+                        (live_bid + live_ask) * 0.5
+                    } else { chart.bars.last().map(|b| b.close).unwrap_or(100.0) };
                     let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
                     let tick = if is_index { 1.0_f32 } else { 0.01 };
                     let center_price = (current_price / tick).round() * tick;
                     let sim_size = |price: f32, is_bid: bool| -> u32 {
+                        // Prefer live NBBO size at the inside row.
+                        if is_bid && live_bid > 0.0 && (price - live_bid).abs() < tick * 0.5 {
+                            return live_bid_sz.max(1);
+                        }
+                        if !is_bid && live_ask > 0.0 && (price - live_ask).abs() < tick * 0.5 {
+                            return live_ask_sz.max(1);
+                        }
                         let dist = ((price - current_price).abs() / tick).round() as u32;
                         let base = 50u32.saturating_sub(dist * 2).max(1);
                         let hash = ((price * 1000.0) as u32).wrapping_mul(2654435761);
@@ -11458,12 +11646,23 @@ fn render_chart_pane(
         }
     }
 
-    // Middle-click cycles: → trendline → hline → hzone → fibonacci → channel → pointer →
+    // Middle-click flow:
+    //   1st click (no tool active) → activate trendline (quick path)
+    //   2nd click (a tool already active) → open the favorites picker at cursor
+    //   Click while picker is open → close it
     if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) && pointer_in_pane {
-        let tools = ["", "trendline", "hline", "hzone", "fibonacci", "channel"];
-        let cur = tools.iter().position(|&t| t == chart.draw_tool).unwrap_or(0);
-        chart.draw_tool = tools[(cur + 1) % tools.len()].to_string();
-        chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
+        if chart.draw_picker_open {
+            chart.draw_picker_open = false;
+        } else if chart.draw_tool.is_empty() {
+            chart.draw_tool = "trendline".to_string();
+            chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
+        } else {
+            // Open picker at the cursor position
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                chart.draw_picker_pos = pos;
+                chart.draw_picker_open = true;
+            }
+        }
     }
 
     // ── OHLC Magnet snap ─────────────────────────────────────────────────
@@ -12061,9 +12260,20 @@ fn render_chart_pane(
                 painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)],egui::Stroke::new(0.5,color_alpha(t.text,50)));
                 painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(0.5,color_alpha(t.text,50)));
                 let hp = min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
-                let d = if hp>=10.0{2}else{4};
-                chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", hp, d);
-                painter.text(egui::pos2(rect.left()+cw+3.0,pos.y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,egui::FontId::monospace(8.5),egui::Color32::WHITE);
+                chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.2}", hp);
+                let cf = egui::FontId::monospace(13.0);
+                let cg = painter.layout_no_wrap(chart.fmt_buf.clone(), cf.clone(), egui::Color32::WHITE);
+                let cpad_x = 5.0; let cpad_y = 2.0;
+                let cbw = cg.size().x + cpad_x * 2.0;
+                let cbh = cg.size().y + cpad_y * 2.0;
+                let cbr = egui::Rect::from_min_size(
+                    egui::pos2(rect.left() + cw + 1.0, pos.y - cbh / 2.0),
+                    egui::vec2(cbw, cbh));
+                painter.rect_filled(cbr, 3.0, egui::Color32::from_rgba_unmultiplied(20, 20, 26, 240));
+                painter.rect_stroke(cbr, 3.0, egui::Stroke::new(1.0, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
+                // Bolder via 0.5px double-draw
+                painter.text(egui::pos2(cbr.left() + cpad_x + 0.5, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf.clone(), egui::Color32::WHITE);
+                painter.text(egui::pos2(cbr.left() + cpad_x, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf, egui::Color32::WHITE);
 
                 // Time label at crosshair X position (bottom of chart)
                 let bar_idx_f = (pos.x - rect.left() + off - bs * 0.5) / bs + vs;
@@ -12107,7 +12317,7 @@ fn render_chart_pane(
                 }
 
                 // OHLC tooltip (togglable — hidden when footprint is active)
-                if chart.ohlc_tooltip && !chart.show_footprint {
+                if chart.ohlc_tooltip && !chart.show_footprint && !chart.draw_picker_open {
                     if let Some(bar_data) = chart.bars.get(bar_idx) {
                         let tooltip_x = pos.x + 15.0;
                         let tooltip_y = pos.y - 5.0;
@@ -12600,6 +12810,54 @@ fn render_chart_pane(
                 egui::FontId::monospace(9.0),
                 t.dim.gamma_multiply(0.4),
             );
+        }
+    }
+
+    // ── Chart-area top-left badge strip (TF + OV) ──────────────────────────
+    {
+        let pad = 6.0_f32;
+        let bar_h = 18.0_f32;
+        let y = rect.top() + pt + pad;
+        let mut x = rect.left() + pad;
+        let p = ui.painter_at(rect);
+        // Timeframe pill
+        if !chart.timeframe.is_empty() {
+            let tf = chart.timeframe.to_uppercase();
+            let font = egui::FontId::monospace(10.0);
+            let g = p.layout_no_wrap(tf.clone(), font.clone(), t.text);
+            let w = g.size().x + 10.0;
+            let r = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, bar_h));
+            p.rect_filled(r, 3.0, t.bg.gamma_multiply(0.4));
+            p.text(r.center(), egui::Align2::CENTER_CENTER, &tf, font, t.text);
+            x += w + 4.0;
+        }
+        // OV button (overlay editor toggle)
+        {
+            let has_overlays = !chart.symbol_overlays.is_empty();
+            let ov_w = 32.0_f32;
+            let ov_rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(ov_w, bar_h));
+            let ov_resp = ui.allocate_rect(ov_rect, egui::Sense::click());
+            let active = chart.overlay_editing || has_overlays;
+            let (bg_col, fg_col) = if chart.overlay_editing {
+                (color_alpha(t.accent, 60), t.accent)
+            } else if ov_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                (t.bg.gamma_multiply(0.55), if active { t.accent } else { t.text })
+            } else if has_overlays {
+                (t.bg.gamma_multiply(0.4), egui::Color32::from_rgb(190, 190, 200))
+            } else {
+                (t.bg.gamma_multiply(0.4), t.dim.gamma_multiply(0.85))
+            };
+            p.rect_filled(ov_rect, 3.0, bg_col);
+            p.rect_stroke(ov_rect, 3.0,
+                egui::Stroke::new(0.5, t.toolbar_border),
+                egui::StrokeKind::Inside);
+            p.text(ov_rect.center(), egui::Align2::CENTER_CENTER, "OV",
+                egui::FontId::monospace(10.0), fg_col);
+            if ov_resp.clicked() {
+                chart.overlay_editing = !chart.overlay_editing;
+                if chart.overlay_editing { chart.overlay_editing_idx = None; }
+            }
         }
     }
 
@@ -14696,7 +14954,7 @@ fn render_chart_pane(
                 chart.ohlc_tooltip = gb("ohlc_tooltip", true);
                 chart.magnet = gb("magnet", true);
                 chart.log_scale = gb("log_scale", false);
-                chart.show_vwap_bands = gb("show_vwap_bands", true);
+                chart.show_vwap_bands = gb("show_vwap_bands", false);
                 chart.show_cvd = gb("show_cvd", false);
                 chart.show_delta_volume = gb("show_delta_volume", false);
                 chart.show_rvol = gb("show_rvol", true);
@@ -15546,8 +15804,368 @@ fn render_chart_pane(
         if btn_resp.clicked() { watchlist.maximized_pane = None; }
     }
 
+    // ── Drawing-tool picker (opened by 2nd middle-click) ────────────────────
+    if chart.draw_picker_open {
+        use crate::ui_kit::icons::Icon;
+        let pos = chart.draw_picker_pos;
+        let mut close = false;
+        let mut chosen: Option<String> = None;
+        let mut star_toggle: Option<String> = None;
+        let area_resp = egui::Area::new(egui::Id::new(("draw_picker", pane_idx)))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                egui::Frame::popup(&ctx.style())
+                    .fill(t.toolbar_bg)
+                    .stroke(egui::Stroke::new(1.0, t.toolbar_border))
+                    .inner_margin(egui::Margin::same(8))
+                    .corner_radius(egui::CornerRadius::same(6))
+                    .show(ui, |ui| {
+                        ui.set_width(140.0);
+                        ui.label(egui::RichText::new("FAVORITES")
+                            .monospace().size(9.0).color(t.dim));
+                        ui.add_space(3.0);
+                        // 3-col grid of small square icon buttons (~28px).
+                        let favs = watchlist.draw_favorites.clone();
+                        let cols = 3usize;
+                        let gap = 3.0_f32;
+                        let cell_w = ((ui.available_width() - gap * (cols as f32 - 1.0)) / cols as f32).floor();
+                        let cell_h = cell_w;
+                        for chunk in favs.chunks(cols) {
+                            ui.horizontal(|ui| {
+                                for tool in chunk {
+                                    let icon = drawing_icon(tool);
+                                    let is_cur = chart.draw_tool.as_str() == tool
+                                        || drawing_is_active(tool, chart);
+                                    let (cell, resp) = ui.allocate_exact_size(
+                                        egui::vec2(cell_w, cell_h), egui::Sense::click());
+                                    let hov = resp.hovered();
+                                    let bg = if is_cur {
+                                        t.accent.gamma_multiply(0.30)
+                                    } else if hov {
+                                        t.toolbar_border.gamma_multiply(0.55)
+                                    } else { t.bg };
+                                    let stroke_col = if is_cur || hov {
+                                        t.accent.gamma_multiply(if is_cur { 0.9 } else { 0.5 })
+                                    } else { t.toolbar_border };
+                                    ui.painter().rect_filled(cell, 5.0, bg);
+                                    ui.painter().rect_stroke(cell, 5.0,
+                                        egui::Stroke::new(if is_cur { 1.5 } else { 0.7 }, stroke_col),
+                                        egui::StrokeKind::Inside);
+                                    let txt_col = if is_cur { t.accent }
+                                        else if hov { t.text } else { t.text.gamma_multiply(0.85) };
+                                    ui.painter().text(cell.center(), egui::Align2::CENTER_CENTER,
+                                        icon, egui::FontId::proportional((cell_w * 0.55).max(11.0)), txt_col);
+                                    if hov {
+                                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                        // Tooltip with the tool's name
+                                        resp.clone().on_hover_text(drawing_label(tool));
+                                    }
+                                    if resp.clicked() { chosen = Some(tool.clone()); }
+                                    if resp.secondary_clicked() {
+                                        star_toggle = Some(tool.clone());
+                                    }
+                                }
+                            });
+                            ui.add_space(3.0);
+                        }
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("ALL TOOLS")
+                            .monospace().size(9.0).color(t.dim));
+                        ui.add_space(2.0);
+                        // Hover-driven category rows. Setting hover_cat opens
+                        // a side flyout with that category's tools.
+                        for &(cat, _tools) in DRAW_CATEGORIES {
+                            let is_hovered_cat = chart.draw_picker_hover_cat.as_deref() == Some(cat);
+                            let (row_rect, resp) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width(), 20.0),
+                                egui::Sense::hover(),
+                            );
+                            let bg = if is_hovered_cat || resp.hovered() {
+                                t.accent.gamma_multiply(0.18)
+                            } else { t.toolbar_bg };
+                            ui.painter().rect_filled(row_rect, 3.0, bg);
+                            ui.painter().text(
+                                egui::pos2(row_rect.left() + 8.0, row_rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                cat,
+                                egui::FontId::monospace(10.0),
+                                if is_hovered_cat { t.accent } else { t.text.gamma_multiply(0.9) },
+                            );
+                            ui.painter().text(
+                                egui::pos2(row_rect.right() - 8.0, row_rect.center().y),
+                                egui::Align2::RIGHT_CENTER,
+                                Icon::CARET_RIGHT,
+                                egui::FontId::proportional(11.0),
+                                t.dim,
+                            );
+                            if resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                chart.draw_picker_hover_cat = Some(cat.to_string());
+                                chart.draw_picker_hover_cat_y = row_rect.top();
+                            }
+                        }
+                    });
+            });
+        // ── Flyout submenu (slides out to the right of the main picker) ─────
+        let mut flyout_rect = egui::Rect::NOTHING;
+        let mut flyout_hovered = false;
+        if let Some(cat) = chart.draw_picker_hover_cat.clone() {
+            if let Some(&(_, tools)) = DRAW_CATEGORIES.iter().find(|&&(c, _)| c == cat) {
+                // Anchor the flyout to the hovered row's vertical position so
+                // it slides out from that line, not the top of the menu.
+                let fpos = egui::pos2(
+                    area_resp.response.rect.right() + 2.0,
+                    chart.draw_picker_hover_cat_y - 6.0, // small upward bias for popup margin
+                );
+                let fly = egui::Area::new(egui::Id::new(("draw_picker_flyout", pane_idx)))
+                    .order(egui::Order::Foreground)
+                    .fixed_pos(fpos)
+                    .show(ctx, |ui| {
+                        egui::Frame::popup(&ctx.style())
+                            .fill(t.toolbar_bg)
+                            .stroke(egui::Stroke::new(1.0, t.toolbar_border))
+                            .inner_margin(egui::Margin::same(6))
+                            .corner_radius(egui::CornerRadius::same(6))
+                            .show(ui, |ui| {
+                                ui.set_width(180.0);
+                                ui.label(egui::RichText::new(cat.as_str())
+                                    .monospace().size(9.0).color(t.dim));
+                                ui.add_space(4.0);
+                                for &(tool, label) in tools {
+                                    let starred = watchlist.draw_favorites.iter().any(|f| f == tool);
+                                    let star = if starred { Icon::STAR_FILL } else { Icon::STAR };
+                                    let is_cur = chart.draw_tool.as_str() == tool
+                                        || drawing_is_active(tool, chart);
+                                    let icon = drawing_icon(tool);
+                                    let (row_rect, resp) = ui.allocate_exact_size(
+                                        egui::vec2(ui.available_width(), 22.0),
+                                        egui::Sense::click(),
+                                    );
+                                    let hov = resp.hovered();
+                                    let bg = if is_cur {
+                                        t.accent.gamma_multiply(0.25)
+                                    } else if hov {
+                                        t.accent.gamma_multiply(0.15)
+                                    } else { t.toolbar_bg };
+                                    ui.painter().rect_filled(row_rect, 3.0, bg);
+                                    // Star (left, separate hit-test)
+                                    let star_size = 18.0;
+                                    let star_rect = egui::Rect::from_min_size(
+                                        egui::pos2(row_rect.left() + 2.0, row_rect.top() + 2.0),
+                                        egui::vec2(star_size, row_rect.height() - 4.0),
+                                    );
+                                    let star_resp = ui.allocate_rect(star_rect, egui::Sense::click());
+                                    let s_col = if starred { t.accent } else { t.dim };
+                                    ui.painter().text(
+                                        star_rect.center(), egui::Align2::CENTER_CENTER,
+                                        star, egui::FontId::proportional(13.0), s_col);
+                                    if star_resp.clicked() { star_toggle = Some(tool.to_string()); }
+                                    // Icon + label
+                                    let txt_x = row_rect.left() + star_size + 8.0;
+                                    let row_col = if is_cur { t.accent }
+                                        else if hov { t.text } else { t.text.gamma_multiply(0.9) };
+                                    ui.painter().text(
+                                        egui::pos2(txt_x, row_rect.center().y),
+                                        egui::Align2::LEFT_CENTER,
+                                        format!("{}  {}", icon, label),
+                                        egui::FontId::monospace(10.5),
+                                        row_col,
+                                    );
+                                    if hov {
+                                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                    }
+                                    if resp.clicked() { chosen = Some(tool.to_string()); }
+                                }
+                            });
+                    });
+                flyout_rect = fly.response.rect;
+                flyout_hovered = fly.response.hovered();
+            }
+        }
+        // Clear hover_cat only when pointer leaves both the main picker and
+        // the flyout — keeps the submenu open as the user moves into it.
+        // Use a single screen-space point-in-rect test (with a small bridge
+        // gap allowance) because Area.response.hovered() doesn't sense hover
+        // by default and was prematurely closing the flyout.
+        let pointer = ctx.input(|i| i.pointer.hover_pos());
+        let _ = flyout_hovered; // silence unused warning
+        if let Some(p) = pointer {
+            // Expand main rect rightward by the 2px gap so traversal into the flyout
+            // is contiguous (no momentary "between rects" closure).
+            let main_expanded = area_resp.response.rect.expand2(egui::vec2(3.0, 0.0));
+            let in_main = main_expanded.contains(p);
+            let in_fly = flyout_rect != egui::Rect::NOTHING && flyout_rect.contains(p);
+            if !in_main && !in_fly {
+                chart.draw_picker_hover_cat = None;
+            }
+        } else {
+            // No pointer info — keep state stable
+        }
+        // Close picker on outside click. Ignore middle-clicks here — the very
+        // middle-click that opened the picker would otherwise close it on the
+        // same frame. Also ignore clicks inside the picker or its flyout.
+        let outside_lmb = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+        let outside_rmb = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Secondary));
+        if outside_lmb || outside_rmb {
+            if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
+                let in_main = area_resp.response.rect.contains(p);
+                let in_fly = flyout_rect.contains(p);
+                if !in_main && !in_fly {
+                    close = true;
+                }
+            }
+        }
+        if let Some(tool) = chosen {
+            apply_draw_tool(&tool, chart);
+            close = true;
+        }
+        if let Some(tool) = star_toggle {
+            if let Some(pos) = watchlist.draw_favorites.iter().position(|f| f == &tool) {
+                watchlist.draw_favorites.remove(pos);
+            } else {
+                watchlist.draw_favorites.push(tool);
+            }
+        }
+        if close { chart.draw_picker_open = false; }
+    }
+
     span_end(); // interaction
 }
+
+/// Phosphor icon glyph for a draw-tool name.
+fn drawing_icon(tool: &str) -> &'static str {
+    use crate::ui_kit::icons::Icon;
+    match tool {
+        "trendline"          => Icon::LINE_SEGMENT,
+        "hline"              => Icon::MINUS,
+        "vline"              => Icon::DOTS_SIX_VERTICAL,
+        "hzone"              => Icon::RECTANGLE,
+        "ray"                => Icon::ARROW_FAT_UP,
+        "channel"            => Icon::GIT_DIFF,
+        "fibonacci"          => Icon::CHART_LINE,
+        "fibext"             => Icon::CHART_LINE,
+        "fibarc"             => Icon::CIRCLE,
+        "fibchannel"         => Icon::GIT_DIFF,
+        "fibtimezone"        => Icon::LIST,
+        "pitchfork"          => Icon::GIT_DIFF,
+        "gannbox"            => Icon::SQUARE,
+        "gannfan"            => Icon::SPARKLE,
+        "regression"         => Icon::PULSE,
+        "avwap"              => Icon::CHART_LINE,
+        "pricerange"         => Icon::ARROWS_OUT,
+        "riskreward"         => Icon::CHART_BAR,
+        "barmarker"          => Icon::MAP_PIN,
+        "xabcd"              => Icon::CHART_LINE,
+        "elliott_corrective" => Icon::CHART_LINE,
+        "elliott_sub_corrective" => Icon::CHART_LINE,
+        "elliott_wxyxz"      => Icon::CHART_LINE,
+        "magnifier"          => Icon::MAGNIFYING_GLASS_PLUS,
+        "measure"            => Icon::RULER,
+        _                    => Icon::PENCIL_LINE,
+    }
+}
+
+/// Display label for a draw-tool name.
+fn drawing_label(tool: &str) -> &'static str {
+    match tool {
+        "trendline" => "Trend Line",
+        "hline" => "Horizontal",
+        "vline" => "Vertical",
+        "hzone" => "H-Zone",
+        "ray" => "Ray",
+        "channel" => "Channel",
+        "fibonacci" => "Fibonacci",
+        "fibext" => "Fib Extension",
+        "fibarc" => "Fib Arc",
+        "fibchannel" => "Fib Channel",
+        "fibtimezone" => "Fib Time Zone",
+        "pitchfork" => "Pitchfork",
+        "gannbox" => "Gann Box",
+        "gannfan" => "Gann Fan",
+        "regression" => "Regression",
+        "avwap" => "Anchored VWAP",
+        "pricerange" => "Price Range",
+        "riskreward" => "Risk/Reward",
+        "barmarker" => "Bar Marker",
+        "xabcd" => "XABCD",
+        "elliott_corrective" => "Elliott Corrective",
+        "elliott_sub_corrective" => "Elliott Sub-Corr.",
+        "elliott_wxyxz" => "Elliott WXYXZ",
+        "magnifier" => "Magnifier (zoom)",
+        "measure" => "Measure",
+        _ => "Tool",
+    }
+}
+
+/// Returns true when a "permanent" (toggle) tool is currently active for `tool`.
+fn drawing_is_active(tool: &str, chart: &Chart) -> bool {
+    match tool {
+        "magnifier" => chart.zoom_selecting,
+        "measure" => chart.measure_active,
+        _ => false,
+    }
+}
+
+/// Apply a draw-tool selection. Drawing tools set `draw_tool`; the two
+/// "permanent" toggles flip their respective booleans.
+fn apply_draw_tool(tool: &str, chart: &mut Chart) {
+    chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
+    match tool {
+        "magnifier" => {
+            chart.zoom_selecting = !chart.zoom_selecting;
+            chart.draw_tool.clear();
+        }
+        "measure" => {
+            chart.measure_active = !chart.measure_active;
+            chart.draw_tool.clear();
+        }
+        _ => { chart.draw_tool = tool.to_string(); }
+    }
+}
+
+/// Categorized draw-tool list for the picker's ALL TOOLS section.
+const DRAW_CATEGORIES: &[(&str, &[(&str, &str)])] = &[
+    ("LINES", &[
+        ("trendline", "Trend Line"),
+        ("hline", "Horizontal"),
+        ("vline", "Vertical"),
+        ("ray", "Ray"),
+        ("channel", "Channel"),
+        ("regression", "Regression"),
+    ]),
+    ("ZONES", &[
+        ("hzone", "Horizontal Zone"),
+        ("pricerange", "Price Range"),
+    ]),
+    ("FIBONACCI", &[
+        ("fibonacci", "Retracement"),
+        ("fibext", "Extension"),
+        ("fibarc", "Arc"),
+        ("fibchannel", "Channel"),
+        ("fibtimezone", "Time Zone"),
+    ]),
+    ("GANN / PITCHFORK", &[
+        ("pitchfork", "Pitchfork"),
+        ("gannbox", "Gann Box"),
+        ("gannfan", "Gann Fan"),
+    ]),
+    ("HARMONIC", &[
+        ("xabcd", "XABCD"),
+        ("elliott_corrective", "Elliott Corrective"),
+        ("elliott_sub_corrective", "Elliott Sub-Corrective"),
+        ("elliott_wxyxz", "Elliott WXYXZ"),
+    ]),
+    ("UTILITY", &[
+        ("magnifier", "Magnifier (zoom)"),
+        ("measure", "Measure"),
+        ("avwap", "Anchored VWAP"),
+        ("riskreward", "Risk / Reward"),
+        ("barmarker", "Bar Marker"),
+    ]),
+];
 
 /// Phase 8: Handle deferred actions (option chart open, underlying orders, repaint).
 fn handle_deferred(
@@ -15561,47 +16179,43 @@ fn handle_deferred(
     // Replaces the CURRENT (active) pane with the option chart
     if let Some((sym, strike, is_call, expiry)) = watchlist.pending_opt_chart.take() {
         let ap = *active_pane;
-        let opt_sym = format!("{} {:.0}{} {}", sym, strike, if is_call { "C" } else { "P" }, expiry);
-        // Open in a new/second pane, not the active one
-        let target = if panes.len() <= 1 {
-            // Single pane — switch to 2H (horizontal split) layout, create new pane
-            *layout = Layout::TwoH;
-            let mut p = Chart::new_with(&sym, &panes[ap].timeframe);
-            p.theme_idx = panes[ap].theme_idx;
-            p.recent_symbols = panes[ap].recent_symbols.clone();
-            panes.push(p);
-            panes.len() - 1
+        let raw_occ = watchlist.pending_opt_chart_contract.take().unwrap_or_default();
+        crate::apex_log!("option.click", "sym={sym} strike={strike} is_call={is_call} expiry='{expiry}' raw_occ='{raw_occ}'");
+        let occ = if raw_occ.starts_with("O:") {
+            raw_occ
         } else {
-            // Multi-pane — find a pane that isn't the active one, or use the last one
-            let other = (0..panes.len()).find(|&i| i != ap).unwrap_or(ap);
-            other
+            let o = synthesize_occ(&sym, strike, is_call, &expiry);
+            crate::apex_log!("option.occ", "synthesized OCC: {o}");
+            o
         };
-        panes[target].symbol = opt_sym;
+        let strike_str = if (strike - strike.round()).abs() < 0.005 { format!("{:.0}", strike) } else { format!("{:.1}", strike) };
+        let opt_sym = format!("{} {}{} {}", sym, strike_str, if is_call { "C" } else { "P" }, expiry);
+        crate::apex_log!("option.open", "occ={occ} display_sym='{opt_sym}'");
+        // Always open the contract in the active pane. The user expects clicks
+        // on the chain to land where they're focused, not in some other pane.
+        let target = ap.min(panes.len().saturating_sub(1));
+        panes[target].symbol = opt_sym.clone();
         panes[target].is_option = true;
         panes[target].underlying = sym.clone();
         panes[target].option_type = if is_call { "C".into() } else { "P".into() };
         panes[target].option_strike = strike;
         panes[target].option_expiry = expiry;
-        // Generate simulated option bars
-        let underlying_bars = panes[ap].bars.clone();
-        let underlying_ts = panes[ap].timestamps.clone();
-        let mut opt_bars = Vec::new();
-        for (i, bar) in underlying_bars.iter().enumerate() {
-            let mid = (bar.open + bar.close) / 2.0;
-            let intrinsic = if is_call { (mid - strike).max(0.0) } else { (strike - mid).max(0.0) };
-            let time_pct = 1.0 - (i as f32 / underlying_bars.len().max(1) as f32);
-            let time_val = strike * 0.005 * time_pct.max(0.1);
-            let opt_mid = (intrinsic + time_val).max(0.01);
-            let vol = 0.3 + (1.0 - time_pct) * 0.2; // increasing vol near expiry
-            let noise = ((i as f32 * 7.3).sin() * 0.3 + (i as f32 * 13.7).cos() * 0.2) * opt_mid * 0.05;
-            let o = opt_mid + noise * 0.5;
-            let c = opt_mid - noise * 0.3;
-            let h = o.max(c) + opt_mid * vol * 0.02;
-            let l = (o.min(c) - opt_mid * vol * 0.02).max(0.01);
-            opt_bars.push(Bar { open: o, high: h, low: l, close: c, volume: bar.volume * 0.1, _pad: 0.0 });
+        panes[target].option_contract = occ.clone();
+
+        let tf = panes[target].timeframe.clone();
+
+        // Clear bars — we only want real data. The fetcher will populate via
+        // ChartCommand::LoadBars on success and subscribe the WS for live ticks.
+        panes[target].bars.clear();
+        panes[target].timestamps.clear();
+
+        if occ.is_empty() {
+            eprintln!("[option-chart] No OCC contract ticker — cannot fetch bars for {}", opt_sym);
+        } else if !crate::apex_data::is_enabled() {
+            eprintln!("[option-chart] ApexData disabled — cannot fetch bars for {}", occ);
+        } else {
+            fetch_option_bars_background(occ.clone(), opt_sym, tf.clone());
         }
-        panes[target].bars = opt_bars;
-        panes[target].timestamps = underlying_ts;
         panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         panes[target].auto_scroll = true;
         panes[target].indicator_bar_count = 0;
@@ -15718,6 +16332,237 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     TB_BTN_CLICKED.with(|f| f.set(false));
 
     route_commands(rx, panes, active_pane, watchlist);
+
+    // Keep ApexData's snapshot poller's watched set synced with visible symbols.
+    // Union: active pane symbols + every item in the watchlist.
+    if crate::apex_data::is_enabled() {
+        // For watchlist items that are options, the feed key is the OCC ticker
+        // synthesized from underlying/strike/side/expiry — NOT the display label.
+        let item_feed_key = |it: &WatchlistItem| -> String {
+            if it.is_option && !it.underlying.is_empty() {
+                synthesize_occ(&it.underlying, it.strike, it.option_type == "C", &it.expiry)
+            } else {
+                it.symbol.clone()
+            }
+        };
+
+        let mut watched: std::collections::HashSet<String> = panes.iter()
+            .map(|p| {
+                // Option panes feed via the OCC ticker, not the display label.
+                if p.is_option && !p.option_contract.is_empty() { p.option_contract.clone() }
+                else { p.symbol.clone() }
+            })
+            .filter(|s| !s.is_empty() && !crate::data::is_crypto(s))
+            .collect();
+        for sec in &watchlist.sections {
+            for it in &sec.items {
+                let key = item_feed_key(it);
+                if !key.is_empty() && !crate::data::is_crypto(&key) {
+                    watched.insert(key);
+                }
+            }
+        }
+        let watched_list: Vec<String> = watched.iter().cloned().collect();
+        crate::apex_data::live_state::set_watched_symbols(watched_list.clone());
+
+        // Push snapshot data into watchlist items so rows render live prices.
+        for sym in &watched_list {
+            if let Some(snap) = crate::apex_data::live_state::get_snapshot(sym) {
+                watchlist.set_price(sym, snap.last as f32);
+                watchlist.set_prev_close(sym, snap.day_open as f32);
+            }
+        }
+
+        // Push live NBBO quotes into watchlist items (option rows look up via
+        // their synthesized OCC; equity rows by symbol).
+        for sec in &mut watchlist.sections {
+            for it in &mut sec.items {
+                if it.symbol.is_empty() { continue; }
+                let key = item_feed_key(it);
+                if let Some(q) = crate::apex_data::live_state::get_quote(&key) {
+                    it.bid = q.bid as f32;
+                    it.ask = q.ask as f32;
+                }
+                // Pull last price from snapshots into the option row's `price`
+                // field so the watchlist mark column updates from the feed.
+                if it.is_option {
+                    if let Some(snap) = crate::apex_data::live_state::get_snapshot(&key) {
+                        if snap.last > 0.0 { it.price = snap.last as f32; }
+                    }
+                }
+            }
+        }
+
+        // Chain-delta cache → watchlist.chain_0dte/chain_far refresh.
+        // chain_delta arrives every 5s; re-derive the displayed grids from the
+        // local cache (spec §5.4.d bootstrap pattern: REST once, WS merge forever).
+        {
+            let sym = watchlist.chain_symbol.clone();
+            if !sym.is_empty() {
+                // If cache is empty for the selected chain symbol, kick off a fetch
+                // (debounced via chain_last_fetch). Covers SPX/SPXW/NDX/etc. that
+                // weren't pre-fetched at startup.
+                let cached = crate::apex_data::live_state::get_chain(&sym);
+                if cached.is_empty() {
+                    let stale = watchlist.chain_last_fetch
+                        .map(|t| t.elapsed() > std::time::Duration::from_secs(3))
+                        .unwrap_or(true);
+                    if stale {
+                        watchlist.chain_last_fetch = Some(std::time::Instant::now());
+                        watchlist.chain_loading = true;
+                        let dte = 0;
+                        let hint = crate::apex_data::live_state::get_snapshot(&sym)
+                            .map(|s| s.last as f32).unwrap_or(0.0);
+                        crate::apex_log!("chain.refresh", "{}: cache empty — kicking fetch", sym);
+                        fetch_chain_background(sym.clone(), watchlist.chain_num_strikes, dte, hint);
+                    }
+                }
+                if !cached.is_empty() {
+                    // Pass num_strikes=0 (sentinel = no trim) so the watchlist UI
+                    // gets every strike for the chosen expiry. The render_block
+                    // then handles its own windowing (count / pct / sigma) and the
+                    // prev/next-strike buttons can walk the full ladder.
+                    let ns = 0usize;
+                    let hint = if watchlist.chain_underlying_price > 0.0 {
+                        watchlist.chain_underlying_price
+                    } else {
+                        crate::apex_data::live_state::get_snapshot(&sym)
+                            .map(|s| s.last as f32).unwrap_or(0.0)
+                    };
+                    let far_dte = watchlist.chain_far_dte;
+                    // 0DTE expiry rule: pick the most recent trading day whose options
+                    // are "active" — today during/after pre-market on a weekday, else
+                    // the previous trading day (Sat→Fri, Sun→Fri, weekday<4amET→prev).
+                    let zero_dte_str = active_zero_dte_date().format("%Y-%m-%d").to_string();
+                    let cached_today: Vec<_> = cached.iter()
+                        .filter(|r| r.expiry == zero_dte_str).cloned().collect();
+                    let (c0, p0, spot0) = apex_data_chain_to_tuples(&cached_today, 0, ns, hint);
+                    let (cf, pf, _)     = apex_data_chain_to_tuples(&cached, far_dte, ns, hint);
+                    let to_rows = |tuples: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>| -> Vec<OptionRow> {
+                        tuples.into_iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
+                            strike, last, bid, ask, volume: vol, oi, iv, itm, contract,
+                        }).collect()
+                    };
+                    watchlist.chain_0dte = (to_rows(c0), to_rows(p0));
+                    watchlist.chain_far  = (to_rows(cf), to_rows(pf));
+                    crate::apex_log!("chain.refresh",
+                        "{}: 0DTE={}c/{}p, far(dte={})={}c/{}p, spot={:.2}, cache={} rows",
+                        sym, watchlist.chain_0dte.0.len(), watchlist.chain_0dte.1.len(),
+                        far_dte, watchlist.chain_far.0.len(), watchlist.chain_far.1.len(),
+                        spot0, cached.len());
+                    if spot0 > 0.0 { watchlist.chain_underlying_price = spot0; }
+                    watchlist.chain_loading = false;
+                }
+            }
+        }
+
+        // Register contracts for greeks polling. Three sources:
+        //   • Each pane's own option_contract (so an open 285C polls its greeks).
+        //   • ATM 0DTE call per pane (drives the greeks ribbon for the underlying).
+        //   • Spread builder legs when the panel is open.
+        // The OptionGreeks widget + spread/chain tabs read via
+        // live_state::get_greeks(contract).
+        let mut contracts: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for p in panes.iter() {
+            if p.is_option && p.option_contract.starts_with("O:") {
+                contracts.insert(p.option_contract.clone());
+            }
+            if p.symbol.is_empty() { continue; }
+            let spot = watchlist.chain_underlying_price;
+            let calls = if !watchlist.chain_0dte.0.is_empty() { &watchlist.chain_0dte.0 }
+                        else { &watchlist.chain_far.0 };
+            if let Some(atm) = calls.iter()
+                .min_by(|a, b| (a.strike - spot).abs()
+                    .partial_cmp(&((b.strike - spot).abs()))
+                    .unwrap_or(std::cmp::Ordering::Equal))
+            {
+                if !atm.contract.is_empty() && atm.contract.starts_with("O:") {
+                    contracts.insert(atm.contract.clone());
+                }
+            }
+        }
+        // Watchlist option items — poll greeks too so the rows can show greek
+        // columns when the user toggles them.
+        for sec in &watchlist.sections {
+            for it in &sec.items {
+                if it.is_option && !it.underlying.is_empty() {
+                    let occ = synthesize_occ(
+                        &it.underlying, it.strike, it.option_type == "C", &it.expiry);
+                    if occ.starts_with("O:") { contracts.insert(occ); }
+                }
+            }
+        }
+        // Spread builder legs.
+        if watchlist.spread_open {
+            let underlying = if panes[*active_pane].is_option {
+                panes[*active_pane].underlying.clone()
+            } else { panes[*active_pane].symbol.clone() };
+            if !underlying.is_empty() && !crate::data::is_crypto(&underlying) {
+                for leg in &watchlist.spread_state.legs {
+                    let occ = synthesize_occ(
+                        &underlying, leg.strike, leg.option_type == "CALL", &leg.expiry);
+                    if occ.starts_with("O:") { contracts.insert(occ); }
+                }
+            }
+        }
+        crate::apex_data::live_state::set_watched_contracts(contracts);
+
+        // Tape & quote WS subscriptions follow the open panels. Tape panel
+        // streams trades for the active pane — for option panes we use the
+        // OCC ticker, NOT the display label, so the server actually streams.
+        let tape_syms: Vec<String> = if watchlist.tape_open {
+            let ap = &panes[*active_pane];
+            let key = if ap.is_option && !ap.option_contract.is_empty() {
+                ap.option_contract.clone()
+            } else { ap.symbol.clone() };
+            if key.is_empty() || crate::data::is_crypto(&key) { vec![] } else { vec![key] }
+        } else { vec![] };
+        crate::apex_data::ws::set_tape(&tape_syms);
+
+        // Quote subscriptions: every watched item (already includes option OCCs
+        // from the watched_list build above) PLUS every open option pane's OCC.
+        // Drives DOM sidebar, order entry NBBO, ladder mid-price, options
+        // overlay along the price axis, and any FMV piggyback (§6.1).
+        let mut quote_set: std::collections::HashSet<String> = watched_list.iter()
+            .filter(|s| !crate::data::is_crypto(s))
+            .cloned().collect();
+        for p in panes.iter() {
+            if p.is_option && !p.option_contract.is_empty() {
+                quote_set.insert(p.option_contract.clone());
+            }
+            // Strikes overlay (the "O" / circle toggle) renders pills for each
+            // overlay_calls/overlay_puts row — subscribe their OCCs so each
+            // pill's bid/ask/IV is live, not stale from the seed fetch.
+            if p.show_strikes_overlay {
+                for r in p.overlay_calls.iter().chain(p.overlay_puts.iter()) {
+                    if r.contract.starts_with("O:") {
+                        quote_set.insert(r.contract.clone());
+                    }
+                }
+            }
+            // Floating order tickets / DOM sidebar / ladder all read live data
+            // for the pane's option contract; already covered by `option_contract`
+            // above.
+        }
+        // Spread builder legs — when the panel is open, every leg's OCC needs
+        // a live quote so the BUY/SELL prices and net debit/credit are real.
+        if watchlist.spread_open {
+            let underlying = panes[*active_pane].symbol.clone();
+            let underlying = if panes[*active_pane].is_option {
+                panes[*active_pane].underlying.clone()
+            } else { underlying };
+            if !underlying.is_empty() && !crate::data::is_crypto(&underlying) {
+                for leg in &watchlist.spread_state.legs {
+                    let occ = synthesize_occ(
+                        &underlying, leg.strike, leg.option_type == "CALL", &leg.expiry,
+                    );
+                    if occ.starts_with("O:") { quote_set.insert(occ); }
+                }
+            }
+        }
+        let quote_syms: Vec<String> = quote_set.into_iter().collect();
+        crate::apex_data::ws::set_quotes(&quote_syms);
+    }
 
     check_history_pagination(panes, *active_pane);
 
@@ -16255,7 +17100,16 @@ pub(crate) struct Watchlist {
     pub(crate) account_strip_open: bool, // account summary bar below toolbar
     pub(crate) object_tree_open: bool, // object tree panel (drawings, indicators, overlays)
     pub(crate) broadcast_mode: bool, // when true, toolbar actions apply to all panes
+    /// Drawing-tool favorites shown in the middle-click picker. Persisted.
+    pub(crate) draw_favorites: Vec<String>,
+    /// UI style preset index (0..STYLE_NAMES.len()). Combines with `theme_idx`
+    /// to form the full visual identity (e.g. "GruvBox/Meridien").
+    pub(crate) style_idx: usize,
     pub(crate) pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
+    /// Optional OCC contract ticker for the pending open. When present, used as the
+    /// fetch key so real bars come from ApexData; pane.symbol stays the display label.
+    pub(crate) pending_opt_chart_contract: Option<String>,
+    pub(crate) apex_diag_open: bool,
     // Watchlist filter
     pub(crate) filter_open: bool,
     // Watchlist column config
@@ -16475,7 +17329,10 @@ impl Watchlist {
                pane_header_size: crate::chart_renderer::PaneHeaderSize::Compact,
                show_x_axis: true, show_y_axis: true,
                toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false, shared_y_axis: false,
-               trendline_filter_open: false, account_strip_open: false, object_tree_open: false, broadcast_mode: false, pending_opt_chart: None,
+               trendline_filter_open: false, account_strip_open: false, object_tree_open: false, broadcast_mode: false,
+               draw_favorites: vec!["trendline".into(), "magnifier".into(), "measure".into(), "hline".into(), "channel".into(), "fibonacci".into()],
+               style_idx: 0,
+               pending_opt_chart: None, pending_opt_chart_contract: None, apex_diag_open: false,
                wl_col_sparkline: true, wl_col_volume: false, wl_col_rvol: true,
                wl_col_atr: false, wl_col_52w_range: false, wl_col_day_range: true,
                wl_col_earnings: true, wl_col_market_cap: false, wl_columns_open: false,
@@ -16662,7 +17519,8 @@ impl Watchlist {
     /// Returns false if already present (duplicate check by symbol string).
     pub(crate) fn add_option_to_watchlist(&mut self, underlying: &str, strike: f32, is_call: bool, expiry: &str, bid: f32, ask: f32) -> bool {
         let type_str = if is_call { "C" } else { "P" };
-        let opt_sym = format!("{} {:.0}{} {}", underlying, strike, type_str, expiry);
+        let strike_str = if (strike - strike.round()).abs() < 0.005 { format!("{:.0}", strike) } else { format!("{:.1}", strike) };
+        let opt_sym = format!("{} {}{} {}", underlying, strike_str, type_str, expiry);
         // Duplicate check across all sections
         if self.sections.iter().any(|sec| sec.items.iter().any(|i| i.symbol == opt_sym)) {
             return false;
@@ -16890,9 +17748,42 @@ fn apexib_curl(path: &str) -> Option<serde_json::Value> {
     } else { None }
 }
 
+/// Compute the "active" 0DTE expiry date based on US/Eastern wall clock:
+///   • Sat → Fri, Sun → Fri
+///   • Weekday before 4am ET → previous trading day (Mon<4am → Fri)
+///   • Otherwise → today
+/// Approximates ET as UTC-4 (EDT, valid Mar–Nov). Acceptable since this only
+/// shifts the cutoff by an hour twice a year.
+fn active_zero_dte_date() -> chrono::NaiveDate {
+    use chrono::{Utc, Duration, Datelike, Timelike};
+    let et = Utc::now() - Duration::hours(4);
+    let date = et.date_naive();
+    let wd = et.weekday().num_days_from_monday(); // 0=Mon..6=Sun
+    let hour = et.hour();
+    match wd {
+        5 => date - Duration::days(1),                       // Sat → Fri
+        6 => date - Duration::days(2),                       // Sun → Fri
+        0 if hour < 4 => date - Duration::days(3),           // Mon overnight → Fri
+        _ if hour < 4 => date - Duration::days(1),           // Tue–Fri overnight → prev day
+        _ => date,                                            // weekday ≥ 4am ET → today
+    }
+}
+
+/// Normalize common index-option aliases to the underlying the data service
+/// actually tracks. Server-side normalization is planned but not yet live.
+fn normalize_underlying(sym: &str) -> String {
+    match sym.to_uppercase().as_str() {
+        "SPXW" => "SPX".to_string(),   // SPX weeklies share SPX feed
+        "NDXP" => "NDX".to_string(),   // NDX p.m.-settled
+        "XSP"  => "XSP".to_string(),   // mini-SPX (keep — separate product)
+        other  => other.to_string(),
+    }
+}
+
 pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlying_price: f32) {
+    let symbol = normalize_underlying(&symbol);
     std::thread::spawn(move || {
-        let api_strikes = 150; // request many strikes to cover Near/Mid/Far at $1 intervals
+        let api_strikes = 150;
         let path = format!("/options/{}?strikeCount={}&dte={}", symbol, api_strikes, dte);
 
         let send_chain = |calls: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
@@ -16907,6 +17798,116 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
             };
             crate::send_to_native_chart(cmd);
         };
+
+        // 0. ApexData — preferred. §5.4.c default filters (dte_max=14,
+        //    strike_window_pct=10%) keep the payload small; §5.4.d chain_delta
+        //    WS stream then pushes live updates into the local cache.
+        if crate::apex_data::is_enabled() {
+            use crate::apex_data::types::ChainQuery;
+
+            // Subscribe once to the chain delta stream for this underlying.
+            // Idempotent — dedup happens server-side by refcount.
+            crate::apex_data::ws::set_chain(&[symbol.clone()]);
+            crate::apex_log!("chain", "WS chain sub set to [{}]", symbol);
+
+            let render_from = |rows: &[crate::apex_data::ChainRow], hint: f32| -> Option<(Vec<_>, Vec<_>, f32)> {
+                let (calls, puts, eff) = apex_data_chain_to_tuples(rows, dte, num_strikes, hint);
+                if calls.is_empty() && puts.is_empty() { None } else { Some((calls, puts, eff)) }
+            };
+
+            let hint = if underlying_price > 0.0 { underlying_price }
+                       else {
+                           crate::apex_data::live_state::get_snapshot(&symbol)
+                               .map(|s| s.last as f32).unwrap_or(0.0)
+                       };
+
+            // 0a. Cache hit? (already seeded by prior REST or chain_delta)
+            let cached = crate::apex_data::live_state::get_chain(&symbol);
+            if !cached.is_empty() {
+                if let Some((calls, puts, spot)) = render_from(&cached, hint) {
+                    crate::apex_log!("chain", "{} dte={} from cache: {} calls, {} puts",
+                        symbol, dte, calls.len(), puts.len());
+                    send_chain(calls, puts, spot);
+                    return;
+                }
+            }
+
+            // 0b. REST with default filters (small payload, gzip).
+            let q = ChainQuery {
+                dte_max: Some(std::cmp::max(dte, 14)),
+                strike_window_pct: Some(10.0),
+                ..Default::default()
+            };
+            if let Some(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
+                crate::apex_log!("chain", "{}: {} rows (cache={}, filters dte_max={:?} sw%={:?})",
+                    symbol, chain.rows.len(), chain.total_in_cache,
+                    chain.filters.dte_max, chain.filters.strike_window_pct);
+                crate::apex_data::live_state::seed_chain(&symbol, &chain.rows);
+
+                // 0DTE backfill: when the active 0DTE date is in the past
+                // (weekend / overnight), the default forward-only `dte_max`
+                // filter excludes it. Pull that specific expiry explicitly
+                // and merge into the cache so the 0DTE column is populated
+                // with last-Friday's settled chain.
+                let zdt = active_zero_dte_date();
+                let today = chrono::Utc::now().date_naive();
+                if zdt < today {
+                    let zdt_s = zdt.format("%Y-%m-%d").to_string();
+                    let pq = ChainQuery {
+                        expiry: Some(zdt_s.clone()),
+                        strike_window_pct: Some(10.0),
+                        ..Default::default()
+                    };
+                    if let Some(past) = crate::apex_data::rest::get_chain_with(&symbol, &pq) {
+                        crate::apex_log!("chain.zerodte",
+                            "{}: backfill expiry={} → {} rows", symbol, zdt_s, past.rows.len());
+                        crate::apex_data::live_state::merge_chain_delta(&symbol, &past.rows);
+                    }
+                }
+
+                if let Some((calls, puts, spot)) = render_from(&chain.rows, hint) {
+                    send_chain(calls, puts, spot);
+                    return;
+                }
+            }
+
+            // 0c. 404/empty — untracked underlying. Prime via a placeholder OCC
+            //     subscribe (§5.4.b) and poll the local cache (which the
+            //     chain_delta stream will populate within ~5s of the upstream
+            //     sub taking effect).
+            let placeholder_occ = synthesize_occ(&symbol, 100.0, true, "0DTE");
+            crate::apex_log!("chain", "untracked {} — priming via {}", symbol, placeholder_occ);
+            crate::apex_data::ws::add_bar_sub(&placeholder_occ, "1m");
+
+            for attempt in 1..=8 {
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                // Prefer cache (chain_delta already merged); fall back to REST.
+                let cached = crate::apex_data::live_state::get_chain(&symbol);
+                if !cached.is_empty() {
+                    if let Some((calls, puts, spot)) = render_from(&cached, hint) {
+                        crate::apex_log!("chain", "{} dte={}: {} calls, {} puts (cache hit after {}s)",
+                            symbol, dte, calls.len(), puts.len(), attempt);
+                        send_chain(calls, puts, spot);
+                        return;
+                    }
+                }
+                if let Some(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
+                    if !chain.rows.is_empty() {
+                        crate::apex_data::live_state::seed_chain(&symbol, &chain.rows);
+                        if let Some((calls, puts, spot)) = render_from(&chain.rows, hint) {
+                            crate::apex_log!("chain", "{} dte={}: {} calls, {} puts (REST after {}s)",
+                                symbol, dte, calls.len(), puts.len(), attempt);
+                            send_chain(calls, puts, spot);
+                            return;
+                        }
+                    }
+                }
+            }
+            crate::apex_log!("chain", "still no chain for {} after prime+retry — fallback", symbol);
+            crate::apex_data::live_state::push_toast(format!(
+                "No chain data for {} — not in server's tracked underlyings",
+                symbol));
+        }
 
         // Use curl for fast TLS (reqwest's native-tls is slow on this machine)
         if let Some(json) = apexib_curl(&path) {
@@ -16948,20 +17949,156 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
             eprintln!("[apexib] Chain fetch for {} dte={} failed (curl)", symbol, dte);
         }
 
-        // Fallback: use simulated chain
-        eprintln!("[apexib] Falling back to simulated chain for {} dte={}", symbol, dte);
-        if underlying_price > 0.0 {
-            let (sim_calls, sim_puts) = build_chain(underlying_price, num_strikes, dte);
-            let calls: Vec<_> = sim_calls.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
-            let puts: Vec<_> = sim_puts.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
-            send_chain(calls, puts, underlying_price);
-        }
+        // No simulated chain — fake strikes produce OCCs that don't exist upstream, which
+        // means every click on a sim row silently fails to load bars. Send an empty chain
+        // and a toast so the user knows the real feed is unavailable.
+        crate::apex_log!("chain", "no real chain available for {} dte={} — sending empty", symbol, dte);
+        crate::apex_data::live_state::push_toast(format!(
+            "No chain data for {} — real feed unavailable", symbol));
+        send_chain(vec![], vec![], underlying_price);
     });
+}
+
+/// Convert ApexData ChainRow list → the legacy `(strike,last,bid,ask,vol,oi,iv,itm,contract)`
+/// tuple format, filtered to one expiry (target_dte days from today) and `num_strikes`
+/// strikes on each side of `spot`.
+///
+/// ApexData doesn't expose per-contract volume or open interest today (spec §4.7) so those
+/// fields are zero — the existing UI handles zeros gracefully (shown as "-").
+/// Returns (calls, puts, effective_spot).
+fn apex_data_chain_to_tuples(
+    rows: &[crate::apex_data::ChainRow],
+    target_dte: i32,
+    num_strikes: usize,
+    spot_in: f32,
+) -> (Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
+      Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>,
+      f32)
+{
+    use chrono::{Utc, NaiveDate, Duration};
+    let today = Utc::now().date_naive();
+    let target = today + Duration::days(target_dte as i64);
+
+    // Pick the expiry date closest to target.
+    let mut expiries: Vec<NaiveDate> = rows.iter()
+        .filter_map(|r| NaiveDate::parse_from_str(&r.expiry, "%Y-%m-%d").ok())
+        .collect();
+    expiries.sort(); expiries.dedup();
+    let chosen = expiries.into_iter()
+        .min_by_key(|d| (*d - target).num_days().abs());
+    let chosen = match chosen {
+        Some(d) => d,
+        None => return (vec![], vec![], spot_in),
+    };
+    let chosen_s = chosen.format("%Y-%m-%d").to_string();
+
+    let mut calls: Vec<&crate::apex_data::ChainRow> = rows.iter()
+        .filter(|r| r.expiry == chosen_s && r.side == "C").collect();
+    let mut puts:  Vec<&crate::apex_data::ChainRow> = rows.iter()
+        .filter(|r| r.expiry == chosen_s && r.side == "P").collect();
+    calls.sort_by(|a, b| a.strike.partial_cmp(&b.strike).unwrap_or(std::cmp::Ordering::Equal));
+    puts .sort_by(|a, b| a.strike.partial_cmp(&b.strike).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Estimate a usable spot from chain rows when the caller's hint is missing
+    // (common for newly-primed underlyings or symbols not yet in the watchlist).
+    // Preference order: caller hint → row with delta≈0.5 → put-call mid parity →
+    // median strike of this expiry.
+    let spot = if spot_in > 0.0 { spot_in } else {
+        // 1) delta ≈ 0.5 call
+        let atm_delta_call = calls.iter()
+            .filter(|r| r.delta.is_some())
+            .min_by(|a, b| (a.delta.unwrap() - 0.5).abs()
+                .partial_cmp(&((b.delta.unwrap() - 0.5).abs()))
+                .unwrap_or(std::cmp::Ordering::Equal))
+            .map(|r| r.strike as f32);
+        // 2) strike where |call.mid - put.mid| is smallest — ATM under put-call parity
+        let mid_parity = {
+            let mut best: Option<(f32, f32)> = None; // (strike, |diff|)
+            for c in &calls {
+                if let Some(p) = puts.iter().find(|p| (p.strike - c.strike).abs() < 0.001) {
+                    let diff = (c.mid - p.mid).abs() as f32;
+                    match best {
+                        Some((_, bd)) if diff >= bd => {}
+                        _ => best = Some((c.strike as f32, diff)),
+                    }
+                }
+            }
+            best.map(|(s, _)| s)
+        };
+        // 3) median strike (last resort)
+        let median = {
+            let mut all: Vec<f32> = calls.iter().map(|r| r.strike as f32)
+                .chain(puts.iter().map(|r| r.strike as f32)).collect();
+            all.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            if all.is_empty() { 0.0 } else { all[all.len()/2] }
+        };
+        let derived = atm_delta_call.or(mid_parity).unwrap_or(median);
+        crate::apex_log!("chain.adapt",
+            "derived spot={:.2} from rows (delta-match={:?}, parity={:?}, median={:.2})",
+            derived, atm_delta_call, mid_parity, median);
+        derived
+    };
+
+    // Trim to `num_strikes` on each side of spot.
+    fn trim_around_spot<'a>(
+        list: Vec<&'a crate::apex_data::ChainRow>,
+        num_strikes: usize,
+        spot: f32,
+    ) -> Vec<&'a crate::apex_data::ChainRow> {
+        if num_strikes == 0 || list.is_empty() || spot <= 0.0 { return list; }
+        let atm_idx = list.iter()
+            .enumerate()
+            .min_by(|a, b| (a.1.strike as f32 - spot).abs()
+                .partial_cmp(&((b.1.strike as f32 - spot).abs()))
+                .unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        let lo = atm_idx.saturating_sub(num_strikes);
+        let hi = (atm_idx + num_strikes + 1).min(list.len());
+        list[lo..hi].to_vec()
+    }
+    let calls = trim_around_spot(calls, num_strikes, spot);
+    let puts  = trim_around_spot(puts, num_strikes, spot);
+
+    let to_tuple = |r: &crate::apex_data::ChainRow, is_call: bool| {
+        let strike = r.strike as f32;
+        let itm = if is_call { strike < spot } else { strike > spot };
+        (
+            strike,
+            r.last as f32,
+            r.bid as f32,
+            r.ask as f32,
+            r.day_volume as i32,    // §5.4.d — now populated
+            r.open_interest as i32, // §5.4.d — now populated
+            r.iv.map(|v| v as f32).unwrap_or(0.0),
+            itm,
+            r.ticker.clone(),       // OCC ticker
+        )
+    };
+    let calls_t: Vec<_> = calls.iter().map(|r| to_tuple(r, true)).collect();
+    let puts_t:  Vec<_> = puts.iter().map(|r| to_tuple(r, false)).collect();
+    (calls_t, puts_t, spot)
 }
 
 /// Fetch chain data for the strikes overlay (independent of sidebar chain tab).
 fn fetch_overlay_chain_background(symbol: String, underlying_price: f32) {
     std::thread::spawn(move || {
+        // 0. ApexData — preferred. 0DTE strikes, wide strike band.
+        if crate::apex_data::is_enabled() {
+            if let Some(chain) = crate::apex_data::rest::get_chain(&symbol) {
+                let spot = if underlying_price > 0.0 { underlying_price }
+                           else {
+                               crate::apex_data::live_state::get_snapshot(&symbol)
+                                   .map(|s| s.last as f32).unwrap_or(0.0)
+                           };
+                let (calls, puts, _eff) = apex_data_chain_to_tuples(&chain.rows, 0, 75, spot);
+                if !calls.is_empty() || !puts.is_empty() {
+                    crate::send_to_native_chart(ChartCommand::OverlayChainData { symbol: symbol.clone(), calls, puts });
+                    return;
+                }
+            }
+        }
+
         let path = format!("/options/{}?strikeCount=150&dte=0", symbol);
         if let Some(json) = apexib_curl(&path) {
             let parse_rows = |key: &str| -> Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)> {
@@ -16994,13 +18131,9 @@ fn fetch_overlay_chain_background(symbol: String, underlying_price: f32) {
                 return;
             }
         }
-        // Fallback: simulated chain
-        if underlying_price > 0.0 {
-            let (sim_calls, sim_puts) = build_chain(underlying_price, 75, 0);
-            let calls: Vec<_> = sim_calls.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
-            let puts: Vec<_> = sim_puts.iter().map(|r| (r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone())).collect();
-            crate::send_to_native_chart(ChartCommand::OverlayChainData { symbol, calls, puts });
-        }
+        // No simulated fallback — send an empty overlay so the chart reflects reality
+        // rather than drawing fabricated strikes over a real symbol.
+        crate::send_to_native_chart(ChartCommand::OverlayChainData { symbol, calls: vec![], puts: vec![] });
     });
 }
 
@@ -17360,9 +18493,37 @@ impl App {
                             unsafe {
                                 let hwnd = h.hwnd.get() as *mut std::ffi::c_void;
 
-                                // Ensure WS_EX_APPWINDOW so taskbar shows our icon
-                                let ex_style = windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, -20);
-                                windows_sys::Win32::UI::WindowsAndMessaging::SetWindowLongW(hwnd, -20, ex_style | 0x00040000);
+                                // Ensure WS_EX_APPWINDOW (0x40000) so taskbar shows our icon,
+                                // and clear WS_EX_TOOLWINDOW (0x80) which winit sets when
+                                // `with_decorations(false)` is used and which suppresses
+                                // the taskbar entry. Windows latches taskbar membership at
+                                // window-creation time, so we must hide → restyle → show
+                                // for the new ex-style to actually register the window
+                                // with the shell.
+                                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                                    GetWindowLongW, SetWindowLongW, SetWindowPos, ShowWindow,
+                                    SendMessageW, SetClassLongPtrW,
+                                };
+                                let ex_style = GetWindowLongW(hwnd, -20);
+                                let new_ex = (ex_style | 0x00040000) & !0x00000080;
+                                ShowWindow(hwnd, 0);                       // SW_HIDE
+                                SetWindowLongW(hwnd, -20, new_ex);
+                                SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, 0, 0,
+                                    0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020); // NOSIZE|NOMOVE|NOZORDER|NOACTIVATE|FRAMECHANGED
+                                // Set the icon WHILE hidden so the shell sees a valid
+                                // icon at the moment the window first appears as a
+                                // taskbar-eligible app window. Some Win11 builds suppress
+                                // the entry if the icon isn't set at first paint.
+                                if let Some(hicon) = make_window_icon_hicon() {
+                                    SendMessageW(hwnd, 0x0080, 1, hicon); // ICON_BIG
+                                    SendMessageW(hwnd, 0x0080, 0, hicon); // ICON_SMALL
+                                    SetClassLongPtrW(hwnd, -14, hicon as _);
+                                    SetClassLongPtrW(hwnd, -34, hicon as _);
+                                }
+                                // SW_SHOWMAXIMIZED preserves the with_maximized(true)
+                                // state and re-registers the taskbar entry. SW_RESTORE
+                                // would un-maximize.
+                                ShowWindow(hwnd, 3);                       // SW_SHOWMAXIMIZED
 
                                 // DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2
                                 let preference: u32 = 2;
@@ -17425,6 +18586,8 @@ impl App {
         wl.show_y_axis = loaded_settings.show_y_axis;
         wl.shared_x_axis = loaded_settings.shared_x_axis;
         wl.shared_y_axis = loaded_settings.shared_y_axis;
+        if let Some(favs) = loaded_settings.draw_favorites.clone() { wl.draw_favorites = favs; }
+        wl.style_idx = loaded_settings.style_idx;
         wl.pane_split_h = loaded_settings.pane_split_h;
         wl.pane_split_v = loaded_settings.pane_split_v;
         wl.pane_split_h2 = loaded_settings.pane_split_h2;
@@ -17645,7 +18808,7 @@ impl ApplicationHandler for App {
                                         chart.ohlc_tooltip = gb("ohlc_tooltip", true);
                                         chart.magnet = gb("magnet", true);
                                         chart.log_scale = gb("log_scale", false);
-                                        chart.show_vwap_bands = gb("show_vwap_bands", true);
+                                        chart.show_vwap_bands = gb("show_vwap_bands", false);
                                         chart.show_cvd = gb("show_cvd", false);
                                         chart.show_delta_volume = gb("show_delta_volume", false);
                                         chart.show_rvol = gb("show_rvol", true);
@@ -17749,6 +18912,15 @@ impl ApplicationHandler for App {
                 let sym_change = pane.pending_symbol_change.take();
                 let tf_change = pane.pending_timeframe_change.take();
                 if sym_change.is_some() || tf_change.is_some() {
+                    // Stash the OUTGOING (sym, tf)'s bars/ts in the tab cache
+                    // before swapping, so re-entry restores instantly.
+                    if !pane.symbol.is_empty() && !pane.bars.is_empty() {
+                        pane.tab_cache.insert(
+                            (pane.symbol.clone(), pane.timeframe.clone()),
+                            (pane.bars.clone(), pane.timestamps.clone(), std::time::Instant::now()),
+                        );
+                    }
+
                     if let Some(ref sym) = sym_change {
                         // Push old symbol to history for back/forward navigation
                         // (skip if this change was triggered by back/forward nav buttons)
@@ -17772,8 +18944,18 @@ impl ApplicationHandler for App {
                     let tf = pane.timeframe.clone();
                     eprintln!("[native-chart] Loading {} {}", sym, tf);
 
-                    pane.bars.clear();
-                    pane.timestamps.clear();
+                    // Try cache first — if we recently had this (sym, tf), restore
+                    // instantly so the user doesn't see a blank chart while the
+                    // background fetch runs to refresh it.
+                    let cache_hit = pane.tab_cache.get(&(sym.clone(), tf.clone())).cloned();
+                    if let Some((cb, cts, _)) = cache_hit {
+                        pane.bars = cb;
+                        pane.timestamps = cts;
+                        pane.indicator_bar_count = 0; // recompute against restored bars
+                    } else {
+                        pane.bars.clear();
+                        pane.timestamps.clear();
+                    }
                     pane.indicators.clear();
                     pane.drawings.clear(); // cleared here, reloaded when LoadBars arrives
                     pane.drawings_requested = false; // allow re-fetch for new timeframe
@@ -17789,7 +18971,11 @@ impl ApplicationHandler for App {
                         }));
                     }
 
-                    fetch_bars_background(sym, tf);
+                    if pane.is_option && !pane.option_contract.is_empty() {
+                        fetch_option_bars_background(pane.option_contract.clone(), sym, tf);
+                    } else {
+                        fetch_bars_background(sym, tf);
+                    }
                 }
             }
 
@@ -17914,6 +19100,75 @@ pub(crate) fn submit_ib_order(symbol: &str, side: &str, qty: u32, order_type_idx
     }
 }
 
+/// Paginate older bars for an option contract via ApexData replay (§5.3).
+/// `occ` is the feed key (e.g. `O:SPY260501C00450000`); `display_sym` is the
+/// pane's human-readable label that PrependBars will be keyed against.
+fn fetch_option_history_background(occ: String, display_sym: String, tf: String, before_ts: i64) {
+    let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
+
+    std::thread::spawn(move || {
+        // Page sizes — options trade only during market hours so a "day" is
+        // ~390 minutes. Scale the lookback so each page yields ~500 bars.
+        let page_seconds: i64 = match tf.as_str() {
+            "1m"            => 86400 * 2,    // ~390 1m bars × 2d ≈ 780
+            "2m"            => 86400 * 4,
+            "5m"            => 86400 * 10,
+            "15m"           => 86400 * 30,
+            "30m"           => 86400 * 30,
+            "1h" | "60m"    => 86400 * 60,
+            "4h"            => 86400 * 180,
+            "1d"            => 86400 * 365,
+            "1wk"           => 86400 * 365 * 3,
+            _               => 86400 * 5,
+        };
+
+        if !crate::apex_data::is_enabled() {
+            // No alt source for options history — mark exhausted.
+            let cmd = ChartCommand::PrependBars {
+                symbol: display_sym, timeframe: tf,
+                bars: vec![], timestamps: vec![],
+            };
+            for tx in &txs { let _ = tx.send(cmd.clone()); }
+            return;
+        }
+
+        let to_ms = before_ts * 1000;
+        let from_ms = to_ms - page_seconds * 1000;
+        crate::apex_log!("option.history",
+            "GET replay options/{} {} from={} to={}", occ, tf, from_ms, to_ms);
+        match crate::apex_data::rest::get_replay(
+            crate::apex_data::AssetClass::Option, &occ, &tf, from_ms, to_ms, None, Some(1000))
+        {
+            Some(resp) if !resp.bars.is_empty() => {
+                let gpu_bars: Vec<Bar> = resp.bars.iter().map(|b| Bar {
+                    open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                    close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                }).collect();
+                let timestamps: Vec<i64> = resp.bars.iter().map(|b| b.time / 1000).collect();
+                crate::apex_log!("option.history",
+                    "OK {} bars for {} {} (oldest: {})", gpu_bars.len(), occ, tf,
+                    timestamps.first().copied().unwrap_or(0));
+                let cmd = ChartCommand::PrependBars {
+                    symbol: display_sym, timeframe: tf, bars: gpu_bars, timestamps,
+                };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+            }
+            _ => {
+                crate::apex_log!("option.history",
+                    "EMPTY for {} {} — marking exhausted", occ, tf);
+                // Empty result → PrependBars handler sets history_exhausted.
+                let cmd = ChartCommand::PrependBars {
+                    symbol: display_sym, timeframe: tf,
+                    bars: vec![], timestamps: vec![],
+                };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+            }
+        }
+    });
+}
+
 fn fetch_history_background(sym: String, tf: String, before_ts: i64) {
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
@@ -17933,6 +19188,29 @@ fn fetch_history_background(sym: String, tf: String, before_ts: i64) {
             "1wk" => 86400 * 365 * 5, // 5 years
             _ => 86400 * 5,
         };
+
+        // ── 0. ApexData replay — cursor-paginated QuestDB (§5.3) ──
+        if crate::apex_data::is_enabled() {
+            let class = crate::apex_data::AssetClass::from_symbol(&sym);
+            let to_ms = before_ts * 1000;
+            let from_ms = to_ms - page_seconds * 1000;
+            if let Some(resp) = crate::apex_data::rest::get_replay(class, &sym, &tf, from_ms, to_ms, None, Some(1000)) {
+                if !resp.bars.is_empty() {
+                    let gpu_bars: Vec<Bar> = resp.bars.iter().map(|b| Bar {
+                        open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                        close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+                    }).collect();
+                    let timestamps: Vec<i64> = resp.bars.iter().map(|b| b.time / 1000).collect();
+                    eprintln!("[apex_data] replay {} bars for {} {} before {}", gpu_bars.len(), sym, tf, before_ts);
+                    let cmd = ChartCommand::PrependBars {
+                        symbol: sym.clone(), timeframe: tf.clone(),
+                        bars: gpu_bars, timestamps,
+                    };
+                    for tx in &txs { let _ = tx.send(cmd.clone()); }
+                    return;
+                }
+            }
+        }
 
         let period2 = before_ts;
         let period1 = before_ts - page_seconds;
@@ -18007,6 +19285,99 @@ fn fetch_drawings_background(sym: String) {
 /// Public entry point for standalone binary to trigger initial data load.
 pub fn fetch_bars_background_pub(sym: String, tf: String) { fetch_bars_background(sym, tf); }
 
+/// Fetch bars for an option contract using the OCC ticker as the fetch key,
+/// but emit `ChartCommand::LoadBars` with the pane's display symbol so existing
+/// routing matches. Bars come from ApexData's `/api/bars/options/:contract/:tf`.
+/// Build an OCC option ticker like `O:SPY251219C00450000` from (underlying,
+/// strike, is_call, DTE-label).
+///
+/// DTE label examples: `"0DTE"`, `"5DTE"`, `"1DTE+"`, or an empty string.
+/// Weekends roll forward to Friday (simple: pick the next weekday). For empty
+/// or unparseable labels we default to 0DTE.
+pub(crate) fn synthesize_occ(underlying: &str, strike: f32, is_call: bool, expiry_label: &str) -> String {
+    use chrono::{Utc, Duration, NaiveDate, Datelike, Weekday};
+    // Two acceptable forms:
+    //   1. "YYYY-MM-DD" — parsed directly as a date.
+    //   2. "5DTE" / "0DTE" / "" — N days from today.
+    let mut d: NaiveDate = if let Ok(parsed) = NaiveDate::parse_from_str(expiry_label, "%Y-%m-%d") {
+        parsed
+    } else {
+        let days: i64 = expiry_label
+            .trim_end_matches(|c: char| !c.is_ascii_digit())
+            .chars().filter(|c| c.is_ascii_digit()).collect::<String>()
+            .parse().unwrap_or(0);
+        Utc::now().date_naive() + Duration::days(days)
+    };
+    // Weekly options settle Fri; if we landed on Sat/Sun, nudge forward.
+    match d.weekday() {
+        Weekday::Sat => d += Duration::days(2),
+        Weekday::Sun => d += Duration::days(1),
+        _ => {}
+    }
+    let side = if is_call { 'C' } else { 'P' };
+    // Strike integer part * 1000 + fractional cents in 0.001 units (OCC uses 1/1000 of $).
+    let strike_int = (strike * 1000.0).round() as i64;
+    format!("O:{}{}{}{:08}", underlying.to_uppercase(), d.format("%y%m%d"), side, strike_int)
+}
+
+pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf: String) {
+    crate::apex_log!("option.fetch", "ENTRY occ={occ} display='{display_sym}' tf={tf}");
+    let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    crate::apex_log!("option.fetch", "txs.len={}", txs.len());
+    if txs.is_empty() { crate::apex_log!("option.fetch", "ABORT: no channel senders"); return; }
+
+    if !crate::apex_data::is_enabled() {
+        crate::apex_log!("option.fetch", "ABORT: ApexData disabled");
+        return;
+    }
+
+    let ws_was = crate::apex_data::ws::is_connected();
+    crate::apex_log!("option.fetch", "WS connected={ws_was} — calling add_bar_sub");
+    crate::apex_data::ws::add_bar_sub(&occ, &tf);
+    let mut quote_set: Vec<String> = vec![occ.clone()];
+    // Keep any existing quote subs alongside this one.
+    // (set_quotes is replace-set semantics, so we need the full set — but our
+    //  frame hook rebuilds the quote set each frame from watched_list, so just
+    //  adding via live_state watch is enough — it'll be included next tick.)
+    let _ = quote_set;
+
+    std::thread::spawn(move || {
+        let send = |bars: Vec<crate::data::Bar>, src: &str| {
+            let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
+                open: b.open as f32, high: b.high as f32, low: b.low as f32,
+                close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+            }).collect();
+            let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
+            eprintln!("[option-chart] {} bars for {} ({} / {}) from {}",
+                gpu_bars.len(), occ, display_sym, tf, src);
+            let cmd = ChartCommand::LoadBars {
+                symbol: display_sym.clone(),
+                timeframe: tf.clone(),
+                bars: gpu_bars, timestamps,
+            };
+            for tx in &txs { let _ = tx.send(cmd.clone()); }
+        };
+
+        // History (may be empty for a brand-new contract — first close after sub
+        // populates it; live ticks stream immediately via the WS sub above).
+        crate::apex_log!("option.fetch", "REST get_bars Option {occ} {tf}");
+        match crate::apex_data::rest::get_bars(
+            crate::apex_data::AssetClass::Option, &occ, &tf)
+        {
+            Some(bars) if !bars.is_empty() => {
+                crate::apex_log!("option.fetch", "OK {} bars for {occ}", bars.len());
+                let adapted: Vec<crate::data::Bar> = bars.into_iter().map(|b| crate::data::Bar {
+                    time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+                }).collect();
+                send(adapted, "ApexData");
+            }
+            Some(_) => crate::apex_log!("option.fetch", "EMPTY history for {occ} — waiting on live ticks"),
+            None    => crate::apex_log!("option.fetch", "UNREACHABLE or breaker-open for {occ} {tf}"),
+        }
+    });
+}
+
 pub(crate) fn fetch_bars_background(sym: String, tf: String) {
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get()
@@ -18044,6 +19415,23 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
             }
             // Crypto-only: don't fall through to Yahoo
             return;
+        }
+
+        // 0. ApexData — authoritative source (REST + WS live updates)
+        if crate::apex_data::is_enabled() {
+            let class = crate::apex_data::AssetClass::from_symbol(&sym);
+            if let Some(bars) = crate::apex_data::rest::get_bars(class, &sym, &tf) {
+                if !bars.is_empty() {
+                    // ApexData's ChartBar has the same shape as our data::Bar (time in secs).
+                    let adapted: Vec<crate::data::Bar> = bars.into_iter().map(|b| crate::data::Bar {
+                        time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+                    }).collect();
+                    crate::bar_cache::set(&sym, &tf, &adapted);
+                    // Subscribe to live updates for this (symbol, tf).
+                    crate::apex_data::ws::add_bar_sub(&sym, &tf);
+                    if send_bars(&adapted, "ApexData") { return; }
+                }
+            }
         }
 
         // 1. Redis cache — instant (stocks only)
@@ -18150,7 +19538,7 @@ fn workspace_dir() -> std::path::PathBuf {
 }
 
 fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
-    let pane_data: Vec<serde_json::Value> = panes.iter().filter(|p| !p.is_option).map(|p| {
+    let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
             "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
             "visible": ind.visible, "thickness": ind.thickness,
@@ -18226,7 +19614,7 @@ fn list_workspaces() -> Vec<String> {
 }
 
 fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
-    let pane_data: Vec<serde_json::Value> = panes.iter().filter(|p| !p.is_option).map(|p| {
+    let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         // Serialize indicators — include ALL styling fields
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
             "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
@@ -18281,6 +19669,14 @@ fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
             "indicators": indicators,
             // Chart widgets
             "chart_widgets": serde_json::to_value(&p.chart_widgets).unwrap_or_default(),
+            // Option-pane state (preserved across sessions so option charts
+            // restore as option charts, not as broken stock fetches).
+            "is_option": p.is_option,
+            "option_contract": p.option_contract,
+            "option_strike": p.option_strike,
+            "option_type": p.option_type,
+            "option_expiry": p.option_expiry,
+            "underlying": p.underlying,
         })
     }).collect();
     // Global settings from Watchlist
@@ -18295,6 +19691,8 @@ fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
         "theme_idx": panes.first().map(|p| p.theme_idx).unwrap_or(5),
         "panes": pane_data,
         "recent_symbols": panes.first().map(|p| &p.recent_symbols).cloned().unwrap_or_default(),
+        "draw_favorites": watchlist.draw_favorites,
+        "style_idx": watchlist.style_idx,
         "settings": {
             "font_scale": watchlist.font_scale,
             "font_idx": watchlist.font_idx,
@@ -18331,6 +19729,8 @@ struct LoadedSettings {
     show_x_axis: bool, show_y_axis: bool,
     shared_x_axis: bool, shared_y_axis: bool,
     pane_split_h: f32, pane_split_v: f32, pane_split_h2: f32, pane_split_v2: f32,
+    draw_favorites: Option<Vec<String>>,
+    style_idx: usize,
 }
 impl Default for LoadedSettings { fn default() -> Self { Self {
     font_scale: 1.6, font_idx: 0, compact_mode: false,
@@ -18339,6 +19739,8 @@ impl Default for LoadedSettings { fn default() -> Self { Self {
     show_x_axis: true, show_y_axis: true,
     shared_x_axis: false, shared_y_axis: false,
     pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5,
+    draw_favorites: None,
+    style_idx: 0,
 }}}
 
 fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
@@ -18382,7 +19784,7 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
             chart.ohlc_tooltip = gb("ohlc_tooltip", true);
             chart.magnet = gb("magnet", true);
             chart.log_scale = gb("log_scale", false);
-            chart.show_vwap_bands = gb("show_vwap_bands", true);
+            chart.show_vwap_bands = gb("show_vwap_bands", false);
             chart.show_cvd = gb("show_cvd", false);
             chart.show_delta_volume = gb("show_delta_volume", false);
             chart.show_rvol = gb("show_rvol", true);
@@ -18471,6 +19873,16 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
                 }
             }
 
+            // Option-pane state — restore the contract metadata so the pane
+            // re-fetches via fetch_option_bars_background instead of trying
+            // to load the (non-existent) display label as a stock symbol.
+            chart.is_option = gb("is_option", false);
+            chart.option_contract = p.get("option_contract").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            chart.option_strike   = p.get("option_strike").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            chart.option_type     = p.get("option_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            chart.option_expiry   = p.get("option_expiry").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            chart.underlying      = p.get("underlying").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
             panes.push(chart);
         }
     }
@@ -18499,6 +19911,15 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
         settings.pane_split_v = s.get("pane_split_v").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
         settings.pane_split_h2 = s.get("pane_split_h2").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
         settings.pane_split_v2 = s.get("pane_split_v2").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    }
+    // Drawing-tool favorites — top-level key (added independently of settings).
+    if let Some(arr) = json.get("draw_favorites").and_then(|v| v.as_array()) {
+        let favs: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+        if !favs.is_empty() { settings.draw_favorites = Some(favs); }
+    }
+    // Style index — top-level key, clamped to known list.
+    if let Some(s) = json.get("style_idx").and_then(|v| v.as_u64()) {
+        settings.style_idx = (s as usize).min(STYLE_NAMES.len().saturating_sub(1));
     }
 
     (panes, layout, settings)

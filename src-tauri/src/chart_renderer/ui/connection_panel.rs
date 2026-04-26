@@ -30,6 +30,11 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
             ui.horizontal(|ui| {
                 ui.add_space(m);
                 ui.label(egui::RichText::new("SERVICES").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("diag").on_hover_text("ApexData diagnostics panel").clicked() {
+                        _watchlist.apex_diag_open = true;
+                    }
+                });
             });
             ui.add_space(4.0);
 
@@ -37,7 +42,24 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
             let redis_ok = crate::bar_cache::is_connected();
             let ib_ok = read_account_data().map(|(a, _, _)| a.connected).unwrap_or(false);
 
+            // ApexData status — REST health + WS connection.
+            let apex_enabled = crate::apex_data::is_enabled();
+            let apex_ws_ok = crate::apex_data::ws::is_connected();
+            let apex_health = crate::apex_data::live_state::get_health();
+            let (apex_status, apex_ok) = if !apex_enabled {
+                ("OFF", false)
+            } else if let Some(h) = apex_health.as_ref() {
+                if h.ready && apex_ws_ok { ("OK", true) }
+                else if apex_ws_ok       { ("AMBER", false) }
+                else                     { ("DOWN", false) }
+            } else {
+                (if apex_ws_ok { "AMBER" } else { "DOWN" }, apex_ws_ok)
+            };
+            let apex_url_owned = crate::apex_data::apex_url();
+            let apex_url_str: &str = apex_url_owned.as_str();
+
             let services: &[(&str, &str, bool, &str)] = &[
+                ("ApexData", apex_status, apex_ok, apex_url_str),
                 ("ApexIB", if ib_ok { "OK" } else { "OFF" }, ib_ok, APEXIB_URL),
                 ("Redis", if redis_ok { "OK" } else { "OFF" }, redis_ok, "192.168.1.89:6379"),
                 ("GPU", "DX12", true, "wgpu + egui"),

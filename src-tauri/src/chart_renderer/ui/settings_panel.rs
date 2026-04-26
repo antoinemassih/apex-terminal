@@ -462,6 +462,55 @@ SettingsTab::Trading => {
         order_manager::update_risk_limits(limits);
     }
     ui.add_space(GAP_LG);
+
+    // ── ApexData ─────────────────────────────────────────────────────
+    dialog_section(ui, "APEX DATA", m, t.dim.gamma_multiply(0.5));
+    ui.add_space(GAP_SM);
+    {
+        let mut enabled = crate::apex_data::is_enabled();
+        let prev = enabled;
+        setting_toggle(ui, m, "Enabled", t, &mut enabled);
+        if enabled != prev {
+            crate::apex_data::set_enabled(enabled);
+            if enabled { crate::apex_data::ws::start(); }
+        }
+
+        setting_row(ui, m, "Base URL", t, |ui| {
+            let id = egui::Id::new("apex_data_url_edit");
+            let mut buf: String = ui.data_mut(|d|
+                d.get_temp::<String>(id).unwrap_or_else(|| crate::apex_data::apex_url()));
+            let resp = ui.add(egui::TextEdit::singleline(&mut buf).desired_width(340.0));
+            if resp.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
+            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                crate::apex_data::set_apex_url(buf.trim().to_string());
+            }
+        });
+
+        setting_row(ui, m, "Auth Token", t, |ui| {
+            let id = egui::Id::new("apex_data_token_edit");
+            let mut buf: String = ui.data_mut(|d|
+                d.get_temp::<String>(id).unwrap_or_else(|| crate::apex_data::apex_token().unwrap_or_default()));
+            let resp = ui.add(egui::TextEdit::singleline(&mut buf).password(true).desired_width(340.0)
+                .hint_text("optional — leave blank if no token required"));
+            if resp.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
+            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                let tok = buf.trim();
+                crate::apex_data::set_apex_token(if tok.is_empty() { None } else { Some(tok.to_string()) });
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.add_space(m + 2.0);
+            let ws_connected = crate::apex_data::ws::is_connected();
+            let (state_label, state_col) = if ws_connected {
+                ("WS connected", egui::Color32::from_rgb(46, 204, 113))
+            } else {
+                ("WS disconnected", egui::Color32::from_rgb(230, 70, 70))
+            };
+            ui.label(egui::RichText::new(state_label).monospace().size(FONT_XS).color(state_col));
+        });
+    }
+    ui.add_space(GAP_LG);
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -132,21 +132,33 @@ impl SpreadState {
     }
 }
 
-/// Compute mock P&L metrics for the spread legs.
-fn compute_spread_metrics(legs: &[SpreadLeg]) -> (f32, f32, f32, f32) {
-    // Mock pricing: intrinsic + small time value based on strike distance
+/// Compute P&L metrics for the spread legs. Uses live NBBO when available
+/// (BUY = ask, SELL = bid), falls back to a strike-based estimate otherwise.
+fn compute_spread_metrics(legs: &[SpreadLeg], underlying: &str) -> (f32, f32, f32, f32) {
+    fn leg_price(leg: &SpreadLeg, underlying: &str) -> f32 {
+        if !underlying.is_empty() {
+            let occ = crate::chart_renderer::gpu::synthesize_occ(
+                underlying, leg.strike, leg.option_type == "CALL", &leg.expiry,
+            );
+            if let Some(q) = crate::apex_data::live_state::get_quote(&occ) {
+                let p = if leg.side == "BUY" { q.ask as f32 } else { q.bid as f32 };
+                if p > 0.0 { return p; }
+            }
+        }
+        // Fallback: rough approximation when feed unavailable.
+        (leg.strike * 0.005).max(0.50)
+    }
+    // Underlying inferred from any leg (legs share the underlying in this panel).
     let mut net_premium = 0.0_f32;
     let mut buy_strikes = Vec::new();
     let mut sell_strikes = Vec::new();
-
     for leg in legs {
-        // Mock option price based on rough approximation
-        let mock_price = (leg.strike * 0.005).max(0.50) * leg.qty as f32;
+        let p = leg_price(leg, underlying) * leg.qty as f32;
         if leg.side == "BUY" {
-            net_premium -= mock_price;
+            net_premium -= p;
             buy_strikes.push(leg.strike);
         } else {
-            net_premium += mock_price;
+            net_premium += p;
             sell_strikes.push(leg.strike);
         }
     }
@@ -399,7 +411,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 ui.add_space(8.0);
 
                 // ── Spread Metrics ──
-                let (net_dc, max_profit, max_loss, break_even) = compute_spread_metrics(&watchlist.spread_state.legs);
+                let (net_dc, max_profit, max_loss, break_even) = compute_spread_metrics(&watchlist.spread_state.legs, active_symbol);
                 let dc_label = if net_dc < 0.0 { "Net Debit" } else { "Net Credit" };
                 let dc_col = if net_dc < 0.0 { t.bear } else { t.bull };
 

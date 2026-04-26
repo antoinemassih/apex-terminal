@@ -20,6 +20,7 @@ pub mod object_tree;
 pub mod watchlist_panel;
 pub mod orders_panel;
 pub mod command_palette;
+pub mod apex_diagnostics;
 pub mod hotkey_editor;
 pub mod trendline_filter;
 pub mod indicator_editor;

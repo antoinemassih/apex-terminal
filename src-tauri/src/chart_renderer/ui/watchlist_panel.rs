@@ -1410,12 +1410,23 @@ if watchlist.open {
                             .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
                             .unwrap_or(0.0)
                     };
+                    // Timeout a stuck "loading" state after 15s so the user can
+                    // re-fetch by simply typing again or reopening the tab.
+                    if watchlist.chain_loading {
+                        if let Some(t0) = watchlist.chain_last_fetch {
+                            if t0.elapsed() > std::time::Duration::from_secs(15) {
+                                watchlist.chain_loading = false;
+                                crate::apex_log!("chain.ui", "loading timeout for {} — resetting", watchlist.chain_symbol);
+                            }
+                        }
+                    }
                     if watchlist.chain_0dte.0.is_empty() && !watchlist.chain_loading {
                         let ns = watchlist.chain_num_strikes;
                         let sym = watchlist.chain_symbol.clone();
                         let far_dte = watchlist.chain_far_dte;
                         watchlist.chain_loading = true;
                         watchlist.chain_last_fetch = Some(std::time::Instant::now());
+                        crate::apex_log!("chain.ui", "fire fetch {} ns={} price={} far_dte={}", sym, ns, chain_price, far_dte);
                         fetch_chain_background(sym.clone(), ns, 0, chain_price);
                         fetch_chain_background(sym, ns, far_dte, chain_price);
                     }
@@ -1491,9 +1502,11 @@ if watchlist.open {
                             watchlist.chain_sym_input.clear();
                             watchlist.search_results.clear();
                             watchlist.chain_0dte = (vec![], vec![]);
-                            watchlist.chain_underlying_price = 0.0; // reset price for new symbol
+                            watchlist.chain_far = (vec![], vec![]);   // symmetric reset
+                            watchlist.chain_underlying_price = 0.0;
                             watchlist.chain_center_offset = 0;
                             watchlist.chain_loading = false;
+                            watchlist.chain_last_fetch = None;
                         }
                     });
                     // Search suggestions popup
@@ -1506,9 +1519,11 @@ if watchlist.open {
                                     watchlist.chain_sym_input.clear();
                                     watchlist.search_results.clear();
                                     watchlist.chain_0dte = (vec![], vec![]);
+                                    watchlist.chain_far = (vec![], vec![]);
                                     watchlist.chain_underlying_price = 0.0;
                                     watchlist.chain_center_offset = 0;
                                     watchlist.chain_loading = false;
+                                    watchlist.chain_last_fetch = None;
                                 }
                             }
                         });
@@ -1525,7 +1540,7 @@ if watchlist.open {
                     // Loading indicator
                     if watchlist.chain_loading {
                         ui.horizontal(|ui| {
-                            ui.spinner();
+                            super::chart_widgets::refined_spinner(ui, t.accent);
                             ui.label(egui::RichText::new("Loading chain...").monospace().size(9.0).color(t.dim));
                         });
                     }
@@ -1562,7 +1577,8 @@ if watchlist.open {
 
                     // ── Helper to render one option row ──
                     // Track clicked contract for opening chart (normal click)
-                    let clicked_contract: std::cell::Cell<Option<(String, f32, bool, String)>> = std::cell::Cell::new(None);
+                    // (underlying, strike, is_call, expiry_label, occ_ticker)
+                    let clicked_contract: std::cell::Cell<Option<(String, f32, bool, String, String)>> = std::cell::Cell::new(None);
                     // Track shift-clicked contract for adding to watchlist (select mode / shift+click)
                     let watchlist_add: std::cell::Cell<Option<(String, f32, bool, String, f32, f32)>> = std::cell::Cell::new(None);
                     let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
@@ -1593,7 +1609,7 @@ if watchlist.open {
 
                         // Strike
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.0}", row.strike), egui::FontId::monospace(14.0), t.text);
+                            &(if (row.strike - row.strike.round()).abs() < 0.005 { format!("{:.0}", row.strike) } else { format!("{:.1}", row.strike) }), egui::FontId::monospace(14.0), t.text);
                         x += col_stk + gap;
 
                         // Bid
@@ -1647,7 +1663,7 @@ if watchlist.open {
                                 else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call, expiry: exp_label.into(), last: row.last }); }
                                 watchlist_add.set(Some((sym.into(), row.strike, is_call, exp_label.into(), row.bid, row.ask)));
                             } else {
-                                clicked_contract.set(Some((sym.into(), row.strike, is_call, exp_label.into())));
+                                clicked_contract.set(Some((sym.into(), row.strike, is_call, exp_label.into(), row.contract.clone())));
                             }
                         }
                     };
@@ -1917,8 +1933,10 @@ if watchlist.open {
                         render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f, sm_f, nmf_f);
                     });
                     // Normal click: just open option chart (no watchlist add)
-                    if let Some(info) = clicked_contract.take() {
-                        open_option_chart = Some(info);
+                    if let Some((und, strike, is_call, expiry, occ)) = clicked_contract.take() {
+                        open_option_chart = Some((und, strike, is_call, expiry));
+                        // Carry the OCC ticker separately so the open handler can fetch real bars.
+                        watchlist.pending_opt_chart_contract = Some(occ);
                     }
                     // Select mode / shift+click: add to watchlist + persist
                     if let Some((ref sym, strike, is_call, ref expiry, bid, ask)) = watchlist_add.take() {

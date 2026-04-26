@@ -184,6 +184,7 @@ fn build_registry(watchlist: &Watchlist, active_pane_type: PaneType) -> Vec<Entr
     // Settings
     v.push(mk("setting:hotkeys",     "Edit hotkeys",         "Open hotkey editor",  Category::Setting, None));
     v.push(mk("setting:settings",    "Settings",             "Open settings panel", Category::Setting, None));
+    v.push(mk("setting:apex-diag",   "ApexData diagnostics", "Live view of REST/WS/chain state", Category::Setting, None));
     v.push(mk("setting:workspace",   "Save workspace…",      "Save current layout", Category::Setting, None));
     v.push(mk("setting:pane-chart",     "Pane type · Chart",     "Switch active pane to Chart",     Category::Setting, None));
     v.push(mk("setting:pane-portfolio", "Pane type · Portfolio", "Switch active pane to Portfolio", Category::Setting, None));
@@ -1103,6 +1104,7 @@ fn execute(
     match id {
         "setting:hotkeys"        => { watchlist.hotkey_editor_open = true; return; }
         "setting:settings"       => { watchlist.settings_open = true; return; }
+        "setting:apex-diag"      => { watchlist.apex_diag_open = true; return; }
         "setting:workspace"      => { watchlist.settings_open = true; return; }
         "setting:pane-chart"     => { panes[ap].pane_type = PaneType::Chart; return; }
         "setting:pane-portfolio" => { panes[ap].pane_type = PaneType::Portfolio; return; }
