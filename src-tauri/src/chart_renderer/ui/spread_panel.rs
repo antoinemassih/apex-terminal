@@ -192,8 +192,17 @@ fn compute_spread_metrics(legs: &[SpreadLeg], underlying: &str) -> (f32, f32, f3
         max_loss = net_premium.abs();
     }
 
-    let break_even = if !buy_strikes.is_empty() {
-        buy_strikes.iter().sum::<f32>() / buy_strikes.len() as f32 + net_debit_credit
+    // Break-even uses the long strike for debit spreads (BE = long_strike + debit_paid)
+    // and the short strike for credit spreads (BE = short_strike - credit_received).
+    // `net_debit_credit` is negative for debits, positive for credits.
+    let break_even = if net_debit_credit < 0.0 && !buy_strikes.is_empty() {
+        let avg_long = buy_strikes.iter().sum::<f32>() / buy_strikes.len() as f32;
+        avg_long + net_debit_credit.abs()
+    } else if net_debit_credit > 0.0 && !sell_strikes.is_empty() {
+        let avg_short = sell_strikes.iter().sum::<f32>() / sell_strikes.len() as f32;
+        avg_short - net_debit_credit
+    } else if !buy_strikes.is_empty() {
+        buy_strikes.iter().sum::<f32>() / buy_strikes.len() as f32
     } else if !sell_strikes.is_empty() {
         sell_strikes.iter().sum::<f32>() / sell_strikes.len() as f32
     } else { 0.0 };

@@ -16445,11 +16445,27 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     };
                     watchlist.chain_0dte = (to_rows(c0), to_rows(p0));
                     watchlist.chain_far  = (to_rows(cf), to_rows(pf));
-                    crate::apex_log!("chain.refresh",
-                        "{}: 0DTE={}c/{}p, far(dte={})={}c/{}p, spot={:.2}, cache={} rows",
-                        sym, watchlist.chain_0dte.0.len(), watchlist.chain_0dte.1.len(),
-                        far_dte, watchlist.chain_far.0.len(), watchlist.chain_far.1.len(),
-                        spot0, cached.len());
+                    // Throttled log: emit only when the summary changes or
+                    // ≥5s elapsed. Was firing every frame at 60+ Hz.
+                    {
+                        use std::sync::{OnceLock, Mutex};
+                        static LAST: OnceLock<Mutex<(String, std::time::Instant)>> = OnceLock::new();
+                        let m = LAST.get_or_init(|| Mutex::new((String::new(), std::time::Instant::now() - std::time::Duration::from_secs(60))));
+                        let key = format!("{}:{}c/{}p:{}c/{}p:{:.2}:{}",
+                            sym,
+                            watchlist.chain_0dte.0.len(), watchlist.chain_0dte.1.len(),
+                            watchlist.chain_far.0.len(), watchlist.chain_far.1.len(),
+                            spot0, cached.len());
+                        let mut g = m.lock().unwrap();
+                        if g.0 != key || g.1.elapsed() >= std::time::Duration::from_secs(5) {
+                            crate::apex_log!("chain.refresh",
+                                "{}: 0DTE={}c/{}p, far(dte={})={}c/{}p, spot={:.2}, cache={} rows",
+                                sym, watchlist.chain_0dte.0.len(), watchlist.chain_0dte.1.len(),
+                                far_dte, watchlist.chain_far.0.len(), watchlist.chain_far.1.len(),
+                                spot0, cached.len());
+                            g.0 = key; g.1 = std::time::Instant::now();
+                        }
+                    }
                     if spot0 > 0.0 { watchlist.chain_underlying_price = spot0; }
                     watchlist.chain_loading = false;
                 }
@@ -18919,6 +18935,18 @@ impl ApplicationHandler for App {
                             (pane.symbol.clone(), pane.timeframe.clone()),
                             (pane.bars.clone(), pane.timestamps.clone(), std::time::Instant::now()),
                         );
+                        // Cap to 10 entries — evict the oldest by Instant. Each
+                        // entry holds bar data (~120 KB at 5000 bars), so an
+                        // unbounded cache leaks memory across long sessions.
+                        const MAX: usize = 10;
+                        while pane.tab_cache.len() > MAX {
+                            if let Some((evict_key, _)) = pane.tab_cache.iter()
+                                .min_by_key(|(_, (_, _, ts))| *ts)
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                            {
+                                pane.tab_cache.remove(&evict_key);
+                            } else { break; }
+                        }
                     }
 
                     if let Some(ref sym) = sym_change {
@@ -19317,7 +19345,16 @@ pub(crate) fn synthesize_occ(underlying: &str, strike: f32, is_call: bool, expir
     let side = if is_call { 'C' } else { 'P' };
     // Strike integer part * 1000 + fractional cents in 0.001 units (OCC uses 1/1000 of $).
     let strike_int = (strike * 1000.0).round() as i64;
-    format!("O:{}{}{}{:08}", underlying.to_uppercase(), d.format("%y%m%d"), side, strike_int)
+    // Polygon stores SPX/NDX index options under their PM-settled weekly tickers
+    // (SPXW / NDXP). When the caller passes the user-facing index symbol, map
+    // it to the OCC root. Pass-through everything else (including SPXW/NDXP if
+    // the caller already used them) so the produced ticker matches the server.
+    let occ_root: String = match underlying.to_uppercase().as_str() {
+        "SPX" => "SPXW".into(),
+        "NDX" => "NDXP".into(),
+        other => other.to_string(),
+    };
+    format!("O:{}{}{}{:08}", occ_root, d.format("%y%m%d"), side, strike_int)
 }
 
 pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf: String) {
