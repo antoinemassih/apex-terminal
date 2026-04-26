@@ -163,7 +163,7 @@ pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search 
 
 // Shared helpers
 use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
-use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner};
+use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
 
 // compute_sma, compute_ema — now in compute.rs
 
@@ -2201,85 +2201,19 @@ impl Chart {
                     ind.divergences = detect_divergences(closes, &ind.values, 5);
                 }
                 IndicatorType::ADX => {
-                    let period = ind.period;
-                    let n = chart_closes.len();
-                    if n > period + 1 {
-                        let mut plus_dm_sum = 0.0_f32;
-                        let mut minus_dm_sum = 0.0_f32;
-                        let mut tr_sum = 0.0_f32;
-                        for i in 1..=period {
-                            let hi = chart_highs[i] - chart_highs[i-1];
-                            let lo = chart_lows[i-1] - chart_lows[i];
-                            plus_dm_sum += if hi > lo && hi > 0.0 { hi } else { 0.0 };
-                            minus_dm_sum += if lo > hi && lo > 0.0 { lo } else { 0.0 };
-                            let tr = (chart_highs[i] - chart_lows[i])
-                                .max((chart_highs[i] - closes[i-1]).abs())
-                                .max((chart_lows[i] - closes[i-1]).abs());
-                            tr_sum += tr;
-                        }
-                        let mut dx_vals = vec![f32::NAN; n];
-                        let k = 1.0 / period as f32;
-                        let mut plus_di_vals = vec![f32::NAN; n];
-                        let mut minus_di_vals = vec![f32::NAN; n];
-                        for i in period..n {
-                            if i > period {
-                                let hi = chart_highs[i] - chart_highs[i-1];
-                                let lo = chart_lows[i-1] - chart_lows[i];
-                                let pdm = if hi > lo && hi > 0.0 { hi } else { 0.0 };
-                                let mdm = if lo > hi && lo > 0.0 { lo } else { 0.0 };
-                                let tr = (chart_highs[i] - chart_lows[i])
-                                    .max((chart_highs[i] - closes[i-1]).abs())
-                                    .max((chart_lows[i] - closes[i-1]).abs());
-                                plus_dm_sum = plus_dm_sum * (1.0 - k) + pdm;
-                                minus_dm_sum = minus_dm_sum * (1.0 - k) + mdm;
-                                tr_sum = tr_sum * (1.0 - k) + tr;
-                            }
-                            let plus_di = if tr_sum > 0.0 { plus_dm_sum / tr_sum * 100.0 } else { 0.0 };
-                            let minus_di = if tr_sum > 0.0 { minus_dm_sum / tr_sum * 100.0 } else { 0.0 };
-                            plus_di_vals[i] = plus_di;
-                            minus_di_vals[i] = minus_di;
-                            let di_sum = plus_di + minus_di;
-                            dx_vals[i] = if di_sum > 0.0 { (plus_di - minus_di).abs() / di_sum * 100.0 } else { 0.0 };
-                        }
-                        ind.values = compute_ema(&dx_vals, period);
-                        ind.values2 = plus_di_vals;  // +DI line
-                        ind.values3 = minus_di_vals;  // -DI line
-                    } else {
-                        ind.values = vec![f32::NAN; n];
-                    }
+                    let (adx, plus_di, minus_di) = compute_adx(&chart_highs, &chart_lows, &closes, ind.period);
+                    ind.values = adx;
+                    ind.values2 = plus_di;   // +DI line
+                    ind.values3 = minus_di;  // -DI line
                     ind.histogram = vec![];
                 }
                 IndicatorType::CCI => {
-                    let period = ind.period;
-                    let n = chart_closes.len();
-                    let mut cci = vec![f32::NAN; n];
-                    let tp: Vec<f32> = chart_highs.iter().zip(chart_lows.iter()).zip(closes.iter())
-                        .map(|((h, l), c)| (h + l + c) / 3.0).collect();
-                    if n >= period {
-                        for i in (period-1)..n {
-                            let sma: f32 = tp[i+1-period..=i].iter().sum::<f32>() / period as f32;
-                            let mean_dev: f32 = tp[i+1-period..=i].iter().map(|&v| (v - sma).abs()).sum::<f32>() / period as f32;
-                            cci[i] = if mean_dev > 0.0 { (tp[i] - sma) / (0.015 * mean_dev) } else { 0.0 };
-                        }
-                    }
-                    ind.values = cci; ind.values2 = vec![]; ind.histogram = vec![];
+                    ind.values = compute_cci(&chart_highs, &chart_lows, &closes, ind.period);
+                    ind.values2 = vec![]; ind.histogram = vec![];
                 }
                 IndicatorType::WilliamsR => {
-                    let period = ind.period;
-                    let n = chart_closes.len();
-                    let mut wr = vec![f32::NAN; n];
-                    if n >= period {
-                        for i in (period-1)..n {
-                            let mut hi = f32::MIN; let mut lo = f32::MAX;
-                            for j in (i+1-period)..=i {
-                                hi = hi.max(chart_highs[j]);
-                                lo = lo.min(chart_lows[j]);
-                            }
-                            let range = hi - lo;
-                            wr[i] = if range > 0.0 { (hi - closes[i]) / range * -100.0 } else { -50.0 };
-                        }
-                    }
-                    ind.values = wr; ind.values2 = vec![]; ind.histogram = vec![];
+                    ind.values = compute_williams_r(&chart_highs, &chart_lows, &closes, ind.period);
+                    ind.values2 = vec![]; ind.histogram = vec![];
                 }
                 IndicatorType::BollingerBands => {
                     let std_dev = if ind.param2 > 0.0 { ind.param2 } else { 2.0 };
@@ -17508,7 +17442,7 @@ impl Watchlist {
         };
         // Use symbol hash for a pseudo-random rvol so rows look varied in dev
         let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
-        let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1; // 0.5..4.5
+        let rvol_seed = 1.0; // neutral until real RVOL is wired (was: hash-seeded random masquerading as data)
         self.sections[target_idx].items.push(WatchlistItem {
             symbol: s, price: 0.0, prev_close: 0.0, loaded: false,
             is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
@@ -20310,7 +20244,7 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
                             let bid = item_val.get("bid").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                             let ask = item_val.get("ask").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                             let sym_hash = symbol.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
-                            let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1;
+                            let rvol_seed = 1.0; // neutral until real RVOL feed
                             items.push(WatchlistItem {
                                 symbol, price: 0.0, prev_close: 0.0, loaded: false,
                                 is_option, underlying, option_type, strike, expiry, bid, ask,
@@ -20335,7 +20269,7 @@ fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
     let make_items = |syms: &[&str]| -> Vec<WatchlistItem> {
         syms.iter().map(|&s| {
             let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
-            let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1;
+            let rvol_seed = 1.0; // neutral until real RVOL feed
             WatchlistItem {
                 symbol: s.into(), price: 0.0, prev_close: 0.0, loaded: false,
                 is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,

@@ -1489,11 +1489,20 @@ pub(crate) fn reconcile_with_ib(ib_orders: &[super::IbOrder]) {
         });
 
         if let Some(idx) = matched_idx {
+            // Detect partial fills explicitly: any non-empty filled_qty that's
+            // less than the requested qty is a PartialFill, regardless of the
+            // status string (IB sometimes reports "Submitted" while shipping
+            // partial fills via separate execDetails).
+            let qty_target = mgr.orders[idx].qty as i64;
+            let qty_filled = ib.filled_qty as i64;
+            let is_partial = qty_filled > 0 && qty_filled < qty_target;
             let (new_state, rejection) = match ib.status.as_str() {
                 "filled" | "Filled" => (OrderState::Filled, None),
                 "cancelled" | "Cancelled" | "ApiCancelled" => (OrderState::Cancelled, None),
                 "inactive" | "Inactive" | "rejected" | "Rejected" => (OrderState::Rejected, Some(format!("IB: {}", ib.status))),
-                "submitted" | "Submitted" | "PreSubmitted" => (OrderState::Working, None),
+                "submitted" | "Submitted" | "PreSubmitted" => {
+                    if is_partial { (OrderState::PartialFill, None) } else { (OrderState::Working, None) }
+                }
                 _ => continue,
             };
             updates.push((idx, new_state, ib.filled_qty as u32, ib.avg_fill_price as f32, rejection));
@@ -1514,6 +1523,12 @@ pub(crate) fn reconcile_with_ib(ib_orders: &[super::IbOrder]) {
             fills += 1;
             mgr.pending_toasts.push(format!("FILLED: {} {} x{} @ {:.2}",
                 side_str, sym, filled_qty, avg_price));
+        }
+        if new_state == OrderState::PartialFill {
+            mgr.orders[idx].filled_qty = filled_qty;
+            mgr.orders[idx].avg_fill_price = avg_price;
+            mgr.pending_toasts.push(format!("PARTIAL: {} {} {}/{} @ {:.2}",
+                side_str, sym, filled_qty, qty, avg_price));
         }
         if new_state == OrderState::Cancelled {
             mgr.pending_toasts.push(format!("CANCELLED: {} {} x{}",

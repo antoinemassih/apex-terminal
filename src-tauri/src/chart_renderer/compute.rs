@@ -555,3 +555,85 @@ pub fn evaluate_drawings_against_bar(
 
     alerts
 }
+
+// ─── ADX / CCI / Williams %R ─────────────────────────────────────────────────
+
+/// ADX with Wilder smoothing. Returns (adx, plus_di, minus_di), each
+/// length == bars.len(). First (~2*period) values are NaN.
+pub fn compute_adx(highs: &[f32], lows: &[f32], closes: &[f32], period: usize) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+    let n = closes.len();
+    if n <= period + 1 {
+        return (vec![f32::NAN; n], vec![f32::NAN; n], vec![f32::NAN; n]);
+    }
+    let mut plus_dm_sum = 0.0_f32;
+    let mut minus_dm_sum = 0.0_f32;
+    let mut tr_sum = 0.0_f32;
+    for i in 1..=period {
+        let hi = highs[i] - highs[i-1];
+        let lo = lows[i-1] - lows[i];
+        plus_dm_sum += if hi > lo && hi > 0.0 { hi } else { 0.0 };
+        minus_dm_sum += if lo > hi && lo > 0.0 { lo } else { 0.0 };
+        let tr = (highs[i] - lows[i])
+            .max((highs[i] - closes[i-1]).abs())
+            .max((lows[i] - closes[i-1]).abs());
+        tr_sum += tr;
+    }
+    let mut dx_vals = vec![f32::NAN; n];
+    let k = 1.0 / period as f32;
+    let mut plus_di_vals = vec![f32::NAN; n];
+    let mut minus_di_vals = vec![f32::NAN; n];
+    for i in period..n {
+        if i > period {
+            let hi = highs[i] - highs[i-1];
+            let lo = lows[i-1] - lows[i];
+            let pdm = if hi > lo && hi > 0.0 { hi } else { 0.0 };
+            let mdm = if lo > hi && lo > 0.0 { lo } else { 0.0 };
+            let tr = (highs[i] - lows[i])
+                .max((highs[i] - closes[i-1]).abs())
+                .max((lows[i] - closes[i-1]).abs());
+            plus_dm_sum = plus_dm_sum * (1.0 - k) + pdm;
+            minus_dm_sum = minus_dm_sum * (1.0 - k) + mdm;
+            tr_sum = tr_sum * (1.0 - k) + tr;
+        }
+        let plus_di = if tr_sum > 0.0 { plus_dm_sum / tr_sum * 100.0 } else { 0.0 };
+        let minus_di = if tr_sum > 0.0 { minus_dm_sum / tr_sum * 100.0 } else { 0.0 };
+        plus_di_vals[i] = plus_di;
+        minus_di_vals[i] = minus_di;
+        let di_sum = plus_di + minus_di;
+        dx_vals[i] = if di_sum > 0.0 { (plus_di - minus_di).abs() / di_sum * 100.0 } else { 0.0 };
+    }
+    let adx = compute_ema(&dx_vals, period);
+    (adx, plus_di_vals, minus_di_vals)
+}
+
+pub fn compute_cci(highs: &[f32], lows: &[f32], closes: &[f32], period: usize) -> Vec<f32> {
+    let n = closes.len();
+    let mut cci = vec![f32::NAN; n];
+    let tp: Vec<f32> = highs.iter().zip(lows.iter()).zip(closes.iter())
+        .map(|((h, l), c)| (h + l + c) / 3.0).collect();
+    if n >= period {
+        for i in (period-1)..n {
+            let sma: f32 = tp[i+1-period..=i].iter().sum::<f32>() / period as f32;
+            let mean_dev: f32 = tp[i+1-period..=i].iter().map(|&v| (v - sma).abs()).sum::<f32>() / period as f32;
+            cci[i] = if mean_dev > 0.0 { (tp[i] - sma) / (0.015 * mean_dev) } else { 0.0 };
+        }
+    }
+    cci
+}
+
+pub fn compute_williams_r(highs: &[f32], lows: &[f32], closes: &[f32], period: usize) -> Vec<f32> {
+    let n = closes.len();
+    let mut wr = vec![f32::NAN; n];
+    if n >= period {
+        for i in (period-1)..n {
+            let mut hi = f32::MIN; let mut lo = f32::MAX;
+            for j in (i+1-period)..=i {
+                hi = hi.max(highs[j]);
+                lo = lo.min(lows[j]);
+            }
+            let range = hi - lo;
+            wr[i] = if range > 0.0 { (hi - closes[i]) / range * -100.0 } else { -50.0 };
+        }
+    }
+    wr
+}
