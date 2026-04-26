@@ -89,6 +89,36 @@ pub(crate) const STYLE_NAMES: &[&str] = &[
     "Lattice",  "Tangent",  "Tempo",  "Contour", "Relay",
 ];
 
+/// Returns the canonical style id for a watchlist's selected style.
+/// 0 = Meridien (default), 1 = Aperture, 2 = Octave. All other selections
+/// currently alias to Meridien (0) until their visuals are wired.
+pub(crate) fn style_id(wl: &Watchlist) -> u8 {
+    match wl.style_idx { 1 => 1, 2 => 2, _ => 0 }
+}
+
+/// Style-aware non-tabs pane header height. Mirrors `PaneHeaderSize::header_h`
+/// but lets specific styles tweak vertical density.
+pub(crate) fn pane_header_h(wl: &Watchlist) -> f32 {
+    use crate::chart_renderer::PaneHeaderSize;
+    let base = wl.pane_header_size.header_h();
+    match (style_id(wl), wl.pane_header_size) {
+        (1, PaneHeaderSize::Compact) => base + 2.0, // Aperture — more breathing room
+        (2, PaneHeaderSize::Compact) => (base - 2.0).max(16.0), // Octave — denser
+        _ => base,
+    }
+}
+
+/// Style-aware tabs pane header height. Mirrors `PaneHeaderSize::tabs_header_h`.
+pub(crate) fn pane_tabs_header_h(wl: &Watchlist) -> f32 {
+    use crate::chart_renderer::PaneHeaderSize;
+    let base = wl.pane_header_size.tabs_header_h();
+    match (style_id(wl), wl.pane_header_size) {
+        (1, PaneHeaderSize::Compact) => base + 2.0,
+        (2, PaneHeaderSize::Compact) => (base - 2.0).max(20.0),
+        _ => base,
+    }
+}
+
 pub(crate) const THEMES: &[Theme] = &[
     Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: rgb(28,32,40),  accent: rgb(62,120,180),  text: rgb(220,220,230) },
     Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: rgb(50,56,70),  accent: rgb(136,192,208), text: rgb(220,220,230) },
@@ -5352,10 +5382,11 @@ fn render_chart_pane(
     let has_tabs = chart.tab_symbols.len() > 1;
     // Always show header (18px min) so + tab button is accessible even in single-pane
     let pane_top_offset = if has_tabs {
-        watchlist.pane_header_size.tabs_header_h()
+        pane_tabs_header_h(watchlist)
     } else {
-        watchlist.pane_header_size.header_h()
+        pane_header_h(watchlist)
     };
+    let style = style_id(watchlist);
     let title_font_size = watchlist.pane_header_size.title_font();
     let show_header = true;
     if show_header {
@@ -5372,13 +5403,19 @@ fn render_chart_pane(
             t.bg.gamma_multiply(1.2)
         };
         header_painter.rect_filled(header_rect, 0.0, header_bg);
-        // Active-pane indicator — thick accent underline beneath the header
+        // Active-pane indicator — thick accent underline beneath the header.
+        // Aperture (style 1) softens this: thinner stroke + lower alpha.
         if is_active && visible_count > 1 {
             let underline_y = header_rect.bottom() - 1.0;
+            let (uw, ucol) = if style == 1 {
+                (2.0_f32, color_alpha(t.accent, 140))
+            } else {
+                (3.0_f32, t.accent)
+            };
             header_painter.line_segment(
                 [egui::pos2(header_rect.left(), underline_y),
                  egui::pos2(header_rect.right(), underline_y)],
-                egui::Stroke::new(3.0, t.accent),
+                egui::Stroke::new(uw, ucol),
             );
         }
 
@@ -5843,6 +5880,13 @@ fn render_chart_pane(
             header_painter.text(egui::pos2(p0.x + 0.5, p0.y),
                 egui::Align2::LEFT_CENTER, &sym_label, title_font.clone(), label_color);
             header_painter.text(p0, egui::Align2::LEFT_CENTER, &sym_label, title_font.clone(), label_color);
+            // Octave (style 2) — extra double-draw for a heavier ticker weight.
+            if style == 2 {
+                header_painter.text(egui::pos2(p0.x + 1.0, p0.y),
+                    egui::Align2::LEFT_CENTER, &sym_label, title_font.clone(), label_color);
+                header_painter.text(egui::pos2(p0.x, p0.y + 0.5),
+                    egui::Align2::LEFT_CENTER, &sym_label, title_font.clone(), label_color);
+            }
             // Layout cursor: symbol → [C] → [0D] → price
             let mut cursor_x = sym_label_x + sym_galley.size().x + 10.0;
             if chart.is_option {
@@ -17771,8 +17815,12 @@ fn apexib_curl(path: &str) -> Option<serde_json::Value> {
 /// Approximates ET as UTC-4 (EDT, valid Mar–Nov). Acceptable since this only
 /// shifts the cutoff by an hour twice a year.
 fn active_zero_dte_date() -> chrono::NaiveDate {
-    use chrono::{Utc, Duration, Datelike, Timelike};
-    let et = Utc::now() - Duration::hours(4);
+    active_zero_dte_date_at(chrono::Utc::now())
+}
+
+fn active_zero_dte_date_at(now: chrono::DateTime<chrono::Utc>) -> chrono::NaiveDate {
+    use chrono::{Duration, Datelike, Timelike};
+    let et = now - Duration::hours(4);
     let date = et.date_naive();
     let wd = et.weekday().num_days_from_monday(); // 0=Mon..6=Sun
     let hour = et.hour();
@@ -17782,6 +17830,65 @@ fn active_zero_dte_date() -> chrono::NaiveDate {
         0 if hour < 4 => date - Duration::days(3),           // Mon overnight → Fri
         _ if hour < 4 => date - Duration::days(1),           // Tue–Fri overnight → prev day
         _ => date,                                            // weekday ≥ 4am ET → today
+    }
+}
+
+#[cfg(test)]
+mod active_zero_dte_tests {
+    use super::active_zero_dte_date_at;
+    use chrono::{DateTime, NaiveDate, Utc};
+
+    fn utc(y: i32, m: u32, d: u32, h: u32, mi: u32) -> DateTime<Utc> {
+        let nd = NaiveDate::from_ymd_opt(y, m, d).unwrap();
+        let ndt = nd.and_hms_opt(h, mi, 0).unwrap();
+        DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc)
+    }
+
+    #[test]
+    fn saturday_returns_previous_friday() {
+        let n = utc(2026, 4, 25, 12, 0);
+        assert_eq!(active_zero_dte_date_at(n), NaiveDate::from_ymd_opt(2026, 4, 24).unwrap());
+    }
+
+    #[test]
+    fn sunday_returns_previous_friday() {
+        let n = utc(2026, 4, 26, 12, 0);
+        assert_eq!(active_zero_dte_date_at(n), NaiveDate::from_ymd_opt(2026, 4, 24).unwrap());
+    }
+
+    #[test]
+    fn monday_after_4am_et_returns_today() {
+        // 09:00 UTC = 05:00 ET Mon
+        let n = utc(2026, 4, 27, 9, 0);
+        assert_eq!(active_zero_dte_date_at(n), NaiveDate::from_ymd_opt(2026, 4, 27).unwrap());
+    }
+
+    #[test]
+    fn monday_overnight_returns_previous_friday() {
+        // 06:00 UTC = 02:00 ET Mon
+        let n = utc(2026, 4, 27, 6, 0);
+        assert_eq!(active_zero_dte_date_at(n), NaiveDate::from_ymd_opt(2026, 4, 24).unwrap());
+    }
+
+    #[test]
+    fn tuesday_overnight_returns_previous_day() {
+        // 06:00 UTC = 02:00 ET Tue
+        let n = utc(2026, 4, 28, 6, 0);
+        assert_eq!(active_zero_dte_date_at(n), NaiveDate::from_ymd_opt(2026, 4, 27).unwrap());
+    }
+
+    #[test]
+    fn friday_afternoon_returns_today() {
+        // 21:00 UTC = 17:00 ET Fri
+        let n = utc(2026, 4, 24, 21, 0);
+        assert_eq!(active_zero_dte_date_at(n), NaiveDate::from_ymd_opt(2026, 4, 24).unwrap());
+    }
+
+    #[test]
+    fn wednesday_utc_late_returns_tuesday_et() {
+        // Wed 03:00 UTC = Tue 23:00 ET. Tue at hour 23 ≥ 4 → "today" in ET = Tue.
+        let n = utc(2026, 4, 22, 3, 0);
+        assert_eq!(active_zero_dte_date_at(n), NaiveDate::from_ymd_opt(2026, 4, 21).unwrap());
     }
 }
 
@@ -20289,5 +20396,73 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
             *lock.lock().unwrap() = None;
         }
     });
+}
+
+#[cfg(test)]
+mod synthesize_occ_tests {
+    use super::synthesize_occ;
+
+    #[test]
+    fn integer_strike() {
+        // SPY 450C on 2026-05-07 → O:SPY260507C00450000
+        let occ = synthesize_occ("SPY", 450.0, true, "2026-05-07");
+        assert_eq!(occ, "O:SPY260507C00450000");
+    }
+
+    #[test]
+    fn decimal_strike() {
+        // 287.5 must become 00287500 (the bug we shipped a fix for).
+        let occ = synthesize_occ("AAPL", 287.5, true, "2026-04-30");
+        assert!(occ.ends_with("C00287500"), "got: {occ}");
+    }
+
+    #[test]
+    fn sub_dollar_strike() {
+        // 75¢ option → 00000750
+        let occ = synthesize_occ("XYZ", 0.75, true, "2026-05-04");
+        assert!(occ.ends_with("C00000750"), "got: {occ}");
+    }
+
+    #[test]
+    fn iso_date_round_trip() {
+        let occ = synthesize_occ("AAPL", 100.0, true, "2026-05-04");
+        // YYMMDD = 260504
+        assert!(occ.contains("260504"), "got: {occ}");
+    }
+
+    #[test]
+    fn put_vs_call() {
+        let c = synthesize_occ("SPY", 450.0, true,  "2026-05-07");
+        let p = synthesize_occ("SPY", 450.0, false, "2026-05-07");
+        assert!(c.contains('C'), "call missing C: {c}");
+        assert!(p.contains('P'), "put missing P: {p}");
+        assert_ne!(c, p);
+    }
+
+    #[test]
+    fn spx_maps_to_spxw() {
+        // Polygon stores SPX index options under SPXW root.
+        let occ = synthesize_occ("SPX", 5000.0, true, "2026-05-07");
+        assert!(occ.starts_with("O:SPXW"), "got: {occ}");
+    }
+
+    #[test]
+    fn ndx_maps_to_ndxp() {
+        let occ = synthesize_occ("NDX", 18000.0, true, "2026-05-07");
+        assert!(occ.starts_with("O:NDXP"), "got: {occ}");
+    }
+
+    #[test]
+    fn spxw_passes_through() {
+        // If caller already used SPXW, don't double-map.
+        let occ = synthesize_occ("SPXW", 5000.0, true, "2026-05-07");
+        assert!(occ.starts_with("O:SPXW"));
+    }
+
+    #[test]
+    fn aapl_passes_through() {
+        let occ = synthesize_occ("AAPL", 200.0, true, "2026-05-07");
+        assert!(occ.starts_with("O:AAPL"), "got: {occ}");
+    }
 }
 
