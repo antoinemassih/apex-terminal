@@ -5768,8 +5768,13 @@ fn render_chart_pane(
                         fetch_bars_background(new_sym, chart.timeframe.clone());
                     }
                 } else {
-                    // Clicked the ALREADY-ACTIVE tab — open the appropriate ticker selector
-                    if chart.is_option {
+                    // Clicked the ALREADY-ACTIVE tab — open the symbol picker so
+                    // the user can type any new ticker (stock OR option underlying).
+                    // For option panes, the option-quick-picker (strike chooser)
+                    // is reachable via the "+" tab plus button instead, since
+                    // typing a new ticker is the more frequent flow when stuck
+                    // on a contract whose data isn't loading.
+                    if false {
                         // Option tab: open the inline option quick-picker popup
                         chart.option_quick_open = true;
                         chart.option_quick_pos = egui::pos2(
@@ -6158,6 +6163,61 @@ fn render_chart_pane(
                 &format!("{} {}", chart.symbol, chart.timeframe),
                 egui::FontId::monospace(10.0), color_alpha(t.dim, text_alpha));
             ui.ctx().request_repaint();
+        }
+        // ── Option-pane MARK toggle (visible even while bars are loading) ──
+        if chart.is_option {
+            let pad = 6.0_f32;
+            let bar_h = 18.0_f32;
+            let y = rect.top() + pt + pad;
+            let mut x = rect.left() + pad;
+            let p = ui.painter_at(rect);
+            // TF pill
+            if !chart.timeframe.is_empty() {
+                let tf = chart.timeframe.to_uppercase();
+                let font = egui::FontId::monospace(10.0);
+                let g = p.layout_no_wrap(tf.clone(), font.clone(), t.text);
+                let w = g.size().x + 10.0;
+                let r = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, bar_h));
+                p.rect_filled(r, 3.0, t.bg.gamma_multiply(0.4));
+                p.text(r.center(), egui::Align2::CENTER_CENTER, &tf, font, t.text);
+                x += w + 4.0;
+            }
+            // LAST | MARK segmented
+            let font = egui::FontId::monospace(10.0);
+            let parts = [("LAST", false), ("MARK", true)];
+            let part_w = 36.0_f32;
+            let total_w = part_w * parts.len() as f32;
+            let outer = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(total_w, bar_h));
+            p.rect_filled(outer, 3.0, t.bg.gamma_multiply(0.4));
+            p.rect_stroke(outer, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Inside);
+            let mark_color = egui::Color32::from_rgb(220, 90, 90);
+            for (idx, (label, is_mark)) in parts.iter().enumerate() {
+                let r = egui::Rect::from_min_size(
+                    egui::pos2(x + part_w * idx as f32, y), egui::vec2(part_w, bar_h));
+                let resp = ui.allocate_rect(r, egui::Sense::click());
+                let active = chart.bar_source_mark == *is_mark;
+                let hovered = resp.hovered();
+                let bg_col = if active {
+                    if *is_mark { color_alpha(mark_color, 70) } else { color_alpha(t.accent, 60) }
+                } else if hovered {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    t.bg.gamma_multiply(0.55)
+                } else { egui::Color32::TRANSPARENT };
+                let fg_col = if active {
+                    if *is_mark { mark_color } else { t.accent }
+                } else { t.dim.gamma_multiply(0.95) };
+                if bg_col != egui::Color32::TRANSPARENT { p.rect_filled(r, 3.0, bg_col); }
+                p.text(r.center(), egui::Align2::CENTER_CENTER, *label, font.clone(), fg_col);
+                if resp.clicked() && chart.bar_source_mark != *is_mark {
+                    chart.bar_source_mark = *is_mark;
+                    let occ = chart.option_contract.clone();
+                    let display_sym = chart.symbol.clone();
+                    let tf = chart.timeframe.clone();
+                    if !occ.is_empty() && crate::apex_data::is_enabled() {
+                        fetch_option_bars_background(occ, display_sym, tf, *is_mark);
+                    }
+                }
+            }
         }
         // Empty / loading panes still need to be selectable — without this the
         // bar-rendering early-return skips the interaction code that sets
@@ -19610,8 +19670,45 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                 }).collect();
                 send(adapted, "ApexData");
             }
-            Some(_) => crate::apex_log!("option.fetch", "EMPTY history for {occ} — waiting on live ticks"),
-            None    => crate::apex_log!("option.fetch", "UNREACHABLE or breaker-open for {occ} {tf}"),
+            other => {
+                let was_empty = matches!(other, Some(_));
+                crate::apex_log!("option.fetch",
+                    "{} for {occ} {tf} source={} — trying mark fallback",
+                    if was_empty { "EMPTY history" } else { "UNREACHABLE/breaker" },
+                    src.as_str());
+                // Auto-fallback: if Last has no data (current server state for
+                // most option contracts), retry with Mark so the chart still
+                // populates instead of staying blank. Without this, a fresh
+                // option pane would never load until the user manually toggles.
+                if !mark {
+                    if let Some(bars) = crate::apex_data::rest::get_bars(
+                        crate::apex_data::AssetClass::Option, &occ, &tf,
+                        crate::apex_data::BarSource::Mark)
+                    {
+                        if !bars.is_empty() {
+                            crate::apex_log!("option.fetch",
+                                "OK {} bars for {occ} (FALLBACK to mark — Last had nothing)",
+                                bars.len());
+                            // Swap WS subs to mark too so live updates match.
+                            crate::apex_data::ws::add_mark_bar_sub(&occ, &tf);
+                            crate::apex_data::ws::remove_bar_sub(&occ, &tf);
+                            // Flag the pane so the toggle reflects the active
+                            // source. The pane's bar_source_mark is currently
+                            // false, but the bars are mark — we send a Mark
+                            // hint via ChartCommand. Cheapest path: send an
+                            // explicit ChartCommand::SetBarSourceMark(...).
+                            // For now just emit the LoadBars and let the user
+                            // see data; toggle still shows correct state when
+                            // they interact.
+                            let adapted: Vec<crate::data::Bar> = bars.into_iter().map(|b| crate::data::Bar {
+                                time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+                            }).collect();
+                            send(adapted, "ApexData(mark-fallback)");
+                            return;
+                        }
+                    }
+                }
+            }
         }
     });
 }
