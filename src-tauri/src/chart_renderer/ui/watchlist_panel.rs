@@ -61,6 +61,10 @@ if watchlist.open {
             ui.add_space(4.0);
 
             let mut open_option_chart: Option<(String, f32, bool, String)> = None;
+            // OCC ticker for the click → routed into pending_opt_chart_contract
+            // so the gpu.rs consumer uses the real contract instead of falling
+            // back on synthesize_occ (which is wrong for non-Friday expiries).
+            let mut clicked_occ_ticker: Option<String> = None;
 
             match watchlist.tab {
                 // ── STOCKS TAB (LIST) ──────────────────────────────────────────
@@ -1565,8 +1569,12 @@ if watchlist.open {
                     });
 
                     // ── Helper to render one option row ──
-                    // Track clicked contract for opening chart (normal click)
-                    let clicked_contract: std::cell::Cell<Option<(String, f32, bool, String)>> = std::cell::Cell::new(None);
+                    // Track clicked contract for opening chart (normal click).
+                    // Tuple is (underlying, strike, is_call, expiry_label, occ_ticker)
+                    // — the trailing OCC is forwarded to pending_opt_chart_contract so
+                    // the consumer doesn't have to fall back on synthesize_occ (which
+                    // can produce a wrong ticker on weekday-incompatible expiries).
+                    let clicked_contract: std::cell::Cell<Option<(String, f32, bool, String, String)>> = std::cell::Cell::new(None);
                     // Track shift-clicked contract for adding to watchlist (select mode / shift+click)
                     let watchlist_add: std::cell::Cell<Option<(String, f32, bool, String, f32, f32)>> = std::cell::Cell::new(None);
                     let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
@@ -1651,7 +1659,7 @@ if watchlist.open {
                                 else { saved.push(SavedOption { contract: row.contract.clone(), symbol: sym.into(), strike: row.strike, is_call, expiry: exp_label.into(), last: row.last }); }
                                 watchlist_add.set(Some((sym.into(), row.strike, is_call, exp_label.into(), row.bid, row.ask)));
                             } else {
-                                clicked_contract.set(Some((sym.into(), row.strike, is_call, exp_label.into())));
+                                clicked_contract.set(Some((sym.into(), row.strike, is_call, exp_label.into(), row.contract.clone())));
                             }
                         }
                     };
@@ -1920,9 +1928,11 @@ if watchlist.open {
                         let nmf_f = watchlist.chain_far_nmf;
                         render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f, sm_f, nmf_f);
                     });
-                    // Normal click: just open option chart (no watchlist add)
-                    if let Some(info) = clicked_contract.take() {
-                        open_option_chart = Some(info);
+                    // Normal click: just open option chart (no watchlist add).
+                    // Split off the OCC so we can populate both pending fields.
+                    if let Some((sym, strike, is_call, exp, occ)) = clicked_contract.take() {
+                        open_option_chart = Some((sym, strike, is_call, exp));
+                        clicked_occ_ticker = Some(occ);
                     }
                     // Select mode / shift+click: add to watchlist + persist
                     if let Some((ref sym, strike, is_call, ref expiry, bid, ask)) = watchlist_add.take() {
@@ -2160,9 +2170,12 @@ if watchlist.open {
             }
 
             // ── Handle option chart opening (from any tab) ──
-            // Delegate to deferred handler which always replaces active pane
+            // Delegate to deferred handler which always replaces active pane.
+            // Both pending fields are set in lockstep so the consumer takes
+            // the real OCC ticker, not a synthesized guess.
             if let Some(info) = open_option_chart {
                 watchlist.pending_opt_chart = Some(info);
+                watchlist.pending_opt_chart_contract = clicked_occ_ticker.take();
             }
         });
 }
