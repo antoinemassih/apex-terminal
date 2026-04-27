@@ -1,6 +1,0 @@
-FROM python:3.11-alpine
-RUN pip install --no-cache-dir yfinance
-COPY scripts/yfinance_server.py /app/yfinance_server.py
-WORKDIR /app
-EXPOSE 8777
-CMD ["python", "yfinance_server.py", "8777"]
