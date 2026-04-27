@@ -19144,6 +19144,19 @@ impl ApplicationHandler for App {
                         }
                         pane.symbol_nav_in_progress = false;
                         pane.symbol = sym.clone();
+                        // Switching to a new symbol via the picker means we're
+                        // leaving the current option contract behind. Clear the
+                        // option-pane state so the fetch dispatch below routes
+                        // through fetch_bars_background, not fetch_option_bars
+                        // with a stale OCC. (Option clicks set is_option=true
+                        // separately, AFTER bypassing pending_symbol_change.)
+                        pane.is_option = false;
+                        pane.option_contract.clear();
+                        pane.option_type.clear();
+                        pane.option_expiry.clear();
+                        pane.option_strike = 0.0;
+                        pane.underlying.clear();
+                        pane.bar_source_mark = false;
                     }
                     if let Some(tf) = tf_change { pane.timeframe = tf; }
 
