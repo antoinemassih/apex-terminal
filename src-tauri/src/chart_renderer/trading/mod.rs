@@ -10,7 +10,7 @@ pub(crate) const APEXIB_URL: &str = "https://apexib-dev.xllio.com";
 
 // ─── Orders ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum OrderSide { Buy, Sell, Stop, OcoTarget, OcoStop, TriggerBuy, TriggerSell }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

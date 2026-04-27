@@ -13,13 +13,45 @@
 
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use super::{OrderSide, OrderStatus, OrderLevel, APEXIB_URL};
+
+// ─── Lock helper (panic-poison recovery) ────────────────────────────────────
+
+fn manager() -> &'static Mutex<OrderManager> {
+    ORDER_MANAGER.get_or_init(|| {
+        let mut m = OrderManager::new();
+        m.load_from_disk();
+        Mutex::new(m)
+    })
+}
+
+/// Run a closure with mutable access to the global OrderManager.
+/// Recovers from poisoned mutexes by extracting the inner data — essential
+/// for a trading app where one panic must not lock everyone out forever.
+fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
+    let mut g = manager().lock().unwrap_or_else(|e| {
+        eprintln!("[order_manager] mutex poisoned, recovering: {e}");
+        e.into_inner()
+    });
+    f(&mut *g)
+}
+
+/// Path for persisted open orders.
+fn orders_state_path() -> PathBuf {
+    let dir = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let state = dir.join("state");
+    let _ = std::fs::create_dir_all(&state);
+    state.join("orders.json")
+}
 
 // ─── Order State Machine ────────────────────────────────────────────────────
 
 /// Extended order status with full lifecycle
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum OrderState {
     Draft,           // Created locally, not yet submitted (awaiting confirmation)
     PendingSubmit,   // Queued for submission to backend
@@ -75,7 +107,7 @@ impl OrderSignature {
 
 // ─── Managed Order ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ManagedOrder {
     pub(crate) id: u64,
     pub(crate) symbol: String,
@@ -106,10 +138,10 @@ pub(crate) struct ManagedOrder {
     pub(crate) rejection_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ManagedOrderType { Market, Limit, Stop, StopLimit, TrailingStop }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum OrderSource {
     ChartClick,     // Click on chart
     DomLadder,      // DOM price ladder
@@ -509,11 +541,11 @@ impl OrderManager {
             // Fire async backend submission — captures IB order ID back into the manager
             std::thread::spawn(move || {
                 if let Some(ib_oid) = Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
-                    if let Ok(mut mgr) = ORDER_MANAGER.get().unwrap().lock() {
+                    with_mgr(|mgr| {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                             o.backend_order_id = Some(ib_oid);
                         }
-                    }
+                    });
                 }
             });
             self.transition(id, OrderState::Working); // Optimistic — will reconcile from poller
@@ -549,11 +581,11 @@ impl OrderManager {
             let order_id_copy = order_id;
             std::thread::spawn(move || {
                 if let Some(ib_oid) = Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
-                    if let Ok(mut mgr) = ORDER_MANAGER.get().unwrap().lock() {
+                    with_mgr(|mgr| {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                             o.backend_order_id = Some(ib_oid);
                         }
-                    }
+                    });
                 }
             });
             true
@@ -679,7 +711,7 @@ impl OrderManager {
                     .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
                     Ok(resp) => {
                         if let Ok(json) = resp.json::<serde_json::Value>() {
-                            if let Ok(mut mgr) = ORDER_MANAGER.get().unwrap().lock() {
+                            with_mgr(|mgr| {
                                 if let Some(oid) = json["parentOrderId"].as_str().map(|s| s.to_string())
                                     .or_else(|| json["parentOrderId"].as_i64().map(|n| n.to_string())) {
                                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == eid) { o.backend_order_id = Some(oid); }
@@ -692,7 +724,7 @@ impl OrderManager {
                                     .or_else(|| json["stopLossOrderId"].as_i64().map(|n| n.to_string())) {
                                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == sid) { o.backend_order_id = Some(oid); }
                                 }
-                            }
+                            });
                         }
                     }
                     Err(e) => eprintln!("[bracket] submit failed: {e}"),
@@ -807,7 +839,7 @@ impl OrderManager {
                     Ok(resp) => {
                         if let Ok(json) = resp.json::<serde_json::Value>() {
                             if let Some(backend_ids) = json["orderIds"].as_array() {
-                                if let Ok(mut mgr) = ORDER_MANAGER.get().unwrap().lock() {
+                                with_mgr(|mgr| {
                                     for (i, bid) in backend_ids.iter().enumerate() {
                                         if i < ids_copy.len() {
                                             let oid = bid.as_str().map(|s| s.to_string())
@@ -819,7 +851,7 @@ impl OrderManager {
                                             }
                                         }
                                     }
-                                }
+                                });
                             }
                         }
                     }
@@ -916,11 +948,11 @@ impl OrderManager {
                 Ok(resp) => {
                     if let Ok(json) = resp.json::<serde_json::Value>() {
                         if let Some(oid) = Self::extract_order_id(&json) {
-                            if let Ok(mut mgr) = ORDER_MANAGER.get().unwrap().lock() {
+                            with_mgr(|mgr| {
                                 if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
                                     o.backend_order_id = Some(oid);
                                 }
-                            }
+                            });
                         }
                     }
                 }
@@ -993,7 +1025,7 @@ impl OrderManager {
                 .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
                 Ok(resp) => {
                     if let Ok(json) = resp.json::<serde_json::Value>() {
-                        if let Ok(mut mgr) = ORDER_MANAGER.get().unwrap().lock() {
+                        with_mgr(|mgr| {
                             if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
                                 if let Some(oid) = json["entryOrderId"].as_str().map(|s| s.to_string()) {
                                     o.backend_order_id = Some(oid);
@@ -1002,7 +1034,7 @@ impl OrderManager {
                                     o.option_con_id = Some(con_id);
                                 }
                             }
-                        }
+                        });
                     }
                 }
                 Err(e) => eprintln!("[options-trigger] submit failed: {e}"),
@@ -1084,11 +1116,11 @@ impl OrderManager {
                 Ok(resp) => {
                     if let Ok(json) = resp.json::<serde_json::Value>() {
                         if let Some(oid) = Self::extract_order_id(&json) {
-                            if let Ok(mut mgr) = ORDER_MANAGER.get().unwrap().lock() {
+                            with_mgr(|mgr| {
                                 if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
                                     o.backend_order_id = Some(oid);
                                 }
-                            }
+                            });
                         }
                     }
                 }
@@ -1256,6 +1288,54 @@ impl OrderManager {
         (self.orders_submitted, self.orders_filled, self.orders_rejected, self.duplicates_blocked)
     }
 
+    /// Persist active orders (Working / PendingSubmit / PartialFill) to disk.
+    /// Filled / Cancelled / Rejected are history and not saved.
+    pub(crate) fn save_to_disk(&self) {
+        let active: Vec<&ManagedOrder> = self.orders.iter().filter(|o| matches!(
+            o.state,
+            OrderState::Working | OrderState::PendingSubmit | OrderState::PartialFill
+        )).collect();
+        match serde_json::to_vec_pretty(&active) {
+            Ok(bytes) => {
+                let path = orders_state_path();
+                if let Err(e) = std::fs::write(&path, &bytes) {
+                    eprintln!("[order_manager] save_to_disk write failed: {e}");
+                }
+            }
+            Err(e) => eprintln!("[order_manager] save_to_disk serialize failed: {e}"),
+        }
+    }
+
+    /// Load persisted orders from disk and repopulate.
+    /// Restored orders are marked Working — the trader must verify with the
+    /// broker since we don't know if these are still live.
+    pub(crate) fn load_from_disk(&mut self) {
+        let path = orders_state_path();
+        let bytes = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(_) => return, // no file = first run
+        };
+        let restored: Vec<ManagedOrder> = match serde_json::from_slice(&bytes) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("[order_manager] load_from_disk parse failed: {e}");
+                return;
+            }
+        };
+        let count = restored.len();
+        let now = epoch_ms();
+        for mut o in restored {
+            o.state = OrderState::Working;
+            o.updated_at = now;
+            o.state_history.push((OrderState::Working, now));
+            if o.id >= self.next_id { self.next_id = o.id + 1; }
+            self.orders.push(o);
+        }
+        if count > 0 {
+            self.pending_toasts.push(format!("Restored {} open orders — verify with broker", count));
+        }
+    }
+
     // ── Internal ──
 
     fn transition(&mut self, order_id: u64, new_state: OrderState) {
@@ -1287,73 +1367,80 @@ impl OrderManager {
 
 // ─── Global API ─────────────────────────────────────────────────────────────
 
-fn get_manager() -> &'static Mutex<OrderManager> {
-    ORDER_MANAGER.get_or_init(|| Mutex::new(OrderManager::new()))
-}
-
 /// Submit an order intent through the global manager
 pub(crate) fn submit_order(intent: OrderIntent) -> OrderResult {
-    get_manager().lock().unwrap().submit(intent)
+    let r = with_mgr(|mgr| mgr.submit(intent));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Confirm a draft order
 pub(crate) fn confirm_order(id: u64) -> bool {
-    get_manager().lock().unwrap().confirm(id)
+    let r = with_mgr(|mgr| mgr.confirm(id));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Cancel an order
 pub(crate) fn cancel_order(id: u64) -> bool {
-    get_manager().lock().unwrap().cancel(id)
+    let r = with_mgr(|mgr| mgr.cancel(id));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Cancel all active orders for a symbol
 pub(crate) fn cancel_all_orders(symbol: &str) {
-    get_manager().lock().unwrap().cancel_all(symbol)
+    with_mgr(|mgr| mgr.cancel_all(symbol));
+    with_mgr(|mgr| mgr.save_to_disk());
 }
 
 /// Modify order price
 pub(crate) fn modify_order_price(id: u64, new_price: f32) -> bool {
-    get_manager().lock().unwrap().modify_price(id, new_price)
+    let r = with_mgr(|mgr| mgr.modify_price(id, new_price));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Flatten position
 pub(crate) fn flatten_position(symbol: &str, current_qty: i32) {
-    get_manager().lock().unwrap().flatten(symbol, current_qty)
+    with_mgr(|mgr| mgr.flatten(symbol, current_qty));
+    with_mgr(|mgr| mgr.save_to_disk());
 }
 
 /// Get active orders as legacy OrderLevels for rendering
 pub(crate) fn active_orders_for(symbol: &str) -> Vec<OrderLevel> {
-    get_manager().lock().unwrap().active_order_levels(symbol)
+    with_mgr(|mgr| mgr.active_order_levels(symbol))
 }
 
 /// Set armed state
 pub(crate) fn set_armed(armed: bool) {
-    get_manager().lock().unwrap().set_armed(armed)
+    with_mgr(|mgr| mgr.set_armed(armed))
 }
 
 /// Check armed state
 pub(crate) fn is_armed() -> bool {
-    get_manager().lock().unwrap().is_armed()
+    with_mgr(|mgr| mgr.is_armed())
 }
 
 /// Drain toast messages
 pub(crate) fn drain_order_toasts() -> Vec<String> {
-    get_manager().lock().unwrap().drain_toasts()
+    with_mgr(|mgr| mgr.drain_toasts())
 }
 
 /// Run GC
 pub(crate) fn gc_orders() {
-    get_manager().lock().unwrap().gc()
+    with_mgr(|mgr| mgr.gc())
 }
 
 /// Get all active + recently-terminal orders as legacy OrderLevels (for chart.orders sync)
 pub(crate) fn all_order_levels_for(symbol: &str) -> Vec<OrderLevel> {
-    let mgr = get_manager().lock().unwrap();
-    let cutoff = epoch_ms().saturating_sub(60_000); // keep terminal orders for 60s
-    mgr.orders.iter()
-        .filter(|o| o.symbol == symbol && (o.state.is_active() || o.updated_at > cutoff))
-        .map(|o| o.to_order_level())
-        .collect()
+    with_mgr(|mgr| {
+        let cutoff = epoch_ms().saturating_sub(60_000); // keep terminal orders for 60s
+        mgr.orders.iter()
+            .filter(|o| o.symbol == symbol && (o.state.is_active() || o.updated_at > cutoff))
+            .map(|o| o.to_order_level())
+            .collect()
+    })
 }
 
 /// Submit and return the new order ID (convenience for write sites that need the ID)
@@ -1366,17 +1453,23 @@ pub(crate) fn submit_and_get_id(intent: OrderIntent) -> Option<u64> {
 
 /// Submit a bracket order through the global manager
 pub(crate) fn submit_bracket_order(intent: OrderIntent, tp: f32, sl: f32) -> (OrderResult, Option<u64>, Option<u64>) {
-    get_manager().lock().unwrap().submit_bracket(intent, tp, sl)
+    let r = with_mgr(|mgr| mgr.submit_bracket(intent, tp, sl));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Submit an OCO order group through the global manager
 pub(crate) fn submit_oco_order(orders: Vec<OrderIntent>) -> Vec<OrderResult> {
-    get_manager().lock().unwrap().submit_oco(orders)
+    let r = with_mgr(|mgr| mgr.submit_oco(orders));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Submit a conditional order through the global manager
 pub(crate) fn submit_conditional_order(intent: ConditionalOrderIntent) -> OrderResult {
-    get_manager().lock().unwrap().submit_conditional(intent)
+    let r = with_mgr(|mgr| mgr.submit_conditional(intent));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Submit an options trigger through the global manager
@@ -1386,26 +1479,31 @@ pub(crate) fn submit_options_trigger_order(
     qty: u32, entry_price: f32, entry_direction: &str,
     exit_price: f32, exit_direction: &str,
 ) -> OrderResult {
-    get_manager().lock().unwrap().submit_options_trigger(
+    let r = with_mgr(|mgr| mgr.submit_options_trigger(
         underlying, option_type, strike, expiration,
         qty, entry_price, entry_direction,
         exit_price, exit_direction,
-    )
+    ));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Submit a combo/spread order through the global manager
 pub(crate) fn submit_combo_order(symbol: &str, legs: Vec<ComboLeg>,
     side: &str, qty: u32, order_type: &str, limit_price: Option<f32>,
 ) -> OrderResult {
-    get_manager().lock().unwrap().submit_combo(symbol, legs, side, qty, order_type, limit_price)
+    let r = with_mgr(|mgr| mgr.submit_combo(symbol, legs, side, qty, order_type, limit_price));
+    with_mgr(|mgr| mgr.save_to_disk());
+    r
 }
 
 /// Get next unique order ID without creating an order
 pub(crate) fn next_order_id() -> u64 {
-    let mut mgr = get_manager().lock().unwrap();
-    let id = mgr.next_id;
-    mgr.next_id += 1;
-    id
+    with_mgr(|mgr| {
+        let id = mgr.next_id;
+        mgr.next_id += 1;
+        id
+    })
 }
 
 /// What-if margin check for a proposed order
@@ -1428,7 +1526,8 @@ pub(crate) fn kill_switch() {
         let _ = client.post(format!("{}/risk/kill", APEXIB_URL))
             .timeout(std::time::Duration::from_secs(10)).send();
     });
-    get_manager().lock().unwrap().cancel_all("");
+    with_mgr(|mgr| mgr.cancel_all(""));
+    with_mgr(|mgr| mgr.save_to_disk());
 }
 
 /// Halt trading on the backend
@@ -1451,27 +1550,31 @@ pub(crate) fn resume_trading() {
 
 /// Set paper/live mode
 pub(crate) fn set_paper_mode(paper: bool) {
-    get_manager().lock().unwrap().paper_mode = paper;
+    with_mgr(|mgr| mgr.paper_mode = paper);
 }
 
 /// Check if in paper mode
 pub(crate) fn is_paper_mode() -> bool {
-    get_manager().lock().unwrap().paper_mode
+    with_mgr(|mgr| mgr.paper_mode)
 }
 
 /// Get current risk limits (for settings UI)
 pub(crate) fn get_risk_limits() -> RiskLimits {
-    get_manager().lock().unwrap().risk_limits.clone()
+    with_mgr(|mgr| mgr.risk_limits.clone())
 }
 
 /// Update risk limits (from settings UI)
 pub(crate) fn update_risk_limits(limits: RiskLimits) {
-    get_manager().lock().unwrap().risk_limits = limits;
+    with_mgr(|mgr| mgr.risk_limits = limits);
 }
 
 /// Reconcile OrderManager state with IB backend data (called each frame with account poller data)
 pub(crate) fn reconcile_with_ib(ib_orders: &[super::IbOrder]) {
-    let mut mgr = get_manager().lock().unwrap();
+    with_mgr(|mgr| reconcile_with_ib_inner(mgr, ib_orders));
+    with_mgr(|mgr| mgr.save_to_disk());
+}
+
+fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder]) {
     let now = epoch_ms();
 
     // Collect updates first to avoid double borrow
