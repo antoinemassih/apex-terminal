@@ -1710,7 +1710,7 @@ impl Chart {
                 }
                 if !self.drawings_requested {
                     self.drawings_requested = true;
-                    fetch_drawings_background(self.symbol.clone());
+                    fetch_drawings_background(drawing_persist_key(self));
                 }
 
                 // Fetch signal drawings for new symbol
@@ -2509,6 +2509,35 @@ fn make_window_icon_hicon() -> Option<isize> {
             eprintln!("[native-chart] Warning: CreateIconIndirect failed");
             None
         }
+    }
+}
+
+/// Stable persistence key for a chart pane. Equities and indexes use the
+/// symbol as-is; option panes use a synthesized OCC contract id (which
+/// doesn't change when the display label is re-formatted).
+///
+/// The display `symbol` for an option pane is a human-readable label like
+/// "AAPL 287.5C 2026-04-30" that varies with strike formatting and expiry
+/// rendering. The OCC ticker is built from the underlying, expiry
+/// (YYYYMMDD), C/P flag, and strike*1000 zero-padded to 8 digits, prefixed
+/// with "O:" — e.g. `O:AAPL260430C00287500` — which is invariant.
+///
+/// Note: pre-existing rows in the `drawings` table that were keyed by the
+/// human-readable label will appear orphaned after this change. Migration
+/// is intentionally skipped — option drawings are typically short-lived
+/// (0DTE, weekly), so the orphan cost is low and a regex-based re-key
+/// migration isn't worth the complexity. Equity/index drawings are
+/// unaffected.
+pub(crate) fn drawing_persist_key(chart: &Chart) -> String {
+    if chart.is_option && !chart.underlying.is_empty() && !chart.option_expiry.is_empty() {
+        // Expiry is stored as "YYYYMMDD"; OCC uses YYMMDD.
+        let exp = &chart.option_expiry;
+        let yymmdd = if exp.len() == 8 { &exp[2..] } else { exp.as_str() };
+        let cp = if chart.option_type.eq_ignore_ascii_case("C") { 'C' } else { 'P' };
+        let strike_milli = (chart.option_strike as f64 * 1000.0).round() as i64;
+        format!("O:{}{}{}{:08}", chart.underlying, yymmdd, cp, strike_milli)
+    } else {
+        chart.symbol.clone()
     }
 }
 
@@ -13175,7 +13204,7 @@ fn render_chart_pane(
         if chart.dragging_drawing.is_some() {
             if let Some((ref did, _)) = chart.dragging_drawing {
                 if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
-                    crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                    crate::drawing_db::save(&drawing_to_db(d, &drawing_persist_key(chart), &chart.timeframe));
                     if let Some(snap) = chart.drag_drawing_snapshot.take() {
                         if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                         chart.undo_stack.push(DrawingAction::Modify(did.clone(), snap));
@@ -13490,7 +13519,7 @@ fn render_chart_pane(
             if resp.drag_stopped() {
                 if let Some((ref did, _)) = chart.dragging_drawing.clone() {
                     if let Some(d) = chart.drawings.iter().find(|d| d.id == *did) {
-                        crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                        crate::drawing_db::save(&drawing_to_db(d, &drawing_persist_key(chart), &chart.timeframe));
                         if let Some(snap) = chart.drag_drawing_snapshot.take() {
                             if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                             chart.undo_stack.push(DrawingAction::Modify(did.clone(), snap));
@@ -13704,7 +13733,7 @@ fn render_chart_pane(
                 // Use magnet-snapped coordinates if available, otherwise raw
                 let bar = snap_bar.unwrap_or_else(|| pos_to_bar(pos));
                 let price = snap_price.unwrap_or_else(|| pos_to_price(pos));
-                let sym = chart.symbol.clone();
+                let sym = drawing_persist_key(chart);
                 let tf = chart.timeframe.clone();
                 match chart.draw_tool.as_str() {
                     "hline" => {
@@ -14115,7 +14144,7 @@ fn render_chart_pane(
                                 if let Some(src) = chart.drawings.iter().find(|d| d.id == *id).cloned() {
                                     let mut copy = src;
                                     copy.id = new_uuid();
-                                    crate::drawing_db::save(&drawing_to_db(&copy, &chart.symbol, &chart.timeframe));
+                                    crate::drawing_db::save(&drawing_to_db(&copy, &drawing_persist_key(chart), &chart.timeframe));
                                     if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                                     chart.undo_stack.push(DrawingAction::Add(copy.clone()));
                                     chart.redo_stack.clear();
@@ -14535,15 +14564,17 @@ fn render_chart_pane(
                     DrawingAction::Remove(d.clone())
                 }
                 DrawingAction::Remove(d) => {
-                    crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                    crate::drawing_db::save(&drawing_to_db(d, &drawing_persist_key(chart), &chart.timeframe));
                     chart.drawings.push(d.clone());
                     DrawingAction::Add(d.clone())
                 }
                 DrawingAction::Modify(id, old) => {
                     let current = chart.drawings.iter().find(|d| d.id == *id).cloned();
+                    let pkey = drawing_persist_key(chart);
+                    let tf = chart.timeframe.clone();
                     if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
                         *d = old.clone();
-                        crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                        crate::drawing_db::save(&drawing_to_db(d, &pkey, &tf));
                     }
                     DrawingAction::Modify(id.clone(), current.unwrap_or_else(|| old.clone()))
                 }
@@ -14563,7 +14594,7 @@ fn render_chart_pane(
             };
             let undo_action = match &action {
                 DrawingAction::Add(d) => {
-                    crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                    crate::drawing_db::save(&drawing_to_db(d, &drawing_persist_key(chart), &chart.timeframe));
                     chart.drawings.push(d.clone());
                     DrawingAction::Remove(d.clone())
                 }
@@ -14574,9 +14605,11 @@ fn render_chart_pane(
                 }
                 DrawingAction::Modify(id, restored) => {
                     let current = chart.drawings.iter().find(|d| d.id == *id).cloned();
+                    let pkey = drawing_persist_key(chart);
+                    let tf = chart.timeframe.clone();
                     if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *id) {
                         *d = restored.clone();
-                        crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                        crate::drawing_db::save(&drawing_to_db(d, &pkey, &tf));
                     }
                     DrawingAction::Modify(id.clone(), current.unwrap_or_else(|| restored.clone()))
                 }
@@ -14594,7 +14627,7 @@ fn render_chart_pane(
                 dup.id = new_uuid();
                 let bar_shift = if chart.timestamps.len() > 1 { (chart.timestamps[1] - chart.timestamps[0]) * 5 } else { 1500 };
                 shift_drawing_time(&mut dup.kind, bar_shift);
-                crate::drawing_db::save(&drawing_to_db(&dup, &chart.symbol, &chart.timeframe));
+                crate::drawing_db::save(&drawing_to_db(&dup, &drawing_persist_key(chart), &chart.timeframe));
                 if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                 chart.undo_stack.push(DrawingAction::Add(dup.clone()));
                 chart.redo_stack.clear();
@@ -15262,7 +15295,7 @@ fn render_chart_pane(
                         .corner_radius(4.0)
                         .show(ui, |ui| {
                             let sel_id = sel_id.clone();
-                            let sym = chart.symbol.clone();
+                            let sym = drawing_persist_key(chart);
                             let tf = chart.timeframe.clone();
                             let dim = t.dim;
                             ui.horizontal(|ui| {
@@ -15469,12 +15502,14 @@ fn render_chart_pane(
                             chart.drawings.retain(|d| d.id != *edit_id);
                             crate::drawing_db::remove(edit_id);
                         } else {
+                            let pkey = drawing_persist_key(chart);
+                            let tf_local = chart.timeframe.clone();
                             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == *edit_id) {
                                 if let DrawingKind::TextNote { text: ref mut t, .. } = &mut d.kind { *t = text; }
                                 if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                                 chart.undo_stack.push(DrawingAction::Add(d.clone()));
                                 chart.redo_stack.clear();
-                                crate::drawing_db::save(&drawing_to_db(d, &chart.symbol, &chart.timeframe));
+                                crate::drawing_db::save(&drawing_to_db(d, &pkey, &tf_local));
                             }
                         }
                         chart.text_edit_id = None; chart.text_edit_buf.clear();

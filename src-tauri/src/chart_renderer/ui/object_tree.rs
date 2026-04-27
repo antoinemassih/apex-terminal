@@ -124,7 +124,7 @@ egui::SidePanel::left("object_tree_panel")
         ui.add_space(4.0);
 
         let chart = &mut panes[ap];
-        let sym = chart.symbol.clone();
+        let sym = super::super::gpu::drawing_persist_key(chart);
         let tf = chart.timeframe.clone();
 
         // ════════════════════════════════════════════════════════════════
