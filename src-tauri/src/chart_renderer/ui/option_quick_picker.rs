@@ -319,7 +319,8 @@ pub(crate) fn draw(
                 panes[pi].timestamps.clear();
                 let tf = panes[pi].timeframe.clone();
                 if !occ_final.is_empty() && crate::apex_data::is_enabled() {
-                    crate::chart_renderer::gpu::fetch_option_bars_background(occ_final, opt_sym, tf);
+                    let mark = panes[pi].bar_source_mark;
+                    crate::chart_renderer::gpu::fetch_option_bars_background(occ_final, opt_sym, tf, mark);
                 }
             } else {
                 watchlist.pending_opt_chart = Some((underlying.clone(), strike, is_call, String::new()));

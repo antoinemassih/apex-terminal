@@ -53,6 +53,7 @@ fn native_chart_tick(symbol: String, price: f64, volume: f64) {
             open: price as f32, high: price as f32, low: price as f32,
             close: price as f32, volume: volume as f32, _pad: 0.0,
         },
+        mark: false,
     });
 }
 
@@ -174,8 +175,11 @@ pub fn run() {
                 use apex_data::ws::Frame;
                 match frame {
                     Frame::Bar(upd) | Frame::Snapshot { bar: upd, .. } => {
-                        crate::apex_log!("ws.bar", "symbol={} tf={} close={} closed={}",
-                            upd.bar.symbol, upd.bar.timeframe, upd.bar.close, upd.is_closed);
+                        // MARK_BARS_PROTOCOL: read source ("last"|"mark") off the
+                        // BarUpdate. Pane filters by matching its `bar_source_mark`.
+                        let mark = upd.source == "mark";
+                        crate::apex_log!("ws.bar", "symbol={} tf={} close={} closed={} src={}",
+                            upd.bar.symbol, upd.bar.timeframe, upd.bar.close, upd.is_closed, upd.source);
                         let gb = chart_renderer::Bar {
                             open: upd.bar.open as f32, high: upd.bar.high as f32,
                             low:  upd.bar.low  as f32, close: upd.bar.close as f32,
@@ -186,13 +190,13 @@ pub fn run() {
                             chart_renderer::ChartCommand::AppendBar {
                                 symbol: upd.bar.symbol.clone(),
                                 timeframe: upd.bar.timeframe.clone(),
-                                bar: gb, timestamp: ts_sec,
+                                bar: gb, timestamp: ts_sec, mark,
                             }
                         } else {
                             chart_renderer::ChartCommand::UpdateLastBar {
                                 symbol: upd.bar.symbol.clone(),
                                 timeframe: upd.bar.timeframe.clone(),
-                                bar: gb,
+                                bar: gb, mark,
                             }
                         };
                         send_to_native_chart(cmd);

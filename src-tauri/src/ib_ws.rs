@@ -107,6 +107,7 @@ async fn ws_loop(
                                                 bar: crate::chart_renderer::Bar {
                                                     open: p, high: p, low: p, close: p, volume: v, _pad: 0.0,
                                                 },
+                                                mark: false,
                                             });
                                         }
                                     }

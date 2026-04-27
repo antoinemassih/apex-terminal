@@ -982,13 +982,13 @@ fn render_order_entry_body(
         let notional_color = if chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
         if ui.add(egui::Button::new(egui::RichText::new("QTY").monospace().size(9.0).strong().color(qty_color))
             .fill(if !chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))).corner_radius(2.0)
             .min_size(egui::vec2(30.0, 16.0))).clicked() {
             chart.order_notional_mode = false;
         }
         if ui.add(egui::Button::new(egui::RichText::new("$").monospace().size(9.0).strong().color(notional_color))
             .fill(if chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-            .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))).corner_radius(2.0)
             .min_size(egui::vec2(20.0, 16.0))).clicked() {
             chart.order_notional_mode = true;
         }
@@ -1112,7 +1112,7 @@ fn render_order_entry_body(
             let brk_color = if chart.order_bracket { t.accent } else { t.dim.gamma_multiply(0.5) };
             if ui.add(egui::Button::new(egui::RichText::new("Bracket").monospace().size(9.0).color(brk_color))
                 .fill(if chart.order_bracket { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))).corner_radius(2.0)
+                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))).corner_radius(2.0)
                 .min_size(egui::vec2(0.0, 18.0))).clicked() {
                 chart.order_bracket = !chart.order_bracket;
             }
@@ -1269,6 +1269,11 @@ pub(crate) struct Chart {
     /// Non-empty when this chart shows a specific contract; used as the ApexData
     /// fetch key while `symbol` carries the human-readable display label.
     pub(crate) option_contract: String,
+    /// MARK_BARS_PROTOCOL: bar source for this (option) pane.
+    /// `false` = "last" (trade prints, default), `true` = "mark" (NBBO mid).
+    /// Stock panes ignore this — they always fetch/sub Last.
+    /// Persisted with the chart.
+    pub(crate) bar_source_mark: bool,
     pub(crate) bars: Vec<Bar>, pub(crate) timestamps: Vec<i64>, pub(crate) drawings: Vec<Drawing>,
     /// Per-(symbol, timeframe) cache of bars/timestamps. Tab switches stash the
     /// current data here and restore from here when re-entering, so a tab swap
@@ -1586,6 +1591,7 @@ impl Chart {
             symbol: "AAPL".into(), timeframe: "5m".into(),
             is_option: false, underlying: String::new(), option_type: String::new(),
             option_strike: 0.0, option_expiry: String::new(), option_con_id: 0, option_contract: String::new(),
+            bar_source_mark: false,
             bars: vec![], timestamps: vec![], drawings: vec![], tab_cache: std::collections::HashMap::new(), indicator_bar_count: 0,
             next_indicator_id: 5, editing_indicator: None,
             indicators: vec![
@@ -1757,7 +1763,11 @@ impl Chart {
                     }
                 }
             }
-            ChartCommand::AppendBar { symbol, timeframe, bar, timestamp } => {
+            ChartCommand::AppendBar { symbol, timeframe, bar, timestamp, mark } => {
+                // MARK_BARS_PROTOCOL: drop frames whose source doesn't match the pane's
+                // current selection (race window between toggle and server stop).
+                // Only meaningful for option panes; stock panes always run in Last mode.
+                if self.is_option && mark != self.bar_source_mark { return; }
                 // Only append if both symbol AND timeframe match this pane
                 if symbol == self.symbol && timeframe == self.timeframe {
                     self.bars.push(bar); self.timestamps.push(timestamp);
@@ -1766,7 +1776,8 @@ impl Chart {
                     if self.auto_scroll { self.vs += 1.0; }
                 }
             }
-            ChartCommand::UpdateLastBar { symbol, timeframe, bar, .. } => {
+            ChartCommand::UpdateLastBar { symbol, timeframe, bar, mark } => {
+                if self.is_option && mark != self.bar_source_mark { return; }
                 // Only update if both symbol AND timeframe match
                 if symbol == self.symbol && (timeframe.is_empty() || timeframe == self.timeframe) {
                     if let Some(l) = self.bars.last_mut() {
@@ -3134,7 +3145,7 @@ fn check_history_pagination(panes: &mut [Chart], active_pane: usize) {
             // is matched against the pane's display symbol — pass both.
             if chart.is_option && !chart.option_contract.is_empty() {
                 fetch_option_history_background(
-                    chart.option_contract.clone(), display_sym, tf, earliest_ts);
+                    chart.option_contract.clone(), display_sym, tf, earliest_ts, chart.bar_source_mark);
             } else {
                 fetch_history_background(display_sym, tf, earliest_ts);
             }
@@ -4814,7 +4825,7 @@ fn render_toolbar(
             .exact_height(26.0)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 2, bottom: 2 })
-                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 60))))
+                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))))
             .show(ctx, |ui| {
                 ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
                 ui.horizontal(|ui| {
@@ -6381,8 +6392,10 @@ fn render_chart_pane(
     // Volume + candles + indicators + oscillators + drawings
     span_begin("pane_render");
 
-    // Volume bars (gated by show_volume)
-    if chart.show_volume {
+    // Volume bars (gated by show_volume).
+    // MARK_BARS_PROTOCOL: in Mark mode bars carry volume=0 — hide the histogram
+    // entirely so traders aren't fooled by an empty pane.
+    if chart.show_volume && !chart.bar_source_mark {
         let vol_top = rect.top() + pt + ch * 0.8;
         let vol_bottom = rect.top() + pt + ch;
         let vol_h = vol_bottom - vol_top;
@@ -6452,8 +6465,9 @@ fn render_chart_pane(
         }
     }
 
-    // Volume Profile — cache recompute + rendering (behind candles)
-    if chart.vp_mode != VolumeProfileMode::Off {
+    // Volume Profile — cache recompute + rendering (behind candles).
+    // MARK_BARS_PROTOCOL: skip when in Mark mode (volume=0 → empty profile).
+    if chart.vp_mode != VolumeProfileMode::Off && !chart.bar_source_mark {
         if chart.vp_data.is_none() || chart.vp_last_vs != chart.vs || chart.vp_last_vc != chart.vc {
             let start = chart.vs.max(0.0) as usize;
             let end_vp = (start + chart.vc as usize + 8).min(chart.bars.len());
@@ -12865,6 +12879,70 @@ fn render_chart_pane(
                 chart.overlay_editing = !chart.overlay_editing;
                 if chart.overlay_editing { chart.overlay_editing_idx = None; }
             }
+            x += ov_w + 4.0;
+        }
+        // MARK_BARS_PROTOCOL — Last|Mark segmented toggle (option panes only).
+        if chart.is_option {
+            let seg_h = bar_h;
+            let font = egui::FontId::monospace(10.0);
+            let parts = [("LAST", false), ("MARK", true)];
+            let part_w = 36.0_f32;
+            let total_w = part_w * parts.len() as f32;
+            let outer = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(total_w, seg_h));
+            // Subtle frame
+            p.rect_filled(outer, 3.0, t.bg.gamma_multiply(0.4));
+            p.rect_stroke(outer, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Inside);
+            let mark_color = egui::Color32::from_rgb(220, 90, 90); // red-ish accent for MARK
+            for (idx, (label, is_mark)) in parts.iter().enumerate() {
+                let r = egui::Rect::from_min_size(
+                    egui::pos2(x + part_w * idx as f32, y), egui::vec2(part_w, seg_h));
+                let resp = ui.allocate_rect(r, egui::Sense::click());
+                let active = chart.bar_source_mark == *is_mark;
+                let hovered = resp.hovered();
+                let bg_col = if active {
+                    if *is_mark { color_alpha(mark_color, 70) } else { color_alpha(t.accent, 60) }
+                } else if hovered {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    t.bg.gamma_multiply(0.55)
+                } else {
+                    egui::Color32::TRANSPARENT
+                };
+                let fg_col = if active {
+                    if *is_mark { mark_color } else { t.accent }
+                } else { t.dim.gamma_multiply(0.95) };
+                if bg_col != egui::Color32::TRANSPARENT { p.rect_filled(r, 3.0, bg_col); }
+                p.text(r.center(), egui::Align2::CENTER_CENTER, *label, font.clone(), fg_col);
+                if resp.clicked() && chart.bar_source_mark != *is_mark {
+                    // Toggle source: clear bars, swap WS subs, refetch history.
+                    chart.bar_source_mark = *is_mark;
+                    chart.bars.clear();
+                    chart.timestamps.clear();
+                    chart.indicator_bar_count = 0;
+                    chart.vol_analytics_computed = 0;
+                    chart.history_exhausted = false;
+                    let occ = chart.option_contract.clone();
+                    let display_sym = chart.symbol.clone();
+                    let tf = chart.timeframe.clone();
+                    let new_mark = chart.bar_source_mark;
+                    if !occ.is_empty() && crate::apex_data::is_enabled() {
+                        // fetch_option_bars_background flips the WS subs internally.
+                        fetch_option_bars_background(occ, display_sym, tf, new_mark);
+                    }
+                }
+            }
+            x += total_w + 4.0;
+            // Persistent MARK indicator badge (per spec §"Visual hint") — visible
+            // even when the segmented control is offscreen / scrolled.
+            if chart.bar_source_mark {
+                let badge_text = "MARK";
+                let g = p.layout_no_wrap(badge_text.into(), font.clone(), mark_color);
+                let bw = g.size().x + 10.0;
+                let br = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(bw, seg_h));
+                p.rect_filled(br, 3.0, color_alpha(mark_color, 35));
+                p.rect_stroke(br, 3.0, egui::Stroke::new(0.5, mark_color), egui::StrokeKind::Inside);
+                p.text(br.center(), egui::Align2::CENTER_CENTER, badge_text, font, mark_color);
+                let _ = x; // suppress unused-after warning if more pills appended later
+            }
         }
     }
 
@@ -15677,7 +15755,7 @@ fn render_chart_pane(
             let hovered = resp.hovered();
             let col = if hovered { t.text } else { t.dim.gamma_multiply(0.8) };
             if hovered {
-                ui.painter().rect_filled(r, 3.0, color_alpha(t.toolbar_border, 60));
+                ui.painter().rect_filled(r, 3.0, color_alpha(t.toolbar_border, ALPHA_DIM));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
             ui.painter().text(r.center(), egui::Align2::CENTER_CENTER,
@@ -15797,7 +15875,7 @@ fn render_chart_pane(
             egui::vec2(btn_w, btn_h));
         // Background pill
         ui.painter().rect_filled(btn_rect, 4.0, color_alpha(t.toolbar_bg, 230));
-        ui.painter().rect_stroke(btn_rect, 4.0, egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)), egui::StrokeKind::Outside);
+        ui.painter().rect_stroke(btn_rect, 4.0, egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_ACTIVE)), egui::StrokeKind::Outside);
         // Restore icon — overlapping squares
         let c = btn_rect.center();
         let s = 4.0;
@@ -15808,7 +15886,7 @@ fn render_chart_pane(
         let btn_resp = ui.allocate_rect(btn_rect, egui::Sense::click());
         if btn_resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(btn_rect, 4.0, color_alpha(t.toolbar_border, 60));
+            ui.painter().rect_filled(btn_rect, 4.0, color_alpha(t.toolbar_border, ALPHA_DIM));
             // Redraw icon brighter on hover
             let hc = t.dim;
             ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + 1.5, c.y - s - 0.5), egui::vec2(s * 1.5, s * 1.5)), 1.0, egui::Stroke::new(1.2, hc), egui::StrokeKind::Outside);
@@ -16227,7 +16305,7 @@ fn handle_deferred(
         } else if !crate::apex_data::is_enabled() {
             eprintln!("[option-chart] ApexData disabled — cannot fetch bars for {}", occ);
         } else {
-            fetch_option_bars_background(occ.clone(), opt_sym, tf.clone());
+            fetch_option_bars_background(occ.clone(), opt_sym, tf.clone(), panes[target].bar_source_mark);
         }
         panes[target].vs = (panes[target].bars.len() as f32 - panes[target].vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
         panes[target].auto_scroll = true;
@@ -19101,7 +19179,7 @@ impl ApplicationHandler for App {
                     }
 
                     if pane.is_option && !pane.option_contract.is_empty() {
-                        fetch_option_bars_background(pane.option_contract.clone(), sym, tf);
+                        fetch_option_bars_background(pane.option_contract.clone(), sym, tf, pane.bar_source_mark);
                     } else {
                         fetch_bars_background(sym, tf);
                     }
@@ -19232,7 +19310,7 @@ pub(crate) fn submit_ib_order(symbol: &str, side: &str, qty: u32, order_type_idx
 /// Paginate older bars for an option contract via ApexData replay (§5.3).
 /// `occ` is the feed key (e.g. `O:SPY260501C00450000`); `display_sym` is the
 /// pane's human-readable label that PrependBars will be keyed against.
-fn fetch_option_history_background(occ: String, display_sym: String, tf: String, before_ts: i64) {
+fn fetch_option_history_background(occ: String, display_sym: String, tf: String, before_ts: i64, mark: bool) {
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { return; }
@@ -19267,8 +19345,9 @@ fn fetch_option_history_background(occ: String, display_sym: String, tf: String,
         let from_ms = to_ms - page_seconds * 1000;
         crate::apex_log!("option.history",
             "GET replay options/{} {} from={} to={}", occ, tf, from_ms, to_ms);
+        let src = if mark { crate::apex_data::BarSource::Mark } else { crate::apex_data::BarSource::Last };
         match crate::apex_data::rest::get_replay(
-            crate::apex_data::AssetClass::Option, &occ, &tf, from_ms, to_ms, None, Some(1000))
+            crate::apex_data::AssetClass::Option, &occ, &tf, from_ms, to_ms, None, Some(1000), src)
         {
             Some(resp) if !resp.bars.is_empty() => {
                 let gpu_bars: Vec<Bar> = resp.bars.iter().map(|b| Bar {
@@ -19323,7 +19402,7 @@ fn fetch_history_background(sym: String, tf: String, before_ts: i64) {
             let class = crate::apex_data::AssetClass::from_symbol(&sym);
             let to_ms = before_ts * 1000;
             let from_ms = to_ms - page_seconds * 1000;
-            if let Some(resp) = crate::apex_data::rest::get_replay(class, &sym, &tf, from_ms, to_ms, None, Some(1000)) {
+            if let Some(resp) = crate::apex_data::rest::get_replay(class, &sym, &tf, from_ms, to_ms, None, Some(1000), crate::apex_data::BarSource::Last) {
                 if !resp.bars.is_empty() {
                     let gpu_bars: Vec<Bar> = resp.bars.iter().map(|b| Bar {
                         open: b.open as f32, high: b.high as f32, low: b.low as f32,
@@ -19458,8 +19537,8 @@ pub(crate) fn synthesize_occ(underlying: &str, strike: f32, is_call: bool, expir
     format!("O:{}{}{}{:08}", occ_root, d.format("%y%m%d"), side, strike_int)
 }
 
-pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf: String) {
-    crate::apex_log!("option.fetch", "ENTRY occ={occ} display='{display_sym}' tf={tf}");
+pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf: String, mark: bool) {
+    crate::apex_log!("option.fetch", "ENTRY occ={occ} display='{display_sym}' tf={tf} mark={mark}");
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     crate::apex_log!("option.fetch", "txs.len={}", txs.len());
@@ -19471,8 +19550,15 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
     }
 
     let ws_was = crate::apex_data::ws::is_connected();
-    crate::apex_log!("option.fetch", "WS connected={ws_was} — calling add_bar_sub");
-    crate::apex_data::ws::add_bar_sub(&occ, &tf);
+    crate::apex_log!("option.fetch", "WS connected={ws_was} — calling add_{}bar_sub", if mark {"mark_"} else {""});
+    if mark {
+        crate::apex_data::ws::add_mark_bar_sub(&occ, &tf);
+        // Make sure we're not also receiving last-source frames for this contract.
+        crate::apex_data::ws::remove_bar_sub(&occ, &tf);
+    } else {
+        crate::apex_data::ws::add_bar_sub(&occ, &tf);
+        crate::apex_data::ws::remove_mark_bar_sub(&occ, &tf);
+    }
     let mut quote_set: Vec<String> = vec![occ.clone()];
     // Keep any existing quote subs alongside this one.
     // (set_quotes is replace-set semantics, so we need the full set — but our
@@ -19499,9 +19585,10 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
 
         // History (may be empty for a brand-new contract — first close after sub
         // populates it; live ticks stream immediately via the WS sub above).
-        crate::apex_log!("option.fetch", "REST get_bars Option {occ} {tf}");
+        let src = if mark { crate::apex_data::BarSource::Mark } else { crate::apex_data::BarSource::Last };
+        crate::apex_log!("option.fetch", "REST get_bars Option {occ} {tf} source={}", src.as_str());
         match crate::apex_data::rest::get_bars(
-            crate::apex_data::AssetClass::Option, &occ, &tf)
+            crate::apex_data::AssetClass::Option, &occ, &tf, src)
         {
             Some(bars) if !bars.is_empty() => {
                 crate::apex_log!("option.fetch", "OK {} bars for {occ}", bars.len());
@@ -19558,7 +19645,7 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
         // 0. ApexData — authoritative source (REST + WS live updates)
         if crate::apex_data::is_enabled() {
             let class = crate::apex_data::AssetClass::from_symbol(&sym);
-            if let Some(bars) = crate::apex_data::rest::get_bars(class, &sym, &tf) {
+            if let Some(bars) = crate::apex_data::rest::get_bars(class, &sym, &tf, crate::apex_data::BarSource::Last) {
                 if !bars.is_empty() {
                     // ApexData's ChartBar has the same shape as our data::Bar (time in secs).
                     let adapted: Vec<crate::data::Bar> = bars.into_iter().map(|b| crate::data::Bar {
@@ -19815,6 +19902,8 @@ fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
             "option_type": p.option_type,
             "option_expiry": p.option_expiry,
             "underlying": p.underlying,
+            // MARK_BARS_PROTOCOL — persist Last/Mark choice per chart.
+            "bar_source": if p.bar_source_mark { "mark" } else { "last" },
         })
     }).collect();
     // Global settings from Watchlist
@@ -20020,6 +20109,8 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
             chart.option_type     = p.get("option_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
             chart.option_expiry   = p.get("option_expiry").and_then(|v| v.as_str()).unwrap_or("").to_string();
             chart.underlying      = p.get("underlying").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            // MARK_BARS_PROTOCOL — default to "last" on missing.
+            chart.bar_source_mark = p.get("bar_source").and_then(|v| v.as_str()).unwrap_or("last") == "mark";
 
             panes.push(chart);
         }

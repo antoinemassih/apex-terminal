@@ -109,6 +109,7 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         timeframe: bar.timeframe.clone(),
                         bar: gpu_bar,
                         timestamp: time_sec,
+                        mark: false,
                     });
                 } else {
                     let mut tick_bar = gpu_bar;
@@ -117,6 +118,7 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         symbol: bar.symbol.clone(),
                         timeframe: bar.timeframe.clone(),
                         bar: tick_bar,
+                        mark: false,
                     });
                 }
                 chart_updates += 1;

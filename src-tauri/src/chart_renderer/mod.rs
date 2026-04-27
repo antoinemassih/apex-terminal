@@ -786,18 +786,23 @@ pub enum ChartCommand {
         bars: Vec<Bar>,
         timestamps: Vec<i64>,
     },
-    /// Append a single new bar + timestamp
+    /// Append a single new bar + timestamp.
+    /// `mark`: MARK_BARS_PROTOCOL source — `false` = last (trade prints, default),
+    /// `true` = mark (NBBO mid). Panes drop frames whose source doesn't match their
+    /// current `bar_source_mark` (race window during toggle).
     AppendBar {
         symbol: String,
         timeframe: String,
         bar: Bar,
         timestamp: i64,
+        mark: bool,
     },
-    /// Update the last bar (tick)
+    /// Update the last bar (tick). See `AppendBar` for `mark` semantics.
     UpdateLastBar {
         symbol: String,
         timeframe: String,
         bar: Bar,
+        mark: bool,
     },
     /// Set viewport (from pan/zoom in WebView)
     SetViewport {
