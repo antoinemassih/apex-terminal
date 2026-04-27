@@ -1637,15 +1637,10 @@ if watchlist.open {
                                 0.0, iv_color);
                         }
 
-                        // Unusual activity — badge background around OI number
-                        let is_unusual = row.volume > row.oi && row.volume > 100;
-                        if is_unusual {
-                            // Highlight the OI text area with a gold badge background
-                            let oi_badge_rect = egui::Rect::from_min_size(
-                                egui::pos2(oi_x - 2.0, rect.top() + 1.0), egui::vec2(col_oi + 4.0, rect.height() - 2.0));
-                            painter.rect_filled(oi_badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, ALPHA_TINT));
-                            painter.rect_stroke(oi_badge_rect, 3.0, egui::Stroke::new(STROKE_THIN, egui::Color32::from_rgba_unmultiplied(255, 193, 37, ALPHA_STRONG)), egui::StrokeKind::Outside);
-                        }
+                        // (Unusual-activity gold badge around OI removed —
+                        // it was visually noisy. The same signal is encoded
+                        // in the IV strip on the row's left edge.)
+                        let _ = oi_x;
 
                         // Faint row separator
                         painter.line_segment(
