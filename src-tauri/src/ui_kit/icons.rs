@@ -152,6 +152,17 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
         y_offset: 0.0,
         baseline_offset_factor: 0.0,
     };
+    // Source Serif 4 — registered as the named "serif" family used by
+    // `hero_font_id()` when `StyleSettings::serif_headlines` is true (#14).
+    fonts.font_data.insert("source_serif4_regular".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SourceSerif4-Regular.ttf"))));
+    fonts.font_data.insert("source_serif4_bold".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("SourceSerif4-Bold.ttf"))));
+    fonts.families.insert(
+        egui::FontFamily::Name("serif".into()),
+        vec!["source_serif4_bold".into(), "source_serif4_regular".into()],
+    );
+
     fonts.font_data.insert("jetbrains_mono".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("JetBrainsMono-Regular.ttf")).tweak(tweak_mono)));
     fonts.font_data.insert("inter".into(),

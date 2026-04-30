@@ -10,7 +10,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
+use egui::{Color32, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
 use super::super::style::*;
 use super::super::components::{pane_header_bar, pane_title, section_label_widget};
 use super::headers::PaneHeader;
@@ -491,6 +491,123 @@ impl<'a> Widget for PaneFooter<'a> {
         });
         ui.allocate_response(Vec2::ZERO, Sense::hover())
     }
+}
+
+// ─── PaneHeaderActions (#10) ─────────────────────────────────────────────────
+
+/// Right-aligned action cluster for a pane header bar.
+///
+/// Accepts a slice of `(label, active)` pairs and renders them as flat
+/// frameless label buttons separated by full-height hairline dividers (when
+/// `current().hairline_borders` is true). Returns the index of the button
+/// that was clicked, if any.
+///
+/// Layout is right-to-left (rightmost button first). The caller is responsible
+/// for positioning — typically used inside a `with_layout(right_to_left)` block
+/// or a horizontal strip.
+///
+/// ```ignore
+/// let header_h = 28.0;
+/// if let Some(idx) = PaneHeaderActions::new(&[("+ Compare", false), ("Order", oe_open),
+///         ("DOM", dom_open), ("Options", opt_open)])
+///     .header_height(header_h)
+///     .theme(t)
+///     .show(ui)
+/// {
+///     match idx {
+///         0 => add_compare(),
+///         1 => oe_open = !oe_open,
+///         2 => dom_open = !dom_open,
+///         _ => opt_open = !opt_open,
+///     }
+/// }
+/// ```
+#[must_use = "PaneHeaderActions must be shown with `.show(ui)` to render"]
+pub struct PaneHeaderActions<'a> {
+    actions: &'a [(&'a str, bool)],
+    header_height: f32,
+    active_color: Color32,
+    inactive_color: Color32,
+    border_color: Color32,
+}
+
+impl<'a> PaneHeaderActions<'a> {
+    pub fn new(actions: &'a [(&'a str, bool)]) -> Self {
+        Self {
+            actions,
+            header_height: 28.0,
+            active_color: Color32::from_rgb(220, 220, 230),
+            inactive_color: Color32::from_rgb(120, 120, 130),
+            border_color: Color32::from_rgb(60, 60, 70),
+        }
+    }
+    pub fn header_height(mut self, h: f32) -> Self { self.header_height = h; self }
+    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
+        self.active_color   = t.text;
+        self.inactive_color = t.dim;
+        self.border_color   = t.toolbar_border;
+        self
+    }
+
+    /// Render. Returns `Some(index)` of the clicked action, `None` if none clicked.
+    pub fn show(self, ui: &mut Ui) -> Option<usize> {
+        let hairline = current().hairline_borders;
+        let label_gap  = 14.0_f32;
+        let divider_sp =  7.0_f32;
+        let font = egui::FontId::monospace(font_md());
+        let mut clicked = None;
+
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            for (i, &(label, active)) in self.actions.iter().enumerate() {
+                // Hairline divider to the left of each action (except the first)
+                if i > 0 && hairline {
+                    ui.add_space(divider_sp);
+                    let x = ui.cursor().left();
+                    let top = ui.cursor().top();
+                    let bot = top + self.header_height;
+                    let rule_col = rule_color_for(self.border_color);
+                    ui.painter().line_segment(
+                        [Pos2::new(x, top), Pos2::new(x, bot)],
+                        Stroke::new(1.0, rule_col),
+                    );
+                    ui.add_space(divider_sp);
+                } else if i > 0 {
+                    ui.add_space(label_gap);
+                }
+
+                let color = if active { self.active_color } else { self.inactive_color };
+                let (text_size, _) = ui.fonts(|f| {
+                    let g = f.layout_no_wrap(label.to_string(), font.clone(), color);
+                    (g.size(), ())
+                });
+                let (rect, resp) = ui.allocate_exact_size(
+                    Vec2::new(text_size.x + 4.0, self.header_height), Sense::click());
+                if resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    ui.painter().rect_filled(rect, egui::CornerRadius::ZERO,
+                        color_alpha(self.border_color, alpha_soft()));
+                }
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    label,
+                    font.clone(),
+                    color,
+                );
+                if resp.clicked() { clicked = Some(i); }
+            }
+        });
+        clicked
+    }
+}
+
+/// Returns a hairline rule color: slightly higher alpha on dark backgrounds.
+fn rule_color_for(border: Color32) -> Color32 {
+    // Approximate: if border luminance < 100 → dark bg → use 85% alpha, else 60%.
+    let lum = 0.299 * border.r() as f32 + 0.587 * border.g() as f32 + 0.114 * border.b() as f32;
+    let a = if lum < 100.0 { alpha_strong() } else { alpha_dim() };
+    color_alpha(border, a)
 }
 
 // ─── PaneDivider ─────────────────────────────────────────────────────────────

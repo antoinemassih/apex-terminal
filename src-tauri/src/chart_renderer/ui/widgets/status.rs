@@ -675,6 +675,88 @@ impl<'a> Widget for ConnectionIndicator<'a> {
     }
 }
 
+// ─── SearchPill (#6) ─────────────────────────────────────────────────────────
+
+/// Toolbar search / command-palette trigger pill.
+///
+/// Renders as a flat pill reading "🔍 /CMD" in the right toolbar cluster.
+/// Background tint scales with `current().hairline_borders`: 1.05× for Meridien
+/// (slightly lighter than canvas), 0.92× otherwise.
+///
+/// ```ignore
+/// if SearchPill::new().height(panel_rect.height() - 14.0).theme(t).show(ui).clicked() {
+///     state.cmd_palette_open = !state.cmd_palette_open;
+/// }
+/// ```
+#[must_use = "SearchPill must be shown with `.show(ui)` to render"]
+pub struct SearchPill {
+    width: f32,
+    height: f32,
+    bg: egui::Color32,
+    border: egui::Color32,
+    icon_color: egui::Color32,
+    label_color: egui::Color32,
+}
+
+impl SearchPill {
+    pub fn new() -> Self {
+        Self {
+            width: 78.0,
+            height: 20.0,
+            bg: egui::Color32::from_rgb(40, 40, 50),
+            border: egui::Color32::from_rgb(70, 70, 80),
+            icon_color: egui::Color32::from_rgb(140, 140, 155),
+            label_color: egui::Color32::from_rgb(180, 180, 195),
+        }
+    }
+    pub fn width(mut self, w: f32) -> Self { self.width = w; self }
+    pub fn height(mut self, h: f32) -> Self { self.height = h; self }
+    pub fn theme(mut self, t: &Theme) -> Self {
+        let tint = if current().hairline_borders { 1.05 } else { 0.92 };
+        self.bg = t.bg.gamma_multiply(tint);
+        self.border = rule_stroke_for(t.bg, t.toolbar_border).color;
+        self.icon_color = color_alpha(t.dim, alpha_active());
+        self.label_color = color_alpha(t.dim, alpha_strong());
+        self
+    }
+
+    /// Render and return the egui `Response` — check `.clicked()` to open palette.
+    pub fn show(self, ui: &mut Ui) -> Response {
+        let size = Vec2::new(self.width, self.height.max(20.0));
+        let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+        if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+
+        let painter = ui.painter();
+        let cr = egui::CornerRadius::same(current().r_pill.min(8));
+        painter.rect_filled(rect, cr, self.bg);
+        painter.rect_stroke(rect, cr,
+            egui::Stroke::new(stroke_thin(), self.border), egui::StrokeKind::Outside);
+
+        // Icon + label — laid out left-to-right with a small gap
+        let text_x = rect.left() + 8.0;
+        let cy = rect.center().y;
+        painter.text(
+            egui::pos2(text_x, cy),
+            egui::Align2::LEFT_CENTER,
+            "\u{1F50D}", // 🔍
+            egui::FontId::proportional(font_sm()),
+            self.icon_color,
+        );
+        painter.text(
+            egui::pos2(text_x + font_sm() + 4.0, cy),
+            egui::Align2::LEFT_CENTER,
+            "/CMD",
+            egui::FontId::monospace(font_xs()),
+            self.label_color,
+        );
+        resp
+    }
+}
+
+impl Default for SearchPill {
+    fn default() -> Self { Self::new() }
+}
+
 // ─── TrendArrow ───────────────────────────────────────────────────────────────
 
 /// Trend direction.

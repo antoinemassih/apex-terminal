@@ -162,7 +162,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -3696,11 +3696,25 @@ fn render_toolbar(
             ui.spacing_mut().item_spacing.x = 3.0;
 
             // ── Account button (broker + connection state) ──
+            // #7: When vertical_group_dividers active (Meridien), paint a full-column
+            //     hover fill spanning the entire toolbar height before the button widget.
             {
                 let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
                 let acct_label = if connected { "IBKR ●" } else { "IBKR ○" };
                 let acct_active = watchlist.account_strip_open;
-                if ui.add(ToolbarBtn::new(acct_label).active(acct_active).theme(t)).on_hover_text("Account Summary").clicked() {
+                let acct_resp = ui.add(ToolbarBtn::new(acct_label).active(acct_active).theme(t))
+                    .on_hover_text("Account Summary");
+                if super::ui::style::current().vertical_group_dividers && acct_resp.hovered() {
+                    let col = color_alpha(t.toolbar_border, 80);
+                    let btn_rect = acct_resp.rect;
+                    let col_rect = egui::Rect::from_min_max(
+                        egui::pos2(btn_rect.left() - 2.0, tb_rect.top()),
+                        egui::pos2(btn_rect.right() + 2.0, tb_rect.bottom()),
+                    );
+                    ui.painter().rect_filled(col_rect, egui::CornerRadius::ZERO, col);
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if acct_resp.clicked() {
                     watchlist.account_strip_open = !watchlist.account_strip_open;
                 }
             }
@@ -4842,7 +4856,7 @@ fn render_toolbar(
     if watchlist.account_strip_open {
         let account_data = account_data_cached.clone();
         egui::TopBottomPanel::top("account_strip")
-            .exact_height(26.0)
+            .exact_height(super::ui::style::current().account_strip_height)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 2, bottom: 2 })
                 .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))))
@@ -5742,18 +5756,14 @@ fn render_chart_pane(
                     egui::pos2(tab_x + 4.0, header_rect.center().y - plus_h / 2.0),
                     egui::vec2(plus_w, plus_h));
                 let plus_resp = ui.allocate_rect(plus_rect, egui::Sense::click());
-                let (bg, fg, border) = if plus_resp.hovered() {
+                let tile_state = if plus_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     t.text,
-                     color_alpha(t.accent, ALPHA_LINE))
+                    ChromeTileState::Hovered
                 } else {
-                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
-                     color_alpha(t.toolbar_border, ALPHA_MUTED))
+                    ChromeTileState::Idle
                 };
-                header_painter.rect_filled(plus_rect, 4.0, bg);
-                header_painter.rect_stroke(plus_rect, 4.0,
-                    egui::Stroke::new(0.5, border), egui::StrokeKind::Outside);
+                paint_chrome_tile_button(&header_painter, plus_rect, tile_state, t);
+                let fg = chrome_tile_fg(tile_state, t);
                 header_painter.text(plus_rect.center(), egui::Align2::CENTER_CENTER,
                     "+ Tab", egui::FontId::monospace((title_font_size - 2.0).max(9.0)), fg);
                 if plus_resp.clicked() {
@@ -6019,18 +6029,14 @@ fn render_chart_pane(
                     egui::pos2(cursor_x, header_rect.center().y - plus_h / 2.0),
                     egui::vec2(plus_w, plus_h));
                 let plus_resp = ui.allocate_rect(plus_rect, egui::Sense::click());
-                let (bg, fg, border) = if plus_resp.hovered() {
+                let tile_state = if plus_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    (color_alpha(t.toolbar_border, ALPHA_SUBTLE),
-                     t.text,
-                     color_alpha(t.accent, ALPHA_LINE))
+                    ChromeTileState::Hovered
                 } else {
-                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8),
-                     color_alpha(t.toolbar_border, ALPHA_MUTED))
+                    ChromeTileState::Idle
                 };
-                header_painter.rect_filled(plus_rect, 4.0, bg);
-                header_painter.rect_stroke(plus_rect, 4.0,
-                    egui::Stroke::new(0.5, border), egui::StrokeKind::Outside);
+                paint_chrome_tile_button(&header_painter, plus_rect, tile_state, t);
+                let fg = chrome_tile_fg(tile_state, t);
                 header_painter.text(plus_rect.center(), egui::Align2::CENTER_CENTER,
                     "+ Tab", egui::FontId::monospace((title_font_size - 2.0).max(9.0)), fg);
                 if plus_resp.clicked() {

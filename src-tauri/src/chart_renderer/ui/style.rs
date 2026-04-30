@@ -1032,3 +1032,57 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
     ctx.set_style(style);
     let _ = (toolbar_bg,); // may be used in future for popup fill overrides
 }
+
+// ─── #19 chrome_tile_btn ──────────────────────────────────────────────────────
+
+/// State passed to [`paint_chrome_tile_button`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ChromeTileState { Idle, Hovered, Active }
+
+/// Paint the small square chrome tile button used for "+Tab" and template/star
+/// buttons in pane headers. Uses `current().r_md` (0 for Meridien, rounded
+/// otherwise) and `current().stroke_thin`.
+///
+/// Returns nothing — the caller owns the `Response` and acts on clicks.
+///
+/// # Example
+/// ```ignore
+/// let resp = ui.allocate_rect(rect, egui::Sense::click());
+/// let state = if resp.hovered() { ChromeTileState::Hovered } else { ChromeTileState::Idle };
+/// paint_chrome_tile_button(&ui.painter().with_clip_rect(rect), rect, state, t);
+/// ```
+pub fn paint_chrome_tile_button(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    state: ChromeTileState,
+    t: &crate::chart_renderer::gpu::Theme,
+) {
+    let cr = egui::CornerRadius::same(current().r_md);
+    let sw = current().stroke_thin;
+    let (bg, border) = match state {
+        ChromeTileState::Active  => (
+            color_alpha(t.accent, 38),
+            color_alpha(t.accent, alpha_active()),
+        ),
+        ChromeTileState::Hovered => (
+            color_alpha(t.toolbar_border, alpha_subtle()),
+            color_alpha(t.accent, alpha_line()),
+        ),
+        ChromeTileState::Idle    => (
+            color_alpha(t.toolbar_border, 18),
+            color_alpha(t.toolbar_border, alpha_muted()),
+        ),
+    };
+    painter.rect_filled(rect, cr, bg);
+    painter.rect_stroke(rect, cr, egui::Stroke::new(sw, border),
+        egui::StrokeKind::Outside);
+}
+
+/// Foreground color for a [`ChromeTileState`] — pair with [`paint_chrome_tile_button`].
+pub fn chrome_tile_fg(state: ChromeTileState, t: &crate::chart_renderer::gpu::Theme) -> egui::Color32 {
+    match state {
+        ChromeTileState::Active  => t.accent,
+        ChromeTileState::Hovered => t.text,
+        ChromeTileState::Idle    => t.dim.gamma_multiply(0.8),
+    }
+}
