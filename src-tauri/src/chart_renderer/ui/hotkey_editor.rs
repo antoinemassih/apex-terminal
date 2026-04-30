@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::buttons::SimpleBtn;
 use crate::ui_kit::icons::Icon;
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
@@ -111,7 +112,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        if ui.button(egui::RichText::new("Reset Defaults").monospace().size(9.0).color(t.dim)).clicked() {
+        if ui.add(SimpleBtn::new("Reset Defaults").color(t.dim)).clicked() {
             watchlist.hotkeys = default_hotkeys();
         }
     });

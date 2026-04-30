@@ -6,7 +6,8 @@ use super::registry::*;
 use super::super::style::*;
 use super::super::components::*;
 use super::super::components_extra::*;
-use super::super::widgets::text::CaptionLabel;
+use super::super::widgets::text::{BodyLabel, CaptionLabel};
+use super::super::widgets::buttons::SimpleBtn;
 use super::super::super::gpu::*;
 
 pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, pal_w: f32) {
@@ -22,12 +23,12 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.add_space(gap_lg());
         ui.label(egui::RichText::new("placeholder").size(font_sm()).italics().color(t.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("← back").clicked() { watchlist.cmd_palette_ai_mode = false; }
+            if ui.add(SimpleBtn::new("← back").color(t.dim)).clicked() { watchlist.cmd_palette_ai_mode = false; }
         });
     });
 
     ui.add_space(gap_md()); ui.separator(); ui.add_space(gap_lg());
-    ui.label(egui::RichText::new("Try:").size(font_sm()).color(t.dim));
+    ui.add(BodyLabel::new("Try:").color(t.dim));
     for hint in [
         "> show me oversold tech stocks breaking out on volume",
         "> alert me if SPY closes below 20ema on daily",
@@ -103,7 +104,7 @@ pub(super) fn draw_help_mode(ui: &mut egui::Ui, topic: &str, t: &Theme, _pal_w: 
 
 /// File-local helper: dim hint paragraph used throughout the preview pane.
 fn preview_hint(ui: &mut egui::Ui, text: &str, t: &Theme) {
-    ui.label(egui::RichText::new(text).size(font_sm()).color(t.text.gamma_multiply(0.75)));
+    ui.add(BodyLabel::new(text).color(t.text.gamma_multiply(0.75)));
 }
 
 pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(String, String, String)>, panes: &[Chart], ap: usize) {
@@ -200,9 +201,9 @@ fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart]
             painter.add(egui::Shape::line(pts, egui::Stroke::new(current().stroke_thick, col)));
         }
     } else {
-        ui.label(egui::RichText::new("Last      —").size(font_sm()).color(t.dim));
-        ui.label(egui::RichText::new("Change    —").size(font_sm()).color(t.dim));
-        ui.label(egui::RichText::new("Volume    —").size(font_sm()).color(t.dim));
+        ui.add(BodyLabel::new("Last      —").color(t.dim));
+        ui.add(BodyLabel::new("Change    —").color(t.dim));
+        ui.add(BodyLabel::new("Volume    —").color(t.dim));
         ui.add_space(gap_md());
         let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::hover());
         ui.painter().rect_stroke(rect, current().r_md,

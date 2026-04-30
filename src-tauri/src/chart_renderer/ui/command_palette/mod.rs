@@ -13,6 +13,7 @@ use super::components::*;
 use super::components_extra::*;
 use super::widgets::pills::*;
 use super::widgets::frames::PopupFrame;
+use super::widgets::text::BodyLabel;
 use super::super::gpu::*;
 
 mod registry;
@@ -186,7 +187,7 @@ fn draw_normal_mode(
     ui.horizontal(|ui| {
         let chip = |ui: &mut egui::Ui, p: &str, lbl: &str| {
             ui.add(KeybindChip::new(p).palette(t.accent, t.accent));
-            ui.label(egui::RichText::new(lbl).size(font_sm()).color(t.dim));
+            ui.add(BodyLabel::new(lbl).color(t.dim));
             ui.add_space(gap_md());
         };
         chip(ui, ">", "cmd"); chip(ui, "@", "sym"); chip(ui, "#", "play");
@@ -416,7 +417,7 @@ fn draw_normal_mode(
     ui.horizontal(|ui| {
         let hint = |ui: &mut egui::Ui, k: &str, l: &str| {
             ui.add(KeybindChip::new(k).palette(t.text, t.dim));
-            ui.label(egui::RichText::new(l).size(font_sm()).color(t.dim));
+            ui.add(BodyLabel::new(l).color(t.dim));
             ui.add_space(gap_lg());
         };
         hint(ui, "↑↓/jk", "nav");

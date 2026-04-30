@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::buttons::SimpleBtn;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::gpu::APEXIB_URL;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, read_account_data};
@@ -35,7 +36,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
                 ui.add_space(m);
                 ui.label(egui::RichText::new("SERVICES").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("diag").on_hover_text("ApexData diagnostics panel").clicked() {
+                    if ui.add(SimpleBtn::new("diag").color(t.dim)).on_hover_text("ApexData diagnostics panel").clicked() {
                         _watchlist.apex_diag_open = true;
                     }
                 });

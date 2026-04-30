@@ -2,6 +2,7 @@
 
 use egui;
 use super::style::*;
+use super::widgets;
 use super::super::gpu::{Watchlist, DiscordMessage, Theme};
 use crate::ui_kit::icons::Icon;
 
@@ -146,13 +147,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                         ui.add_space(10.0);
                         if !crate::discord::is_configured() {
                             ui.label(egui::RichText::new("Discord not configured").monospace().size(9.0).color(t.dim));
-                            ui.label(egui::RichText::new("Add discord.env with credentials").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.add(widgets::text::MonospaceCode::new("Add discord.env with credentials").xs().color(t.dim.gamma_multiply(0.5)));
                         } else if watchlist.discord_connecting {
                             ui.label(egui::RichText::new("Waiting for authorization...").monospace().size(9.0).color(t.dim));
                             ui.add_space(6.0);
                             super::chart_widgets::refined_spinner(ui, t.accent);
                             ui.add_space(4.0);
-                            ui.label(egui::RichText::new("Complete sign-in in your browser").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(t.dim.gamma_multiply(0.5)));
                         } else {
                             if ui.add(egui::Button::new(
                                 egui::RichText::new("  Connect Discord  ").monospace().size(10.0).strong().color(egui::Color32::WHITE))
@@ -164,7 +165,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                 crate::discord::start_oauth2();
                             }
                             ui.add_space(8.0);
-                            ui.label(egui::RichText::new("Chat with your trading community").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.add(widgets::text::MonospaceCode::new("Chat with your trading community").xs().color(t.dim.gamma_multiply(0.5)));
                         }
                     },
                 );
@@ -305,8 +306,8 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                 egui::Layout::top_down(egui::Align::Center),
                                 |ui| {
                                     ui.add_space(avail.y * 0.3);
-                                    ui.label(egui::RichText::new("Select a server").monospace().size(10.0).color(t.dim.gamma_multiply(0.6)));
-                                    ui.label(egui::RichText::new("from the icons above").monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                    ui.add(widgets::text::MonospaceCode::new("Select a server").sm().color(t.dim.gamma_multiply(0.6)));
+                                    ui.add(widgets::text::MonospaceCode::new("from the icons above").xs().color(t.dim.gamma_multiply(0.4)));
                                 },
                             );
                         } else if watchlist.discord_selected_channel.is_none() {
@@ -331,7 +332,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add_space(6.0);
                                         ui.label(egui::RichText::new("Bot not in this server").monospace().size(9.0).color(t.dim));
                                         ui.add_space(4.0);
-                                        ui.label(egui::RichText::new("Add the Apex bot to enable\nchannels & messaging").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                                        ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(t.dim.gamma_multiply(0.5)));
                                         ui.add_space(8.0);
                                         if ui.add(egui::Button::new(
                                             egui::RichText::new("  Add Bot to Server  ").monospace().size(9.0).strong().color(egui::Color32::WHITE))

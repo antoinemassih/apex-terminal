@@ -175,7 +175,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
             ui.vertical(|ui| {
                 let lc = if **flag { t.text } else { t.dim.gamma_multiply(0.5) };
                 ui.label(egui::RichText::new(*name).monospace().size(FONT_SM).strong().color(lc));
-                ui.label(egui::RichText::new(*hint).monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.5)));
+                ui.add(widgets::text::MonospaceCode::new(*hint).xs().color(t.dim.gamma_multiply(0.5)));
             });
         });
         ui.add_space(GAP_XS);

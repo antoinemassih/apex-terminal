@@ -55,7 +55,7 @@ fn hdr(ui: &mut egui::Ui, label: &str, t: &Theme) {
 
 fn kv(ui: &mut egui::Ui, k: &str, v: &str, t: &Theme, value_color: Option<egui::Color32>) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(k).monospace().size(font_sm()).color(t.dim));
+        ui.add(super::widgets::text::MonospaceCode::new(k).color(t.dim));
         ui.add_space(gap_xs());
         ui.label(egui::RichText::new(v).monospace().size(font_sm()).strong().color(value_color.unwrap_or(t.text)));
     });
@@ -90,29 +90,28 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
     let ws = crate::apex_data::ws::is_connected();
     let (fails, cooldown) = crate::apex_data::rest::breaker_snapshot();
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("WS").monospace().size(font_sm()).color(t.dim));
+        ui.add(super::widgets::text::MonospaceCode::new("WS").color(t.dim));
         pill(ui, if ws { "connected" } else { "disconnected" },
              if ws { egui::Color32::from_rgb(80, 200, 120) } else { egui::Color32::from_rgb(230, 70, 70) });
     });
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("breaker").monospace().size(font_sm()).color(t.dim));
+        ui.add(super::widgets::text::MonospaceCode::new("breaker").color(t.dim));
         if let Some(remaining) = cooldown {
             pill(ui, "open", egui::Color32::from_rgb(230, 70, 70));
-            ui.label(egui::RichText::new(format!("cooldown {}s", remaining.as_secs())).monospace().size(super::style::font_sm()).color(t.dim));
+            ui.add(super::widgets::text::MonospaceCode::new(&format!("cooldown {}s", remaining.as_secs())).color(t.dim));
         } else {
             pill(ui, "closed", egui::Color32::from_rgb(80, 200, 120));
         }
-        ui.label(egui::RichText::new(format!("fails={fails}")).monospace().size(super::style::font_sm()).color(t.dim));
+        ui.add(super::widgets::text::MonospaceCode::new(&format!("fails={fails}")).color(t.dim));
     });
 
     if let Some(h) = crate::apex_data::live_state::get_health() {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("health").monospace().size(font_sm()).color(t.dim));
+            ui.add(super::widgets::text::MonospaceCode::new("health").color(t.dim));
             pill(ui, if h.ready { "ready" } else { "not ready" },
                  if h.ready { egui::Color32::from_rgb(80, 200, 120) } else { egui::Color32::from_rgb(240, 170, 70) });
-            ui.label(egui::RichText::new(format!("tick age {}ms, redis={} questdb={} feeds {}/{}",
-                h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total))
-                .monospace().size(font_sm()).color(t.dim));
+            ui.add(super::widgets::text::MonospaceCode::new(&format!("tick age {}ms, redis={} questdb={} feeds {}/{}",
+                h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total)).color(t.dim));
         });
     } else {
         kv(ui, "health ", "(no response yet)", t, Some(t.dim));
@@ -136,23 +135,23 @@ fn section_rest_stats(ui: &mut egui::Ui, t: &Theme) {
 
 fn section_ws_subs(ui: &mut egui::Ui, t: &Theme) {
     hdr(ui, "WS", t);
-    ui.label(egui::RichText::new("(subscription counts tracked client-side; see 'chain cache' below for live state)")
-        .monospace().size(font_sm()).color(t.dim.gamma_multiply(0.6)));
+    ui.add(super::widgets::text::MonospaceCode::new("(subscription counts tracked client-side; see 'chain cache' below for live state)")
+        .color(t.dim.gamma_multiply(0.6)));
 }
 
 fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
     hdr(ui, "CHAIN CACHE", t);
     let summary = crate::apex_data::live_state::chain_summary();
     if summary.is_empty() {
-        ui.label(egui::RichText::new("  (empty — no chains cached yet)").monospace().size(font_sm()).color(t.dim));
+        ui.add(super::widgets::text::MonospaceCode::new("  (empty — no chains cached yet)").color(t.dim));
         return;
     }
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("underlying").monospace().size(font_sm()).color(t.dim.gamma_multiply(0.6)));
+        ui.add(super::widgets::text::MonospaceCode::new("underlying").color(t.dim.gamma_multiply(0.6)));
         ui.add_space(60.0);
-        ui.label(egui::RichText::new("rows").monospace().size(font_sm()).color(t.dim.gamma_multiply(0.6)));
+        ui.add(super::widgets::text::MonospaceCode::new("rows").color(t.dim.gamma_multiply(0.6)));
         ui.add_space(gap_2xl());
-        ui.label(egui::RichText::new("last update").monospace().size(font_sm()).color(t.dim.gamma_multiply(0.6)));
+        ui.add(super::widgets::text::MonospaceCode::new("last update").color(t.dim.gamma_multiply(0.6)));
     });
     for (ul, rows, age_s) in summary {
         let age_color = if age_s < 10 { egui::Color32::from_rgb(80, 200, 120) }
@@ -161,9 +160,9 @@ fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(&ul).monospace().size(font_sm()).strong().color(t.text));
             ui.add_space(120.0 - 10.0 * ul.len() as f32);
-            ui.label(egui::RichText::new(format!("{rows}")).monospace().size(font_sm()).color(t.text));
+            ui.add(super::widgets::text::MonospaceCode::new(&format!("{rows}")).color(t.text));
             ui.add_space(24.0);
-            ui.label(egui::RichText::new(format!("{age_s}s ago")).monospace().size(font_sm()).color(age_color));
+            ui.add(super::widgets::text::MonospaceCode::new(&format!("{age_s}s ago")).color(age_color));
         });
     }
 }
@@ -172,7 +171,7 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
     hdr(ui, "RECENT REST CALLS", t);
     let (_, _, _, _, _, recent) = crate::apex_data::rest::stats_snapshot();
     if recent.is_empty() {
-        ui.label(egui::RichText::new("  (none yet)").monospace().size(font_sm()).color(t.dim));
+        ui.add(super::widgets::text::MonospaceCode::new("  (none yet)").color(t.dim));
         return;
     }
     for call in recent.iter().rev().take(25) {
@@ -197,9 +196,9 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
             ui.painter().text(pill_rect.center(), egui::Align2::CENTER_CENTER,
                 &label, egui::FontId::monospace(super::style::font_xs()), color);
             ui.add_space(gap_sm());
-            ui.label(egui::RichText::new(format!("{}ms", call.ms)).monospace().size(font_sm()).color(t.dim));
+            ui.add(super::widgets::text::MonospaceCode::new(&format!("{}ms", call.ms)).color(t.dim));
             ui.add_space(gap_sm());
-            ui.label(egui::RichText::new(&call.path).monospace().size(super::style::font_sm()).color(t.text.gamma_multiply(0.85)));
+            ui.add(super::widgets::text::MonospaceCode::new(&call.path).color(t.text.gamma_multiply(0.85)));
         });
     }
 }
