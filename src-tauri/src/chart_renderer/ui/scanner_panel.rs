@@ -8,6 +8,7 @@ use egui;
 use super::style::*;
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
+use super::widgets::frames::CompactPanelFrame;
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
@@ -354,7 +355,7 @@ pub(crate) fn draw(
         .min_width(180.0)
         .max_width(420.0)
         .resizable(true)
-        .frame(panel_frame_compact(t.toolbar_bg, t.toolbar_border))
+        .frame(CompactPanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
             let panel_w = ui.available_width();
             draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w);

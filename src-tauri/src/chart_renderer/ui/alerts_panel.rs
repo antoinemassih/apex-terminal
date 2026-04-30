@@ -2,6 +2,7 @@
 
 use egui;
 use super::style::*;
+use super::widgets;
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;
@@ -19,7 +20,7 @@ egui::SidePanel::right("alerts_panel")
     .default_width(240.0)
     .min_width(180.0)
     .max_width(300.0)
-    .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
+    .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
     .show(ctx, |ui| {
         if panel_header(ui, &format!("{} ALERTS", Icon::BELL), t.accent, t.dim) {
             watchlist.alerts_panel_open = false;
@@ -47,7 +48,7 @@ pub(crate) fn draw_content(
             let sym = chart.symbol.clone();
 
             ui.horizontal(|ui| {
-                section_label(ui, "ADD ALERT", t.dim);
+                ui.add(widgets::text::SectionLabel::new("ADD ALERT").tiny().color(t.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(format!("{} @ {:.2}", sym, current_price))
                         .monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
@@ -128,7 +129,7 @@ pub(crate) fn draw_content(
         ).collect();
         if !pane_drafts.is_empty() {
             ui.horizontal(|ui| {
-                section_label(ui, &format!("DRAFT ({})", pane_drafts.len()), t.dim);
+                ui.add(widgets::text::SectionLabel::new(&format!("DRAFT ({})", pane_drafts.len())).tiny().color(t.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if small_action_btn(ui, "Place All", t.accent) {
                         for p in panes.iter_mut() {
@@ -192,7 +193,7 @@ pub(crate) fn draw_content(
 
         // Active section
         ui.horizontal(|ui| {
-            section_label(ui, &format!("ACTIVE ({})", total_active), t.accent);
+            ui.add(widgets::text::SectionLabel::new(&format!("ACTIVE ({})", total_active)).tiny().color(t.accent));
             if total_active > 0 {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if small_action_btn(ui, "Clear All", t.bear) {
@@ -273,7 +274,7 @@ pub(crate) fn draw_content(
             ui.add_space(4.0);
 
             ui.horizontal(|ui| {
-                section_label(ui, &format!("TRIGGERED ({})", total_triggered), t.dim);
+                ui.add(widgets::text::SectionLabel::new(&format!("TRIGGERED ({})", total_triggered)).tiny().color(t.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if small_action_btn(ui, "Dismiss All", t.dim.gamma_multiply(0.5)) {
                         watchlist.alerts.retain(|a| !a.triggered);

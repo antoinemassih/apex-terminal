@@ -55,7 +55,7 @@ if watchlist.hotkey_editor_open {
     let screen = ctx.screen_rect();
     dialog_window_themed(ctx, "hotkey_editor", egui::pos2(screen.center().x - 270.0, 40.0), 540.0, t.toolbar_bg, t.toolbar_border, None)
         .show(ctx, |ui| {
-            if dialog_header(ui, "KEYBOARD SHORTCUTS", t.dim) { watchlist.hotkey_editor_open = false; }
+            if super::widgets::headers::DialogHeaderWithClose::new("KEYBOARD SHORTCUTS").dim(t.dim).show(ui) { watchlist.hotkey_editor_open = false; }
             ui.add_space(6.0);
             draw_content(ui, watchlist, t);
         });

@@ -2,6 +2,7 @@
 
 use egui;
 use super::style::*;
+use super::widgets;
 use super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
@@ -25,7 +26,7 @@ pub(crate) fn draw(
         .min_width(240.0)
         .max_width(420.0)
         .resizable(true)
-        .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
+        .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
         .show(ctx, |ui| {
             // Header
             let header = ui.horizontal(|ui| {
@@ -134,7 +135,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
     let chart = &mut panes[ap];
     let demo_on = chart.trend_health_score > 0.0 || chart.precursor_active || chart.trade_plan.is_some();
     ui.horizontal(|ui| {
-        section_label(ui, "DEMO SIGNALS", t.dim);
+        ui.add(widgets::text::SectionLabel::new("DEMO SIGNALS").tiny().color(t.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let label = if demo_on { "Stop Demo" } else { "Start Demo" };
             let color = if demo_on { t.bear } else { t.accent };
@@ -145,7 +146,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
     separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
     ui.add_space(GAP_MD);
 
-    section_label(ui, "VISIBILITY", t.dim);
+    ui.add(widgets::text::SectionLabel::new("VISIBILITY").tiny().color(t.dim));
     ui.add_space(GAP_SM);
 
     let toggles: &mut [(&str, &str, &mut bool)] = &mut [

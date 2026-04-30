@@ -23,7 +23,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
             .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_ACTIVE)))
             .corner_radius(RADIUS_LG))
         .show(_ctx, |ui| {
-            if dialog_header(ui, "CONNECTIONS", t.dim) { *conn_panel_open = false; }
+            if super::widgets::headers::DialogHeaderWithClose::new("CONNECTIONS").dim(t.dim).show(ui) { *conn_panel_open = false; }
             ui.add_space(6.0);
             let m = 8.0;
 

@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::tabs::TabBar;
 use super::super::{Drawing, DrawingKind, ChartCommand};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::gpu::{fetch_chain_background, fetch_search_background, fetch_watchlist_prices, set_pending_wl_tooltip, WlTooltipData};
@@ -35,11 +36,11 @@ if watchlist.open {
             // ── A) Tabs at the very top with X button ──
             let tab_row_resp = ui.horizontal(|ui| {
                 ui.set_min_height(22.0);
-                tab_bar(ui, &mut watchlist.tab, &[
+                TabBar::new(&mut watchlist.tab, &[
                     (WatchlistTab::Stocks, "LIST"),
                     (WatchlistTab::Chain, "CHAIN"),
                     (WatchlistTab::Heat, "HEAT"),
-                ], t.accent, t.dim);
+                ]).accent(t.accent).dim(t.dim).show(ui);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.open = false; }
                     // Market session badge

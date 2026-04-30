@@ -22,7 +22,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .frame(super::widgets::frames::PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build())
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                super::components::section_label_md(ui, "APEX DATA DIAGNOSTICS", t.accent);
+                ui.add(super::widgets::text::SectionLabel::new("APEX DATA DIAGNOSTICS").md().color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.small_button("close").clicked() { watchlist.apex_diag_open = false; }
                     if ui.small_button("reset breaker").clicked() { crate::apex_data::rest::reset_breaker(); }

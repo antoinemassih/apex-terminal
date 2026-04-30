@@ -22,19 +22,19 @@ egui::Window::new("settings_panel".to_string())
     .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(0.0).outer_margin(0.0)
         .stroke(egui::Stroke::new(STROKE_STD, border)).corner_radius(RADIUS_LG))
     .show(ctx, |ui| {
-        if dialog_header(ui, "SETTINGS", t.dim) { watchlist.settings_open = false; }
+        if super::widgets::headers::DialogHeaderWithClose::new("SETTINGS").dim(t.dim).show(ui) { watchlist.settings_open = false; }
 
         // ── Tab bar ──
         let tab_id = egui::Id::new("settings_active_tab");
         let mut tab: SettingsTab = ui.data_mut(|d| *d.get_temp_mut_or(tab_id, SettingsTab::Appearance));
         ui.horizontal(|ui| {
             ui.add_space(GAP_LG);
-            tab_bar(ui, &mut tab, &[
+            super::widgets::tabs::TabBar::new(&mut tab, &[
                 (SettingsTab::Appearance, "Appearance"),
                 (SettingsTab::Chart,     "Chart"),
                 (SettingsTab::Trading,   "Trading"),
                 (SettingsTab::Shortcuts, "Shortcuts"),
-            ], t.accent, t.dim);
+            ]).accent(t.accent).dim(t.dim).show(ui);
         });
         ui.data_mut(|d| d.insert_temp(tab_id, tab));
         separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));

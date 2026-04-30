@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, TapeRow, Theme};
+use super::widgets::frames::CompactPanelFrame;
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
@@ -106,7 +107,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .min_width(180.0)
         .max_width(350.0)
         .resizable(true)
-        .frame(panel_frame_compact(t.toolbar_bg, t.toolbar_border))
+        .frame(CompactPanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
             if panel_header_sub(ui, "TIME & SALES", Some(active_symbol), t.accent, t.dim) {
                 watchlist.tape_open = false;

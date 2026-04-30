@@ -2,6 +2,7 @@
 
 use egui;
 use super::style::*;
+use super::widgets;
 use super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::FeedTab;
 
@@ -28,7 +29,7 @@ pub(crate) fn draw(
         .min_width(260.0)
         .max_width(480.0)
         .resizable(true)
-        .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
+        .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
         .show(ctx, |ui| {
             // Header
             let header = ui.horizontal(|ui| {

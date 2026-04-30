@@ -3,6 +3,9 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::frames::PanelFrame;
+use super::widgets::tabs::TabBar;
+use super::widgets::text as wtext;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderStatus, OrderLevel, PriceAlert, cancel_order_with_pair, fmt_notional};
 use crate::chart_renderer::BookTab;
@@ -21,15 +24,15 @@ if watchlist.orders_panel_open {
         .default_width(250.0)
         .min_width(200.0)
         .max_width(330.0)
-        .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
+        .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
             // Tab bar with close button
             let tab_row = ui.horizontal(|ui| {
                 ui.set_min_height(24.0);
-                tab_bar(ui, &mut watchlist.book_tab, &[
+                TabBar::new(&mut watchlist.book_tab, &[
                     (BookTab::Book, "Book"),
                     (BookTab::Journal, "Journal"),
-                ], t.accent, t.dim);
+                ]).accent(t.accent).dim(t.dim).show(ui);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.orders_panel_open = false; }
                 });
@@ -55,7 +58,7 @@ if watchlist.orders_panel_open {
 
                 // Header + Close All
                 ui.horizontal(|ui| {
-                    section_label(ui, "POSITIONS", t.accent);
+                    wtext::section_label(ui, "POSITIONS", t.accent);
                     if has_positions {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if small_action_btn(ui, "Close All", t.bear) {
@@ -186,7 +189,7 @@ if watchlist.orders_panel_open {
 
             // Orders header + action bar
             ui.horizontal(|ui| {
-                section_label(ui, "ORDERS", t.accent);
+                wtext::section_label(ui, "ORDERS", t.accent);
                 let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
                 let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
                 if active_count > 0 || draft_count > 0 {
@@ -363,7 +366,7 @@ if watchlist.orders_panel_open {
                     ui.add_space(4.0);
                     separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
                     ui.add_space(4.0);
-                    section_label(ui, "IB ORDERS", t.accent);
+                    wtext::section_label(ui, "IB ORDERS", t.accent);
                     ui.add_space(4.0);
                     for o in &ib_orders {
                         let is_fill = o.status == "filled";
@@ -406,7 +409,7 @@ if watchlist.orders_panel_open {
                     ui.add_space(4.0);
                     separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
                     ui.add_space(4.0);
-                    section_label(ui, "ALERTS", t.dim);
+                    wtext::section_label(ui, "ALERTS", t.dim);
                     ui.add_space(4.0);
                     let mut remove_alert: Option<u32> = None;
                     for alert in &watchlist.alerts {

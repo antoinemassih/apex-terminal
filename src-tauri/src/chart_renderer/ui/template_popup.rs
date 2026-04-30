@@ -47,7 +47,7 @@ pub(crate) fn draw(
                         ui.add_space(GAP_SM);
 
                         // ── Pane Type selector ──
-                        section_label(ui, "PANE TYPE", t.dim);
+                        ui.add(super::widgets::text::SectionLabel::new("PANE TYPE").tiny().color(t.dim));
                         ui.add_space(GAP_XS);
                         ui.horizontal(|ui| {
                             for (ptype, label, icon) in [
