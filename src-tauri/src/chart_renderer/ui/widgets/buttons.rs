@@ -81,14 +81,18 @@ pub struct TradeBtn<'a> {
     label: &'a str,
     color: Color32,
     width: f32,
+    height: Option<f32>,
 }
 
 impl<'a> TradeBtn<'a> {
     pub fn new(label: &'a str) -> Self {
-        Self { label, color: Color32::from_rgb(80, 180, 100), width: 0.0 }
+        Self { label, color: Color32::from_rgb(80, 180, 100), width: 0.0, height: None }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn width(mut self, w: f32) -> Self { self.width = w; self }
+    /// Override the default trade-button height. Used by the DOM panel where
+    /// the action area is sized in absolute pixels (e.g. 30px).
+    pub fn height(mut self, h: f32) -> Self { self.height = Some(h); self }
     pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
         self.color(t.accent)
     }
@@ -114,9 +118,10 @@ impl<'a> Widget for TradeBtn<'a> {
             ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => (Color32::TRANSPARENT, color, 0.0_f32, Color32::TRANSPARENT, r_xs()),
         };
 
+        let h = self.height.unwrap_or_else(btn_trade_height);
         let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_md()).strong().color(fg))
             .fill(bg).stroke(Stroke::new(stroke_w, border))
-            .min_size(egui::vec2(self.width, btn_trade_height())).corner_radius(cr));
+            .min_size(egui::vec2(self.width, h)).corner_radius(cr));
         hit(&resp.rect, "TRADE_BTN", "Buttons");
         if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -165,14 +170,18 @@ pub struct SimpleBtn<'a> {
     label: &'a str,
     color: Color32,
     min_width: f32,
+    height: Option<f32>,
 }
 
 impl<'a> SimpleBtn<'a> {
     pub fn new(label: &'a str) -> Self {
-        Self { label, color: Color32::from_rgb(120, 120, 130), min_width: 0.0 }
+        Self { label, color: Color32::from_rgb(120, 120, 130), min_width: 0.0, height: None }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn min_width(mut self, w: f32) -> Self { self.min_width = w; self }
+    /// Override the default small-button height for pixel-pinned layouts
+    /// (e.g. the DOM panel control row).
+    pub fn height(mut self, h: f32) -> Self { self.height = Some(h); self }
     pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
         self.color(t.dim)
     }
@@ -196,11 +205,12 @@ impl<'a> Widget for SimpleBtn<'a> {
                 Color32::TRANSPARENT, color, 0.0_f32, Color32::TRANSPARENT, r_xs()
             ),
         };
+        let h = self.height.unwrap_or_else(btn_small_height);
         let resp = ui.add(egui::Button::new(RichText::new(self.label).monospace().size(font_sm()).color(fg))
             .fill(fill)
             .stroke(Stroke::new(stroke_w, stroke_col))
             .corner_radius(cr)
-            .min_size(egui::vec2(self.min_width, btn_small_height())));
+            .min_size(egui::vec2(self.min_width, h)));
         hit(&resp.rect, "SIMPLE_BTN", "Buttons");
         if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

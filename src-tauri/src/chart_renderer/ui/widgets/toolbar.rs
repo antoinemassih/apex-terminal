@@ -9,6 +9,61 @@ use super::super::style::*;
 // Re-export the enums from components_extra so call-sites can use either path.
 pub use super::super::components_extra::{TopNavTreatment, TopNavToggleSize, PaneTabStyle};
 
+// ─── ToolbarBtn ───────────────────────────────────────────────────────────────
+
+/// Builder + `impl Widget` for the top-application-toolbar buttons. Delegates
+/// to `style::tb_btn` for pixel-exact parity with the legacy renderer, and
+/// flags `gpu::TB_BTN_CLICKED` on click so the window-drag handler ignores
+/// the click on the same frame.
+///
+/// ```ignore
+/// if ui.add(ToolbarBtn::new("Settings").active(open).theme(t))
+///     .on_hover_text("Open settings").clicked() { open = !open; }
+/// ```
+#[must_use = "ToolbarBtn must be added with `ui.add(...)` to render"]
+pub struct ToolbarBtn<'a> {
+    label: &'a str,
+    active: bool,
+    accent: Color32,
+    dim: Color32,
+    toolbar_bg: Color32,
+    toolbar_border: Color32,
+}
+
+impl<'a> ToolbarBtn<'a> {
+    pub fn new(label: &'a str) -> Self {
+        Self {
+            label,
+            active: false,
+            accent: Color32::from_rgb(120, 140, 220),
+            dim: Color32::from_rgb(120, 120, 130),
+            toolbar_bg: Color32::from_rgb(20, 20, 28),
+            toolbar_border: Color32::from_rgb(50, 50, 60),
+        }
+    }
+    pub fn active(mut self, v: bool) -> Self { self.active = v; self }
+    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
+        self.accent = t.accent;
+        self.dim = t.dim;
+        self.toolbar_bg = t.toolbar_bg;
+        self.toolbar_border = t.toolbar_border;
+        self
+    }
+}
+
+impl<'a> Widget for ToolbarBtn<'a> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let resp = super::super::style::tb_btn(
+            ui, self.label, self.active,
+            self.accent, self.dim, self.toolbar_bg, self.toolbar_border,
+        );
+        if resp.clicked() {
+            super::super::super::gpu::TB_BTN_CLICKED.with(|f| f.set(true));
+        }
+        resp
+    }
+}
+
 // ─── TopNavBtn ────────────────────────────────────────────────────────────────
 
 /// Builder + `impl Widget` for top-navigation tab buttons.

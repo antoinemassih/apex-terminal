@@ -81,6 +81,9 @@ impl<'a> FormRow<'a> {
     pub fn label_color(mut self, c: Color32) -> Self { self.label_color = Some(c); self }
     /// Horizontal pad inserted before the label gutter (e.g. dialog margin).
     pub fn leading_space(mut self, s: f32) -> Self { self.leading_space = s; self }
+    /// Alias for [`leading_space`] — explicit left indent for nested option
+    /// rows (mirrors the `add_space(m)` pattern used in indicator_editor).
+    pub fn indent(mut self, s: f32) -> Self { self.leading_space = s; self }
     /// Body alignment within the area to the right of the gutter.
     pub fn alignment(mut self, a: FormRowAlign) -> Self { self.alignment = a; self }
     /// Pad inserted between the gutter and the body (or, in Right alignment,

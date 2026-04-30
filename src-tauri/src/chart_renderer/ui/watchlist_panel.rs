@@ -1323,20 +1323,23 @@ if watchlist.open {
                     // ── Controls: DTE selector | sel toggle | Spread ──
                     ui.horizontal(|ui| {
                         // DTE dropdown
-                        let dte_values = [1, 2, 3, 5, 7, 10];
-                        let cur_label = dte_label(watchlist.chain_far_dte);
+                        let dte_values = [1i32, 2, 3, 5, 7, 10];
+                        let dte_labels: Vec<String> = dte_values.iter().map(|&d| dte_label(d)).collect();
+                        let dte_opts: Vec<(i32, &str)> = dte_values.iter().zip(dte_labels.iter())
+                            .map(|(d, l)| (*d, l.as_str())).collect();
                         dim_label(ui, "DTE", t.dim);
-                        egui::ComboBox::from_id_salt("far_dte").selected_text(egui::RichText::new(&cur_label).monospace().size(9.0).color(t.dim)).width(100.0)
-                            .show_ui(ui, |ui| {
-                                for &d in &dte_values {
-                                    let label = dte_label(d);
-                                    if ui.selectable_value(&mut watchlist.chain_far_dte, d, &label).changed() {
-                                        let sym = watchlist.chain_symbol.clone();
-                                        watchlist.chain_loading = true;
-                                        fetch_chain_background(sym, watchlist.chain_num_strikes, d, chain_price);
-                                    }
-                                }
-                            });
+                        let mut cur_dte = watchlist.chain_far_dte;
+                        if super::widgets::select::Dropdown::new("far_dte")
+                            .options(&dte_opts)
+                            .width(100.0)
+                            .theme(t)
+                            .show(ui, &mut cur_dte)
+                        {
+                            watchlist.chain_far_dte = cur_dte;
+                            let sym = watchlist.chain_symbol.clone();
+                            watchlist.chain_loading = true;
+                            fetch_chain_background(sym, watchlist.chain_num_strikes, cur_dte, chain_price);
+                        }
                         // Select mode toggle
                         let sel_active = watchlist.chain_select_mode;
                         if ui.add(egui::Button::new(egui::RichText::new(if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() }).monospace().size(9.0)

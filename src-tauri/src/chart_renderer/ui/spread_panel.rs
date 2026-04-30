@@ -6,7 +6,7 @@ use super::super::gpu::{Watchlist, Theme};
 
 // ─── Data Structures ────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum SpreadStrategy {
     VerticalCall,
     VerticalPut,
@@ -19,7 +19,7 @@ pub(crate) enum SpreadStrategy {
 }
 
 impl SpreadStrategy {
-    fn label(&self) -> &str {
+    fn label(&self) -> &'static str {
         match self {
             Self::VerticalCall   => "Vertical Call Spread",
             Self::VerticalPut    => "Vertical Put Spread",
@@ -292,19 +292,17 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(m);
                     ui.label(egui::RichText::new("Strategy").monospace().size(9.0).color(t.dim));
                     ui.add_space(4.0);
-                    let current_label = watchlist.spread_state.strategy.label();
-                    let combo = egui::ComboBox::from_id_salt("spread_strategy_combo")
-                        .selected_text(egui::RichText::new(current_label).monospace().size(9.0))
-                        .width(180.0);
-                    combo.show_ui(ui, |ui| {
-                        for strat in SpreadStrategy::all() {
-                            let label = strat.label();
-                            if ui.selectable_label(watchlist.spread_state.strategy == *strat,
-                                egui::RichText::new(label).monospace().size(9.0)).clicked() {
-                                pending_strategy = Some(strat.clone());
-                            }
-                        }
-                    });
+                    let strat_opts: Vec<(SpreadStrategy, &'static str)> = SpreadStrategy::all()
+                        .iter().map(|s| (*s, s.label())).collect();
+                    let mut cur_strat = watchlist.spread_state.strategy;
+                    if super::widgets::select::Dropdown::new("spread_strategy_combo")
+                        .options(&strat_opts)
+                        .width(180.0)
+                        .theme(t)
+                        .show(ui, &mut cur_strat)
+                    {
+                        pending_strategy = Some(cur_strat);
+                    }
                 });
                 ui.add_space(6.0);
 

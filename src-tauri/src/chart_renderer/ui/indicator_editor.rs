@@ -3,6 +3,8 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::form::FormRow;
+use super::widgets::modal::{Modal, Anchor, FrameKind, HeaderStyle};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::LineStyle;
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
@@ -24,46 +26,63 @@ if let Some(edit_id) = panes[ap].editing_indicator {
         _ => 250.0,
     };
 
-    egui::Window::new(format!("ind_editor_{}", edit_id))
-        .default_pos(egui::pos2(200.0, 80.0))
-        .default_size(egui::vec2(panel_w, 0.0))
-        .resizable(false)
-        .movable(true)
-        .title_bar(false)
-        .interactable(true)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-            .corner_radius(6.0))
-        .show(ctx, |ui| {
-            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
-                let ind_color = hex_to_color(&ind.color, 1.0);
-                let m = 8.0;
+    // Byte-exact frame from the original Window — preserves visual parity.
+    let frame = egui::Frame::popup(&ctx.style())
+        .fill(t.toolbar_bg)
+        .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
+        .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+        .corner_radius(6.0);
 
-                // ── Header: color dot + name + X ──
-                let header_resp = ui.horizontal(|ui| {
-                    ui.set_min_width(panel_w);
-                    let hr = ui.max_rect();
-                    ui.painter().rect_filled(
-                        egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 26.0)),
-                        egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 },
-                        color_alpha(t.toolbar_border, ALPHA_TINT));
-                    ui.add_space(6.0);
-                    ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, ind_color);
-                    ui.add_space(10.0);
-                    ui.label(egui::RichText::new(ind.display_name()).monospace().size(9.0).strong().color(TEXT_PRIMARY));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(4.0);
-                        if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.7), FONT_LG).on_hover_text("Close").clicked() {
-                            close_editor = true;
-                        }
-                    });
+    let id_str = format!("ind_editor_{}", edit_id);
+
+    // Pre-compute header data so the painter closure doesn't need to
+    // borrow `panes` (the body closure borrows it mutably).
+    let (hdr_color, hdr_name) = panes[ap].indicators.iter().find(|i| i.id == edit_id)
+        .map(|i| (hex_to_color(&i.color, 1.0), i.display_name()))
+        .unwrap_or((egui::Color32::WHITE, String::new()));
+
+    let modal_resp = Modal::new(&id_str)
+        .ctx(ctx)
+        .theme(t)
+        .id(&id_str)
+        .anchor(Anchor::Window { pos: Some(egui::pos2(200.0, 80.0)) })
+        .size(egui::vec2(panel_w, 0.0))
+        .frame_kind(FrameKind::Custom(frame))
+        .header_style(HeaderStyle::None)
+        .separator(false)
+        .draggable_header(true)
+        .header_painter(|ui| {
+            // Custom header strip — preserved byte-for-byte from the original.
+            let mut hdr_close = false;
+            let header_resp = ui.horizontal(|ui| {
+                ui.set_min_width(panel_w);
+                let hr = ui.max_rect();
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 26.0)),
+                    egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 },
+                    color_alpha(t.toolbar_border, ALPHA_TINT));
+                ui.add_space(6.0);
+                // Color dot — uses the editing indicator's color (pre-fetched).
+                ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, hdr_color);
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new(&hdr_name).monospace().size(9.0).strong().color(TEXT_PRIMARY));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(4.0);
+                    if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.7), FONT_LG).on_hover_text("Close").clicked() {
+                        hdr_close = true;
+                    }
                 });
-                // Make header draggable
-                let hdr_rect = header_resp.response.rect;
-                let drag_resp = ui.interact(hdr_rect, egui::Id::new(("ind_editor_drag", edit_id)), egui::Sense::drag());
-                if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+            });
+            // Make header draggable — interact for grab cursor; egui::Window
+            // movable(true) (set via Modal::draggable_header) handles motion.
+            let hdr_rect = header_resp.response.rect;
+            let drag_resp = ui.interact(hdr_rect, egui::Id::new(("ind_editor_drag", edit_id)), egui::Sense::drag());
+            if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+            hdr_close
+        })
+        .show(|ui| {
+            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
+                let m = 8.0;
 
                 ui.add_space(6.0);
 
@@ -117,7 +136,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 // ── PARAMETERS section ──
                 dialog_section(ui, "PARAMETERS", m, t.dim.gamma_multiply(0.5));
 
-                // Period (for most types except VWAP)
+                // Period (for most types except VWAP) — label + DragValue + presets.
+                // FormRow handles indent + label gutter; body contains DragValue + presets.
                 if !matches!(ind.kind, IndicatorType::VWAP) {
                     let period_label = match ind.kind {
                         IndicatorType::MACD => "Fast",
@@ -156,14 +176,12 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     });
                 }
 
-                // Type-specific additional parameters
+                // Type-specific additional parameters — simple label+DragValue rows
+                // migrated to FormRow with explicit indent. DragValue stays inline.
                 match ind.kind {
                     IndicatorType::MACD => {
                         // Slow period (param2, default 26)
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("Slow  ").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("Slow  ").indent(m).label_width(40.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 26.0 };
                             if ui.add(egui::DragValue::new(&mut v).range(2.0..=200.0).speed(0.5)
                                 .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
@@ -171,10 +189,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             }
                         });
                         // Signal period (param3, default 9)
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("Signal").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("Signal").indent(m).label_width(40.0).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 9.0 };
                             if ui.add(egui::DragValue::new(&mut v).range(1.0..=50.0).speed(0.3)
                                 .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
@@ -183,10 +198,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         });
                     }
                     IndicatorType::Stochastic => {
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("%D    ").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("%D    ").indent(m).label_width(40.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 3.0 };
                             if ui.add(egui::DragValue::new(&mut v).range(1.0..=20.0).speed(0.3)
                                 .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
@@ -195,6 +207,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         });
                     }
                     IndicatorType::BollingerBands => {
+                        // Std σ + preset buttons stay inline (mixed controls).
                         ui.horizontal(|ui| {
                             ui.add_space(m);
                             ui.label(egui::RichText::new("Std σ ").monospace().size(9.0).color(t.dim));
@@ -219,10 +232,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     }
                     IndicatorType::KeltnerChannels | IndicatorType::Supertrend => {
                         let def = if ind.kind == IndicatorType::Supertrend { 3.0 } else { 2.0 };
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("Mult  ").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("Mult  ").indent(m).label_width(40.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { def };
                             if ui.add(egui::DragValue::new(&mut v).range(0.5..=6.0).speed(0.05)
                                 .custom_formatter(|v, _| format!("{:.1}", v))).changed() {
@@ -231,20 +241,14 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         });
                     }
                     IndicatorType::Ichimoku => {
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("Kijun ").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("Kijun ").indent(m).label_width(48.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 26.0 };
                             if ui.add(egui::DragValue::new(&mut v).range(1.0..=200.0).speed(0.5)
                                 .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("Senkou").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("Senkou").indent(m).label_width(48.0).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 52.0 };
                             if ui.add(egui::DragValue::new(&mut v).range(1.0..=200.0).speed(0.5)
                                 .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
@@ -253,30 +257,21 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         });
                     }
                     IndicatorType::ParabolicSAR => {
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("Start ").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("Start ").indent(m).label_width(44.0).show(ui, t, |ui| {
                             let mut v = if ind.param4 > 0.0 { ind.param4 } else { 0.02 };
                             if ui.add(egui::DragValue::new(&mut v).range(0.001..=0.1).speed(0.001)
                                 .custom_formatter(|v, _| format!("{:.3}", v))).changed() {
                                 ind.param4 = v; needs_recompute = true;
                             }
                         });
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("Step  ").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("Step  ").indent(m).label_width(44.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 0.02 };
                             if ui.add(egui::DragValue::new(&mut v).range(0.001..=0.1).speed(0.001)
                                 .custom_formatter(|v, _| format!("{:.3}", v))).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
-                        ui.horizontal(|ui| {
-                            ui.add_space(m);
-                            ui.label(egui::RichText::new("Max   ").monospace().size(9.0).color(t.dim));
-                            ui.add_space(4.0);
+                        FormRow::new("Max   ").indent(m).label_width(44.0).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 0.2 };
                             if ui.add(egui::DragValue::new(&mut v).range(0.05..=0.5).speed(0.005)
                                 .custom_formatter(|v, _| format!("{:.2}", v))).changed() {
@@ -510,6 +505,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
             }
         });
 
+    if modal_resp.closed { close_editor = true; }
+
     if close_editor { panes[ap].editing_indicator = None; }
     if let Some(id) = delete_id { panes[ap].indicators.retain(|i| i.id != id); }
     if needs_recompute { panes[ap].indicator_bar_count = 0; }
@@ -520,3 +517,4 @@ if let Some(edit_id) = panes[ap].editing_indicator {
 
 
 }
+

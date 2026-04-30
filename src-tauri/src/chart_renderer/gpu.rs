@@ -32,7 +32,7 @@ std::thread_local! {
     static CLOSE_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PENDING_ALERT: std::cell::RefCell<Option<(String, f32, bool)>> = const { std::cell::RefCell::new(None) };
     static PENDING_TOASTS: std::cell::RefCell<Vec<(String, f32, bool)>> = const { std::cell::RefCell::new(Vec::new()) };
-    static TB_BTN_CLICKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static TB_BTN_CLICKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CONN_PANEL_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CROSSHAIR_SYNC_TIME: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
     static PENDING_WL_TOOLTIP: std::cell::RefCell<Option<WlTooltipData>> = const { std::cell::RefCell::new(None) };
@@ -3595,17 +3595,10 @@ fn render_toolbar(
     let ap = *active_pane;
     span_begin("top_panel");
 
-    // Toolbar button helper — matches WebView's btnStyle: 11px monospace, 3px radius, 2px 8px padding
-    // Sets TB_BTN_CLICKED flag on click so window drag doesn't fire on the same frame.
-    let tb_btn = |ui: &mut egui::Ui, label: &str, active: bool, t: &Theme| -> egui::Response {
-        let resp = super::ui::style::tb_btn(ui, label, active, t.accent, t.dim, t.toolbar_bg, t.toolbar_border);
-        if resp.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
-        resp
-    };
-    let tb_btn_tip = |ui: &mut egui::Ui, label: &str, active: bool, t: &Theme, tip: &str| -> egui::Response {
-        let resp = tb_btn(ui, label, active, t);
-        resp.on_hover_text(tip)
-    };
+    // Toolbar buttons use `widgets::toolbar::ToolbarBtn` — see widgets/toolbar.rs.
+    // ToolbarBtn delegates to `style::tb_btn` for visual parity and sets
+    // TB_BTN_CLICKED on click so the window-drag handler ignores the same frame.
+    use super::ui::widgets::toolbar::ToolbarBtn;
 
     // Auto-hide toolbar logic
     let toolbar_visible = if watchlist.toolbar_auto_hide {
@@ -3692,7 +3685,7 @@ fn render_toolbar(
                 let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
                 let acct_label = if connected { "IBKR ●" } else { "IBKR ○" };
                 let acct_active = watchlist.account_strip_open;
-                if tb_btn_tip(ui, acct_label, acct_active, t, "Account Summary").clicked() {
+                if ui.add(ToolbarBtn::new(acct_label).active(acct_active).theme(t)).on_hover_text("Account Summary").clicked() {
                     watchlist.account_strip_open = !watchlist.account_strip_open;
                 }
             }
@@ -3716,16 +3709,16 @@ fn render_toolbar(
             }
 
             // ── Orders book ──
-            if tb_btn_tip(ui, Icon::ARTICLE, watchlist.orders_panel_open, t, "Orders").clicked() {
+            if ui.add(ToolbarBtn::new(Icon::ARTICLE).active(watchlist.orders_panel_open).theme(t)).on_hover_text("Orders").clicked() {
                 watchlist.orders_panel_open = !watchlist.orders_panel_open;
             }
 
             // ── DOM sidebar ──
-            if tb_btn_tip(ui, Icon::SIDEBAR, panes[ap].dom_sidebar_open, t, "DOM Sidebar").clicked() {
+            if ui.add(ToolbarBtn::new(Icon::SIDEBAR).active(panes[ap].dom_sidebar_open).theme(t)).on_hover_text("DOM Sidebar").clicked() {
                 panes[ap].dom_sidebar_open = !panes[ap].dom_sidebar_open;
             }
             // ── Order Entry ──
-            if tb_btn_tip(ui, Icon::CURRENCY_DOLLAR, watchlist.order_entry_open, t, "Order Entry").clicked() {
+            if ui.add(ToolbarBtn::new(Icon::CURRENCY_DOLLAR).active(watchlist.order_entry_open).theme(t)).on_hover_text("Order Entry").clicked() {
                 watchlist.order_entry_open = !watchlist.order_entry_open;
             }
 
@@ -3855,23 +3848,23 @@ fn render_toolbar(
                 TB_BTN_CLICKED.with(|f| f.set(true));
             }
             // Magnet (crosshair icon)
-            if tb_btn_tip(ui, Icon::CROSSHAIR, panes[ap].magnet, t, "Magnet Snap").clicked() { panes[ap].magnet = !panes[ap].magnet; }
+            if ui.add(ToolbarBtn::new(Icon::CROSSHAIR).active(panes[ap].magnet).theme(t)).on_hover_text("Magnet Snap").clicked() { panes[ap].magnet = !panes[ap].magnet; }
             // Object tree toggle (consolidated drawings/indicators/overlays panel)
             let draw_count = panes[ap].drawings.len();
             let list_label = if draw_count > 0 { format!("{} {}", Icon::LIST, draw_count) } else { Icon::LIST.to_string() };
-            if tb_btn_tip(ui, &list_label, watchlist.object_tree_open, t, "Object Tree").clicked() {
+            if ui.add(ToolbarBtn::new(&list_label).active(watchlist.object_tree_open).theme(t)).on_hover_text("Object Tree").clicked() {
                 watchlist.object_tree_open = !watchlist.object_tree_open;
             }
             // ── Broadcast — drawing section (applies to all panes) ──
             {
                 let bc = watchlist.broadcast_mode;
-                if tb_btn_tip(ui, Icon::MEGAPHONE, bc, t, "Broadcast — changes apply to all panes").clicked() {
+                if ui.add(ToolbarBtn::new(Icon::MEGAPHONE).active(bc).theme(t)).on_hover_text("Broadcast — changes apply to all panes").clicked() {
                     watchlist.broadcast_mode = !watchlist.broadcast_mode;
                     TB_BTN_CLICKED.with(|f| f.set(true));
                 }
             }
             // ── Trendline filter — drawing section ──
-            if tb_btn_tip(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t, "Trendline Filter").clicked() {
+            if ui.add(ToolbarBtn::new(Icon::FUNNEL).active(watchlist.trendline_filter_open).theme(t)).on_hover_text("Trendline Filter").clicked() {
                 watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
             }
 
@@ -4399,7 +4392,7 @@ fn render_toolbar(
             // ⚡ Hit Highlight icon toggle
             {
                 let hh = panes[ap].hit_highlight;
-                let hh_resp = tb_btn_tip(ui, Icon::LIGHTNING, hh, t, "Hit Highlight");
+                let hh_resp = ui.add(ToolbarBtn::new(Icon::LIGHTNING).active(hh).theme(t)).on_hover_text("Hit Highlight");
                 if hh_resp.clicked() { panes[ap].hit_highlight = !hh; }
             }
 
@@ -4614,7 +4607,7 @@ fn render_toolbar(
                     ui.add_space(2.0);
                 }
                 // Dropdown caret for the full layout picker
-                let dd_btn = tb_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
+                let dd_btn = ui.add(ToolbarBtn::new(Icon::CARET_DOWN).active(watchlist.layout_dropdown_open).theme(t));
                 if dd_btn.clicked() {
                     watchlist.layout_dropdown_open = !watchlist.layout_dropdown_open;
                     watchlist.layout_dropdown_pos = egui::pos2(dd_btn.rect.left(), dd_btn.rect.bottom() + 2.0);
@@ -4764,30 +4757,30 @@ fn render_toolbar(
                 }
 
                 // Settings panel
-                if tb_btn_tip(ui, Icon::GEAR, watchlist.settings_open, t, "Settings").clicked() {
+                if ui.add(ToolbarBtn::new(Icon::GEAR).active(watchlist.settings_open).theme(t)).on_hover_text("Settings").clicked() {
                     watchlist.settings_open = !watchlist.settings_open;
                 }
 
                 ui.add(egui::Separator::default().spacing(4.0));
 
                 // Feed pane (News + Discord + Screenshots)
-                if tb_btn_tip(ui, &format!("{} Feed", Icon::NEWSPAPER), watchlist.feed_panel_open, t, "Feed (News, Discord, Screenshots)").clicked() {
+                if ui.add(ToolbarBtn::new(&format!("{} Feed", Icon::NEWSPAPER)).active(watchlist.feed_panel_open).theme(t)).on_hover_text("Feed (News, Discord, Screenshots)").clicked() {
                     watchlist.feed_panel_open = !watchlist.feed_panel_open;
                 }
 
                 // Playbook
-                if tb_btn_tip(ui, &format!("{} Playbook", Icon::STAR), watchlist.playbook_panel_open, t, "Playbook (Trade Ideas)").clicked() {
+                if ui.add(ToolbarBtn::new(&format!("{} Playbook", Icon::STAR)).active(watchlist.playbook_panel_open).theme(t)).on_hover_text("Playbook (Trade Ideas)").clicked() {
                     watchlist.playbook_panel_open = !watchlist.playbook_panel_open;
                 }
 
 
                 // Watchlist toggle
-                if tb_btn_tip(ui, &format!("{} Watchlist", Icon::LIST), watchlist.open, t, "Watchlist").clicked() {
+                if ui.add(ToolbarBtn::new(&format!("{} Watchlist", Icon::LIST)).active(watchlist.open).theme(t)).on_hover_text("Watchlist").clicked() {
                     watchlist.open = !watchlist.open;
                 }
 
                 // Analysis sidebar toggle (unified RRG / T&S / Scanner / Scripts)
-                if tb_btn_tip(ui, &format!("{} Analysis", Icon::CHART_LINE), watchlist.analysis_open, t, "Analysis Sidebar").clicked() {
+                if ui.add(ToolbarBtn::new(&format!("{} Analysis", Icon::CHART_LINE)).active(watchlist.analysis_open).theme(t)).on_hover_text("Analysis Sidebar").clicked() {
                     watchlist.analysis_open = !watchlist.analysis_open;
                 }
 
@@ -4795,7 +4788,7 @@ fn render_toolbar(
                 {
                     let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
                         + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
-                    let signals_resp = tb_btn_tip(ui, &format!("{} Signals", Icon::LIGHTNING), watchlist.signals_panel_open, t, "Signals (Alerts + Signals)");
+                    let signals_resp = ui.add(ToolbarBtn::new(&format!("{} Signals", Icon::LIGHTNING)).active(watchlist.signals_panel_open).theme(t)).on_hover_text("Signals (Alerts + Signals)");
                     if active_count > 0 {
                         let badge_x = signals_resp.rect.right() - 3.0;
                         let badge_y = signals_resp.rect.top() + 5.0;
@@ -4807,7 +4800,7 @@ fn render_toolbar(
                 }
 
                 // New window
-                if tb_btn(ui, &format!("{} Window", Icon::PLUS), false, t).clicked() {
+                if ui.add(ToolbarBtn::new(&format!("{} Window", Icon::PLUS)).active(false).theme(t)).clicked() {
                     let (tx, rx) = std::sync::mpsc::channel();
                     let sym = panes[ap].symbol.clone();
                     let tf = panes[ap].timeframe.clone();

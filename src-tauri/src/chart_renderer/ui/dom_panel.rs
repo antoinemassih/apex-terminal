@@ -5,7 +5,20 @@ use egui;
 use super::style::*;
 use super::super::gpu::Theme;
 use super::widgets::rows::dom_row::{ColumnLayout, DomRow, DomRowDragCx};
+use super::widgets::buttons::{SimpleBtn, TradeBtn};
 use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
+
+/// Add a design-system widget at an absolute pixel rect inside the DOM panel.
+/// The DOM panel uses hand-positioned rects (not flowed egui layouts), so we
+/// host each design widget in its own pinned `Ui`.
+fn place_at<R>(ui: &mut egui::Ui, rect: egui::Rect, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+        ui.set_min_size(rect.size());
+        ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
+        add(ui)
+    }).inner
+}
 
 pub(crate) const DOM_SIDEBAR_W: f32 = 220.0;
 const DOM_MIN_W: f32 = 180.0;
@@ -158,26 +171,29 @@ pub(crate) fn draw(
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     cx = r.right()+4.0;
 
-    // [MKT/LMT] — bigger
+    // [MKT/LMT] — bigger (design-system SimpleBtn, accent-tinted)
     let mw = aw * 0.28;
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(mw, r1h));
-    let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, color_alpha(t.accent, if resp.hovered() { 55 } else { 28 }));
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, if is_mkt {"MARKET"} else {"LIMIT"}, fs.clone(), t.accent);
+    let resp = place_at(ui, r, |ui| {
+        ui.add(SimpleBtn::new(if is_mkt {"MARKET"} else {"LIMIT"})
+            .color(t.accent)
+            .min_width(mw)
+            .height(r1h))
+    });
     if resp.clicked() { *dom_order_type = if is_mkt { DomOrderType::Limit } else { DomOrderType::Market }; if !is_mkt { *dom_selected_price = None; } }
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     cx = r.right()+3.0;
 
-    // [A] — armed, small
+    // [A] — armed, small (design-system SimpleBtn, red when armed)
     let armw = inner.right()-cx-1.0;
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
-    let resp = ui.allocate_rect(r, egui::Sense::click());
     let ac = if *dom_armed { egui::Color32::from_rgb(230,70,70) } else { t.dim.gamma_multiply(0.4) };
-    painter.rect_filled(r, 2.0, if *dom_armed { color_alpha(ac, 35) } else { color_alpha(t.toolbar_border, ALPHA_GHOST) });
-    painter.rect_stroke(r, 2.0, egui::Stroke::new(STROKE_THIN, color_alpha(ac, if *dom_armed {90} else {30})), egui::StrokeKind::Outside);
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, if *dom_armed {"!"} else {"A"}, fs.clone(), ac);
+    let resp = place_at(ui, r, |ui| {
+        ui.add(SimpleBtn::new(if *dom_armed {"!"} else {"A"})
+            .color(ac)
+            .min_width(armw)
+            .height(r1h))
+    });
     if resp.clicked() { *dom_armed = !*dom_armed; }
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
     // Row 2+3 (32px total): [BUY] [FLATTEN/CANCEL stacked] [SELL]
     let r2y = r1y+r1h+2.0;
@@ -186,44 +202,36 @@ pub(crate) fn draw(
     let mid_w = aw - side_w*2.0 - 6.0;
     let mid_half_h = action_h * 0.5 - 1.0;
 
-    // BUY (spans full action height)
+    // BUY (spans full action height) — design-system TradeBtn
     let r = egui::Rect::from_min_size(egui::pos2(inner.left()+1.0, r2y), egui::vec2(side_w, action_h));
-    let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 3.0, if resp.hovered() { color_alpha(t.bull, 70) } else { color_alpha(t.bull, ALPHA_TINT) });
-    painter.rect_stroke(r, 3.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.bull, 90)), egui::StrokeKind::Outside);
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "BUY", fm.clone(), t.bull);
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    let resp = place_at(ui, r, |ui| {
+        ui.add(TradeBtn::new("BUY").color(t.bull).width(side_w).height(action_h))
+    });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Buy, p, *order_qty)); }
 
     // Middle: FLATTEN (top) + CANCEL (bottom)
     let mid_x = inner.left()+1.0+side_w+3.0;
     let fc = egui::Color32::from_rgb(200,150,50);
 
-    // FLATTEN
+    // FLATTEN — design-system SimpleBtn (amber)
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y), egui::vec2(mid_w, mid_half_h));
-    let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(fc, ALPHA_LINE) } else { color_alpha(fc, 18) });
-    painter.rect_stroke(r, 2.0, egui::Stroke::new(STROKE_THIN, color_alpha(fc, ALPHA_LINE)), egui::StrokeKind::Outside);
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "FLATTEN", fs.clone(), if resp.hovered() { fc } else { fc.gamma_multiply(0.6) });
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    let resp = place_at(ui, r, |ui| {
+        ui.add(SimpleBtn::new("FLATTEN").color(fc).min_width(mid_w).height(mid_half_h))
+    });
     if resp.clicked() { *cancel_all = true; }
 
-    // CANCEL
+    // CANCEL — design-system SimpleBtn (dim)
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y+mid_half_h+2.0), egui::vec2(mid_w, mid_half_h));
-    let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.dim, ALPHA_MUTED) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) });
-    painter.rect_stroke(r, 2.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_LINE)), egui::StrokeKind::Outside);
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "CANCEL", fs.clone(), if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.5) });
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    let resp = place_at(ui, r, |ui| {
+        ui.add(SimpleBtn::new("CANCEL").color(t.dim).min_width(mid_w).height(mid_half_h))
+    });
     if resp.clicked() { *cancel_all = true; }
 
-    // SELL (spans full action height)
+    // SELL (spans full action height) — design-system TradeBtn
     let r = egui::Rect::from_min_size(egui::pos2(mid_x+mid_w+3.0, r2y), egui::vec2(side_w, action_h));
-    let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 3.0, if resp.hovered() { color_alpha(t.bear, 70) } else { color_alpha(t.bear, ALPHA_TINT) });
-    painter.rect_stroke(r, 3.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.bear, 90)), egui::StrokeKind::Outside);
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "SELL", fm.clone(), t.bear);
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    let resp = place_at(ui, r, |ui| {
+        ui.add(TradeBtn::new("SELL").color(t.bear).width(side_w).height(action_h))
+    });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Sell, p, *order_qty)); }
 
     // ── Price ladder ──

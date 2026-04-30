@@ -77,6 +77,10 @@ pub struct ModalResponse<R> {
     pub closed: bool,
 }
 
+/// Custom header painter — receives the body Ui, returns true if the user
+/// requested close (e.g. clicked an X). Boxed for object-safety.
+type HeaderPainter<'a> = Box<dyn FnOnce(&mut Ui) -> bool + 'a>;
+
 /// Builder for a centered modal with title bar + close + body.
 #[must_use = "Modal does nothing until `.show()` is called"]
 pub struct Modal<'a> {
@@ -91,6 +95,8 @@ pub struct Modal<'a> {
     frame_kind: FrameKind,
     separator: bool,
     close_on_click_outside: bool,
+    draggable_header: bool,
+    header_painter: Option<HeaderPainter<'a>>,
 }
 
 impl<'a> Modal<'a> {
@@ -107,6 +113,8 @@ impl<'a> Modal<'a> {
             frame_kind: FrameKind::Popup,
             separator: true,
             close_on_click_outside: false,
+            draggable_header: false,
+            header_painter: None,
         }
     }
 
@@ -122,6 +130,22 @@ impl<'a> Modal<'a> {
     pub fn separator(mut self, on: bool) -> Self { self.separator = on; self }
     pub fn close_on_click_outside(mut self, on: bool) -> Self {
         self.close_on_click_outside = on; self
+    }
+    /// When true and using `Anchor::Window`, the modal is movable (the title
+    /// bar / header acts as a drag handle) instead of pinned to a fixed pos.
+    pub fn draggable_header(mut self, on: bool) -> Self {
+        self.draggable_header = on; self
+    }
+    /// Optional escape hatch: caller paints a fully custom header strip. The
+    /// closure runs in place of the auto-header (regardless of `header_style`)
+    /// and should return `true` if the user clicked close. The default
+    /// separator after the auto-header is suppressed when this is set.
+    pub fn header_painter(
+        mut self,
+        f: impl FnOnce(&mut Ui) -> bool + 'a,
+    ) -> Self {
+        self.header_painter = Some(Box::new(f));
+        self
     }
 
     /// Render. The body closure runs inside the framed region, after the
@@ -147,26 +171,36 @@ impl<'a> Modal<'a> {
         let toolbar_border = t.toolbar_border;
         let accent = t.accent;
         let dim = t.dim;
+        let header_painter = self.header_painter;
+        let had_painter = header_painter.is_some();
+        let draggable = self.draggable_header;
 
         // Inner render closure: header + separator + body. Returns
         // (closed_from_header, body_return_value).
         let render = move |ui: &mut Ui| -> (bool, R) {
-            let header_close = match header_style {
-                HeaderStyle::Pane => {
-                    let mut open = true;
-                    let title_color = header_color.unwrap_or(accent);
-                    let _ = PaneHeaderWithClose::new(title)
-                        .title_color(title_color)
-                        .show(ui, &mut open);
-                    !open
-                }
-                HeaderStyle::Dialog => {
-                    let d = header_color.unwrap_or(dim);
-                    DialogHeaderWithClose::new(title).dim(d).show(ui)
-                }
-                HeaderStyle::None => false,
+            let (header_close, has_header) = if let Some(hp) = header_painter {
+                (hp(ui), true)
+            } else {
+                let hc = match header_style {
+                    HeaderStyle::Pane => {
+                        let mut open = true;
+                        let title_color = header_color.unwrap_or(accent);
+                        let _ = PaneHeaderWithClose::new(title)
+                            .title_color(title_color)
+                            .show(ui, &mut open);
+                        !open
+                    }
+                    HeaderStyle::Dialog => {
+                        let d = header_color.unwrap_or(dim);
+                        DialogHeaderWithClose::new(title).dim(d).show(ui)
+                    }
+                    HeaderStyle::None => false,
+                };
+                (hc, !matches!(header_style, HeaderStyle::None))
             };
-            if separator && !matches!(header_style, HeaderStyle::None) {
+            // Suppress auto-separator when caller painted a custom header —
+            // they own the full visual fidelity.
+            if separator && has_header && !had_painter {
                 ui.add_space(gap_sm());
                 style::dialog_separator(ui, 0.0, color_alpha(toolbar_border, alpha_line()));
                 ui.add_space(gap_sm());
@@ -188,11 +222,14 @@ impl<'a> Modal<'a> {
                     )
                 });
                 let win = egui::Window::new(id.to_string())
-                    .fixed_pos(win_pos)
-                    .fixed_size(self.size)
                     .resizable(false)
                     .title_bar(false)
                     .frame(frame);
+                let win = if draggable {
+                    win.default_pos(win_pos).default_size(self.size).movable(true)
+                } else {
+                    win.fixed_pos(win_pos).fixed_size(self.size)
+                };
 
                 let render_cell = std::cell::Cell::new(Some(render));
                 win.show(ctx, |ui| {
