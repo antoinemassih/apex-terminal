@@ -5052,7 +5052,7 @@ fn render_toolbar(
     super::ui::hotkey_editor::draw(ctx, watchlist, panes, ap, t);
 
     // ── Settings panel
-    super::ui::settings_panel::draw(ctx, watchlist, &mut panes[ap], t);
+    super::ui::settings_panel::draw(ctx, watchlist, &mut panes[ap], t, ap);
     super::ui::apex_diagnostics::draw(ctx, watchlist, t);
 
     // ── trendline_filter

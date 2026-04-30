@@ -138,6 +138,10 @@ pub enum AppCommand {
     /// Change a pane's timeframe.
     ChangeTimeframe { pane: usize, tf: String },
 
+    // ── Settings (domain preference toggles) ─────────────────────────────
+    /// Switch the active theme by index into `THEMES`.
+    SetThemeIdx { pane: usize, idx: usize },
+
     // ── Watchlist (domain mutations) ────────────────────────────────────
     /// Add a symbol to the active watchlist (de-dup'd, lands in last stock section).
     WatchlistAddSymbol { symbol: String },
@@ -499,6 +503,12 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::ChangeTimeframe { pane, tf } => {
             if let Some(p) = panes.get_mut(pane) {
                 p.timeframe = tf;
+            }
+        }
+
+        AppCommand::SetThemeIdx { pane, idx } => {
+            if let Some(p) = panes.get_mut(pane) {
+                p.theme_idx = idx;
             }
         }
 

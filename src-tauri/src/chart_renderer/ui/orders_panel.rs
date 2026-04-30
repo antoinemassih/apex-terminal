@@ -4,10 +4,12 @@ use egui;
 use super::style::*;
 use super::super::gpu::*;
 use super::widgets::frames::PanelFrame;
+use super::widgets::rows::order_row::{OrderRow, OrderSideTag};
 use super::widgets::tabs::TabBar;
 use super::widgets::text as wtext;
 use crate::ui_kit::icons::Icon;
-use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderStatus, OrderLevel, PriceAlert, cancel_order_with_pair, fmt_notional};
+use crate::chart_renderer::commands::{self, AppCommand};
+use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderSide, OrderStatus};
 use crate::chart_renderer::BookTab;
 
 pub(crate) fn draw(
@@ -205,21 +207,13 @@ if watchlist.orders_panel_open {
                 let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
                 let history_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Executed || o.status == OrderStatus::Cancelled).count()).sum();
                 if action_btn(ui, &format!("Place All ({})", draft_count), t.accent, draft_count > 0) {
-                    for pane in panes.iter_mut() {
-                        for o in &mut pane.orders { if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; } }
-                    }
+                    commands::push(AppCommand::PlaceAllDraftOrders);
                 }
                 if action_btn(ui, "Cancel All", t.bear, active_count > 0) {
-                    for pane in panes.iter_mut() {
-                        for o in &mut pane.orders {
-                            if o.status == OrderStatus::Draft || o.status == OrderStatus::Placed { o.status = OrderStatus::Cancelled; }
-                        }
-                    }
+                    commands::push(AppCommand::CancelAllOrders);
                 }
                 if action_btn(ui, "Clear", t.dim, history_count > 0) {
-                    for pane in panes.iter_mut() {
-                        pane.orders.retain(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed);
-                    }
+                    commands::push(AppCommand::ClearOrderHistory);
                 }
                 // Spread Builder shortcut
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -237,23 +231,10 @@ if watchlist.orders_panel_open {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.label(egui::RichText::new(format!("{} selected", sel_count)).monospace().size(9.0).strong().color(t.accent));
                     action_btn(ui, "Place", t.accent, true).then(|| {
-                        for (pi, oid) in &watchlist.selected_order_ids {
-                            if let Some(o) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == *oid)) {
-                                if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; }
-                                if let Some(pid) = o.pair_id {
-                                    if let Some(p) = panes.get_mut(*pi).and_then(|p| p.orders.iter_mut().find(|o| o.id == pid)) {
-                                        if p.status == OrderStatus::Draft { p.status = OrderStatus::Placed; }
-                                    }
-                                }
-                            }
-                        }
-                        watchlist.selected_order_ids.clear();
+                        commands::push(AppCommand::PlaceSelectedOrders);
                     });
                     action_btn(ui, "Cancel", t.bear, true).then(|| {
-                        for (pi, oid) in &watchlist.selected_order_ids {
-                            if *pi < panes.len() { cancel_order_with_pair(&mut panes[*pi].orders, *oid); }
-                        }
-                        watchlist.selected_order_ids.clear();
+                        commands::push(AppCommand::CancelSelectedOrders);
                     });
                     if icon_btn(ui, "Deselect", t.dim, 8.0).clicked() {
                         watchlist.selected_order_ids.clear();
@@ -288,67 +269,43 @@ if watchlist.orders_panel_open {
 
             // ── Order cards ──
             egui::ScrollArea::vertical().show(ui, |ui| {
-                let mut cancel_order: Option<(usize, u32)> = None;
                 let mut toggle_select: Option<(usize, u32)> = None;
 
                 for (pi, pane) in panes.iter().enumerate() {
                     for order in &pane.orders {
-                        let color = order.color(t.bull, t.bear);
                         let status_text = match order.status {
                             OrderStatus::Draft => "DRAFT", OrderStatus::Placed => "PLACED",
                             OrderStatus::Executed => "EXEC", OrderStatus::Cancelled => "CXL",
                         };
-                        let status_color = match order.status {
-                            OrderStatus::Draft => t.dim, OrderStatus::Placed => t.accent,
-                            OrderStatus::Executed => t.bull, OrderStatus::Cancelled => t.bear,
-                        };
                         let is_active = order.status == OrderStatus::Draft || order.status == OrderStatus::Placed;
                         let is_selected = watchlist.selected_order_ids.iter().any(|(p, id)| *p == pi && *id == order.id);
-                        let card_bg = if is_selected { color_alpha(t.accent, 12) } else { color_alpha(t.toolbar_border, ALPHA_GHOST) };
+                        let side_tag = match order.side {
+                            OrderSide::Buy | OrderSide::TriggerBuy | OrderSide::OcoTarget => OrderSideTag::Buy,
+                            OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::TriggerSell => OrderSideTag::Sell,
+                        };
+                        let symbol_label = format!("{} {}", &pane.symbol, &pane.timeframe);
 
-                        let card_clicked = order_card(ui, color, card_bg, |ui| {
-                            // Card header: checkbox + type + symbol + status + close
-                            ui.horizontal(|ui| {
-                                // Selection checkbox (visual only — click handled by card)
-                                if is_active {
-                                    let check_icon = if is_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
-                                    let check_color = if is_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
-                                    ui.label(egui::RichText::new(check_icon).size(10.0).color(check_color));
-                                }
-                                ui.label(egui::RichText::new(order.label()).monospace().size(9.0).strong().color(color));
-                                ui.label(egui::RichText::new(format!("{} {}", &pane.symbol, &pane.timeframe))
-                                    .monospace().size(9.0).color(egui::Color32::from_rgba_unmultiplied(200, 200, 210, 180)));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if is_active {
-                                        if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_MD).clicked() {
-                                            cancel_order = Some((pi, order.id));
-                                        }
-                                    }
-                                    status_badge(ui, status_text, status_color);
-                                });
-                            });
+                        let (resp, cancel_clicked) = OrderRow::new(
+                            side_tag,
+                            &symbol_label,
+                            order.qty as i64,
+                            order.price,
+                            status_text,
+                        )
+                            .selected(is_selected)
+                            .show_cancel(is_active)
+                            .theme(t)
+                            .show(ui);
 
-                            // Card body: price | qty | notional
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(format!("{:.2}", order.price)).monospace().size(11.0).strong().color(color));
-                                ui.add_space(6.0);
-                                ui.label(egui::RichText::new(format!("\u{00D7}{}", order.qty)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(egui::RichText::new(fmt_notional(order.notional())).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                                });
-                            });
-                        });
-
-                        // Toggle selection on card click (for active orders)
-                        if card_clicked && is_active {
+                        if cancel_clicked && is_active {
+                            commands::push(AppCommand::CancelOrder { pane: pi, id: order.id });
+                        }
+                        if resp.clicked() && is_active {
                             toggle_select = Some((pi, order.id));
                         }
                     }
                 }
 
-                if let Some((pi, oid)) = cancel_order {
-                    cancel_order_with_pair(&mut panes[pi].orders, oid);
-                }
                 if let Some((pi, oid)) = toggle_select {
                     let already = watchlist.selected_order_ids.iter().any(|(p, id)| *p == pi && *id == oid);
                     if already {

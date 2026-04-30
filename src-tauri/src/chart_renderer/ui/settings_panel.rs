@@ -3,12 +3,13 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme, Chart, THEMES};
+use super::super::commands::{self, AppCommand};
 
 /// Settings tab selector.
 #[derive(Clone, Copy, PartialEq)]
 enum SettingsTab { Appearance, Chart, Trading, Shortcuts }
 
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, chart: &mut Chart, t: &Theme) {
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, chart: &mut Chart, t: &Theme, ap: usize) {
 if !watchlist.settings_open { return; }
 
 let screen = ctx.screen_rect();
@@ -131,7 +132,7 @@ SettingsTab::Appearance => {
                         p.rect_stroke(r, RADIUS_MD, egui::Stroke::new(1.0, color_alpha(th.accent, ALPHA_LINE)), egui::StrokeKind::Outside);
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
-                    if resp.clicked() { chart.theme_idx = i; }
+                    if resp.clicked() { commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i }); }
                 }
             });
         }
