@@ -15,6 +15,7 @@ mod types;
 pub mod ui;
 pub mod compute;
 pub mod trading;
+pub mod commands;
 
 pub use types::*;
 

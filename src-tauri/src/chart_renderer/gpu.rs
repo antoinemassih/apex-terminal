@@ -529,7 +529,7 @@ impl IndicatorType {
     fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels] }
     #[allow(dead_code)]
     fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
-    fn default_period(self) -> usize {
+    pub(crate) fn default_period(self) -> usize {
         match self {
             Self::SMA | Self::EMA | Self::WMA | Self::DEMA | Self::TEMA => 20,
             Self::RSI | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => 14,
@@ -1245,7 +1245,7 @@ pub(crate) struct DarkPoolPrint {
 }
 
 /// What type of content a pane displays.
-#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum PaneType {
     Chart,          // standard candlestick/line chart (default)
     Portfolio,      // portfolio positions table + risk analytics

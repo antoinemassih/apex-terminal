@@ -1,0 +1,81 @@
+//! Sized variant tokens used by foundation shells.
+//!
+//! `Size`, `Density`, `Radius` resolve through existing `style::*` token
+//! helpers — never duplicate raw values here.
+
+#![allow(dead_code, unused_imports)]
+
+use egui::{CornerRadius, Margin};
+use super::super::super::style::*;
+
+/// Size scale used by every shell (button, row, card, input, chip).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Size { Xs, Sm, Md, Lg, Xl }
+
+impl Size {
+    /// Recommended height in logical px. Pulls from existing btn_*_height when relevant.
+    pub fn height(self) -> f32 {
+        match self {
+            Size::Xs => 16.0,
+            Size::Sm => btn_small_height(),    // 22.0
+            Size::Md => btn_simple_height(),   // 24.0
+            Size::Lg => btn_trade_height(),    // 28.0
+            Size::Xl => 32.0,
+        }
+    }
+
+    /// Inner padding for the shell. All values come from existing gap_* tokens.
+    pub fn padding(self) -> Margin {
+        let (x, y) = match self {
+            Size::Xs => (gap_sm(), gap_xs()),
+            Size::Sm => (gap_md(), gap_xs()),
+            Size::Md => (gap_lg(), gap_sm()),
+            Size::Lg => (gap_xl(), gap_md()),
+            Size::Xl => (gap_2xl(), gap_lg()),
+        };
+        Margin { left: x as i8, right: x as i8, top: y as i8, bottom: y as i8 }
+    }
+
+    /// Default font size for text living inside a shell of this size.
+    pub fn font(self) -> f32 {
+        match self {
+            Size::Xs => font_xs(),
+            Size::Sm => font_sm(),
+            Size::Md => font_md(),
+            Size::Lg => font_lg(),
+            Size::Xl => font_xl(),
+        }
+    }
+}
+
+/// Vertical density mode applied across rows / lists / cards.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Density { Compact, Default, Comfortable }
+
+impl Density {
+    /// Scale factor applied to vertical padding. 1.0 == Default.
+    pub fn vscale(self) -> f32 {
+        match self {
+            Density::Compact => 0.65,
+            Density::Default => 1.0,
+            Density::Comfortable => 1.4,
+        }
+    }
+}
+
+/// Radius scale. Pill is fully rounded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Radius { None, Xs, Sm, Md, Lg, Pill }
+
+impl Radius {
+    pub fn corner(self) -> CornerRadius {
+        match self {
+            Radius::None => CornerRadius::ZERO,
+            Radius::Xs   => CornerRadius::same(2),
+            Radius::Sm   => CornerRadius::same(radius_sm() as u8),
+            Radius::Md   => CornerRadius::same(radius_md() as u8),
+            Radius::Lg   => CornerRadius::same(radius_lg() as u8),
+            Radius::Pill => CornerRadius::same(99),
+        }
+    }
+}

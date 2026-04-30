@@ -2,6 +2,9 @@
 //! Reusable helpers, widget factories, and drawing functions.
 
 pub mod style;
+pub mod components;
+pub mod components_extra;
+pub mod widgets;
 pub mod toolbar;
 pub mod chart_pane;
 pub mod drawings;

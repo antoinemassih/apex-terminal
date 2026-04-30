@@ -741,3 +741,76 @@ pub fn split_divider(ui: &mut egui::Ui, _id_salt: &str, dim: Color32) -> f32 {
 
     if resp.dragged() { resp.drag_delta().y } else { 0.0 }
 }
+
+// ─── Compatibility shims for in-session widget builders ───────────────────────
+// These were introduced alongside the new widgets/* design-system primitives.
+// They centralize per-style overrides; for now they return reasonable defaults.
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ButtonTreatment {
+    SoftPill,
+    OutlineAccent,
+    UnderlineActive,
+    RaisedActive,
+    BlackFillActive,
+}
+
+pub struct StyleSettings {
+    pub r_xs: u8,
+    pub r_sm: u8,
+    pub r_md: u8,
+    pub r_lg: u8,
+    pub r_pill: u8,
+    pub serif_headlines: bool,
+    pub button_treatment: ButtonTreatment,
+    pub hairline_borders: bool,
+    pub stroke_hair: f32,
+    pub stroke_thin: f32,
+    pub stroke_std: f32,
+    pub stroke_thick: f32,
+    pub shadows_enabled: bool,
+    pub solid_active_fills: bool,
+    pub uppercase_section_labels: bool,
+}
+
+pub fn current() -> StyleSettings {
+    StyleSettings {
+        r_xs: 2,
+        r_sm: radius_sm() as u8,
+        r_md: radius_md() as u8,
+        r_lg: radius_lg() as u8,
+        r_pill: 99,
+        serif_headlines: false,
+        button_treatment: ButtonTreatment::SoftPill,
+        hairline_borders: true,
+        stroke_hair: 0.5,
+        stroke_thin: stroke_thin(),
+        stroke_std: stroke_std(),
+        stroke_thick: 1.5,
+        shadows_enabled: false,
+        solid_active_fills: true,
+        uppercase_section_labels: true,
+    }
+}
+
+pub fn r_xs() -> egui::CornerRadius { egui::CornerRadius::same(2) }
+pub fn r_sm_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_sm() as u8) }
+pub fn r_md_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_md() as u8) }
+pub fn r_lg_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_lg() as u8) }
+pub fn r_pill() -> egui::CornerRadius { egui::CornerRadius::same(99) }
+
+pub fn btn_compact_height() -> f32 { 22.0 }
+pub fn btn_simple_height() -> f32 { 24.0 }
+pub fn btn_small_height() -> f32 { 22.0 }
+pub fn btn_trade_height() -> f32 { 28.0 }
+
+pub fn contrast_fg(bg: egui::Color32) -> egui::Color32 {
+    let lum = 0.299 * bg.r() as f32 + 0.587 * bg.g() as f32 + 0.114 * bg.b() as f32;
+    if lum > 140.0 { egui::Color32::BLACK } else { egui::Color32::WHITE }
+}
+
+pub fn rule_stroke_for(_bg: egui::Color32, border: egui::Color32) -> egui::Stroke {
+    egui::Stroke::new(stroke_thin(), border)
+}
+
+pub fn style_label_case(s: &str) -> String { s.to_uppercase() }
