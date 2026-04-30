@@ -476,29 +476,50 @@ SettingsTab::Trading => {
             if enabled { crate::apex_data::ws::start(); }
         }
 
-        setting_row(ui, m, "Base URL", t, |ui| {
-            let id = egui::Id::new("apex_data_url_edit");
-            let mut buf: String = ui.data_mut(|d|
-                d.get_temp::<String>(id).unwrap_or_else(|| crate::apex_data::apex_url()));
-            let resp = ui.add(egui::TextEdit::singleline(&mut buf).desired_width(340.0));
-            if resp.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
-            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                crate::apex_data::set_apex_url(buf.trim().to_string());
-            }
-        });
+        use super::widgets::form::{FormRow, FormRowAlign};
+        FormRow::new("Base URL")
+            .gutter(190.0)
+            .leading_space(m)
+            .label_left(true)
+            .label_color(egui::Color32::from_white_alpha(180))
+            .alignment(FormRowAlign::Right)
+            .inner_pad(10.0)
+            .margins(0.0, GAP_XS)
+            .show_with_cx(ui, t, |ui, _cx| {
+                let id = egui::Id::new("apex_data_url_edit");
+                let mut buf: String = ui.data_mut(|d|
+                    d.get_temp::<String>(id).unwrap_or_else(|| crate::apex_data::apex_url()));
+                let resp = ui.add(egui::TextEdit::singleline(&mut buf).desired_width(340.0));
+                if resp.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
+                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    crate::apex_data::set_apex_url(buf.trim().to_string());
+                }
+            });
 
-        setting_row(ui, m, "Auth Token", t, |ui| {
-            let id = egui::Id::new("apex_data_token_edit");
-            let mut buf: String = ui.data_mut(|d|
-                d.get_temp::<String>(id).unwrap_or_else(|| crate::apex_data::apex_token().unwrap_or_default()));
-            let resp = ui.add(egui::TextEdit::singleline(&mut buf).password(true).desired_width(340.0)
-                .hint_text("optional — leave blank if no token required"));
-            if resp.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
-            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                let tok = buf.trim();
-                crate::apex_data::set_apex_token(if tok.is_empty() { None } else { Some(tok.to_string()) });
-            }
-        });
+        FormRow::new("Auth Token")
+            .gutter(190.0)
+            .leading_space(m)
+            .label_left(true)
+            .label_color(egui::Color32::from_white_alpha(180))
+            .alignment(FormRowAlign::Right)
+            .inner_pad(10.0)
+            .margins(0.0, GAP_XS)
+            .password(true)
+            .hint("optional — leave blank if no token required")
+            .show_with_cx(ui, t, |ui, cx| {
+                let id = egui::Id::new("apex_data_token_edit");
+                let mut buf: String = ui.data_mut(|d|
+                    d.get_temp::<String>(id).unwrap_or_else(|| crate::apex_data::apex_token().unwrap_or_default()));
+                let mut te = egui::TextEdit::singleline(&mut buf).desired_width(340.0);
+                if cx.password { te = te.password(true); }
+                if let Some(h) = cx.hint { te = te.hint_text(h); }
+                let resp = ui.add(te);
+                if resp.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
+                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    let tok = buf.trim();
+                    crate::apex_data::set_apex_token(if tok.is_empty() { None } else { Some(tok.to_string()) });
+                }
+            });
 
         ui.horizontal(|ui| {
             ui.add_space(m + 2.0);

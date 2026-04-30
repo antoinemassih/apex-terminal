@@ -11,7 +11,9 @@
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, Stroke, Ui, Widget};
+use egui::{Color32, Rect, Response, Stroke, Ui, Widget};
+use std::cell::RefCell;
+use std::rc::Rc;
 use super::super::super::style::*;
 use super::super::foundation::{
     interaction::InteractionState,
@@ -43,6 +45,30 @@ pub struct OptionalCols {
     pub range_bar: bool,
     pub week52: bool,
     pub rvol_badge: bool,
+}
+
+/// Hit-tested zone within a watchlist row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum WatchlistRowZone {
+    #[default]
+    None,
+    Body,
+    Star,
+    X,
+    DragHandle,
+    Alert,
+    Earnings,
+}
+
+/// Rich response returned by `WatchlistRow::show`.
+pub struct WatchlistRowResponse {
+    pub response: Response,
+    pub star_clicked: bool,
+    pub x_clicked: bool,
+    pub drag_started: bool,
+    pub alert_clicked: bool,
+    pub earnings_clicked: bool,
+    pub hovered_zone: WatchlistRowZone,
 }
 
 /// Fallback theme for theme-less callers — first registered project theme.
@@ -157,7 +183,7 @@ impl<'a> WatchlistRow<'a> {
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
     pub fn font_size_override(mut self, sz: f32) -> Self { self.font_size_override = Some(sz); self }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut Ui) -> WatchlistRowResponse {
         let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
         let bull = self.theme_bull.unwrap_or(Color32::from_rgb(0, 200, 120));
         let bear = self.theme_bear.unwrap_or(Color32::from_rgb(220, 80, 80));
@@ -187,6 +213,19 @@ impl<'a> WatchlistRow<'a> {
         let extreme_move = self.extreme_move;
         let avg_daily_range = self.avg_daily_range;
         let active_flag = self.active;
+
+        // Shared cell so the painter body can publish per-zone rects we hit-test
+        // post-show against the captured pointer position.
+        #[derive(Default, Clone, Copy)]
+        struct ZoneRects {
+            drag: Option<Rect>,
+            star: Option<Rect>,
+            earnings: Option<Rect>,
+            alert: Option<Rect>,
+            x: Option<Rect>,
+        }
+        let zones: Rc<RefCell<ZoneRects>> = Rc::new(RefCell::new(ZoneRects::default()));
+        let zones_body = zones.clone();
 
         let resp = RowShell::new(theme_ref, "")
             .variant(RowVariant::Default)
@@ -241,6 +280,8 @@ impl<'a> WatchlistRow<'a> {
                 if drag_handle {
                     painter.text(egui::pos2(left + 6.0, cy), egui::Align2::LEFT_CENTER,
                         "\u{2807}", egui::FontId::proportional(9.0), dim.gamma_multiply(0.2));
+                    zones_body.borrow_mut().drag = Some(egui::Rect::from_min_size(
+                        egui::pos2(left, rect.top()), egui::vec2(14.0, rect.height())));
                     sym_x = left + 18.0;
                 }
 
@@ -255,6 +296,8 @@ impl<'a> WatchlistRow<'a> {
                     let star_x = sym_x;
                     painter.text(egui::pos2(star_x, cy), egui::Align2::CENTER_CENTER,
                         "\u{2605}", egui::FontId::proportional(9.0), star_col);
+                    zones_body.borrow_mut().star = Some(egui::Rect::from_center_size(
+                        egui::pos2(star_x, cy), egui::vec2(12.0, rect.height())));
                     sym_x += 10.0;
                 }
 
@@ -270,11 +313,12 @@ impl<'a> WatchlistRow<'a> {
                         let e_galley = painter.layout_no_wrap(e_text.clone(),
                             egui::FontId::monospace(7.0), Color32::BLACK);
                         let pw = e_galley.size().x + 6.0;
-                        painter.rect_filled(
-                            egui::Rect::from_min_size(egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0)),
-                            6.0, Color32::from_rgb(255, 193, 37));
+                        let pill_rect = egui::Rect::from_min_size(
+                            egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0));
+                        painter.rect_filled(pill_rect, 6.0, Color32::from_rgb(255, 193, 37));
                         painter.text(egui::pos2(ind_x + pw / 2.0, cy), egui::Align2::CENTER_CENTER,
                             &e_text, egui::FontId::monospace(7.0), Color32::BLACK);
+                        zones_body.borrow_mut().earnings = Some(pill_rect);
                         ind_x += pw + 3.0;
                     }
                 }
@@ -285,6 +329,8 @@ impl<'a> WatchlistRow<'a> {
                         Color32::from_rgb(231, 76, 60));
                     painter.text(egui::pos2(ind_x + 5.0, cy), egui::Align2::CENTER_CENTER,
                         "!", egui::FontId::proportional(7.0), Color32::WHITE);
+                    zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
+                        egui::pos2(ind_x + 5.0, cy), egui::vec2(12.0, 12.0)));
                     ind_x += 14.0;
                 }
 
@@ -380,6 +426,12 @@ impl<'a> WatchlistRow<'a> {
                     egui::pos2(rect.right() - 8.0, cy), egui::Align2::RIGHT_CENTER,
                     &price_str, egui::FontId::proportional(font_sz), fg,
                 );
+
+                // Reserve right-edge X click zone (caller paints the X on hover).
+                zones_body.borrow_mut().x = Some(egui::Rect::from_min_max(
+                    egui::pos2(rect.right() - 16.0, rect.top()),
+                    egui::pos2(rect.right(), rect.bottom()),
+                ));
             })
             .show(ui);
 
@@ -387,6 +439,33 @@ impl<'a> WatchlistRow<'a> {
             [resp.rect.min.x, resp.rect.min.y, resp.rect.width(), resp.rect.height()],
             "WATCHLIST_ROW", "Rows",
         );
-        resp
+
+        // Hit-test pointer against published zone rects.
+        let z = *zones.borrow();
+        let hover_pos = resp.hover_pos();
+        let click_pos = resp.interact_pointer_pos();
+        let zone_at = |pos: egui::Pos2| -> WatchlistRowZone {
+            if z.x.map_or(false, |r| r.contains(pos)) { WatchlistRowZone::X }
+            else if z.star.map_or(false, |r| r.contains(pos)) { WatchlistRowZone::Star }
+            else if z.drag.map_or(false, |r| r.contains(pos)) { WatchlistRowZone::DragHandle }
+            else if z.alert.map_or(false, |r| r.contains(pos)) { WatchlistRowZone::Alert }
+            else if z.earnings.map_or(false, |r| r.contains(pos)) { WatchlistRowZone::Earnings }
+            else if resp.rect.contains(pos) { WatchlistRowZone::Body }
+            else { WatchlistRowZone::None }
+        };
+        let hovered_zone = hover_pos.map(zone_at).unwrap_or(WatchlistRowZone::None);
+        let clicked = resp.clicked();
+        let click_zone = click_pos.filter(|_| clicked).map(zone_at).unwrap_or(WatchlistRowZone::None);
+        let drag_started = resp.drag_started();
+
+        WatchlistRowResponse {
+            star_clicked:     click_zone == WatchlistRowZone::Star,
+            x_clicked:        click_zone == WatchlistRowZone::X,
+            alert_clicked:    click_zone == WatchlistRowZone::Alert,
+            earnings_clicked: click_zone == WatchlistRowZone::Earnings,
+            drag_started:     drag_started && hovered_zone == WatchlistRowZone::DragHandle,
+            hovered_zone,
+            response: resp,
+        }
     }
 }

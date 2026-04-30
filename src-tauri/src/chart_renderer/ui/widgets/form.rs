@@ -26,6 +26,18 @@ type Theme = crate::chart_renderer::gpu::Theme;
 ///     ui.add(TextInput::new(&mut state.username));
 /// });
 /// ```
+/// Body alignment within the right-of-gutter region.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum FormRowAlign { Left, Right }
+
+/// Hints passed to the body closure so primitives (e.g. TextInput/TextEdit)
+/// can pick up row-level options like password mode and placeholder hint.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct FormRowCx<'a> {
+    pub password: bool,
+    pub hint: Option<&'a str>,
+}
+
 #[must_use = "FormRow must be rendered with `.show(...)`"]
 pub struct FormRow<'a> {
     label: &'a str,
@@ -33,6 +45,14 @@ pub struct FormRow<'a> {
     help: Option<&'a str>,
     required: bool,
     label_color: Option<Color32>,
+    leading_space: f32,
+    alignment: FormRowAlign,
+    inner_pad: f32,
+    margin_top: f32,
+    margin_bottom: f32,
+    password: bool,
+    hint: Option<&'a str>,
+    label_label_layout_left: bool,
 }
 
 impl<'a> FormRow<'a> {
@@ -43,12 +63,42 @@ impl<'a> FormRow<'a> {
             help: None,
             required: false,
             label_color: None,
+            leading_space: 0.0,
+            alignment: FormRowAlign::Left,
+            inner_pad: 0.0,
+            margin_top: 0.0,
+            margin_bottom: 0.0,
+            password: false,
+            hint: None,
+            label_label_layout_left: false,
         }
     }
     pub fn label_width(mut self, w: f32) -> Self { self.label_width = w; self }
+    /// Alias for `label_width`, matching the settings_panel terminology.
+    pub fn gutter(mut self, w: f32) -> Self { self.label_width = w; self }
     pub fn help(mut self, h: &'a str) -> Self { self.help = Some(h); self }
     pub fn required(mut self, r: bool) -> Self { self.required = r; self }
     pub fn label_color(mut self, c: Color32) -> Self { self.label_color = Some(c); self }
+    /// Horizontal pad inserted before the label gutter (e.g. dialog margin).
+    pub fn leading_space(mut self, s: f32) -> Self { self.leading_space = s; self }
+    /// Body alignment within the area to the right of the gutter.
+    pub fn alignment(mut self, a: FormRowAlign) -> Self { self.alignment = a; self }
+    /// Pad inserted between the gutter and the body (or, in Right alignment,
+    /// the right-edge inset).
+    pub fn inner_pad(mut self, p: f32) -> Self { self.inner_pad = p; self }
+    /// Custom vertical margins (top, bottom) around the row.
+    pub fn margins(mut self, top: f32, bottom: f32) -> Self {
+        self.margin_top = top;
+        self.margin_bottom = bottom;
+        self
+    }
+    /// Hint at password mode for TextEdit-style bodies (passed through `cx`).
+    pub fn password(mut self, p: bool) -> Self { self.password = p; self }
+    /// Placeholder hint text passed through `cx` to the body.
+    pub fn hint(mut self, h: &'a str) -> Self { self.hint = Some(h); self }
+    /// Lay out the label left-to-right inside the gutter (settings_panel style)
+    /// instead of the default right-to-left alignment.
+    pub fn label_left(mut self, l: bool) -> Self { self.label_label_layout_left = l; self }
 
     pub fn show<R>(
         self,
@@ -56,12 +106,31 @@ impl<'a> FormRow<'a> {
         t: &Theme,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
+        self.show_with_cx(ui, t, |ui, _cx| body(ui))
+    }
+
+    /// Like `show`, but the body receives a `FormRowCx` carrying row-level
+    /// hints (password, hint text). Body primitives can opt-in to honor them.
+    pub fn show_with_cx<R>(
+        self,
+        ui: &mut Ui,
+        t: &Theme,
+        body: impl FnOnce(&mut Ui, FormRowCx<'_>) -> R,
+    ) -> R {
         let label_color = self.label_color.unwrap_or(t.dim);
+        let cx = FormRowCx { password: self.password, hint: self.hint };
+        if self.margin_top > 0.0 { ui.add_space(self.margin_top); }
+        let label_layout = if self.label_label_layout_left {
+            egui::Layout::left_to_right(egui::Align::Center)
+        } else {
+            egui::Layout::right_to_left(egui::Align::Center)
+        };
         let result = ui.horizontal(|ui| {
+            if self.leading_space > 0.0 { ui.add_space(self.leading_space); }
             // Fixed label gutter
             ui.allocate_ui_with_layout(
                 Vec2::new(self.label_width, ui.spacing().interact_size.y),
-                egui::Layout::right_to_left(egui::Align::Center),
+                label_layout,
                 |ui| {
                     if self.required {
                         ui.add(RequiredMarker::new().theme(t));
@@ -74,16 +143,28 @@ impl<'a> FormRow<'a> {
                     );
                 },
             );
-            ui.add_space(gap_sm());
-            body(ui)
+            match self.alignment {
+                FormRowAlign::Left => {
+                    let pad = if self.inner_pad > 0.0 { self.inner_pad } else { gap_sm() };
+                    ui.add_space(pad);
+                    body(ui, cx)
+                }
+                FormRowAlign::Right => {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if self.inner_pad > 0.0 { ui.add_space(self.inner_pad); }
+                        body(ui, cx)
+                    }).inner
+                }
+            }
         });
         let r = result.inner;
         if let Some(h) = self.help {
             ui.horizontal(|ui| {
-                ui.add_space(self.label_width + gap_sm());
+                ui.add_space(self.leading_space + self.label_width + gap_sm());
                 ui.add(HelpText::new(h).theme(t));
             });
         }
+        if self.margin_bottom > 0.0 { ui.add_space(self.margin_bottom); }
         r
     }
 }

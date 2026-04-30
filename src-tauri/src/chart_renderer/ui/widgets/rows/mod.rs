@@ -31,7 +31,7 @@ pub use news_row::NewsRow;
 pub use option_chain_row::OptionChainRow;
 pub use order_row::OrderRow;
 pub use table::Table;
-pub use watchlist_row::WatchlistRow;
+pub use watchlist_row::{WatchlistRow, WatchlistRowResponse, WatchlistRowZone};
 
 // ─── ListRow — generic selectable/hoverable row primitive ────────────────────
 
