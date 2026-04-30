@@ -16452,6 +16452,10 @@ fn handle_deferred(
 fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
     use crate::monitoring::{span_begin, span_end};
 
+    // Publish the active style id for `style::current()` so widget primitives
+    // can pick the right corners / borders / serifs / button treatment.
+    super::ui::style::set_active_style(style_id(watchlist));
+
     // ── Watchlist divider drag (handled at top level to avoid panel interference) ──
     if watchlist.divider_y > 0.0 && watchlist.options_visible {
         let pointer_pos = ctx.input(|i| i.pointer.latest_pos());

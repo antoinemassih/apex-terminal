@@ -773,23 +773,75 @@ pub struct StyleSettings {
     pub uppercase_section_labels: bool,
 }
 
+// Active style selection — set once at the top of each draw_chart frame
+// from `gpu::style_id(watchlist)`. 0 = Meridien (editorial), 1 = Aperture
+// (modern, soft), 2 = Octave (dense). All other indices alias to Meridien.
+static ACTIVE_STYLE: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
+
+pub fn set_active_style(id: u8) {
+    ACTIVE_STYLE.store(id, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn current() -> StyleSettings {
-    StyleSettings {
-        r_xs: 2,
-        r_sm: radius_sm() as u8,
-        r_md: radius_md() as u8,
-        r_lg: radius_lg() as u8,
-        r_pill: 99,
-        serif_headlines: false,
-        button_treatment: ButtonTreatment::SoftPill,
-        hairline_borders: true,
-        stroke_hair: 0.5,
-        stroke_thin: stroke_thin(),
-        stroke_std: stroke_std(),
-        stroke_thick: 1.5,
-        shadows_enabled: false,
-        solid_active_fills: true,
-        uppercase_section_labels: true,
+    let id = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Relaxed);
+    match id {
+        // Aperture — modern, soft pills, drop shadows, no uppercase, sans serif
+        1 => StyleSettings {
+            r_xs: 4,
+            r_sm: 6,
+            r_md: 8,
+            r_lg: 12,
+            r_pill: 99,
+            serif_headlines: false,
+            button_treatment: ButtonTreatment::SoftPill,
+            hairline_borders: false,
+            stroke_hair: 0.5,
+            stroke_thin: 1.0,
+            stroke_std: 1.5,
+            stroke_thick: 2.0,
+            shadows_enabled: true,
+            solid_active_fills: false,
+            uppercase_section_labels: false,
+        },
+        // Octave — dense, sharp, raised-fill active treatment
+        2 => StyleSettings {
+            r_xs: 1,
+            r_sm: 2,
+            r_md: 3,
+            r_lg: 4,
+            r_pill: 99,
+            serif_headlines: false,
+            button_treatment: ButtonTreatment::RaisedActive,
+            hairline_borders: true,
+            stroke_hair: 0.4,
+            stroke_thin: 0.6,
+            stroke_std: 1.0,
+            stroke_thick: 1.4,
+            shadows_enabled: false,
+            solid_active_fills: true,
+            uppercase_section_labels: true,
+        },
+        // Meridien (0) and all others — editorial: serif headlines, square
+        // corners, hairline borders, no shadows, uppercase section labels,
+        // solid active fills, underline-active buttons.
+        _ => StyleSettings {
+            r_xs: 2,
+            r_sm: radius_sm() as u8,
+            r_md: radius_md() as u8,
+            r_lg: radius_lg() as u8,
+            r_pill: 99,
+            serif_headlines: true,
+            button_treatment: ButtonTreatment::UnderlineActive,
+            hairline_borders: true,
+            stroke_hair: 0.5,
+            stroke_thin: stroke_thin(),
+            stroke_std: stroke_std(),
+            stroke_thick: 1.5,
+            shadows_enabled: false,
+            solid_active_fills: true,
+            uppercase_section_labels: true,
+        },
     }
 }
 
