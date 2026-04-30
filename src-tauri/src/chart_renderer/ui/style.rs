@@ -822,16 +822,16 @@ pub fn current() -> StyleSettings {
             solid_active_fills: true,
             uppercase_section_labels: true,
         },
-        // Meridien (0) and all others — editorial: serif headlines, square
-        // corners, hairline borders, no shadows, uppercase section labels,
-        // solid active fills, underline-active buttons.
+        // Meridien (0) and all others — editorial: square corners, hairline
+        // borders, no shadows, uppercase section labels, solid active fills,
+        // underline-active buttons. Sans-serif throughout.
         _ => StyleSettings {
             r_xs: 2,
             r_sm: radius_sm() as u8,
             r_md: radius_md() as u8,
             r_lg: radius_lg() as u8,
             r_pill: 99,
-            serif_headlines: true,
+            serif_headlines: false,
             button_treatment: ButtonTreatment::UnderlineActive,
             hairline_borders: true,
             stroke_hair: 0.5,
