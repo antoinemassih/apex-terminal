@@ -4,6 +4,21 @@ use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme, Chart, THEMES};
 use super::super::commands::{self, AppCommand};
+use super::widgets::form::{FormRow, FormRowAlign};
+
+/// Build a FormRow pre-configured to match the legacy `setting_row` look:
+/// 190px label gutter, left-aligned label in white_alpha(180), body right-aligned
+/// with 10px inner pad, GAP_XS bottom margin.
+fn srow<'a>(label: &'a str, margin: f32) -> FormRow<'a> {
+    FormRow::new(label)
+        .gutter(190.0)
+        .leading_space(margin)
+        .label_left(true)
+        .label_color(egui::Color32::from_white_alpha(180))
+        .alignment(FormRowAlign::Right)
+        .inner_pad(10.0)
+        .margins(0.0, GAP_XS)
+}
 
 /// Settings tab selector.
 #[derive(Clone, Copy, PartialEq)]
@@ -142,7 +157,7 @@ SettingsTab::Appearance => {
     // ── Font Scale ──
     dialog_section(ui, "FONT SCALE", m, t.dim.gamma_multiply(0.5));
     ui.add_space(GAP_SM);
-    setting_row(ui, m, "Size", t, |ui| {
+    srow("Size", m).show(ui, t, |ui| {
         let display_pct = ((watchlist.font_scale - 0.96) / 0.016).round() as i32 + 60;
         let mut dp = display_pct.clamp(60, 160);
         if ui.add(egui::DragValue::new(&mut dp).range(60..=160).suffix("%").speed(1)
@@ -231,7 +246,7 @@ SettingsTab::Appearance => {
     ui.add_space(GAP_SM);
     setting_toggle(ui, m, "Compact Toolbar", t, &mut watchlist.compact_mode);
     setting_toggle(ui, m, "Auto-Hide Toolbar", t, &mut watchlist.toolbar_auto_hide);
-    setting_row(ui, m, "Pane Headers", t, |ui| {
+    srow("Pane Headers", m).show(ui, t, |ui| {
         use crate::chart_renderer::PaneHeaderSize;
         let current = watchlist.pane_header_size;
         let labels = [
@@ -286,7 +301,7 @@ SettingsTab::Chart => {
     } else {
         setting_toggle(ui, m, "Session Shading", t, &mut chart.session_shading);
         if chart.session_shading {
-            setting_row(ui, m, "ETH Bar Opacity", t, |ui| {
+            srow("ETH Bar Opacity", m).show(ui, t, |ui| {
                 let mut pct = (chart.eth_bar_opacity * 100.0).round() as i32;
                 if ui.add(egui::DragValue::new(&mut pct).range(0..=100).suffix("%").speed(1)).changed() {
                     chart.eth_bar_opacity = (pct as f32 / 100.0).clamp(0.0, 1.0);
@@ -307,7 +322,7 @@ SettingsTab::Chart => {
                         }
                     }
                 });
-                setting_row(ui, m, "Tint Opacity", t, |ui| {
+                srow("Tint Opacity", m).show(ui, t, |ui| {
                     let mut pct = (chart.session_bg_opacity * 100.0).round() as i32;
                     if ui.add(egui::DragValue::new(&mut pct).range(0..=100).suffix("%").speed(1)).changed() {
                         chart.session_bg_opacity = (pct as f32 / 100.0).clamp(0.0, 1.0);
@@ -362,21 +377,21 @@ SettingsTab::Trading => {
     // ── Order Defaults ──
     dialog_section(ui, "ORDER DEFAULTS", m, t.dim.gamma_multiply(0.5));
     ui.add_space(GAP_SM);
-    setting_row(ui, m, "Stock Qty", t, |ui| {
+    srow("Stock Qty", m).show(ui, t, |ui| {
         let mut v = watchlist.default_stock_qty as i32;
         if ui.add(egui::DragValue::new(&mut v).range(1..=100_000).speed(10)
             .custom_formatter(|v, _| format!("{} shares", v as i32))).changed() {
             watchlist.default_stock_qty = v.max(1) as u32;
         }
     });
-    setting_row(ui, m, "Options Qty", t, |ui| {
+    srow("Options Qty", m).show(ui, t, |ui| {
         let mut v = watchlist.default_options_qty as i32;
         if ui.add(egui::DragValue::new(&mut v).range(1..=10_000).speed(1)
             .custom_formatter(|v, _| format!("{} contracts", v as i32))).changed() {
             watchlist.default_options_qty = v.max(1) as u32;
         }
     });
-    setting_row(ui, m, "Order Type", t, |ui| {
+    srow("Order Type", m).show(ui, t, |ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
         for (i, label) in ["MKT", "LMT", "STP"].iter().enumerate() {
             let sel = watchlist.default_order_type == i;
@@ -391,7 +406,7 @@ SettingsTab::Trading => {
                 .clicked() { watchlist.default_order_type = i; }
         }
     });
-    setting_row(ui, m, "Time in Force", t, |ui| {
+    srow("Time in Force", m).show(ui, t, |ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
         for (i, label) in ["DAY", "GTC", "IOC"].iter().enumerate() {
             let sel = watchlist.default_tif == i;
@@ -415,46 +430,46 @@ SettingsTab::Trading => {
     {
         use crate::chart_renderer::trading::order_manager;
         let mut limits = order_manager::get_risk_limits();
-        setting_row(ui, m, "Max Order Qty", t, |ui| {
+        srow("Max Order Qty", m).show(ui, t, |ui| {
             let mut v = limits.max_order_qty as i32;
             if ui.add(egui::DragValue::new(&mut v).range(1..=100_000).speed(10)).changed() {
                 limits.max_order_qty = v.max(1) as u32;
             }
         });
-        setting_row(ui, m, "Max Position", t, |ui| {
+        srow("Max Position", m).show(ui, t, |ui| {
             let mut v = limits.max_position_qty as i32;
             if ui.add(egui::DragValue::new(&mut v).range(1..=500_000).speed(100)).changed() {
                 limits.max_position_qty = v.max(1) as u32;
             }
         });
-        setting_row(ui, m, "Max Notional $", t, |ui| {
+        srow("Max Notional $", m).show(ui, t, |ui| {
             let mut v = limits.max_notional as i64;
             if ui.add(egui::DragValue::new(&mut v).range(0..=10_000_000).speed(1000)
                 .custom_formatter(|v, _| if v as i64 == 0 { "OFF".into() } else { format!("${}", v as i64) })).changed() {
                 limits.max_notional = v.max(0) as f64;
             }
         });
-        setting_row(ui, m, "Fat Finger %", t, |ui| {
+        srow("Fat Finger %", m).show(ui, t, |ui| {
             let mut v = limits.fat_finger_pct;
             if ui.add(egui::DragValue::new(&mut v).range(0.0..=50.0).speed(0.5).suffix("%")
                 .custom_formatter(|v, _| if v < 0.1 { "OFF".into() } else { format!("{:.1}%", v) })).changed() {
                 limits.fat_finger_pct = v.max(0.0);
             }
         });
-        setting_row(ui, m, "Max Open Orders", t, |ui| {
+        srow("Max Open Orders", m).show(ui, t, |ui| {
             let mut v = limits.max_open_orders as i32;
             if ui.add(egui::DragValue::new(&mut v).range(1..=1000).speed(1)).changed() {
                 limits.max_open_orders = v.max(1) as usize;
             }
         });
-        setting_row(ui, m, "Max Daily Loss $", t, |ui| {
+        srow("Max Daily Loss $", m).show(ui, t, |ui| {
             let mut v = limits.max_daily_loss as i64;
             if ui.add(egui::DragValue::new(&mut v).range(0..=1_000_000).speed(500)
                 .custom_formatter(|v, _| if v as i64 == 0 { "OFF".into() } else { format!("${}", v as i64) })).changed() {
                 limits.max_daily_loss = v.max(0) as f64;
             }
         });
-        setting_row(ui, m, "Dedup Cooldown", t, |ui| {
+        srow("Dedup Cooldown", m).show(ui, t, |ui| {
             let mut v = limits.dedup_cooldown_ms as i32;
             if ui.add(egui::DragValue::new(&mut v).range(100..=5000).speed(50).suffix("ms")).changed() {
                 limits.dedup_cooldown_ms = v.max(100) as u64;
@@ -476,7 +491,6 @@ SettingsTab::Trading => {
             if enabled { crate::apex_data::ws::start(); }
         }
 
-        use super::widgets::form::{FormRow, FormRowAlign};
         FormRow::new("Base URL")
             .gutter(190.0)
             .leading_space(m)
@@ -559,32 +573,16 @@ SettingsTab::Shortcuts => {
     });
 }
 
-// ─── Helper: standard setting row (label left, widget right) ──────────────
-
-fn setting_row(ui: &mut egui::Ui, margin: f32, label: &str, t: &Theme, add_widget: impl FnOnce(&mut egui::Ui)) {
-    ui.horizontal(|ui| {
-        ui.add_space(margin);
-        ui.allocate_ui(egui::vec2(190.0, 20.0), |ui| {
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(label).monospace().size(FONT_SM).color(egui::Color32::from_white_alpha(180)));
-            });
-        });
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(10.0);
-            add_widget(ui);
-        });
-    });
-    ui.add_space(GAP_XS);
-}
+// ─── Helpers: standard setting toggles (built atop FormRow via `srow`) ────
 
 fn setting_toggle(ui: &mut egui::Ui, margin: f32, label: &str, t: &Theme, val: &mut bool) {
-    setting_row(ui, margin, label, t, |ui| {
+    srow(label, margin).show(ui, t, |ui| {
         ui.add(egui::Checkbox::without_text(val));
     });
 }
 
 fn setting_toggle_with_color(ui: &mut egui::Ui, margin: f32, label: &str, t: &Theme, val: &mut bool, _color: egui::Color32) {
-    setting_row(ui, margin, label, t, |ui| {
+    srow(label, margin).show(ui, t, |ui| {
         ui.add(egui::Checkbox::without_text(val));
     });
 }

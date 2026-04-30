@@ -11,7 +11,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Rect, Response, Stroke, Ui, Widget};
+use egui::{Color32, Rect, Response, Sense, Stroke, Ui, Widget};
 use std::cell::RefCell;
 use std::rc::Rc;
 use super::super::super::style::*;
@@ -36,6 +36,29 @@ pub enum PinState {
 
 impl Default for PinState {
     fn default() -> Self { PinState::NotPinned }
+}
+
+/// Glyphs used for in-row decorations. Defaults are unicode escapes used by
+/// the standalone widget; the watchlist panel overrides these with project
+/// `Icon::*` constants (DOTS_SIX_VERTICAL, SPARKLE, X, LIGHTNING) so the row
+/// matches the rest of the terminal chrome.
+#[derive(Clone, Copy, Debug)]
+pub struct IconSet {
+    pub drag_handle: &'static str,
+    pub star: &'static str,
+    pub x: &'static str,
+    pub alert: &'static str,
+}
+
+impl Default for IconSet {
+    fn default() -> Self {
+        Self {
+            drag_handle: "\u{2807}",
+            star: "\u{2605}",
+            x: "\u{00D7}",
+            alert: "!",
+        }
+    }
 }
 
 /// Toggles for which optional middle-section columns appear.
@@ -113,6 +136,23 @@ pub struct WatchlistRow<'a> {
     avg_daily_range: f32,
     active: bool,
     font_size_override: Option<f32>,
+
+    // Project-decoration knobs (panel-specific look).
+    icon_set: IconSet,
+    sense: Sense,
+    row_tint: Option<Color32>,
+    separator: bool,
+    hover_overlay: Option<Color32>,
+    show_x_on_hover: bool,
+    drag_confirmed: bool,
+    sym_font_id: Option<egui::FontId>,
+    chg_font_id: Option<egui::FontId>,
+    price_font_id: Option<egui::FontId>,
+    price_str_override: Option<String>,
+    price_right_inset: f32,
+    star_x_offset: f32,
+    sym_x_offset: f32,
+    sym_x_offset_no_star: f32,
 }
 
 impl<'a> WatchlistRow<'a> {
@@ -138,6 +178,21 @@ impl<'a> WatchlistRow<'a> {
             avg_daily_range: 0.0,
             active: false,
             font_size_override: None,
+            icon_set: IconSet::default(),
+            sense: Sense::click(),
+            row_tint: None,
+            separator: false,
+            hover_overlay: None,
+            show_x_on_hover: false,
+            drag_confirmed: false,
+            sym_font_id: None,
+            chg_font_id: None,
+            price_font_id: None,
+            price_str_override: None,
+            price_right_inset: 8.0,
+            star_x_offset: 0.0,
+            sym_x_offset: 10.0,
+            sym_x_offset_no_star: 10.0,
         }
     }
     pub fn spark(mut self, s: &'a [f32]) -> Self { self.spark = Some(s); self }
@@ -183,6 +238,28 @@ impl<'a> WatchlistRow<'a> {
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
     pub fn font_size_override(mut self, sz: f32) -> Self { self.font_size_override = Some(sz); self }
 
+    // ── Project-decoration knobs ────────────────────────────────────────
+    pub fn icon_set(mut self, s: IconSet) -> Self { self.icon_set = s; self }
+    pub fn sense(mut self, s: Sense) -> Self { self.sense = s; self }
+    pub fn row_tint(mut self, c: Color32) -> Self { self.row_tint = Some(c); self }
+    pub fn separator(mut self, v: bool) -> Self { self.separator = v; self }
+    pub fn hover_overlay(mut self, c: Color32) -> Self { self.hover_overlay = Some(c); self }
+    pub fn show_x_on_hover(mut self, v: bool) -> Self { self.show_x_on_hover = v; self }
+    /// When true, hover-only effects (X glyph, hover overlay, hover star, cursor)
+    /// are suppressed. Mirrors panel's `drag_confirmed` gating.
+    pub fn drag_confirmed(mut self, v: bool) -> Self { self.drag_confirmed = v; self }
+    pub fn sym_font(mut self, f: egui::FontId) -> Self { self.sym_font_id = Some(f); self }
+    pub fn chg_font(mut self, f: egui::FontId) -> Self { self.chg_font_id = Some(f); self }
+    pub fn price_font(mut self, f: egui::FontId) -> Self { self.price_font_id = Some(f); self }
+    pub fn price_string(mut self, s: String) -> Self { self.price_str_override = Some(s); self }
+    pub fn price_right_inset(mut self, px: f32) -> Self { self.price_right_inset = px; self }
+    pub fn sym_layout(mut self, star_x_offset: f32, sym_x_after_star: f32, sym_x_no_star: f32) -> Self {
+        self.star_x_offset = star_x_offset;
+        self.sym_x_offset = sym_x_after_star;
+        self.sym_x_offset_no_star = sym_x_no_star;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> WatchlistRowResponse {
         let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
         let bull = self.theme_bull.unwrap_or(Color32::from_rgb(0, 200, 120));
@@ -214,6 +291,41 @@ impl<'a> WatchlistRow<'a> {
         let avg_daily_range = self.avg_daily_range;
         let active_flag = self.active;
 
+        // Project decoration locals (moved into body).
+        let icon_set = self.icon_set;
+        let row_tint = self.row_tint;
+        let separator_on = self.separator;
+        let sym_font_id = self.sym_font_id.clone()
+            .unwrap_or_else(|| egui::FontId::monospace(font_sz));
+        let chg_font_id = self.chg_font_id.clone()
+            .unwrap_or_else(|| egui::FontId::proportional(font_sz));
+        let price_font_id = self.price_font_id.clone()
+            .unwrap_or_else(|| egui::FontId::proportional(font_sz));
+        let price_str_override = self.price_str_override.clone();
+        let price_right_inset = self.price_right_inset;
+        let star_x_offset = self.star_x_offset;
+        let sym_x_offset_after_star = self.sym_x_offset;
+        let sym_x_offset_no_star = self.sym_x_offset_no_star;
+        let drag_confirmed = self.drag_confirmed;
+        let show_star_on_hover_flag = self.show_star_on_hover;
+        let self_show_x_on_hover = self.show_x_on_hover;
+        let hover_overlay_col = self.hover_overlay;
+        let user_sense = self.sense;
+
+        // Pre-compute hover so the body knows whether to paint hover-conditional
+        // glyphs (star, X). Use the cursor position + available_width + row_h to
+        // build the same rect RowShell will allocate.
+        let est_top_left = ui.cursor().min;
+        let est_rect = egui::Rect::from_min_size(
+            est_top_left,
+            egui::vec2(ui.available_width(), row_h),
+        );
+        let pointer_pos_pre = ui.ctx().pointer_hover_pos();
+        let pre_hovered = pointer_pos_pre
+            .map(|p| est_rect.contains(p))
+            .unwrap_or(false)
+            && ui.is_enabled();
+
         // Shared cell so the painter body can publish per-zone rects we hit-test
         // post-show against the captured pointer position.
         #[derive(Default, Clone, Copy)]
@@ -237,6 +349,11 @@ impl<'a> WatchlistRow<'a> {
                 let painter = ui.painter();
                 let cy = rect.center().y;
                 let chg_col = if change_pct >= 0.0 { bull } else { bear };
+
+                // ── Project row tint (e.g. pinned-row faint bg) ─────────
+                if let Some(tint) = row_tint {
+                    painter.rect_filled(rect, 0.0, tint);
+                }
 
                 // ── Extreme-move full-row tint ───────────────────────────
                 if let Some(chg) = extreme_move {
@@ -274,36 +391,46 @@ impl<'a> WatchlistRow<'a> {
                 }
 
                 let left = rect.left();
-                let mut sym_x = left + 8.0;
 
                 // ── Drag-handle grip ────────────────────────────────────
                 if drag_handle {
                     painter.text(egui::pos2(left + 6.0, cy), egui::Align2::LEFT_CENTER,
-                        "\u{2807}", egui::FontId::proportional(9.0), dim.gamma_multiply(0.2));
+                        icon_set.drag_handle, egui::FontId::proportional(9.0), dim.gamma_multiply(0.2));
                     zones_body.borrow_mut().drag = Some(egui::Rect::from_min_size(
                         egui::pos2(left, rect.top()), egui::vec2(14.0, rect.height())));
-                    sym_x = left + 18.0;
                 }
 
                 // ── Star pin ────────────────────────────────────────────
+                // Visible when pinned, OR (hovered && show_star_on_hover && !drag_confirmed).
                 let show_star = matches!(pin_state, PinState::Pinned)
-                    || (show_star_on_hover); // body has no hover info; controller decides
-                if show_star {
+                    || (show_star_on_hover_flag && pre_hovered && !drag_confirmed);
+                let star_visible_here = show_star;
+                if star_visible_here {
                     let star_col = match pin_state {
                         PinState::Pinned => Color32::from_rgb(255, 193, 37),
                         PinState::NotPinned => dim.gamma_multiply(0.3),
                     };
-                    let star_x = sym_x;
+                    let star_x = left + 16.0 + star_x_offset;
                     painter.text(egui::pos2(star_x, cy), egui::Align2::CENTER_CENTER,
-                        "\u{2605}", egui::FontId::proportional(9.0), star_col);
-                    zones_body.borrow_mut().star = Some(egui::Rect::from_center_size(
-                        egui::pos2(star_x, cy), egui::vec2(12.0, rect.height())));
-                    sym_x += 10.0;
+                        icon_set.star, egui::FontId::proportional(9.0), star_col);
+                }
+                // Star click-zone always covers left..left+26 when pinned-or-hoverable
+                // so panel-style click partitioning works.
+                if matches!(pin_state, PinState::Pinned) || show_star_on_hover_flag {
+                    zones_body.borrow_mut().star = Some(egui::Rect::from_min_max(
+                        egui::pos2(left, rect.top()),
+                        egui::pos2(left + 26.0, rect.bottom()),
+                    ));
                 }
 
                 // ── Symbol ──────────────────────────────────────────────
+                let sym_x = if star_visible_here {
+                    left + 16.0 + star_x_offset + sym_x_offset_after_star
+                } else {
+                    left + sym_x_offset_no_star
+                };
                 painter.text(egui::pos2(sym_x, cy), egui::Align2::LEFT_CENTER,
-                    symbol, egui::FontId::monospace(font_sz), fg);
+                    symbol, sym_font_id.clone(), fg);
                 let mut ind_x = sym_x + symbol.len() as f32 * 8.5 + 6.0;
 
                 // ── Earnings pill ───────────────────────────────────────
@@ -328,7 +455,7 @@ impl<'a> WatchlistRow<'a> {
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 5.5,
                         Color32::from_rgb(231, 76, 60));
                     painter.text(egui::pos2(ind_x + 5.0, cy), egui::Align2::CENTER_CENTER,
-                        "!", egui::FontId::proportional(7.0), Color32::WHITE);
+                        icon_set.alert, egui::FontId::proportional(7.0), Color32::WHITE);
                     zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
                         egui::pos2(ind_x + 5.0, cy), egui::vec2(12.0, 12.0)));
                     ind_x += 14.0;
@@ -348,7 +475,7 @@ impl<'a> WatchlistRow<'a> {
                 let mid_x = rect.left() + rect.width() * 0.45;
                 let chg_str = format!("{:+.2}%", change_pct);
                 painter.text(egui::pos2(mid_x, cy), egui::Align2::LEFT_CENTER,
-                    &chg_str, egui::FontId::proportional(font_sz), chg_col);
+                    &chg_str, chg_font_id.clone(), chg_col);
                 let mut extra_x = mid_x + chg_str.len() as f32 * 8.0 + 8.0;
 
                 // ── Optional sparkline ──────────────────────────────────
@@ -421,11 +548,37 @@ impl<'a> WatchlistRow<'a> {
                 let _ = extra_x;
 
                 // ── Price (right-aligned) ───────────────────────────────
-                let price_str = format!("{:.2}", price);
+                let price_str = price_str_override
+                    .clone()
+                    .unwrap_or_else(|| format!("{:.2}", price));
                 painter.text(
-                    egui::pos2(rect.right() - 8.0, cy), egui::Align2::RIGHT_CENTER,
-                    &price_str, egui::FontId::proportional(font_sz), fg,
+                    egui::pos2(rect.right() - price_right_inset, cy), egui::Align2::RIGHT_CENTER,
+                    &price_str, price_font_id.clone(), fg,
                 );
+
+                // ── Faint inter-row separator (project-specific) ────────
+                if separator_on {
+                    painter.line_segment(
+                        [
+                            egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5),
+                            egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5),
+                        ],
+                        Stroke::new(STROKE_THIN, color_alpha(border, ALPHA_MUTED)),
+                    );
+                }
+
+                // ── Hover X glyph (project-specific) ────────────────────
+                if pre_hovered && !drag_confirmed {
+                    if self_show_x_on_hover {
+                        painter.text(
+                            egui::pos2(rect.right() - 8.0, cy),
+                            egui::Align2::CENTER_CENTER,
+                            icon_set.x,
+                            egui::FontId::proportional(10.0),
+                            dim.gamma_multiply(0.5),
+                        );
+                    }
+                }
 
                 // Reserve right-edge X click zone (caller paints the X on hover).
                 zones_body.borrow_mut().x = Some(egui::Rect::from_min_max(
@@ -434,6 +587,22 @@ impl<'a> WatchlistRow<'a> {
                 ));
             })
             .show(ui);
+
+        // Re-interact the same rect with the caller-provided sense so we
+        // can detect drag_started even though RowShell uses Sense::click().
+        let resp = ui.interact(
+            resp.rect,
+            ui.id().with(("watchlist_row", resp.rect.min.x as i32, resp.rect.min.y as i32)),
+            user_sense,
+        );
+
+        // ── Hover overlay (panel-specific bg tint on hover, !drag) ──────
+        if resp.hovered() && !drag_confirmed && !active_flag {
+            if let Some(ovl) = hover_overlay_col {
+                ui.painter().rect_filled(resp.rect, 0.0, ovl);
+            }
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
 
         crate::design_tokens::register_hit(
             [resp.rect.min.x, resp.rect.min.y, resp.rect.width(), resp.rect.height()],

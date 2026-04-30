@@ -3,6 +3,8 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Chart, Theme};
+use super::widgets::text::{SectionLabel, DimLabel};
+use super::widgets::layout::EmptyState;
 
 pub(crate) fn draw_content(
     ui: &mut egui::Ui,
@@ -16,12 +18,11 @@ pub(crate) fn draw_content(
     let timestamps = &panes[ap].timestamps;
 
     ui.add_space(GAP_SM);
-    section_label(ui, &format!("SEASONALITY — {}", sym), t.accent);
+    ui.add(SectionLabel::new(&format!("SEASONALITY — {}", sym)).tiny().color(t.accent));
     ui.add_space(GAP_SM);
 
     if bars.len() < 252 || timestamps.len() < bars.len() {
-        ui.label(egui::RichText::new("Need at least 1 year of data")
-            .monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+        EmptyState::new("\u{1F4C5}", "Insufficient data", "Need at least 1 year of bars").theme(t).show(ui);
         return;
     }
 
@@ -110,7 +111,7 @@ pub(crate) fn draw_content(
     let current_month = estimate_month(now_secs / 86400) as usize % 12;
 
     ui.horizontal(|ui| {
-        dim_label(ui, "Current month:", t.dim);
+        ui.add(DimLabel::new("Current month:").color(t.dim));
         let avg = avgs[current_month];
         let col = if avg >= 0.0 { t.bull } else { t.bear };
         ui.label(egui::RichText::new(format!("{} avg {:+.2}%", month_labels[current_month], avg))
@@ -124,18 +125,18 @@ pub(crate) fn draw_content(
     let worst = avgs.iter().enumerate().min_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or((0, &0.0));
 
     ui.horizontal(|ui| {
-        dim_label(ui, "Best:", t.dim);
+        ui.add(DimLabel::new("Best:").color(t.dim));
         ui.label(egui::RichText::new(format!("{} {:+.2}%", month_labels[best.0], best.1))
             .monospace().size(FONT_XS).color(t.bull));
         ui.add_space(GAP_MD);
-        dim_label(ui, "Worst:", t.dim);
+        ui.add(DimLabel::new("Worst:").color(t.dim));
         ui.label(egui::RichText::new(format!("{} {:+.2}%", month_labels[worst.0], worst.1))
             .monospace().size(FONT_XS).color(t.bear));
     });
 
     // Win rate per month
     ui.add_space(GAP_SM);
-    section_label(ui, "WIN RATE BY MONTH", t.dim);
+    ui.add(SectionLabel::new("WIN RATE BY MONTH").tiny().color(t.dim));
     ui.add_space(GAP_XS);
 
     for (i, rets) in month_returns.iter().enumerate() {

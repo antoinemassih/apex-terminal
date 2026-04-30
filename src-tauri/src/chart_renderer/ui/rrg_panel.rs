@@ -8,6 +8,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
+use super::widgets::text::SectionLabel;
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
 const SECTOR_COLORS: &[(&str, &str, (u8, u8, u8))] = &[
@@ -195,7 +196,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     let use_demo = sectors.is_empty();
 
     // Header
-    ui.label(egui::RichText::new("RRG — Relative Rotation").monospace().size(10.0).color(t.dim));
+    ui.add(SectionLabel::new("RRG — Relative Rotation").xs().color(t.dim));
     super::style::separator(ui, t.toolbar_border);
     ui.add_space(2.0);
 

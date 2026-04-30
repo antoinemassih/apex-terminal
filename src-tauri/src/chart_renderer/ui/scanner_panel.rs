@@ -9,6 +9,9 @@ use super::style::*;
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use super::widgets::frames::CompactPanelFrame;
+use super::widgets::status::Spinner;
+use super::widgets::layout::EmptyState;
+use super::widgets::text::SectionLabel;
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
@@ -72,14 +75,14 @@ pub(crate) fn draw_content(
 
     // ── Header ──
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("SCANNERS").monospace().size(9.0).strong().color(t.accent));
+        ui.add(SectionLabel::new("SCANNERS").xs().color(t.accent));
         if let Some(last) = watchlist.scanner_last_fetch {
             let elapsed = last.elapsed().as_secs();
             let remaining = if elapsed < REFRESH_INTERVAL_SECS { REFRESH_INTERVAL_SECS - elapsed } else { 0 };
             ui.label(egui::RichText::new(format!("{}s", remaining)).monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
         }
         if watchlist.scanner_fetching {
-            ui.label(egui::RichText::new("...").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+            ui.add(Spinner::new().sm().theme(t));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if icon_btn(ui, Icon::ARROW_COUNTER_CLOCKWISE, t.dim, FONT_MD)
@@ -171,10 +174,12 @@ pub(crate) fn draw_content(
 
             if pool.is_empty() {
                 ui.add_space(20.0);
-                ui.label(egui::RichText::new("Fetching quotes...").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new(format!("{} symbols in universe", SCANNER_UNIVERSE.len()))
-                    .monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
+                ui.vertical_centered(|ui| {
+                    ui.add(Spinner::new().md().theme(t));
+                    ui.add_space(GAP_SM);
+                });
+                EmptyState::new("\u{1F50D}", "Fetching quotes",
+                    &format!("{} symbols in universe", SCANNER_UNIVERSE.len())).theme(t).show(ui);
                 return;
             }
 

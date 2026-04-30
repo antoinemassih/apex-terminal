@@ -652,7 +652,20 @@ fn convert_play_to_orders(play: &Play, chart: &mut Chart) {
 }
 
 /// A polished play card with shadow, direction stripe, and rich layout.
+///
+/// Wave 5: thin delegation to the `PlayCard` widget in the cards system.
+/// All visuals + action wiring live in `widgets::cards::play_card`.
 fn draw_play_card(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: &mut Option<String>, activate_id: &mut Option<String>, display_id: &mut Option<String>) {
+    use super::widgets::cards::PlayCard;
+    let r = PlayCard::new(play, t).show(ui);
+    if r.delete_clicked   { *remove_id   = Some(play.id.clone()); }
+    if r.activate_clicked { *activate_id = Some(play.id.clone()); }
+    if r.clicked          { *display_id  = Some(play.id.clone()); }
+}
+
+#[allow(dead_code)]
+#[cfg(any())]
+fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: &mut Option<String>, activate_id: &mut Option<String>, display_id: &mut Option<String>) {
     let is_long = play.direction == PlayDirection::Long;
     let dir_color = if is_long { t.bull } else { t.bear };
     let card_w = ui.available_width();

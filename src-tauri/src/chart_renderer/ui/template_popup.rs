@@ -21,30 +21,37 @@ pub(crate) fn draw(
         let mut apply_idx: Option<usize> = None;
         let mut delete_idx: Option<usize> = None;
 
-        let win_resp = egui::Area::new(egui::Id::new(("template_popup", pi)))
-            .order(egui::Order::Foreground)
-            .fixed_pos(pos)
-            .show(ctx, |ui| {
-                egui::Frame::popup(&ctx.style())
-                    .fill(t.toolbar_bg)
-                    .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-                    .inner_margin(egui::Margin::same(GAP_LG as i8))
-                    .corner_radius(RADIUS_LG)
-                    .shadow(egui::epaint::Shadow {
-                        offset: [0, 4], blur: 14, spread: 0,
-                        color: egui::Color32::from_black_alpha(80),
-                    })
-                    .show(ui, |ui| {
-                        ui.set_width(220.0);
+        use super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+        let custom_frame = egui::Frame::popup(&ctx.style())
+            .fill(t.toolbar_bg)
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .inner_margin(egui::Margin::same(GAP_LG as i8))
+            .corner_radius(RADIUS_LG)
+            .shadow(egui::epaint::Shadow {
+                offset: [0, 4], blur: 14, spread: 0,
+                color: egui::Color32::from_black_alpha(80),
+            });
+        let modal_resp = Modal::new("TEMPLATES")
+            .id(&format!("template_popup_{}", pi))
+            .ctx(ctx)
+            .theme(t)
+            .size(egui::vec2(220.0, 0.0))
+            .anchor(Anchor::Area { pos })
+            .header_style(HeaderStyle::None)
+            .frame_kind(FrameKind::Custom(custom_frame))
+            .close_on_click_outside(true)
+            .separator(false)
+            .show(|ui| {
+                ui.set_width(220.0);
 
-                        // Header
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("TEMPLATES").monospace().size(FONT_LG).strong().color(t.accent));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if close_button(ui, t.dim) { close_popup = true; }
-                            });
-                        });
-                        ui.add_space(GAP_SM);
+                // Header
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("TEMPLATES").monospace().size(FONT_LG).strong().color(t.accent));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if close_button(ui, t.dim) { close_popup = true; }
+                    });
+                });
+                ui.add_space(GAP_SM);
 
                         // ── Pane Type selector ──
                         ui.add(super::widgets::text::SectionLabel::new("PANE TYPE").tiny().color(t.dim));
@@ -197,18 +204,8 @@ pub(crate) fn draw(
                                 }
                             }
                         });
-                    });
             });
-
-        // Close on click outside
-        if !close_popup {
-            let popup_rect = win_resp.response.rect;
-            if ctx.input(|i| i.pointer.any_pressed()) {
-                if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
-                    if !popup_rect.contains(p) { close_popup = true; }
-                }
-            }
-        }
+        if modal_resp.closed { close_popup = true; }
 
         if close_popup { panes[pi].template_popup_open = false; }
 

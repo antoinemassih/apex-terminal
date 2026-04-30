@@ -11,19 +11,23 @@ const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, 
 pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mut [Chart], _ap: usize, t: &Theme, conn_panel_open: &mut bool) {
     if !*conn_panel_open { return; }
 
-    // Use a simple egui::Window instead of dialog_window_themed to avoid potential panics
+    use super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
     let screen = _ctx.screen_rect();
-    egui::Window::new("connections")
-        .fixed_pos(egui::pos2(screen.right() - 240.0, 40.0))
-        .fixed_size(egui::vec2(220.0, 0.0))
-        .title_bar(false)
-        .frame(egui::Frame::popup(&_ctx.style())
-            .fill(t.toolbar_bg)
-            .inner_margin(0.0)
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_ACTIVE)))
-            .corner_radius(RADIUS_LG))
-        .show(_ctx, |ui| {
-            if super::widgets::headers::DialogHeaderWithClose::new("CONNECTIONS").dim(t.dim).show(ui) { *conn_panel_open = false; }
+    let custom_frame = egui::Frame::popup(&_ctx.style())
+        .fill(t.toolbar_bg)
+        .inner_margin(0.0)
+        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_ACTIVE)))
+        .corner_radius(RADIUS_LG);
+    let resp = Modal::new("CONNECTIONS")
+        .id("connections")
+        .ctx(_ctx)
+        .theme(t)
+        .size(egui::vec2(220.0, 0.0))
+        .anchor(Anchor::Window { pos: Some(egui::pos2(screen.right() - 240.0, 40.0)) })
+        .header_style(HeaderStyle::Dialog)
+        .frame_kind(FrameKind::Custom(custom_frame))
+        .separator(false)
+        .show(|ui| {
             ui.add_space(6.0);
             let m = 8.0;
 
@@ -87,4 +91,5 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
 
             ui.add_space(6.0);
         });
+    if resp.closed { *conn_panel_open = false; }
 }

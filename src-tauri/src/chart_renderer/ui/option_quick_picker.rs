@@ -53,21 +53,28 @@ pub(crate) fn draw(
         let cur_strike = panes[pi].option_strike;
         let cur_is_call = panes[pi].option_type == "C";
 
-        let window_resp = egui::Area::new(egui::Id::new(("opt_quick_picker", pi)))
-            .order(egui::Order::Foreground)
-            .fixed_pos(pos)
-            .show(ctx, |ui| {
-                egui::Frame::popup(&ctx.style())
-                    .fill(t.toolbar_bg)
-                    .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-                    .inner_margin(egui::Margin::same(GAP_LG as i8))
-                    .corner_radius(RADIUS_LG)
-                    .shadow(egui::epaint::Shadow {
-                        offset: [0, 4], blur: 14, spread: 0,
-                        color: egui::Color32::from_black_alpha(80),
-                    })
-                    .show(ui, |ui| {
-                        ui.set_width(260.0);
+        use super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+        let custom_frame = egui::Frame::popup(&ctx.style())
+            .fill(t.toolbar_bg)
+            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .inner_margin(egui::Margin::same(GAP_LG as i8))
+            .corner_radius(RADIUS_LG)
+            .shadow(egui::epaint::Shadow {
+                offset: [0, 4], blur: 14, spread: 0,
+                color: egui::Color32::from_black_alpha(80),
+            });
+        let modal_resp = Modal::new("OPT_QUICK_PICKER")
+            .id(&format!("opt_quick_picker_{}", pi))
+            .ctx(ctx)
+            .theme(t)
+            .size(egui::vec2(260.0, 0.0))
+            .anchor(Anchor::Area { pos })
+            .header_style(HeaderStyle::None)
+            .frame_kind(FrameKind::Custom(custom_frame))
+            .close_on_click_outside(true)
+            .separator(false)
+            .show(|ui| {
+                ui.set_width(260.0);
 
                         // ── Header: underlying symbol + close ──
                         ui.horizontal(|ui| {
@@ -269,20 +276,8 @@ pub(crate) fn draw(
                                     }
                                 });
                         }
-                    });
             });
-
-        // Close on click outside
-        if !close_picker {
-            let picker_rect = window_resp.response.rect;
-            if ctx.input(|i| i.pointer.any_pressed()) {
-                if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
-                    if !picker_rect.contains(p) {
-                        close_picker = true;
-                    }
-                }
-            }
-        }
+        if modal_resp.closed { close_picker = true; }
 
         if close_picker {
             panes[pi].option_quick_open = false;

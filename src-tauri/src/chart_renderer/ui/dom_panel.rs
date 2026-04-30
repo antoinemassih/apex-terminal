@@ -4,6 +4,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::Theme;
+use super::widgets::rows::dom_row::{ColumnLayout, DomRow, DomRowDragCx};
 use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
 
 pub(crate) const DOM_SIDEBAR_W: f32 = 220.0;
@@ -243,6 +244,21 @@ pub(crate) fn draw(
     let font = egui::FontId::monospace(12.5);
     let font_sm = egui::FontId::monospace(9.0);
     let lp = ui.painter_at(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), body_top), egui::pos2(dom_rect.right(), body_top+body_h)));
+    let _ = (font, font_sm); // retained imports above; widget owns its fonts now
+
+    // Shared column geometry — computed once, passed to every row.
+    let col_layout = ColumnLayout {
+        x0, cd,
+        xb, cb,
+        xp, cp,
+        xa, ca,
+        xv, cv,
+        xo, co,
+        show_delta, show_vol, show_numbers,
+    };
+
+    // Resolve the drop-target row index from the live drag y, if any.
+    let drop_target_rit: Option<i32> = dom_dragging.map(|(_, dy)| ((dy - body_top) / ROW_H).round() as i32);
 
     for ri in (-half..=half).rev() {
         let price = sc + ri as f32 * tick_size * -1.0;
@@ -257,169 +273,82 @@ pub(crate) fn draw(
         let is = dom_selected_price.map_or(false, |sp| (sp-price).abs() < tick_size*0.5);
         let oap: Vec<&&OrderLevel> = ao.iter().filter(|o| (o.price-price).abs() < tick_size*0.5).collect();
 
-        let rc = ui.allocate_rect(rr, egui::Sense::click());
-        let hv = rc.hovered();
-        if hv { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        if rc.clicked() { *dom_selected_price = Some(price); *dom_order_type = DomOrderType::Limit; }
-
-        // Row backgrounds
-        if is { lp.rect_filled(rr, 0.0, color_alpha(t.accent, ALPHA_TINT)); lp.line_segment([egui::pos2(inner.left(), ry), egui::pos2(inner.left(), ry+ROW_H)], egui::Stroke::new(STROKE_THICK, t.accent)); }
-        else if ic {
-            // Current price: highlighted with accent border
-            lp.rect_filled(rr, 0.0, color_alpha(t.accent, 35));
-            lp.rect_stroke(rr, 0.0, egui::Stroke::new(STROKE_STD, color_alpha(t.accent, ALPHA_ACTIVE)), egui::StrokeKind::Outside);
-        }
-        else if hv { lp.rect_filled(rr, 0.0, color_alpha(t.toolbar_border, ALPHA_SUBTLE)); }
-        if bs > 0 && ask > 0 { let r = bs as f32/ask as f32; if r > 3.0 { lp.rect_filled(rr, 0.0, color_alpha(t.bull, ALPHA_GHOST)); } else if r < 0.33 { lp.rect_filled(rr, 0.0, color_alpha(t.bear, ALPHA_GHOST)); } }
-
-        let cy = ry + ROW_H*0.5;
-        let dark = egui::Color32::from_rgb(12, 14, 18);
-
-        // Delta
-        if show_delta && delta != 0 {
-            let dc = if delta > 0 { t.bull.gamma_multiply(0.6) } else { t.bear.gamma_multiply(0.6) };
-            let ds = if delta > 0 { format!("+{}", delta) } else { format!("{}", delta) };
-            lp.text(egui::pos2(x0+cd*0.5, cy), egui::Align2::CENTER_CENTER, &ds, font_sm.clone(), dc);
-        }
-
-        // Bid bar + split-color text
-        if bs > 0 {
-            let fr = bs as f32/ms; let bw = fr*cb*0.85;
-            let bar_rect = egui::Rect::from_min_size(egui::pos2(xb+cb-bw-1.0, ry+1.0), egui::vec2(bw, ROW_H-2.0));
-            lp.rect_filled(bar_rect, 1.5, color_alpha(t.bull, (60.0+fr*140.0) as u8));
-            if show_numbers {
-                let txt = fmt_size(bs);
-                let txt_pos = egui::pos2(xb+cb*0.5, cy);
-                let normal_c = if hv { t.bull } else { t.bull.gamma_multiply(0.7) };
-                // Paint normal color first, then dark on top clipped to bar
-                lp.text(txt_pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), normal_c);
-                if fr > 0.2 {
-                    let bar_clip = ui.painter_at(bar_rect);
-                    bar_clip.text(txt_pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), dark);
-                }
-            }
-        }
-
-        // Price (max 5 chars when narrow)
-        let pc = if ic { egui::Color32::WHITE } else if is { t.accent } else if ia { t.bull.gamma_multiply(0.7) } else { t.bear.gamma_multiply(0.7) };
-        let ps = if tick_size >= 1.0 { format!("{:.0}", price) }
-            else { let s = format!("{:.2}", price); if s.len() > 5 && cp < 60.0 { format!("{:.1}", price) } else { s } };
-        lp.text(egui::pos2(xp+cp*0.5, cy), egui::Align2::CENTER_CENTER, &ps, if ic { egui::FontId::monospace(11.0) } else { font.clone() }, pc);
-
-        // Ask bar + split-color text
-        if ask > 0 {
-            let fr = ask as f32/ms; let bw = fr*ca*0.85;
-            let bar_rect = egui::Rect::from_min_size(egui::pos2(xa+1.0, ry+1.0), egui::vec2(bw, ROW_H-2.0));
-            lp.rect_filled(bar_rect, 1.5, color_alpha(t.bear, (60.0+fr*140.0) as u8));
-            if show_numbers {
-                let txt = fmt_size(ask);
-                let txt_pos = egui::pos2(xa+ca*0.5, cy);
-                let normal_c = if hv { t.bear } else { t.bear.gamma_multiply(0.7) };
-                lp.text(txt_pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), normal_c);
-                if fr > 0.2 {
-                    let bar_clip = ui.painter_at(bar_rect);
-                    bar_clip.text(txt_pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), dark);
-                }
-            }
-        }
-
-        // Volume (with split-color)
-        if show_vol && vol > 0 {
-            let vf = vol as f32/mv as f32; let vw = vf*cv*0.8;
-            let vol_bar = egui::Rect::from_min_size(egui::pos2(xv+1.0, ry+1.0), egui::vec2(vw, ROW_H-2.0));
-            lp.rect_filled(vol_bar, 1.0, color_alpha(t.dim, ALPHA_SUBTLE));
-            let vs = if vol >= 1_000_000 { format!("{:.1}M", vol as f64/1e6) } else if vol >= 1_000 { format!("{:.0}K", vol as f64/1e3) } else { format!("{}", vol) };
-            let txt_pos = egui::pos2(xv+cv*0.5, cy);
-            lp.text(txt_pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), t.dim.gamma_multiply(0.5));
-            if vf > 0.3 {
-                let bar_clip = ui.painter_at(vol_bar);
-                bar_clip.text(txt_pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), dark);
-            }
-        }
-
-        // Orders — compact "B100" or "S50", draggable, X cancel on hover
-        let is_being_dragged_here = dom_dragging.map_or(false, |(_, dy)| {
-            let drag_price_row = ((dy - body_top) / ROW_H).round() as i32;
-            let this_row = rit;
-            drag_price_row == this_row
-        });
-        for ord in &oap {
+        // Build the rich-orders array for this row.
+        let rich: Vec<(u32, char, u32, egui::Color32)> = oap.iter().map(|ord| {
             let oc = ord.color(t.bull, t.bear);
-            let side_ch = match ord.side { OrderSide::Buy | OrderSide::TriggerBuy => "B", _ => "S" };
-            let label = format!("{}{}", side_ch, ord.qty);
-            let br = egui::Rect::from_min_size(egui::pos2(xo+1.0, ry+1.0), egui::vec2(co-3.0, ROW_H-2.0));
+            let side_ch = match ord.side { OrderSide::Buy | OrderSide::TriggerBuy => 'B', _ => 'S' };
+            (ord.id, side_ch, ord.qty, oc)
+        }).collect();
 
-            // Draggable badge
-            let drag_resp = ui.allocate_rect(br, egui::Sense::click_and_drag());
-            if drag_resp.drag_started() {
-                *dom_dragging = Some((ord.id, ry));
-            }
-            if drag_resp.dragged() {
-                if let Some((did, ref mut dy)) = dom_dragging {
-                    if *did == ord.id {
-                        *dy += drag_resp.drag_delta().y;
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                    }
+        // Build cross-row drag context.
+        let mut drag_cx = DomRowDragCx::default();
+        if let Some((did, _)) = *dom_dragging {
+            drag_cx.dragging_order_id = Some(did);
+            if drop_target_rit == Some(rit) {
+                if let Some(drag_ord) = ao.iter().find(|o| o.id == did) {
+                    drag_cx.is_drop_target = true;
+                    drag_cx.ghost_side = Some(match drag_ord.side {
+                        OrderSide::Buy | OrderSide::TriggerBuy => 'B', _ => 'S',
+                    });
+                    drag_cx.ghost_qty = drag_ord.qty;
+                    drag_cx.ghost_color = drag_ord.color(t.bull, t.bear);
                 }
             }
-            if drag_resp.drag_stopped() {
-                if let Some((did, dy)) = *dom_dragging {
-                    if did == ord.id {
-                        // Calculate target price from drop y position
-                        let drop_row = ((dy - body_top) / ROW_H).round() as i32;
-                        let target_ri = half - drop_row;
-                        let target_price = sc + target_ri as f32 * tick_size * -1.0;
+        }
+
+        // Compute fills (parent-normalized).
+        let bid_fill_v = if bs > 0 { bs as f32 / ms } else { 0.0 };
+        let ask_fill_v = if ask > 0 { ask as f32 / ms } else { 0.0 };
+        let vol_fill_v = if vol > 0 { vol as f32 / mv as f32 } else { 0.0 };
+
+        // Imbalance hint (positive → ask-side bull, negative → bear). The
+        // widget only uses sign to pick price color in our fallback path.
+        let imb = if ia { 1.0 } else { -1.0 };
+
+        let resp = DomRow::new(price, bs, ask)
+            .bid_fill(bid_fill_v).ask_fill(ask_fill_v)
+            .delta(delta).volume(vol, vol_fill_v)
+            .selected(is).current_price(ic).inside_spread(false)
+            .imbalance_fill(imb)
+            .height(ROW_H)
+            .theme(t)
+            .column_layout(col_layout)
+            .drag_cx(drag_cx)
+            .compact_price(tick_size < 1.0)
+            .rich_orders(&rich)
+            .show_in(ui, &lp, rr);
+
+        if resp.row_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        if resp.row_clicked { *dom_selected_price = Some(price); *dom_order_type = DomOrderType::Limit; }
+
+        // Drag-state plumbing.
+        if let Some(oid) = resp.order_drag_started {
+            *dom_dragging = Some((oid, ry));
+        }
+        if let Some((oid, dy_delta)) = resp.order_dragging {
+            if let Some((did, ref mut dy)) = dom_dragging {
+                if *did == oid {
+                    *dy += dy_delta;
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
+            }
+        }
+        if let Some(oid) = resp.order_drag_stopped {
+            if let Some((did, dy)) = *dom_dragging {
+                if did == oid {
+                    let drop_row = ((dy - body_top) / ROW_H).round() as i32;
+                    let target_ri = half - drop_row;
+                    let target_price = sc + target_ri as f32 * tick_size * -1.0;
+                    if let Some(ord) = ao.iter().find(|o| o.id == oid) {
                         if (target_price - ord.price).abs() > tick_size * 0.1 {
-                            *move_order = Some((ord.id, target_price));
+                            *move_order = Some((oid, target_price));
                         }
                     }
                 }
-                *dom_dragging = None;
             }
-
-            let currently_dragging_this = dom_dragging.map_or(false, |(did, _)| did == ord.id);
-
-            // Draw badge (dim if being dragged away)
-            let alpha_mult = if currently_dragging_this { 0.3 } else { 1.0 };
-            lp.rect_filled(br, 2.0, color_alpha(oc, (140.0 * alpha_mult) as u8));
-            lp.rect_stroke(br, 2.0, egui::Stroke::new(STROKE_THIN, color_alpha(oc, (180.0 * alpha_mult) as u8)), egui::StrokeKind::Outside);
-
-            let ord_hovered = drag_resp.hovered() && !currently_dragging_this;
-            if ord_hovered {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                // X cancel on right
-                let xr = egui::Rect::from_min_size(egui::pos2(br.right()-12.0, br.top()), egui::vec2(12.0, br.height()));
-                lp.rect_filled(xr, 1.0, color_alpha(t.bear, ALPHA_DIM));
-                lp.text(xr.center(), egui::Align2::CENTER_CENTER, "x", egui::FontId::monospace(7.0), egui::Color32::WHITE);
-                let label_rect = egui::Rect::from_min_max(br.min, egui::pos2(br.right()-12.0, br.max.y));
-                draw_order_label(&lp, label_rect, side_ch, ord.qty, oc);
-                // Cancel on click (not drag)
-                if drag_resp.clicked() {
-                    let ptr = ui.input(|i| i.pointer.hover_pos()).unwrap_or_default();
-                    if ptr.x > br.right() - 14.0 { *cancel_order_id = Some(ord.id); }
-                }
-            } else if !currently_dragging_this {
-                draw_order_label(&lp, br, side_ch, ord.qty, oc);
-            }
+            *dom_dragging = None;
         }
-
-        // Draw ghost badge if an order is being dragged to this row
-        if is_being_dragged_here {
-            if let Some((did, _)) = *dom_dragging {
-                if let Some(drag_ord) = ao.iter().find(|o| o.id == did) {
-                    let oc = drag_ord.color(t.bull, t.bear);
-                    let side_ch = match drag_ord.side { OrderSide::Buy | OrderSide::TriggerBuy => "B", _ => "S" };
-                    let gr = egui::Rect::from_min_size(egui::pos2(xo+1.0, ry+1.0), egui::vec2(co-3.0, ROW_H-2.0));
-                    lp.rect_filled(gr, 2.0, color_alpha(oc, 160));
-                    lp.rect_stroke(gr, 2.0, egui::Stroke::new(STROKE_BOLD, oc), egui::StrokeKind::Outside);
-                    draw_order_label(&lp, gr, side_ch, drag_ord.qty, oc);
-                    // Also highlight the full row
-                    lp.rect_stroke(rr, 0.0, egui::Stroke::new(STROKE_STD, color_alpha(oc, ALPHA_DIM)), egui::StrokeKind::Outside);
-                }
-            }
-        }
-
-        lp.line_segment([egui::pos2(inner.left(), ry+ROW_H), egui::pos2(inner.right(), ry+ROW_H)], egui::Stroke::new(STROKE_HAIR, color_alpha(t.toolbar_border, ALPHA_SUBTLE)));
+        if let Some(oid) = resp.order_cancel { *cancel_order_id = Some(oid); }
     }
 }
 

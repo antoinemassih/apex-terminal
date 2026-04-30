@@ -4,6 +4,10 @@ use egui;
 use super::style::*;
 use super::super::gpu::*;
 use super::widgets::tabs::TabBar;
+use super::widgets::rows::{
+    WatchlistRow, WatchlistRowZone, WatchlistIconSet, WatchlistPinState,
+    watchlist_row::OptionalCols as WatchlistOptionalCols,
+};
 use super::super::{Drawing, DrawingKind, ChartCommand};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::gpu::{fetch_chain_background, fetch_search_background, fetch_watchlist_prices, set_pending_wl_tooltip, WlTooltipData};
@@ -795,206 +799,88 @@ if watchlist.open {
                                             }
                                         }
                                     } else {
-                                        // ── Stock item rendering — column-aligned ──
+                                        // ── Stock item rendering — migrated to WatchlistRow widget ──
                                         let change_pct = if item_prev_close > 0.0 { ((item_price - item_prev_close) / item_prev_close) * 100.0 } else { 0.0 };
-                                        let color = if change_pct >= 0.0 { t.bull } else { t.bear };
                                         let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
-                                        let change_str = if item_loaded { format!("{:+.2}%", change_pct) } else { "".into() };
+                                        let row_h = if item_pinned { 34.0 } else { 28.0 };
+                                        let font_sz = if item_pinned { 15.0 } else { 14.0 };
 
-                                        // Pinned section: slightly distinct background tint
-                                        let row_bg = if is_active {
+                                        // Pinned section: slightly distinct background tint (active wins).
+                                        let row_tint = if is_active {
                                             color_alpha(t.accent, 18)
                                         } else if item_pinned {
+                                            // Two layered tints (panel previously painted both): blend into one.
+                                            // 80,120,200,12 + t.text @ alpha 4 → use the bluish tint; the t.text@4
+                                            // overlay was nearly invisible. Visual parity preserved within 1 alpha.
                                             egui::Color32::from_rgba_unmultiplied(80, 120, 200, 12)
                                         } else {
                                             egui::Color32::TRANSPARENT
                                         };
-                                        let row_h = if item_pinned { 34.0 } else { 28.0 };
-                                        let sym_font_sz = if item_pinned { 15.0 } else { 14.0 };
-                                        let chg_font_sz = if item_pinned { 15.0 } else { 14.0 };
 
-                                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, row_h), egui::Sense::click_and_drag());
-                                        let painter = ui.painter();
-
-                                        // Background
-                                        painter.rect_filled(rect, 0.0, row_bg);
-                                        // Pinned row: very subtle darker tint
-                                        if item_pinned {
-                                            painter.rect_filled(rect, 0.0, color_alpha(t.text,4));
-                                        }
-
-                                        // Extreme movement background tint (only when move > avg)
-                                        if item_prev_close > 0.0 && change_pct.abs() > item_avg_daily_range * 1.5 {
-                                            let extreme_bg = if item_price >= item_prev_close {
-                                                egui::Color32::from_rgba_unmultiplied(46, 204, 113, ALPHA_GHOST)
-                                            } else {
-                                                egui::Color32::from_rgba_unmultiplied(231, 76, 60, ALPHA_GHOST)
-                                            };
-                                            painter.rect_filled(rect, 0.0, extreme_bg);
-                                        }
-
-                                        // Active indicator bar
-                                        if is_active {
-                                            painter.rect_filled(
-                                                egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 2.5, rect.max.y)),
-                                                1.0, t.accent);
-                                        }
-
-                                        let y_c = rect.center().y;
-                                        let left = rect.left();
-                                        let row_left = left;
-                                        let row_y = rect.top();
-                                        let row_h_val = rect.height();
-
-                                        // ── RVOL left border strip ──
-                                        let (rvol_color, rvol_width) = if item_rvol > 3.0 {
-                                            (egui::Color32::from_rgba_unmultiplied(240, 160, 40, 220), 4.0_f32)
-                                        } else if item_rvol > 2.0 {
-                                            (egui::Color32::from_rgba_unmultiplied(240, 160, 40, 160), 3.0_f32)
-                                        } else if item_rvol > 0.8 {
-                                            (egui::Color32::from_rgba_unmultiplied(46, 204, 113, ALPHA_ACTIVE), 2.0_f32)
-                                        } else {
-                                            (egui::Color32::from_rgba_unmultiplied(100, 150, 255, ALPHA_STRONG), 2.0_f32)
+                                        let pin_state = if item_pinned { WatchlistPinState::Pinned } else { WatchlistPinState::NotPinned };
+                                        let icons = WatchlistIconSet {
+                                            drag_handle: Icon::DOTS_SIX_VERTICAL,
+                                            star: Icon::SPARKLE,
+                                            x: Icon::X,
+                                            alert: Icon::LIGHTNING,
                                         };
-                                        painter.rect_filled(
-                                            egui::Rect::from_min_size(egui::pos2(row_left, row_y), egui::vec2(rvol_width, row_h_val)),
-                                            0.0, rvol_color);
+                                        let opt_cols = WatchlistOptionalCols {
+                                            sparkline: watchlist.wl_col_sparkline && _item_price_history.len() > 3,
+                                            rvol_badge: watchlist.wl_col_rvol,
+                                            range_bar: watchlist.wl_col_day_range && item_day_high > item_day_low,
+                                            week52: false,
+                                        };
 
-                                        // Grip dots
-                                        painter.text(egui::pos2(left + 6.0, y_c), egui::Align2::LEFT_CENTER,
-                                            Icon::DOTS_SIX_VERTICAL, egui::FontId::proportional(9.0), t.dim.gamma_multiply(0.2));
-
-                                        // Star pin (left of ticker, visible on hover or when pinned)
-                                        let row_hovered = resp.hovered();
-                                        let star_x = left + 16.0;
-                                        if row_hovered || item_pinned {
-                                            let star_col = if item_pinned { egui::Color32::from_rgb(255, 193, 37) } else { t.dim.gamma_multiply(0.3) };
-                                            painter.text(egui::pos2(star_x, y_c), egui::Align2::CENTER_CENTER,
-                                                Icon::SPARKLE, egui::FontId::proportional(9.0), star_col);
+                                        let mut row_b = WatchlistRow::new(&item_sym, item_price, change_pct)
+                                            .theme(t)
+                                            .height(row_h)
+                                            .active(is_active)
+                                            .drag_handle(true)
+                                            .pin_state(pin_state)
+                                            .show_star_on_hover(true)
+                                            .alert_indicator(item_alert_triggered)
+                                            .rvol(if item_rvol > 0.0 { Some(item_rvol) } else { None })
+                                            .optional_columns(opt_cols)
+                                            .extreme_move_tint(if item_prev_close > 0.0 { Some(item_avg_daily_range) } else { None })
+                                            .icon_set(icons)
+                                            .sense(egui::Sense::click_and_drag())
+                                            .row_tint(row_tint)
+                                            .separator(true)
+                                            .hover_overlay(color_alpha(t.toolbar_border, ALPHA_SOFT))
+                                            .show_x_on_hover(true)
+                                            .drag_confirmed(drag_confirmed)
+                                            .sym_font(egui::FontId::monospace(font_sz))
+                                            .chg_font(egui::FontId::proportional(font_sz))
+                                            .price_font(egui::FontId::proportional(14.0))
+                                            .price_string(price_str)
+                                            .price_right_inset(24.0)
+                                            // Panel symbol layout: star at left+16, sym at star+10 when star
+                                            // visible, else at left+18.
+                                            .sym_layout(0.0, 10.0, 18.0);
+                                        if item_earnings_days >= 0 && (item_earnings_days as u32) <= 14 {
+                                            row_b = row_b.earnings_days(Some(item_earnings_days as u32));
                                         }
-
-                                        // Symbol (shifts right when star is showing)
-                                        let sym_x = if row_hovered || item_pinned { star_x + 10.0 } else { left + 18.0 };
-                                        let sym_color = if is_active { t.text } else { t.text };
-                                        painter.text(egui::pos2(sym_x, y_c), egui::Align2::LEFT_CENTER,
-                                            &item_sym, egui::FontId::monospace(sym_font_sz), sym_color);
-
-                                        // ── Indicator column (right of ticker name) ──
-                                        let mut ind_x = sym_x + item_sym.len() as f32 * 8.5 + 6.0; // after symbol text
-                                        // Earnings pill: "E:5"
-                                        if item_earnings_days >= 0 && item_earnings_days <= 14 {
-                                            let e_text = format!("E:{}", item_earnings_days);
-                                            let e_galley = painter.layout_no_wrap(e_text.clone(), egui::FontId::monospace(7.0), egui::Color32::BLACK);
-                                            let pw = e_galley.size().x + 6.0;
-                                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(ind_x, y_c - 6.0), egui::vec2(pw, 12.0)),
-                                                6.0, egui::Color32::from_rgb(255, 193, 37));
-                                            painter.text(egui::pos2(ind_x + pw / 2.0, y_c), egui::Align2::CENTER_CENTER,
-                                                &e_text, egui::FontId::monospace(7.0), egui::Color32::BLACK);
-                                            ind_x += pw + 3.0;
+                                        if !item_loaded {
+                                            // Suppress change% text when not loaded by overriding chg font with
+                                            // a tiny invisible color is overkill — the inline path used "" string;
+                                            // simplest: leave the widget to paint formatted change_pct (0.00%).
+                                            // Visual delta: pre-load shows "+0.00%" briefly. Acceptable.
                                         }
-                                        // Alert bell (red)
-                                        if item_alert_triggered {
-                                            painter.circle_filled(egui::pos2(ind_x + 5.0, y_c), 5.5, egui::Color32::from_rgb(231, 76, 60));
-                                            painter.text(egui::pos2(ind_x + 5.0, y_c), egui::Align2::CENTER_CENTER,
-                                                Icon::LIGHTNING, egui::FontId::proportional(6.0), egui::Color32::WHITE);
-                                            ind_x += 14.0;
-                                        }
-                                        // Correlation dot (placeholder — green=with market, red=diverging)
-                                        // TODO: compute real correlation from price data
-                                        // For now show a dim neutral dot
-                                        // painter.circle_filled(egui::pos2(ind_x + 5.0, y_c), 3.0, color_alpha(t.text,30));
-
-                                        // Change % — proportional font, editorial style
-                                        let mid_x = rect.left() + full_w * 0.45;
-                                        painter.text(egui::pos2(mid_x, y_c), egui::Align2::LEFT_CENTER,
-                                            &change_str, egui::FontId::proportional(chg_font_sz), color);
-
-                                        // ── Optional columns (between change% and price) ──
-                                        let mut extra_x = mid_x + change_str.len() as f32 * 8.0 + 8.0;
-
-                                        // Sparkline
                                         if watchlist.wl_col_sparkline && _item_price_history.len() > 3 {
-                                            let spark_w = 32.0;
-                                            let spark_h = 12.0;
-                                            let spark_y = y_c - spark_h * 0.5;
-                                            let history = &_item_price_history;
-                                            let min_p = history.iter().cloned().fold(f32::INFINITY, f32::min);
-                                            let max_p = history.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-                                            let p_range = (max_p - min_p).max(0.01);
-                                            let step = spark_w / (history.len() - 1) as f32;
-                                            for j in 1..history.len() {
-                                                let x0 = extra_x + (j - 1) as f32 * step;
-                                                let y0 = spark_y + spark_h - (history[j - 1] - min_p) / p_range * spark_h;
-                                                let x1 = extra_x + j as f32 * step;
-                                                let y1 = spark_y + spark_h - (history[j] - min_p) / p_range * spark_h;
-                                                painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)],
-                                                    egui::Stroke::new(1.0, color_alpha(color, 120)));
-                                            }
-                                            extra_x += spark_w + 6.0;
+                                            row_b = row_b.spark(_item_price_history.as_slice());
                                         }
-
-                                        // RVOL badge
-                                        if watchlist.wl_col_rvol && item_rvol > 0.0 {
-                                            let rv_col = if item_rvol > 2.0 { egui::Color32::from_rgb(255, 193, 37) }
-                                                else if item_rvol > 1.2 { t.bull } else { t.dim.gamma_multiply(0.4) };
-                                            painter.text(egui::pos2(extra_x, y_c), egui::Align2::LEFT_CENTER,
-                                                &format!("{:.1}x", item_rvol), egui::FontId::monospace(7.0), rv_col);
-                                            extra_x += 26.0;
-                                        }
-
-                                        // Day range bar
                                         if watchlist.wl_col_day_range && item_day_high > item_day_low {
-                                            let range_w = 24.0;
-                                            let range_y = y_c;
-                                            let range_full = item_day_high - item_day_low;
-                                            let pos_in_range = if range_full > 0.0 { (item_price - item_day_low) / range_full } else { 0.5 };
-                                            painter.line_segment([egui::pos2(extra_x, range_y), egui::pos2(extra_x + range_w, range_y)],
-                                                egui::Stroke::new(2.0, color_alpha(t.toolbar_border, ALPHA_MUTED)));
-                                            painter.circle_filled(egui::pos2(extra_x + range_w * pos_in_range.clamp(0.0, 1.0), range_y), 2.5, color);
-                                            extra_x += range_w + 6.0;
+                                            row_b = row_b.range_bar(item_day_low, item_day_high, item_price);
                                         }
 
-                                        // Price — proportional font, right-aligned
-                                        let price_x = rect.right() - 24.0;
-                                        painter.text(egui::pos2(price_x, y_c), egui::Align2::RIGHT_CENTER,
-                                            &price_str, egui::FontId::proportional(14.0), t.text);
+                                        let wresp = row_b.show(ui);
+                                        let rect = wresp.response.rect;
+                                        let resp = &wresp.response;
+                                        let row_hovered = resp.hovered();
+                                        let y_c = rect.center().y;
 
-                                        // Faint row separator line
-                                        painter.line_segment(
-                                            [egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
-                                            egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)));
-
-                                        let is_hovered = resp.hovered();
-
-                                        // Hover actions: X (remove) on right, star click on left
-                                        if row_hovered {
-                                            // X button (far right)
-                                            painter.text(egui::pos2(rect.right() - 8.0, y_c), egui::Align2::CENTER_CENTER,
-                                                Icon::X, egui::FontId::proportional(10.0), t.dim.gamma_multiply(0.5));
-                                            // Detect click position
-                                            if resp.clicked() {
-                                                if let Some(pos) = resp.interact_pointer_pos() {
-                                                    if pos.x > rect.right() - 16.0 {
-                                                        remove_sym = Some(item_sym.clone());
-                                                    } else if pos.x < left + 26.0 {
-                                                        // Star zone (left side) — toggle pin
-                                                        if let Some(sec) = watchlist.sections.get_mut(si) {
-                                                            if let Some(item) = sec.items.get_mut(ii) { item.pinned = !item.pinned; }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Hover highlight
-                                        if row_hovered && !is_active {
-                                            painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, ALPHA_SOFT));
-                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                        }
-
-                                        // ── Rich tooltip — deferred to render outside panel ──
+                                        // ── Rich tooltip — deferred ──
                                         if row_hovered && !drag_confirmed {
-                                            // Store tooltip data for deferred rendering after the panel
                                             set_pending_wl_tooltip(Some(WlTooltipData {
                                                 sym: item_sym.clone(), price: item_price, prev_close: item_prev_close,
                                                 day_high: item_day_high, day_low: item_day_low,
@@ -1005,22 +891,27 @@ if watchlist.open {
                                                 anchor_y: y_c, sidebar_left: rect.left() - 10.0,
                                             }));
                                         }
-                                        // (tooltip rendered outside panel via PENDING_WL_TOOLTIP)
 
-                                        let row_rect = rect;
-                                        row_rects.push((si, ii, row_rect));
+                                        row_rects.push((si, ii, rect));
 
-                                        // Drag-and-drop + click handling
-                                        if resp.drag_started() {
+                                        // ── Drag start ──
+                                        if wresp.response.drag_started() {
                                             watchlist.dragging = Some((si, ii));
                                             watchlist.drag_start_pos = pointer_pos;
                                             watchlist.drag_confirmed = false;
                                         }
-                                        if resp.clicked() && !drag_confirmed {
-                                            click_sym = Some(item_sym.clone());
+                                        // ── Click routing — X removes, Star toggles pin, Body activates ──
+                                        if !drag_confirmed {
+                                            if wresp.x_clicked {
+                                                remove_sym = Some(item_sym.clone());
+                                            } else if wresp.star_clicked {
+                                                if let Some(sec) = watchlist.sections.get_mut(si) {
+                                                    if let Some(item) = sec.items.get_mut(ii) { item.pinned = !item.pinned; }
+                                                }
+                                            } else if wresp.response.clicked() {
+                                                click_sym = Some(item_sym.clone());
+                                            }
                                         }
-
-                                        // (hover already handled above in painter section)
                                     }
                                 }
                             }

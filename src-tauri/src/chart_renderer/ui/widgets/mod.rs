@@ -29,3 +29,4 @@ pub mod form;
 pub mod pane;
 pub mod status;
 pub mod foundation;
+pub mod icons;

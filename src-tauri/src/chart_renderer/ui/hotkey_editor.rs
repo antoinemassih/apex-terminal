@@ -52,13 +52,22 @@ if let Some(edit_id) = watchlist.hotkey_editing_id {
 
 // ── Hotkey editor dialog ────────────────────────────────────────────────
 if watchlist.hotkey_editor_open {
+    use super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
     let screen = ctx.screen_rect();
-    dialog_window_themed(ctx, "hotkey_editor", egui::pos2(screen.center().x - 270.0, 40.0), 540.0, t.toolbar_bg, t.toolbar_border, None)
-        .show(ctx, |ui| {
-            if super::widgets::headers::DialogHeaderWithClose::new("KEYBOARD SHORTCUTS").dim(t.dim).show(ui) { watchlist.hotkey_editor_open = false; }
+    let resp = Modal::new("KEYBOARD SHORTCUTS")
+        .id("hotkey_editor")
+        .ctx(ctx)
+        .theme(t)
+        .size(egui::vec2(540.0, 0.0))
+        .anchor(Anchor::Window { pos: Some(egui::pos2(screen.center().x - 270.0, 40.0)) })
+        .header_style(HeaderStyle::Dialog)
+        .frame_kind(FrameKind::DialogWindow)
+        .separator(false)
+        .show(|ui| {
             ui.add_space(6.0);
             draw_content(ui, watchlist, t);
         });
+    if resp.closed { watchlist.hotkey_editor_open = false; }
 }
 
 

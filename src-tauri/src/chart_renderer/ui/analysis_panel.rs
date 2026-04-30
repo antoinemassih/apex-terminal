@@ -5,6 +5,7 @@ use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::AnalysisTab;
+use super::widgets::text::SectionLabel;
 
 const ALL_TABS: &[(AnalysisTab, &str)] = &[
     (AnalysisTab::Rrg, "RRG"),
@@ -38,7 +39,7 @@ pub(crate) fn draw(
             // Header: title + add-section button + close
             let header = ui.horizontal(|ui| {
                 ui.set_min_height(26.0);
-                ui.label(egui::RichText::new("ANALYSIS").monospace().size(FONT_SM).strong().color(t.accent));
+                ui.add(SectionLabel::new("ANALYSIS").color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.analysis_open = false; }
                     // Add section button

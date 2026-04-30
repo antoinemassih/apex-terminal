@@ -31,6 +31,9 @@ pub struct TabBar<'a, 'b, T: PartialEq + Copy> {
     tabs: &'a [(T, &'a str)],
     accent: Color32,
     dim: Color32,
+    font_size: Option<f32>,
+    underline: bool,
+    min_height: Option<f32>,
 }
 
 impl<'a, 'b, T: PartialEq + Copy> TabBar<'a, 'b, T> {
@@ -40,11 +43,20 @@ impl<'a, 'b, T: PartialEq + Copy> TabBar<'a, 'b, T> {
             tabs,
             accent: Color32::from_rgb(100, 160, 255),
             dim:    Color32::from_rgb(120, 120, 130),
+            font_size: None,
+            underline: true,
+            min_height: None,
         }
     }
 
     pub fn accent(mut self, c: Color32) -> Self { self.accent = c; self }
     pub fn dim(mut self, c: Color32) -> Self { self.dim = c; self }
+    /// Override the label font size (default: `font_lg()`).
+    pub fn font_size(mut self, px: f32) -> Self { self.font_size = Some(px); self }
+    /// Show the 2px active-tab underline (default: true). Set false for flat tabs.
+    pub fn underline(mut self, on: bool) -> Self { self.underline = on; self }
+    /// Force a minimum button height (used when the tab strip needs a fixed row size).
+    pub fn min_height(mut self, h: f32) -> Self { self.min_height = Some(h); self }
 
     /// Pull accent + dim from a theme.
     pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
@@ -52,7 +64,35 @@ impl<'a, 'b, T: PartialEq + Copy> TabBar<'a, 'b, T> {
     }
 
     pub fn show(self, ui: &mut Ui) {
-        tab_bar(ui, self.current, self.tabs, self.accent, self.dim);
+        // Default behaviour preserved: when no knobs were touched (font_size=None,
+        // underline=true, min_height=None), this delegates byte-for-byte to
+        // `style::tab_bar` to keep all existing call sites visually identical.
+        if self.font_size.is_none() && self.underline && self.min_height.is_none() {
+            tab_bar(ui, self.current, self.tabs, self.accent, self.dim);
+            return;
+        }
+        let fs = self.font_size.unwrap_or_else(font_lg);
+        let tab_ul = crate::dt_f32!(tab.underline_thickness, 2.0);
+        for (tab, label) in self.tabs {
+            let active = *self.current == *tab;
+            let color = if active { self.accent } else { self.dim };
+            let mut btn = egui::Button::new(
+                egui::RichText::new(*label).monospace().size(fs).strong().color(color)
+            ).frame(false).fill(Color32::TRANSPARENT).stroke(Stroke::NONE);
+            if let Some(h) = self.min_height {
+                btn = btn.min_size(Vec2::new(0.0, h));
+            }
+            let resp = ui.add(btn);
+            if resp.clicked() { *self.current = *tab; }
+            if active && self.underline {
+                let r = resp.rect;
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_max(
+                        egui::pos2(r.left(), r.max.y - tab_ul),
+                        egui::pos2(r.right(), r.max.y)),
+                    0.0, self.accent);
+            }
+        }
     }
 }
 

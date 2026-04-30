@@ -3,6 +3,8 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme, JournalEntry};
+use super::widgets::text::SectionLabel;
+use super::widgets::layout::EmptyState;
 
 /// Inline content for the Book tab's Journal section.
 pub(crate) fn draw_content(
@@ -12,14 +14,14 @@ pub(crate) fn draw_content(
 ) {
     let entries = &watchlist.journal_entries;
     if entries.is_empty() {
-        ui.label(egui::RichText::new("No trades logged").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+        EmptyState::new("\u{1F4D2}", "No trades logged", "Log a trade to see analytics").theme(t).show(ui);
         return;
     }
     draw_summary(ui, entries, t);
     ui.add_space(GAP_SM);
     separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
     ui.add_space(GAP_SM);
-    section_label(ui, &format!("RECENT TRADES ({})", entries.len().min(5)), t.dim);
+    ui.add(SectionLabel::new(&format!("RECENT TRADES ({})", entries.len().min(5))).tiny().color(t.dim));
     ui.add_space(GAP_XS);
     for entry in entries.iter().take(5) {
         draw_card(ui, entry, t);
@@ -57,9 +59,7 @@ pub(crate) fn draw(
             let entries = &watchlist.journal_entries;
             if entries.is_empty() {
                 ui.add_space(GAP_3XL);
-                ui.vertical_centered(|ui| {
-                    ui.label(egui::RichText::new("No trades logged").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
-                });
+                EmptyState::new("\u{1F4D2}", "No trades logged", "Log a trade to see analytics").theme(t).show(ui);
                 return;
             }
 
@@ -72,7 +72,7 @@ pub(crate) fn draw(
                 ui.add_space(GAP_SM);
                 separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
                 ui.add_space(GAP_SM);
-                section_label(ui, &format!("TRADE LOG ({})", entries.len()), t.dim);
+                ui.add(SectionLabel::new(&format!("TRADE LOG ({})", entries.len())).tiny().color(t.dim));
                 ui.add_space(GAP_XS);
                 for entry in entries {
                     draw_card(ui, entry, t);
@@ -128,7 +128,7 @@ fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
 
 fn draw_insights(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
     // By setup type
-    section_label(ui, "BY SETUP TYPE", t.dim);
+    ui.add(SectionLabel::new("BY SETUP TYPE").tiny().color(t.dim));
     ui.add_space(GAP_XS);
     let mut setups: Vec<(String, u32, u32, f64)> = Vec::new();
     for e in entries {
@@ -145,7 +145,7 @@ fn draw_insights(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
     }
 
     ui.add_space(GAP_SM);
-    section_label(ui, "BY HOLDING TIME", t.dim);
+    ui.add(SectionLabel::new("BY HOLDING TIME").tiny().color(t.dim));
     ui.add_space(GAP_XS);
     for (label, min_m, max_m) in [("< 2 hrs", 0i64, 120i64), ("2h - 1d", 120, 1440), ("> 1 day", 1440, i64::MAX)] {
         let trades: Vec<&JournalEntry> = entries.iter().filter(|e| e.duration_mins >= min_m && e.duration_mins < max_m).collect();
@@ -157,7 +157,7 @@ fn draw_insights(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
     }
 
     ui.add_space(GAP_SM);
-    section_label(ui, "BY DIRECTION", t.dim);
+    ui.add(SectionLabel::new("BY DIRECTION").tiny().color(t.dim));
     ui.add_space(GAP_XS);
     for dir in ["Long", "Short"] {
         let trades: Vec<&JournalEntry> = entries.iter().filter(|e| e.side == dir).collect();

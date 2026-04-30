@@ -77,14 +77,16 @@ pub(crate) fn draw(
 
                 ui.horizontal(|ui| {
                     ui.set_min_height(26.0);
-                    for (t_val, t_label) in ALL_TABS {
-                        let sel = tab == *t_val;
-                        let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        if ui.add(egui::Button::new(egui::RichText::new(*t_label).monospace().size(FONT_XS).color(fg))
-                            .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
-                            .min_size(egui::vec2(0.0, 22.0))).clicked() {
-                            watchlist.feed_splits[i].tab = *t_val;
-                        }
+                    let mut sel_tab = tab;
+                    widgets::tabs::TabBar::new(&mut sel_tab, ALL_TABS)
+                        .accent(t.accent)
+                        .dim(t.dim.gamma_multiply(0.5))
+                        .font_size(FONT_XS)
+                        .underline(false)
+                        .min_height(22.0)
+                        .show(ui);
+                    if sel_tab != tab {
+                        watchlist.feed_splits[i].tab = sel_tab;
                     }
                     if can_close {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
