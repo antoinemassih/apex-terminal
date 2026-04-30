@@ -27,6 +27,7 @@ pub mod select;
 pub mod layout;
 pub mod form;
 pub mod pane;
+pub mod painter_pane;
 pub mod status;
 pub mod foundation;
 pub mod icons;

@@ -56,8 +56,11 @@ pub struct ListRow<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> {
     hover_enabled: bool,
     divider: bool,
     left_icon: Option<(&'a str, Color32)>,
+    left_dot: Option<Color32>,
+    indent: f32,
     body: Option<B>,
     trailing: Option<T>,
+    trailing_width: f32,
     theme_bg: Option<Color32>,
     theme_border: Option<Color32>,
     theme_accent: Option<Color32>,
@@ -72,8 +75,11 @@ impl<'a> ListRow<'a, fn(&mut Ui), fn(&mut Ui)> {
             hover_enabled: true,
             divider: false,
             left_icon: None,
+            left_dot: None,
+            indent: 0.0,
             body: None,
             trailing: None,
+            trailing_width: 80.0,
             theme_bg: None,
             theme_border: None,
             theme_accent: None,
@@ -89,6 +95,15 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
     pub fn left_icon(mut self, glyph: &'a str, color: Color32) -> Self {
         self.left_icon = Some((glyph, color)); self
     }
+    /// Paint a small filled circle (color dot) before the body. Stacks with
+    /// `left_icon` if both are set.
+    pub fn left_painter_circle(mut self, color: Color32) -> Self {
+        self.left_dot = Some(color); self
+    }
+    /// Explicit left indent (px) before any left icon/dot.
+    pub fn indent(mut self, px: f32) -> Self { self.indent = px; self }
+    /// Width of the right-aligned trailing zone (default 80).
+    pub fn trailing_width(mut self, w: f32) -> Self { self.trailing_width = w; self }
     pub fn sense(mut self, s: Sense) -> Self { self.sense = s; self }
     pub fn theme(mut self, t: &Theme) -> Self {
         self.theme_bg = Some(t.toolbar_bg);
@@ -99,18 +114,27 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
     pub fn body<B2: FnOnce(&mut Ui) + 'a>(self, f: B2) -> ListRow<'a, B2, T> {
         ListRow {
             height: self.height, selected: self.selected, hover_enabled: self.hover_enabled,
-            divider: self.divider, left_icon: self.left_icon, body: Some(f),
-            trailing: self.trailing, theme_bg: self.theme_bg, theme_border: self.theme_border,
+            divider: self.divider, left_icon: self.left_icon, left_dot: self.left_dot,
+            indent: self.indent, body: Some(f),
+            trailing: self.trailing, trailing_width: self.trailing_width,
+            theme_bg: self.theme_bg, theme_border: self.theme_border,
             theme_accent: self.theme_accent, sense: self.sense,
         }
     }
     pub fn trailing_actions<T2: FnOnce(&mut Ui) + 'a>(self, f: T2) -> ListRow<'a, B, T2> {
         ListRow {
             height: self.height, selected: self.selected, hover_enabled: self.hover_enabled,
-            divider: self.divider, left_icon: self.left_icon, body: self.body,
-            trailing: Some(f), theme_bg: self.theme_bg, theme_border: self.theme_border,
+            divider: self.divider, left_icon: self.left_icon, left_dot: self.left_dot,
+            indent: self.indent, body: self.body,
+            trailing: Some(f), trailing_width: self.trailing_width,
+            theme_bg: self.theme_bg, theme_border: self.theme_border,
             theme_accent: self.theme_accent, sense: self.sense,
         }
+    }
+    /// Alias of `trailing_actions` — paints right-aligned action icons inside
+    /// the trailing zone.
+    pub fn right_actions<T2: FnOnce(&mut Ui) + 'a>(self, f: T2) -> ListRow<'a, B, T2> {
+        self.trailing_actions(f)
     }
 
     /// Render the row. Returns the row's `Response` so callers can detect
@@ -142,7 +166,15 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
         }
 
         // Run body inside an inner Ui clipped to the row rect.
-        let mut inner_x = rect.min.x + 6.0;
+        let mut inner_x = rect.min.x + 6.0 + self.indent;
+        if let Some(dot) = self.left_dot {
+            ui.painter().circle_filled(
+                egui::pos2(inner_x + 4.0, rect.center().y),
+                3.0,
+                dot,
+            );
+            inner_x += 12.0;
+        }
         if let Some((glyph, col)) = self.left_icon {
             ui.painter().text(
                 egui::pos2(inner_x, rect.center().y),
@@ -169,7 +201,7 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
 
         if let Some(trailing) = self.trailing {
             let t_rect = egui::Rect::from_min_max(
-                egui::pos2(rect.max.x - 80.0, rect.min.y),
+                egui::pos2(rect.max.x - self.trailing_width, rect.min.y),
                 egui::pos2(rect.max.x - 4.0, rect.max.y),
             );
             let mut child = ui.new_child(

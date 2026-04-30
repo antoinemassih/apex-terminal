@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::layout::EmptyState;
 
 const TILE_GAP: f32 = 6.0;
 
@@ -29,12 +30,17 @@ pub(crate) fn render(
     let widget_count = panes[pane_idx].chart_widgets.iter().filter(|w| w.visible).count();
 
     if widget_count == 0 {
-        let p = ui.painter_at(rect);
-        p.text(egui::pos2(rect.center().x, rect.center().y - 14.0), egui::Align2::CENTER_CENTER,
-            "\u{2637}", egui::FontId::proportional(32.0), t.dim.gamma_multiply(0.15));
-        p.text(egui::pos2(rect.center().x, rect.center().y + 14.0), egui::Align2::CENTER_CENTER,
-            "Add widgets from the Widgets menu", egui::FontId::monospace(FONT_SM),
-            t.dim.gamma_multiply(0.4));
+        // Empty-state migrated to design-system widget. Render inside a child Ui
+        // scoped to the pane rect so EmptyState's vertical_centered flow centers
+        // correctly within the dashboard.
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(rect)
+                .layout(egui::Layout::top_down(egui::Align::Center)),
+        );
+        EmptyState::new("\u{2637}", "No widgets", "Add widgets from the Widgets menu")
+            .theme(t)
+            .show(&mut child);
         return;
     }
 

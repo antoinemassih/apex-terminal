@@ -15,6 +15,8 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::buttons::SimpleBtn;
+use super::widgets::text::MonospaceCode;
 
 const HEADER_H: f32 = 18.0;
 const ROW_H: f32 = 22.0;
@@ -468,13 +470,7 @@ pub(crate) fn render(
     let mut do_save = false;
     toolbar_ui.horizontal_centered(|ui| {
         let btn = |ui: &mut egui::Ui, label: &str| -> bool {
-            ui.add(egui::Button::new(egui::RichText::new(label)
-                    .monospace().size(FONT_XS).color(t.dim))
-                .fill(color_alpha(t.toolbar_border, ALPHA_TINT))
-                .stroke(egui::Stroke::new(stroke_thin(),
-                    color_alpha(t.toolbar_border, ALPHA_MUTED)))
-                .corner_radius(RADIUS_SM)
-                .min_size(egui::vec2(0.0, 18.0))).clicked()
+            ui.add(SimpleBtn::new(label).color(t.dim)).clicked()
         };
         if btn(ui, "+ Row") {
             let cols = chart.spreadsheet_cols.max(1);
@@ -500,7 +496,7 @@ pub(crate) fn render(
                 Some((r, c)) => cell_ref(r, c),
                 None => "—".into(),
             };
-            ui.label(egui::RichText::new(label).monospace().size(FONT_XS).color(t.accent));
+            ui.add(MonospaceCode::new(&label).xs().color(t.accent));
         });
     });
     if do_save { save_cells(pane_idx, &chart.spreadsheet_cells); }

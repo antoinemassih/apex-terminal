@@ -7,6 +7,8 @@ use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Chart, Theme, DrawingAction, drawing_to_db};
 use super::super::DrawingKind;
+use super::widgets::rows::ListRow;
+use super::widgets::buttons::IconBtn;
 use crate::ui_kit::icons::Icon;
 
 // Six discrete opacity levels: fully faded (readable) up to fully opaque.
@@ -314,6 +316,14 @@ egui::SidePanel::left("object_tree_panel")
                     // ── Group header row ──
                     let collapse_id = ui.make_persistent_id(format!("otgrp_{}", group_id));
                     let mut collapsed = ui.data_mut(|d| *d.get_persisted_mut_or(collapse_id, false));
+                    let group_drawing_ids: Vec<String> = draw_snaps.iter()
+                        .filter(|ds| ds.group_id == *group_id).map(|ds| ds.id.clone()).collect();
+                    let group_avg_op: Option<f32> = if !group_drawing_ids.is_empty() {
+                        Some(chart.drawings.iter()
+                            .filter(|d| group_drawing_ids.contains(&d.id))
+                            .map(|d| d.opacity).sum::<f32>() / group_drawing_ids.len() as f32)
+                    } else { None };
+                    let mut new_group_op: Option<f32> = None;
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         // Collapse arrow
@@ -325,107 +335,93 @@ egui::SidePanel::left("object_tree_panel")
                             collapsed = !collapsed;
                             ui.data_mut(|d| d.insert_persisted(collapse_id, collapsed));
                         }
-                        // Group color dot (if set)
-                        if let Some(gc) = group_color {
-                            let (dot_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 16.0), egui::Sense::hover());
-                            ui.painter().circle_filled(dot_r.center(), 3.0, gc);
-                        }
-                        // Group name + count
+                        // Header label + dot + right-actions via ListRow
                         let header_col = if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim };
-                        ui.label(egui::RichText::new(format!("{} ({})", group_name, group_draws.len()))
-                            .monospace().size(8.0).color(header_col));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let label_text = format!("{} ({})", group_name, group_draws.len());
+                        let group_id_for_eye = group_id.clone();
+                        let group_id_for_op = group_id.clone();
+                        let new_group_op_ref = &mut new_group_op;
+                        let mut row = ListRow::new(18.0).theme(t).hover_enabled(false);
+                        if let Some(gc) = group_color {
+                            row = row.left_painter_circle(gc);
+                        }
+                        row.body(|ui| {
+                            ui.label(egui::RichText::new(label_text)
+                                .monospace().size(8.0).color(header_col));
+                        })
+                        .right_actions(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
-                            // Eye toggle for group
                             let vis_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
                             let vis_col = if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim };
-                            if ui.add(egui::Button::new(
-                                egui::RichText::new(vis_icon).size(7.0).color(vis_col))
-                                .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked()
-                            {
-                                toggle_vis_group = Some(group_id.clone());
+                            if ui.add(IconBtn::new(vis_icon).size(7.0).color(vis_col)).clicked() {
+                                toggle_vis_group = Some(group_id_for_eye);
                             }
-                            // Group opacity — cascades to all drawings in group
-                            let group_drawing_ids: Vec<String> = draw_snaps.iter()
-                                .filter(|ds| ds.group_id == *group_id).map(|ds| ds.id.clone()).collect();
-                            if !group_drawing_ids.is_empty() {
-                                let avg = chart.drawings.iter()
-                                    .filter(|d| group_drawing_ids.contains(&d.id))
-                                    .map(|d| d.opacity).sum::<f32>() / group_drawing_ids.len() as f32;
-                                if let Some(op) = opacity_picker(ui, avg, t.accent, t.dim, &format!("grp_op_{group_id}")) {
-                                    let sym_g = sym.clone(); let tf_g = tf.clone();
-                                    for d in &mut chart.drawings {
-                                        if group_drawing_ids.contains(&d.id) {
-                                            d.opacity = op;
-                                            crate::drawing_db::save(&drawing_to_db(d, &sym_g, &tf_g));
-                                        }
-                                    }
+                            if let Some(avg) = group_avg_op {
+                                if let Some(op) = opacity_picker(ui, avg, t.accent, t.dim, &format!("grp_op_{group_id_for_op}")) {
+                                    *new_group_op_ref = Some(op);
                                 }
                             }
-                        });
+                        })
+                        .trailing_width(80.0)
+                        .show(ui);
                     });
+                    let _ = group_drawing_ids;
+                    if let Some(op) = new_group_op {
+                        let sym_g = sym.clone(); let tf_g = tf.clone();
+                        let target_ids: Vec<String> = draw_snaps.iter()
+                            .filter(|ds| ds.group_id == *group_id).map(|ds| ds.id.clone()).collect();
+                        for d in &mut chart.drawings {
+                            if target_ids.contains(&d.id) {
+                                d.opacity = op;
+                                crate::drawing_db::save(&drawing_to_db(d, &sym_g, &tf_g));
+                            }
+                        }
+                    }
 
                     // ── Drawing rows (if group not collapsed) ──
                     if !collapsed {
                         for ds in &group_draws {
                             let is_sel = chart.selected_ids.contains(&ds.id);
                             let dc = hex_to_color(&ds.color, if is_hidden { 0.3 } else { 1.0 });
-                            let bg = if is_sel { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
+                            let label_col = if is_sel { egui::Color32::WHITE }
+                                else if is_hidden { t.dim.gamma_multiply(0.3) }
+                                else { egui::Color32::from_white_alpha(170) };
+                            let kind_label = ds.kind_label;
+                            let sig_score = ds.sig_score;
+                            let locked = ds.locked;
+                            let ds_id_eye = ds.group_id.clone();
+                            let ds_id_del = ds.id.clone();
 
-                            let row_resp = ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 2.0;
-                                ui.add_space(14.0); // indent under group
-
-                                // Color dot
-                                let (dot_r, _) = ui.allocate_exact_size(egui::vec2(10.0, 18.0), egui::Sense::hover());
-                                ui.painter().circle_filled(dot_r.center(), 3.5, dc);
-
-                                // Kind label
-                                let label_col = if is_sel { egui::Color32::WHITE }
-                                    else if is_hidden { t.dim.gamma_multiply(0.3) }
-                                    else { egui::Color32::from_white_alpha(170) };
-                                let row_btn = ui.add(egui::Button::new(
-                                    egui::RichText::new(ds.kind_label).monospace().size(9.0).color(label_col))
-                                    .fill(bg).min_size(egui::vec2(30.0, 18.0)).corner_radius(RADIUS_SM));
-
-                                // Significance badge
-                                if let Some(score) = ds.sig_score {
-                                    let sc = sig_color(score);
-                                    let (badge_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
-                                    ui.painter().circle_filled(badge_r.center(), 3.0, sc);
-                                }
-
-                                // Lock icon
-                                if ds.locked {
-                                    ui.label(egui::RichText::new(Icon::LOCK).size(7.0).color(t.dim.gamma_multiply(0.6)));
-                                }
-
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let row_resp = ListRow::new(20.0)
+                                .theme(t)
+                                .selected(is_sel)
+                                .indent(14.0)
+                                .left_painter_circle(dc)
+                                .body(|ui| {
+                                    ui.label(egui::RichText::new(kind_label)
+                                        .monospace().size(9.0).color(label_col));
+                                    if let Some(score) = sig_score {
+                                        let sc = sig_color(score);
+                                        let (badge_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
+                                        ui.painter().circle_filled(badge_r.center(), 3.0, sc);
+                                    }
+                                    if locked {
+                                        ui.label(egui::RichText::new(Icon::LOCK).size(7.0).color(t.dim.gamma_multiply(0.6)));
+                                    }
+                                })
+                                .right_actions(|ui| {
                                     ui.spacing_mut().item_spacing.x = 1.0;
-                                    // Delete button (always visible when hovered or selected)
-                                    if row_btn.hovered() || is_sel {
-                                        if ui.add(egui::Button::new(
-                                            egui::RichText::new(Icon::TRASH).size(7.0).color(egui::Color32::from_rgb(224, 85, 96)))
-                                            .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked()
-                                        {
-                                            delete_id = Some(ds.id.clone());
-                                        }
+                                    if ui.add(IconBtn::new(Icon::TRASH).size(7.0).color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                                        delete_id = Some(ds_id_del);
                                     }
-                                    // Eye toggle for individual drawing (via group)
-                                    if row_btn.hovered() || is_sel {
-                                        let eye_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
-                                        let eye_col = if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim };
-                                        if ui.add(egui::Button::new(
-                                            egui::RichText::new(eye_icon).size(7.0).color(eye_col))
-                                            .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked()
-                                        {
-                                            toggle_vis_group = Some(ds.group_id.clone());
-                                        }
+                                    let eye_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
+                                    let eye_col = if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim };
+                                    if ui.add(IconBtn::new(eye_icon).size(7.0).color(eye_col)).clicked() {
+                                        toggle_vis_group = Some(ds_id_eye);
                                     }
-                                });
-
-                                row_btn
-                            }).inner;
+                                })
+                                .trailing_width(60.0)
+                                .show(ui);
 
                             // Click handling
                             if row_resp.clicked() {
@@ -527,30 +523,29 @@ egui::SidePanel::left("object_tree_panel")
             let mut edit_ind: Option<u32> = None;
             for ind in chart.indicators.iter_mut() {
                 let ic = hex_to_color(&ind.color, 1.0);
-                ui.horizontal(|ui| {
-                    ui.set_height(18.0);
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    // Color dot
-                    ui.painter().circle_filled(
-                        egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, ic);
-                    ui.add_space(12.0);
-                    // Name + period
-                    let label = format!("{} {}", ind.kind.label(), ind.period);
-                    let label_resp = ui.label(egui::RichText::new(&label).monospace().size(8.0).color(
-                        if ind.visible { egui::Color32::from_white_alpha(180) } else { t.dim.gamma_multiply(0.3) }));
-                    if label_resp.clicked() { edit_ind = Some(ind.id); }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let label = format!("{} {}", ind.kind.label(), ind.period);
+                let visible = ind.visible;
+                let label_col = if visible { egui::Color32::from_white_alpha(180) }
+                    else { t.dim.gamma_multiply(0.3) };
+                let mut toggled = false;
+                let row_resp = ListRow::new(18.0)
+                    .theme(t)
+                    .left_painter_circle(ic)
+                    .body(|ui| {
+                        ui.label(egui::RichText::new(&label).monospace().size(8.0).color(label_col));
+                    })
+                    .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
-                        // Eye toggle
-                        let eye_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
-                        let eye_col = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.3) };
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(eye_icon).size(8.0).color(eye_col))
-                            .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
-                            ind.visible = !ind.visible;
+                        let eye_icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
+                        let eye_col = if visible { t.dim } else { t.dim.gamma_multiply(0.3) };
+                        if ui.add(IconBtn::new(eye_icon).size(8.0).color(eye_col)).clicked() {
+                            toggled = true;
                         }
-                    });
-                });
+                    })
+                    .trailing_width(40.0)
+                    .show(ui);
+                if toggled { ind.visible = !ind.visible; }
+                if row_resp.clicked() { edit_ind = Some(ind.id); }
             }
             if let Some(id) = edit_ind {
                 chart.editing_indicator = Some(id);
@@ -576,30 +571,29 @@ egui::SidePanel::left("object_tree_panel")
                 .map(|ov| (ov.symbol.clone(), ov.color.clone(), ov.visible)).collect();
             for (oi, (sym_ov, color, vis)) in ov_snap.iter().enumerate() {
                 let oc = hex_to_color(color, 1.0);
-                ui.horizontal(|ui| {
-                    ui.set_height(18.0);
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    ui.painter().circle_filled(
-                        egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, oc);
-                    ui.add_space(12.0);
-                    ui.label(egui::RichText::new(sym_ov).monospace().size(8.0).color(
-                        if *vis { egui::Color32::from_white_alpha(180) } else { t.dim.gamma_multiply(0.3) }));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let vis = *vis;
+                let label_col = if vis { egui::Color32::from_white_alpha(180) }
+                    else { t.dim.gamma_multiply(0.3) };
+                let sym_ov_ref = sym_ov.as_str();
+                ListRow::new(18.0)
+                    .theme(t)
+                    .left_painter_circle(oc)
+                    .body(|ui| {
+                        ui.label(egui::RichText::new(sym_ov_ref).monospace().size(8.0).color(label_col));
+                    })
+                    .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(Icon::TRASH).size(8.0).color(egui::Color32::from_rgb(224, 85, 96)))
-                            .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                        if ui.add(IconBtn::new(Icon::TRASH).size(8.0).color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
                             del_ov = Some(oi);
                         }
-                        let eye_icon = if *vis { Icon::EYE } else { Icon::EYE_SLASH };
-                        let eye_col = if *vis { t.dim } else { t.dim.gamma_multiply(0.3) };
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(eye_icon).size(8.0).color(eye_col))
-                            .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                        let eye_icon = if vis { Icon::EYE } else { Icon::EYE_SLASH };
+                        let eye_col = if vis { t.dim } else { t.dim.gamma_multiply(0.3) };
+                        if ui.add(IconBtn::new(eye_icon).size(8.0).color(eye_col)).clicked() {
                             toggle_ov = Some(oi);
                         }
-                    });
-                });
+                    })
+                    .trailing_width(60.0)
+                    .show(ui);
             }
             if let Some(idx) = toggle_ov {
                 chart.symbol_overlays[idx].visible = !chart.symbol_overlays[idx].visible;
@@ -640,39 +634,32 @@ egui::SidePanel::left("object_tree_panel")
             for (wi, w) in chart.chart_widgets.iter().enumerate() {
                 let label = w.kind.label();
                 let vis = w.visible;
-                ui.horizontal(|ui| {
-                    ui.set_height(18.0);
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    ui.add_space(6.0);
-                    // Color dot — accent tinted
-                    let dot_col = if vis { t.accent } else { t.dim.gamma_multiply(0.3) };
-                    let (dot_r, _) = ui.allocate_exact_size(egui::vec2(10.0, 18.0), egui::Sense::hover());
-                    ui.painter().circle_filled(dot_r.center(), 3.0, dot_col);
-                    // Label
-                    ui.label(egui::RichText::new(label).monospace().size(8.5).color(
-                        if vis { egui::Color32::from_white_alpha(180) } else { t.dim.gamma_multiply(0.3) }));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let dot_col = if vis { t.accent } else { t.dim.gamma_multiply(0.3) };
+                let label_col = if vis { egui::Color32::from_white_alpha(180) }
+                    else { t.dim.gamma_multiply(0.3) };
+                let opacity = w.opacity;
+                ListRow::new(18.0)
+                    .theme(t)
+                    .left_painter_circle(dot_col)
+                    .body(|ui| {
+                        ui.label(egui::RichText::new(label).monospace().size(8.5).color(label_col));
+                    })
+                    .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        // Delete
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(Icon::TRASH).size(8.0).color(egui::Color32::from_rgb(224, 85, 96)))
-                            .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                        if ui.add(IconBtn::new(Icon::TRASH).size(8.0).color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
                             del_w = Some(wi);
                         }
-                        // Eye toggle
                         let eye_icon = if vis { Icon::EYE } else { Icon::EYE_SLASH };
                         let eye_col = if vis { t.dim } else { t.dim.gamma_multiply(0.3) };
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(eye_icon).size(8.0).color(eye_col))
-                            .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                        if ui.add(IconBtn::new(eye_icon).size(8.0).color(eye_col)).clicked() {
                             toggle_w = Some(wi);
                         }
-                        // Opacity picker
-                        if let Some(op) = opacity_picker(ui, w.opacity, t.accent, t.dim, &format!("w_{wi}")) {
+                        if let Some(op) = opacity_picker(ui, opacity, t.accent, t.dim, &format!("w_{wi}")) {
                             op_change = Some((wi, op));
                         }
-                    });
-                });
+                    })
+                    .trailing_width(110.0)
+                    .show(ui);
             }
             if let Some(i) = toggle_w { chart.chart_widgets[i].visible = !chart.chart_widgets[i].visible; }
             if let Some(i) = del_w { chart.chart_widgets.remove(i); }
