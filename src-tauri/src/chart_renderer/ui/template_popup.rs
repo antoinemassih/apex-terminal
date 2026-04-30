@@ -55,6 +55,7 @@ pub(crate) fn draw(
                                 (super::super::gpu::PaneType::Portfolio, "Portfolio", Icon::LIST),
                                 (super::super::gpu::PaneType::Dashboard, "Dashboard", "\u{2637}"),
                                 (super::super::gpu::PaneType::Heatmap, "Heatmap", "\u{2593}"),
+                                (super::super::gpu::PaneType::Spreadsheet, "Spreadsheet", "\u{229E}"),
                             ] {
                                 let active = panes[pi].pane_type == ptype;
                                 let fg = if active { t.accent } else { t.dim.gamma_multiply(0.5) };

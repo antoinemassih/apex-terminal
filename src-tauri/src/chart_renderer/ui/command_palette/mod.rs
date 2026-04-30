@@ -195,6 +195,7 @@ fn draw_normal_mode(
         ui.label(egui::RichText::new(format!("{} pane", match pane_type {
             PaneType::Chart => "Chart", PaneType::Portfolio => "Portfolio",
             PaneType::Dashboard => "Dashboard", PaneType::Heatmap => "Heatmap",
+            PaneType::Spreadsheet => "Spreadsheet",
         })).size(font_sm()).color(t.dim.gamma_multiply(0.7)));
     });
     ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
@@ -260,6 +261,7 @@ fn draw_normal_mode(
             PaneType::Dashboard => &["ai:chat","widget:rsi-multi","widget:trend-align","widget:signal-radar","widget:risk-dash","dyn:reorganize"],
             PaneType::Portfolio => &["ai:chat","cmd:flatten","cmd:cancel","widget:risk-dash","widget:position-pnl","widget:daily-pnl"],
             PaneType::Heatmap   => &["ai:chat","widget:sector-rotation","widget:breadth-thermo","widget:market-breadth"],
+            PaneType::Spreadsheet => &["ai:chat"],
         };
         let reg = build_registry(watchlist, pane_type);
         for cid in ctx_ids {

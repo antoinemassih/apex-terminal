@@ -113,6 +113,7 @@ pub(super) fn execute(
         "setting:pane-portfolio" => { panes[ap].pane_type = PaneType::Portfolio; return; }
         "setting:pane-dashboard" => { panes[ap].pane_type = PaneType::Dashboard; return; }
         "setting:pane-heatmap"   => { panes[ap].pane_type = PaneType::Heatmap; return; }
+        "setting:pane-spreadsheet" => { panes[ap].pane_type = PaneType::Spreadsheet; return; }
         _ => {}
     }
 

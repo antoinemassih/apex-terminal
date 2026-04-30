@@ -1251,6 +1251,7 @@ pub(crate) enum PaneType {
     Portfolio,      // portfolio positions table + risk analytics
     Dashboard,      // masonry grid of widgets (no chart)
     Heatmap,        // market/sector heatmap treemap
+    Spreadsheet,    // editable string-cell grid
 }
 
 impl Default for PaneType { fn default() -> Self { Self::Chart } }
@@ -1577,6 +1578,12 @@ pub(crate) struct Chart {
     pub(crate) session_bg_color: String,       // "#1a1a2e" default
     pub(crate) session_bg_opacity: f32,        // 0.15 default (0.0-1.0)
     pub(crate) session_break_lines: bool,      // vertical dashed lines at session boundaries
+    // -- Spreadsheet pane state --
+    pub(crate) spreadsheet_cells: Vec<Vec<String>>,
+    pub(crate) spreadsheet_cols: usize,
+    pub(crate) spreadsheet_rows: usize,
+    pub(crate) spreadsheet_selected: Option<(usize, usize)>,
+    pub(crate) spreadsheet_editing: Option<(usize, usize, String)>,
 }
 
 impl Chart {
@@ -1691,6 +1698,11 @@ impl Chart {
             session_shading: false, rth_start_minutes: 570, rth_end_minutes: 960,
             eth_bar_opacity: 0.35, session_bg_tint: false, session_bg_color: "#1a1a2e".into(),
             session_bg_opacity: 0.15, session_break_lines: true,
+            spreadsheet_cells: vec![vec![String::new(); 4]; 8],
+            spreadsheet_cols: 4,
+            spreadsheet_rows: 8,
+            spreadsheet_selected: None,
+            spreadsheet_editing: None,
         }
     }
     fn process(&mut self, cmd: ChartCommand) {
@@ -6131,6 +6143,11 @@ fn render_chart_pane(
         PaneType::Heatmap => {
             let body_rects = [rect];
             super::ui::heatmap_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
+            return;
+        }
+        PaneType::Spreadsheet => {
+            let body_rects = [rect];
+            super::ui::spreadsheet_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
             return;
         }
         PaneType::Chart => {} // continue to chart rendering below
