@@ -916,6 +916,11 @@ fn render_order_entry_body(
     _id_salt: u64,
     panel_w: f32,
 ) {
+    // Meridien style-aware density tweak: tighter vertical spacing + uppercase labels (#13).
+    let oe_st = super::ui::style::current();
+    let oe_label_color = t.dim.gamma_multiply(if oe_st.hairline_borders { 0.7 } else { 1.0 });
+    let oe_pad_top = if oe_st.hairline_borders { 2.0 } else { 4.0 };
+
     let adv = chart.order_advanced;
     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
     let spread = (last_price * 0.0001).max(0.01);
@@ -926,7 +931,9 @@ fn render_order_entry_body(
     };
     let tifs = ["DAY", "GTC", "IOC"];
     let pad = 8.0;
-    ui.add_space(4.0);
+    ui.add_space(oe_pad_top);
+    // Suppress unused variable warnings when not used below.
+    let _ = oe_label_color;
 
     // Advanced: Order type + TIF selectors
     if adv {
@@ -3263,6 +3270,12 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
 
         ctx.set_style(style);
     }
+    // Apply per-style egui visuals overrides (Meridien denser spacing, flat borders, no shadows).
+    // Must run AFTER the rich visual block above so Meridien tweaks override where needed (#3).
+    {
+        let st = super::ui::style::current();
+        super::ui::style::apply_ui_style(ctx, &st, t.toolbar_border, t.toolbar_bg);
+    }
     ctx.set_pixels_per_point(watchlist.font_scale);
     let account_data_cached = read_account_data();
     // Reconcile OrderManager with IB backend state
@@ -3628,9 +3641,11 @@ fn render_toolbar(
     }
 
     if toolbar_visible {
+    // Toolbar height scaled per active style (1.40× for Meridien Bloomberg-style tall bar) (#4).
+    let tb_scale = super::ui::style::current().toolbar_height_scale;
     egui::TopBottomPanel::top("tb")
         .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 8, right: 0, top: 0, bottom: 0 }))
-        .exact_height(if watchlist.compact_mode { 30.0 } else { 38.0 })
+        .exact_height((if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale)
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         crate::design_tokens::register_hit(
@@ -5330,11 +5345,45 @@ fn render_chart_pane(
     let n = chart.bars.len();
     let n = if chart.replay_mode { chart.replay_bar_count.min(n) } else { n };
 
-    // Draw pane border (highlight active pane)
-    if visible_count > 1 {
-        let border_color = if is_active { t.bull.gamma_multiply(0.8) } else { t.dim.gamma_multiply(0.3) };
-        let border_width = if is_active { 1.5 } else { 0.5 };
-        ui.painter().rect_stroke(pane_rect, 0.0, egui::Stroke::new(border_width, border_color), egui::StrokeKind::Inside);
+    // Draw pane border — dispatch on hairline_borders for Meridien vs legacy (#8).
+    {
+        let st = super::ui::style::current();
+        if st.hairline_borders {
+            // Meridien: crisp hairline rules top/left/bottom + accent top accent on active pane.
+            let painter = ui.painter();
+            let rule_col = super::ui::style::rule_stroke_for(t.bg, t.toolbar_border);
+            // Top hairline
+            painter.line_segment(
+                [pane_rect.left_top(), pane_rect.right_top()],
+                rule_col,
+            );
+            if visible_count > 1 {
+                // Left hairline
+                painter.line_segment(
+                    [pane_rect.left_top(), pane_rect.left_bottom()],
+                    rule_col,
+                );
+                // Bottom hairline
+                painter.line_segment(
+                    [pane_rect.left_bottom(), pane_rect.right_bottom()],
+                    rule_col,
+                );
+                // Active pane: accent top line inset by 1 px
+                if is_active {
+                    let accent_col = t.accent.gamma_multiply(0.55);
+                    painter.line_segment(
+                        [egui::pos2(pane_rect.left() + 1.0, pane_rect.top() + 1.0),
+                         egui::pos2(pane_rect.right() - 1.0, pane_rect.top() + 1.0)],
+                        egui::Stroke::new(st.stroke_std, accent_col),
+                    );
+                }
+            }
+        } else if visible_count > 1 {
+            // Legacy: colored rect stroke
+            let border_color = if is_active { t.bull.gamma_multiply(0.8) } else { t.dim.gamma_multiply(0.3) };
+            let border_width = if is_active { 1.5 } else { 0.5 };
+            ui.painter().rect_stroke(pane_rect, 0.0, egui::Stroke::new(border_width, border_color), egui::StrokeKind::Inside);
+        }
     }
 
     // (restore button drawn later, after chart content, so it's on top)
@@ -5375,27 +5424,29 @@ fn render_chart_pane(
             "PANE_HEADER", "Pane Header");
         ui.allocate_rect(header_rect, egui::Sense::hover()); // reserve space
         let header_painter = ui.painter_at(header_rect);
-        // Active header is DARKER than inactive for contrast against text.
-        let header_bg = if is_active && visible_count > 1 {
-            t.bg.gamma_multiply(0.6)
-        } else {
-            t.bg.gamma_multiply(1.2)
-        };
-        header_painter.rect_filled(header_rect, 0.0, header_bg);
-        // Active-pane indicator — thick accent underline beneath the header.
-        // Aperture (style 1) softens this: thinner stroke + lower alpha.
-        if is_active && visible_count > 1 {
-            let underline_y = header_rect.bottom() - 1.0;
-            let (uw, ucol) = if style == 1 {
-                (2.0_f32, color_alpha(t.accent, 140))
-            } else {
-                (3.0_f32, t.accent)
-            };
-            header_painter.line_segment(
-                [egui::pos2(header_rect.left(), underline_y),
-                 egui::pos2(header_rect.right(), underline_y)],
-                egui::Stroke::new(uw, ucol),
-            );
+        // Pane header background — dispatched through StyleSettings (#9).
+        {
+            let st = super::ui::style::current();
+            if is_active && visible_count > 1 {
+                let header_bg = t.bg.gamma_multiply(st.active_header_fill_multiply);
+                header_painter.rect_filled(header_rect, 0.0, header_bg);
+            } else if st.inactive_header_fill {
+                header_painter.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(1.2));
+            }
+            // Active-pane indicator underline — suppressed when show_active_tab_underline=false (#11).
+            if is_active && visible_count > 1 && st.show_active_tab_underline {
+                let underline_y = header_rect.bottom() - 1.0;
+                let (uw, ucol) = if style == 1 {
+                    (2.0_f32, color_alpha(t.accent, 140))
+                } else {
+                    (3.0_f32, t.accent)
+                };
+                header_painter.line_segment(
+                    [egui::pos2(header_rect.left(), underline_y),
+                     egui::pos2(header_rect.right(), underline_y)],
+                    egui::Stroke::new(uw, ucol),
+                );
+            }
         }
 
         // Link group colored dot button

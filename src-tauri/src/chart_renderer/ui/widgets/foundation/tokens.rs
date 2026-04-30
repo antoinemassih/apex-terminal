@@ -69,13 +69,15 @@ pub enum Radius { None, Xs, Sm, Md, Lg, Pill }
 
 impl Radius {
     pub fn corner(self) -> CornerRadius {
+        // Read from StyleSettings so radius switching works across style presets (#1).
+        let st = current();
         match self {
             Radius::None => CornerRadius::ZERO,
-            Radius::Xs   => CornerRadius::same(2),
-            Radius::Sm   => CornerRadius::same(radius_sm() as u8),
-            Radius::Md   => CornerRadius::same(radius_md() as u8),
-            Radius::Lg   => CornerRadius::same(radius_lg() as u8),
-            Radius::Pill => CornerRadius::same(99),
+            Radius::Xs   => CornerRadius::same(st.r_xs),
+            Radius::Sm   => CornerRadius::same(st.r_sm),
+            Radius::Md   => CornerRadius::same(st.r_md),
+            Radius::Lg   => CornerRadius::same(st.r_lg),
+            Radius::Pill => CornerRadius::same(st.r_pill),
         }
     }
 }

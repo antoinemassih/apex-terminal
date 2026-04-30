@@ -155,38 +155,59 @@ pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui
 /// Active state: accent fill + accent border + soft glow halo + bottom underline.
 /// Hover state: subtle bg tint + accent border.
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
-    let bg = if active {
-        color_alpha(accent, alpha_tint())
-    } else {
-        color_alpha(toolbar_border, alpha_ghost())
-    };
-    let fg = if active { accent } else { dim };
-    let border = if active {
-        color_alpha(accent, alpha_active())
-    } else {
-        color_alpha(toolbar_border, alpha_muted())
+    let st = current();
+    // Apply uppercase transform per active style (#5).
+    let display_label = style_label_case(label);
+    let corner_r = st.r_sm as f32;
+
+    // Button treatment dispatch (#18).
+    let (bg, fg, border) = match st.button_treatment {
+        ButtonTreatment::UnderlineActive => {
+            // Transparent idle; text color shifts on active.
+            let fg = if active { accent } else { dim };
+            (Color32::TRANSPARENT, fg, Color32::TRANSPARENT)
+        }
+        _ => {
+            let bg = if active { color_alpha(accent, alpha_tint()) } else { color_alpha(toolbar_border, alpha_ghost()) };
+            let fg = if active { accent } else { dim };
+            let border = if active { color_alpha(accent, alpha_active()) } else { color_alpha(toolbar_border, alpha_muted()) };
+            (bg, fg, border)
+        }
     };
 
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(12.0).color(fg))
-        .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(4.0)
+    let resp = ui.add(egui::Button::new(RichText::new(display_label).monospace().size(12.0).color(fg))
+        .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(corner_r)
         .min_size(egui::vec2(0.0, 24.0)));
     hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
 
     if active {
         let r = resp.rect;
-        ui.painter().line_segment(
-            [egui::pos2(r.left() + 4.0, r.bottom() + 0.5),
-             egui::pos2(r.right() - 4.0, r.bottom() + 0.5)],
-            Stroke::new(1.5, color_alpha(accent, alpha_dim())));
+        match st.button_treatment {
+            ButtonTreatment::UnderlineActive => {
+                // Accent underline — bottom stripe (#18).
+                ui.painter().line_segment(
+                    [egui::pos2(r.left(), r.bottom()), egui::pos2(r.right(), r.bottom())],
+                    Stroke::new(2.0, accent));
+            }
+            _ => {
+                ui.painter().line_segment(
+                    [egui::pos2(r.left() + 4.0, r.bottom() + 0.5),
+                     egui::pos2(r.right() - 4.0, r.bottom() + 0.5)],
+                    Stroke::new(1.5, color_alpha(accent, alpha_dim())));
+            }
+        }
     } else if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        // Bevel highlight on top edge
-        let r = resp.rect;
-        ui.painter().rect_filled(
-            egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 1.0)),
-            egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
-            Color32::from_rgba_unmultiplied(255, 255, 255, 10));
+        if st.button_treatment != ButtonTreatment::UnderlineActive {
+            // Bevel highlight on top edge
+            let r = resp.rect;
+            ui.painter().rect_filled(
+                egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 1.0)),
+                egui::CornerRadius { nw: corner_r as u8, ne: corner_r as u8, sw: 0, se: 0 },
+                Color32::from_rgba_unmultiplied(255, 255, 255, 10));
+        }
     }
+    let _ = toolbar_bg; // may be used for future hover tint
     resp
 }
 
@@ -214,23 +235,30 @@ pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32,
             .stroke(Stroke::new(stroke_std(), border)).corner_radius(radius_lg()))
 }
 
-/// Theme-aware dialog window — rich shadow, beveled border, crisp edges.
+/// Theme-aware dialog window — rich shadow when shadows_enabled, flat hairline when not (#16).
 pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, toolbar_bg: Color32, toolbar_border: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
+    let st = current();
     let border = border_color.unwrap_or(color_alpha(toolbar_border, 80));
+    let corner_r = if st.r_lg == 0 { 0.0 } else { 12.0 };
+    let shadow = if st.shadows_enabled {
+        egui::epaint::Shadow {
+            offset: [0, 8],
+            blur: 28,
+            spread: 2,
+            color: Color32::from_black_alpha(80),
+        }
+    } else {
+        egui::epaint::Shadow::NONE
+    };
     egui::Window::new(id.to_string())
         .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
         .title_bar(false)
         .frame(egui::Frame::popup(&ctx.style())
             .fill(toolbar_bg)
             .inner_margin(0.0)
-            .stroke(Stroke::new(1.0, border))
-            .corner_radius(12.0)
-            .shadow(egui::epaint::Shadow {
-                offset: [0, 8],
-                blur: 28,
-                spread: 2,
-                color: Color32::from_black_alpha(80),
-            }))
+            .stroke(Stroke::new(st.stroke_std, border))
+            .corner_radius(corner_r)
+            .shadow(shadow))
 }
 
 /// Dialog header bar — auto-darkened bg, FONT_LG title, X close. Returns true if closed.
@@ -320,10 +348,18 @@ pub fn dialog_section(ui: &mut egui::Ui, text: &str, margin: f32, color: Color32
 
 // ─── Labels ───────────────────────────────────────────────────────────────────
 
-/// Section header — FONT_SM bold.
+/// Section header — FONT_SM bold. Uppercases label when the active style requires it (#12).
 #[inline]
 pub fn section_label(ui: &mut egui::Ui, text: &str, color: Color32) {
-    ui.label(RichText::new(text).monospace().size(7.0).strong().color(color));
+    let label = style_label_case(text);
+    ui.label(RichText::new(label).monospace().size(7.0).strong().color(color));
+}
+
+/// Extra-small section label — dim monospace at 6 pt, uppercase when style requires (#12).
+#[inline]
+pub fn section_label_xs(ui: &mut egui::Ui, text: &str, color: Color32) {
+    let label = style_label_case(text);
+    ui.label(RichText::new(label).monospace().size(6.0).color(color));
 }
 
 /// Dim info label — FONT_SM regular.
@@ -487,7 +523,7 @@ pub fn tab_bar<T: PartialEq + Copy>(
                 .frame(false)
         );
         if resp.clicked() { *current = *tab; }
-        if active {
+        if active && crate::chart_renderer::ui::style::current().show_active_tab_underline {
             let r = resp.rect;
             ui.painter().rect_filled(
                 egui::Rect::from_min_max(egui::pos2(r.left(), r.max.y - tab_ul), egui::pos2(r.right(), r.max.y)),
@@ -767,10 +803,30 @@ pub struct StyleSettings {
     pub stroke_hair: f32,
     pub stroke_thin: f32,
     pub stroke_std: f32,
+    /// Bold stroke weight — Meridien collapses to 1 px, Relay/Aperture use 1.5.
+    pub stroke_bold: f32,
     pub stroke_thick: f32,
     pub shadows_enabled: bool,
     pub solid_active_fills: bool,
     pub uppercase_section_labels: bool,
+    /// Letter spacing approximation (px) applied to tracked-out section labels.
+    pub label_letter_spacing_px: f32,
+    /// Multiplier applied when scaling toolbar height (1.0 = baseline, 1.4 = Meridien tall).
+    pub toolbar_height_scale: f32,
+    /// Multiplier applied when scaling pane header height (1.0 = baseline, 1.1 = Meridien).
+    pub header_height_scale: f32,
+    /// Hero numeric font size in pt (22 for Relay, 36 for Meridien).
+    pub font_hero: f32,
+    /// Paint full-height vertical divider lines between toolbar button clusters.
+    pub vertical_group_dividers: bool,
+    /// Show active-tab accent underline in tab bars.
+    pub show_active_tab_underline: bool,
+    /// Active pane header fill multiplier (1.2 = brighter for Relay, 0.95 = near-transparent for Meridien).
+    pub active_header_fill_multiply: f32,
+    /// Paint a distinct fill for inactive pane headers.
+    pub inactive_header_fill: bool,
+    /// Account strip panel height in logical px.
+    pub account_strip_height: f32,
 }
 
 // Active style selection — set once at the top of each draw_chart frame
@@ -799,10 +855,20 @@ pub fn current() -> StyleSettings {
             stroke_hair: 0.5,
             stroke_thin: 1.0,
             stroke_std: 1.5,
+            stroke_bold: 1.5,
             stroke_thick: 2.0,
             shadows_enabled: true,
             solid_active_fills: false,
             uppercase_section_labels: false,
+            label_letter_spacing_px: 0.0,
+            toolbar_height_scale: 1.0,
+            header_height_scale: 1.0,
+            font_hero: 22.0,
+            vertical_group_dividers: false,
+            show_active_tab_underline: true,
+            active_header_fill_multiply: 1.2,
+            inactive_header_fill: true,
+            account_strip_height: 26.0,
         },
         // Octave — dense, sharp, raised-fill active treatment
         2 => StyleSettings {
@@ -817,30 +883,50 @@ pub fn current() -> StyleSettings {
             stroke_hair: 0.4,
             stroke_thin: 0.6,
             stroke_std: 1.0,
+            stroke_bold: 1.0,
             stroke_thick: 1.4,
             shadows_enabled: false,
             solid_active_fills: true,
             uppercase_section_labels: true,
+            label_letter_spacing_px: 0.5,
+            toolbar_height_scale: 1.0,
+            header_height_scale: 1.0,
+            font_hero: 22.0,
+            vertical_group_dividers: false,
+            show_active_tab_underline: true,
+            active_header_fill_multiply: 1.2,
+            inactive_header_fill: true,
+            account_strip_height: 26.0,
         },
-        // Meridien (0) and all others — editorial: square-ish corners,
+        // Meridien (0) and all others — editorial: fully square corners,
         // hairline borders, soft drop shadow, uppercase section labels,
-        // solid active fills, underline-active buttons. Sans-serif throughout.
+        // solid active fills, underline-active buttons, serif hero headlines.
         _ => StyleSettings {
-            r_xs: 2,
-            r_sm: radius_sm() as u8,
-            r_md: radius_md() as u8,
-            r_lg: radius_lg() as u8,
-            r_pill: 99,
-            serif_headlines: false,
+            r_xs: 0,
+            r_sm: 0,
+            r_md: 0,
+            r_lg: 0,
+            r_pill: 0,
+            serif_headlines: true,
             button_treatment: ButtonTreatment::UnderlineActive,
             hairline_borders: true,
             stroke_hair: 0.5,
-            stroke_thin: stroke_thin(),
-            stroke_std: stroke_std(),
-            stroke_thick: 1.5,
+            stroke_thin: 1.0,
+            stroke_std: 1.0,
+            stroke_bold: 1.0,
+            stroke_thick: 1.0,
             shadows_enabled: true,
             solid_active_fills: true,
             uppercase_section_labels: true,
+            label_letter_spacing_px: 1.0,
+            toolbar_height_scale: 1.40,
+            header_height_scale: 1.10,
+            font_hero: 36.0,
+            vertical_group_dividers: true,
+            show_active_tab_underline: false,
+            active_header_fill_multiply: 0.95,
+            inactive_header_fill: false,
+            account_strip_height: 36.0,
         },
     }
 }
@@ -865,4 +951,84 @@ pub fn rule_stroke_for(_bg: egui::Color32, border: egui::Color32) -> egui::Strok
     egui::Stroke::new(stroke_thin(), border)
 }
 
-pub fn style_label_case(s: &str) -> String { s.to_uppercase() }
+/// Paint a full-height inter-cluster vertical divider line in the toolbar (#4).
+/// Call between button groups when `current().vertical_group_dividers` is true.
+/// `panel_rect` should be the full toolbar panel rect for correct top/bottom span.
+pub fn tb_group_break(ui: &mut egui::Ui, panel_rect: egui::Rect, border: egui::Color32) {
+    if !current().vertical_group_dividers { return; }
+    ui.add_space(6.0);
+    let x = ui.cursor().left();
+    let color = color_alpha(border, 80);
+    ui.painter().line_segment(
+        [egui::pos2(x, panel_rect.top()), egui::pos2(x, panel_rect.bottom())],
+        egui::Stroke::new(1.0, color),
+    );
+    ui.add_space(6.0);
+}
+
+/// Returns `s` uppercased only when the active style calls for it (#5, #12).
+pub fn style_label_case(s: &str) -> String {
+    if current().uppercase_section_labels { s.to_uppercase() } else { s.to_string() }
+}
+
+/// Returns a `FontId` appropriate for hero numerics — serif when the active
+/// style requests it, monospace otherwise (#14).
+pub fn hero_font_id(size: f32) -> egui::FontId {
+    if current().serif_headlines {
+        egui::FontId::new(size, egui::FontFamily::Name("serif".into()))
+    } else {
+        egui::FontId::monospace(size)
+    }
+}
+
+/// Builds a `RichText` for large numeric displays using the hero font (#14).
+pub fn hero_text(text: &str, color: egui::Color32) -> egui::RichText {
+    let size = current().font_hero;
+    egui::RichText::new(text).font(hero_font_id(size)).color(color)
+}
+
+/// Apply per-style egui::Style overrides (widget visuals, spacing, shadows)
+/// to the given context. Call once per frame after `set_active_style` (#3).
+///
+/// This is intentionally a *supplement* to the rich visual block already
+/// applied in `setup_theme`; it only overrides the fields that differ
+/// between styles so that non-Meridien themes remain visually unchanged.
+pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_border: egui::Color32, toolbar_bg: egui::Color32) {
+    let mut style = (*ctx.style()).clone();
+    let is_meridien = settings.hairline_borders && settings.serif_headlines;
+
+    if is_meridien {
+        // Meridien widget fills: transparent inactive, flat hairline borders
+        let inact = &mut style.visuals.widgets.inactive;
+        inact.bg_fill      = egui::Color32::TRANSPARENT;
+        inact.weak_bg_fill = egui::Color32::TRANSPARENT;
+        inact.bg_stroke    = egui::Stroke::new(1.0, color_alpha(toolbar_border, 70));
+        inact.corner_radius = egui::CornerRadius::ZERO;
+
+        let hov = &mut style.visuals.widgets.hovered;
+        hov.bg_fill      = color_alpha(toolbar_border, 18);
+        hov.corner_radius = egui::CornerRadius::ZERO;
+
+        let act = &mut style.visuals.widgets.active;
+        act.corner_radius = egui::CornerRadius::ZERO;
+
+        let open = &mut style.visuals.widgets.open;
+        open.corner_radius = egui::CornerRadius::ZERO;
+
+        // Shadows → NONE for Meridien (#16)
+        style.visuals.popup_shadow  = egui::epaint::Shadow::NONE;
+        style.visuals.window_shadow = egui::epaint::Shadow::NONE;
+        style.visuals.window_stroke = egui::Stroke::new(settings.stroke_std, toolbar_border);
+        style.visuals.window_corner_radius = egui::CornerRadius::ZERO;
+        style.visuals.menu_corner_radius   = egui::CornerRadius::ZERO;
+
+        // Denser editorial spacing
+        style.spacing.button_padding   = egui::vec2(8.0, 3.0);
+        style.spacing.menu_margin      = egui::Margin { left: 6, right: 6, top: 4, bottom: 4 };
+        style.spacing.interact_size.y  = 22.0;
+        style.spacing.item_spacing     = egui::vec2(4.0, 3.0);
+    }
+
+    ctx.set_style(style);
+    let _ = (toolbar_bg,); // may be used in future for popup fill overrides
+}
