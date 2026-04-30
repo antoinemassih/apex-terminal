@@ -822,9 +822,9 @@ pub fn current() -> StyleSettings {
             solid_active_fills: true,
             uppercase_section_labels: true,
         },
-        // Meridien (0) and all others — editorial: square corners, hairline
-        // borders, no shadows, uppercase section labels, solid active fills,
-        // underline-active buttons. Sans-serif throughout.
+        // Meridien (0) and all others — editorial: square-ish corners,
+        // hairline borders, soft drop shadow, uppercase section labels,
+        // solid active fills, underline-active buttons. Sans-serif throughout.
         _ => StyleSettings {
             r_xs: 2,
             r_sm: radius_sm() as u8,
@@ -838,7 +838,7 @@ pub fn current() -> StyleSettings {
             stroke_thin: stroke_thin(),
             stroke_std: stroke_std(),
             stroke_thick: 1.5,
-            shadows_enabled: false,
+            shadows_enabled: true,
             solid_active_fills: true,
             uppercase_section_labels: true,
         },

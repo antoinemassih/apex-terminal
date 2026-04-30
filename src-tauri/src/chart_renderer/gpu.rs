@@ -12371,15 +12371,36 @@ fn render_chart_pane(
                 let bar_idx = bar_idx_f.round() as usize;
                 if let Some(&ts) = chart.timestamps.get(bar_idx) {
                     CROSSHAIR_SYNC_TIME.with(|c| c.set(ts));
-                    let dt = chrono::NaiveDateTime::from_timestamp_opt(ts, 0);
+                    let dt = chrono::DateTime::from_timestamp(ts, 0);
                     if let Some(dt) = dt {
-                        let time_str = dt.format("%m/%d %H:%M").to_string();
-                        let time_galley = painter.layout_no_wrap(time_str.clone(), egui::FontId::monospace(8.0), color_alpha(t.text,160));
-                        let time_x = pos.x - time_galley.size().x / 2.0;
-                        let time_y = rect.top() + pt + ch + 2.0;
-                        let time_bg = egui::Rect::from_min_size(egui::pos2(time_x - 3.0, time_y - 1.0), time_galley.size() + egui::vec2(6.0, 2.0));
-                        painter.rect_filled(time_bg, 2.0, t.toolbar_bg);
-                        painter.text(egui::pos2(pos.x, time_y + time_galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &time_str, egui::FontId::monospace(8.0), color_alpha(t.text,160));
+                        let dt = dt.naive_utc();
+                        let time_str = match chart.timeframe.as_str() {
+                            "1m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" => dt.format("%b %d %H:%M").to_string(),
+                            "1d" => dt.format("%b %d %Y").to_string(),
+                            "1w" | "1M" => dt.format("%b %Y").to_string(),
+                            _ => dt.format("%Y-%m-%d %H:%M").to_string(),
+                        };
+                        let tf_font = egui::FontId::monospace(13.0);
+                        let tg = painter.layout_no_wrap(time_str.clone(), tf_font.clone(), egui::Color32::WHITE);
+                        let tpad_x = 5.0; let tpad_y = 2.0;
+                        let tbw = tg.size().x + tpad_x * 2.0;
+                        let tbh = tg.size().y + tpad_y * 2.0;
+                        // Position badge in the time-axis gutter just below the chart canvas,
+                        // clamped so it never extends past the pane bottom.
+                        let pane_bottom = rect.bottom();
+                        let mut time_y_top = rect.top() + pt + ch + 2.0;
+                        if time_y_top + tbh > pane_bottom { time_y_top = pane_bottom - tbh; }
+                        let mut time_x_left = pos.x - tbw / 2.0;
+                        if time_x_left < rect.left() { time_x_left = rect.left(); }
+                        if time_x_left + tbw > rect.left() + cw { time_x_left = rect.left() + cw - tbw; }
+                        let tbr = egui::Rect::from_min_size(
+                            egui::pos2(time_x_left, time_y_top),
+                            egui::vec2(tbw, tbh));
+                        painter.rect_filled(tbr, 3.0, egui::Color32::from_rgba_unmultiplied(20, 20, 26, 240));
+                        painter.rect_stroke(tbr, 3.0, egui::Stroke::new(1.0, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
+                        // Bolder via 0.5px double-draw
+                        painter.text(egui::pos2(tbr.center().x + 0.5, tbr.center().y), egui::Align2::CENTER_CENTER, &time_str, tf_font.clone(), egui::Color32::WHITE);
+                        painter.text(tbr.center(), egui::Align2::CENTER_CENTER, &time_str, tf_font, egui::Color32::WHITE);
                     }
                 }
                 // Measure tooltip — big clean distance display
