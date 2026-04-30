@@ -916,6 +916,55 @@ fn render_order_entry_body(
     _id_salt: u64,
     panel_w: f32,
 ) {
+    // ── Meridien path: fully-redesigned editorial order ticket (#13) ─────────
+    if super::ui::style::current().hairline_borders {
+        let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+        let spread = (last_price * 0.0001).max(0.01);
+        let oe_qty_snapshot = chart.order_qty;
+        let mut oe_state = super::ui::widgets::form::OrderTicketState {
+            symbol:         &chart.symbol,
+            is_buy:         &mut chart.order_is_buy,
+            order_type_idx: &mut chart.order_type_idx,
+            order_tif_idx:  &mut chart.order_tif_idx,
+            order_qty:      &mut chart.order_qty,
+            order_market:   &mut chart.order_market,
+            limit_price:    &mut chart.order_limit_price,
+            stop_price:     &mut chart.order_stop_price,
+            tp_price:       &mut chart.order_tp_price,
+            sl_price:       &mut chart.order_sl_price,
+            bracket:        &mut chart.order_bracket,
+            bid:            (last_price - spread).max(0.0),
+            last:           last_price,
+            ask:            last_price + spread,
+            notional:       last_price * oe_qty_snapshot as f32,
+            buying_power:   0.0, // TODO: thread real buying_power from account data
+            slippage_bps:   0.0,
+        };
+        let outcome = super::ui::widgets::form::MeridienOrderTicket::new()
+            .theme(t)
+            .show(ui, &mut oe_state);
+        if outcome.review_clicked {
+            // Translate REVIEW click into a submit — same path as the existing BUY/SELL buttons.
+            // Side is determined by order_is_buy that the widget just toggled.
+            let side = if chart.order_is_buy { "BUY" } else { "SELL" };
+            let sym  = chart.symbol.clone();
+            let qty  = chart.order_qty;
+            let ot   = chart.order_type_idx;
+            let tif  = chart.order_tif_idx;
+            let price = if chart.order_market { last_price } else {
+                chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
+            };
+            let bracket = chart.order_bracket;
+            let tp = chart.order_tp_price.parse::<f32>().ok();
+            let sl = chart.order_sl_price.parse::<f32>().ok();
+            std::thread::spawn(move || {
+                submit_ib_order(&sym, side, qty, ot, tif, price, bracket, tp, sl);
+            });
+        }
+        return;
+    }
+    // ── Aperture / Octave path continues below ────────────────────────────────
+
     // Meridien style-aware density tweak: tighter vertical spacing + uppercase labels (#13).
     let oe_st = super::ui::style::current();
     let oe_label_color = t.dim.gamma_multiply(if oe_st.hairline_borders { 0.7 } else { 1.0 });
@@ -1394,6 +1443,7 @@ pub(crate) struct Chart {
     pub(crate) orders: Vec<OrderLevel>,
     pub(crate) next_order_id: u32,
     pub(crate) order_qty: u32,
+    pub(crate) order_is_buy: bool, // true=buy, false=sell (used by MeridienOrderTicket)
     pub(crate) order_market: bool, // true=market, false=limit
     pub(crate) order_limit_price: String, // limit price as editable text
     pub(crate) order_type_idx: usize, // 0=MKT, 1=LMT, 2=STP, 3=STP-LMT, 4=TRAIL
@@ -1649,7 +1699,7 @@ impl Chart {
             picker_open: false, picker_query: String::new(), picker_results: vec![],
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
-            orders: vec![], next_order_id: 1, order_qty: 100, order_market: true, order_limit_price: String::new(),
+            orders: vec![], next_order_id: 1, order_qty: 100, order_is_buy: true, order_market: true, order_limit_price: String::new(),
             order_type_idx: 0, order_tif_idx: 0, order_outside_rth: false, order_advanced: false, order_bracket: false,
             order_stop_price: String::new(), order_trail_amt: String::new(),
             order_tp_price: String::new(), order_sl_price: String::new(),
@@ -4788,6 +4838,19 @@ fn render_toolbar(
                 // Settings panel
                 if ui.add(ToolbarBtn::new(Icon::GEAR).active(watchlist.settings_open).theme(t)).on_hover_text("Settings").clicked() {
                     watchlist.settings_open = !watchlist.settings_open;
+                }
+
+                // SearchPill — command palette trigger (#6)
+                {
+                    let tb_h = tb_rect.height();
+                    if super::ui::widgets::status::SearchPill::new()
+                        .height(tb_h - 14.0)
+                        .theme(t)
+                        .show(ui)
+                        .clicked()
+                    {
+                        watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
+                    }
                 }
 
                 ui.add(egui::Separator::default().spacing(4.0));
