@@ -119,6 +119,19 @@ struct OcocoProcess(Mutex<Option<CommandChild>>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize design-mode token store so is_active() returns true and
+    // the inspector keyboard shortcut (Ctrl+Shift+D) becomes responsive.
+    // Tries design.toml first, falls back to defaults.
+    #[cfg(feature = "design-mode")]
+    {
+        let tokens: design_tokens::DesignTokens = std::fs::read_to_string("design.toml")
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .unwrap_or_default();
+        design_tokens::init(tokens);
+        eprintln!("[design-mode] active — press Ctrl+Shift+D to toggle the panel");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
