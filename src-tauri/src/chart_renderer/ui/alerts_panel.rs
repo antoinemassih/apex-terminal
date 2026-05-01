@@ -89,7 +89,7 @@ fn draw_content_cx(
 
         ui.horizontal(|ui| {
             let above_color = cx.bull;
-            if ui.add(egui::Button::new(
+            if ui.add(widgets::buttons::ChromeBtn::new(
                 egui::RichText::new(format!("{} Above {:.2}", Icon::ARROW_FAT_UP, input_price))
                     .monospace().size(9.0).color(above_color))
                 .fill(color_alpha(above_color, ALPHA_GHOST))
@@ -101,7 +101,7 @@ fn draw_content_cx(
             }
 
             let below_color = cx.bear;
-            if ui.add(egui::Button::new(
+            if ui.add(widgets::buttons::ChromeBtn::new(
                 egui::RichText::new(format!("{} Below {:.2}", Icon::ARROW_FAT_DOWN, input_price))
                     .monospace().size(9.0).color(below_color))
                 .fill(color_alpha(below_color, ALPHA_GHOST))

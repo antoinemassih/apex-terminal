@@ -309,6 +309,64 @@ impl<'a> Widget for SmallActionBtn<'a> {
     }
 }
 
+// ─── ChromeBtn ────────────────────────────────────────────────────────────────
+
+/// Chrome button — for bespoke `egui::Button` chrome that doesn't fit
+/// IconBtn/TradeBtn/SimpleBtn/ActionBtn. The label is supplied as a
+/// pre-styled `RichText` so callers retain full control of
+/// font/size/strong/monospace. Bypasses ButtonTreatment dispatch — every
+/// visual is explicit. Useful for: Connect/Disconnect, Add Bot, Send,
+/// Above/Below alert pills, Paper/Live frameless toggle, etc.
+#[must_use = "ChromeBtn must be added with `ui.add(...)` to render"]
+pub struct ChromeBtn {
+    text: RichText,
+    fill: Option<Color32>,
+    stroke: Option<egui::Stroke>,
+    corner_radius: Option<egui::CornerRadius>,
+    frameless: bool,
+    min_size: Option<egui::Vec2>,
+    padding: Option<egui::Margin>,
+}
+
+impl ChromeBtn {
+    pub fn new(text: RichText) -> Self {
+        Self {
+            text,
+            fill: None,
+            stroke: None,
+            corner_radius: None,
+            frameless: false,
+            min_size: None,
+            padding: None,
+        }
+    }
+    pub fn fill(mut self, c: Color32) -> Self { self.fill = Some(c); self }
+    pub fn stroke(mut self, s: egui::Stroke) -> Self { self.stroke = Some(s); self }
+    pub fn corner_radius(mut self, r: impl Into<egui::CornerRadius>) -> Self { self.corner_radius = Some(r.into()); self }
+    pub fn frameless(mut self, f: bool) -> Self { self.frameless = f; self }
+    pub fn min_size(mut self, s: egui::Vec2) -> Self { self.min_size = Some(s); self }
+    pub fn padding(mut self, m: egui::Margin) -> Self { self.padding = Some(m); self }
+}
+
+impl Widget for ChromeBtn {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let mut btn = egui::Button::new(self.text);
+        if let Some(c) = self.fill { btn = btn.fill(c); }
+        if let Some(s) = self.stroke { btn = btn.stroke(s); }
+        if let Some(r) = self.corner_radius { btn = btn.corner_radius(r); }
+        if self.frameless { btn = btn.frame(false); }
+        if let Some(s) = self.min_size { btn = btn.min_size(s); }
+        // padding: egui::Button has no direct margin setter; field stored for callers' reference only
+        let _ = self.padding;
+        let resp = ui.add(btn);
+        hit(&resp.rect, "CHROME_BTN", "Buttons");
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        resp
+    }
+}
+
 // ─── ActionBtn ────────────────────────────────────────────────────────────────
 
 /// Builder for a small tinted action button. Replaces `style::action_btn(ui, label, color, enabled)`.

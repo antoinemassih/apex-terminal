@@ -3750,10 +3750,10 @@ fn render_toolbar(
                     ("LIVE", t.dim)
                 };
                 let tip = if paper { "Switch to Live" } else { "Switch to Paper" };
-                let resp = ui.add(egui::Button::new(
+                let resp = ui.add(crate::chart_renderer::ui::widgets::buttons::ChromeBtn::new(
                     egui::RichText::new(label).monospace().size(11.0).strong().color(color))
-                    .frame(false));
-                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    .frameless(true));
+                // pointing-hand cursor already set by ChromeBtn on hover
                 if resp.on_hover_text(tip).clicked() {
                     super::trading::order_manager::set_paper_mode(!paper);
                 }

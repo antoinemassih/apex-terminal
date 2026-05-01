@@ -79,7 +79,7 @@ pub(crate) fn render(
         let mut metrics_ui = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(metrics_rect)
-                .layout(egui::Layout::left_to_right(egui::Align::Top)),
+                .layout(egui::Layout::left_to_right(egui::Align::Min)),
         );
         // Total Value
         let sign = if total_pnl >= 0.0 { "+" } else { "" };
