@@ -7,6 +7,7 @@
 use egui;
 use super::style::*;
 use super::widgets;
+use super::widgets::inputs::TextInput;
 use super::widgets::rows::alert_row::{AlertRow, AlertCmp};
 use super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
@@ -76,12 +77,13 @@ fn draw_content_cx(
         // Price input
         ui.horizontal(|ui| {
             ui.add(widgets::text::MonospaceCode::new("Price:").xs().color(cx.dim));
-            let te = egui::TextEdit::singleline(&mut panes[ap].alert_input_price)
-                .desired_width(80.0)
-                .font(egui::FontId::monospace(10.0))
+            TextInput::new(&mut panes[ap].alert_input_price)
+                .width(80.0)
+                .font_size(10.0)
                 .text_color(egui::Color32::WHITE)
-                .hint_text(format!("{:.2}", current_price));
-            ui.add(te);
+                .placeholder(&format!("{:.2}", current_price))
+                .theme(cx.theme)
+                .show(ui);
         });
         ui.add_space(3.0);
 

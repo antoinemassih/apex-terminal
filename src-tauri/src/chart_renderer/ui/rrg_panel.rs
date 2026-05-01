@@ -10,6 +10,7 @@ use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
 use super::widgets::text::{SectionLabel, MonospaceCode};
 use super::widgets::status::StatusDot;
+use super::widgets::inputs::Slider;
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
 const SECTOR_COLORS: &[(&str, &str, (u8, u8, u8))] = &[
@@ -218,15 +219,16 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.horizontal(|ui| {
         ui.add(MonospaceCode::new("TIME").xs().color(color_alpha(t.dim, ALPHA_ACTIVE)));
         ui.spacing_mut().slider_width = plot_size - 50.0;
-        ui.add(egui::Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
+        Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
             .show_value(false)
-            .trailing_fill(true));
+            .theme(t)
+            .show(ui);
     });
     ui.horizontal(|ui| {
         ui.add(MonospaceCode::new("TAIL").xs().color(color_alpha(t.dim, ALPHA_ACTIVE)));
         ui.spacing_mut().slider_width = plot_size - 50.0;
         let mut tail = watchlist.rrg_tail_length as f32;
-        if ui.add(egui::Slider::new(&mut tail, 1.0..=15.0).show_value(false).step_by(1.0)).changed() {
+        if Slider::new(&mut tail, 1.0..=15.0).show_value(false).step(1.0).theme(t).show(ui).changed() {
             watchlist.rrg_tail_length = tail as usize;
         }
     });

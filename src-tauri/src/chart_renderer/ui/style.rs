@@ -978,11 +978,15 @@ pub fn current() -> StyleSettings {
     }
 }
 
-pub fn r_xs() -> egui::CornerRadius { egui::CornerRadius::same(2) }
-pub fn r_sm_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_sm() as u8) }
-pub fn r_md_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_md() as u8) }
-pub fn r_lg_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_lg() as u8) }
-pub fn r_pill() -> egui::CornerRadius { egui::CornerRadius::same(99) }
+// Style-aware corner radius helpers — route through `current()` so corners
+// flip when the active style changes (Meridien 0/0/0/0/0, Aperture 4/6/8/12/99,
+// Octave 1/2/3/4/99). Previously these used static tokens which broke the
+// style cascade — a popup using r_lg_cr() always got 8px regardless of style.
+pub fn r_xs() -> egui::CornerRadius { egui::CornerRadius::same(current().r_xs) }
+pub fn r_sm_cr() -> egui::CornerRadius { egui::CornerRadius::same(current().r_sm) }
+pub fn r_md_cr() -> egui::CornerRadius { egui::CornerRadius::same(current().r_md) }
+pub fn r_lg_cr() -> egui::CornerRadius { egui::CornerRadius::same(current().r_lg) }
+pub fn r_pill() -> egui::CornerRadius { egui::CornerRadius::same(current().r_pill) }
 
 pub fn btn_compact_height() -> f32 { 22.0 }
 pub fn btn_simple_height() -> f32 { 24.0 }

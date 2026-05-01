@@ -5,6 +5,7 @@
 
 use egui;
 use super::style::*;
+use super::widgets::inputs::TextInput;
 use super::super::gpu::{Watchlist, Theme};
 
 // ── Preset example scripts ──────────────────────────────────────────────────

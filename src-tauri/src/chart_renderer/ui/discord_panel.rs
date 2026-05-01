@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::widgets;
+use super::widgets::inputs::TextInput;
 use super::super::gpu::{Watchlist, DiscordMessage, Theme};
 use crate::ui_kit::icons::Icon;
 
@@ -502,13 +503,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
                                 ui.add_space(6.0);
-                                let input = ui.add(
-                                    egui::TextEdit::singleline(&mut watchlist.discord_input)
-                                        .desired_width(content_w - 60.0)
-                                        .font(egui::TextStyle::Monospace)
-                                        .text_color(egui::Color32::from_gray(220))
-                                        .hint_text(format!("Message {}...", watchlist.discord_channel))
-                                );
+                                let input = TextInput::new(&mut watchlist.discord_input)
+                                    .width(content_w - 60.0)
+                                    .text_color(egui::Color32::from_gray(220))
+                                    .placeholder(&format!("Message {}...", watchlist.discord_channel))
+                                    .theme(t)
+                                    .show(ui);
                                 let send_clicked = ui.add(widgets::buttons::ChromeBtn::new(
                                     egui::RichText::new("Send").monospace().size(9.0).color(egui::Color32::WHITE))
                                     .fill(discord_blurple)

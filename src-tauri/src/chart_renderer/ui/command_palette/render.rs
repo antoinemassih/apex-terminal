@@ -8,6 +8,7 @@ use super::super::components::*;
 use super::super::components_extra::*;
 use super::super::widgets::text::{BodyLabel, CaptionLabel};
 use super::super::widgets::buttons::SimpleBtn;
+use super::super::widgets::inputs::TextInput;
 use super::super::super::gpu::*;
 
 pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, pal_w: f32) {
@@ -38,10 +39,14 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.label(egui::RichText::new(hint).size(font_md()).monospace().color(t.text.gamma_multiply(0.7)));
     }
     ui.add_space(gap_xl());
-    let te = ui.add(egui::TextEdit::multiline(&mut watchlist.cmd_palette_ai_input)
-        .desired_width(pal_w - 16.0).desired_rows(3)
-        .hint_text("Ask anything — Gemma 4 will answer (coming soon)…")
-        .font(egui::FontId::proportional(font_md())));
+    let te = TextInput::new(&mut watchlist.cmd_palette_ai_input)
+        .multiline(true)
+        .width(pal_w - 16.0)
+        .placeholder("Ask anything — Gemma 4 will answer (coming soon)…")
+        .font_size(font_md())
+        .proportional(true)
+        .theme(t)
+        .show(ui);
     te.request_focus();
     ui.add_space(gap_md());
     ui.horizontal(|ui| {

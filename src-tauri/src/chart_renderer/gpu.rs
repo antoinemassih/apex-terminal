@@ -973,12 +973,6 @@ fn render_order_entry_body(
     let adv = chart.order_advanced;
     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
     let spread = (last_price * 0.0001).max(0.01);
-    let order_types: Vec<&str> = if chart.is_option {
-        vec!["MKT", "LMT", "STP", "STP-LMT", "TRAIL", "UND"]
-    } else {
-        vec!["MKT", "LMT", "STP", "STP-LMT", "TRAIL"]
-    };
-    let tifs = ["DAY", "GTC", "IOC"];
     let pad = 8.0;
     ui.add_space(oe_pad_top);
     // Suppress unused variable warnings when not used below.
@@ -988,22 +982,18 @@ fn render_order_entry_body(
     if adv {
         ui.horizontal(|ui| {
             ui.add_space(pad);
-            ui.spacing_mut().item_spacing.x = 0.0;
-            for (i, &ot) in order_types.iter().enumerate() {
-                let sel = chart.order_type_idx == i;
-                let fg = if sel { t.text } else { t.dim.gamma_multiply(0.7) };
-                let bg = if sel { color_alpha(t.accent, 60) } else { color_alpha(t.toolbar_border, 25) };
-                let rounding = if i == 0 {
-                    egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }
-                } else if i == order_types.len() - 1 {
-                    egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }
-                } else { egui::CornerRadius::ZERO };
-                if ui.add(egui::Button::new(egui::RichText::new(ot).monospace().size(8.0).color(fg))
-                    .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 18.0))
-                    .stroke(egui::Stroke::new(0.5, if sel { color_alpha(t.accent, 120) } else { color_alpha(t.toolbar_border, 50) })))
-                    .clicked() {
-                    chart.order_type_idx = i;
-                    chart.order_market = i == 0;
+            {
+                use super::ui::widgets::select::SegmentedControl;
+                const OT_STOCK: &[(usize, &str)] = &[
+                    (0, "MKT"), (1, "LMT"), (2, "STP"), (3, "STP-LMT"), (4, "TRAIL"),
+                ];
+                const OT_OPTION: &[(usize, &str)] = &[
+                    (0, "MKT"), (1, "LMT"), (2, "STP"), (3, "STP-LMT"), (4, "TRAIL"), (5, "UND"),
+                ];
+                let ot_opts = if chart.is_option { OT_OPTION } else { OT_STOCK };
+                if SegmentedControl::new().options(ot_opts).connected_pills(true).compact(true)
+                    .height(18.0).theme(t).show(ui, &mut chart.order_type_idx) {
+                    chart.order_market = chart.order_type_idx == 0;
                 }
             }
             ui.add_space(8.0);

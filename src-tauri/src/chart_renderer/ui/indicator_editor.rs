@@ -6,6 +6,7 @@ use super::super::gpu::*;
 use super::widgets::buttons::ChromeBtn;
 use super::widgets::form::FormRow;
 use super::widgets::modal::{Modal, Anchor, FrameKind, HeaderStyle};
+use super::widgets::select::SegmentedControl;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::LineStyle;
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
@@ -94,19 +95,14 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     dialog_section(ui, "TYPE", m, t.dim.gamma_multiply(0.5));
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        let ma_kinds = [IndicatorType::SMA, IndicatorType::EMA, IndicatorType::WMA, IndicatorType::DEMA, IndicatorType::TEMA];
-                        for (i, &kind) in ma_kinds.iter().enumerate() {
-                            let sel = ind.kind == kind;
-                            let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                            let bg = if sel { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
-                            let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
-                                else if i == ma_kinds.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
-                                else { egui::CornerRadius::ZERO };
-                            if ui.add(egui::Button::new(egui::RichText::new(kind.label()).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 22.0))
-                                .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_HEAVY) } else { color_alpha(t.toolbar_border, ALPHA_LINE) })))
-                                .clicked() && !sel { ind.kind = kind; needs_recompute = true; }
+                        const MA_KINDS: &[(IndicatorType, &str)] = &[
+                            (IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"),
+                            (IndicatorType::WMA, "WMA"), (IndicatorType::DEMA, "DEMA"),
+                            (IndicatorType::TEMA, "TEMA"),
+                        ];
+                        if SegmentedControl::new().options(MA_KINDS).connected_pills(true).compact(true)
+                            .height(22.0).theme(t).show(ui, &mut ind.kind) {
+                            needs_recompute = true;
                         }
                     });
                     ui.add_space(6.0);
@@ -117,17 +113,13 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     dialog_section(ui, "TYPE", m, t.dim.gamma_multiply(0.5));
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        for (i, &kind) in [IndicatorType::BollingerBands, IndicatorType::KeltnerChannels].iter().enumerate() {
-                            let sel = ind.kind == kind;
-                            let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                            let bg = if sel { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
-                            let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
-                                else { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } };
-                            if ui.add(egui::Button::new(egui::RichText::new(kind.label()).monospace().size(9.0).color(fg))
-                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 22.0))
-                                .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_HEAVY) } else { color_alpha(t.toolbar_border, ALPHA_LINE) })))
-                                .clicked() && !sel { ind.kind = kind; needs_recompute = true; }
+                        const BAND_KINDS: &[(IndicatorType, &str)] = &[
+                            (IndicatorType::BollingerBands, "BB"),
+                            (IndicatorType::KeltnerChannels, "KC"),
+                        ];
+                        if SegmentedControl::new().options(BAND_KINDS).connected_pills(true).compact(true)
+                            .height(22.0).theme(t).show(ui, &mut ind.kind) {
+                            needs_recompute = true;
                         }
                     });
                     ui.add_space(6.0);
@@ -290,18 +282,12 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         ui.label(egui::RichText::new("Source").monospace().size(9.0).color(t.dim));
                         ui.add_space(4.0);
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        let sources = [(0u8, "C"), (1, "O"), (2, "H"), (3, "L"), (4, "HL"), (5, "OHLC")];
-                        for (i, &(src_id, lbl)) in sources.iter().enumerate() {
-                            let sel = ind.source == src_id;
-                            let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                            let bg = if sel { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
-                            let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
-                                else if i == sources.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
-                                else { egui::CornerRadius::ZERO };
-                            if ui.add(egui::Button::new(egui::RichText::new(lbl).monospace().size(8.0).color(fg))
-                                .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 20.0))
-                                .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_HEAVY) } else { color_alpha(t.toolbar_border, ALPHA_LINE) })))
-                                .clicked() && !sel { ind.source = src_id; needs_recompute = true; }
+                        const SOURCES: &[(u8, &str)] = &[
+                            (0, "C"), (1, "O"), (2, "H"), (3, "L"), (4, "HL"), (5, "OHLC"),
+                        ];
+                        if SegmentedControl::new().options(SOURCES).connected_pills(true).compact(true)
+                            .height(20.0).theme(t).show(ui, &mut ind.source) {
+                            needs_recompute = true;
                         }
                     });
                 }
@@ -377,19 +363,11 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             .clicked() { ind.thickness = th; }
                     }
                     ui.add_space(6.0);
-                    let styles = [(LineStyle::Solid, "━"), (LineStyle::Dashed, "╌"), (LineStyle::Dotted, "┈")];
-                    for (i, (ls, sym)) in styles.iter().enumerate() {
-                        let sel = ind.line_style == *ls;
-                        let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                        let bg = if sel { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
-                        let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
-                            else if i == styles.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
-                            else { egui::CornerRadius::ZERO };
-                        if ui.add(egui::Button::new(egui::RichText::new(*sym).monospace().size(10.0).color(fg))
-                            .fill(bg).corner_radius(rounding).min_size(egui::vec2(28.0, 18.0))
-                            .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_HEAVY) } else { color_alpha(t.toolbar_border, ALPHA_LINE) })))
-                            .clicked() { ind.line_style = *ls; }
-                    }
+                    const LINE_STYLES: &[(LineStyle, &str)] = &[
+                        (LineStyle::Solid, "━"), (LineStyle::Dashed, "╌"), (LineStyle::Dotted, "┈"),
+                    ];
+                    SegmentedControl::new().options(LINE_STYLES).connected_pills(true).compact(true)
+                        .height(18.0).theme(t).show(ui, &mut ind.line_style);
                 });
 
                 // ── BAND STYLING (BB / KC only) ──

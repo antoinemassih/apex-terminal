@@ -14,6 +14,7 @@ use super::components_extra::*;
 use super::widgets::pills::*;
 use super::widgets::frames::PopupFrame;
 use super::widgets::text::BodyLabel;
+use super::widgets::inputs::TextInput;
 use super::super::gpu::*;
 
 mod registry;
@@ -165,11 +166,14 @@ fn draw_normal_mode(
     // Header
     ui.horizontal(|ui| {
         ui.add(BodyLabel::new("⌕").size(font_lg()).color(t.dim));
-        let te = ui.add(egui::TextEdit::singleline(&mut watchlist.cmd_palette_query)
-            .desired_width(pal_w - 180.0)
-            .font(egui::FontId::proportional(font_lg()))
-            .hint_text("Search symbols, commands, widgets…  (Tab for AI)")
-            .frame(false));
+        let te = TextInput::new(&mut watchlist.cmd_palette_query)
+            .width(pal_w - 180.0)
+            .font_size(font_lg())
+            .proportional(true)
+            .placeholder("Search symbols, commands, widgets…  (Tab for AI)")
+            .frameless(true)
+            .theme(t)
+            .show(ui);
         te.request_focus();
 
         if ui.input(|i| i.key_pressed(egui::Key::Tab)) {

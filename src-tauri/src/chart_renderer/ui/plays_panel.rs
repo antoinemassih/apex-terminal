@@ -7,6 +7,7 @@ use egui;
 use super::style::*;
 use super::super::gpu::*;
 use super::widgets::buttons::ChromeBtn;
+use super::widgets::inputs::TextInput;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType, PlayLine, PlayLineKind, PlayTarget};
 use crate::ui_kit::icons::Icon;
 
@@ -265,9 +266,9 @@ fn draw_play_editor(
             // Entry
             ui.horizontal(|ui| {
                 dim_label(ui, "Entry", t.dim);
-                let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.play_editor_entry)
+                let resp = TextInput::new(&mut watchlist.play_editor_entry)
                     .id(egui::Id::new(("play_price", PlayLineKind::Entry as u8)))
-                    .desired_width(70.0).font(egui::FontId::monospace(FONT_SM)).hint_text("150.00"));
+                    .width(70.0).font_size(FONT_SM).placeholder("150.00").theme(t).show(ui);
                 if resp.lost_focus() { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
                 if click_to_set_btn(ui, crosshair, t, chart.as_ref().map_or(false, |c| c.play_click_to_set == Some(PlayLineKind::Entry))) {
                     if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Entry); }
@@ -298,9 +299,9 @@ fn draw_play_editor(
             // T1 — primary target with allocation
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("T1").monospace().size(7.0).strong().color(t.bull.gamma_multiply(0.7)));
-                let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.play_editor_target)
+                let resp = TextInput::new(&mut watchlist.play_editor_target)
                     .id(egui::Id::new(("play_price", PlayLineKind::Target as u8)))
-                    .desired_width(65.0).font(egui::FontId::monospace(FONT_SM)));
+                    .width(65.0).font_size(FONT_SM).theme(t).show(ui);
                 if resp.lost_focus() { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
                 if click_to_set_btn(ui, crosshair, t, chart.as_ref().map_or(false, |c| c.play_click_to_set == Some(PlayLineKind::Target))) {
                     if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target); }
@@ -313,9 +314,9 @@ fn draw_play_editor(
                 let mut remove_t2 = false;
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("T2").monospace().size(7.0).strong().color(egui::Color32::from_rgb(26, 188, 156)));
-                    let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.play_editor_t2)
+                    let resp = TextInput::new(&mut watchlist.play_editor_t2)
                         .id(egui::Id::new(("play_price", PlayLineKind::Target2 as u8)))
-                        .desired_width(65.0).font(egui::FontId::monospace(FONT_SM)));
+                        .width(65.0).font_size(FONT_SM).theme(t).show(ui);
                     if resp.lost_focus() { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
                     if click_to_set_btn(ui, crosshair, t, chart.as_ref().map_or(false, |c| c.play_click_to_set == Some(PlayLineKind::Target2))) {
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target2); }
@@ -340,9 +341,9 @@ fn draw_play_editor(
                 let mut remove_t3 = false;
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("T3").monospace().size(7.0).strong().color(egui::Color32::from_rgb(52, 152, 219)));
-                    let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.play_editor_t3)
+                    let resp = TextInput::new(&mut watchlist.play_editor_t3)
                         .id(egui::Id::new(("play_price", PlayLineKind::Target3 as u8)))
-                        .desired_width(65.0).font(egui::FontId::monospace(FONT_SM)));
+                        .width(65.0).font_size(FONT_SM).theme(t).show(ui);
                     if resp.lost_focus() { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
                     if click_to_set_btn(ui, crosshair, t, chart.as_ref().map_or(false, |c| c.play_click_to_set == Some(PlayLineKind::Target3))) {
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target3); }
@@ -367,9 +368,9 @@ fn draw_play_editor(
                 ui.horizontal(|ui| {
                     let stop_label = egui::RichText::new("STOP").monospace().size(7.0).color(t.bear.gamma_multiply(0.7));
                     ui.label(stop_label);
-                    let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.play_editor_stop)
+                    let resp = TextInput::new(&mut watchlist.play_editor_stop)
                         .id(egui::Id::new(("play_price", PlayLineKind::Stop as u8)))
-                        .desired_width(70.0).font(egui::FontId::monospace(FONT_SM)).hint_text("148.00"));
+                        .width(70.0).font_size(FONT_SM).placeholder("148.00").theme(t).show(ui);
                     if resp.lost_focus() { sync_form_to_lines(watchlist, chart.as_deref_mut()); }
                     if click_to_set_btn(ui, crosshair, t, chart.as_ref().map_or(false, |c| c.play_click_to_set == Some(PlayLineKind::Stop))) {
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Stop); }
@@ -449,9 +450,9 @@ fn draw_play_editor(
             ui.add_space(GAP_XS);
 
             // ── Notes ──
-            ui.add(egui::TextEdit::multiline(&mut watchlist.play_editor_notes)
-                .desired_rows(2).desired_width(ui.available_width())
-                .font(egui::FontId::monospace(FONT_SM)).hint_text("Strategy notes..."));
+            TextInput::new(&mut watchlist.play_editor_notes)
+                .multiline(true).width(ui.available_width())
+                .font_size(FONT_SM).placeholder("Strategy notes...").theme(t).show(ui);
             ui.add_space(GAP_SM);
 
             // ── Buttons ──
