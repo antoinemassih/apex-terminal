@@ -891,6 +891,7 @@ pub fn toolbar_rect() -> egui::Rect {
 // Three RwLock<StyleSettings> initialised once from the hardcoded defaults.
 // `current()` clones the active one; `set_style_settings` overwrites it.
 
+// ┌─ STYLE_DEFAULTS_BEGIN ─────────────────────────────────────────────────────
 fn style_defaults(id: u8) -> StyleSettings {
     match id {
         1 => StyleSettings {
@@ -940,6 +941,7 @@ fn style_defaults(id: u8) -> StyleSettings {
         },
     }
 }
+// └─ STYLE_DEFAULTS_END ───────────────────────────────────────────────────────
 
 static STYLE_STORE: std::sync::OnceLock<[std::sync::RwLock<StyleSettings>; 3]> =
     std::sync::OnceLock::new();

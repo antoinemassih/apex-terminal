@@ -676,6 +676,111 @@ fn color_edit(ui: &mut Ui, label: &str, color: &mut Rgba) -> bool {
 
 // ─── Style Editor ─────────────────────────────────────────────────────────────
 
+/// Serialise a single f32 the same way style.rs literals are written.
+fn fmt_f32(v: f32) -> String {
+    // Use Rust debug format: gives "1.0", "1.5", "0.5" etc. without excess decimals.
+    format!("{v:?}")
+}
+
+fn fmt_bool(v: bool) -> &'static str {
+    if v { "true" } else { "false" }
+}
+
+fn fmt_bt(bt: crate::chart_renderer::ui::style::ButtonTreatment) -> &'static str {
+    use crate::chart_renderer::ui::style::ButtonTreatment;
+    match bt {
+        ButtonTreatment::SoftPill       => "ButtonTreatment::SoftPill",
+        ButtonTreatment::OutlineAccent  => "ButtonTreatment::OutlineAccent",
+        ButtonTreatment::UnderlineActive=> "ButtonTreatment::UnderlineActive",
+        ButtonTreatment::RaisedActive   => "ButtonTreatment::RaisedActive",
+        ButtonTreatment::BlackFillActive=> "ButtonTreatment::BlackFillActive",
+    }
+}
+
+fn build_arm(id: u8, s: &crate::chart_renderer::ui::style::StyleSettings) -> String {
+    let pat = if id == 2 { "_".to_string() } else { id.to_string() };
+    let i = "            "; // 12 spaces
+    let mut out = String::new();
+    out.push_str(&format!("        {pat} => StyleSettings {{\n"));
+    out.push_str(&format!("{i}r_xs: {}, r_sm: {}, r_md: {}, r_lg: {}, r_pill: {},\n", s.r_xs, s.r_sm, s.r_md, s.r_lg, s.r_pill));
+    out.push_str(&format!("{i}serif_headlines: {},\n", fmt_bool(s.serif_headlines)));
+    out.push_str(&format!("{i}button_treatment: {},\n", fmt_bt(s.button_treatment)));
+    out.push_str(&format!("{i}hairline_borders: {},\n", fmt_bool(s.hairline_borders)));
+    out.push_str(&format!("{i}stroke_hair: {}, stroke_thin: {}, stroke_std: {},\n",
+        fmt_f32(s.stroke_hair), fmt_f32(s.stroke_thin), fmt_f32(s.stroke_std)));
+    out.push_str(&format!("{i}stroke_bold: {}, stroke_thick: {},\n",
+        fmt_f32(s.stroke_bold), fmt_f32(s.stroke_thick)));
+    out.push_str(&format!("{i}shadows_enabled: {}, solid_active_fills: {},\n",
+        fmt_bool(s.shadows_enabled), fmt_bool(s.solid_active_fills)));
+    out.push_str(&format!("{i}uppercase_section_labels: {}, label_letter_spacing_px: {},\n",
+        fmt_bool(s.uppercase_section_labels), fmt_f32(s.label_letter_spacing_px)));
+    out.push_str(&format!("{i}toolbar_height_scale: {}, header_height_scale: {},\n",
+        fmt_f32(s.toolbar_height_scale), fmt_f32(s.header_height_scale)));
+    out.push_str(&format!("{i}font_hero: {}, vertical_group_dividers: {},\n",
+        fmt_f32(s.font_hero), fmt_bool(s.vertical_group_dividers)));
+    out.push_str(&format!("{i}show_active_tab_underline: {},\n", fmt_bool(s.show_active_tab_underline)));
+    out.push_str(&format!("{i}active_header_fill_multiply: {}, inactive_header_fill: {},\n",
+        fmt_f32(s.active_header_fill_multiply), fmt_bool(s.inactive_header_fill)));
+    out.push_str(&format!("{i}account_strip_height: {},\n", fmt_f32(s.account_strip_height)));
+    out.push_str("        },");
+    out
+}
+
+/// Rewrite the style_defaults function body in style.rs between the BEGIN/END markers.
+/// Returns Ok(()) on success, Err(message) on failure.
+fn save_style_defaults_to_source() -> Result<(), String> {
+    use crate::chart_renderer::ui::style::get_style_settings;
+
+    // Locate style.rs relative to CARGO_MANIFEST_DIR (set at compile time).
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let style_path = manifest_dir.join("src/chart_renderer/ui/style.rs");
+
+    let src = std::fs::read_to_string(&style_path)
+        .map_err(|e| format!("read failed: {e}"))?;
+
+    let begin_marker = "// ┌─ STYLE_DEFAULTS_BEGIN ─────────────────────────────────────────────────────";
+    let end_marker   = "// └─ STYLE_DEFAULTS_END ───────────────────────────────────────────────────────";
+
+    let begin_pos = src.find(begin_marker)
+        .ok_or_else(|| "STYLE_DEFAULTS_BEGIN marker not found".to_string())?;
+    let end_pos = src.find(end_marker)
+        .ok_or_else(|| "STYLE_DEFAULTS_END marker not found".to_string())?;
+    if end_pos <= begin_pos {
+        return Err("END marker before BEGIN marker".to_string());
+    }
+
+    // Build the replacement block (BEGIN marker + fn body + END marker)
+    let s0 = get_style_settings(0); // Meridien → arm `_`
+    let s1 = get_style_settings(1); // Aperture → arm `1`
+    let s2 = get_style_settings(2); // Octave   → arm `2`
+    let arm1 = build_arm(1, &s1);
+    let arm2 = build_arm(2, &s2);
+    let arm0 = build_arm(0, &s0); // will render as `_`
+
+    let mut new_block = String::new();
+    new_block.push_str(begin_marker);
+    new_block.push('\n');
+    new_block.push_str("fn style_defaults(id: u8) -> StyleSettings {\n");
+    new_block.push_str("    match id {\n");
+    new_block.push_str(&arm1);
+    new_block.push('\n');
+    new_block.push_str(&arm2);
+    new_block.push('\n');
+    new_block.push_str(&arm0);
+    new_block.push('\n');
+    new_block.push_str("    }\n");
+    new_block.push_str("}\n");
+    new_block.push_str(end_marker);
+
+    // Replace the slice from BEGIN to end of END marker line
+    let end_of_end = end_pos + end_marker.len();
+    let new_src = format!("{}{}{}", &src[..begin_pos], new_block, &src[end_of_end..]);
+
+    std::fs::write(&style_path, new_src)
+        .map_err(|e| format!("write failed: {e}"))?;
+    Ok(())
+}
+
 fn render_style_editor(ui: &mut Ui) -> bool {
     use crate::chart_renderer::ui::style::{ButtonTreatment, get_style_settings, set_style_settings, set_active_style};
     let mut changed = false;
@@ -710,6 +815,35 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 changed = true;
             }
         }
+    });
+
+    // Save to source button
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        if ui.add(egui::Button::new(
+            RichText::new("💾 Save to source")
+                .monospace().size(10.0).strong()
+                .color(Color32::from_rgb(166, 227, 161)))
+            .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
+            .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
+            .corner_radius(3.0)
+        ).clicked() {
+            match save_style_defaults_to_source() {
+                Ok(()) => {
+                    STYLE_SAVE_STATUS.with(|s| *s.borrow_mut() = "Saved to source ✓".to_string());
+                }
+                Err(e) => {
+                    STYLE_SAVE_STATUS.with(|s| *s.borrow_mut() = format!("Save failed: {e}"));
+                }
+            }
+        }
+        STYLE_SAVE_STATUS.with(|s| {
+            let msg = s.borrow();
+            if !msg.is_empty() {
+                ui.label(RichText::new(msg.as_str()).monospace().size(9.0)
+                    .color(Color32::from_rgb(150, 150, 160)));
+            }
+        });
     });
 
     ui.add_space(6.0);
@@ -802,6 +936,10 @@ fn render_style_editor(ui: &mut Ui) -> bool {
 
 static STYLE_EDITOR_ACTIVE: std::sync::atomic::AtomicU8 =
     std::sync::atomic::AtomicU8::new(0);
+
+thread_local! {
+    static STYLE_SAVE_STATUS: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
 
 fn style_drag_u8(ui: &mut Ui, label: &str, value: &mut u8) -> bool {
     let mut v = *value as f32;
