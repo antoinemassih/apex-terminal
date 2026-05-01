@@ -163,6 +163,8 @@ pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search 
 
 // Shared helpers
 use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
+use super::ui::style as style;
+use super::ui::widgets::foundation::text_style::TextStyle;
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -5258,19 +5260,24 @@ fn render_toolbar(
             .fixed_pos(egui::pos2(tip_x, tip_y))
             .order(egui::Order::Tooltip)
             .show(ctx, |ui| {
-                egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).stroke(egui::Stroke::new(0.5, t.toolbar_border))
-                    .inner_margin(8.0).corner_radius(6.0).show(ui, |ui| {
+                let wl_tip_st = style::current();
+                let wl_tip_cr = wl_tip_st.r_md as f32;
+                let wl_tip_stroke_w = if wl_tip_st.hairline_borders { wl_tip_st.stroke_std } else { style::stroke_thin() };
+                let wl_tip_border = if wl_tip_st.hairline_borders { t.toolbar_border } else { color_alpha(t.toolbar_border, style::alpha_strong()) };
+                egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg)
+                    .stroke(egui::Stroke::new(wl_tip_stroke_w, wl_tip_border))
+                    .inner_margin(style::gap_lg()).corner_radius(wl_tip_cr).show(ui, |ui| {
                     ui.set_max_width(tip_w);
-                    ui.label(egui::RichText::new(&tip.sym).monospace().size(16.0).color(egui::Color32::WHITE));
+                    ui.label(TextStyle::NumericLg.as_rich(&tip.sym, egui::Color32::WHITE));
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("${:.2}", tip.price)).monospace().size(11.0).color(color_alpha(t.text,220)));
-                        ui.label(egui::RichText::new(format!("{:+.2}%", change_pct)).monospace().size(11.0).color(chg_col));
+                        ui.label(TextStyle::Numeric.as_rich(&format!("${:.2}", tip.price), color_alpha(t.text,220)));
+                        ui.label(TextStyle::Numeric.as_rich(&format!("{:+.2}%", change_pct), chg_col));
                     });
                     ui.add_space(4.0); ui.separator(); ui.add_space(4.0);
                     if tip.day_high > tip.day_low {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Day").monospace().size(9.0).color(dim));
-                            ui.label(egui::RichText::new(format!("{:.2}", tip.day_low)).monospace().size(9.0).color(dim));
+                            ui.label(TextStyle::Caption.as_rich("Day", dim));
+                            ui.label(TextStyle::MonoSm.as_rich(&format!("{:.2}", tip.day_low), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
                             ui.painter().rect_filled(bar_rect, 2.0, color_alpha(t.text,15));
@@ -5279,13 +5286,13 @@ fn render_toolbar(
                                 let pos = ((tip.price - tip.day_low) / range).clamp(0.0, 1.0);
                                 ui.painter().circle_filled(egui::pos2(bar_rect.left() + pos * bar_w, bar_rect.center().y), 3.0, chg_col);
                             }
-                            ui.label(egui::RichText::new(format!("{:.2}", tip.day_high)).monospace().size(9.0).color(dim));
+                            ui.label(TextStyle::MonoSm.as_rich(&format!("{:.2}", tip.day_high), dim));
                         });
                     }
                     if tip.high_52wk > tip.low_52wk {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("52w").monospace().size(9.0).color(dim));
-                            ui.label(egui::RichText::new(format!("{:.0}", tip.low_52wk)).monospace().size(9.0).color(dim));
+                            ui.label(TextStyle::Caption.as_rich("52w", dim));
+                            ui.label(TextStyle::MonoSm.as_rich(&format!("{:.0}", tip.low_52wk), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
                             ui.painter().rect_filled(bar_rect, 2.0, color_alpha(t.text,15));
@@ -5294,28 +5301,28 @@ fn render_toolbar(
                                 let pos = ((tip.price - tip.low_52wk) / range).clamp(0.0, 1.0);
                                 ui.painter().circle_filled(egui::pos2(bar_rect.left() + pos * bar_w, bar_rect.center().y), 3.0, t.accent);
                             }
-                            ui.label(egui::RichText::new(format!("{:.0}", tip.high_52wk)).monospace().size(9.0).color(dim));
+                            ui.label(TextStyle::MonoSm.as_rich(&format!("{:.0}", tip.high_52wk), dim));
                         });
                     }
                     ui.add_space(2.0);
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("ATR {:.2}", tip.atr)).monospace().size(9.0).color(dim));
-                        ui.label(egui::RichText::new(format!("RVOL {:.1}x", tip.rvol)).monospace().size(9.0).color(
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("ATR {:.2}", tip.atr), dim));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("RVOL {:.1}x", tip.rvol),
                             if tip.rvol > 2.0 { egui::Color32::from_rgb(240, 160, 40) } else { dim }));
                     });
                     if change_pct.abs() > tip.avg_range * 1.5 {
-                        ui.label(egui::RichText::new("EXTREME MOVE").monospace().size(8.0).color(chg_col));
+                        ui.label(TextStyle::Caption.as_rich("EXTREME MOVE", chg_col));
                     }
                     if tip.earnings_days >= 0 && tip.earnings_days <= 14 {
                         ui.add_space(2.0);
-                        ui.label(egui::RichText::new(format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days)).monospace().size(9.0).color(egui::Color32::from_rgb(255, 193, 37)));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), egui::Color32::from_rgb(255, 193, 37)));
                     }
                     if !tip.tags.is_empty() {
                         ui.add_space(2.0);
-                        ui.horizontal_wrapped(|ui| { for tag in &tip.tags { ui.label(egui::RichText::new(tag).monospace().size(8.0).color(t.accent)); } });
+                        ui.horizontal_wrapped(|ui| { for tag in &tip.tags { ui.label(TextStyle::Caption.as_rich(tag, t.accent)); } });
                     }
                     if tip.alert_triggered {
-                        ui.label(egui::RichText::new(format!("{} Alert triggered", Icon::LIGHTNING)).monospace().size(9.0).color(egui::Color32::from_rgb(231, 76, 60)));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Alert triggered", Icon::LIGHTNING), egui::Color32::from_rgb(231, 76, 60)));
                     }
                 });
             });
@@ -8120,7 +8127,8 @@ fn render_chart_pane(
                 if y.is_finite() && y.abs() < 50000.0 {
                     dashed_line(&painter, egui::pos2(rect.left(),y), egui::pos2(rect.left()+cw,y), sc, ls);
                     if is_sel {
-                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), 4.0, egui::Color32::from_rgb(74,158,255));
+                        let hsel_st = style::current();
+                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y), (hsel_st.r_xs as f32 + 3.0).max(4.0), t.accent);
                     }
                 }
             }
@@ -8145,10 +8153,13 @@ fn render_chart_pane(
                     }
                     dashed_line(&painter, clamp_pt(draw_a), clamp_pt(draw_b), sc, ls);
                     if is_sel {
-                        painter.circle_filled(clamp_pt(p0), 5.0, egui::Color32::from_rgb(74,158,255));
-                        painter.circle_stroke(clamp_pt(p0), 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
-                        painter.circle_filled(clamp_pt(p1), 5.0, egui::Color32::from_rgb(74,158,255));
-                        painter.circle_stroke(clamp_pt(p1), 5.0, egui::Stroke::new(1.0, egui::Color32::WHITE));
+                        let sel_st = style::current();
+                        let handle_r = (sel_st.r_xs as f32 + 3.0).max(4.0);
+                        let handle_stroke = egui::Stroke::new(sel_st.stroke_std, egui::Color32::WHITE);
+                        painter.circle_filled(clamp_pt(p0), handle_r, t.accent);
+                        painter.circle_stroke(clamp_pt(p0), handle_r, handle_stroke);
+                        painter.circle_filled(clamp_pt(p1), handle_r, t.accent);
+                        painter.circle_stroke(clamp_pt(p1), handle_r, handle_stroke);
                         // Info label
                         let mid = egui::pos2((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
                         let dp = *price1 - *price0;
@@ -8157,10 +8168,10 @@ fn render_chart_pane(
                         let b1f = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
                         let bars = (b1f - b0f).abs().round() as i32;
                         let info = format!("{:+.2} ({:+.1}%) {} bars", dp, pct, bars);
-                        let ig = painter.layout_no_wrap(info.clone(), egui::FontId::monospace(8.0), color_alpha(t.text,180));
+                        let ig = painter.layout_no_wrap(info.clone(), egui::FontId::monospace(style::font_xs()), color_alpha(t.text,180));
                         let info_rect = egui::Rect::from_center_size(mid - egui::vec2(0.0, 12.0), ig.size() + egui::vec2(8.0, 4.0));
-                        painter.rect_filled(info_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 210));
-                        painter.text(mid - egui::vec2(0.0, 12.0), egui::Align2::CENTER_CENTER, &info, egui::FontId::monospace(8.0), color_alpha(t.text,180));
+                        painter.rect_filled(info_rect, sel_st.r_xs as f32, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 210));
+                        painter.text(mid - egui::vec2(0.0, 12.0), egui::Align2::CENTER_CENTER, &info, egui::FontId::monospace(style::font_xs()), color_alpha(t.text,180));
                     }
                 }
             }
@@ -8172,8 +8183,10 @@ fn render_chart_pane(
                     dashed_line(&painter, egui::pos2(rect.left(),y0), egui::pos2(rect.left()+cw,y0), sc, ls);
                     dashed_line(&painter, egui::pos2(rect.left(),y1), egui::pos2(rect.left()+cw,y1), sc, ls);
                     if is_sel {
-                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y0), 4.0, egui::Color32::from_rgb(74,158,255));
-                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y1), 4.0, egui::Color32::from_rgb(74,158,255));
+                        let hsel_st = style::current();
+                        let hzone_hr = (hsel_st.r_xs as f32 + 3.0).max(4.0);
+                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y0), hzone_hr, t.accent);
+                        painter.circle_filled(egui::pos2(rect.left()+cw-10.0,y1), hzone_hr, t.accent);
                     }
                 }
             }
@@ -12114,11 +12127,15 @@ fn render_chart_pane(
     if pointer_in_pane && chart.draw_tool.is_empty() {
         if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
             if pos.x >= rect.left() && pos.x < rect.left()+cw && pos.y >= rect.top()+pt && pos.y < rect.top()+pt+ch {
-                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)],egui::Stroke::new(0.5,color_alpha(t.text,50)));
-                painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(0.5,color_alpha(t.text,50)));
+                let ch_line_w = style::stroke_thin();
+                painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)],egui::Stroke::new(ch_line_w,color_alpha(t.text,50)));
+                painter.line_segment([egui::pos2(pos.x,rect.top()+pt),egui::pos2(pos.x,rect.top()+pt+ch)],egui::Stroke::new(ch_line_w,color_alpha(t.text,50)));
                 let hp = min_p+(max_p-min_p)*(1.0-(pos.y-rect.top()-pt)/ch);
                 chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.2}", hp);
-                let cf = egui::FontId::monospace(13.0);
+                let ch_st = style::current();
+                let ch_badge_cr = ch_st.r_xs as f32;
+                let ch_badge_stroke_w = if ch_st.hairline_borders { ch_st.stroke_std } else { style::stroke_thin() };
+                let cf = egui::FontId::monospace(style::font_lg());
                 let cg = painter.layout_no_wrap(chart.fmt_buf.clone(), cf.clone(), egui::Color32::WHITE);
                 let cpad_x = 5.0; let cpad_y = 2.0;
                 let cbw = cg.size().x + cpad_x * 2.0;
@@ -12126,8 +12143,8 @@ fn render_chart_pane(
                 let cbr = egui::Rect::from_min_size(
                     egui::pos2(rect.left() + cw + 1.0, pos.y - cbh / 2.0),
                     egui::vec2(cbw, cbh));
-                painter.rect_filled(cbr, 3.0, egui::Color32::from_rgba_unmultiplied(20, 20, 26, 240));
-                painter.rect_stroke(cbr, 3.0, egui::Stroke::new(1.0, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
+                painter.rect_filled(cbr, ch_badge_cr, egui::Color32::from_rgba_unmultiplied(20, 20, 26, 240));
+                painter.rect_stroke(cbr, ch_badge_cr, egui::Stroke::new(ch_badge_stroke_w, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
                 // Bolder via 0.5px double-draw
                 painter.text(egui::pos2(cbr.left() + cpad_x + 0.5, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf.clone(), egui::Color32::WHITE);
                 painter.text(egui::pos2(cbr.left() + cpad_x, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf, egui::Color32::WHITE);
@@ -12146,7 +12163,7 @@ fn render_chart_pane(
                             "1w" | "1M" => dt.format("%b %Y").to_string(),
                             _ => dt.format("%Y-%m-%d %H:%M").to_string(),
                         };
-                        let tf_font = egui::FontId::monospace(13.0);
+                        let tf_font = egui::FontId::monospace(style::font_lg());
                         let tg = painter.layout_no_wrap(time_str.clone(), tf_font.clone(), egui::Color32::WHITE);
                         let tpad_x = 5.0; let tpad_y = 2.0;
                         let tbw = tg.size().x + tpad_x * 2.0;
@@ -12162,8 +12179,8 @@ fn render_chart_pane(
                         let tbr = egui::Rect::from_min_size(
                             egui::pos2(time_x_left, time_y_top),
                             egui::vec2(tbw, tbh));
-                        painter.rect_filled(tbr, 3.0, egui::Color32::from_rgba_unmultiplied(20, 20, 26, 240));
-                        painter.rect_stroke(tbr, 3.0, egui::Stroke::new(1.0, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
+                        painter.rect_filled(tbr, ch_badge_cr, egui::Color32::from_rgba_unmultiplied(20, 20, 26, 240));
+                        painter.rect_stroke(tbr, ch_badge_cr, egui::Stroke::new(ch_badge_stroke_w, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
                         // Bolder via 0.5px double-draw
                         painter.text(egui::pos2(tbr.center().x + 0.5, tbr.center().y), egui::Align2::CENTER_CENTER, &time_str, tf_font.clone(), egui::Color32::WHITE);
                         painter.text(tbr.center(), egui::Align2::CENTER_CENTER, &time_str, tf_font, egui::Color32::WHITE);
@@ -12179,19 +12196,22 @@ fn render_chart_pane(
                     // Big floating box near cursor
                     let mx = pos.x + 20.0;
                     let my = pos.y;
-                    let pct_galley = painter.layout_no_wrap(m_pct_text.clone(), egui::FontId::monospace(10.0), dist_col);
-                    let price_galley = painter.layout_no_wrap(m_price_text.clone(), egui::FontId::monospace(8.0), color_alpha(dist_col, 160));
+                    let meas_st = style::current();
+                    let meas_cr = meas_st.r_sm as f32;
+                    let meas_stroke_w = if meas_st.hairline_borders { meas_st.stroke_std } else { style::stroke_thin() };
+                    let pct_galley = painter.layout_no_wrap(m_pct_text.clone(), egui::FontId::monospace(style::font_md()), dist_col);
+                    let price_galley = painter.layout_no_wrap(m_price_text.clone(), egui::FontId::monospace(style::font_sm()), color_alpha(dist_col, 160));
                     let box_w = pct_galley.size().x.max(price_galley.size().x) + 16.0;
                     let box_h = pct_galley.size().y + price_galley.size().y + 10.0;
                     // Flip left if near right edge
                     let bx_pos = if mx + box_w > rect.left() + cw { pos.x - box_w - 10.0 } else { mx };
                     let measure_rect = egui::Rect::from_min_size(egui::pos2(bx_pos, my - box_h / 2.0), egui::vec2(box_w, box_h));
-                    painter.rect_filled(measure_rect, 4.0, color_alpha(t.toolbar_bg, 240));
-                    painter.rect_stroke(measure_rect, 4.0, egui::Stroke::new(1.0, color_alpha(dist_col, 80)), egui::StrokeKind::Outside);
+                    painter.rect_filled(measure_rect, meas_cr, color_alpha(t.toolbar_bg, 240));
+                    painter.rect_stroke(measure_rect, meas_cr, egui::Stroke::new(meas_stroke_w, color_alpha(dist_col, 80)), egui::StrokeKind::Outside);
                     painter.text(egui::pos2(measure_rect.center().x, measure_rect.top() + pct_galley.size().y / 2.0 + 4.0),
-                        egui::Align2::CENTER_CENTER, &m_pct_text, egui::FontId::monospace(10.0), dist_col);
+                        egui::Align2::CENTER_CENTER, &m_pct_text, egui::FontId::monospace(style::font_md()), dist_col);
                     painter.text(egui::pos2(measure_rect.center().x, measure_rect.bottom() - price_galley.size().y / 2.0 - 3.0),
-                        egui::Align2::CENTER_CENTER, &m_price_text, egui::FontId::monospace(8.0), color_alpha(dist_col, 160));
+                        egui::Align2::CENTER_CENTER, &m_price_text, egui::FontId::monospace(style::font_sm()), color_alpha(dist_col, 160));
                 }
 
                 // OHLC tooltip (togglable — hidden when footprint is active)
@@ -12199,7 +12219,7 @@ fn render_chart_pane(
                     if let Some(bar_data) = chart.bars.get(bar_idx) {
                         let tooltip_x = pos.x + 15.0;
                         let tooltip_y = pos.y - 5.0;
-                        let font = egui::FontId::monospace(9.0);
+                        let font = egui::FontId::monospace(style::font_sm());
                         let o = bar_data.open; let h = bar_data.high; let l = bar_data.low; let c = bar_data.close; let v = bar_data.volume;
                         let is_bull = c >= o;
                         let change = c - o;
@@ -12316,17 +12336,26 @@ fn render_chart_pane(
                         let tx = if tooltip_x + tip_w > rect.left() + cw { pos.x - tip_w - 16.0 } else { tooltip_x };
                         let ty = (tooltip_y - tip_h).max(rect.top() + pt).min(rect.top() + pt + ch - tip_h);
                         let tip_rect = egui::Rect::from_min_size(egui::pos2(tx, ty), egui::vec2(tip_w, tip_h));
-                        // Rich tooltip: shadow + bevel + crisp border
-                        painter.rect_filled(tip_rect.translate(egui::vec2(0.0, 3.0)).expand(1.0), 8.0,
-                            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 25));
-                        painter.rect_filled(tip_rect, 8.0,
+                        // Rich tooltip: shadow + bevel + crisp border (style-aware)
+                        let tip_st = style::current();
+                        let tip_cr = tip_st.r_md as f32;
+                        let tip_cr_egui = egui::CornerRadius::same(tip_st.r_md);
+                        let tip_stroke_w = if tip_st.hairline_borders { tip_st.stroke_std } else { style::stroke_thin() };
+                        let tip_border_alpha = if t.is_light() { 50u8 } else { 40u8 };
+                        if tip_st.shadows_enabled {
+                            painter.rect_filled(tip_rect.translate(egui::vec2(0.0, style::shadow_offset())).expand(1.0), tip_cr,
+                                egui::Color32::from_rgba_unmultiplied(0, 0, 0, style::shadow_alpha()));
+                        }
+                        painter.rect_filled(tip_rect, tip_cr,
                             egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 240));
-                        // Top bevel
-                        painter.rect_filled(egui::Rect::from_min_max(tip_rect.min, egui::pos2(tip_rect.right(), tip_rect.top() + 1.0)),
-                            egui::CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 },
-                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 30 } else { 8 }));
-                        painter.rect_stroke(tip_rect, 8.0,
-                            egui::Stroke::new(0.8, color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 40 })),
+                        // Top bevel (only for non-Meridien styles that have rounded corners)
+                        if tip_st.r_md > 0 {
+                            painter.rect_filled(egui::Rect::from_min_max(tip_rect.min, egui::pos2(tip_rect.right(), tip_rect.top() + 1.0)),
+                                egui::CornerRadius { nw: tip_st.r_md, ne: tip_st.r_md, sw: 0, se: 0 },
+                                egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 30 } else { 8 }));
+                        }
+                        painter.rect_stroke(tip_rect, tip_cr_egui,
+                            egui::Stroke::new(tip_stroke_w, color_alpha(t.toolbar_border, tip_border_alpha)),
                             egui::StrokeKind::Outside);
                         for (i, (line, col)) in tip_lines.iter().enumerate() {
                             if line == "---" {
@@ -12627,7 +12656,7 @@ fn render_chart_pane(
             if sync_x >= rect.left() && sync_x <= rect.left() + cw {
                 painter.line_segment(
                     [egui::pos2(sync_x, rect.top()+pt), egui::pos2(sync_x, rect.top()+pt+ch)],
-                    egui::Stroke::new(0.5, color_alpha(t.text,30)));
+                    egui::Stroke::new(style::stroke_thin(), color_alpha(t.text,30)));
             }
         }
     }
