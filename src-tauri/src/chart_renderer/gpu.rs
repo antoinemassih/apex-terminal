@@ -104,22 +104,25 @@ pub(crate) fn style_id(wl: &Watchlist) -> u8 {
 pub(crate) fn pane_header_h(wl: &Watchlist) -> f32 {
     use crate::chart_renderer::PaneHeaderSize;
     let base = wl.pane_header_size.header_h();
-    match (style_id(wl), wl.pane_header_size) {
-        (1, PaneHeaderSize::Compact) => base + 2.0, // Aperture — more breathing room
-        (2, PaneHeaderSize::Compact) => (base - 2.0).max(16.0), // Octave — denser
+    let style_adj = match (style_id(wl), wl.pane_header_size) {
+        (1, PaneHeaderSize::Compact) => base + 2.0,
+        (2, PaneHeaderSize::Compact) => (base - 2.0).max(16.0),
         _ => base,
-    }
+    };
+    // Multiply by current().header_height_scale so the design-mode slider has effect.
+    (style_adj * super::ui::style::current().header_height_scale).max(12.0)
 }
 
 /// Style-aware tabs pane header height. Mirrors `PaneHeaderSize::tabs_header_h`.
 pub(crate) fn pane_tabs_header_h(wl: &Watchlist) -> f32 {
     use crate::chart_renderer::PaneHeaderSize;
     let base = wl.pane_header_size.tabs_header_h();
-    match (style_id(wl), wl.pane_header_size) {
+    let style_adj = match (style_id(wl), wl.pane_header_size) {
         (1, PaneHeaderSize::Compact) => base + 2.0,
         (2, PaneHeaderSize::Compact) => (base - 2.0).max(20.0),
         _ => base,
-    }
+    };
+    (style_adj * super::ui::style::current().header_height_scale).max(16.0)
 }
 
 // ┌─ THEMES_BEGIN ──────────────────────────────────────────────────────────────
