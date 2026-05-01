@@ -371,7 +371,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     let mut current_category = String::new();
                                     for ch in &channels {
                                         if ch.is_category() {
-                                            // Category header
+                                            // Category header — SectionLabel (already unified)
                                             ui.add_space(6.0);
                                             ui.horizontal(|ui| {
                                                 ui.add_space(8.0);
@@ -382,21 +382,18 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                             current_category = ch.id.clone();
                                             ui.add_space(2.0);
                                         } else if ch.is_text() {
-                                            let name = ch.name.as_deref().unwrap_or("unknown");
-                                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(content_w, 22.0), egui::Sense::click());
-                                            let hovered = resp.hovered();
-                                            if hovered {
-                                                ui.painter().rect_filled(rect, 3.0, color_alpha(egui::Color32::WHITE, 8));
-                                            }
-                                            let text_color = if hovered { egui::Color32::WHITE } else { egui::Color32::from_gray(160) };
-                                            let font = egui::FontId::monospace(9.5);
-                                            ui.painter().text(
-                                                egui::pos2(rect.left() + 14.0, rect.center().y),
-                                                egui::Align2::LEFT_CENTER,
-                                                format!("# {}", name),
-                                                font,
-                                                text_color,
-                                            );
+                                            let name = ch.name.as_deref().unwrap_or("unknown").to_string();
+                                            // ── ListRow migration: channel row ──
+                                            let resp = widgets::rows::ListRow::new(22.0)
+                                                .left_icon("#", egui::Color32::from_gray(120))
+                                                .body({
+                                                    let name = name.clone();
+                                                    move |ui| {
+                                                        ui.add(widgets::text::MonospaceCode::new(&name).xs().color(egui::Color32::from_gray(160)));
+                                                    }
+                                                })
+                                                .theme(t)
+                                                .show(ui);
                                             if resp.clicked() {
                                                 watchlist.discord_selected_channel = Some(ch.id.clone());
                                                 watchlist.discord_channel = format!("# {}", name);
@@ -466,30 +463,33 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         let author_col = author_colors[author_hash % author_colors.len()];
                                         let same_author = msg.author == prev_author;
 
+                                        if !same_author {
+                                            if !prev_author.is_empty() { ui.add_space(4.0); }
+                                            // ── ListRow migration: author header row ──
+                                            // left_painter_circle = avatar dot; body = author + timestamp.
+                                            // The initial letter is painted via the dot color; full circle
+                                            // with initial requires painter access — kept inline below the row.
+                                            let author = msg.author.clone();
+                                            let timestamp = msg.timestamp.clone();
+                                            let dim = t.dim;
+                                            // Use ListRow for the header strip with left dot as avatar color indicator
+                                            widgets::rows::ListRow::new(18.0)
+                                                .left_painter_circle(author_col)
+                                                .hover_enabled(false)
+                                                .body(move |ui| {
+                                                    ui.add(widgets::text::MonospaceCode::new(&author).xs().strong(true).color(author_col));
+                                                    ui.add(widgets::text::CaptionLabel::new(&timestamp).color(dim).gamma(0.4));
+                                                })
+                                                .theme(t)
+                                                .show(ui);
+                                        }
+                                        // Message content — INLINE EXCEPTION: egui::Label required for
+                                        // wrap_mode(Wrap); no widget currently supports wrapping body text.
                                         ui.horizontal(|ui| {
-                                            ui.add_space(8.0);
-                                            ui.vertical(|ui| {
-                                                if !same_author {
-                                                    if !prev_author.is_empty() { ui.add_space(4.0); }
-                                                    ui.horizontal(|ui| {
-                                                        // Author avatar circle
-                                                        let (av_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
-                                                        let initial = msg.author.chars().next().unwrap_or('?').to_uppercase().to_string();
-                                                        ui.painter().circle_filled(av_rect.center(), 9.0, color_alpha(author_col, ALPHA_DIM));
-                                                        ui.painter().text(av_rect.center(), egui::Align2::CENTER_CENTER, &initial, egui::FontId::monospace(8.0), egui::Color32::WHITE);
-
-                                                        ui.add(widgets::text::MonospaceCode::new(&msg.author).xs().strong(true).color(author_col));
-                                                        ui.add(widgets::text::CaptionLabel::new(&msg.timestamp).color(t.dim).gamma(0.4));
-                                                    });
-                                                }
-                                                // Message content with left indent
-                                                ui.horizontal(|ui| {
-                                                    ui.add_space(22.0); // align with text after avatar
-                                                    ui.add(egui::Label::new(
-                                                        egui::RichText::new(&msg.content).monospace().size(9.0).color(egui::Color32::from_gray(210))
-                                                    ).wrap_mode(egui::TextWrapMode::Wrap));
-                                                });
-                                            });
+                                            ui.add_space(22.0); // align with text after avatar dot
+                                            ui.add(egui::Label::new(
+                                                egui::RichText::new(&msg.content).monospace().size(9.0).color(egui::Color32::from_gray(210))
+                                            ).wrap_mode(egui::TextWrapMode::Wrap));
                                         });
                                         prev_author = msg.author.clone();
                                     }

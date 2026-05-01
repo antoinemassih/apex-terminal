@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::headers::PaneHeader;
 
 /// Placeholder sector heatmap data.
 struct HeatmapCell {
@@ -29,9 +30,17 @@ pub(crate) fn render(
         if rect.contains(pos) { *_active_pane = pane_idx; }
     }
 
-    // Header
-    painter.text(egui::pos2(rect.left() + 16.0, rect.top() + 14.0), egui::Align2::LEFT_CENTER,
-        "MARKET HEATMAP", egui::FontId::monospace(FONT_SM), t.dim);
+    // ── Header (chrome widget) ─────────────────────────────────────────────────
+    let header_h = 28.0;
+    let header_rect = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), header_h));
+    {
+        let mut header_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(header_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        header_ui.add(PaneHeader::new("Market Heatmap").theme(t));
+    }
 
     // Placeholder data — S&P 500 top holdings by sector
     let cells = vec![
@@ -59,7 +68,7 @@ pub(crate) fn render(
 
     // Simple treemap layout — squarified algorithm simplified
     let map_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.left() + 8.0, rect.top() + 30.0),
+        egui::pos2(rect.left() + 8.0, rect.top() + header_h),
         egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0));
     let total_cap: f64 = cells.iter().map(|c| c.market_cap).sum();
     let map_area = map_rect.width() * map_rect.height();

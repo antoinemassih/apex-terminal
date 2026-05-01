@@ -4,6 +4,10 @@ use egui;
 use super::style::*;
 use super::super::gpu::*;
 use crate::chart_renderer::trading::{read_account_data, AccountSummary, Position};
+use super::widgets::headers::PaneHeader;
+use super::components::{
+    metric_value_with_label, section_label_xs, monospace_label_row,
+};
 
 pub(crate) fn render(
     ui: &mut egui::Ui, ctx: &egui::Context,
@@ -28,9 +32,19 @@ pub(crate) fn render(
         egui::pos2(rect.left() + margin, rect.top() + margin),
         egui::pos2(rect.right() - margin, rect.bottom() - margin));
 
-    // ── Header ──
-    painter.text(egui::pos2(inner.left(), inner.top() + 8.0), egui::Align2::LEFT_CENTER,
-        "PORTFOLIO", egui::FontId::monospace(FONT_SM), t.dim);
+    // ── Header (chrome widget) ─────────────────────────────────────────────────
+    let header_h = 28.0;
+    let header_rect = egui::Rect::from_min_size(
+        egui::pos2(inner.left(), rect.top()),
+        egui::vec2(inner.width(), header_h));
+    {
+        let mut header_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(header_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        header_ui.add(PaneHeader::new("Portfolio").theme(t));
+    }
 
     // Get position data
     let (positions, summary) = if let Some((sum, pos, _)) = account_data {
@@ -53,53 +67,75 @@ pub(crate) fn render(
     let total_value: f64 = positions.iter().map(|p| p.market_value).sum();
     let total_pnl: f64 = positions.iter().map(|p| p.unrealized_pnl).sum();
     let total_pnl_pct = if total_value > 0.0 { total_pnl / total_value * 100.0 } else { 0.0 };
-
-    // ── Summary metrics bar ──
-    let metrics_y = inner.top() + 24.0;
     let pnl_col = if total_pnl >= 0.0 { t.bull } else { t.bear };
 
-    // Total Value
-    painter.text(egui::pos2(inner.left(), metrics_y), egui::Align2::LEFT_CENTER,
-        "TOTAL VALUE", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
-    painter.text(egui::pos2(inner.left(), metrics_y + 18.0), egui::Align2::LEFT_CENTER,
-        &format!("${:.0}", total_value), egui::FontId::proportional(34.0), t.text);
-
-    // P&L
-    let pnl_x = inner.left() + 180.0;
-    painter.text(egui::pos2(pnl_x, metrics_y), egui::Align2::LEFT_CENTER,
-        "UNREALIZED P&L", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
-    let sign = if total_pnl >= 0.0 { "+" } else { "" };
-    painter.text(egui::pos2(pnl_x, metrics_y + 18.0), egui::Align2::LEFT_CENTER,
-        &format!("{}${:.0} ({:+.2}%)", sign, total_pnl, total_pnl_pct),
-        egui::FontId::proportional(28.0), pnl_col);
-
-    // Positions count
-    let count_x = inner.left() + 420.0;
-    if count_x < inner.right() {
-        painter.text(egui::pos2(count_x, metrics_y), egui::Align2::LEFT_CENTER,
-            "POSITIONS", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
-        painter.text(egui::pos2(count_x, metrics_y + 18.0), egui::Align2::LEFT_CENTER,
-            &format!("{}", positions.len()), egui::FontId::proportional(24.0), t.accent);
+    // ── Summary metrics bar (chrome widgets) ──────────────────────────────────
+    let metrics_top = rect.top() + header_h + margin;
+    let metrics_h = 48.0; // label + value rows
+    let metrics_rect = egui::Rect::from_min_size(
+        egui::pos2(inner.left(), metrics_top),
+        egui::vec2(inner.width(), metrics_h));
+    {
+        let mut metrics_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(metrics_rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Top)),
+        );
+        // Total Value
+        let sign = if total_pnl >= 0.0 { "+" } else { "" };
+        let pnl_str = format!("{}${:.0} ({:+.2}%)", sign, total_pnl, total_pnl_pct);
+        metrics_ui.allocate_ui(egui::vec2(170.0, metrics_h), |ui| {
+            metric_value_with_label(
+                ui, "TOTAL VALUE",
+                &format!("${:.0}", total_value),
+                t.text, 34.0, None, t.dim.gamma_multiply(0.5),
+            );
+        });
+        metrics_ui.allocate_ui(egui::vec2(230.0, metrics_h), |ui| {
+            metric_value_with_label(
+                ui, "UNREALIZED P&L",
+                &pnl_str,
+                pnl_col, 28.0, None, t.dim.gamma_multiply(0.5),
+            );
+        });
+        if metrics_rect.width() > 420.0 {
+            metrics_ui.allocate_ui(egui::vec2(100.0, metrics_h), |ui| {
+                metric_value_with_label(
+                    ui, "POSITIONS",
+                    &format!("{}", positions.len()),
+                    t.accent, 24.0, None, t.dim.gamma_multiply(0.5),
+                );
+            });
+        }
     }
 
-    // ── Separator ──
-    let sep_y = metrics_y + 44.0;
+    // ── Separator ─────────────────────────────────────────────────────────────
+    let sep_y = metrics_top + metrics_h + 4.0;
     painter.line_segment(
         [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
         egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED)));
 
-    // ── Positions table ──
+    // ── Positions table ────────────────────────────────────────────────────────
     let table_top = sep_y + 8.0;
     let col_widths = [80.0, 50.0, 70.0, 70.0, 80.0, 60.0, 60.0]; // sym, qty, avg, current, P&L, %, port%
     let headers = ["SYMBOL", "QTY", "AVG", "CURRENT", "P&L", "P&L %", "% PORT"];
     let row_h = 24.0;
 
-    // Header row
-    let mut x = inner.left();
-    for (i, header) in headers.iter().enumerate() {
-        painter.text(egui::pos2(x, table_top + 4.0), egui::Align2::LEFT_CENTER,
-            header, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
-        x += col_widths[i];
+    // Header row (section label chrome)
+    {
+        let col_header_rect = egui::Rect::from_min_size(
+            egui::pos2(inner.left(), table_top),
+            egui::vec2(inner.width().min(col_widths.iter().sum()), 14.0));
+        let mut col_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(col_header_rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        for (i, header) in headers.iter().enumerate() {
+            col_ui.allocate_ui(egui::vec2(col_widths[i], 14.0), |ui| {
+                section_label_xs(ui, header, t.dim.gamma_multiply(0.4));
+            });
+        }
     }
 
     let data_top = table_top + 16.0;
@@ -153,13 +189,23 @@ pub(crate) fn render(
             &format!("{:.1}%", port_pct), egui::FontId::monospace(FONT_XS), t.dim);
     }
 
-    // ── Sector breakdown (right side if space) ──
+    // ── Sector breakdown (right side if space) ─────────────────────────────────
     let sector_x = inner.left() + 520.0;
     if sector_x + 150.0 < inner.right() {
-        painter.text(egui::pos2(sector_x, table_top + 4.0), egui::Align2::LEFT_CENTER,
-            "SECTOR ALLOCATION", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+        // "SECTOR ALLOCATION" section label (chrome widget)
+        {
+            let sl_rect = egui::Rect::from_min_size(
+                egui::pos2(sector_x, table_top),
+                egui::vec2(200.0, 14.0));
+            let mut sl_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(sl_rect)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            );
+            section_label_xs(&mut sl_ui, "SECTOR ALLOCATION", t.dim.gamma_multiply(0.4));
+        }
 
-        // Simple donut
+        // Simple donut (sacred geometry — stays inline)
         let donut_cx = sector_x + 60.0;
         let donut_cy = table_top + 80.0;
         let donut_r = 40.0;
@@ -186,11 +232,21 @@ pub(crate) fn render(
             angle += sweep;
         }
 
-        // ── Risk Metrics ──
+        // ── Risk Metrics ──────────────────────────────────────────────────────
         let risk_y = donut_cy + donut_r + 30.0;
         if risk_y + 80.0 < inner.bottom() {
-            painter.text(egui::pos2(sector_x, risk_y), egui::Align2::LEFT_CENTER,
-                "RISK METRICS", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+            // "RISK METRICS" section label (chrome widget)
+            {
+                let sl_rect = egui::Rect::from_min_size(
+                    egui::pos2(sector_x, risk_y),
+                    egui::vec2(160.0, 14.0));
+                let mut sl_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(sl_rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                section_label_xs(&mut sl_ui, "RISK METRICS", t.dim.gamma_multiply(0.4));
+            }
 
             let portfolio_beta = 1.12f32; // placeholder
             let var_95 = total_value * 0.018; // 1.8% daily VaR placeholder
@@ -203,18 +259,39 @@ pub(crate) fn render(
                     if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull }),
                 ("Sharpe", format!("{:.2}", 1.45), t.accent),
             ];
-            for (i, (label, value, color)) in risk_items.iter().enumerate() {
-                let ry = risk_y + 16.0 + i as f32 * 16.0;
-                painter.text(egui::pos2(sector_x, ry), egui::Align2::LEFT_CENTER,
-                    label, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
-                painter.text(egui::pos2(sector_x + 110.0, ry), egui::Align2::LEFT_CENTER,
-                    value, egui::FontId::monospace(FONT_SM), *color);
+
+            // Risk label/value rows (chrome widgets)
+            {
+                let rows_h = risk_items.len() as f32 * 16.0 + 16.0;
+                let rows_rect = egui::Rect::from_min_size(
+                    egui::pos2(sector_x, risk_y + 14.0),
+                    egui::vec2(130.0, rows_h));
+                let mut rows_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(rows_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                for (label, value, color) in &risk_items {
+                    monospace_label_row(&mut rows_ui, label, value, *color, t.dim.gamma_multiply(0.5));
+                }
             }
 
-            // Margin gauge
+            // Margin gauge (sacred geometry — stays inline)
             let gauge_y = risk_y + 82.0;
             if gauge_y + 12.0 < inner.bottom() {
                 let gauge_w = 130.0;
+                // "MARGIN UTILIZATION" label (chrome widget)
+                {
+                    let sl_rect = egui::Rect::from_min_size(
+                        egui::pos2(sector_x, gauge_y - 12.0),
+                        egui::vec2(gauge_w, 12.0));
+                    let mut sl_ui = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(sl_rect)
+                            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                    );
+                    section_label_xs(&mut sl_ui, "MARGIN UTILIZATION", t.dim.gamma_multiply(0.4));
+                }
                 painter.rect_filled(egui::Rect::from_min_size(
                     egui::pos2(sector_x, gauge_y), egui::vec2(gauge_w, 6.0)),
                     3.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
@@ -223,16 +300,24 @@ pub(crate) fn render(
                 painter.rect_filled(egui::Rect::from_min_size(
                     egui::pos2(sector_x, gauge_y), egui::vec2(fill_w, 6.0)),
                     3.0, gauge_col);
-                painter.text(egui::pos2(sector_x, gauge_y - 4.0), egui::Align2::LEFT_BOTTOM,
-                    "MARGIN UTILIZATION", egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.4));
             }
         }
 
-        // ── Correlation Mini-Matrix ──
+        // ── Correlation Mini-Matrix (sacred geometry) ─────────────────────────
         let corr_y = risk_y + 110.0;
         if corr_y + 100.0 < inner.bottom() {
-            painter.text(egui::pos2(sector_x, corr_y), egui::Align2::LEFT_CENTER,
-                "CORRELATION (top 5)", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+            // "CORRELATION (top 5)" section label (chrome widget)
+            {
+                let sl_rect = egui::Rect::from_min_size(
+                    egui::pos2(sector_x, corr_y),
+                    egui::vec2(160.0, 14.0));
+                let mut sl_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(sl_rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                section_label_xs(&mut sl_ui, "CORRELATION (top 5)", t.dim.gamma_multiply(0.4));
+            }
 
             let syms: Vec<&str> = positions.iter().take(5).map(|p| p.symbol.as_str()).collect();
             let n = syms.len();
@@ -274,11 +359,21 @@ pub(crate) fn render(
             }
         }
 
-        // ── Scenario Simulator ──
+        // ── Scenario Simulator (sacred geometry) ──────────────────────────────
         let scenario_y = corr_y + 120.0;
         if scenario_y + 60.0 < inner.bottom() {
-            painter.text(egui::pos2(sector_x, scenario_y), egui::Align2::LEFT_CENTER,
-                "SCENARIO: SPY -5%", egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+            // "SCENARIO: SPY -5%" section label (chrome widget)
+            {
+                let sl_rect = egui::Rect::from_min_size(
+                    egui::pos2(sector_x, scenario_y),
+                    egui::vec2(180.0, 14.0));
+                let mut sl_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(sl_rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                section_label_xs(&mut sl_ui, "SCENARIO: SPY -5%", t.dim.gamma_multiply(0.4));
+            }
 
             let spy_change = -5.0f32;
             let p_beta = 1.12f32;
