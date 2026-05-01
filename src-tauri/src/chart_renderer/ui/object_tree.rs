@@ -200,21 +200,28 @@ egui::SidePanel::left("object_tree_panel")
                 };
                 let sel_ids = chart.selected_ids.clone();
                 let sym2 = sym.clone(); let tf2 = tf.clone();
+                // DropdownActions requires FnOnce() + 'static but we need &mut chart
+                // here, so we stay on the raw ComboBox and collect the picked group-id
+                // as a local, then apply the mutation after show().
+                let mut bulk_assign_gid: Option<String> = None;
                 egui::ComboBox::from_id_salt("otree_bulk_grp")
                     .selected_text(egui::RichText::new(Icon::FOLDER).monospace().size(9.0))
                     .width(60.0)
                     .show_ui(ui, |ui| {
                         for (gid, gname) in &groups_snap {
                             if ui.selectable_label(false, egui::RichText::new(gname).monospace().size(9.0)).clicked() {
-                                for d in &mut chart.drawings {
-                                    if sel_ids.contains(&d.id) {
-                                        d.group_id = gid.clone();
-                                        crate::drawing_db::save(&drawing_to_db(d, &sym2, &tf2));
-                                    }
-                                }
+                                bulk_assign_gid = Some(gid.clone());
                             }
                         }
                     });
+                if let Some(gid) = bulk_assign_gid {
+                    for d in &mut chart.drawings {
+                        if sel_ids.contains(&d.id) {
+                            d.group_id = gid.clone();
+                            crate::drawing_db::save(&drawing_to_db(d, &sym2, &tf2));
+                        }
+                    }
+                }
                 // Bulk lock/unlock
                 let any_unlocked = chart.drawings.iter().any(|d| sel_ids.contains(&d.id) && !d.locked);
                 let lock_icon = if any_unlocked { Icon::LOCK } else { Icon::LOCK_OPEN };

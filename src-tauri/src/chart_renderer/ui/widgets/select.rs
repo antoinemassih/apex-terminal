@@ -576,3 +576,166 @@ impl<'a, T: PartialEq + Copy> RadioGroup<'a, T> {
 impl<'a, T: PartialEq + Copy> Default for RadioGroup<'a, T> {
     fn default() -> Self { Self::new() }
 }
+
+// ─── DropdownOwned ────────────────────────────────────────────────────────────
+
+/// String-key / dynamic-label dropdown for `T: Clone + PartialEq`.
+/// Unlike `Dropdown<T>`, this type owns its option list (`Vec<(T, String)>`)
+/// so it works with runtime-computed labels and non-`Copy` keys such as
+/// `String` or enum variants with payloads.
+///
+/// Returns `true` from `.show(...)` if the selected value changed.
+#[must_use = "DropdownOwned must be rendered via `.show(ui, &mut value)` or `.show_resp(...)`"]
+pub struct DropdownOwned<'a, T: Clone + PartialEq> {
+    id_salt: &'a str,
+    label: Option<&'a str>,
+    options: Vec<(T, String)>,
+    width: Option<f32>,
+    font_size: Option<f32>,
+    selected_text: Option<String>,
+    item_context_menu: Option<Box<dyn FnMut(&T, &mut Ui) + 'a>>,
+    accent: Option<Color32>,
+    dim: Option<Color32>,
+}
+
+impl<'a, T: Clone + PartialEq> DropdownOwned<'a, T> {
+    pub fn new(id_salt: &'a str) -> Self {
+        Self {
+            id_salt,
+            label: None,
+            options: Vec::new(),
+            width: None,
+            font_size: None,
+            selected_text: None,
+            item_context_menu: None,
+            accent: None,
+            dim: None,
+        }
+    }
+    pub fn label(mut self, l: &'a str) -> Self { self.label = Some(l); self }
+    pub fn options(mut self, opts: Vec<(T, String)>) -> Self { self.options = opts; self }
+    pub fn width(mut self, w: f32) -> Self { self.width = Some(w); self }
+    pub fn font_size(mut self, s: f32) -> Self { self.font_size = Some(s); self }
+    pub fn selected_text(mut self, s: impl Into<String>) -> Self { self.selected_text = Some(s.into()); self }
+    pub fn item_context_menu(mut self, f: impl FnMut(&T, &mut Ui) + 'a) -> Self {
+        self.item_context_menu = Some(Box::new(f)); self
+    }
+    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
+        self.accent = Some(t.accent);
+        self.dim = Some(t.dim);
+        self
+    }
+
+    /// Show the dropdown. Returns `true` if the value changed.
+    pub fn show(self, ui: &mut Ui, current: &mut T) -> bool {
+        self.show_resp(ui, current).0
+    }
+
+    /// Show the dropdown. Returns `(changed, combo_response)`.
+    pub fn show_resp(mut self, ui: &mut Ui, current: &mut T) -> (bool, Response) {
+        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
+        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(120, 120, 130));
+        let width = self.width.unwrap_or(140.0);
+        let fs = self.font_size.unwrap_or_else(font_sm);
+        let mut changed = false;
+
+        if let Some(l) = self.label {
+            ui.label(RichText::new(l).monospace().size(font_sm()).color(dim));
+        }
+
+        let header = self.selected_text.clone().unwrap_or_else(|| {
+            self.options.iter()
+                .find(|(v, _)| v == current)
+                .map(|(_, s)| s.clone())
+                .unwrap_or_default()
+        });
+
+        let inner = egui::ComboBox::from_id_salt(self.id_salt)
+            .selected_text(RichText::new(&header).monospace().size(fs).color(accent))
+            .width(width)
+            .show_ui(ui, |ui| {
+                for (val, label) in self.options.iter() {
+                    let is_active = val == current;
+                    let color = if is_active { accent } else { dim };
+                    let row_resp = ui.selectable_label(
+                        is_active,
+                        RichText::new(label).monospace().size(fs).color(color),
+                    );
+                    if row_resp.clicked() && !is_active {
+                        *current = val.clone();
+                        changed = true;
+                    }
+                    if let Some(ref mut ctx_fn) = self.item_context_menu {
+                        row_resp.context_menu(|ui| ctx_fn(val, ui));
+                    }
+                }
+            });
+
+        (changed, inner.response)
+    }
+}
+
+// ─── DropdownActions ──────────────────────────────────────────────────────────
+
+/// Action-list dropdown — no value binding; each row fires a one-shot callback
+/// on click and automatically closes the popup.
+///
+/// ```ignore
+/// DropdownActions::new("bulk_ops")
+///     .trigger_text(RichText::new("Actions").monospace().size(9.0))
+///     .action("Delete all", || { /* … */ })
+///     .theme(t)
+///     .show(ui);
+/// ```
+#[must_use = "DropdownActions must be rendered via `.show(ui)`"]
+pub struct DropdownActions<'a> {
+    id_salt: &'a str,
+    trigger_text: Option<RichText>,
+    actions: Vec<(String, Box<dyn FnOnce()>)>,
+    accent: Option<Color32>,
+    dim: Option<Color32>,
+}
+
+impl<'a> DropdownActions<'a> {
+    pub fn new(id_salt: &'a str) -> Self {
+        Self { id_salt, trigger_text: None, actions: Vec::new(), accent: None, dim: None }
+    }
+    pub fn trigger_text(mut self, rt: RichText) -> Self { self.trigger_text = Some(rt); self }
+    pub fn action(mut self, label: impl Into<String>, f: impl FnOnce() + 'static) -> Self {
+        self.actions.push((label.into(), Box::new(f))); self
+    }
+    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
+        self.accent = Some(t.accent);
+        self.dim = Some(t.dim);
+        self
+    }
+
+    pub fn show(self, ui: &mut Ui) -> Response {
+        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
+        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(120, 120, 130));
+        let trigger = self.trigger_text.unwrap_or_else(|| {
+            RichText::new("▾").monospace().size(font_sm()).color(dim)
+        });
+
+        let mut fired: Option<Box<dyn FnOnce()>> = None;
+
+        let inner = egui::ComboBox::from_id_salt(self.id_salt)
+            .selected_text(trigger)
+            .show_ui(ui, |ui| {
+                for (label, action) in self.actions {
+                    let resp = ui.selectable_label(
+                        false,
+                        RichText::new(&label).monospace().size(font_sm()).color(accent),
+                    );
+                    if resp.clicked() {
+                        fired = Some(action);
+                        ui.close_menu();
+                    }
+                }
+            });
+
+        if let Some(f) = fired { f(); }
+
+        inner.response
+    }
+}

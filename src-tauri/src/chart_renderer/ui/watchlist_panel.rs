@@ -103,41 +103,40 @@ if watchlist.open {
                             let wl_count = wl_names.len();
                             let active_idx = watchlist.active_watchlist_idx;
                             let active_name = wl_names.get(active_idx).cloned().unwrap_or_else(|| "Default".into());
-                            let combo_resp = egui::ComboBox::from_id_salt("wl_selector")
-                                .selected_text(egui::RichText::new(&active_name).monospace().size(9.0).color(t.accent))
+                            let wl_opts: Vec<(usize, String)> = wl_names.iter().enumerate()
+                                .map(|(i, n)| (i, n.clone())).collect();
+                            let (_, combo_resp) = super::widgets::select::DropdownOwned::new("wl_selector")
+                                .options(wl_opts)
                                 .width(ui.available_width() - 60.0)
-                                .show_ui(ui, |ui| {
-                                    for (i, name) in wl_names.iter().enumerate() {
-                                        let is_active = i == active_idx;
-                                        let label_color = if is_active { t.accent } else { egui::Color32::from_rgb(200, 200, 210) };
-                                        let resp = ui.selectable_label(is_active,
-                                            egui::RichText::new(name).monospace().size(9.0).color(label_color));
-                                        if resp.clicked() && !is_active {
-                                            wl_switch_to = Some(i);
-                                        }
-                                        // Right-click context menu on each watchlist entry
-                                        resp.context_menu(|ui| {
-                                            if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
-                                                wl_rename_idx = Some(i);
-                                                ui.close_menu();
-                                            }
-                                            if ui.button(egui::RichText::new("Duplicate").monospace().size(9.0)).clicked() {
-                                                wl_dup_idx = Some(i);
-                                                ui.close_menu();
-                                            }
-                                            if wl_count > 1 {
-                                                ui.separator();
-                                                if ui.button(egui::RichText::new("Delete").monospace().size(9.0)
-                                                    .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
-                                                    wl_delete_idx = Some(i);
-                                                    ui.close_menu();
-                                                }
-                                            }
-                                        });
+                                .font_size(9.0)
+                                .item_context_menu(|idx, ui| {
+                                    let i = *idx;
+                                    if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
+                                        wl_rename_idx = Some(i);
+                                        ui.close_menu();
                                     }
-                                });
-                            // Right-click the combo box header for rename/dup/delete
-                            combo_resp.response.context_menu(|ui| {
+                                    if ui.button(egui::RichText::new("Duplicate").monospace().size(9.0)).clicked() {
+                                        wl_dup_idx = Some(i);
+                                        ui.close_menu();
+                                    }
+                                    if wl_count > 1 {
+                                        ui.separator();
+                                        if ui.button(egui::RichText::new("Delete").monospace().size(9.0)
+                                            .color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                                            wl_delete_idx = Some(i);
+                                            ui.close_menu();
+                                        }
+                                    }
+                                })
+                                .theme(t)
+                                .show_resp(ui, &mut watchlist.active_watchlist_idx);
+                            if watchlist.active_watchlist_idx != active_idx {
+                                wl_switch_to = Some(watchlist.active_watchlist_idx);
+                                // Restore — actual switch is handled by wl_switch_to below
+                                watchlist.active_watchlist_idx = active_idx;
+                            }
+                            // Right-click the combo header for rename/dup/delete of active
+                            combo_resp.context_menu(|ui| {
                                 if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
                                     wl_rename_idx = Some(active_idx);
                                     ui.close_menu();
@@ -1708,18 +1707,27 @@ if watchlist.open {
                         ui.horizontal(|ui| {
                             dim_label(ui, "0DTE", t.dim);
                             // Mode dropdown (Count, %, StdDev)
-                            let mode_label = match watchlist.chain_0_strike_mode {
-                                StrikeMode::Count => "Cnt".into(),
-                                StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
-                                StrikeMode::StdDev => "σ".into(),
-                            };
-                            egui::ComboBox::from_id_salt("sm_0").selected_text(egui::RichText::new(&mode_label).monospace().size(8.0)).width(40.0).show_ui(ui, |ui| {
-                                if ui.selectable_label(matches!(watchlist.chain_0_strike_mode, StrikeMode::Count), "Count").clicked() { watchlist.chain_0_strike_mode = StrikeMode::Count; }
+                            {
+                                let sm_header = match watchlist.chain_0_strike_mode {
+                                    StrikeMode::Count => "Cnt".into(),
+                                    StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
+                                    StrikeMode::StdDev => "σ".into(),
+                                };
+                                let mut sm_opts: Vec<(StrikeMode, String)> = vec![
+                                    (StrikeMode::Count, "Count".into()),
+                                ];
                                 for (pi, &pct) in PCT_OPTIONS.iter().enumerate() {
-                                    if ui.selectable_label(watchlist.chain_0_strike_mode == StrikeMode::Pct(pi as u8), format!("{}%", pct)).clicked() { watchlist.chain_0_strike_mode = StrikeMode::Pct(pi as u8); }
+                                    sm_opts.push((StrikeMode::Pct(pi as u8), format!("{}%", pct)));
                                 }
-                                if ui.selectable_label(matches!(watchlist.chain_0_strike_mode, StrikeMode::StdDev), "Std Dev").clicked() { watchlist.chain_0_strike_mode = StrikeMode::StdDev; }
-                            });
+                                sm_opts.push((StrikeMode::StdDev, "Std Dev".into()));
+                                super::widgets::select::DropdownOwned::new("sm_0")
+                                    .options(sm_opts)
+                                    .width(40.0)
+                                    .font_size(8.0)
+                                    .selected_text(sm_header)
+                                    .theme(t)
+                                    .show(ui, &mut watchlist.chain_0_strike_mode);
+                            }
                             // Count ± (always visible)
                             if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_0_num_strikes)).size_px(8.0).color(t.dim));
@@ -1759,18 +1767,27 @@ if watchlist.open {
                         // Per-chain controls: far DTE
                         ui.horizontal(|ui| {
                             dim_label(ui, &format!("{}DTE", far_dte), t.dim);
-                            let mode_label = match watchlist.chain_far_strike_mode {
-                                StrikeMode::Count => "Cnt".into(),
-                                StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
-                                StrikeMode::StdDev => "σ".into(),
-                            };
-                            egui::ComboBox::from_id_salt("sm_f").selected_text(egui::RichText::new(&mode_label).monospace().size(8.0)).width(40.0).show_ui(ui, |ui| {
-                                if ui.selectable_label(matches!(watchlist.chain_far_strike_mode, StrikeMode::Count), "Count").clicked() { watchlist.chain_far_strike_mode = StrikeMode::Count; }
+                            {
+                                let sm_header = match watchlist.chain_far_strike_mode {
+                                    StrikeMode::Count => "Cnt".into(),
+                                    StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
+                                    StrikeMode::StdDev => "σ".into(),
+                                };
+                                let mut sm_opts: Vec<(StrikeMode, String)> = vec![
+                                    (StrikeMode::Count, "Count".into()),
+                                ];
                                 for (pi, &pct) in PCT_OPTIONS.iter().enumerate() {
-                                    if ui.selectable_label(watchlist.chain_far_strike_mode == StrikeMode::Pct(pi as u8), format!("{}%", pct)).clicked() { watchlist.chain_far_strike_mode = StrikeMode::Pct(pi as u8); }
+                                    sm_opts.push((StrikeMode::Pct(pi as u8), format!("{}%", pct)));
                                 }
-                                if ui.selectable_label(matches!(watchlist.chain_far_strike_mode, StrikeMode::StdDev), "Std Dev").clicked() { watchlist.chain_far_strike_mode = StrikeMode::StdDev; }
-                            });
+                                sm_opts.push((StrikeMode::StdDev, "Std Dev".into()));
+                                super::widgets::select::DropdownOwned::new("sm_f")
+                                    .options(sm_opts)
+                                    .width(40.0)
+                                    .font_size(8.0)
+                                    .selected_text(sm_header)
+                                    .theme(t)
+                                    .show(ui, &mut watchlist.chain_far_strike_mode);
+                            }
                             if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(8.0).color(t.dim));
                             if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
