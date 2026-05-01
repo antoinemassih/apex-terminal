@@ -1007,14 +1007,11 @@ fn render_order_entry_body(
                 }
             }
             ui.add_space(8.0);
-            // TIF
-            for (i, &tf) in tifs.iter().enumerate() {
-                let sel = chart.order_tif_idx == i;
-                let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                if ui.add(egui::Button::new(egui::RichText::new(tf).monospace().size(8.0).color(fg))
-                    .frame(false).min_size(egui::vec2(24.0, 18.0))).clicked() {
-                    chart.order_tif_idx = i;
-                }
+            // TIF — SegmentedControl<usize>
+            {
+                use super::ui::widgets::select::SegmentedControl;
+                let tif_opts: &[(usize, &str)] = &[(0, "DAY"), (1, "GTC"), (2, "IOC")];
+                SegmentedControl::new().options(tif_opts).theme(t).show(ui, &mut chart.order_tif_idx);
             }
             ui.add_space(6.0);
             // Outside RTH toggle
@@ -1030,23 +1027,13 @@ fn render_order_entry_body(
         ui.add_space(4.0);
     }
 
-    // Row 0: QTY / $ mode toggle
+    // Row 0: QTY / $ mode toggle → SegmentedControl<bool>
     ui.horizontal(|ui| {
         ui.add_space(pad);
-        ui.spacing_mut().item_spacing.x = 2.0;
-        let qty_color = if !chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
-        let notional_color = if chart.order_notional_mode { t.accent } else { t.dim.gamma_multiply(0.5) };
-        if ui.add(egui::Button::new(egui::RichText::new("QTY").monospace().size(9.0).strong().color(qty_color))
-            .fill(if !chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))).corner_radius(2.0)
-            .min_size(egui::vec2(30.0, 16.0))).clicked() {
-            chart.order_notional_mode = false;
-        }
-        if ui.add(egui::Button::new(egui::RichText::new("$").monospace().size(9.0).strong().color(notional_color))
-            .fill(if chart.order_notional_mode { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))).corner_radius(2.0)
-            .min_size(egui::vec2(20.0, 16.0))).clicked() {
-            chart.order_notional_mode = true;
+        {
+            use super::ui::widgets::select::SegmentedControl;
+            let mode_opts: &[(bool, &str)] = &[(false, "QTY"), (true, "$")];
+            SegmentedControl::new().options(mode_opts).theme(t).show(ui, &mut chart.order_notional_mode);
         }
         if chart.order_notional_mode {
             ui.add_space(4.0);
@@ -1062,25 +1049,14 @@ fn render_order_entry_body(
     });
     ui.add_space(2.0);
 
-    // Row 1: [-] qty [+]
+    // Row 1: [-] qty [+] → Stepper (dynamic step based on magnitude)
     ui.horizontal(|ui| {
         ui.add_space(pad);
         ui.spacing_mut().item_spacing.x = 2.0;
-        let step = if chart.order_qty >= 100 { 10 } else if chart.order_qty >= 10 { 5 } else { 1 };
+        let step = if chart.order_qty >= 100 { 10u32 } else if chart.order_qty >= 10 { 5 } else { 1 };
         if !chart.order_notional_mode {
-        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(11.0))
-            .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
-            .fill(color_alpha(t.toolbar_border, 40))).clicked() {
-            chart.order_qty = chart.order_qty.saturating_sub(step).max(1);
-        }
-        let _ = ui.add(egui::TextEdit::singleline(&mut format!("{}", chart.order_qty))
-            .desired_width(44.0).font(egui::FontId::monospace(10.0))
-            .horizontal_align(egui::Align::Center).interactive(false));
-        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(11.0))
-            .min_size(egui::vec2(20.0, 20.0)).corner_radius(2.0)
-            .fill(color_alpha(t.toolbar_border, 40))).clicked() {
-            chart.order_qty += step;
-        }
+            use super::ui::widgets::inputs::Stepper;
+            Stepper::new(&mut chart.order_qty).step(step).range(1, u32::MAX).theme(t).show(ui);
         } else {
         // Notional mode: show derived qty read-only
         let _ = ui.add(egui::TextEdit::singleline(&mut format!("{} contracts", chart.order_qty))
@@ -1125,36 +1101,30 @@ fn render_order_entry_body(
     if adv {
         let oti = chart.order_type_idx;
         ui.add_space(2.0);
-        // LMT, STP-LMT: Limit price
+        // LMT, STP-LMT: Limit price → FormRow
         if oti == 1 || oti == 3 {
-            ui.horizontal(|ui| {
-                ui.add_space(pad);
-                ui.label(egui::RichText::new("Limit").monospace().size(9.0).color(t.dim));
-                ui.add_space(4.0);
+            use super::ui::widgets::form::FormRow;
+            FormRow::new("Limit").leading_space(pad).label_width(32.0).hint("Limit price").show(ui, t, |ui| {
                 ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
-                    .desired_width(80.0).font(egui::FontId::monospace(9.0)).hint_text("Limit price")
+                    .desired_width(80.0).font(egui::FontId::monospace(9.0))
                     .horizontal_align(egui::Align::RIGHT));
             });
         }
-        // STP, STP-LMT: Stop price
+        // STP, STP-LMT: Stop price → FormRow
         if oti == 2 || oti == 3 {
-            ui.horizontal(|ui| {
-                ui.add_space(pad);
-                ui.label(egui::RichText::new("Stop ").monospace().size(9.0).color(t.bear));
-                ui.add_space(4.0);
+            use super::ui::widgets::form::FormRow;
+            FormRow::new("Stop").leading_space(pad).label_width(32.0).label_color(t.bear).hint("Stop price").show(ui, t, |ui| {
                 ui.add(egui::TextEdit::singleline(&mut chart.order_stop_price)
-                    .desired_width(80.0).font(egui::FontId::monospace(9.0)).hint_text("Stop price")
+                    .desired_width(80.0).font(egui::FontId::monospace(9.0))
                     .horizontal_align(egui::Align::RIGHT));
             });
         }
-        // TRAIL: Trailing amount
+        // TRAIL: Trailing amount → FormRow
         if oti == 4 {
-            ui.horizontal(|ui| {
-                ui.add_space(pad);
-                ui.label(egui::RichText::new("Trail").monospace().size(9.0).color(t.accent));
-                ui.add_space(4.0);
+            use super::ui::widgets::form::FormRow;
+            FormRow::new("Trail").leading_space(pad).label_width(32.0).label_color(t.accent).hint("Trail amt").show(ui, t, |ui| {
                 ui.add(egui::TextEdit::singleline(&mut chart.order_trail_amt)
-                    .desired_width(80.0).font(egui::FontId::monospace(9.0)).hint_text("Trail amt")
+                    .desired_width(80.0).font(egui::FontId::monospace(9.0))
                     .horizontal_align(egui::Align::RIGHT));
             });
         }
@@ -1203,8 +1173,8 @@ fn render_order_entry_body(
         let is_und = adv && chart.order_type_idx == 5 && chart.is_option;
         let buy_label = if is_und { format!("BUY {} on UND", chart.option_type) } else { format!("BUY {:.2}", buy_price) };
         let sell_label = if is_und { format!("SELL {} on UND", chart.option_type) } else { format!("SELL {:.2}", sell_price) };
-        // BUY
-        if trade_btn(ui, &buy_label, t.bull, btn_w) {
+        // BUY → TradeBtn widget (respects button_treatment style token)
+        if ui.add(super::ui::widgets::buttons::TradeBtn::new(&buy_label).color(t.bull).width(btn_w)).clicked() {
             if is_und {
                 chart.pending_und_order = Some(OrderSide::TriggerBuy);
             } else if chart.armed && adv {
@@ -1238,8 +1208,8 @@ fn render_order_entry_body(
                 }
             }
         }
-        // SELL
-        if trade_btn(ui, &sell_label, t.bear, btn_w) {
+        // SELL → TradeBtn widget (respects button_treatment style token)
+        if ui.add(super::ui::widgets::buttons::TradeBtn::new(&sell_label).color(t.bear).width(btn_w)).clicked() {
             if is_und {
                 chart.pending_und_order = Some(OrderSide::TriggerSell);
             } else if chart.armed && adv {
