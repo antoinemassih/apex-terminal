@@ -7,12 +7,40 @@
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, RichText, Ui, Widget};
+use egui::{Color32, FontFamily, Response, RichText, Ui, Widget};
 use super::super::style::*;
 use super::foundation::text_style::TextStyle;
 
 // Re-export size enums so callers only need to import from this module.
 pub use super::super::components::{MonoSize, NumericSize};
+
+// ─── Escape-hatch overrides ───────────────────────────────────────────────────
+
+/// Per-widget overrides that let any raw `RichText` pattern be expressed via
+/// the typed widget builders. All fields are `None` by default (= no override).
+#[derive(Default, Clone, Copy)]
+struct Overrides {
+    size:      Option<f32>,
+    strong:    Option<bool>,
+    italics:   Option<bool>,
+    monospace: Option<bool>,
+    gamma:     Option<f32>,
+}
+
+impl Overrides {
+    /// Apply accumulated overrides to a `RichText` + resolved color.
+    fn apply(self, mut rt: RichText, mut color: Color32) -> (RichText, Color32) {
+        if let Some(s) = self.size      { rt = rt.size(s); }
+        if let Some(b) = self.strong    { if b { rt = rt.strong(); } }
+        if let Some(i) = self.italics   { if i { rt = rt.italics(); } }
+        if let Some(m) = self.monospace {
+            if m { rt = rt.monospace(); }
+            else { rt = rt.family(FontFamily::Proportional); }
+        }
+        if let Some(g) = self.gamma     { color = color.gamma_multiply(g); }
+        (rt, color)
+    }
+}
 
 // ─── PaneTitle ────────────────────────────────────────────────────────────────
 
@@ -25,18 +53,26 @@ pub use super::super::components::{MonoSize, NumericSize};
 pub struct PaneTitle<'a> {
     text: &'a str,
     color: Color32,
+    overrides: Overrides,
 }
 
 impl<'a> PaneTitle<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(200, 200, 210) }
+        Self { text, color: Color32::from_rgb(200, 200, 210), overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
+    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for PaneTitle<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        ui.label(TextStyle::HeadingMd.as_rich(self.text, self.color))
+        let rt = TextStyle::HeadingMd.as_rich(self.text, self.color);
+        let (rt, color) = self.overrides.apply(rt, self.color);
+        ui.label(rt.color(color))
     }
 }
 
@@ -51,18 +87,26 @@ impl<'a> Widget for PaneTitle<'a> {
 pub struct Subheader<'a> {
     text: &'a str,
     color: Color32,
+    overrides: Overrides,
 }
 
 impl<'a> Subheader<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(150, 150, 160) }
+        Self { text, color: Color32::from_rgb(150, 150, 160), overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
+    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for Subheader<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        ui.label(TextStyle::Eyebrow.as_rich(&style_label_case(self.text), self.color))
+        let rt = TextStyle::Eyebrow.as_rich(&style_label_case(self.text), self.color);
+        let (rt, color) = self.overrides.apply(rt, self.color);
+        ui.label(rt.color(color))
     }
 }
 
@@ -77,18 +121,26 @@ impl<'a> Widget for Subheader<'a> {
 pub struct BodyLabel<'a> {
     text: &'a str,
     color: Color32,
+    overrides: Overrides,
 }
 
 impl<'a> BodyLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(200, 200, 210) }
+        Self { text, color: Color32::from_rgb(200, 200, 210), overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
+    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for BodyLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        ui.label(TextStyle::Body.as_rich(self.text, self.color))
+        let rt = TextStyle::Body.as_rich(self.text, self.color);
+        let (rt, color) = self.overrides.apply(rt, self.color);
+        ui.label(rt.color(color))
     }
 }
 
@@ -105,19 +157,27 @@ impl<'a> Widget for BodyLabel<'a> {
 pub struct MutedLabel<'a> {
     text: &'a str,
     base_color: Color32,
+    overrides: Overrides,
 }
 
 impl<'a> MutedLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, base_color: Color32::from_rgb(150, 150, 160) }
+        Self { text, base_color: Color32::from_rgb(150, 150, 160), overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.base_color = c; self }
+    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for MutedLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let c = color_alpha(self.base_color, alpha_muted());
-        ui.label(TextStyle::BodySm.as_rich(self.text, c))
+        let rt = TextStyle::BodySm.as_rich(self.text, c);
+        let (rt, color) = self.overrides.apply(rt, c);
+        ui.label(rt.color(color))
     }
 }
 
@@ -134,18 +194,27 @@ impl<'a> Widget for MutedLabel<'a> {
 pub struct CaptionLabel<'a> {
     text: &'a str,
     dim: Color32,
+    overrides: Overrides,
 }
 
 impl<'a> CaptionLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, dim: Color32::from_rgb(120, 120, 130) }
+        Self { text, dim: Color32::from_rgb(120, 120, 130), overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.dim = c; self }
+    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for CaptionLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        ui.label(TextStyle::Caption.as_rich(self.text, color_alpha(self.dim, alpha_dim())))
+        let c = color_alpha(self.dim, alpha_dim());
+        let rt = TextStyle::Caption.as_rich(self.text, c);
+        let (rt, color) = self.overrides.apply(rt, c);
+        ui.label(rt.color(color))
     }
 }
 
@@ -165,17 +234,24 @@ pub struct MonospaceCode<'a> {
     text: &'a str,
     color: Color32,
     size: MonoSize,
+    overrides: Overrides,
 }
 
 impl<'a> MonospaceCode<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(200, 200, 210), size: MonoSize::Sm }
+        Self { text, color: Color32::from_rgb(200, 200, 210), size: MonoSize::Sm, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, s: MonoSize) -> Self { self.size = s; self }
     pub fn xs(mut self) -> Self { self.size = MonoSize::Xs; self }
     pub fn sm(mut self) -> Self { self.size = MonoSize::Sm; self }
     pub fn md(mut self) -> Self { self.size = MonoSize::Md; self }
+    /// Override pixel size (escape-hatch; use `.size(MonoSize::*)` for semantic sizes).
+    pub fn size_px(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for MonospaceCode<'a> {
@@ -190,7 +266,8 @@ impl<'a> Widget for MonospaceCode<'a> {
         if matches!(self.size, MonoSize::Xs) {
             rt = RichText::new(self.text).monospace().size(font_xs()).color(self.color);
         }
-        ui.label(rt)
+        let (rt, color) = self.overrides.apply(rt, self.color);
+        ui.label(rt.color(color))
     }
 }
 
@@ -209,17 +286,24 @@ pub struct NumericDisplay<'a> {
     text: &'a str,
     color: Color32,
     size: NumericSize,
+    overrides: Overrides,
 }
 
 impl<'a> NumericDisplay<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(200, 200, 210), size: NumericSize::Lg }
+        Self { text, color: Color32::from_rgb(200, 200, 210), size: NumericSize::Lg, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, s: NumericSize) -> Self { self.size = s; self }
     pub fn lg(mut self) -> Self { self.size = NumericSize::Lg; self }
     pub fn xl(mut self) -> Self { self.size = NumericSize::Xl; self }
     pub fn hero(mut self) -> Self { self.size = NumericSize::Hero; self }
+    /// Override pixel size (escape-hatch; use `.size(NumericSize::*)` for semantic sizes).
+    pub fn size_px(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for NumericDisplay<'a> {
@@ -234,7 +318,8 @@ impl<'a> Widget for NumericDisplay<'a> {
         if matches!(self.size, NumericSize::Lg) {
             rt = RichText::new(self.text).monospace().size(font_lg()).strong().color(self.color);
         }
-        ui.label(rt)
+        let (rt, color) = self.overrides.apply(rt, self.color);
+        ui.label(rt.color(color))
     }
 }
 
@@ -269,11 +354,12 @@ pub struct SectionLabel<'a> {
     text: &'a str,
     color: Color32,
     size: SectionLabelSize,
+    overrides: Overrides,
 }
 
 impl<'a> SectionLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(150, 150, 160), size: SectionLabelSize::Sm }
+        Self { text, color: Color32::from_rgb(150, 150, 160), size: SectionLabelSize::Sm, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, s: SectionLabelSize) -> Self { self.size = s; self }
@@ -281,6 +367,12 @@ impl<'a> SectionLabel<'a> {
     pub fn xs(mut self) -> Self { self.size = SectionLabelSize::Xs; self }
     pub fn md(mut self) -> Self { self.size = SectionLabelSize::Md; self }
     pub fn lg(mut self) -> Self { self.size = SectionLabelSize::Lg; self }
+    /// Override pixel size (escape-hatch; use `.size(SectionLabelSize::*)` for semantic sizes).
+    pub fn size_px(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for SectionLabel<'a> {
@@ -295,7 +387,8 @@ impl<'a> Widget for SectionLabel<'a> {
             SectionLabelSize::Md   => RichText::new(s).monospace().size(font_md()).strong().color(self.color),
             SectionLabelSize::Lg   => RichText::new(s).monospace().size(font_lg()).strong().color(self.color),
         };
-        ui.label(rt)
+        let (rt, color) = self.overrides.apply(rt, self.color);
+        ui.label(rt.color(color))
     }
 }
 
@@ -324,17 +417,25 @@ pub fn section_label(ui: &mut Ui, text: &str, color: Color32) -> Response {
 pub struct DimLabel<'a> {
     text: &'a str,
     color: Color32,
+    overrides: Overrides,
 }
 
 impl<'a> DimLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(150, 150, 160) }
+        Self { text, color: Color32::from_rgb(150, 150, 160), overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
+    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
 }
 
 impl<'a> Widget for DimLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        ui.label(TextStyle::BodySm.as_rich(self.text, self.color))
+        let rt = TextStyle::BodySm.as_rich(self.text, self.color);
+        let (rt, color) = self.overrides.apply(rt, self.color);
+        ui.label(rt.color(color))
     }
 }
