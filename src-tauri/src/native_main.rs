@@ -13,6 +13,17 @@ fn main() {
     eprintln!("║  Apex Terminal — Native GPU Edition   ║");
     eprintln!("╚══════════════════════════════════════╝");
 
+    // Initialize design-mode token store so the inspector activates.
+    #[cfg(feature = "design-mode")]
+    {
+        let tokens: _scaffold_lib::design_tokens::DesignTokens = std::fs::read_to_string("design.toml")
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .unwrap_or_default();
+        _scaffold_lib::design_tokens::init(tokens);
+        eprintln!("[design-mode] active — inspector opens on the right side of the chart window");
+    }
+
     // Initialize Redis bar cache
     _scaffold_lib::bar_cache::init();
 
