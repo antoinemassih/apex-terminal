@@ -783,10 +783,7 @@ pub(crate) fn render(
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.set_min_width(160.0);
                 let mut item = |ui: &mut egui::Ui, label: &str, key: &'static str| {
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new(label).monospace().size(FONT_XS))
-                        .frame(false)).clicked()
-                    {
+                    if ui.add(SimpleBtn::new(label).color(t.dim)).clicked() {
                         ctx_action = Some(key);
                         close = true;
                     }

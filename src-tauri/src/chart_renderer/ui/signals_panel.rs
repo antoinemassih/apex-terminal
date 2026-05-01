@@ -31,7 +31,7 @@ pub(crate) fn draw(
             // Header
             let header = ui.horizontal(|ui| {
                 ui.set_min_height(26.0);
-                ui.label(egui::RichText::new("SIGNALS").monospace().size(FONT_SM).strong().color(t.accent));
+                ui.add(widgets::text::SectionLabel::new("SIGNALS").color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.signals_panel_open = false; }
                     if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
@@ -174,7 +174,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
             if icon_btn(ui, icon, color, FONT_MD).clicked() { **flag = !**flag; }
             ui.vertical(|ui| {
                 let lc = if **flag { t.text } else { t.dim.gamma_multiply(0.5) };
-                ui.label(egui::RichText::new(*name).monospace().size(FONT_SM).strong().color(lc));
+                ui.add(widgets::text::BodyLabel::new(*name).monospace(true).strong(true).size(FONT_SM).color(lc));
                 ui.add(widgets::text::MonospaceCode::new(*hint).xs().color(t.dim.gamma_multiply(0.5)));
             });
         });

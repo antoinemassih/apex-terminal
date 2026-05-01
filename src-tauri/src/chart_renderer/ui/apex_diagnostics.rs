@@ -49,7 +49,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 // ────────────────────────────────────────────────────────────────────────────
 
 fn hdr(ui: &mut egui::Ui, label: &str, t: &Theme) {
-    ui.label(egui::RichText::new(label).monospace().size(super::style::font_sm()).strong().color(t.dim.gamma_multiply(0.7)));
+    ui.add(super::widgets::text::MonospaceCode::new(label).sm().color(t.dim).gamma(0.7).strong(true));
     ui.separator();
 }
 
@@ -57,7 +57,7 @@ fn kv(ui: &mut egui::Ui, k: &str, v: &str, t: &Theme, value_color: Option<egui::
     ui.horizontal(|ui| {
         ui.add(super::widgets::text::MonospaceCode::new(k).color(t.dim));
         ui.add_space(gap_xs());
-        ui.label(egui::RichText::new(v).monospace().size(font_sm()).strong().color(value_color.unwrap_or(t.text)));
+        ui.add(super::widgets::text::MonospaceCode::new(v).sm().color(value_color.unwrap_or(t.text)).strong(true));
     });
 }
 
@@ -158,7 +158,7 @@ fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
                        else if age_s < 60 { egui::Color32::from_rgb(240, 170, 70) }
                        else { egui::Color32::from_rgb(230, 70, 70) };
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(&ul).monospace().size(font_sm()).strong().color(t.text));
+            ui.add(super::widgets::text::MonospaceCode::new(&ul).sm().color(t.text).strong(true));
             ui.add_space(120.0 - 10.0 * ul.len() as f32);
             ui.add(super::widgets::text::MonospaceCode::new(&format!("{rows}")).color(t.text));
             ui.add_space(24.0);

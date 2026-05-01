@@ -45,8 +45,9 @@ pub(crate) fn draw(
                 ui.set_width(220.0);
 
                 // Header
+                use super::widgets::text::{BodyLabel, SectionLabel};
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("TEMPLATES").monospace().size(FONT_LG).strong().color(t.accent));
+                    ui.add(SectionLabel::new("TEMPLATES").lg().color(t.accent));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if close_button(ui, t.dim) { close_popup = true; }
                     });
@@ -83,8 +84,7 @@ pub(crate) fn draw(
 
                         // Template list
                         if watchlist.pane_templates.is_empty() {
-                            ui.label(egui::RichText::new("No saved templates")
-                                .monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+                            ui.add(BodyLabel::new("No saved templates").color(t.dim.gamma_multiply(0.5)));
                             ui.add_space(GAP_SM);
                         } else {
                             egui::ScrollArea::vertical()
@@ -113,13 +113,10 @@ pub(crate) fn draw(
                                             ui.vertical(|ui| {
                                                 ui.set_min_height(28.0);
                                                 ui.horizontal(|ui| {
-                                                    ui.label(egui::RichText::new(Icon::STAR)
-                                                        .size(FONT_SM).color(t.accent));
-                                                    ui.label(egui::RichText::new(name)
-                                                        .monospace().size(FONT_SM).strong().color(TEXT_PRIMARY));
+                                                    ui.add(BodyLabel::new(Icon::STAR).size(FONT_SM).color(t.accent));
+                                                    ui.add(BodyLabel::new(name).size(FONT_SM).monospace(true).strong(true).color(TEXT_PRIMARY));
                                                 });
-                                                ui.label(egui::RichText::new(&summary)
-                                                    .monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.6)));
+                                                ui.add(BodyLabel::new(&summary).size(FONT_XS).monospace(true).color(t.dim.gamma_multiply(0.6)));
                                             });
 
                                             // Delete button (right side)

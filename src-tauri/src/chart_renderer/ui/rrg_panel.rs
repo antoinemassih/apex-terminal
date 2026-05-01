@@ -8,7 +8,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
-use super::widgets::text::SectionLabel;
+use super::widgets::text::{SectionLabel, MonospaceCode};
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
 const SECTOR_COLORS: &[(&str, &str, (u8, u8, u8))] = &[
@@ -215,14 +215,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     // Time slider
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("TIME").monospace().size(8.0).color(color_alpha(t.dim, ALPHA_ACTIVE)));
+        ui.add(MonospaceCode::new("TIME").xs().color(color_alpha(t.dim, ALPHA_ACTIVE)));
         ui.spacing_mut().slider_width = plot_size - 50.0;
         ui.add(egui::Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
             .show_value(false)
             .trailing_fill(true));
     });
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("TAIL").monospace().size(8.0).color(color_alpha(t.dim, ALPHA_ACTIVE)));
+        ui.add(MonospaceCode::new("TAIL").xs().color(color_alpha(t.dim, ALPHA_ACTIVE)));
         ui.spacing_mut().slider_width = plot_size - 50.0;
         let mut tail = watchlist.rrg_tail_length as f32;
         if ui.add(egui::Slider::new(&mut tail, 1.0..=15.0).show_value(false).step_by(1.0)).changed() {
@@ -238,10 +238,8 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         "LATE EXPANSION"
     };
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("CYCLE:")
-            .monospace().size(9.0).color(color_alpha(t.dim, ALPHA_HEAVY)));
-        ui.label(egui::RichText::new(phase)
-            .monospace().size(9.0).color(egui::Color32::from_rgb(56, 203, 137)));
+        ui.add(MonospaceCode::new("CYCLE:").xs().color(color_alpha(t.dim, ALPHA_HEAVY)));
+        ui.add(MonospaceCode::new(phase).xs().color(egui::Color32::from_rgb(56, 203, 137)));
     });
 
     // Legend — compact 2-column layout
@@ -257,8 +255,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     let c = sector_color(&s.symbol);
                     let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 10.0));
                     ui.painter().circle_filled(dot_rect.center(), 3.0, c);
-                    ui.label(egui::RichText::new(&s.symbol)
-                        .monospace().size(9.0).color(c));
+                    ui.add(MonospaceCode::new(&s.symbol).xs().color(c));
                 });
             }
         });
@@ -268,8 +265,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     let c = sector_color(&s.symbol);
                     let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 10.0));
                     ui.painter().circle_filled(dot_rect.center(), 3.0, c);
-                    ui.label(egui::RichText::new(&s.symbol)
-                        .monospace().size(9.0).color(c));
+                    ui.add(MonospaceCode::new(&s.symbol).xs().color(c));
                 });
             }
         });

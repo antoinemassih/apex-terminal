@@ -3,6 +3,8 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::buttons::{SimpleBtn, IconBtn};
+use super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
 use crate::monitoring::{span_begin, span_end};
 use crate::chart_renderer::DrawingKind;
@@ -37,7 +39,8 @@ if watchlist.trendline_filter_open {
                 }).count();
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new(format!("{} ({})", label, count)).monospace().size(9.0).color(egui::Color32::from_rgb(200,200,210)));
+                    let type_label = format!("{} ({})", label, count);
+                    ui.add(MonospaceCode::new(&type_label).size_px(9.0).color(egui::Color32::from_rgb(200,200,210)));
                 });
             }
 
@@ -50,10 +53,10 @@ if watchlist.trendline_filter_open {
             let vis_btn = |ui: &mut egui::Ui, hidden: bool, label: &str, count: usize| -> bool {
                 let icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
                 let fg = if hidden { t.dim.gamma_multiply(0.4) } else { t.dim };
+                let vis_label = format!("{} {} ({})", icon, label, count);
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.add(egui::Button::new(egui::RichText::new(format!("{} {} ({})", icon, label, count))
-                        .monospace().size(9.0).color(fg)).frame(false))
+                    ui.add(SimpleBtn::new(&vis_label).color(fg))
                         .clicked()
                 }).inner
             };
@@ -204,7 +207,7 @@ if chart.picker_open {
             if chart.picker_searching {
                 ui.horizontal(|ui| {
                     super::chart_widgets::refined_spinner(ui, t.accent);
-                    ui.label(egui::RichText::new("Searching...").small().color(t.dim));
+                    ui.add(MonospaceCode::new("Searching...").size_px(9.0).color(t.dim));
                 });
             }
 
@@ -214,15 +217,14 @@ if chart.picker_open {
                 let show_recents = chart.picker_query.trim().is_empty();
 
                 if show_recents && !chart.recent_symbols.is_empty() {
-                    ui.label(egui::RichText::new("RECENT").small().strong().color(t.dim));
+                    ui.add(MonospaceCode::new("RECENT").size_px(9.0).color(t.dim));
                     ui.add_space(2.0);
                     for (sym, name) in chart.recent_symbols.clone() {
                         let is_current = sym == chart.symbol;
                         let resp = ui.horizontal(|ui| {
-                            let sym_text = egui::RichText::new(&sym).strong().monospace()
-                                .color(if is_current { t.bull } else { TEXT_PRIMARY });
-                            let r = ui.add(egui::Button::new(sym_text).frame(false).min_size(egui::vec2(65.0, 22.0)));
-                            ui.label(egui::RichText::new(&name).small().color(t.dim));
+                            let sym_col = if is_current { t.bull } else { TEXT_PRIMARY };
+                            let r = ui.add(SimpleBtn::new(&sym).color(sym_col).min_width(65.0));
+                            ui.add(MonospaceCode::new(&name).size_px(9.0).color(t.dim));
                             r
                         }).inner;
                         if resp.clicked() {
@@ -233,17 +235,16 @@ if chart.picker_open {
                     ui.add_space(6.0);
                     ui.separator();
                     ui.add_space(2.0);
-                    ui.label(egui::RichText::new("POPULAR").small().strong().color(t.dim));
+                    ui.add(MonospaceCode::new("POPULAR").size_px(9.0).color(t.dim));
                     ui.add_space(2.0);
                     // Show popular symbols from static catalog
                     for s in crate::ui_kit::symbols::search_symbols("", 20) {
                         if chart.recent_symbols.iter().any(|(r, _)| r == s.symbol) { continue; }
                         let is_current = s.symbol == chart.symbol;
                         let resp = ui.horizontal(|ui| {
-                            let sym_text = egui::RichText::new(s.symbol).strong().monospace()
-                                .color(if is_current { t.bull } else { egui::Color32::from_rgb(200,200,210) });
-                            let r = ui.add(egui::Button::new(sym_text).frame(false).min_size(egui::vec2(65.0, 22.0)));
-                            ui.label(egui::RichText::new(s.name).small().color(t.dim));
+                            let sym_col = if is_current { t.bull } else { egui::Color32::from_rgb(200,200,210) };
+                            let r = ui.add(SimpleBtn::new(s.symbol).color(sym_col).min_width(65.0));
+                            ui.add(MonospaceCode::new(s.name).size_px(9.0).color(t.dim));
                             r
                         }).inner;
                         if resp.clicked() {
@@ -256,13 +257,12 @@ if chart.picker_open {
                     for (sym, name, tag) in &chart.picker_results {
                         let is_current = sym == &chart.symbol;
                         let resp = ui.horizontal(|ui| {
-                            let sym_text = egui::RichText::new(sym).strong().monospace()
-                                .color(if is_current { t.bull } else { TEXT_PRIMARY });
-                            let r = ui.add(egui::Button::new(sym_text).frame(false).min_size(egui::vec2(65.0, 22.0)));
+                            let sym_col = if is_current { t.bull } else { TEXT_PRIMARY };
+                            let r = ui.add(SimpleBtn::new(sym.as_str()).color(sym_col).min_width(65.0));
                             ui.vertical(|ui| {
-                                ui.label(egui::RichText::new(name).small().color(egui::Color32::from_rgb(180,180,190)));
+                                ui.add(MonospaceCode::new(name.as_str()).size_px(9.0).color(egui::Color32::from_rgb(180,180,190)));
                                 if !tag.is_empty() {
-                                    ui.label(egui::RichText::new(tag).small().color(egui::Color32::from_rgb(100,100,120)));
+                                    ui.add(MonospaceCode::new(tag.as_str()).size_px(9.0).color(egui::Color32::from_rgb(100,100,120)));
                                 }
                             });
                             r
@@ -273,7 +273,7 @@ if chart.picker_open {
                         }
                     }
                     if chart.picker_results.is_empty() && !chart.picker_searching && !chart.picker_query.trim().is_empty() {
-                        ui.label(egui::RichText::new("No results").color(t.dim));
+                        ui.add(MonospaceCode::new("No results").size_px(9.0).color(t.dim));
                     }
                 }
             });

@@ -4,6 +4,7 @@ use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, TapeRow, Theme};
 use super::widgets::frames::CompactPanelFrame;
+use super::widgets::text::MonospaceCode;
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
@@ -11,7 +12,7 @@ const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, 
 pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
     let panel_w = ui.available_width();
 
-    ui.label(egui::RichText::new(format!("TIME & SALES  {}", active_symbol)).monospace().size(9.0).strong().color(t.accent));
+    ui.add(MonospaceCode::new(&format!("TIME & SALES  {}", active_symbol)).size_px(9.0).strong(true).color(t.accent));
     ui.add_space(2.0);
 
     // Column headers
@@ -38,9 +39,9 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
 
             if entries.is_empty() {
                 ui.add_space(20.0);
-                ui.label(egui::RichText::new("Waiting for trades...").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                ui.add(MonospaceCode::new("Waiting for trades...").size_px(9.0).color(t.dim).gamma(0.4));
                 if !crate::data::is_crypto(active_symbol) && !crate::apex_data::is_enabled() {
-                    ui.label(egui::RichText::new("Enable ApexData in settings for stock T&S").monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
+                    ui.add(MonospaceCode::new("Enable ApexData in settings for stock T&S").size_px(8.0).color(t.dim).gamma(0.3));
                 }
             }
 

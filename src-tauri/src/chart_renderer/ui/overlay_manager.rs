@@ -3,6 +3,8 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::buttons::IconBtn;
+use super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
@@ -42,7 +44,8 @@ if panes[ap].overlay_editing {
                     ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 10.0), 4.0, oc);
                     ui.add_space(12.0);
                     let status = if ov_loading { " ..." } else if ov_empty { " (no data)" } else { "" };
-                    ui.label(egui::RichText::new(format!("{}{}", ov_sym, status)).monospace().size(10.0).color(oc));
+                    let ov_label = format!("{}{}", ov_sym, status);
+                    ui.add(MonospaceCode::new(&ov_label).size_px(10.0).color(oc));
                     // Color cycle (click to cycle through colors)
                     let (cr, cresp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
                     ui.painter().circle_filled(cr.center(), 5.0, oc);
@@ -55,13 +58,11 @@ if panes[ap].overlay_editing {
                     // Candle toggle
                     let candle_icon = if ov_candles { Icon::CHART_BAR } else { Icon::CHART_LINE };
                     let candle_col = if ov_candles { t.accent } else { t.dim.gamma_multiply(0.5) };
-                    if ui.add(egui::Button::new(egui::RichText::new(candle_icon).size(10.0).color(candle_col))
-                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
+                    if ui.add(IconBtn::new(candle_icon).size(10.0).color(candle_col)).clicked() {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
                     // Delete
-                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(10.0).color(t.bear.gamma_multiply(0.5)))
-                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
+                    if ui.add(IconBtn::new(Icon::X).size(10.0).color(t.bear.gamma_multiply(0.5))).clicked() {
                         delete_idx = Some(oi);
                     }
                 });
@@ -91,8 +92,8 @@ if panes[ap].overlay_editing {
                 for si in &results {
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        if ui.add(egui::Button::new(egui::RichText::new(format!("{} — {}", si.symbol, si.name)).monospace().size(9.0).color(t.dim))
-                            .frame(false).min_size(egui::vec2(230.0, 20.0))).clicked() {
+                        let search_label = format!("{} — {}", si.symbol, si.name);
+                        if ui.add(super::widgets::buttons::SimpleBtn::new(&search_label).color(t.dim).min_width(230.0)).clicked() {
                             let color = OVERLAY_COLORS[panes[ap].symbol_overlays.len() % OVERLAY_COLORS.len()].to_string();
                             panes[ap].symbol_overlays.push(SymbolOverlay {
                                 symbol: si.symbol.to_string(), color, bars: vec![], timestamps: vec![], loading: true, show_candles: false, visible: true,

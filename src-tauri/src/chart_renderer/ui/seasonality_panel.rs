@@ -3,7 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Chart, Theme};
-use super::widgets::text::{SectionLabel, DimLabel};
+use super::widgets::text::{SectionLabel, DimLabel, MonospaceCode};
 use super::widgets::layout::EmptyState;
 
 pub(crate) fn draw_content(
@@ -114,8 +114,7 @@ pub(crate) fn draw_content(
         ui.add(DimLabel::new("Current month:").color(t.dim));
         let avg = avgs[current_month];
         let col = if avg >= 0.0 { t.bull } else { t.bear };
-        ui.label(egui::RichText::new(format!("{} avg {:+.2}%", month_labels[current_month], avg))
-            .monospace().size(FONT_SM).strong().color(col));
+        ui.add(MonospaceCode::new(&format!("{} avg {:+.2}%", month_labels[current_month], avg)).sm().color(col).strong(true));
     });
 
     ui.add_space(GAP_SM);
@@ -126,12 +125,10 @@ pub(crate) fn draw_content(
 
     ui.horizontal(|ui| {
         ui.add(DimLabel::new("Best:").color(t.dim));
-        ui.label(egui::RichText::new(format!("{} {:+.2}%", month_labels[best.0], best.1))
-            .monospace().size(FONT_XS).color(t.bull));
+        ui.add(MonospaceCode::new(&format!("{} {:+.2}%", month_labels[best.0], best.1)).xs().color(t.bull));
         ui.add_space(GAP_MD);
         ui.add(DimLabel::new("Worst:").color(t.dim));
-        ui.label(egui::RichText::new(format!("{} {:+.2}%", month_labels[worst.0], worst.1))
-            .monospace().size(FONT_XS).color(t.bear));
+        ui.add(MonospaceCode::new(&format!("{} {:+.2}%", month_labels[worst.0], worst.1)).xs().color(t.bear));
     });
 
     // Win rate per month
@@ -147,7 +144,7 @@ pub(crate) fn draw_content(
         let col = if pct >= 60.0 { t.bull } else if pct >= 40.0 { t.dim } else { t.bear };
 
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(month_labels[i]).monospace().size(FONT_XS).color(t.dim));
+            ui.add(MonospaceCode::new(month_labels[i]).xs().color(t.dim));
             // Mini bar
             let bar_max = 60.0;
             let (r, _) = ui.allocate_exact_size(egui::vec2(bar_max, 8.0), egui::Sense::hover());
@@ -156,8 +153,7 @@ pub(crate) fn draw_content(
             pp.rect_filled(
                 egui::Rect::from_min_size(r.min, egui::vec2(bar_max * pct / 100.0, 8.0)),
                 2.0, color_alpha(col, ALPHA_DIM));
-            ui.label(egui::RichText::new(format!("{:.0}% ({}/{})", pct, wins, total))
-                .monospace().size(7.0).color(col));
+            ui.add(MonospaceCode::new(&format!("{:.0}% ({}/{})", pct, wins, total)).xs().color(col));
         });
     }
 }

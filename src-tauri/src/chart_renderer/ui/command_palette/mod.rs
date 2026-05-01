@@ -164,7 +164,7 @@ fn draw_normal_mode(
 
     // Header
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("⌕").size(font_lg()).color(t.dim));
+        ui.add(BodyLabel::new("⌕").size(font_lg()).color(t.dim));
         let te = ui.add(egui::TextEdit::singleline(&mut watchlist.cmd_palette_query)
             .desired_width(pal_w - 180.0)
             .font(egui::FontId::proportional(font_lg()))
@@ -193,7 +193,7 @@ fn draw_normal_mode(
         chip(ui, ">", "cmd"); chip(ui, "@", "sym"); chip(ui, "#", "play");
         chip(ui, "/", "set"); chip(ui, "?", "ai");  chip(ui, "=", "calc");
         ui.add_space(gap_lg());
-        ui.label(egui::RichText::new(format!("{} pane", match pane_type {
+        ui.add(BodyLabel::new(&format!("{} pane", match pane_type {
             PaneType::Chart => "Chart", PaneType::Portfolio => "Portfolio",
             PaneType::Dashboard => "Dashboard", PaneType::Heatmap => "Heatmap",
             PaneType::Spreadsheet => "Spreadsheet",
@@ -426,8 +426,7 @@ fn draw_normal_mode(
         hint(ui, "then", "chain");
         hint(ui, "Esc", "close");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new(format!("{} results", watchlist.cmd_palette_results.len()))
-                .size(font_sm()).color(t.dim));
+            ui.add(BodyLabel::new(&format!("{} results", watchlist.cmd_palette_results.len())).size(font_sm()).color(t.dim));
         });
     });
 

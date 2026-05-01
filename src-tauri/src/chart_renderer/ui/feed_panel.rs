@@ -34,7 +34,7 @@ pub(crate) fn draw(
             // Header
             let header = ui.horizontal(|ui| {
                 ui.set_min_height(26.0);
-                ui.label(egui::RichText::new("FEED").monospace().size(FONT_SM).strong().color(t.accent));
+                ui.add(widgets::text::SectionLabel::new("FEED").color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.feed_panel_open = false; }
                     if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))

@@ -26,7 +26,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             // Header
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new("NEWS").monospace().size(10.0).strong().color(t.accent));
+                ui.add(widgets::text::SectionLabel::new("NEWS").color(t.accent));
                 ui.add_space(6.0);
                 let filter_label = if watchlist.news_filter_symbol { active_symbol } else { "All" };
                 let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
@@ -72,8 +72,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
             if filtered.is_empty() {
                 ui.add_space(20.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(egui::RichText::new("No news for this symbol")
-                        .monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
+                    ui.add(widgets::text::MonospaceCode::new("No news for this symbol").xs().color(t.dim).gamma(0.5));
                 });
             }
 

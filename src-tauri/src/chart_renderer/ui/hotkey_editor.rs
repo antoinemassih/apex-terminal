@@ -4,6 +4,7 @@ use egui;
 use super::style::*;
 use super::super::gpu::*;
 use super::widgets::buttons::SimpleBtn;
+use super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::icons::Icon;
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
@@ -87,15 +88,15 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 if !current_category.is_empty() { ui.add_space(6.0); }
                 current_category = hk_cat.clone();
                 ui.add_space(2.0);
-                ui.label(egui::RichText::new(hk_cat.to_uppercase()).monospace().size(9.0).color(t.dim));
+                ui.add(SectionLabel::new(hk_cat).tiny().size_px(9.0).color(t.dim));
                 ui.add_space(2.0);
             }
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new(hk_name.as_str()).monospace().size(9.0).color(egui::Color32::from_white_alpha(180)));
+                ui.add(BodyLabel::new(hk_name.as_str()).size(9.0).monospace(true).color(egui::Color32::from_white_alpha(180)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if *is_editing {
-                        ui.label(egui::RichText::new("Press a key...").monospace().size(9.0).color(t.accent));
+                        ui.add(BodyLabel::new("Press a key...").size(9.0).monospace(true).color(t.accent));
                     } else {
                         if ui.add(egui::Button::new(egui::RichText::new("Edit").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
                             watchlist.hotkey_editing_id = Some(*hk_id);

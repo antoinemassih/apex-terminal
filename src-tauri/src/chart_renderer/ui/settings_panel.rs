@@ -5,6 +5,7 @@ use super::style::*;
 use super::super::gpu::{Watchlist, Theme, Chart, THEMES};
 use super::super::commands::{self, AppCommand};
 use super::widgets::form::{FormRow, FormRowAlign};
+use super::widgets::text::{BodyLabel, SectionLabel};
 
 /// Build a FormRow pre-configured to match the legacy `setting_row` look:
 /// 190px label gutter, left-aligned label in white_alpha(180), body right-aligned
@@ -296,7 +297,7 @@ SettingsTab::Chart => {
     if is_crypto {
         ui.horizontal(|ui| {
             ui.add_space(m);
-            ui.label(egui::RichText::new("N/A for crypto (24/7 market)").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+            ui.add(BodyLabel::new("N/A for crypto (24/7 market)").color(t.dim.gamma_multiply(0.5)));
         });
     } else {
         setting_toggle(ui, m, "Session Shading", t, &mut chart.session_shading);
@@ -334,8 +335,8 @@ SettingsTab::Chart => {
                 ui.add_space(m);
                 let (sh, sm2, eh, em2) = (chart.rth_start_minutes / 60, chart.rth_start_minutes % 60,
                     chart.rth_end_minutes / 60, chart.rth_end_minutes % 60);
-                ui.label(egui::RichText::new(format!("RTH: {:02}:{:02} – {:02}:{:02} ET", sh, sm2, eh, em2))
-                    .monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.4)));
+                ui.add(SectionLabel::new(&format!("RTH: {:02}:{:02} – {:02}:{:02} ET", sh, sm2, eh, em2))
+                    .tiny().color(t.dim.gamma_multiply(0.4)));
             });
         }
     }
@@ -370,7 +371,7 @@ SettingsTab::Trading => {
         } else {
             ("LIVE mode — real money at risk", egui::Color32::from_rgb(230, 70, 70))
         };
-        ui.label(egui::RichText::new(label).monospace().size(FONT_XS).color(color));
+        ui.add(SectionLabel::new(label).tiny().color(color));
     });
     ui.add_space(GAP_LG);
 
@@ -543,7 +544,7 @@ SettingsTab::Trading => {
             } else {
                 ("WS disconnected", egui::Color32::from_rgb(230, 70, 70))
             };
-            ui.label(egui::RichText::new(state_label).monospace().size(FONT_XS).color(state_col));
+            ui.add(SectionLabel::new(state_label).tiny().color(state_col));
         });
     }
     ui.add_space(GAP_LG);
@@ -558,9 +559,9 @@ SettingsTab::Shortcuts => {
     ui.horizontal(|ui| {
         ui.add_space(m);
         ui.allocate_ui(egui::vec2(220.0, 16.0), |ui| {
-            ui.label(egui::RichText::new("ACTION").monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.4)));
+            ui.add(SectionLabel::new("ACTION").tiny().color(t.dim.gamma_multiply(0.4)));
         });
-        ui.label(egui::RichText::new("SHORTCUT").monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.4)));
+        ui.add(SectionLabel::new("SHORTCUT").tiny().color(t.dim.gamma_multiply(0.4)));
     });
     separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
     ui.add_space(GAP_XS);

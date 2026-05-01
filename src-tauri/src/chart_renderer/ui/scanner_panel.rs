@@ -11,7 +11,7 @@ use crate::ui_kit::icons::Icon;
 use super::widgets::frames::CompactPanelFrame;
 use super::widgets::status::Spinner;
 use super::widgets::layout::EmptyState;
-use super::widgets::text::SectionLabel;
+use super::widgets::text::{SectionLabel, MonospaceCode};
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
@@ -79,7 +79,7 @@ pub(crate) fn draw_content(
         if let Some(last) = watchlist.scanner_last_fetch {
             let elapsed = last.elapsed().as_secs();
             let remaining = if elapsed < REFRESH_INTERVAL_SECS { REFRESH_INTERVAL_SECS - elapsed } else { 0 };
-            ui.label(egui::RichText::new(format!("{}s", remaining)).monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+            ui.add(MonospaceCode::new(&format!("{}s", remaining)).size_px(8.0).color(t.dim).gamma(0.4));
         }
         if watchlist.scanner_fetching {
             ui.add(Spinner::new().sm().theme(t));
@@ -104,23 +104,23 @@ pub(crate) fn draw_content(
     if watchlist.scanner_builder_open {
         ui.group(|ui| {
             ui.set_width(panel_w - 6.0);
-            ui.label(egui::RichText::new("New Scanner").monospace().size(9.0).strong().color(t.accent));
+            ui.add(MonospaceCode::new("New Scanner").size_px(9.0).strong(true).color(t.accent));
             ui.add_space(2.0);
 
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Name").monospace().size(8.0).color(t.dim));
+                ui.add(MonospaceCode::new("Name").size_px(8.0).color(t.dim));
                 ui.add(egui::TextEdit::singleline(&mut watchlist.scanner_new_name)
                     .desired_width(panel_w - 60.0)
                     .font(egui::FontId::monospace(9.0)));
             });
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Min %").monospace().size(8.0).color(t.dim));
+                ui.add(MonospaceCode::new("Min %").size_px(8.0).color(t.dim));
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_min_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
-                ui.label(egui::RichText::new("Max %").monospace().size(8.0).color(t.dim));
+                ui.add(MonospaceCode::new("Max %").size_px(8.0).color(t.dim));
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_max_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
             });
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Min Vol").monospace().size(8.0).color(t.dim));
+                ui.add(MonospaceCode::new("Min Vol").size_px(8.0).color(t.dim));
                 ui.add(egui::TextEdit::singleline(&mut watchlist.scanner_new_min_volume)
                     .desired_width(80.0)
                     .font(egui::FontId::monospace(9.0))
@@ -287,7 +287,7 @@ pub(crate) fn draw_content(
 
                     if results.is_empty() {
                         ui.add_space(4.0);
-                        ui.label(egui::RichText::new("No matches").monospace().size(8.0).color(t.dim.gamma_multiply(0.3)));
+                        ui.add(MonospaceCode::new("No matches").size_px(8.0).color(t.dim).gamma(0.3));
                     }
                 }
 
@@ -297,8 +297,7 @@ pub(crate) fn draw_content(
             }
 
             ui.add_space(4.0);
-            ui.label(egui::RichText::new(format!("{}/{} symbols loaded", pool.len(), SCANNER_UNIVERSE.len()))
-                .monospace().size(7.5).color(t.dim.gamma_multiply(0.3)));
+            ui.add(MonospaceCode::new(&format!("{}/{} symbols loaded", pool.len(), SCANNER_UNIVERSE.len())).size_px(7.5).color(t.dim).gamma(0.3));
         });
 
     // ── Apply deferred actions ──

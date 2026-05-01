@@ -55,9 +55,8 @@ pub(crate) fn draw_content(
         ui.vertical_centered(|ui| {
             ui.label(egui::RichText::new(Icon::STAR).size(28.0).color(t.dim.gamma_multiply(0.2)));
             ui.add_space(GAP_SM);
-            ui.label(egui::RichText::new("No plays yet").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
-            ui.label(egui::RichText::new("Create a play to share a trade idea")
-                .monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.3)));
+            ui.add(super::widgets::text::MonospaceCode::new("No plays yet").sm().color(t.dim).gamma(0.5));
+            ui.add(super::widgets::text::MonospaceCode::new("Create a play to share a trade idea").xs().color(t.dim).gamma(0.3));
         });
         return;
     }
@@ -196,7 +195,7 @@ fn draw_play_editor(
         .corner_radius(RADIUS_LG)
         .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)))
         .show(ui, |ui| {
-            ui.label(egui::RichText::new("NEW PLAY").monospace().size(FONT_SM).strong().color(t.accent));
+            ui.add(super::widgets::text::SectionLabel::new("NEW PLAY").color(t.accent));
             ui.add_space(GAP_XS);
 
             // ── Play type selector ──
@@ -228,7 +227,7 @@ fn draw_play_editor(
                 PlayType::Spread      => "Multi-leg strategy",
                 PlayType::Event       => "Catalyst-driven with pre/post levels",
             };
-            ui.label(egui::RichText::new(desc).monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
+            ui.add(super::widgets::text::MonospaceCode::new(desc).xs().color(t.dim).gamma(0.4));
             ui.add_space(GAP_XS);
 
             // ── Direction toggle ──
@@ -389,7 +388,7 @@ fn draw_play_editor(
                 ui.horizontal(|ui| {
                     dim_label(ui, "R:R", t.dim);
                     let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
-                    ui.label(egui::RichText::new(format!("{:.1} : 1", rr)).monospace().size(FONT_SM).strong().color(rr_col));
+                    ui.add(super::widgets::text::MonospaceCode::new(&format!("{:.1} : 1", rr)).sm().color(rr_col).strong(true));
                     let bar_w = ui.available_width().min(120.0);
                     let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 6.0), egui::Sense::hover());
                     let p = ui.painter();
@@ -555,7 +554,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
     ui.add(egui::TextEdit::singleline(pct_str)
         .desired_width(22.0).font(egui::FontId::monospace(FONT_XS))
         .horizontal_align(egui::Align::Center));
-    ui.label(egui::RichText::new("%").monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
+    ui.add(super::widgets::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
     if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(FONT_XS).color(t.dim))
         .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, ALPHA_FAINT))).clicked() {
         val = (val + step).min(100);

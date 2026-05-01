@@ -4,7 +4,7 @@ use egui;
 use super::style::*;
 use super::super::gpu::{Chart, Theme};
 use super::widgets::form::{FormRow, FormRowAlign};
-use super::widgets::text::SectionLabel;
+use super::widgets::text::{SectionLabel, MonospaceCode};
 
 pub(crate) fn draw_content(
     ui: &mut egui::Ui,
@@ -37,7 +37,7 @@ pub(crate) fn draw_content(
             .leading_space(GAP_SM)
             .alignment(FormRowAlign::Right)
             .show(ui, t, |ui| {
-                ui.label(egui::RichText::new(value).monospace().size(FONT_SM).color(t.text));
+                ui.add(MonospaceCode::new(value).sm().color(t.text));
             });
     }
 
@@ -59,7 +59,7 @@ pub(crate) fn draw_content(
             .leading_space(GAP_SM)
             .alignment(FormRowAlign::Right)
             .show(ui, t, |ui| {
-                ui.label(egui::RichText::new(value).monospace().size(FONT_SM).color(*color));
+                ui.add(MonospaceCode::new(value).sm().color(*color));
             });
     }
 
@@ -82,7 +82,7 @@ pub(crate) fn draw_content(
             .leading_space(GAP_SM)
             .alignment(FormRowAlign::Right)
             .show(ui, t, |ui| {
-                ui.label(egui::RichText::new(value).monospace().size(FONT_SM).color(t.text));
+                ui.add(MonospaceCode::new(value).sm().color(t.text));
             });
     }
 
@@ -112,9 +112,9 @@ pub(crate) fn draw_content(
         });
         ui.horizontal(|ui| {
             ui.add_space(GAP_SM);
-            ui.label(egui::RichText::new(format!("{} Buy", f.analyst_buy)).monospace().size(FONT_XS).color(t.bull));
-            ui.label(egui::RichText::new(format!("{} Hold", f.analyst_hold)).monospace().size(FONT_XS).color(egui::Color32::from_rgb(255, 191, 0)));
-            ui.label(egui::RichText::new(format!("{} Sell", f.analyst_sell)).monospace().size(FONT_XS).color(t.bear));
+            ui.add(MonospaceCode::new(&format!("{} Buy", f.analyst_buy)).xs().color(t.bull));
+            ui.add(MonospaceCode::new(&format!("{} Hold", f.analyst_hold)).xs().color(egui::Color32::from_rgb(255, 191, 0)));
+            ui.add(MonospaceCode::new(&format!("{} Sell", f.analyst_sell)).xs().color(t.bear));
         });
         ui.add_space(GAP_XS);
         ui.horizontal(|ui| {
@@ -123,9 +123,9 @@ pub(crate) fn draw_content(
         });
         ui.horizontal(|ui| {
             ui.add_space(GAP_SM + 4.0);
-            ui.label(egui::RichText::new(format!("Low ${:.0}", f.analyst_target_low)).monospace().size(FONT_XS).color(t.bear));
-            ui.label(egui::RichText::new(format!("Mean ${:.0}", f.analyst_target_mean)).monospace().size(FONT_XS).color(t.accent));
-            ui.label(egui::RichText::new(format!("High ${:.0}", f.analyst_target_high)).monospace().size(FONT_XS).color(t.bull));
+            ui.add(MonospaceCode::new(&format!("Low ${:.0}", f.analyst_target_low)).xs().color(t.bear));
+            ui.add(MonospaceCode::new(&format!("Mean ${:.0}", f.analyst_target_mean)).xs().color(t.accent));
+            ui.add(MonospaceCode::new(&format!("High ${:.0}", f.analyst_target_high)).xs().color(t.bull));
         });
     }
 
@@ -144,10 +144,10 @@ pub(crate) fn draw_content(
             } else { 0.0 };
             let beat = surprise > 0.0;
             let col = if beat { t.bull } else { t.bear };
-            ui.label(egui::RichText::new(&eq.quarter).monospace().size(FONT_XS).color(t.dim));
-            ui.label(egui::RichText::new(format!("${:.2}", eq.eps_actual)).monospace().size(FONT_XS).color(t.text));
-            ui.label(egui::RichText::new(format!("vs ${:.2}", eq.eps_estimate)).monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.5)));
-            ui.label(egui::RichText::new(format!("{}{:.1}%", if beat { "+" } else { "" }, surprise)).monospace().size(FONT_XS).color(col));
+            ui.add(MonospaceCode::new(&eq.quarter).xs().color(t.dim));
+            ui.add(MonospaceCode::new(&format!("${:.2}", eq.eps_actual)).xs().color(t.text));
+            ui.add(MonospaceCode::new(&format!("vs ${:.2}", eq.eps_estimate)).xs().gamma(0.5));
+            ui.add(MonospaceCode::new(&format!("{}{:.1}%", if beat { "+" } else { "" }, surprise)).xs().color(col));
         });
     }
 
@@ -167,9 +167,9 @@ pub(crate) fn draw_content(
             let dot_pos = egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0);
             ui.painter().circle_filled(dot_pos, 3.0, col);
             ui.add_space(10.0);
-            ui.label(egui::RichText::new(&trade.transaction).monospace().size(FONT_XS).color(col));
-            ui.label(egui::RichText::new(format!("{}K", trade.shares.abs() / 1000)).monospace().size(FONT_XS).color(t.text));
-            ui.label(egui::RichText::new(format!("${:.0}K", trade.value / 1000.0)).monospace().size(FONT_XS).color(t.dim));
+            ui.add(MonospaceCode::new(&trade.transaction).xs().color(col));
+            ui.add(MonospaceCode::new(&format!("{}K", trade.shares.abs() / 1000)).xs().color(t.text));
+            ui.add(MonospaceCode::new(&format!("${:.0}K", trade.value / 1000.0)).xs().color(t.dim));
         });
         ui.horizontal(|ui| {
             ui.add_space(GAP_SM + 14.0);
@@ -194,9 +194,9 @@ pub(crate) fn draw_content(
             let dot_pos = egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0);
             ui.painter().circle_filled(dot_pos, 3.0, imp_col);
             ui.add_space(10.0);
-            ui.label(egui::RichText::new(&event.name).monospace().size(FONT_XS).color(t.text));
+            ui.add(MonospaceCode::new(&event.name).xs().color(t.text));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(format!("{}d", days)).monospace().size(FONT_XS).color(t.dim));
+                ui.add(MonospaceCode::new(&format!("{}d", days)).xs().color(t.dim));
             });
         });
         ui.horizontal(|ui| {

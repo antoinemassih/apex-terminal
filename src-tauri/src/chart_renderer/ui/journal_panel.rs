@@ -3,7 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme, JournalEntry};
-use super::widgets::text::SectionLabel;
+use super::widgets::text::{SectionLabel, MonospaceCode};
 use super::widgets::layout::EmptyState;
 
 /// Inline content for the Book tab's Journal section.
@@ -45,7 +45,7 @@ pub(crate) fn draw(
         .show(ctx, |ui| {
             let header = ui.horizontal(|ui| {
                 ui.set_min_height(26.0);
-                ui.label(egui::RichText::new("TRADE JOURNAL").monospace().size(FONT_SM).strong().color(t.accent));
+                ui.add(SectionLabel::new("TRADE JOURNAL").color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.journal_panel_open = false; }
                 });
@@ -118,8 +118,8 @@ fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
             for (label, value, color) in &row_items {
                 ui.vertical(|ui| {
                     ui.set_width(col_w);
-                    ui.label(egui::RichText::new(*label).monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
-                    ui.label(egui::RichText::new(value).monospace().size(FONT_SM).strong().color(*color));
+                    ui.add(MonospaceCode::new(*label).xs().color(t.dim).gamma(0.4));
+                    ui.add(MonospaceCode::new(value).sm().color(*color).strong(true));
                 });
             }
         });
@@ -173,7 +173,7 @@ fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f6
     let col = if wr > 50.0 { t.bull } else { t.bear };
     ui.horizontal(|ui| {
         ui.add_space(GAP_SM);
-        ui.label(egui::RichText::new(label).monospace().size(FONT_XS).color(t.text));
+        ui.add(MonospaceCode::new(label).xs().color(t.text));
         let bar_w = 40.0;
         let (br, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
         let p = ui.painter();

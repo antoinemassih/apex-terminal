@@ -8,7 +8,8 @@ use super::style::*;
 use super::super::gpu::{Watchlist, Chart, Theme, DrawingAction, drawing_to_db};
 use super::super::DrawingKind;
 use super::widgets::rows::ListRow;
-use super::widgets::buttons::IconBtn;
+use super::widgets::buttons::{IconBtn, SimpleBtn};
+use super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
 
 // Six discrete opacity levels: fully faded (readable) up to fully opaque.
@@ -118,7 +119,7 @@ egui::SidePanel::left("object_tree_panel")
 
         // ── Header ──
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("OBJECTS").monospace().size(10.0).strong().color(t.accent));
+            ui.add(MonospaceCode::new("OBJECTS").size_px(10.0).color(t.accent).strong(true));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if close_button(ui, t.dim) { watchlist.object_tree_open = false; }
             });
@@ -133,15 +134,12 @@ egui::SidePanel::left("object_tree_panel")
         // ── DRAWINGS section ──
         // ════════════════════════════════════════════════════════════════
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(format!("DRAWINGS ({})", chart.drawings.len()))
-                .monospace().size(9.0).color(t.dim));
+            let drawings_hdr = format!("DRAWINGS ({})", chart.drawings.len());
+            ui.add(MonospaceCode::new(&drawings_hdr).size_px(9.0).color(t.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Select all button
                 if !chart.drawings.is_empty() {
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new("All").monospace().size(7.0).color(t.dim))
-                        .frame(false)).clicked()
-                    {
+                    if ui.add(SimpleBtn::new("All").color(t.dim)).clicked() {
                         chart.selected_ids = chart.drawings.iter().map(|d| d.id.clone()).collect();
                         chart.selected_id = chart.drawings.first().map(|d| d.id.clone());
                     }
@@ -158,7 +156,8 @@ egui::SidePanel::left("object_tree_panel")
                             let cur = chart.drawings.iter().find(|d| kind_type_key(&d.kind) == key)
                                 .map(|d| d.opacity).unwrap_or(1.0);
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(format!("{key} ({count})")).monospace().size(9.0).color(t.text));
+                                let type_entry = format!("{key} ({count})");
+                            ui.add(MonospaceCode::new(&type_entry).size_px(9.0).color(t.text));
                                 if let Some(op) = opacity_picker(ui, cur, t.accent, t.dim, &format!("type_{key}")) {
                                     let key_s = key.to_string();
                                     for d in chart.drawings.iter_mut() {
@@ -190,8 +189,8 @@ egui::SidePanel::left("object_tree_panel")
             ui.add_space(2.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(egui::RichText::new(format!("{} sel", chart.selected_ids.len()))
-                    .monospace().size(8.0).color(t.accent));
+                let sel_label = format!("{} sel", chart.selected_ids.len());
+                ui.add(MonospaceCode::new(&sel_label).size_px(8.0).color(t.accent));
                 // Group assign dropdown
                 let groups_snap: Vec<(String, String)> = {
                     let mut gs = vec![("default".into(), "default".into())];
@@ -264,7 +263,7 @@ egui::SidePanel::left("object_tree_panel")
         ui.add_space(3.0);
 
         if chart.drawings.is_empty() {
-            ui.label(egui::RichText::new("  No drawings").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+            ui.add(MonospaceCode::new("  No drawings").size_px(8.0).color(t.dim.gamma_multiply(0.5)));
         } else {
             // Build group order
             let mut groups_order: Vec<String> = vec!["default".into()];
@@ -328,9 +327,7 @@ egui::SidePanel::left("object_tree_panel")
                         ui.spacing_mut().item_spacing.x = 2.0;
                         // Collapse arrow
                         let arrow = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(arrow).size(8.0).color(t.dim))
-                            .frame(false).min_size(egui::vec2(14.0, 16.0))).clicked()
+                        if ui.add(IconBtn::new(arrow).size(8.0).color(t.dim)).clicked()
                         {
                             collapsed = !collapsed;
                             ui.data_mut(|d| d.insert_persisted(collapse_id, collapsed));
@@ -346,8 +343,7 @@ egui::SidePanel::left("object_tree_panel")
                             row = row.left_painter_circle(gc);
                         }
                         row.body(|ui| {
-                            ui.label(egui::RichText::new(label_text)
-                                .monospace().size(8.0).color(header_col));
+                            ui.add(MonospaceCode::new(&label_text).size_px(8.0).color(header_col));
                         })
                         .right_actions(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
@@ -398,15 +394,14 @@ egui::SidePanel::left("object_tree_panel")
                                 .indent(14.0)
                                 .left_painter_circle(dc)
                                 .body(|ui| {
-                                    ui.label(egui::RichText::new(kind_label)
-                                        .monospace().size(9.0).color(label_col));
+                                    ui.add(MonospaceCode::new(kind_label).size_px(9.0).color(label_col));
                                     if let Some(score) = sig_score {
                                         let sc = sig_color(score);
                                         let (badge_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
                                         ui.painter().circle_filled(badge_r.center(), 3.0, sc);
                                     }
                                     if locked {
-                                        ui.label(egui::RichText::new(Icon::LOCK).size(7.0).color(t.dim.gamma_multiply(0.6)));
+                                        ui.add(IconBtn::new(Icon::LOCK).size(7.0).color(t.dim.gamma_multiply(0.6)));
                                     }
                                 })
                                 .right_actions(|ui| {
@@ -434,7 +429,7 @@ egui::SidePanel::left("object_tree_panel")
                             row_resp.context_menu(|ui| {
                                 // Per-drawing opacity
                                 ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new("Opacity").monospace().size(9.0).color(t.dim));
+                                    ui.add(MonospaceCode::new("Opacity").size_px(9.0).color(t.dim));
                                     let cur = chart.drawings.iter().find(|d| d.id == ds_id_for_menu)
                                         .map(|d| d.opacity).unwrap_or(1.0);
                                     if let Some(op) = opacity_picker(ui, cur, t.accent, t.dim, &format!("drw_{}", ds_id_for_menu)) {
@@ -445,11 +440,13 @@ egui::SidePanel::left("object_tree_panel")
                                     }
                                 });
                                 ui.separator();
-                                if ui.button(egui::RichText::new(format!("  {} Lock/Unlock", Icon::LOCK)).monospace().size(9.0)).clicked() {
+                                let lock_label = format!("  {} Lock/Unlock", Icon::LOCK);
+                                if ui.add(SimpleBtn::new(&lock_label).color(t.dim)).clicked() {
                                     toggle_lock_id = Some(ds.id.clone());
                                     ui.close_menu();
                                 }
-                                if ui.button(egui::RichText::new(format!("  {} Delete", Icon::TRASH)).monospace().size(9.0)).clicked() {
+                                let del_label = format!("  {} Delete", Icon::TRASH);
+                                if ui.add(SimpleBtn::new(&del_label).color(t.bear)).clicked() {
                                     delete_id = Some(ds.id.clone());
                                     ui.close_menu();
                                 }
@@ -458,7 +455,7 @@ egui::SidePanel::left("object_tree_panel")
                                     let mut gs = vec![("default".to_string(), "default".to_string())];
                                     for g in &chart.groups { if g.id != "default" { gs.push((g.id.clone(), g.name.clone())); } }
                                     for (gid, gname) in &gs {
-                                        if ui.button(egui::RichText::new(gname).monospace().size(9.0)).clicked() {
+                                        if ui.add(SimpleBtn::new(gname.as_str()).color(t.dim)).clicked() {
                                             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == ds.id) {
                                                 d.group_id = gid.clone();
                                                 crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
@@ -515,10 +512,10 @@ egui::SidePanel::left("object_tree_panel")
         // ════════════════════════════════════════════════════════════════
         // ── INDICATORS section ──
         // ════════════════════════════════════════════════════════════════
-        ui.label(egui::RichText::new("INDICATORS").monospace().size(9.0).color(t.dim));
+        ui.add(MonospaceCode::new("INDICATORS").size_px(9.0).color(t.dim));
         ui.add_space(2.0);
         if chart.indicators.is_empty() {
-            ui.label(egui::RichText::new("  No indicators").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+            ui.add(MonospaceCode::new("  No indicators").size_px(8.0).color(t.dim.gamma_multiply(0.5)));
         } else {
             let mut edit_ind: Option<u32> = None;
             for ind in chart.indicators.iter_mut() {
@@ -532,7 +529,7 @@ egui::SidePanel::left("object_tree_panel")
                     .theme(t)
                     .left_painter_circle(ic)
                     .body(|ui| {
-                        ui.label(egui::RichText::new(&label).monospace().size(8.0).color(label_col));
+                        ui.add(MonospaceCode::new(&label).size_px(8.0).color(label_col));
                     })
                     .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
@@ -559,10 +556,10 @@ egui::SidePanel::left("object_tree_panel")
         // ════════════════════════════════════════════════════════════════
         // ── OVERLAYS section ──
         // ════════════════════════════════════════════════════════════════
-        ui.label(egui::RichText::new("OVERLAYS").monospace().size(9.0).color(t.dim));
+        ui.add(MonospaceCode::new("OVERLAYS").size_px(9.0).color(t.dim));
         ui.add_space(2.0);
         if chart.symbol_overlays.is_empty() {
-            ui.label(egui::RichText::new("  No overlays").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+            ui.add(MonospaceCode::new("  No overlays").size_px(8.0).color(t.dim.gamma_multiply(0.5)));
         } else {
             let mut del_ov: Option<usize> = None;
             let mut toggle_ov: Option<usize> = None;
@@ -579,7 +576,7 @@ egui::SidePanel::left("object_tree_panel")
                     .theme(t)
                     .left_painter_circle(oc)
                     .body(|ui| {
-                        ui.label(egui::RichText::new(sym_ov_ref).monospace().size(8.0).color(label_col));
+                        ui.add(MonospaceCode::new(sym_ov_ref).size_px(8.0).color(label_col));
                     })
                     .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
@@ -611,8 +608,8 @@ egui::SidePanel::left("object_tree_panel")
         // ── WIDGETS section ──
         // ════════════════════════════════════════════════════════════════
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(format!("WIDGETS ({})", chart.chart_widgets.len()))
-                .monospace().size(9.0).color(t.dim));
+            let widgets_hdr = format!("WIDGETS ({})", chart.chart_widgets.len());
+            ui.add(MonospaceCode::new(&widgets_hdr).size_px(9.0).color(t.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Global fade for all widgets
                 if !chart.chart_widgets.is_empty() {
@@ -626,7 +623,7 @@ egui::SidePanel::left("object_tree_panel")
         });
         ui.add_space(2.0);
         if chart.chart_widgets.is_empty() {
-            ui.label(egui::RichText::new("  No widgets").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+            ui.add(MonospaceCode::new("  No widgets").size_px(8.0).color(t.dim.gamma_multiply(0.5)));
         } else {
             let mut del_w: Option<usize> = None;
             let mut toggle_w: Option<usize> = None;
@@ -642,7 +639,7 @@ egui::SidePanel::left("object_tree_panel")
                     .theme(t)
                     .left_painter_circle(dot_col)
                     .body(|ui| {
-                        ui.label(egui::RichText::new(label).monospace().size(8.5).color(label_col));
+                        ui.add(MonospaceCode::new(label).size_px(8.5).color(label_col));
                     })
                     .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;

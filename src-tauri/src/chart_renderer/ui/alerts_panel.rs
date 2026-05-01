@@ -68,15 +68,14 @@ fn draw_content_cx(
         ui.horizontal(|ui| {
             ui.add(widgets::text::SectionLabel::new("ADD ALERT").tiny().color(cx.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(format!("{} @ {:.2}", sym, current_price))
-                    .monospace().size(9.0).color(cx.dim.gamma_multiply(0.5)));
+                ui.add(widgets::text::MonospaceCode::new(&format!("{} @ {:.2}", sym, current_price)).xs().color(cx.dim).gamma(0.5));
             });
         });
         ui.add_space(4.0);
 
         // Price input
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Price:").monospace().size(9.0).color(cx.dim));
+            ui.add(widgets::text::MonospaceCode::new("Price:").xs().color(cx.dim));
             let te = egui::TextEdit::singleline(&mut panes[ap].alert_input_price)
                 .desired_width(80.0)
                 .font(egui::FontId::monospace(10.0))
@@ -195,7 +194,7 @@ fn draw_content_cx(
 
     egui::ScrollArea::vertical().id_salt("alerts_scroll").max_height(ui.available_height() * 0.6).show(ui, |ui| {
         if active_alerts.is_empty() && pane_active.is_empty() {
-            ui.label(egui::RichText::new("No active alerts").monospace().size(9.0).color(cx.dim.gamma_multiply(0.4)));
+            ui.add(widgets::text::MonospaceCode::new("No active alerts").xs().color(cx.dim).gamma(0.4));
         }
 
         // Watchlist-level alerts

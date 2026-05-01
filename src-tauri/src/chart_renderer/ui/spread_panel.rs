@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
+use super::widgets::text::MonospaceCode;
 
 // ─── Data Structures ────────────────────────────────────────────────────────
 
@@ -240,7 +241,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             // ── Header ──
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new("SPREAD BUILDER").monospace().size(10.0).strong().color(t.accent));
+                ui.add(MonospaceCode::new("SPREAD BUILDER").size_px(10.0).strong(true).color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(6.0);
                     if close_button(ui, t.dim) { close = true; }
@@ -262,7 +263,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Symbol ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("Symbol").monospace().size(9.0).color(t.dim));
+                    ui.add(MonospaceCode::new("Symbol").size_px(9.0).color(t.dim));
                     ui.add_space(4.0);
                     let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.spread_state.symbol)
                         .desired_width(80.0)
@@ -290,7 +291,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Strategy selector ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("Strategy").monospace().size(9.0).color(t.dim));
+                    ui.add(MonospaceCode::new("Strategy").size_px(9.0).color(t.dim));
                     ui.add_space(4.0);
                     let strat_opts: Vec<(SpreadStrategy, &'static str)> = SpreadStrategy::all()
                         .iter().map(|s| (*s, s.label())).collect();
@@ -309,7 +310,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Legs ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("LEGS").monospace().size(9.0).strong().color(t.dim));
+                    ui.add(MonospaceCode::new("LEGS").size_px(9.0).strong(true).color(t.dim));
                 });
                 ui.add_space(4.0);
 
@@ -367,7 +368,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0).color(t.dim))
                             .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))
                         ).clicked() && leg.qty > 1 { leg.qty -= 1; }
-                        ui.label(egui::RichText::new(format!("{}", leg.qty)).monospace().size(9.0).color(egui::Color32::from_gray(220)));
+                        ui.add(MonospaceCode::new(&format!("{}", leg.qty)).size_px(9.0).color(egui::Color32::from_gray(220)));
                         if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0).color(t.dim))
                             .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))
                         ).clicked() { leg.qty += 1; }
@@ -432,10 +433,10 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 for (label, value, col) in &metrics {
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        ui.label(egui::RichText::new(*label).monospace().size(9.0).color(t.dim));
+                        ui.add(MonospaceCode::new(*label).size_px(9.0).color(t.dim));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(m);
-                            ui.label(egui::RichText::new(value).monospace().size(9.0).strong().color(*col));
+                            ui.add(MonospaceCode::new(value).size_px(9.0).strong(true).color(*col));
                         });
                     });
                 }
@@ -444,7 +445,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Qty multiplier ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.label(egui::RichText::new("Qty").monospace().size(9.0).color(t.dim));
+                    ui.add(MonospaceCode::new("Qty").size_px(9.0).color(t.dim));
                     ui.add_space(6.0);
                     if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0).color(t.dim))
                         .fill(color_alpha(t.toolbar_border, ALPHA_MUTED)).corner_radius(RADIUS_MD)
@@ -452,8 +453,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ).clicked() && watchlist.spread_state.combo_qty > 1 {
                         watchlist.spread_state.combo_qty -= 1;
                     }
-                    ui.label(egui::RichText::new(format!("{}", watchlist.spread_state.combo_qty))
-                        .monospace().size(12.0).strong().color(egui::Color32::from_gray(240)));
+                    ui.add(MonospaceCode::new(&format!("{}", watchlist.spread_state.combo_qty)).size_px(12.0).strong(true).color(egui::Color32::from_gray(240)));
                     if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0).color(t.dim))
                         .fill(color_alpha(t.toolbar_border, ALPHA_MUTED)).corner_radius(RADIUS_MD)
                         .min_size(egui::vec2(22.0, 18.0))
@@ -483,7 +483,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.horizontal(|ui| {
                         ui.add_space(m);
                         let col = if msg.starts_with("OK") { t.bull } else { t.bear };
-                        ui.label(egui::RichText::new(msg).monospace().size(9.0).color(col));
+                        ui.add(MonospaceCode::new(msg).size_px(9.0).color(col));
                     });
                     ui.add_space(4.0);
                 }

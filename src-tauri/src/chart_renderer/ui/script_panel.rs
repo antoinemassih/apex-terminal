@@ -106,8 +106,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 
     // ── AI Prompt input ─────────────────────────────────────
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("\u{2728}")
-            .monospace().size(9.0).color(t.accent));
+        ui.add(super::widgets::text::MonospaceCode::new("\u{2728}").xs().color(t.accent));
         ui.add_space(4.0);
         ui.add_sized(
             egui::vec2(w - 36.0, 22.0),
@@ -123,8 +122,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 
     // ── Preset examples ─────────────────────────────────────
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Examples:")
-            .monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+        ui.add(super::widgets::text::MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
         for (name, source) in PRESETS {
             let btn = ui.add(egui::Button::new(
                 egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
@@ -253,8 +251,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             // ── Header ──────────────────────────────────────────────
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new("APEX SCRIPT")
-                    .monospace().size(10.0).strong().color(t.accent));
+                ui.add(super::widgets::text::SectionLabel::new("APEX SCRIPT").color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(6.0);
                     if close_button(ui, t.dim) { close = true; }
@@ -267,8 +264,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             // ── AI Prompt input ─────────────────────────────────────
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new("\u{2728}") // sparkle emoji
-                    .monospace().size(9.0).color(t.accent));
+                ui.add(super::widgets::text::MonospaceCode::new("\u{2728}").xs().color(t.accent));
                 ui.add_space(4.0);
                 let prompt_response = ui.add_sized(
                     egui::vec2(w - 36.0, 22.0),
@@ -440,15 +436,13 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
     if watchlist.script_output.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new("Run a script or backtest to see results here.")
-                .monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+            ui.add(super::widgets::text::MonospaceCode::new("Run a script or backtest to see results here.").xs().color(t.dim).gamma(0.4));
         });
     } else {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(m);
-            ui.label(egui::RichText::new(&watchlist.script_output)
-                .monospace().size(9.0).color(t.dim.gamma_multiply(0.85)));
+            ui.add(super::widgets::text::MonospaceCode::new(&watchlist.script_output).xs().color(t.dim).gamma(0.85));
         });
     }
     ui.add_space(8.0);
@@ -463,8 +457,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         None => {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
-                ui.label(egui::RichText::new("Click \"Backtest\" to generate results.")
-                    .monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                ui.add(super::widgets::text::MonospaceCode::new("Click \"Backtest\" to generate results.").xs().color(t.dim).gamma(0.4));
             });
             return;
         }
@@ -513,8 +506,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
     // ── Trade list header ───────────────────────────────────
     ui.horizontal(|ui| {
         ui.add_space(m);
-        ui.label(egui::RichText::new(format!("TRADES ({})", result.trades.len()))
-            .monospace().size(8.0).strong().color(t.dim.gamma_multiply(0.5)));
+        ui.add(super::widgets::text::MonospaceCode::new(&format!("TRADES ({})", result.trades.len())).xs().color(t.dim).gamma(0.5).strong(true));
     });
     ui.add_space(4.0);
 

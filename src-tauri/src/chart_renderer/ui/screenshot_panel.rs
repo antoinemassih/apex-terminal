@@ -3,6 +3,8 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
+use super::widgets::text::{BodyLabel, SectionLabel};
+use super::widgets::buttons::SimpleBtn;
 
 /// A single screenshot entry with chart state for replay.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -117,8 +119,8 @@ pub(crate) fn draw(
         .show(ctx, |ui| {
             // Header
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("SCREENSHOTS").monospace().size(9.0).strong().color(t.accent));
-                ui.label(egui::RichText::new(format!("({})", watchlist.screenshot_entries.len())).monospace().size(9.0).color(t.dim));
+                ui.add(SectionLabel::new("SCREENSHOTS").tiny().size_px(9.0).strong(true).color(t.accent));
+                ui.add(BodyLabel::new(&format!("({})", watchlist.screenshot_entries.len())).size(9.0).monospace(true).color(t.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.screenshot_open = false; }
                 });
@@ -139,9 +141,9 @@ pub(crate) fn draw_content(
     if watchlist.screenshot_entries.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new("No screenshots yet").monospace().size(9.0).color(t.dim));
+            ui.add(BodyLabel::new("No screenshots yet").size(9.0).monospace(true).color(t.dim));
             ui.add_space(4.0);
-            ui.label(egui::RichText::new("Press Ctrl+Shift+S to capture").monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+            ui.add(BodyLabel::new("Press Ctrl+Shift+S to capture").size(9.0).monospace(true).color(t.dim.gamma_multiply(0.6)));
         });
         return;
     }
@@ -161,8 +163,8 @@ pub(crate) fn draw_content(
             card.show(ui, |ui| {
                 ui.horizontal(|ui| {
                     // Symbol + timeframe
-                    ui.label(egui::RichText::new(&entry.symbol).monospace().size(10.0).strong().color(t.accent));
-                    ui.label(egui::RichText::new(&entry.timeframe).monospace().size(9.0).color(t.dim));
+                    ui.add(BodyLabel::new(&entry.symbol).size(10.0).monospace(true).strong(true).color(t.accent));
+                    ui.add(BodyLabel::new(&entry.timeframe).size(9.0).monospace(true).color(t.dim));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Delete button
                         if ui.add(egui::Button::new(
@@ -174,17 +176,15 @@ pub(crate) fn draw_content(
                 });
 
                 // Timestamp
-                ui.label(egui::RichText::new(format_timestamp(entry.timestamp)).monospace().size(8.5).color(t.dim.gamma_multiply(0.7)));
+                ui.add(BodyLabel::new(&format_timestamp(entry.timestamp)).size(8.5).monospace(true).color(t.dim.gamma_multiply(0.7)));
 
                 // Note (if any)
                 if !entry.note.is_empty() {
-                    ui.label(egui::RichText::new(&entry.note).monospace().size(9.0).color(t.dim));
+                    ui.add(BodyLabel::new(&entry.note).size(9.0).monospace(true).color(t.dim));
                 }
 
                 // View button — navigates to the chart state
-                if ui.add(egui::Button::new(
-                    egui::RichText::new("View").monospace().size(9.0).color(t.accent)
-                ).min_size(egui::vec2(50.0, 16.0))).on_hover_text("Navigate to this chart state").clicked() {
+                if ui.add(SimpleBtn::new("View").color(t.accent).min_width(50.0)).on_hover_text("Navigate to this chart state").clicked() {
                     navigate_entry = Some((entry.symbol.clone(), entry.timeframe.clone(), entry.vs, entry.vc));
                 }
             });

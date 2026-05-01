@@ -6,7 +6,7 @@ use super::super::gpu::*;
 use super::widgets::frames::PanelFrame;
 use super::widgets::rows::order_row::{OrderRow, OrderSideTag};
 use super::widgets::tabs::TabBar;
-use super::widgets::text as wtext;
+use super::widgets::text::{self as wtext, MonospaceCode};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::commands::{self, AppCommand};
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderSide, OrderStatus};
@@ -86,10 +86,8 @@ if watchlist.orders_panel_open {
                             order_card(ui, pnl_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                                 // Row 1: symbol, qty@price, close buttons
                                 ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(&pos.symbol).monospace().size(9.0).strong()
-                                        .color(TEXT_PRIMARY));
-                                    ui.label(egui::RichText::new(format!("{}@{:.2}", pos.qty, pos.avg_price))
-                                        .monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                                    ui.add(MonospaceCode::new(&pos.symbol).size_px(9.0).strong(true).color(TEXT_PRIMARY));
+                                    ui.add(MonospaceCode::new(&format!("{}@{:.2}", pos.qty, pos.avg_price)).size_px(9.0).color(t.dim).gamma(0.6));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         // Close button
                                         let close_color = t.bear;
@@ -140,14 +138,11 @@ if watchlist.orders_panel_open {
                                 });
                                 // Row 2: P&L + market value
                                 ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(format!("{:+.2}", pos.unrealized_pnl))
-                                        .monospace().size(11.0).strong().color(pnl_color));
+                                    ui.add(MonospaceCode::new(&format!("{:+.2}", pos.unrealized_pnl)).size_px(11.0).strong(true).color(pnl_color));
                                     ui.add_space(4.0);
-                                    ui.label(egui::RichText::new(format!("({:+.1}%)", pos.pnl_pct()))
-                                        .monospace().size(9.0).color(pnl_color));
+                                    ui.add(MonospaceCode::new(&format!("({:+.1}%)", pos.pnl_pct())).size_px(9.0).color(pnl_color));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(egui::RichText::new(format!("${:.0}", pos.market_value))
-                                            .monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                        ui.add(MonospaceCode::new(&format!("${:.0}", pos.market_value)).size_px(8.0).color(t.dim).gamma(0.4));
                                     });
                                 });
                             });
@@ -157,14 +152,14 @@ if watchlist.orders_panel_open {
                     let total_color = if total_pnl >= 0.0 { t.bull } else { t.bear };
                     ui.add_space(2.0);
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Total P&L").monospace().size(9.0).color(t.dim));
+                        ui.add(MonospaceCode::new("Total P&L").size_px(9.0).color(t.dim));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(egui::RichText::new(format!("{:+.2}", total_pnl)).monospace().size(10.0).strong().color(total_color));
+                            ui.add(MonospaceCode::new(&format!("{:+.2}", total_pnl)).size_px(10.0).strong(true).color(total_color));
                         });
                     });
                 } else {
                     ui.add_space(6.0);
-                    ui.label(egui::RichText::new("No open positions").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                    ui.add(MonospaceCode::new("No open positions").size_px(9.0).color(t.dim).gamma(0.4));
                     ui.add_space(6.0);
                 }
 
@@ -196,8 +191,7 @@ if watchlist.orders_panel_open {
                 let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
                 if active_count > 0 || draft_count > 0 {
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new(format!("{}d {}a", draft_count, active_count - draft_count))
-                        .monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                    ui.add(MonospaceCode::new(&format!("{}d {}a", draft_count, active_count - draft_count)).size_px(8.0).color(t.dim).gamma(0.5));
                 }
             });
             ui.add_space(4.0);
@@ -229,7 +223,7 @@ if watchlist.orders_panel_open {
             if sel_count > 0 {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(egui::RichText::new(format!("{} selected", sel_count)).monospace().size(9.0).strong().color(t.accent));
+                    ui.add(MonospaceCode::new(&format!("{} selected", sel_count)).size_px(9.0).strong(true).color(t.accent));
                     action_btn(ui, "Place", t.accent, true).then(|| {
                         commands::push(AppCommand::PlaceSelectedOrders);
                     });
@@ -261,7 +255,7 @@ if watchlist.orders_panel_open {
                                 watchlist.selected_order_ids = active_orders;
                             }
                         }
-                        ui.label(egui::RichText::new("Select all").monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                        ui.add(MonospaceCode::new("Select all").size_px(9.0).color(t.dim).gamma(0.6));
                     });
                     ui.add_space(2.0);
                 }
@@ -333,27 +327,26 @@ if watchlist.orders_panel_open {
                         let opt_label = if !o.option_type.is_empty() { format!(" {:.0}{}", o.strike, o.option_type) } else { String::new() };
                         order_card(ui, side_color, color_alpha(t.toolbar_border, if is_cancel { 5 } else { 10 }), |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(&o.side).monospace().size(9.0).strong().color(side_color));
-                                ui.label(egui::RichText::new(format!("{}{}", o.symbol, opt_label)).monospace().size(9.0).strong()
-                                    .color(TEXT_PRIMARY));
+                                ui.add(MonospaceCode::new(&o.side).size_px(9.0).strong(true).color(side_color));
+                                ui.add(MonospaceCode::new(&format!("{}{}", o.symbol, opt_label)).size_px(9.0).strong(true).color(TEXT_PRIMARY));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     status_badge(ui, &o.status.to_uppercase(), status_color);
                                 });
                             });
                             ui.horizontal(|ui| {
                                 if o.avg_fill_price > 0.0 {
-                                    ui.label(egui::RichText::new(format!("{:.2}", o.avg_fill_price)).monospace().size(10.0).strong().color(side_color));
+                                    ui.add(MonospaceCode::new(&format!("{:.2}", o.avg_fill_price)).size_px(10.0).strong(true).color(side_color));
                                 } else if o.limit_price > 0.0 {
-                                    ui.label(egui::RichText::new(format!("{:.2}", o.limit_price)).monospace().size(10.0).color(t.dim));
+                                    ui.add(MonospaceCode::new(&format!("{:.2}", o.limit_price)).size_px(10.0).color(t.dim));
                                 }
-                                ui.label(egui::RichText::new(format!("\u{00D7}{}", o.qty)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                                ui.add(MonospaceCode::new(&format!("\u{00D7}{}", o.qty)).size_px(9.0).color(t.dim).gamma(0.6));
                                 if o.filled_qty > 0 && o.filled_qty != o.qty {
-                                    ui.label(egui::RichText::new(format!("filled {}", o.filled_qty)).monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                    ui.add(MonospaceCode::new(&format!("filled {}", o.filled_qty)).size_px(8.0).color(t.dim).gamma(0.4));
                                 }
                                 let notional = if o.avg_fill_price > 0.0 { o.avg_fill_price * o.qty as f64 } else { o.limit_price * o.qty as f64 };
                                 if notional > 0.0 {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(egui::RichText::new(format!("${:.0}", notional)).monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                                        ui.add(MonospaceCode::new(&format!("${:.0}", notional)).size_px(8.0).color(t.dim).gamma(0.4));
                                     });
                                 }
                             });
@@ -374,8 +367,8 @@ if watchlist.orders_panel_open {
                         let alert_color = if alert.triggered { t.accent } else { t.dim };
                         order_card(ui, alert_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(&alert.symbol).monospace().size(9.0).strong().color(TEXT_PRIMARY));
-                                ui.label(egui::RichText::new(format!("{} {:.2}", dir, alert.price)).monospace().size(9.0).color(alert_color));
+                                ui.add(MonospaceCode::new(&alert.symbol).size_px(9.0).strong(true).color(TEXT_PRIMARY));
+                                ui.add(MonospaceCode::new(&format!("{} {:.2}", dir, alert.price)).size_px(9.0).color(alert_color));
                                 if alert.triggered {
                                     status_badge(ui, "TRIGGERED", t.accent);
                                 }
@@ -386,7 +379,7 @@ if watchlist.orders_panel_open {
                                 });
                             });
                             if !alert.message.is_empty() {
-                                ui.label(egui::RichText::new(&alert.message).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
+                                ui.add(MonospaceCode::new(&alert.message).size_px(9.0).color(t.dim).gamma(0.6));
                             }
                         });
                     }

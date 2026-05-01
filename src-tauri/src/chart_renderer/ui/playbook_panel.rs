@@ -23,7 +23,7 @@ pub(crate) fn draw(
             // Header with close button
             let header = ui.horizontal(|ui| {
                 ui.set_min_height(26.0);
-                ui.label(egui::RichText::new("PLAYBOOK").monospace().size(FONT_SM).strong().color(t.accent));
+                ui.add(super::widgets::text::SectionLabel::new("PLAYBOOK").color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.playbook_panel_open = false; }
                 });
