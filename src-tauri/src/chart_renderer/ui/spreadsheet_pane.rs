@@ -17,6 +17,7 @@ use super::style::*;
 use super::super::gpu::*;
 use super::widgets::buttons::SimpleBtn;
 use super::widgets::text::MonospaceCode;
+use super::widgets::inputs::TextInput;
 
 const HEADER_H: f32 = 18.0;
 const ROW_H: f32 = 22.0;
@@ -526,11 +527,12 @@ pub(crate) fn render(
             egui::pos2(fbar_rect.left() + 28.0, fbar_rect.top() + 1.0),
             egui::pos2(fbar_rect.right() - 4.0, fbar_rect.bottom() - 1.0));
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(edit_rect));
-        let resp = child.add(egui::TextEdit::singleline(&mut state.formula_buf)
-            .font(egui::FontId::monospace(FONT_SM))
-            .frame(false)
-            .margin(egui::vec2(2.0, 2.0))
-            .desired_width(edit_rect.width() - 4.0));
+        let resp = TextInput::new(&mut state.formula_buf)
+            .font_size(FONT_SM)
+            .frameless(true)
+            .margin(egui::Margin::same(2))
+            .width(edit_rect.width() - 4.0)
+            .show(&mut child);
         state.formula_focus = resp.has_focus();
         if resp.changed() || resp.lost_focus() {
             if let Some((r, c)) = chart.spreadsheet_selected {
@@ -697,11 +699,12 @@ pub(crate) fn render(
                         if let Some((_, _, buf)) = chart.spreadsheet_editing.as_mut() {
                             let mut child = ui.new_child(
                                 egui::UiBuilder::new().max_rect(cell_rect.shrink(1.0)));
-                            let resp = child.add(egui::TextEdit::singleline(buf)
-                                .font(egui::FontId::monospace(FONT_SM))
-                                .frame(false)
-                                .margin(egui::vec2(2.0, 2.0))
-                                .desired_width(cw - 4.0));
+                            let resp = TextInput::new(buf)
+                                .font_size(FONT_SM)
+                                .frameless(true)
+                                .margin(egui::Margin::same(2))
+                                .width(cw - 4.0)
+                                .show(&mut child);
                             ui.painter_at(cell_rect).rect_stroke(cell_rect, 0.0,
                                 egui::Stroke::new(1.0, t.accent),
                                 egui::epaint::StrokeKind::Middle);

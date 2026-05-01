@@ -5,6 +5,7 @@ use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
 use super::widgets::text::{MonospaceCode, SectionLabel};
 use super::widgets::buttons::{SimpleBtn, IconBtn, TradeBtn};
+use super::widgets::inputs::TextInput;
 use super::widgets::cards::metric_card::MetricCard;
 
 // ─── Data Structures ────────────────────────────────────────────────────────
@@ -267,10 +268,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Symbol").size_px(9.0).color(t.dim));
                     ui.add_space(4.0);
-                    let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.spread_state.symbol)
-                        .desired_width(80.0)
-                        .font(egui::TextStyle::Monospace)
-                        .margin(egui::Margin::symmetric(4, 2)));
+                    let resp = TextInput::new(&mut watchlist.spread_state.symbol)
+                        .width(80.0)
+                        .margin(egui::Margin::symmetric(4, 2))
+                        .theme(t)
+                        .show(ui);
                     if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         watchlist.spread_state.symbol = watchlist.spread_state.symbol.to_uppercase();
                     }
@@ -374,8 +376,10 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         }
                         // Strike
                         let mut strike_str = format!("{:.0}", leg.strike);
-                        let strike_resp = ui.add(egui::TextEdit::singleline(&mut strike_str)
-                            .desired_width(44.0).font(egui::TextStyle::Monospace).margin(egui::Margin::symmetric(2, 1)));
+                        let strike_resp = TextInput::new(&mut strike_str)
+                            .width(44.0).margin(egui::Margin::symmetric(2, 1))
+                            .theme(t)
+                            .show(ui);
                         if strike_resp.changed() {
                             if let Ok(v) = strike_str.parse::<f32>() { leg.strike = v; }
                         }

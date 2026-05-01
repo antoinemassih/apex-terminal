@@ -109,15 +109,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.horizontal(|ui| {
         ui.add(super::widgets::text::MonospaceCode::new("\u{2728}").xs().color(t.accent));
         ui.add_space(4.0);
-        ui.add_sized(
-            egui::vec2(w - 36.0, 22.0),
-            egui::TextEdit::singleline(&mut watchlist.script_ai_prompt)
-                .font(egui::FontId::monospace(9.5))
-                .hint_text("Describe your indicator or strategy...")
-                .text_color(egui::Color32::from_gray(210))
-                .frame(true)
-                .margin(egui::Margin::symmetric(6, 3))
-        );
+        TextInput::new(&mut watchlist.script_ai_prompt)
+            .width(w - 36.0)
+            .font_size(9.5)
+            .placeholder("Describe your indicator or strategy...")
+            .text_color(egui::Color32::from_gray(210))
+            .margin(egui::Margin::symmetric(6, 3))
+            .theme(t)
+            .show(ui);
     });
     ui.add_space(4.0);
 
@@ -267,15 +266,14 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                 ui.add_space(8.0);
                 ui.add(super::widgets::text::MonospaceCode::new("\u{2728}").xs().color(t.accent));
                 ui.add_space(4.0);
-                let prompt_response = ui.add_sized(
-                    egui::vec2(w - 36.0, 22.0),
-                    egui::TextEdit::singleline(&mut watchlist.script_ai_prompt)
-                        .font(egui::FontId::monospace(9.5))
-                        .hint_text("Describe your indicator or strategy...")
-                        .text_color(egui::Color32::from_gray(210))
-                        .frame(true)
-                        .margin(egui::Margin::symmetric(6, 3))
-                );
+                let prompt_response = TextInput::new(&mut watchlist.script_ai_prompt)
+                    .width(w - 36.0)
+                    .font_size(9.5)
+                    .placeholder("Describe your indicator or strategy...")
+                    .text_color(egui::Color32::from_gray(210))
+                    .margin(egui::Margin::symmetric(6, 3))
+                    .theme(t)
+                    .show(ui);
                 // Style the text edit background
                 let bg_rect = prompt_response.rect;
                 ui.painter().set(

@@ -14,6 +14,7 @@ use crate::chart_renderer::gpu::{fetch_chain_background, fetch_search_background
 use crate::chart_renderer::trading::market_session;
 use super::widgets::text::MonospaceCode;
 use super::widgets::buttons::ChromeBtn;
+use super::widgets::inputs::TextInput;
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
@@ -211,9 +212,11 @@ if watchlist.open {
                     let (full_rect, _) = ui.allocate_exact_size(egui::vec2(avail, search_h), egui::Sense::hover());
                     // Search field (left portion)
                     let search_rect = egui::Rect::from_min_size(full_rect.min, egui::vec2(search_w, search_h));
-                    let search_resp = ui.put(search_rect, egui::TextEdit::singleline(&mut watchlist.search_query)
+                    let search_resp = TextInput::new(&mut watchlist.search_query)
                         .id(search_id)
-                        .hint_text("Add symbol...").desired_width(search_w).font(egui::FontId::monospace(11.0)));
+                        .placeholder("Add symbol...").width(search_w).font_size(11.0)
+                        .put_at(search_rect)
+                        .show(ui);
                     // Filter button (right portion)
                     let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
                     let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.4) };
@@ -396,9 +399,9 @@ if watchlist.open {
                             }
                             NEW_FILTER_NAME.with(|name_cell| {
                                 NEW_FILTER_MIN.with(|min_cell| {
-                                    ui.add(egui::TextEdit::singleline(&mut *name_cell.borrow_mut()).hint_text("name").desired_width(50.0).font(egui::FontId::monospace(8.0)));
+                                    TextInput::new(&mut *name_cell.borrow_mut()).placeholder("name").width(50.0).font_size(8.0).theme(t).show(ui);
                                     ui.add(MonospaceCode::new(">").size_px(8.0).color(t.dim));
-                                    ui.add(egui::TextEdit::singleline(&mut *min_cell.borrow_mut()).hint_text("%").desired_width(30.0).font(egui::FontId::monospace(8.0)));
+                                    TextInput::new(&mut *min_cell.borrow_mut()).placeholder("%").width(30.0).font_size(8.0).theme(t).show(ui);
                                     if ui.add(ChromeBtn::new(egui::RichText::new(Icon::CHECK).size(8.0).color(t.accent)).frameless(true)).clicked() {
                                         let name = name_cell.borrow().trim().to_string();
                                         let min_val: f32 = min_cell.borrow().parse().unwrap_or(0.0);
@@ -1341,14 +1344,16 @@ if watchlist.open {
                     ui.horizontal(|ui| {
                         let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
                         let input_bg = if has_focus { color_alpha(t.toolbar_border, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_GHOST) };
-                        let sym_resp = ui.add(egui::TextEdit::singleline(&mut watchlist.chain_sym_input)
+                        let sym_resp = TextInput::new(&mut watchlist.chain_sym_input)
                             .id(egui::Id::new("chain_sym_edit"))
-                            .hint_text(&watchlist.chain_symbol)
-                            .desired_width(70.0)
-                            .font(egui::FontId::monospace(14.0))
+                            .placeholder(&watchlist.chain_symbol)
+                            .width(70.0)
+                            .font_size(14.0)
                             .text_color(t.accent)
                             .background_color(input_bg)
-                            .margin(egui::Margin::symmetric(4, 3)));
+                            .margin(egui::Margin::symmetric(4, 3))
+                            .theme(t)
+                            .show(ui);
                         if !has_focus {
                             let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
                             let r = sym_resp.rect;
