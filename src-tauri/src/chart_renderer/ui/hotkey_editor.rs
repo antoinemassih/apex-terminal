@@ -3,7 +3,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
-use super::widgets::buttons::SimpleBtn;
+use super::widgets::buttons::{SimpleBtn, ChromeBtn};
 use super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::icons::Icon;
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
@@ -98,14 +98,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     if *is_editing {
                         ui.add(BodyLabel::new("Press a key...").size(9.0).monospace(true).color(t.accent));
                     } else {
-                        if ui.add(egui::Button::new(egui::RichText::new("Edit").monospace().size(8.0).color(t.dim)).frame(false)).clicked() {
+                        if ui.add(ChromeBtn::new(egui::RichText::new("Edit").monospace().size(8.0).color(t.dim)).frameless(true)).clicked() {
                             watchlist.hotkey_editing_id = Some(*hk_id);
                         }
                     }
                     let key_bg = if *is_editing { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, ALPHA_TINT) };
                     let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
-                    ui.add(egui::Button::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(9.0).color(key_fg))
-                        .fill(key_bg).corner_radius(3.0).min_size(egui::vec2(80.0, 18.0)));
+                    ui.add(ChromeBtn::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(9.0).color(key_fg))
+                        .fill(key_bg).corner_radius(r_sm_cr()).min_size(egui::vec2(80.0, 18.0)));
                 });
             });
         }

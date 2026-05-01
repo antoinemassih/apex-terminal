@@ -35,7 +35,7 @@ use egui::{Color32, Context, Id, Pos2, Stroke, Ui, Vec2};
 
 use super::frames::PopupFrame;
 use super::headers::{DialogHeaderWithClose, PaneHeaderWithClose};
-use super::super::style::{self, alpha_line, color_alpha, gap_sm};
+use super::super::style::{self, alpha_line, color_alpha, gap_sm, r_lg_cr};
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -285,7 +285,7 @@ fn dialog_window_frame(
         .fill(toolbar_bg)
         .inner_margin(0.0)
         .stroke(Stroke::new(1.0, border))
-        .corner_radius(12.0)
+        .corner_radius(r_lg_cr())
         .shadow(egui::epaint::Shadow {
             offset: [0, 8],
             blur:   28,

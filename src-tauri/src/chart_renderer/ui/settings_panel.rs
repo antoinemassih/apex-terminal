@@ -37,7 +37,7 @@ egui::Window::new("settings_panel".to_string())
     .fixed_size(egui::vec2(dialog_w, dialog_h))
     .title_bar(false)
     .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(0.0).outer_margin(0.0)
-        .stroke(egui::Stroke::new(STROKE_STD, border)).corner_radius(RADIUS_LG))
+        .stroke(egui::Stroke::new(STROKE_STD, border)).corner_radius(r_lg_cr()))
     .show(ctx, |ui| {
         if super::widgets::headers::DialogHeaderWithClose::new("SETTINGS").dim(t.dim).show(ui) { watchlist.settings_open = false; }
 
@@ -173,7 +173,7 @@ SettingsTab::Appearance => {
             let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
             let bg = if active { color_alpha(t.accent, ALPHA_SUBTLE) } else { egui::Color32::TRANSPARENT };
             if ui.add(egui::Button::new(egui::RichText::new(format!("{}%", label)).monospace().size(FONT_SM).color(fg))
-                .fill(bg).corner_radius(RADIUS_SM).min_size(egui::vec2(34.0, 20.0))).clicked() {
+                .fill(bg).corner_radius(r_sm_cr()).min_size(egui::vec2(34.0, 20.0))).clicked() {
                 watchlist.font_scale = ppp;
             }
         }
@@ -318,7 +318,7 @@ SettingsTab::Chart => {
                         let fg = if active { t.accent } else { egui::Color32::from_white_alpha(120) };
                         let bg = if active { color_alpha(c, ALPHA_STRONG) } else { color_alpha(c, ALPHA_MUTED) };
                         if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(8.0).color(fg))
-                            .fill(bg).corner_radius(RADIUS_SM).min_size(egui::vec2(38.0, 18.0))).clicked() {
+                            .fill(bg).corner_radius(r_sm_cr()).min_size(egui::vec2(38.0, 18.0))).clicked() {
                             chart.session_bg_color = hex.to_string();
                         }
                     }

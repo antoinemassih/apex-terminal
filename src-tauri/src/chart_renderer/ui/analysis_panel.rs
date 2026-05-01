@@ -6,6 +6,7 @@ use super::style::*;
 use super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::AnalysisTab;
 use super::widgets::text::SectionLabel;
+use super::widgets::buttons::ChromeBtn;
 
 const ALL_TABS: &[(AnalysisTab, &str)] = &[
     (AnalysisTab::Rrg, "RRG"),
@@ -43,7 +44,7 @@ pub(crate) fn draw(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.analysis_open = false; }
                     // Add section button
-                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
+                    if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
                         .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
                         // Pick a tab not yet used, or default to RRG
                         let used: Vec<AnalysisTab> = watchlist.analysis_splits.iter().map(|s| s.tab).collect();
@@ -95,7 +96,7 @@ pub(crate) fn draw(
                     for (t_val, t_label) in ALL_TABS {
                         let sel = tab == *t_val;
                         let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        if ui.add(egui::Button::new(egui::RichText::new(*t_label).monospace().size(FONT_XS).color(fg))
+                        if ui.add(ChromeBtn::new(egui::RichText::new(*t_label).monospace().size(FONT_XS).color(fg))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE)
                             .min_size(egui::vec2(0.0, 22.0))).clicked() {
@@ -105,7 +106,7 @@ pub(crate) fn draw(
                     // Close button for this section
                     if can_close {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.dim.gamma_multiply(0.4)))
+                            if ui.add(ChromeBtn::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.dim.gamma_multiply(0.4)))
                                 .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
                                 remove_idx = Some(i);
                             }

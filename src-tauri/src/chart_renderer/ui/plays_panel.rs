@@ -6,6 +6,7 @@
 use egui;
 use super::style::*;
 use super::super::gpu::*;
+use super::widgets::buttons::ChromeBtn;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType, PlayLine, PlayLineKind, PlayTarget};
 use crate::ui_kit::icons::Icon;
 
@@ -192,7 +193,7 @@ fn draw_play_editor(
     egui::Frame::NONE
         .fill(color_alpha(t.toolbar_border, ALPHA_FAINT))
         .inner_margin(egui::Margin::same(GAP_LG as i8))
-        .corner_radius(RADIUS_LG)
+        .corner_radius(r_lg_cr())
         .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)))
         .show(ui, |ui| {
             ui.add(super::widgets::text::SectionLabel::new("NEW PLAY").color(t.accent));
@@ -205,8 +206,8 @@ fn draw_play_editor(
                     let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
                     let bg = if sel { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
                     let label = format!("{} {}", pty.icon(), pty.label());
-                    if ui.add(egui::Button::new(egui::RichText::new(&label).monospace().size(FONT_XS).color(fg))
-                        .fill(bg).corner_radius(RADIUS_SM)
+                    if ui.add(ChromeBtn::new(egui::RichText::new(&label).monospace().size(FONT_XS).color(fg))
+                        .fill(bg).corner_radius(r_sm_cr())
                         .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_LINE) } else { egui::Stroke::NONE.color }))
                         .min_size(egui::vec2(0.0, 20.0))).clicked() {
                         let prev = watchlist.play_editor_type;
@@ -239,8 +240,8 @@ fn draw_play_editor(
                     let sel = watchlist.play_editor_direction == dir;
                     let fg = if sel { color } else { t.dim.gamma_multiply(0.5) };
                     let bg = if sel { color_alpha(color, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
-                    if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(FONT_SM).strong().color(fg))
-                        .fill(bg).corner_radius(RADIUS_SM)
+                    if ui.add(ChromeBtn::new(egui::RichText::new(label).monospace().size(FONT_SM).strong().color(fg))
+                        .fill(bg).corner_radius(r_sm_cr())
                         .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(color, ALPHA_LINE) } else { egui::Stroke::NONE.color }))
                         .min_size(egui::vec2(56.0, 22.0))).clicked() {
                         watchlist.play_editor_direction = dir;
@@ -253,8 +254,8 @@ fn draw_play_editor(
             // ── Symbol ──
             ui.horizontal(|ui| {
                 dim_label(ui, "Symbol", t.dim);
-                ui.add(egui::TextEdit::singleline(&mut watchlist.play_editor_symbol)
-                    .desired_width(80.0).font(egui::FontId::monospace(FONT_SM)).hint_text("AAPL"));
+                super::widgets::inputs::TextInput::new(&mut watchlist.play_editor_symbol)
+                    .width(80.0).font_size(FONT_SM).placeholder("AAPL").show(ui);
             });
             ui.add_space(GAP_XS);
 
@@ -320,7 +321,7 @@ fn draw_play_editor(
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target2); }
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t2_pct, t);
-                    if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.bear.gamma_multiply(0.6)))
+                    if ui.add(ChromeBtn::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.bear.gamma_multiply(0.6)))
                         .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0))).clicked() {
                         remove_t2 = true;
                     }
@@ -347,7 +348,7 @@ fn draw_play_editor(
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target3); }
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t3_pct, t);
-                    if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.bear.gamma_multiply(0.6)))
+                    if ui.add(ChromeBtn::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.bear.gamma_multiply(0.6)))
                         .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0))).clicked() {
                         remove_t3 = true;
                     }
@@ -412,8 +413,8 @@ fn draw_play_editor(
                     let active = watchlist.play_editor_tags.iter().any(|t| t == tag);
                     let fg = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
                     let bg = if active { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
-                    if ui.add(egui::Button::new(egui::RichText::new(*tag).monospace().size(7.0).color(fg))
-                        .fill(bg).corner_radius(8.0)
+                    if ui.add(ChromeBtn::new(egui::RichText::new(*tag).monospace().size(7.0).color(fg))
+                        .fill(bg).corner_radius(r_md_cr())
                         .stroke(egui::Stroke::new(0.5, if active { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }))
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
                         if active { watchlist.play_editor_tags.retain(|x| x != tag); }
@@ -424,8 +425,8 @@ fn draw_play_editor(
             // Custom tag input
             ui.horizontal(|ui| {
                 dim_label(ui, "+", t.dim);
-                let resp = ui.add(egui::TextEdit::singleline(&mut watchlist.play_editor_custom_tag)
-                    .desired_width(80.0).font(egui::FontId::monospace(FONT_XS)).hint_text("custom tag"));
+                let resp = super::widgets::inputs::TextInput::new(&mut watchlist.play_editor_custom_tag)
+                    .width(80.0).font_size(FONT_XS).placeholder("custom tag").show(ui);
                 if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     let tag = watchlist.play_editor_custom_tag.trim().to_lowercase();
                     if !tag.is_empty() && !watchlist.play_editor_tags.contains(&tag) {
@@ -438,8 +439,8 @@ fn draw_play_editor(
                     .filter(|tg| !TAG_PRESETS.contains(&tg.as_str()))
                     .cloned().collect();
                 for ct in &custom {
-                    if ui.add(egui::Button::new(egui::RichText::new(format!("{} \u{00D7}", ct)).monospace().size(7.0).color(t.accent))
-                        .fill(color_alpha(t.accent, ALPHA_TINT)).corner_radius(8.0)
+                    if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} \u{00D7}", ct)).monospace().size(7.0).color(t.accent))
+                        .fill(color_alpha(t.accent, ALPHA_TINT)).corner_radius(r_md_cr())
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
                         watchlist.play_editor_tags.retain(|x| x != ct);
                     }
@@ -547,7 +548,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
     let step = 5u32;
     let mut val: u32 = pct_str.parse().unwrap_or(50);
 
-    if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(FONT_XS).color(t.dim))
+    if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(FONT_XS).color(t.dim))
         .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, ALPHA_FAINT))).clicked() {
         val = val.saturating_sub(step).max(5);
     }
@@ -555,7 +556,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
         .desired_width(22.0).font(egui::FontId::monospace(FONT_XS))
         .horizontal_align(egui::Align::Center));
     ui.add(super::widgets::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
-    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(FONT_XS).color(t.dim))
+    if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_XS).color(t.dim))
         .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, ALPHA_FAINT))).clicked() {
         val = (val + step).min(100);
     }
@@ -571,8 +572,8 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
 fn click_to_set_btn(ui: &mut egui::Ui, icon: &str, t: &Theme, active: bool) -> bool {
     let fg = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
     let bg = if active { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
-    ui.add(egui::Button::new(egui::RichText::new(icon).size(FONT_SM).color(fg))
-        .fill(bg).corner_radius(RADIUS_SM)
+    ui.add(ChromeBtn::new(egui::RichText::new(icon).size(FONT_SM).color(fg))
+        .fill(bg).corner_radius(r_sm_cr())
         .min_size(egui::vec2(18.0, 18.0))).clicked()
 }
 

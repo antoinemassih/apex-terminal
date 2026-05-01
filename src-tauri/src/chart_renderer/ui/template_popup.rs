@@ -26,7 +26,7 @@ pub(crate) fn draw(
             .fill(t.toolbar_bg)
             .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
             .inner_margin(egui::Margin::same(GAP_LG as i8))
-            .corner_radius(RADIUS_LG)
+            .corner_radius(r_lg_cr())
             .shadow(egui::epaint::Shadow {
                 offset: [0, 4], blur: 14, spread: 0,
                 color: egui::Color32::from_black_alpha(80),
@@ -70,7 +70,7 @@ pub(crate) fn draw(
                                 let bg = if active { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
                                 if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
                                     .monospace().size(FONT_XS).color(fg))
-                                    .fill(bg).corner_radius(RADIUS_SM)
+                                    .fill(bg).corner_radius(r_sm_cr())
                                     .stroke(egui::Stroke::new(if active { STROKE_THIN } else { 0.0 },
                                         if active { color_alpha(t.accent, ALPHA_LINE) } else { egui::Color32::TRANSPARENT }))
                                     .min_size(egui::vec2(0.0, 20.0))).clicked() {
@@ -153,11 +153,11 @@ pub(crate) fn draw(
 
                         // Save Current section
                         ui.horizontal(|ui| {
-                            let te = egui::TextEdit::singleline(&mut panes[pi].template_save_name)
-                                .hint_text("Template name…")
-                                .desired_width(160.0)
-                                .font(egui::FontId::monospace(FONT_SM));
-                            ui.add(te);
+                            super::widgets::inputs::TextInput::new(&mut panes[pi].template_save_name)
+                                .placeholder("Template name…")
+                                .width(160.0)
+                                .font_size(FONT_SM)
+                                .show(ui);
                             let can_save = !panes[pi].template_save_name.trim().is_empty();
                             if can_save {
                                 if small_action_btn(ui, "Save", t.accent) {

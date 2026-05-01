@@ -23,7 +23,7 @@ if panes[ap].overlay_editing {
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
             .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-            .corner_radius(RADIUS_LG))
+            .corner_radius(r_lg_cr()))
         .show(ctx, |ui| {
             let m = 8.0;
             // Header
@@ -80,10 +80,11 @@ if panes[ap].overlay_editing {
             ui.add_space(2.0);
             ui.horizontal(|ui| {
                 ui.add_space(m);
-                ui.add(egui::TextEdit::singleline(&mut panes[ap].overlay_input)
-                    .hint_text("Symbol...")
-                    .desired_width(240.0 - m * 2.0)
-                    .font(egui::FontId::monospace(10.0)));
+                super::widgets::inputs::TextInput::new(&mut panes[ap].overlay_input)
+                    .placeholder("Symbol...")
+                    .width(240.0 - m * 2.0)
+                    .font_size(10.0)
+                    .show(ui);
             });
             let query = panes[ap].overlay_input.trim().to_uppercase();
             if !query.is_empty() {

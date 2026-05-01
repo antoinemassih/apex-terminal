@@ -3,6 +3,7 @@
 use egui;
 use super::style::*;
 use super::widgets;
+use super::widgets::buttons::ChromeBtn;
 use super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::FeedTab;
 
@@ -37,7 +38,7 @@ pub(crate) fn draw(
                 ui.add(widgets::text::SectionLabel::new("FEED").color(t.accent));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.feed_panel_open = false; }
-                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
+                    if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
                         .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
                         let used: Vec<FeedTab> = watchlist.feed_splits.iter().map(|s| s.tab).collect();
                         let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
@@ -90,7 +91,7 @@ pub(crate) fn draw(
                     }
                     if can_close {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.dim.gamma_multiply(0.4)))
+                            if ui.add(ChromeBtn::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.dim.gamma_multiply(0.4)))
                                 .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
                                 remove_idx = Some(i);
                             }

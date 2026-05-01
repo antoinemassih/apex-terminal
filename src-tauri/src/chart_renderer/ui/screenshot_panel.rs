@@ -156,7 +156,7 @@ pub(crate) fn draw_content(
         for entry in &watchlist.screenshot_entries {
             let card = egui::Frame::NONE
                 .fill(t.bg.gamma_multiply(0.6))
-                .rounding(4.0)
+                .corner_radius(r_sm_cr())
                 .inner_margin(egui::Margin::same(6))
                 .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)));
 

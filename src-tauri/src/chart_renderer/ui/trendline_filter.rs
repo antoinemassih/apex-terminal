@@ -193,15 +193,14 @@ if chart.picker_open {
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)))
-            .corner_radius(RADIUS_LG)
+            .corner_radius(r_lg_cr())
             .inner_margin(egui::Margin::same(6)))
         .show(ctx, |ui| {
-            let input = ui.add(
-                egui::TextEdit::singleline(&mut chart.picker_query)
-                    .hint_text("Search any stock, ETF, index...")
-                    .desired_width(300.0)
-                    .font(egui::FontId::monospace(11.0))
-            );
+            let input = super::widgets::inputs::TextInput::new(&mut chart.picker_query)
+                    .placeholder("Search any stock, ETF, index...")
+                    .width(300.0)
+                    .font_size(11.0)
+                    .show(ui);
             input.request_focus();
 
             if chart.picker_searching {

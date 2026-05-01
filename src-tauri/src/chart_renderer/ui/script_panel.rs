@@ -128,7 +128,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
                 .fill(color_alpha(t.accent, 12))
                 .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, 35)))
-                .corner_radius(RADIUS_MD)
+                .corner_radius(r_md_cr())
                 .min_size(egui::vec2(0.0, 16.0))
             );
             if btn.clicked() { watchlist.script_source = source.to_string(); }
@@ -244,7 +244,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
             .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-            .corner_radius(RADIUS_LG))
+            .corner_radius(r_lg_cr()))
         .show(ctx, |ui| {
             let w = ui.available_width();
 
@@ -299,7 +299,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                         egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
                         .fill(color_alpha(t.accent, 12))
                         .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, 35)))
-                        .corner_radius(RADIUS_MD)
+                        .corner_radius(r_md_cr())
                         .min_size(egui::vec2(0.0, 16.0))
                     );
                     if btn.clicked() {
@@ -628,13 +628,13 @@ fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme
         egui::RichText::new(label).monospace().size(9.0).color(color))
         .fill(color_alpha(color, ALPHA_GHOST))
         .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(color, ALPHA_LINE)))
-        .corner_radius(RADIUS_MD)
+        .corner_radius(r_md_cr())
         .min_size(egui::vec2(0.0, 20.0))
     );
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         // Paint subtle highlight
-        ui.painter().rect_filled(resp.rect, 3.0, color_alpha(color, 8));
+        ui.painter().rect_filled(resp.rect, r_sm_cr(), color_alpha(color, 8));
     }
     let _ = t; // suppress unused warning (theme available for future styling)
     resp
@@ -651,7 +651,7 @@ fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: 
         egui::RichText::new(label).monospace().size(9.0).color(fg))
         .fill(bg)
         .stroke(egui::Stroke::new(STROKE_THIN, border))
-        .corner_radius(RADIUS_MD)
+        .corner_radius(r_md_cr())
         .min_size(egui::vec2(0.0, 18.0))
     );
     if resp.clicked() {

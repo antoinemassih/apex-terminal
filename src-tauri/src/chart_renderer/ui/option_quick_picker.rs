@@ -58,7 +58,7 @@ pub(crate) fn draw(
             .fill(t.toolbar_bg)
             .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
             .inner_margin(egui::Margin::same(GAP_LG as i8))
-            .corner_radius(RADIUS_LG)
+            .corner_radius(r_lg_cr())
             .shadow(egui::epaint::Shadow {
                 offset: [0, 4], blur: 14, spread: 0,
                 color: egui::Color32::from_black_alpha(80),
@@ -134,8 +134,8 @@ pub(crate) fn draw(
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     color_alpha(t.accent, ALPHA_TINT)
                                 } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
-                                ui.painter().rect_filled(prev_rect, RADIUS_MD, prev_bg);
-                                ui.painter().rect_stroke(prev_rect, RADIUS_MD,
+                                ui.painter().rect_filled(prev_rect, r_md_cr(), prev_bg);
+                                ui.painter().rect_stroke(prev_rect, r_md_cr(),
                                     egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_LINE)),
                                     egui::StrokeKind::Inside);
                                 ui.painter().text(
@@ -161,8 +161,8 @@ pub(crate) fn draw(
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     color_alpha(t.accent, ALPHA_TINT)
                                 } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
-                                ui.painter().rect_filled(next_rect, RADIUS_MD, next_bg);
-                                ui.painter().rect_stroke(next_rect, RADIUS_MD,
+                                ui.painter().rect_filled(next_rect, r_md_cr(), next_bg);
+                                ui.painter().rect_stroke(next_rect, r_md_cr(),
                                     egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_LINE)),
                                     egui::StrokeKind::Inside);
                                 ui.painter().text(
@@ -238,7 +238,7 @@ pub(crate) fn draw(
                                             let (crect, cresp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
                                             if cresp.hovered() {
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                                ui.painter().rect_filled(crect, RADIUS_SM, color_alpha(t.bull, ALPHA_GHOST));
+                                                ui.painter().rect_filled(crect, r_sm_cr(), color_alpha(t.bull, ALPHA_GHOST));
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
                                                 &call_text, egui::FontId::monospace(FONT_SM),
@@ -264,7 +264,7 @@ pub(crate) fn draw(
                                             let (prect, presp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
                                             if presp.hovered() {
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                                ui.painter().rect_filled(prect, RADIUS_SM, color_alpha(t.bear, ALPHA_GHOST));
+                                                ui.painter().rect_filled(prect, r_sm_cr(), color_alpha(t.bear, ALPHA_GHOST));
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
                                                 &put_text, egui::FontId::monospace(FONT_SM),

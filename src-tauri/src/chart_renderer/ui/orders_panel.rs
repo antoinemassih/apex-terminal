@@ -4,6 +4,7 @@ use egui;
 use super::style::*;
 use super::super::gpu::*;
 use super::widgets::frames::PanelFrame;
+use super::widgets::buttons::ChromeBtn;
 use super::widgets::rows::order_row::{OrderRow, OrderSideTag};
 use super::widgets::tabs::TabBar;
 use super::widgets::text::{self as wtext, MonospaceCode};
@@ -91,8 +92,8 @@ if watchlist.orders_panel_open {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         // Close button
                                         let close_color = t.bear;
-                                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(close_color))
-                                            .fill(color_alpha(close_color, 12)).corner_radius(RADIUS_SM)
+                                        if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(9.0).color(close_color))
+                                            .fill(color_alpha(close_color, 12)).corner_radius(r_sm_cr())
                                             .min_size(egui::vec2(18.0, 16.0))).clicked() {
                                             // Close full position via ApexIB
                                             let sym = pos.symbol.clone();
@@ -113,8 +114,8 @@ if watchlist.orders_panel_open {
                                         }
                                         // Close half button
                                         if pos.qty.abs() > 1 {
-                                            if ui.add(egui::Button::new(egui::RichText::new("\u{00BD}").size(9.0).color(t.dim))
-                                                .fill(color_alpha(t.toolbar_border, ALPHA_GHOST)).corner_radius(RADIUS_SM)
+                                            if ui.add(ChromeBtn::new(egui::RichText::new("\u{00BD}").size(9.0).color(t.dim))
+                                                .fill(color_alpha(t.toolbar_border, ALPHA_GHOST)).corner_radius(r_sm_cr())
                                                 .min_size(egui::vec2(18.0, 16.0))).clicked() {
                                                 let sym = pos.symbol.clone();
                                                 let half = (pos.qty.abs() / 2).max(1);
@@ -247,8 +248,8 @@ if watchlist.orders_panel_open {
                     ui.horizontal(|ui| {
                         let check_icon = if all_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
                         let check_color = if all_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
-                        if ui.add(egui::Button::new(egui::RichText::new(check_icon).size(10.0).color(check_color))
-                            .frame(false).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                        if ui.add(ChromeBtn::new(egui::RichText::new(check_icon).size(10.0).color(check_color))
+                            .frameless(true).min_size(egui::vec2(14.0, 14.0))).clicked() {
                             if all_selected {
                                 watchlist.selected_order_ids.clear();
                             } else {

@@ -236,7 +236,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
             .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-            .corner_radius(RADIUS_LG))
+            .corner_radius(r_lg_cr()))
         .show(ctx, |ui| {
             let w = ui.available_width();
 
@@ -280,7 +280,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         if ui.add(egui::Button::new(
                             egui::RichText::new(active_symbol).monospace().size(8.0).color(t.accent))
                             .fill(color_alpha(t.accent, ALPHA_GHOST))
-                            .corner_radius(RADIUS_MD)
+                            .corner_radius(r_md_cr())
                             .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_MUTED)))
                             .min_size(egui::vec2(0.0, 16.0))
                         ).on_hover_text("Use chart symbol").clicked() {
@@ -380,17 +380,19 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             if let Ok(v) = strike_str.parse::<f32>() { leg.strike = v; }
                         }
                         // Expiry combo
-                        egui::ComboBox::from_id_salt(format!("leg_expiry_{}", idx))
-                            .selected_text(egui::RichText::new(&leg.expiry).monospace().size(8.0))
-                            .width(52.0)
-                            .show_ui(ui, |ui| {
-                                for exp in EXPIRY_OPTIONS {
-                                    if ui.selectable_label(leg.expiry == *exp,
-                                        egui::RichText::new(*exp).monospace().size(9.0)).clicked() {
-                                        leg.expiry = exp.to_string();
-                                    }
-                                }
-                            });
+                        {
+                            let expiry_id = format!("leg_expiry_{}", idx);
+                            let opts: Vec<(&'static str, &'static str)> = EXPIRY_OPTIONS.iter().map(|&s| (s, s)).collect();
+                            let mut cur: &'static str = EXPIRY_OPTIONS.iter().copied().find(|&s| s == leg.expiry.as_str()).unwrap_or("0DTE");
+                            if super::widgets::select::Dropdown::new(&expiry_id)
+                                .options(&opts)
+                                .width(52.0)
+                                .theme(t)
+                                .show(ui, &mut cur)
+                            {
+                                leg.expiry = cur.to_string();
+                            }
+                        }
                     });
                     ui.add_space(4.0);
                 }

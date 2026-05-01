@@ -111,9 +111,8 @@ pub(crate) fn draw_content(
             ui.add_space(2.0);
 
             FormRow::new("Name").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut watchlist.scanner_new_name)
-                    .desired_width(panel_w - 60.0)
-                    .font(egui::FontId::monospace(9.0)));
+                super::widgets::inputs::TextInput::new(&mut watchlist.scanner_new_name)
+                    .width(panel_w - 60.0).font_size(9.0).show(ui);
             });
             FormRow::new("Min %").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_min_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
@@ -121,10 +120,8 @@ pub(crate) fn draw_content(
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_max_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
             });
             FormRow::new("Min Vol").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut watchlist.scanner_new_min_volume)
-                    .desired_width(80.0)
-                    .font(egui::FontId::monospace(9.0))
-                    .hint_text("e.g. 1000000"));
+                super::widgets::inputs::TextInput::new(&mut watchlist.scanner_new_min_volume)
+                    .width(80.0).font_size(9.0).placeholder("e.g. 1000000").show(ui);
             });
 
             ui.horizontal(|ui| {

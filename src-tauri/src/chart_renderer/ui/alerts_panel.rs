@@ -93,7 +93,7 @@ fn draw_content_cx(
                 egui::RichText::new(format!("{} Above {:.2}", Icon::ARROW_FAT_UP, input_price))
                     .monospace().size(9.0).color(above_color))
                 .fill(color_alpha(above_color, ALPHA_GHOST))
-                .corner_radius(RADIUS_MD)
+                .corner_radius(r_md_cr())
                 .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(above_color, ALPHA_LINE)))
                 .min_size(egui::vec2(0.0, 20.0))).clicked()
             {
@@ -105,7 +105,7 @@ fn draw_content_cx(
                 egui::RichText::new(format!("{} Below {:.2}", Icon::ARROW_FAT_DOWN, input_price))
                     .monospace().size(9.0).color(below_color))
                 .fill(color_alpha(below_color, ALPHA_GHOST))
-                .corner_radius(RADIUS_MD)
+                .corner_radius(r_md_cr())
                 .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(below_color, ALPHA_LINE)))
                 .min_size(egui::vec2(0.0, 20.0))).clicked()
             {

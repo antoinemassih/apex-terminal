@@ -19,7 +19,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
         .fill(t.toolbar_bg)
         .inner_margin(0.0)
         .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_ACTIVE)))
-        .corner_radius(RADIUS_LG);
+        .corner_radius(r_lg_cr());
     let resp = Modal::new("CONNECTIONS")
         .id("connections")
         .ctx(_ctx)
