@@ -136,11 +136,12 @@ impl<'a> ButtonShell<'a> {
         );
 
         // Treatment-specific extras (stripe under UnderlineActive when active).
+        // Uses current().stroke_bold so style presets can adjust the active emphasis weight.
         if matches!(treatment, ButtonTreatment::UnderlineActive) && self.active {
             let y = resp.rect.bottom() - 1.0;
             ui.painter().line_segment(
                 [egui::pos2(resp.rect.left(), y), egui::pos2(resp.rect.right(), y)],
-                Stroke::new(stroke_bold(), accent),
+                Stroke::new(current().stroke_bold, accent),
             );
         }
 

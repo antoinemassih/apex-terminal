@@ -192,16 +192,18 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
                 );
                 ui.painter().rect_filled(col_rect, 0.0, color_alpha(toolbar_border, alpha_ghost()));
                 // Accent underline at the very bottom of the toolbar (#18).
+                // Uses stroke_bold so Meridien can tune the active-state line weight.
                 let underline_y = tb.bottom() - 1.0;
                 ui.painter().line_segment(
                     [egui::pos2(r.left(), underline_y), egui::pos2(r.right(), underline_y)],
-                    Stroke::new(2.0, accent));
+                    Stroke::new(st.stroke_bold, accent));
             }
             _ => {
+                // stroke_bold drives the active-state accent underline for non-Meridien styles.
                 ui.painter().line_segment(
                     [egui::pos2(r.left() + 4.0, r.bottom() + 0.5),
                      egui::pos2(r.right() - 4.0, r.bottom() + 0.5)],
-                    Stroke::new(1.5, color_alpha(accent, alpha_dim())));
+                    Stroke::new(st.stroke_bold, color_alpha(accent, alpha_dim())));
             }
         }
     } else if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
@@ -316,32 +318,40 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
 // ─── Separators ───────────────────────────────────────────────────────────────
 
 /// Full-width horizontal separator.
+/// Uses `stroke_hair` when the active style has hairline_borders, otherwise `stroke_thin` —
+/// giving Meridien its characteristic super-thin dividers.
 #[inline]
 pub fn separator(ui: &mut egui::Ui, color: Color32) {
+    let st = current();
+    let sw = if st.hairline_borders { st.stroke_hair } else { stroke_thin() };
     let rect = ui.available_rect_before_wrap();
     ui.painter().line_segment(
         [egui::pos2(rect.left(), ui.cursor().min.y), egui::pos2(rect.right(), ui.cursor().min.y)],
-        Stroke::new(stroke_thin(), color));
+        Stroke::new(sw, color));
     ui.add_space(crate::dt_f32!(separator.after_space, 1.0));
 }
 
 /// Inset separator with margins on both sides.
+/// Uses `stroke_hair` when the active style has hairline_borders, otherwise `stroke_thin`.
 pub fn dialog_separator(ui: &mut egui::Ui, margin: f32, color: Color32) {
+    let st = current();
+    let sw = if st.hairline_borders { st.stroke_hair } else { stroke_thin() };
     let rect = ui.available_rect_before_wrap();
     ui.painter().line_segment(
         [egui::pos2(rect.left() + margin, ui.cursor().min.y),
          egui::pos2(rect.right() - margin, ui.cursor().min.y)],
-        Stroke::new(stroke_thin(), color));
+        Stroke::new(sw, color));
     ui.add_space(crate::dt_f32!(separator.after_space, 1.0));
 }
 
 /// Inset separator + soft gradient shadow below (3 fading lines).
+/// Uses `stroke_thick` for the main divider line so bold-separator sites are style-driven.
 pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
     let rect = ui.available_rect_before_wrap();
     let y = ui.cursor().min.y;
     let left = rect.left() + margin;
     let right = rect.right() - margin;
-    ui.painter().line_segment([egui::pos2(left, y), egui::pos2(right, y)], Stroke::new(stroke_thin(), color));
+    ui.painter().line_segment([egui::pos2(left, y), egui::pos2(right, y)], Stroke::new(current().stroke_thick, color));
     // Fading shadow gradient: 3 strokes at decreasing black alpha
     #[cfg(feature = "design-mode")]
     let shadow_alphas = {
@@ -781,10 +791,12 @@ pub fn split_divider(ui: &mut egui::Ui, _id_salt: &str, dim: Color32) -> f32 {
     let active = resp.hovered() || resp.dragged();
     let color = if active { dim.gamma_multiply(0.6) } else { color_alpha(dim, alpha_faint()) };
 
+    // Active drag handle uses stroke_thick from the style preset for a prominent feel.
+    let effective_active_sw = current().stroke_thick.max(active_sw);
     p.line_segment(
         [egui::pos2(rect.left() + inset, rect.center().y),
          egui::pos2(rect.right() - inset, rect.center().y)],
-        Stroke::new(if active { active_sw } else { inactive_sw }, color));
+        Stroke::new(if active { effective_active_sw } else { inactive_sw }, color));
 
     if active {
         let cy = rect.center().y;
@@ -1061,9 +1073,26 @@ pub fn tb_group_break(ui: &mut egui::Ui, panel_rect: egui::Rect, border: egui::C
     ui.add_space(6.0);
 }
 
-/// Returns `s` uppercased only when the active style calls for it (#5, #12).
+/// Returns `s` uppercased (and letter-spaced) for active styles that request it (#5, #12).
+///
+/// # Letter-spacing limitation
+/// egui does not support CSS `letter-spacing`. We approximate it by inserting Unicode
+/// thin-spaces (U+2009) between characters. Threshold:
+///   < 0.5 px  → no spacing
+///   0.5–1.5 px → single thin-space between each char
+///   > 1.5 px  → double thin-space between each char
+/// This is a visual approximation; the effective gap depends on font rendering.
 pub fn style_label_case(s: &str) -> String {
-    if current().uppercase_section_labels { s.to_uppercase() } else { s.to_string() }
+    let st = current();
+    let upper = if st.uppercase_section_labels { s.to_uppercase() } else { return s.to_string(); };
+    let spacing = st.label_letter_spacing_px;
+    if spacing < 0.5 {
+        upper
+    } else {
+        let gap = if spacing > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
+        let parts: Vec<String> = upper.chars().map(|c| c.to_string()).collect();
+        parts.join(gap)
+    }
 }
 
 /// Returns a `FontId` appropriate for hero numerics — serif when the active

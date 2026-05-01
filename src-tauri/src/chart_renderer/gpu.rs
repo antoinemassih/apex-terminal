@@ -4937,10 +4937,9 @@ fn render_toolbar(
                             let pad = ((avail - content_w) / 2.0).max(0.0);
                             ui.add_space(pad);
 
-                            // NAV
+                            // NAV — rendered with hero_text so font_hero inspector slider resizes it.
                             ui.label(egui::RichText::new("NAV").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("${:.0}", acct.nav)).monospace().size(11.0).strong()
-                                .color(t.text));
+                            ui.label(super::ui::style::hero_text(&format!("${:.0}", acct.nav), t.text).strong());
 
                             ui.add(egui::Separator::default().spacing(8.0));
 
@@ -4951,11 +4950,11 @@ fn render_toolbar(
 
                             ui.add(egui::Separator::default().spacing(8.0));
 
-                            // Daily P&L
+                            // Daily P&L — rendered with hero_text so font_hero slider in the
+                            // inspector visibly resizes this number (the most prominent account figure).
                             let daily_color = if acct.daily_pnl >= 0.0 { t.bull } else { t.bear };
                             ui.label(egui::RichText::new("Day P&L").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("{:+.0}", acct.daily_pnl)).monospace().size(11.0).strong()
-                                .color(daily_color));
+                            ui.label(super::ui::style::hero_text(&format!("{:+.0}", acct.daily_pnl), daily_color).strong());
 
                             ui.add(egui::Separator::default().spacing(8.0));
 

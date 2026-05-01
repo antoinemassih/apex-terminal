@@ -36,6 +36,8 @@ pub struct Inspector {
     drag_corner: Option<usize>,
     /// Radius value at the start of the current drag
     drag_start_radius: f32,
+    /// When true the inspector floats as a draggable egui::Window instead of SidePanel.
+    pub is_popout: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -144,6 +146,7 @@ impl Inspector {
             selected_rect: None,
             drag_corner: None,
             drag_start_radius: 0.0,
+            is_popout: false,
         }
     }
 
@@ -356,16 +359,36 @@ impl Inspector {
         crate::design_tokens::clear_hits();
 
         let mut modified = false;
+        let panel_frame = egui::Frame::NONE
+            .fill(Color32::from_rgb(18, 18, 24))
+            .stroke(Stroke::new(1.0, Color32::from_rgb(40, 42, 54)))
+            .inner_margin(0.0);
 
+        // ── Dispatch: SidePanel (docked) or Window (popout) ──────────────────
+        let is_popout = self.is_popout;
+        if !is_popout {
         egui::SidePanel::right("design_inspector")
             .min_width(320.0)
             .max_width(420.0)
             .default_width(360.0)
-            .frame(egui::Frame::NONE
-                .fill(Color32::from_rgb(18, 18, 24))
-                .stroke(Stroke::new(1.0, Color32::from_rgb(40, 42, 54)))
-                .inner_margin(0.0))
-            .show(ctx, |ui| {
+            .frame(panel_frame)
+            .show(ctx, |ui| { self.show_inspector_body(ui, tokens, &mut modified); });
+        } else {
+        let mut open = true;
+        egui::Window::new("design_inspector")
+            .open(&mut open)
+            .resizable([true, true])
+            .default_size(egui::vec2(360.0, 700.0))
+            .default_pos(egui::pos2(80.0, 40.0))
+            .frame(panel_frame)
+            .show(ctx, |ui| { self.show_inspector_body(ui, tokens, &mut modified); });
+        if !open { self.is_popout = false; }
+        }
+        modified
+    }
+
+    /// Inner body rendered by both SidePanel and Window modes.
+    fn show_inspector_body(&mut self, ui: &mut egui::Ui, tokens: &mut DesignTokens, modified: &mut bool) {
                 // Header
                 egui::Frame::NONE
                     .fill(Color32::from_rgb(14, 14, 20))
@@ -376,6 +399,19 @@ impl Inspector {
                                 .monospace().size(13.0).strong()
                                 .color(Color32::from_rgb(203, 166, 247)));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                // Popout / dock toggle
+                                let popout_label = if self.is_popout { "DOCK" } else { "POP" };
+                                let popout_col = Color32::from_rgb(137, 180, 250);
+                                if ui.add(egui::Button::new(
+                                    RichText::new(popout_label).monospace().size(10.0).strong().color(popout_col))
+                                    .fill(Color32::from_rgba_unmultiplied(137, 180, 250, 18))
+                                    .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(137, 180, 250, 60)))
+                                    .corner_radius(3.0)
+                                ).on_hover_text(if self.is_popout { "Dock back to side panel" } else { "Float as draggable window" })
+                                .clicked() {
+                                    self.is_popout = !self.is_popout;
+                                }
+
                                 if ui.add(egui::Button::new(
                                     RichText::new(if self.dirty { "SAVE" } else { "saved" })
                                         .monospace().size(10.0).strong()
@@ -404,7 +440,7 @@ impl Inspector {
                                     .corner_radius(3.0)
                                 ).clicked() {
                                     *tokens = DesignTokens::default();
-                                    modified = true;
+                                    *modified = true;
                                     self.dirty = true;
                                 }
                             });
@@ -474,7 +510,7 @@ impl Inspector {
                                 .inner_margin(egui::Margin { left: 16, right: 12, top: 8, bottom: 8 })
                                 .show(ui, |ui| {
                                     if self.render_category(ui, cat, tokens) {
-                                        modified = true;
+                                        *modified = true;
                                         self.dirty = true;
                                     }
                                 });
@@ -564,9 +600,6 @@ impl Inspector {
                                 .color(Color32::from_rgb(150, 150, 160)));
                         });
                 }
-            });
-
-        modified
     }
 
     /// Render controls for a specific category. Returns true if any value changed.
