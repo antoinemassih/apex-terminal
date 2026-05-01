@@ -943,29 +943,78 @@ fn style_defaults(id: u8) -> StyleSettings {
 }
 // └─ STYLE_DEFAULTS_END ───────────────────────────────────────────────────────
 
-static STYLE_STORE: std::sync::OnceLock<[std::sync::RwLock<StyleSettings>; 3]> =
+// ─── Dynamic style preset store ──────────────────────────────────────────────
+// Vec of (name, settings) pairs. Ids 0/1/2 are the canonical three styles
+// (Meridien/Aperture/Octave) and cannot be deleted. User-added presets append
+// beyond index 2 and survive only for the session (in-memory, no source write).
+
+static STYLE_STORE: std::sync::OnceLock<std::sync::RwLock<Vec<(String, StyleSettings)>>> =
     std::sync::OnceLock::new();
 
-fn style_store() -> &'static [std::sync::RwLock<StyleSettings>; 3] {
+fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
     STYLE_STORE.get_or_init(|| {
-        [
-            std::sync::RwLock::new(style_defaults(0)),
-            std::sync::RwLock::new(style_defaults(1)),
-            std::sync::RwLock::new(style_defaults(2)),
-        ]
+        let mut v: Vec<(String, StyleSettings)> = vec![
+            ("Meridien".to_string(), style_defaults(0)),
+            ("Aperture".to_string(), style_defaults(1)),
+            ("Octave".to_string(),   style_defaults(2)),
+        ];
+        // Alias the remaining STYLE_NAMES (indices 3-9) to Meridien's settings
+        // so existing style_idx values don't out-of-range on first lookup.
+        let meridien = style_defaults(0);
+        let alias_names = ["Cadence", "Chord", "Lattice", "Tangent", "Tempo", "Contour", "Relay"];
+        for name in alias_names {
+            v.push((name.to_string(), meridien.clone()));
+        }
+        std::sync::RwLock::new(v)
     })
 }
 
-/// Get a clone of a specific style's settings (0=Meridien, 1=Aperture, 2=Octave).
+/// Get a clone of the settings for style `id`. Falls back to 0 (Meridien) if out of range.
 pub fn get_style_settings(id: u8) -> StyleSettings {
-    let idx = (id as usize).min(2);
-    style_store()[idx].read().unwrap().clone()
+    let store = style_store().read().unwrap();
+    let idx = id as usize;
+    if idx < store.len() { store[idx].1.clone() } else { store[0].1.clone() }
 }
 
-/// Overwrite a specific style's settings — takes effect on the next frame.
+/// Overwrite the settings for style `id` — takes effect on the next frame.
+/// Silently ignored if `id` is out of range.
 pub fn set_style_settings(id: u8, settings: StyleSettings) {
-    let idx = (id as usize).min(2);
-    *style_store()[idx].write().unwrap() = settings;
+    let mut store = style_store().write().unwrap();
+    let idx = id as usize;
+    if idx < store.len() { store[idx].1 = settings; }
+}
+
+/// Add a new named preset cloned from an existing style. Returns the new id.
+pub fn add_style_preset(name: &str, settings: StyleSettings) -> u8 {
+    let mut store = style_store().write().unwrap();
+    let id = store.len() as u8;
+    store.push((name.to_string(), settings));
+    id
+}
+
+/// Delete a user preset. Ids 0/1/2 are protected (no-op). All ids above the
+/// deleted slot are shifted down — callers should re-read `list_style_presets`
+/// and update any stored `style_idx` values accordingly.
+pub fn delete_style_preset(id: u8) {
+    if id < 3 { return; }
+    let mut store = style_store().write().unwrap();
+    let idx = id as usize;
+    if idx < store.len() { store.remove(idx); }
+}
+
+/// Rename a preset in-place. No-op if `id` is out of range.
+pub fn rename_style_preset(id: u8, new_name: String) {
+    let mut store = style_store().write().unwrap();
+    let idx = id as usize;
+    if idx < store.len() { store[idx].0 = new_name; }
+}
+
+/// Returns `(id, name)` pairs for all registered presets — use for dropdowns.
+pub fn list_style_presets() -> Vec<(u8, String)> {
+    style_store().read().unwrap()
+        .iter().enumerate()
+        .map(|(i, (name, _))| (i as u8, name.clone()))
+        .collect()
 }
 
 pub fn current() -> StyleSettings {

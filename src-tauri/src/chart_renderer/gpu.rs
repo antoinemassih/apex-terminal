@@ -73,6 +73,7 @@ impl<T: Clone> SplitSection<T> {
 
 // ─── Themes ───────────────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub(crate) struct Theme {
     pub(crate) name: &'static str,
     pub(crate) bg: egui::Color32, pub(crate) bull: egui::Color32, pub(crate) bear: egui::Color32, pub(crate) dim: egui::Color32,
@@ -89,11 +90,13 @@ pub(crate) const STYLE_NAMES: &[&str] = &[
     "Lattice",  "Tangent",  "Tempo",  "Contour", "Relay",
 ];
 
-/// Returns the canonical style id for a watchlist's selected style.
-/// 0 = Meridien (default), 1 = Aperture, 2 = Octave. All other selections
-/// currently alias to Meridien (0) until their visuals are wired.
+/// Returns the style id for a watchlist's selected style.
+/// Any valid index within the live preset list is returned as-is.
+/// Out-of-range falls back to 0 (Meridien).
 pub(crate) fn style_id(wl: &Watchlist) -> u8 {
-    match wl.style_idx { 1 => 1, 2 => 2, _ => 0 }
+    let presets = crate::chart_renderer::ui::style::list_style_presets();
+    let idx = wl.style_idx as u8;
+    if presets.iter().any(|(id, _)| *id == idx) { idx } else { 0 }
 }
 
 /// Style-aware non-tabs pane header height. Mirrors `PaneHeaderSize::header_h`
@@ -119,6 +122,7 @@ pub(crate) fn pane_tabs_header_h(wl: &Watchlist) -> f32 {
     }
 }
 
+// ┌─ THEMES_BEGIN ──────────────────────────────────────────────────────────────
 pub(crate) const THEMES: &[Theme] = &[
     Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: rgb(28,32,40),  accent: rgb(62,120,180),  text: rgb(220,220,230) },
     Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: rgb(50,56,70),  accent: rgb(136,192,208), text: rgb(220,220,230) },
@@ -138,12 +142,34 @@ pub(crate) const THEMES: &[Theme] = &[
     Theme { name: "Peach",       bg: rgb(243,241,238), bull: rgb(22,130,70),   bear: rgb(195,50,55),   dim: rgb(115,120,125), toolbar_bg: rgb(250,248,246), toolbar_border: rgb(228,225,220), accent: rgb(210,95,70),   text: rgb(20,20,22) },
     Theme { name: "Ivory",       bg: rgb(240,242,238), bull: rgb(80,160,50),   bear: rgb(210,60,50),   dim: rgb(118,122,128), toolbar_bg: rgb(248,250,246), toolbar_border: rgb(222,226,218), accent: rgb(160,190,40),  text: rgb(18,20,22) },
 ];
+// └─ THEMES_END ────────────────────────────────────────────────────────────────
 
 impl Theme {
     pub(crate) const fn is_light(&self) -> bool {
         // A theme is "light" if the background luminance is above ~50%
         (self.bg.r() as u16 + self.bg.g() as u16 + self.bg.b() as u16) > 400
     }
+}
+
+// ─── Live theme store ─────────────────────────────────────────────────────────
+use std::sync::{OnceLock, RwLock};
+
+static LIVE_THEMES: OnceLock<RwLock<Vec<Theme>>> = OnceLock::new();
+
+fn live_themes() -> &'static RwLock<Vec<Theme>> {
+    LIVE_THEMES.get_or_init(|| RwLock::new(THEMES.to_vec()))
+}
+
+pub(crate) fn get_theme(idx: usize) -> Theme {
+    live_themes().read().unwrap()[idx].clone()
+}
+
+pub(crate) fn set_theme(idx: usize, theme: Theme) {
+    live_themes().write().unwrap()[idx] = theme;
+}
+
+pub(crate) fn get_all_themes() -> Vec<Theme> {
+    live_themes().read().unwrap().clone()
 }
 
 const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
@@ -3204,7 +3230,8 @@ fn update_simulation(panes: &mut [Chart]) {
 /// Phase 4: Apply theme, font scale, cache account data, get window ref.
 fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchlist: &Watchlist) -> (usize, Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>, Option<Arc<Window>>) {
     let theme_idx = panes[active_pane].theme_idx;
-    let t = &THEMES[theme_idx];
+    let _t_owned = get_theme(theme_idx);
+    let t = &_t_owned;
     {
         let mut style = (*ctx.style()).clone();
         style.visuals.panel_fill = t.toolbar_bg;
@@ -4663,8 +4690,11 @@ fn render_toolbar(
             // ── Theme + Style dropdown — two columns separated by a divider ──
             {
                 let mut ti = panes[ap].theme_idx;
-                let mut si = watchlist.style_idx.min(STYLE_NAMES.len() - 1);
-                let combined = format!("{}/{}", THEMES[ti].name, STYLE_NAMES[si]);
+                let style_presets = crate::chart_renderer::ui::style::list_style_presets();
+                let safe_si = watchlist.style_idx.min(style_presets.len().saturating_sub(1));
+                let style_name_cur = style_presets.get(safe_si).map(|(_, n)| n.as_str()).unwrap_or("Meridien");
+                let mut si = safe_si;
+                let combined = format!("{}/{}", get_theme(ti).name, style_name_cur);
                 let current_label = egui::RichText::new(combined).monospace().size(12.0).strong().color(t.dim);
                 ui.menu_button(current_label, |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
@@ -4691,18 +4721,18 @@ fn render_toolbar(
                         });
                         // Vertical separator
                         ui.add(egui::Separator::default().vertical().spacing(8.0));
-                        // ── STYLE column ──
+                        // ── STYLE column — populated from live preset list ──
                         ui.vertical(|ui| {
                             ui.set_min_width(120.0);
                             ui.label(egui::RichText::new("STYLE").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
-                            for (i, name) in STYLE_NAMES.iter().enumerate() {
-                                let sel = i == si;
+                            for (id, name) in &style_presets {
+                                let sel = *id as usize == si;
                                 let text_col = if sel { t.accent } else { t.dim };
                                 let check = if sel { "\u{2713} " } else { "  " };
                                 let r = ui.selectable_label(sel,
                                     egui::RichText::new(format!("{}{}", check, name))
                                         .monospace().size(11.0).color(text_col));
-                                if r.clicked() { si = i; }
+                                if r.clicked() { si = *id as usize; }
                             }
                         });
                     });
@@ -5372,7 +5402,8 @@ fn render_chart_pane(
         });
     }
     let is_active = pane_idx == *active_pane;
-    let t = &THEMES[chart.theme_idx];
+    let _t_owned = get_theme(chart.theme_idx);
+    let t = &_t_owned;
 
     // ── Replay auto-advance when playing ──
     if chart.replay_mode && chart.replay_playing {
@@ -16566,7 +16597,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     update_simulation(panes);
 
     let (theme_idx, account_data_cached, win_ref) = setup_theme(ctx, panes, *active_pane, watchlist);
-    let t = &THEMES[theme_idx];
+    let _t_owned = get_theme(theme_idx);
+    let t = &_t_owned;
 
     render_toolbar(ctx, panes, active_pane, layout, watchlist, t, theme_idx, &account_data_cached, win_ref, conn_panel_open, toasts);
 
@@ -16700,7 +16732,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     if let Some(pane_r) = pane_rects.get(dst) {
                         let hsize = watchlist.pane_header_size.tabs_header_h();
                         let drop_rect = egui::Rect::from_min_size(pane_r.min, egui::vec2(pane_r.width(), hsize));
-                        let t_ref = &THEMES[theme_idx];
+                        let _tref_owned = get_theme(theme_idx);
+                        let t_ref = &_tref_owned;
                         ui.painter().rect_filled(drop_rect, 0.0, color_alpha(t_ref.accent, 40));
                         ui.painter().rect_stroke(drop_rect, 0.0,
                             egui::Stroke::new(2.0, color_alpha(t_ref.accent, 200)), egui::StrokeKind::Inside);
@@ -16710,7 +16743,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
 
             // Paint ghost tab at cursor
             {
-                let t_ref = &THEMES[theme_idx];
+                let _tref_owned = get_theme(theme_idx);
+                let t_ref = &_tref_owned;
                 let ghost_text = format!("{} {}", drag.symbol, drag.timeframe);
                 let font = egui::FontId::monospace(10.0);
                 let galley = ui.painter().layout_no_wrap(ghost_text.clone(), font.clone(), TEXT_PRIMARY);

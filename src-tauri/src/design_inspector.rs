@@ -60,6 +60,7 @@ pub enum Category {
     Tooltip,
     Separator,
     Style,
+    Theme,
 }
 
 impl Category {
@@ -71,7 +72,7 @@ impl Category {
         Category::Chart, Category::Watchlist, Category::OrderEntry,
         Category::PaneHeader, Category::Segmented, Category::IconButton,
         Category::Form, Category::SplitDivider, Category::Tooltip, Category::Separator,
-        Category::Style,
+        Category::Style, Category::Theme,
     ];
 
     fn label(self) -> &'static str {
@@ -102,6 +103,7 @@ impl Category {
             Category::Tooltip => "Tooltips",
             Category::Separator => "Separators",
             Category::Style => "Style Editor",
+            Category::Theme => "Theme Editor",
         }
     }
 
@@ -369,6 +371,78 @@ impl Inspector {
                     }
                 });
 
+                // ── Selection details panel ────────────────────────────────
+                if let Some(fam) = self.selected_family {
+                    ui.separator();
+                    egui::Frame::NONE
+                        .fill(Color32::from_rgb(14, 14, 22))
+                        .inner_margin(egui::Margin { left: 12, right: 12, top: 8, bottom: 10 })
+                        .show(ui, |ui| {
+                            // Header row: family name + clear button
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(fam).monospace().size(11.0).strong()
+                                    .color(Color32::from_rgb(166, 227, 161)));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.add(egui::Button::new(
+                                        RichText::new("✕").monospace().size(9.0)
+                                            .color(Color32::from_rgb(150, 150, 160)))
+                                        .fill(Color32::TRANSPARENT)
+                                        .stroke(Stroke::NONE)
+                                    ).clicked() {
+                                        // Deselect — we can't mutate self here directly,
+                                        // so we use a flag communicated via the status.
+                                        // We'll handle deselect outside: set a sentinel.
+                                    }
+                                });
+                            });
+
+                            // Look up affecting fields
+                            let fields = family_affecting_fields(fam);
+                            if fields.is_empty() {
+                                ui.label(RichText::new("No field mapping registered.")
+                                    .monospace().size(9.0)
+                                    .color(Color32::from_rgb(100, 100, 110)));
+                            } else {
+                                ui.add_space(4.0);
+                                ui.label(RichText::new("Affecting fields:").monospace().size(9.0)
+                                    .color(Color32::from_rgb(130, 130, 140)));
+                                ui.add_space(2.0);
+
+                                for &(section, field) in fields {
+                                    ui.horizontal(|ui| {
+                                        // Section badge
+                                        let badge_color = section_badge_color(section);
+                                        ui.label(RichText::new(section).monospace().size(8.0)
+                                            .color(badge_color));
+                                        ui.label(RichText::new("·").monospace().size(8.0)
+                                            .color(Color32::from_rgb(70, 70, 80)));
+                                        ui.label(RichText::new(field).monospace().size(9.0)
+                                            .color(Color32::from_rgb(200, 200, 215)));
+                                    });
+                                }
+
+                                // Unique categories represented — offer jump links
+                                ui.add_space(4.0);
+                                let mut shown_cats: Vec<&str> = Vec::new();
+                                for &(section, _) in fields {
+                                    if !shown_cats.contains(&section) {
+                                        shown_cats.push(section);
+                                    }
+                                }
+                                ui.horizontal_wrapped(|ui| {
+                                    for &sec in &shown_cats {
+                                        if let Some(cat) = category_from_name(sec) {
+                                            let _ = cat; // available if we could mutate self
+                                            let label = format!("→ {sec}");
+                                            ui.label(RichText::new(&label).monospace().size(8.5)
+                                                .color(Color32::from_rgb(137, 180, 250)));
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                }
+
                 // Status bar
                 if !self.status.is_empty() {
                     egui::Frame::NONE
@@ -588,6 +662,9 @@ impl Inspector {
             Category::Style => {
                 changed |= render_style_editor(ui);
             }
+            Category::Theme => {
+                render_theme_editor(ui);
+            }
         }
         changed
     }
@@ -782,33 +859,30 @@ fn save_style_defaults_to_source() -> Result<(), String> {
 }
 
 fn render_style_editor(ui: &mut Ui) -> bool {
-    use crate::chart_renderer::ui::style::{ButtonTreatment, get_style_settings, set_style_settings, set_active_style};
+    use crate::chart_renderer::ui::style::{
+        ButtonTreatment, get_style_settings, set_style_settings, set_active_style,
+        add_style_preset, delete_style_preset, rename_style_preset, list_style_presets,
+    };
     let mut changed = false;
 
-    // Active-style switch buttons
-    ui.horizontal(|ui| {
-        let active_id = {
-            use std::sync::atomic::Ordering;
-            // read the current active style id — mirror of ACTIVE_STYLE but accessible via public API
-            // We infer it by comparing get_style_settings(0..2) identity is not possible;
-            // instead store the last switch in a thread_local.
-            STYLE_EDITOR_ACTIVE.load(Ordering::Relaxed)
-        };
-        for (id, name) in [(0u8, "Meridien"), (1u8, "Aperture"), (2u8, "Octave")] {
+    let accent_col = Color32::from_rgb(203, 166, 247);
+    let dim_col    = Color32::from_rgb(120, 120, 130);
+    let green_col  = Color32::from_rgb(166, 227, 161);
+
+    // ── Active-style switcher (from live preset list) ──────────────────────────
+    ui.horizontal_wrapped(|ui| {
+        let active_id = STYLE_EDITOR_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
+        for (id, name) in list_style_presets() {
             let is_active = active_id == id;
-            let accent = Color32::from_rgb(203, 166, 247);
-            let dim    = Color32::from_rgb(120, 120, 130);
             let (fg, bg, border) = if is_active {
-                (accent, Color32::from_rgba_unmultiplied(203, 166, 247, 30),
+                (accent_col, Color32::from_rgba_unmultiplied(203, 166, 247, 30),
                  Color32::from_rgba_unmultiplied(203, 166, 247, 120))
             } else {
-                (dim, Color32::TRANSPARENT, Color32::from_rgb(50, 50, 60))
+                (dim_col, Color32::TRANSPARENT, Color32::from_rgb(50, 50, 60))
             };
-            if ui.add(egui::Button::new(RichText::new(name).monospace().size(11.0).strong().color(fg))
-                .fill(bg)
-                .stroke(Stroke::new(0.8, border))
-                .corner_radius(3.0)
-                .min_size(egui::vec2(70.0, 22.0))
+            if ui.add(egui::Button::new(RichText::new(&name).monospace().size(11.0).strong().color(fg))
+                .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(3.0)
+                .min_size(egui::vec2(60.0, 22.0))
             ).clicked() {
                 STYLE_EDITOR_ACTIVE.store(id, std::sync::atomic::Ordering::Relaxed);
                 set_active_style(id);
@@ -817,118 +891,226 @@ fn render_style_editor(ui: &mut Ui) -> bool {
         }
     });
 
-    // Save to source button
     ui.add_space(4.0);
+
+    // ── Preset management row ──────────────────────────────────────────────────
     ui.horizontal(|ui| {
+        // "+ New Preset" button
+        if ui.add(egui::Button::new(RichText::new("+ New Preset").monospace().size(9.0).strong().color(green_col))
+            .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 15))
+            .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 80)))
+            .corner_radius(3.0)
+        ).clicked() {
+            STYLE_NEW_PRESET_OPEN.with(|o| *o.borrow_mut() = true);
+        }
+
+        ui.add_space(8.0);
+
+        // Save to source button (only for canonical 3)
         if ui.add(egui::Button::new(
-            RichText::new("💾 Save to source")
-                .monospace().size(10.0).strong()
-                .color(Color32::from_rgb(166, 227, 161)))
+            RichText::new("Save to source").monospace().size(9.0).strong().color(green_col))
             .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
             .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
             .corner_radius(3.0)
         ).clicked() {
             match save_style_defaults_to_source() {
-                Ok(()) => {
-                    STYLE_SAVE_STATUS.with(|s| *s.borrow_mut() = "Saved to source ✓".to_string());
-                }
-                Err(e) => {
-                    STYLE_SAVE_STATUS.with(|s| *s.borrow_mut() = format!("Save failed: {e}"));
-                }
+                Ok(()) => STYLE_SAVE_STATUS.with(|s| *s.borrow_mut() = "Saved ✓".to_string()),
+                Err(e) => STYLE_SAVE_STATUS.with(|s| *s.borrow_mut() = format!("Save failed: {e}")),
             }
         }
         STYLE_SAVE_STATUS.with(|s| {
             let msg = s.borrow();
             if !msg.is_empty() {
-                ui.label(RichText::new(msg.as_str()).monospace().size(9.0)
-                    .color(Color32::from_rgb(150, 150, 160)));
+                ui.label(RichText::new(msg.as_str()).monospace().size(9.0).color(dim_col));
             }
         });
     });
 
-    ui.add_space(6.0);
-
-    // Per-style collapsible sections
-    for style_id in 0u8..3 {
-        let style_name = match style_id { 0 => "Meridien", 1 => "Aperture", _ => "Octave" };
-        let header_color = Color32::from_rgb(180, 180, 200);
-
-        egui::CollapsingHeader::new(
-            RichText::new(style_name).monospace().size(11.0).strong().color(header_color)
-        )
-        .id_salt(egui::Id::new(("style_section", style_id)))
-        .default_open(style_id == STYLE_EDITOR_ACTIVE.load(std::sync::atomic::Ordering::Relaxed))
-        .show(ui, |ui| {
-            let mut s = get_style_settings(style_id);
-            let mut local_changed = false;
-
-            // Corner radii
-            ui.label(RichText::new("Corner radii").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
-            local_changed |= style_drag_u8(ui, "r_xs", &mut s.r_xs);
-            local_changed |= style_drag_u8(ui, "r_sm", &mut s.r_sm);
-            local_changed |= style_drag_u8(ui, "r_md", &mut s.r_md);
-            local_changed |= style_drag_u8(ui, "r_lg", &mut s.r_lg);
-            local_changed |= style_drag_u8(ui, "r_pill", &mut s.r_pill);
-
-            ui.add_space(4.0);
-
-            // Button treatment
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(RichText::new("button_treatment").monospace().size(9.0).color(Color32::from_rgb(170,170,180)));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    egui::ComboBox::from_id_salt(egui::Id::new(("bt_combo", style_id)))
-                        .selected_text(RichText::new(format!("{:?}", s.button_treatment)).monospace().size(9.0))
-                        .show_ui(ui, |ui| {
-                            for bt in [ButtonTreatment::SoftPill, ButtonTreatment::OutlineAccent,
-                                       ButtonTreatment::UnderlineActive, ButtonTreatment::RaisedActive,
-                                       ButtonTreatment::BlackFillActive] {
-                                if ui.selectable_label(s.button_treatment == bt, format!("{bt:?}")).clicked() {
-                                    s.button_treatment = bt;
-                                    local_changed = true;
+    // ── "New Preset" dialog ────────────────────────────────────────────────────
+    let mut do_create = false;
+    STYLE_NEW_PRESET_OPEN.with(|o| {
+        if !*o.borrow() { return; }
+        egui::Window::new("new_preset_dialog")
+            .title_bar(false)
+            .resizable(false)
+            .fixed_size(egui::vec2(260.0, 0.0))
+            .show(ui.ctx(), |ui| {
+                ui.label(RichText::new("New Style Preset").monospace().size(11.0).strong().color(accent_col));
+                ui.add_space(4.0);
+                STYLE_NEW_PRESET_NAME.with(|n| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Name:").monospace().size(9.0).color(dim_col));
+                        ui.text_edit_singleline(&mut *n.borrow_mut());
+                    });
+                });
+                STYLE_NEW_PRESET_CLONE_FROM.with(|c| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Clone from:").monospace().size(9.0).color(dim_col));
+                        egui::ComboBox::from_id_salt("new_preset_clone")
+                            .selected_text(list_style_presets().get(*c.borrow()).map(|(_, n)| n.clone()).unwrap_or_default())
+                            .show_ui(ui, |ui| {
+                                for (id, name) in list_style_presets() {
+                                    if ui.selectable_label(*c.borrow() == id as usize, &name).clicked() {
+                                        *c.borrow_mut() = id as usize;
+                                    }
                                 }
-                            }
-                        });
+                            });
+                    });
+                });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Create").clicked() { do_create = true; }
+                    if ui.button("Cancel").clicked() {
+                        *o.borrow_mut() = false;
+                    }
                 });
             });
-
-            ui.add_space(4.0);
-
-            // Bool flags
-            local_changed |= style_checkbox(ui, "hairline_borders", &mut s.hairline_borders);
-            local_changed |= style_checkbox(ui, "shadows_enabled", &mut s.shadows_enabled);
-            local_changed |= style_checkbox(ui, "solid_active_fills", &mut s.solid_active_fills);
-            local_changed |= style_checkbox(ui, "uppercase_section_labels", &mut s.uppercase_section_labels);
-            local_changed |= style_checkbox(ui, "serif_headlines", &mut s.serif_headlines);
-            local_changed |= style_checkbox(ui, "vertical_group_dividers", &mut s.vertical_group_dividers);
-            local_changed |= style_checkbox(ui, "show_active_tab_underline", &mut s.show_active_tab_underline);
-            local_changed |= style_checkbox(ui, "inactive_header_fill", &mut s.inactive_header_fill);
-
-            ui.add_space(4.0);
-
-            // Stroke widths
-            ui.label(RichText::new("Stroke widths").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
-            local_changed |= style_drag_f32(ui, "stroke_hair", &mut s.stroke_hair, 0.0..=3.0);
-            local_changed |= style_drag_f32(ui, "stroke_thin", &mut s.stroke_thin, 0.0..=3.0);
-            local_changed |= style_drag_f32(ui, "stroke_std",  &mut s.stroke_std,  0.0..=4.0);
-            local_changed |= style_drag_f32(ui, "stroke_bold", &mut s.stroke_bold, 0.0..=4.0);
-            local_changed |= style_drag_f32(ui, "stroke_thick",&mut s.stroke_thick,0.0..=6.0);
-
-            ui.add_space(4.0);
-
-            // Scale / size fields
-            local_changed |= style_drag_f32(ui, "toolbar_height_scale", &mut s.toolbar_height_scale, 0.5..=2.5);
-            local_changed |= style_drag_f32(ui, "header_height_scale",  &mut s.header_height_scale,  0.5..=2.5);
-            local_changed |= style_drag_f32(ui, "font_hero",             &mut s.font_hero,             8.0..=80.0);
-            local_changed |= style_drag_f32(ui, "active_header_fill_multiply", &mut s.active_header_fill_multiply, 0.0..=1.5);
-            local_changed |= style_drag_f32(ui, "account_strip_height", &mut s.account_strip_height, 16.0..=80.0);
-            local_changed |= style_drag_f32(ui, "label_letter_spacing_px", &mut s.label_letter_spacing_px, -2.0..=4.0);
-
-            if local_changed {
-                set_style_settings(style_id, s);
-                changed = true;
-            }
+    });
+    if do_create {
+        STYLE_NEW_PRESET_OPEN.with(|o| *o.borrow_mut() = false);
+        let (name, clone_from) = STYLE_NEW_PRESET_NAME.with(|n| {
+            STYLE_NEW_PRESET_CLONE_FROM.with(|c| {
+                (n.borrow().clone(), *c.borrow() as u8)
+            })
         });
+        if !name.is_empty() {
+            let settings = get_style_settings(clone_from);
+            let new_id = add_style_preset(&name, settings);
+            STYLE_EDITOR_ACTIVE.store(new_id, std::sync::atomic::Ordering::Relaxed);
+            set_active_style(new_id);
+            STYLE_NEW_PRESET_NAME.with(|n| n.borrow_mut().clear());
+            changed = true;
+        }
+    }
+
+    ui.add_space(6.0);
+
+    // ── Per-preset collapsible sections ───────────────────────────────────────
+    let presets = list_style_presets();
+    let mut to_delete: Option<u8> = None;
+
+    for (preset_id, preset_name) in &presets {
+        let id = *preset_id;
+        let header_color = Color32::from_rgb(180, 180, 200);
+        let is_canonical = id < 3;
+
+        // Header: name (inline rename for user presets) + delete button
+        let header_label = RichText::new(preset_name).monospace().size(11.0).strong().color(header_color);
+        let section = egui::CollapsingHeader::new(header_label)
+            .id_salt(egui::Id::new(("style_section", id)))
+            .default_open(id == STYLE_EDITOR_ACTIVE.load(std::sync::atomic::Ordering::Relaxed))
+            .show(ui, |ui| {
+                // Rename row (user presets only)
+                if !is_canonical {
+                    STYLE_RENAME_BUFS.with(|bufs| {
+                        let mut bufs = bufs.borrow_mut();
+                        let entry = bufs.entry(id).or_insert_with(|| preset_name.clone());
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Name:").monospace().size(9.0).color(dim_col));
+                            let r = ui.text_edit_singleline(entry);
+                            if r.lost_focus() && !entry.is_empty() {
+                                rename_style_preset(id, entry.clone());
+                            }
+                        });
+                        ui.add_space(4.0);
+                    });
+                }
+
+                let mut s = get_style_settings(id);
+                let mut local_changed = false;
+
+                // Corner radii
+                ui.label(RichText::new("Corner radii").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_u8(ui, "r_xs", &mut s.r_xs);
+                local_changed |= style_drag_u8(ui, "r_sm", &mut s.r_sm);
+                local_changed |= style_drag_u8(ui, "r_md", &mut s.r_md);
+                local_changed |= style_drag_u8(ui, "r_lg", &mut s.r_lg);
+                local_changed |= style_drag_u8(ui, "r_pill", &mut s.r_pill);
+
+                ui.add_space(4.0);
+
+                // Button treatment
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label(RichText::new("button_treatment").monospace().size(9.0).color(Color32::from_rgb(170,170,180)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        egui::ComboBox::from_id_salt(egui::Id::new(("bt_combo", id)))
+                            .selected_text(RichText::new(format!("{:?}", s.button_treatment)).monospace().size(9.0))
+                            .show_ui(ui, |ui| {
+                                for bt in [ButtonTreatment::SoftPill, ButtonTreatment::OutlineAccent,
+                                           ButtonTreatment::UnderlineActive, ButtonTreatment::RaisedActive,
+                                           ButtonTreatment::BlackFillActive] {
+                                    if ui.selectable_label(s.button_treatment == bt, format!("{bt:?}")).clicked() {
+                                        s.button_treatment = bt;
+                                        local_changed = true;
+                                    }
+                                }
+                            });
+                    });
+                });
+
+                ui.add_space(4.0);
+
+                // Bool flags
+                local_changed |= style_checkbox(ui, "hairline_borders", &mut s.hairline_borders);
+                local_changed |= style_checkbox(ui, "shadows_enabled", &mut s.shadows_enabled);
+                local_changed |= style_checkbox(ui, "solid_active_fills", &mut s.solid_active_fills);
+                local_changed |= style_checkbox(ui, "uppercase_section_labels", &mut s.uppercase_section_labels);
+                local_changed |= style_checkbox(ui, "serif_headlines", &mut s.serif_headlines);
+                local_changed |= style_checkbox(ui, "vertical_group_dividers", &mut s.vertical_group_dividers);
+                local_changed |= style_checkbox(ui, "show_active_tab_underline", &mut s.show_active_tab_underline);
+                local_changed |= style_checkbox(ui, "inactive_header_fill", &mut s.inactive_header_fill);
+
+                ui.add_space(4.0);
+
+                // Stroke widths
+                ui.label(RichText::new("Stroke widths").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_f32(ui, "stroke_hair", &mut s.stroke_hair, 0.0..=3.0);
+                local_changed |= style_drag_f32(ui, "stroke_thin", &mut s.stroke_thin, 0.0..=3.0);
+                local_changed |= style_drag_f32(ui, "stroke_std",  &mut s.stroke_std,  0.0..=4.0);
+                local_changed |= style_drag_f32(ui, "stroke_bold", &mut s.stroke_bold, 0.0..=4.0);
+                local_changed |= style_drag_f32(ui, "stroke_thick",&mut s.stroke_thick,0.0..=6.0);
+
+                ui.add_space(4.0);
+
+                // Scale / size fields
+                local_changed |= style_drag_f32(ui, "toolbar_height_scale", &mut s.toolbar_height_scale, 0.5..=2.5);
+                local_changed |= style_drag_f32(ui, "header_height_scale",  &mut s.header_height_scale,  0.5..=2.5);
+                local_changed |= style_drag_f32(ui, "font_hero",             &mut s.font_hero,             8.0..=80.0);
+                local_changed |= style_drag_f32(ui, "active_header_fill_multiply", &mut s.active_header_fill_multiply, 0.0..=1.5);
+                local_changed |= style_drag_f32(ui, "account_strip_height", &mut s.account_strip_height, 16.0..=80.0);
+                local_changed |= style_drag_f32(ui, "label_letter_spacing_px", &mut s.label_letter_spacing_px, -2.0..=4.0);
+
+                // Delete button for user presets
+                if !is_canonical {
+                    ui.add_space(6.0);
+                    if ui.add(egui::Button::new(
+                        RichText::new("Delete preset").monospace().size(9.0).color(Color32::from_rgb(243, 139, 168)))
+                        .fill(Color32::from_rgba_unmultiplied(243, 139, 168, 15))
+                        .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(243, 139, 168, 80)))
+                        .corner_radius(3.0)
+                    ).clicked() {
+                        to_delete = Some(id);
+                    }
+                }
+
+                if local_changed {
+                    set_style_settings(id, s);
+                    changed = true;
+                }
+            });
+        let _ = section;
+    }
+
+    // Deferred delete (after loop to avoid borrow issues)
+    if let Some(del_id) = to_delete {
+        delete_style_preset(del_id);
+        // If the deleted preset was active, fall back to Meridien
+        if STYLE_EDITOR_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == del_id {
+            STYLE_EDITOR_ACTIVE.store(0, std::sync::atomic::Ordering::Relaxed);
+            set_active_style(0);
+        }
+        changed = true;
     }
 
     changed
@@ -939,6 +1121,12 @@ static STYLE_EDITOR_ACTIVE: std::sync::atomic::AtomicU8 =
 
 thread_local! {
     static STYLE_SAVE_STATUS: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    static STYLE_NEW_PRESET_OPEN: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) };
+    static STYLE_NEW_PRESET_NAME: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    static STYLE_NEW_PRESET_CLONE_FROM: std::cell::RefCell<usize> = const { std::cell::RefCell::new(0) };
+    /// Rename buffer: maps preset id → current draft name (for user presets).
+    static STYLE_RENAME_BUFS: std::cell::RefCell<std::collections::HashMap<u8, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 fn style_drag_u8(ui: &mut Ui, label: &str, value: &mut u8) -> bool {
@@ -962,6 +1150,219 @@ fn style_checkbox(ui: &mut Ui, label: &str, value: &mut bool) -> bool {
         });
     });
     changed
+}
+
+// ─── Family → affecting fields lookup ────────────────────────────────────────
+
+/// Returns `(section_label, field_name)` pairs for a registered element family.
+/// `section_label` matches the Category labels used in the inspector so we can
+/// offer jump links later.
+fn family_affecting_fields(family: &str) -> &'static [(&'static str, &'static str)] {
+    // Static table: (family_name, [(section, field), ...])
+    // Section names must match Category::label() values.
+    const TABLE: &[(&str, &[(&str, &str)])] = &[
+        ("TOOLBAR", &[
+            ("Toolbar", "height"),
+            ("Toolbar", "height_compact"),
+            ("Toolbar", "btn_min_height"),
+            ("Toolbar", "btn_padding_x"),
+            ("Style Editor", "toolbar_height_scale"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("TOOLBAR_BTN", &[
+            ("Toolbar", "btn_min_height"),
+            ("Toolbar", "btn_padding_x"),
+            ("Style Editor", "button_treatment"),
+            ("Style Editor", "r_md"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("CHROME_BTN", &[
+            ("Style Editor", "r_md"),
+            ("Style Editor", "button_treatment"),
+            ("Style Editor", "hairline_borders"),
+            ("Toolbar", "btn_min_height"),
+        ]),
+        ("PANE_HEADER", &[
+            ("Pane Header", "height"),
+            ("Pane Header", "height_compact"),
+            ("Style Editor", "header_height_scale"),
+            ("Style Editor", "active_header_fill_multiply"),
+            ("Style Editor", "inactive_header_fill"),
+            ("Style Editor", "hairline_borders"),
+            ("Style Editor", "font_hero"),
+        ]),
+        ("CARD", &[
+            ("Cards", "radius"),
+            ("Cards", "margin_left"),
+            ("Cards", "margin_right"),
+            ("Cards", "margin_y"),
+            ("Cards", "stripe_width"),
+            ("Style Editor", "r_md"),
+            ("Style Editor", "shadows_enabled"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("MODAL", &[
+            ("Dialogs", "header_darken"),
+            ("Dialogs", "header_padding_x"),
+            ("Dialogs", "header_padding_y"),
+            ("Dialogs", "section_indent"),
+            ("Style Editor", "r_lg"),
+            ("Style Editor", "shadows_enabled"),
+            ("Semantic Colors", "dialog_fill"),
+            ("Semantic Colors", "dialog_border"),
+        ]),
+        ("WATCHLIST_ROW", &[
+            ("Watchlist", "row_width"),
+            ("Watchlist", "strip_width"),
+            ("Watchlist", "strip_width_narrow"),
+            ("Tables / Rows", "row_height"),
+            ("Tables / Rows", "row_height_compact"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("ORDER_ROW", &[
+            ("Tables / Rows", "row_height"),
+            ("Tables / Rows", "item_height"),
+            ("Tables / Rows", "interact_height"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("NEWS_ROW", &[
+            ("Tables / Rows", "row_height"),
+            ("Tables / Rows", "item_height"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("DOM_ROW", &[
+            ("Tables / Rows", "row_height"),
+            ("Tables / Rows", "row_height_compact"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("BUTTON_PRIMARY", &[
+            ("Buttons", "action_height"),
+            ("Buttons", "trade_height"),
+            ("Buttons", "trade_brightness"),
+            ("Buttons", "trade_hover_brightness"),
+            ("Style Editor", "r_md"),
+            ("Style Editor", "button_treatment"),
+            ("Style Editor", "solid_active_fills"),
+        ]),
+        ("BUTTON_SECONDARY", &[
+            ("Buttons", "action_height"),
+            ("Buttons", "small_height"),
+            ("Style Editor", "r_md"),
+            ("Style Editor", "button_treatment"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("BUTTON_SMALL", &[
+            ("Buttons", "small_height"),
+            ("Buttons", "simple_height"),
+            ("Style Editor", "r_sm"),
+            ("Style Editor", "button_treatment"),
+        ]),
+        ("INPUT_TEXT", &[
+            ("Forms", "label_width"),
+            ("Forms", "row_height"),
+            ("Style Editor", "r_md"),
+            ("Style Editor", "stroke_thin"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("INPUT_NUMBER", &[
+            ("Forms", "label_width"),
+            ("Forms", "row_height"),
+            ("Style Editor", "r_md"),
+            ("Style Editor", "stroke_thin"),
+        ]),
+        ("LIST_ROW", &[
+            ("Tables / Rows", "row_height"),
+            ("Tables / Rows", "row_height_compact"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("TAB_BAR", &[
+            ("Tabs", "underline_thickness"),
+            ("Tabs", "padding_x"),
+            ("Tabs", "close_width"),
+            ("Tabs", "add_width"),
+            ("Style Editor", "show_active_tab_underline"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+        ("FORM_ROW", &[
+            ("Forms", "label_width"),
+            ("Forms", "row_height"),
+            ("Style Editor", "hairline_borders"),
+            ("Style Editor", "uppercase_section_labels"),
+            ("Style Editor", "label_letter_spacing_px"),
+        ]),
+        ("SECTION_LABEL", &[
+            ("Style Editor", "uppercase_section_labels"),
+            ("Style Editor", "label_letter_spacing_px"),
+            ("Style Editor", "font_hero"),
+            ("Font Sizes", "sm"),
+            ("Font Sizes", "xs"),
+        ]),
+        ("SEGMENTED", &[
+            ("Segmented Control", "trough_darken"),
+            ("Segmented Control", "trough_expand_x"),
+            ("Segmented Control", "btn_padding_x"),
+            ("Segmented Control", "btn_min_height"),
+            ("Style Editor", "r_md"),
+        ]),
+        ("ICON_BTN", &[
+            ("Icon Buttons", "icon_padding"),
+            ("Icon Buttons", "min_size"),
+            ("Style Editor", "r_md"),
+            ("Style Editor", "button_treatment"),
+        ]),
+        ("BADGE", &[
+            ("Badges", "font_size"),
+            ("Badges", "height"),
+            ("Style Editor", "r_pill"),
+        ]),
+        ("TOOLTIP", &[
+            ("Tooltips", "corner_radius"),
+            ("Tooltips", "padding"),
+            ("Tooltips", "stat_label_size"),
+            ("Tooltips", "stat_value_size"),
+            ("Style Editor", "shadows_enabled"),
+        ]),
+        ("SPLIT_DIVIDER", &[
+            ("Split Divider", "height"),
+            ("Split Divider", "dot_spacing"),
+            ("Split Divider", "dot_radius"),
+            ("Split Divider", "active_stroke"),
+            ("Split Divider", "inactive_stroke"),
+            ("Split Divider", "inset"),
+        ]),
+        ("ORDER_ENTRY", &[
+            ("Order Entry", "padding"),
+            ("Order Entry", "pill_width_sm"),
+            ("Order Entry", "pill_width_md"),
+            ("Order Entry", "pill_height"),
+            ("Style Editor", "r_md"),
+            ("Style Editor", "hairline_borders"),
+        ]),
+    ];
+
+    for &(fam, fields) in TABLE {
+        if fam.eq_ignore_ascii_case(family) {
+            return fields;
+        }
+    }
+    &[]
+}
+
+/// Color for a section badge in the selection details panel.
+fn section_badge_color(section: &str) -> Color32 {
+    match section {
+        "Style Editor"       => Color32::from_rgb(203, 166, 247), // purple
+        "Toolbar"            => Color32::from_rgb(250, 179, 135), // peach
+        "Pane Header"        => Color32::from_rgb(137, 220, 235), // sky
+        "Semantic Colors"    => Color32::from_rgb(249, 226, 175), // yellow
+        "Tables / Rows"      => Color32::from_rgb(166, 227, 161), // green
+        "Buttons"            => Color32::from_rgb(243, 139, 168), // red/pink
+        "Cards"              => Color32::from_rgb(148, 226, 213), // teal
+        "Dialogs"            => Color32::from_rgb(180, 190, 254), // lavender
+        "Forms"              => Color32::from_rgb(250, 179, 135), // peach
+        "Font Sizes"         => Color32::from_rgb(249, 226, 175), // yellow
+        _                    => Color32::from_rgb(150, 150, 165), // dim
+    }
 }
 
 // ─── Helper: map category string to enum ─────────────────────────────────────
@@ -994,6 +1395,171 @@ fn category_from_name(name: &str) -> Option<Category> {
         "Tooltips" | "Tooltip" => Some(Category::Tooltip),
         "Separators" | "Separator" => Some(Category::Separator),
         "Style Editor" | "Style" => Some(Category::Style),
+        "Theme Editor" | "Theme" => Some(Category::Theme),
         _ => None,
+    }
+}
+
+// ─── Theme Editor ─────────────────────────────────────────────────────────────
+
+static THEME_SAVE_STATUS: std::sync::OnceLock<std::sync::Mutex<String>> =
+    std::sync::OnceLock::new();
+
+fn theme_save_status() -> &'static std::sync::Mutex<String> {
+    THEME_SAVE_STATUS.get_or_init(|| std::sync::Mutex::new(String::new()))
+}
+
+fn theme_color_row(ui: &mut Ui, label: &str, color: &mut egui::Color32) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        // Swatch
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 2.0, *color);
+        ui.painter().rect_stroke(rect, 2.0,
+            egui::Stroke::new(0.5, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
+        ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(170, 170, 180)));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let [r, g, b, _] = color.to_array();
+            let mut rv = r as f32;
+            let mut gv = g as f32;
+            let mut bv = b as f32;
+            let rb = ui.add(egui::DragValue::new(&mut bv).range(0.0..=255.0).speed(1.0).prefix("b:"));
+            let rg = ui.add(egui::DragValue::new(&mut gv).range(0.0..=255.0).speed(1.0).prefix("g:"));
+            let rr = ui.add(egui::DragValue::new(&mut rv).range(0.0..=255.0).speed(1.0).prefix("r:"));
+            if rr.changed() || rg.changed() || rb.changed() {
+                *color = Color32::from_rgb(rv as u8, gv as u8, bv as u8);
+                changed = true;
+            }
+        });
+    });
+    changed
+}
+
+fn save_themes_to_source() -> Result<(), String> {
+    use crate::chart_renderer::gpu::get_all_themes;
+    let themes = get_all_themes();
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let gpu_path = manifest_dir.join("src/chart_renderer/gpu.rs");
+
+    let src = std::fs::read_to_string(&gpu_path)
+        .map_err(|e| format!("read failed: {e}"))?;
+
+    let begin_marker = "// ┌─ THEMES_BEGIN ──────────────────────────────────────────────────────────────";
+    let end_marker   = "// └─ THEMES_END ────────────────────────────────────────────────────────────────";
+
+    let begin_pos = src.find(begin_marker)
+        .ok_or_else(|| "THEMES_BEGIN marker not found".to_string())?;
+    let end_pos = src.find(end_marker)
+        .ok_or_else(|| "THEMES_END marker not found".to_string())?;
+    if end_pos <= begin_pos {
+        return Err("END marker before BEGIN marker".to_string());
+    }
+
+    let mut new_block = String::new();
+    new_block.push_str(begin_marker);
+    new_block.push('\n');
+    new_block.push_str("pub(crate) const THEMES: &[Theme] = &[\n");
+
+    for (i, t) in themes.iter().enumerate() {
+        let [rb, gb, bb, _] = t.bg.to_array();
+        let [rbu, gbu, bbu, _] = t.bull.to_array();
+        let [rbe, gbe, bbe, _] = t.bear.to_array();
+        let [rd, gd, bd, _] = t.dim.to_array();
+        let [rtb, gtb, btb, _] = t.toolbar_bg.to_array();
+        let [rtbr, gtbr, btbr, _] = t.toolbar_border.to_array();
+        let [ra, ga, ba, _] = t.accent.to_array();
+        let [rt, gt, bt, _] = t.text.to_array();
+        // Insert known section dividers
+        match i {
+            8  => new_block.push_str("    // ── Additional themes ──\n"),
+            12 => new_block.push_str("    // ── Light themes ──\n"),
+            _ => {}
+        }
+        new_block.push_str(&format!(
+            "    Theme {{ name: {:?}, bg: rgb({},{},{}), bull: rgb({},{},{}), bear: rgb({},{},{}), dim: rgb({},{},{}), toolbar_bg: rgb({},{},{}), toolbar_border: rgb({},{},{}), accent: rgb({},{},{}), text: rgb({},{},{}) }},\n",
+            t.name,
+            rb, gb, bb,
+            rbu, gbu, bbu,
+            rbe, gbe, bbe,
+            rd, gd, bd,
+            rtb, gtb, btb,
+            rtbr, gtbr, btbr,
+            ra, ga, ba,
+            rt, gt, bt,
+        ));
+    }
+    new_block.push_str("];\n");
+    new_block.push_str(end_marker);
+
+    let end_of_end = end_pos + end_marker.len();
+    let new_src = format!("{}{}{}", &src[..begin_pos], new_block, &src[end_of_end..]);
+
+    std::fs::write(&gpu_path, new_src)
+        .map_err(|e| format!("write failed: {e}"))?;
+    Ok(())
+}
+
+fn render_theme_editor(ui: &mut Ui) {
+    use crate::chart_renderer::gpu::{get_all_themes, set_theme, THEMES};
+
+    // Save to source button
+    ui.horizontal(|ui| {
+        if ui.add(egui::Button::new(
+            RichText::new("Save to source")
+                .monospace().size(10.0).strong()
+                .color(Color32::from_rgb(166, 227, 161)))
+            .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
+            .stroke(egui::Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
+            .corner_radius(3.0)
+        ).clicked() {
+            match save_themes_to_source() {
+                Ok(()) => { *theme_save_status().lock().unwrap() = "Saved ✓".to_string(); }
+                Err(e) => { *theme_save_status().lock().unwrap() = format!("Failed: {e}"); }
+            }
+        }
+        let msg = theme_save_status().lock().unwrap().clone();
+        if !msg.is_empty() {
+            ui.label(RichText::new(msg).monospace().size(9.0).color(Color32::from_rgb(150,150,160)));
+        }
+    });
+
+    ui.add_space(4.0);
+
+    if ui.add(egui::Button::new(
+        RichText::new("Reset all to defaults").monospace().size(9.0).color(Color32::from_rgb(200,150,150)))
+        .fill(Color32::TRANSPARENT)
+        .stroke(egui::Stroke::new(0.5, Color32::from_rgb(80,60,60)))
+        .corner_radius(2.0)
+    ).clicked() {
+        for (i, t) in THEMES.iter().enumerate() {
+            set_theme(i, t.clone());
+        }
+    }
+
+    ui.add_space(6.0);
+
+    let mut themes = get_all_themes();
+    for (idx, theme) in themes.iter_mut().enumerate() {
+        let header_color = Color32::from_rgb(180, 180, 200);
+        egui::CollapsingHeader::new(
+            RichText::new(theme.name).monospace().size(11.0).strong().color(header_color)
+        )
+        .id_salt(egui::Id::new(("theme_section", idx)))
+        .default_open(false)
+        .show(ui, |ui| {
+            let mut dirty = false;
+            dirty |= theme_color_row(ui, "bg",             &mut theme.bg);
+            dirty |= theme_color_row(ui, "bull",           &mut theme.bull);
+            dirty |= theme_color_row(ui, "bear",           &mut theme.bear);
+            dirty |= theme_color_row(ui, "dim",            &mut theme.dim);
+            dirty |= theme_color_row(ui, "toolbar_bg",     &mut theme.toolbar_bg);
+            dirty |= theme_color_row(ui, "toolbar_border", &mut theme.toolbar_border);
+            dirty |= theme_color_row(ui, "accent",         &mut theme.accent);
+            dirty |= theme_color_row(ui, "text",           &mut theme.text);
+            if dirty {
+                set_theme(idx, theme.clone());
+            }
+        });
     }
 }
