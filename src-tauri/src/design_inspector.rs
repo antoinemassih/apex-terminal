@@ -1,4 +1,4 @@
-//! Inspector panel — tactile design controls for live token editing.
+﻿//! Inspector panel — tactile design controls for live token editing.
 //!
 //! F12 toggles the inspector. It shows a categorized view of all design tokens
 //! with sliders, color pickers, and drag values. Changes are immediately applied
@@ -30,6 +30,12 @@ pub struct Inspector {
     pub hovered_family: Option<&'static str>,
     /// Locked selection (clicked element)
     pub selected_family: Option<&'static str>,
+    /// Rect of the selected element (updated each frame from hits)
+    selected_rect: Option<egui::Rect>,
+    /// Which corner handle is being dragged (0=TL,1=TR,2=BR,3=BL), None if none
+    drag_corner: Option<usize>,
+    /// Radius value at the start of the current drag
+    drag_start_radius: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -61,6 +67,7 @@ pub enum Category {
     Separator,
     Style,
     Theme,
+    Preview,
 }
 
 impl Category {
@@ -72,7 +79,7 @@ impl Category {
         Category::Chart, Category::Watchlist, Category::OrderEntry,
         Category::PaneHeader, Category::Segmented, Category::IconButton,
         Category::Form, Category::SplitDivider, Category::Tooltip, Category::Separator,
-        Category::Style, Category::Theme,
+        Category::Style, Category::Theme, Category::Preview,
     ];
 
     fn label(self) -> &'static str {
@@ -104,6 +111,7 @@ impl Category {
             Category::Separator => "Separators",
             Category::Style => "Style Editor",
             Category::Theme => "Theme Editor",
+            Category::Preview => "Style Preview",
         }
     }
 
@@ -133,6 +141,9 @@ impl Inspector {
             inspect_mode: false,
             hovered_family: None,
             selected_family: None,
+            selected_rect: None,
+            drag_corner: None,
+            drag_start_radius: 0.0,
         }
     }
 
@@ -157,6 +168,8 @@ impl Inspector {
             let pointer = ctx.input(|i| i.pointer.hover_pos());
             let clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
             self.hovered_family = None;
+            // Reset selected_rect each frame; it gets re-set below if a selected hit is found
+            self.selected_rect = None;
 
             // Debug: show hit count
             {
@@ -191,10 +204,11 @@ impl Inspector {
                     Stroke::new(0.5, Color32::from_rgba_unmultiplied(203, 166, 247, 40)),
                     egui::StrokeKind::Outside);
 
-                // Highlight selected elements
+                // Highlight selected elements; also update selected_rect for drag handles
                 if is_selected {
                     painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(166, 227, 161, 30));
                     painter.rect_stroke(rect, 2.0, Stroke::new(1.5, Color32::from_rgba_unmultiplied(166, 227, 161, 160)), egui::StrokeKind::Outside);
+                    self.selected_rect = Some(rect);
                 }
 
                 // Track smallest hovered element
@@ -237,6 +251,103 @@ impl Inspector {
                         self.category = cat;
                     }
                     self.status = format!("Selected: {}", h.family);
+                }
+            }
+
+            // ── Drag handles on selected element ──────────────────────────────
+            // Only show when an element is selected AND it has an r_* field.
+            if let (Some(fam), Some(sel_rect)) = (self.selected_family, self.selected_rect) {
+                if let Some(r_field) = family_radius_field(fam) {
+                    let handle_size = 8.0f32;
+
+                    // 4 corner positions: TL, TR, BR, BL
+                    let corners = [
+                        sel_rect.left_top(),
+                        sel_rect.right_top(),
+                        sel_rect.right_bottom(),
+                        sel_rect.left_bottom(),
+                    ];
+
+                    let active_id = STYLE_EDITOR_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
+                    let mut s = crate::chart_renderer::ui::style::get_style_settings(active_id);
+                    let current_radius = match r_field {
+                        "r_xs"  => s.r_xs as f32,
+                        "r_sm"  => s.r_sm as f32,
+                        "r_md"  => s.r_md as f32,
+                        "r_lg"  => s.r_lg as f32,
+                        _       => s.r_pill as f32,
+                    };
+                    let min_dim = sel_rect.width().min(sel_rect.height());
+                    let mut new_radius: Option<f32> = None;
+
+                    // Gather pointer state from input
+                    let (ptr_pos, ptr_down, ptr_delta) = ctx.input(|i| (
+                        i.pointer.hover_pos(),
+                        i.pointer.button_down(egui::PointerButton::Primary),
+                        i.pointer.delta(),
+                    ));
+
+                    for (i, &corner) in corners.iter().enumerate() {
+                        let handle_rect = egui::Rect::from_center_size(corner, egui::vec2(handle_size, handle_size));
+                        let is_hovered = ptr_pos.map(|p| handle_rect.contains(p)).unwrap_or(false);
+                        let is_dragging = self.drag_corner == Some(i) && ptr_down;
+
+                        // Start drag when pointer presses down on handle
+                        if is_hovered && ptr_down && self.drag_corner.is_none() {
+                            self.drag_corner = Some(i);
+                            self.drag_start_radius = current_radius;
+                        }
+
+                        // Handle active drag
+                        if is_dragging {
+                            let inward = match i {
+                                0 => egui::vec2( 1.0,  1.0),
+                                1 => egui::vec2(-1.0,  1.0),
+                                2 => egui::vec2(-1.0, -1.0),
+                                _ => egui::vec2( 1.0, -1.0),
+                            };
+                            let signed_delta = ptr_delta.x * inward.x + ptr_delta.y * inward.y;
+                            let proposed = (self.drag_start_radius + signed_delta).max(0.0).min(min_dim / 2.0);
+                            new_radius = Some(proposed);
+                            self.drag_start_radius = proposed;
+                            ctx.request_repaint();
+                        }
+
+                        // Draw handle
+                        let handle_col = if is_dragging || is_hovered {
+                            Color32::from_rgb(250, 179, 135) // orange when active
+                        } else {
+                            Color32::from_rgb(166, 227, 161) // green default
+                        };
+                        painter.rect_filled(
+                            egui::Rect::from_center_size(corner, egui::vec2(handle_size - 1.0, handle_size - 1.0)),
+                            1.0, handle_col);
+                        painter.rect_stroke(
+                            egui::Rect::from_center_size(corner, egui::vec2(handle_size - 1.0, handle_size - 1.0)),
+                            1.0, Stroke::new(1.0, Color32::from_rgb(40, 40, 50)), egui::StrokeKind::Outside);
+
+                        if is_dragging || is_hovered {
+                            ctx.set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+                        }
+                    }
+
+                    // Release drag when pointer is up
+                    if !ptr_down {
+                        self.drag_corner = None;
+                    }
+
+                    if let Some(r) = new_radius {
+                        let r_u8 = r.round() as u8;
+                        match r_field {
+                            "r_xs"  => s.r_xs   = r_u8,
+                            "r_sm"  => s.r_sm   = r_u8,
+                            "r_md"  => s.r_md   = r_u8,
+                            "r_lg"  => s.r_lg   = r_u8,
+                            _       => s.r_pill  = r_u8,
+                        }
+                        crate::chart_renderer::ui::style::set_style_settings(active_id, s);
+                        self.status = format!("{}  {} = {}", fam, r_field, r_u8);
+                    }
                 }
             }
         }
@@ -664,6 +775,9 @@ impl Inspector {
             }
             Category::Theme => {
                 render_theme_editor(ui);
+            }
+            Category::Preview => {
+                render_style_preview(ui);
             }
         }
         changed
@@ -1348,6 +1462,29 @@ fn family_affecting_fields(family: &str) -> &'static [(&'static str, &'static st
     &[]
 }
 
+/// Returns the most prominent r_* field name for a family, or None if no radius applies.
+/// Used to determine which StyleSettings field drag handles should edit.
+fn family_radius_field(family: &str) -> Option<&'static str> {
+    match family.to_ascii_uppercase().as_str() {
+        "BADGE"            => Some("r_pill"),
+        "MODAL"            => Some("r_lg"),
+        "BUTTON_SMALL"     => Some("r_sm"),
+        "TOOLBAR_BTN"
+        | "CHROME_BTN"
+        | "CARD"
+        | "BUTTON_PRIMARY"
+        | "BUTTON_SECONDARY"
+        | "INPUT_TEXT"
+        | "INPUT_NUMBER"
+        | "SEGMENTED"
+        | "ICON_BTN"
+        | "FORM_ROW"
+        | "ORDER_ENTRY"    => Some("r_md"),
+        // Families with no corner-radius field
+        _ => None,
+    }
+}
+
 /// Color for a section badge in the selection details panel.
 fn section_badge_color(section: &str) -> Color32 {
     match section {
@@ -1396,6 +1533,7 @@ fn category_from_name(name: &str) -> Option<Category> {
         "Separators" | "Separator" => Some(Category::Separator),
         "Style Editor" | "Style" => Some(Category::Style),
         "Theme Editor" | "Theme" => Some(Category::Theme),
+        "Style Preview" | "Preview" => Some(Category::Preview),
         _ => None,
     }
 }
@@ -1562,4 +1700,335 @@ fn render_theme_editor(ui: &mut Ui) {
             }
         });
     }
+}
+
+// ─── Style Preview Panel ─────────────────────────────────────────────────────
+//
+// Side-by-side static preview of up to 3 styles. Each column renders the same
+// widget set using that style StyleSettings values directly - no global style
+// switching, so the rest of the app is unaffected.
+
+thread_local! {
+    static PREVIEW_COLS: std::cell::RefCell<[u8; 3]> = const { std::cell::RefCell::new([0, 1, 2]) };
+}
+
+fn render_style_preview(ui: &mut Ui) {
+    use crate::chart_renderer::ui::style::{get_style_settings, set_active_style, list_style_presets};
+
+    let presets = list_style_presets();
+
+    // Top row: 3 dropdowns for column style selection
+    PREVIEW_COLS.with(|cols| {
+        let mut cols = cols.borrow_mut();
+        ui.horizontal(|ui| {
+            for col_idx in 0..3 {
+                let label = ["Col A", "Col B", "Col C"][col_idx];
+                let selected_name = presets.iter()
+                    .find(|(id, _)| *id == cols[col_idx])
+                    .map(|(_, n)| n.as_str())
+                    .unwrap_or("?");
+                ui.label(RichText::new(label).monospace().size(9.0)
+                    .color(Color32::from_rgb(140, 140, 150)));
+                egui::ComboBox::from_id_salt(egui::Id::new(("preview_col", col_idx)))
+                    .selected_text(RichText::new(selected_name).monospace().size(10.0))
+                    .width(90.0)
+                    .show_ui(ui, |ui| {
+                        for (id, name) in &presets {
+                            if ui.selectable_label(cols[col_idx] == *id, name).clicked() {
+                                cols[col_idx] = *id;
+                            }
+                        }
+                    });
+                if col_idx < 2 { ui.add_space(6.0); }
+            }
+        });
+    });
+
+    ui.add_space(6.0);
+
+    // Three-column preview area with horizontal scroll
+    egui::ScrollArea::horizontal().show(ui, |ui| {
+        ui.horizontal_top(|ui| {
+            let col_ids: [u8; 3] = PREVIEW_COLS.with(|c| *c.borrow());
+
+            for col_idx in 0..3usize {
+                let style_id = col_ids[col_idx];
+                let st = get_style_settings(style_id);
+                let style_name = list_style_presets()
+                    .into_iter()
+                    .find(|(id, _)| *id == style_id)
+                    .map(|(_, n)| n)
+                    .unwrap_or_else(|| "?".to_string());
+
+                // Vertical separator before columns 1 and 2
+                if col_idx > 0 {
+                    let sep_x = ui.cursor().left();
+                    let sep_top = ui.cursor().top();
+                    ui.painter().line_segment(
+                        [egui::pos2(sep_x, sep_top),
+                         egui::pos2(sep_x, sep_top + 700.0)],
+                        Stroke::new(1.0, Color32::from_rgb(40, 42, 54)));
+                    ui.add_space(1.0);
+                }
+
+                ui.vertical(|ui| {
+                    ui.set_min_width(300.0);
+                    ui.set_max_width(340.0);
+
+                    // Column header with style name and Set Active button
+                    egui::Frame::NONE
+                        .fill(Color32::from_rgb(20, 20, 28))
+                        .inner_margin(egui::Margin { left: 10, right: 10, top: 6, bottom: 6 })
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(&style_name).monospace().size(12.0).strong()
+                                    .color(Color32::from_rgb(203, 166, 247)));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.add(egui::Button::new(
+                                        RichText::new("Set Active").monospace().size(9.0).strong()
+                                            .color(Color32::from_rgb(166, 227, 161)))
+                                        .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
+                                        .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
+                                        .corner_radius(3.0)
+                                    ).clicked() {
+                                        set_active_style(style_id);
+                                        STYLE_EDITOR_ACTIVE.store(style_id, std::sync::atomic::Ordering::Relaxed);
+                                    }
+                                });
+                            });
+                        });
+
+                    // Widget preview area
+                    egui::Frame::NONE
+                        .fill(Color32::from_rgb(16, 16, 22))
+                        .inner_margin(egui::Margin { left: 10, right: 10, top: 8, bottom: 12 })
+                        .show(ui, |ui| {
+                            preview_widgets(ui, &st);
+                        });
+                });
+            }
+        });
+    });
+}
+
+/// Paint all preview widgets for one column using static StyleSettings values.
+/// No global style switching - everything is drawn from `st` directly.
+fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSettings) {
+    let accent  = Color32::from_rgb(137, 180, 250);
+    let text    = Color32::from_rgb(205, 210, 225);
+    let dim     = Color32::from_rgb(120, 125, 140);
+    let border  = Color32::from_rgb(50, 55, 70);
+    let green   = Color32::from_rgb(166, 227, 161);
+    let red     = Color32::from_rgb(243, 139, 168);
+    let amber   = Color32::from_rgb(249, 226, 175);
+
+    let r_sm = egui::CornerRadius::same(st.r_sm);
+    let r_lg = egui::CornerRadius::same(st.r_lg);
+    let sw   = st.stroke_std;
+
+    // PaneHeader
+    preview_section_label(ui, "PaneHeader", dim);
+    {
+        let hh = 28.0 * st.header_height_scale;
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), hh), egui::Sense::hover());
+        let p = ui.painter();
+        p.rect_filled(rect, egui::CornerRadius::ZERO, Color32::from_rgb(26, 28, 38));
+        p.rect_stroke(rect, egui::CornerRadius::ZERO,
+            Stroke::new(st.stroke_hair, preview_alpha(border, 80)), egui::StrokeKind::Outside);
+        p.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER,
+            "AAPL", egui::FontId::monospace(11.0), accent);
+        p.text(egui::pos2(rect.right() - 8.0, rect.center().y), egui::Align2::RIGHT_CENTER,
+            "x", egui::FontId::monospace(10.0), dim);
+    }
+    ui.add_space(6.0);
+
+    // Card
+    preview_section_label(ui, "Card", dim);
+    {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 52.0), egui::Sense::hover());
+        let p = ui.painter();
+        let r_md = egui::CornerRadius::same(st.r_md);
+        p.rect_filled(rect, r_md, Color32::from_rgb(26, 28, 38));
+        p.rect_stroke(rect, r_md, Stroke::new(sw, preview_alpha(border, 60)), egui::StrokeKind::Outside);
+        let stripe = egui::Rect::from_min_max(rect.min, egui::pos2(rect.left() + 3.0, rect.bottom()));
+        p.rect_filled(stripe, egui::CornerRadius { nw: st.r_md, sw: st.r_md, ne: 0, se: 0 }, accent);
+        p.text(egui::pos2(rect.left() + 10.0, rect.top() + 10.0), egui::Align2::LEFT_TOP,
+            "AAPL - 185.30", egui::FontId::monospace(11.0), text);
+        p.text(egui::pos2(rect.left() + 10.0, rect.top() + 24.0), egui::Align2::LEFT_TOP,
+            "1 call @ 1.45", egui::FontId::monospace(9.0), dim);
+        p.text(egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0), egui::Align2::RIGHT_BOTTOM,
+            "OPEN", egui::FontId::monospace(8.0), green);
+    }
+    ui.add_space(6.0);
+
+    // Section Label
+    preview_section_label(ui, "SectionLabel", dim);
+    {
+        let lbl = if st.uppercase_section_labels { "POSITIONS" } else { "Positions" };
+        ui.label(RichText::new(lbl).monospace().size(7.0).strong().color(dim));
+    }
+    ui.add_space(4.0);
+
+    // Buttons
+    preview_section_label(ui, "Buttons", dim);
+    ui.horizontal_wrapped(|ui| {
+        preview_btn(ui, "Primary",   accent, preview_alpha(accent, 40), r_sm, sw);
+        preview_btn(ui, "Secondary", dim,    preview_alpha(dim,   25),  r_sm, sw);
+        {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(50.0, 20.0), egui::Sense::hover());
+            ui.painter().rect_stroke(rect, r_sm, Stroke::new(sw, preview_alpha(dim, 60)), egui::StrokeKind::Outside);
+            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
+                "Ghost", egui::FontId::monospace(9.0), dim);
+        }
+        preview_btn(ui, "Delete", red, preview_alpha(red, 30), r_sm, sw);
+    });
+    ui.add_space(6.0);
+
+    // PillButton
+    preview_section_label(ui, "PillButton", dim);
+    ui.horizontal(|ui| {
+        let pill_r = egui::CornerRadius::same(st.r_pill);
+        {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(58.0, 20.0), egui::Sense::hover());
+            ui.painter().rect_filled(rect, pill_r, preview_alpha(accent, 40));
+            ui.painter().rect_stroke(rect, pill_r, Stroke::new(sw, accent), egui::StrokeKind::Outside);
+            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
+                "Active", egui::FontId::monospace(9.0), accent);
+        }
+        ui.add_space(4.0);
+        {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(58.0, 20.0), egui::Sense::hover());
+            ui.painter().rect_filled(rect, pill_r, preview_alpha(border, 20));
+            ui.painter().rect_stroke(rect, pill_r, Stroke::new(sw, preview_alpha(border, 60)), egui::StrokeKind::Outside);
+            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
+                "Idle", egui::FontId::monospace(9.0), dim);
+        }
+    });
+    ui.add_space(6.0);
+
+    // Status Dots
+    preview_section_label(ui, "StatusDot", dim);
+    ui.horizontal(|ui| {
+        for (color, label) in [(green, "OK"), (red, "ERR"), (amber, "WARN"), (dim, "OFF")] {
+            let dot_pos = egui::pos2(ui.cursor().left() + 5.0, ui.cursor().top() + 7.0);
+            ui.painter().circle_filled(dot_pos, 4.0, color);
+            ui.add_space(12.0);
+            ui.label(RichText::new(label).monospace().size(9.0).color(color));
+            ui.add_space(4.0);
+        }
+    });
+    ui.add_space(6.0);
+
+    // Tab Bar
+    preview_section_label(ui, "TabBar", dim);
+    {
+        let aw = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 22.0), egui::Sense::hover());
+        let p = ui.painter();
+        p.rect_filled(rect, egui::CornerRadius::ZERO, Color32::from_rgb(20, 20, 30));
+        let tab_labels = ["Chart", "Trades", "News"];
+        let tab_w = aw / 3.0;
+        for (i, lbl) in tab_labels.iter().enumerate() {
+            let tab_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.left() + i as f32 * tab_w, rect.top()),
+                egui::vec2(tab_w, 22.0));
+            let is_active = i == 0;
+            let fg = if is_active { accent } else { dim };
+            p.text(tab_rect.center(), egui::Align2::CENTER_CENTER,
+                *lbl, egui::FontId::monospace(10.0), fg);
+            if is_active && st.show_active_tab_underline {
+                p.line_segment(
+                    [egui::pos2(tab_rect.left() + 2.0, tab_rect.bottom()),
+                     egui::pos2(tab_rect.right() - 2.0, tab_rect.bottom())],
+                    Stroke::new(2.0, accent));
+            }
+        }
+    }
+    ui.add_space(6.0);
+
+    // Form Row
+    preview_section_label(ui, "FormRow", dim);
+    {
+        let aw = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 22.0), egui::Sense::hover());
+        let p = ui.painter();
+        let lw = 70.0;
+        p.text(egui::pos2(rect.left() + lw - 4.0, rect.center().y),
+            egui::Align2::RIGHT_CENTER, "Symbol", egui::FontId::monospace(9.0), dim);
+        let inp = egui::Rect::from_min_max(
+            egui::pos2(rect.left() + lw + 4.0, rect.top() + 2.0),
+            egui::pos2(rect.right(), rect.bottom() - 2.0));
+        p.rect_filled(inp, r_sm, Color32::from_rgb(18, 20, 28));
+        p.rect_stroke(inp, r_sm, Stroke::new(st.stroke_thin, preview_alpha(border, 80)), egui::StrokeKind::Outside);
+        p.text(egui::pos2(inp.left() + 6.0, inp.center().y),
+            egui::Align2::LEFT_CENTER, "AAPL", egui::FontId::monospace(10.0), text);
+    }
+    ui.add_space(6.0);
+
+    // Modal Dialog
+    preview_section_label(ui, "Dialog", dim);
+    {
+        let aw = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 70.0), egui::Sense::hover());
+        let p = ui.painter();
+        p.rect_filled(rect, r_lg, Color32::from_rgb(24, 24, 34));
+        p.rect_stroke(rect, r_lg, Stroke::new(sw, preview_alpha(border, 100)), egui::StrokeKind::Outside);
+        let hdr = egui::Rect::from_min_size(rect.min, egui::vec2(aw, 24.0));
+        p.rect_filled(hdr, egui::CornerRadius { nw: st.r_lg, ne: st.r_lg, sw: 0, se: 0 },
+            Color32::from_rgb(18, 18, 28));
+        p.text(egui::pos2(hdr.left() + 10.0, hdr.center().y), egui::Align2::LEFT_CENTER,
+            "Confirm Order", egui::FontId::monospace(11.0), text);
+        p.text(egui::pos2(hdr.right() - 8.0, hdr.center().y), egui::Align2::RIGHT_CENTER,
+            "x", egui::FontId::monospace(10.0), dim);
+        p.text(egui::pos2(rect.left() + 10.0, rect.top() + 34.0), egui::Align2::LEFT_TOP,
+            "Buy 100 AAPL @ 185.30 limit", egui::FontId::monospace(9.0), dim);
+        let btn_r = egui::Rect::from_min_size(
+            egui::pos2(rect.right() - 60.0, rect.bottom() - 20.0), egui::vec2(52.0, 16.0));
+        p.rect_filled(btn_r, r_sm, preview_alpha(green, 40));
+        p.rect_stroke(btn_r, r_sm, Stroke::new(sw, green), egui::StrokeKind::Outside);
+        p.text(btn_r.center(), egui::Align2::CENTER_CENTER,
+            "Place", egui::FontId::monospace(9.0), green);
+    }
+    ui.add_space(6.0);
+
+    // Tooltip
+    preview_section_label(ui, "Tooltip", dim);
+    {
+        let tw = ui.available_width().min(180.0);
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(tw, 38.0), egui::Sense::hover());
+        let p = ui.painter();
+        let tip_r = egui::CornerRadius::same(st.r_md.max(4));
+        p.rect_filled(rect, tip_r, Color32::from_rgb(20, 20, 30));
+        p.rect_stroke(rect, tip_r, Stroke::new(st.stroke_thin, preview_alpha(border, 100)), egui::StrokeKind::Outside);
+        p.text(egui::pos2(rect.left() + 8.0, rect.top() + 8.0),
+            egui::Align2::LEFT_TOP, "Volume", egui::FontId::monospace(8.0), dim);
+        p.text(egui::pos2(rect.right() - 8.0, rect.top() + 8.0),
+            egui::Align2::RIGHT_TOP, "1.23M", egui::FontId::monospace(10.0), text);
+        p.text(egui::pos2(rect.left() + 8.0, rect.top() + 22.0),
+            egui::Align2::LEFT_TOP, "Avg Vol", egui::FontId::monospace(8.0), dim);
+        p.text(egui::pos2(rect.right() - 8.0, rect.top() + 22.0),
+            egui::Align2::RIGHT_TOP, "980K", egui::FontId::monospace(10.0), text);
+    }
+    ui.add_space(4.0);
+}
+
+fn preview_btn(ui: &mut Ui, label: &str, fg: Color32, bg: Color32, cr: egui::CornerRadius, sw: f32) {
+    let w = (label.len() as f32 * 6.5 + 16.0).max(48.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 20.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, cr, bg);
+    ui.painter().rect_stroke(rect, cr,
+        Stroke::new(sw, preview_alpha(fg, 150)), egui::StrokeKind::Outside);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
+        label, egui::FontId::monospace(9.0), fg);
+}
+
+fn preview_section_label(ui: &mut Ui, text: &str, color: Color32) {
+    ui.label(RichText::new(text).monospace().size(7.5).strong()
+        .color(preview_alpha(color, 140)));
+    ui.add_space(2.0);
+}
+
+#[inline(always)]
+fn preview_alpha(c: Color32, a: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
 }
