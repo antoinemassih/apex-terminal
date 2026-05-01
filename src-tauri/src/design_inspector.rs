@@ -74,14 +74,17 @@ pub enum Category {
 
 impl Category {
     const ALL: &[Category] = &[
-        Category::Font, Category::Spacing, Category::Radius, Category::Stroke,
-        Category::Alpha, Category::Shadow, Category::Colors,
+        // ─── Primary design controls (use these day-to-day) ───
+        Category::Style, Category::Theme, Category::Preview,
+        // ─── Per-component overrides ───
         Category::Toolbar, Category::Panel, Category::Dialog, Category::Button,
         Category::Card, Category::Badge, Category::Tab, Category::Table,
-        Category::Chart, Category::Watchlist, Category::OrderEntry,
         Category::PaneHeader, Category::Segmented, Category::IconButton,
         Category::Form, Category::SplitDivider, Category::Tooltip, Category::Separator,
-        Category::Style, Category::Theme, Category::Preview,
+        Category::Chart, Category::Watchlist, Category::OrderEntry,
+        // ─── Primitive tokens (advanced — you usually don't touch these directly) ───
+        Category::Font, Category::Spacing, Category::Radius, Category::Stroke,
+        Category::Alpha, Category::Shadow, Category::Colors,
     ];
 
     fn label(self) -> &'static str {
