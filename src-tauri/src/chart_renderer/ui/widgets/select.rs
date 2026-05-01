@@ -459,11 +459,25 @@ pub struct SegmentedControl<'a, T: PartialEq + Copy> {
     options: &'a [(T, &'a str)],
     accent: Option<Color32>,
     dim: Option<Color32>,
+    /// When `true`, segments share edges as connected pills:
+    /// first=rounded-left, last=rounded-right, middle=square.
+    connected_pills: bool,
+    /// When `true`, use tighter padding (suitable for 14px-height pill rows).
+    compact: bool,
+    /// Optional fixed height override.
+    height: Option<f32>,
 }
 
 impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
     pub fn new() -> Self {
-        Self { options: &[], accent: None, dim: None }
+        Self {
+            options: &[],
+            accent: None,
+            dim: None,
+            connected_pills: false,
+            compact: false,
+            height: None,
+        }
     }
     pub fn options(mut self, opts: &'a [(T, &'a str)]) -> Self { self.options = opts; self }
     pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
@@ -471,20 +485,39 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
         self.dim = Some(t.dim);
         self
     }
+    /// Paint segments as connected pills with shared inner edges.
+    /// First segment gets rounded left corners, last gets rounded right corners,
+    /// middle segments are square. A single segment gets all corners rounded.
+    pub fn connected_pills(mut self, v: bool) -> Self { self.connected_pills = v; self }
+    /// Tighter padding for compact pill rows (e.g. indicator_editor 14px rows).
+    pub fn compact(mut self, v: bool) -> Self { self.compact = v; self }
+    /// Override the minimum height of each segment button.
+    pub fn height(mut self, h: f32) -> Self { self.height = Some(h); self }
 
     pub fn show(self, ui: &mut Ui, current: &mut T) -> bool {
         let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
         let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(120, 120, 130));
         let mut changed = false;
-        let pill_r = egui::CornerRadius::same(99);
 
         let prev_item_spacing = ui.spacing().item_spacing.x;
-        ui.spacing_mut().item_spacing.x = gap_xs();
         let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_xs());
+
+        if self.connected_pills {
+            // Zero gap between segments so they touch and share borders.
+            ui.spacing_mut().item_spacing.x = 0.0;
+            let pad_y = if self.compact { 1.0 } else { gap_xs() };
+            ui.spacing_mut().button_padding = egui::vec2(gap_sm(), pad_y);
+        } else {
+            ui.spacing_mut().item_spacing.x = gap_xs();
+            let pad_y = if self.compact { 1.0 } else { gap_xs() };
+            ui.spacing_mut().button_padding = egui::vec2(gap_md(), pad_y);
+        }
+
+        let min_h = self.height.unwrap_or(if self.compact { 14.0 } else { 20.0 });
+        let n = self.options.len();
 
         ui.horizontal(|ui| {
-            for (val, label) in self.options.iter() {
+            for (i, (val, label)) in self.options.iter().enumerate() {
                 let active = val == current;
                 let fg = if active { accent } else { dim };
                 let (bg, border) = if active {
@@ -492,14 +525,29 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
                 } else {
                     (Color32::TRANSPARENT, Color32::TRANSPARENT)
                 };
+
+                let corner_r: egui::CornerRadius = if self.connected_pills {
+                    let r = super::super::style::current().r_sm;
+                    let is_first = i == 0;
+                    let is_last = i == n.saturating_sub(1);
+                    match (is_first, is_last) {
+                        (true, true)  => egui::CornerRadius::same(r),
+                        (true, false) => egui::CornerRadius { nw: r, sw: r, ne: 0, se: 0 },
+                        (false, true) => egui::CornerRadius { nw: 0, sw: 0, ne: r, se: r },
+                        (false, false) => egui::CornerRadius::ZERO,
+                    }
+                } else {
+                    egui::CornerRadius::same(99)
+                };
+
                 let resp = ui.add(
                     egui::Button::new(
                         RichText::new(*label).monospace().size(font_sm()).strong().color(fg),
                     )
                     .fill(bg)
                     .stroke(Stroke::new(stroke_thin(), border))
-                    .corner_radius(pill_r)
-                    .min_size(egui::vec2(0.0, 20.0)),
+                    .corner_radius(corner_r)
+                    .min_size(egui::vec2(0.0, min_h)),
                 );
                 if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

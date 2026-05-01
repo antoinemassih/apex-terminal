@@ -6,6 +6,7 @@
 use egui::{Color32, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 use super::super::style::*;
 use super::foundation::{InputShell, InputState, InputVariant, Size as FSize, Radius as FRadius};
+use super::super::super::gpu::Theme;
 
 // ─── TextInput ────────────────────────────────────────────────────────────────
 
@@ -24,8 +25,17 @@ pub struct TextInput<'a, 'b> {
     accent: Option<Color32>,
     dim: Option<Color32>,
     border: Option<Color32>,
-    theme: Option<&'a super::super::super::gpu::Theme>,
+    theme: Option<&'a Theme>,
     variant: InputVariant,
+    // Extended knobs
+    text_color: Option<Color32>,
+    background_color: Option<Color32>,
+    explicit_id: Option<egui::Id>,
+    margin: Option<egui::Margin>,
+    frameless: bool,
+    proportional: bool,
+    multiline: bool,
+    put_at: Option<egui::Rect>,
 }
 
 impl<'a, 'b> TextInput<'a, 'b> {
@@ -40,6 +50,14 @@ impl<'a, 'b> TextInput<'a, 'b> {
             border: None,
             theme: None,
             variant: InputVariant::Default,
+            text_color: None,
+            background_color: None,
+            explicit_id: None,
+            margin: None,
+            frameless: false,
+            proportional: false,
+            multiline: false,
+            put_at: None,
         }
     }
     pub fn placeholder(mut self, p: &'a str) -> Self { self.placeholder = p; self }
@@ -48,7 +66,7 @@ impl<'a, 'b> TextInput<'a, 'b> {
     pub fn palette(mut self, accent: Color32, _bear: Color32, dim: Color32) -> Self {
         self.accent = Some(accent); self.dim = Some(dim); self
     }
-    pub fn theme(mut self, t: &'a super::super::super::gpu::Theme) -> Self {
+    pub fn theme(mut self, t: &'a Theme) -> Self {
         self.theme = Some(t);
         self.accent = Some(t.accent);
         self.dim = Some(t.dim);
@@ -57,30 +75,84 @@ impl<'a, 'b> TextInput<'a, 'b> {
     pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
     pub(crate) fn variant_internal(mut self, v: InputVariant) -> Self { self.variant = v; self }
 
+    // ── Extended knobs ────────────────────────────────────────────────────────
+    /// Explicit text color override (applied via `TextEdit::text_color`).
+    pub fn text_color(mut self, c: Color32) -> Self { self.text_color = Some(c); self }
+    /// Explicit background fill (applied via `Frame::fill`).
+    pub fn background_color(mut self, c: Color32) -> Self { self.background_color = Some(c); self }
+    /// Explicit `egui::Id` for the inner `TextEdit` (enables external focus tracking).
+    pub fn id(mut self, id: egui::Id) -> Self { self.explicit_id = Some(id); self }
+    /// Override the frame inner margin.
+    pub fn margin(mut self, m: egui::Margin) -> Self { self.margin = Some(m); self }
+    /// Disable the surrounding frame (for inline cell editors).
+    pub fn frameless(mut self, v: bool) -> Self { self.frameless = v; self }
+    /// Use proportional font instead of monospace (default).
+    pub fn proportional(mut self, v: bool) -> Self { self.proportional = v; self }
+    /// Enable multiline mode (uses `egui::TextEdit::multiline`).
+    pub fn multiline(mut self, v: bool) -> Self { self.multiline = v; self }
+    /// Place the widget at an explicit rect via `ui.put`.
+    /// When set, `show` returns early using `ui.put(rect, …)` semantics.
+    pub fn put_at(mut self, rect: egui::Rect) -> Self { self.put_at = Some(rect); self }
+
     pub fn show(self, ui: &mut Ui) -> Response {
-        let id = ui.next_auto_id();
-        let focused = ui.memory(|m| m.has_focus(id));
+        let resolved_id = self.explicit_id.unwrap_or_else(|| ui.next_auto_id());
+        let focused = ui.memory(|m| m.has_focus(resolved_id));
         let desired_width = self.width.unwrap_or_else(|| ui.available_width());
         let font_size = self.font_size;
         let placeholder = self.placeholder;
         let buffer = self.buffer;
+        let is_multi = self.multiline;
+        let is_prop = self.proportional;
+        let text_color = self.text_color;
+        let frameless = self.frameless;
+        let put_at = self.put_at;
+
+        let font_id = if is_prop {
+            egui::FontId::proportional(font_size)
+        } else {
+            egui::FontId::monospace(font_size)
+        };
+
+        // Helper: build the TextEdit from the shared knobs.
+        macro_rules! build_te {
+            ($buf:expr) => {{
+                let base = if is_multi {
+                    egui::TextEdit::multiline($buf)
+                } else {
+                    egui::TextEdit::singleline($buf)
+                };
+                let base = base
+                    .id(resolved_id)
+                    .hint_text(placeholder)
+                    .font(egui::FontSelection::FontId(font_id.clone()))
+                    .frame(false)
+                    .desired_width(desired_width);
+                let base = if let Some(tc) = text_color { base.text_color(tc) } else { base };
+                base
+            }};
+        }
+
+        // put_at shortcut — skips all framing and places directly.
+        if let Some(rect) = put_at {
+            let te = build_te!(buffer);
+            return ui.put(rect, te);
+        }
 
         // Compose InputShell when a theme is available — this is the foundation path.
         if let Some(theme) = self.theme {
             let state = if focused { InputState::Focused } else { InputState::Default };
             let mut resp_opt: Option<Response> = None;
+            if frameless {
+                let te = build_te!(buffer);
+                return ui.add(te);
+            }
             InputShell::new(theme)
                 .variant(self.variant)
                 .size(FSize::Sm)
                 .radius(FRadius::Sm)
                 .state(state)
                 .body(|ui| {
-                    let te = egui::TextEdit::singleline(buffer)
-                        .id(id)
-                        .hint_text(placeholder)
-                        .font(egui::FontSelection::FontId(egui::FontId::monospace(font_size)))
-                        .frame(false)
-                        .desired_width(desired_width);
+                    let te = build_te!(buffer);
                     resp_opt = Some(ui.add(te));
                 })
                 .show(ui);
@@ -95,19 +167,24 @@ impl<'a, 'b> TextInput<'a, 'b> {
         } else {
             color_alpha(border, alpha_line())
         };
-        let frame = egui::Frame::NONE
+
+        if frameless {
+            let te = build_te!(buffer);
+            return ui.add(te);
+        }
+
+        let inner_margin = self.margin.unwrap_or_else(|| egui::Margin::same(gap_sm() as i8));
+        let mut frame = egui::Frame::NONE
             .stroke(Stroke::new(1.0, border_color))
-            .inner_margin(gap_sm())
+            .inner_margin(inner_margin)
             .corner_radius(radius_sm());
+        if let Some(bg) = self.background_color {
+            frame = frame.fill(bg);
+        }
 
         let mut resp_opt: Option<Response> = None;
         frame.show(ui, |ui| {
-            let te = egui::TextEdit::singleline(buffer)
-                .id(id)
-                .hint_text(placeholder)
-                .font(egui::FontSelection::FontId(egui::FontId::monospace(font_size)))
-                .frame(false)
-                .desired_width(desired_width);
+            let te = build_te!(buffer);
             resp_opt = Some(ui.add(te));
         });
         resp_opt.unwrap_or_else(|| ui.label(""))
@@ -151,7 +228,7 @@ impl<'a, 'b> NumericInput<'a, 'b> {
     pub fn palette(mut self, accent: Color32, _bear: Color32, dim: Color32) -> Self {
         self.accent = Some(accent); self.dim = Some(dim); self
     }
-    pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
+    pub fn theme(self, t: &Theme) -> Self {
         self.palette(t.accent, t.bear, t.dim)
     }
     pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
@@ -233,7 +310,7 @@ impl<'b> Stepper<'b> {
     pub fn palette(mut self, accent: Color32, _bear: Color32, dim: Color32) -> Self {
         self.accent = Some(accent); self.dim = Some(dim); self
     }
-    pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
+    pub fn theme(self, t: &Theme) -> Self {
         self.palette(t.accent, t.bear, t.dim)
     }
     pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
@@ -327,7 +404,7 @@ impl<'a, 'b> ToggleRow<'a, 'b> {
     pub fn palette(mut self, _accent: Color32, _bear: Color32, dim: Color32) -> Self {
         self.label_color = Some(dim); self
     }
-    pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
+    pub fn theme(self, t: &Theme) -> Self {
         self.palette(t.accent, t.bear, t.dim)
     }
 
@@ -368,7 +445,7 @@ pub struct SearchInput<'a, 'b> {
     accent: Option<Color32>,
     dim: Option<Color32>,
     border: Option<Color32>,
-    theme: Option<&'a super::super::super::gpu::Theme>,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a, 'b> SearchInput<'a, 'b> {
@@ -386,7 +463,7 @@ impl<'a, 'b> SearchInput<'a, 'b> {
     pub fn palette(mut self, accent: Color32, _bear: Color32, dim: Color32) -> Self {
         self.accent = Some(accent); self.dim = Some(dim); self
     }
-    pub fn theme(mut self, t: &'a super::super::super::gpu::Theme) -> Self {
+    pub fn theme(mut self, t: &'a Theme) -> Self {
         self.theme = Some(t);
         self.accent = Some(t.accent);
         self.dim = Some(t.dim);
@@ -491,7 +568,7 @@ impl<'a> CompactStepper<'a> {
     pub fn palette(mut self, _accent: Color32, _bear: Color32, dim: Color32) -> Self {
         self.dim = Some(dim); self
     }
-    pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
+    pub fn theme(self, t: &Theme) -> Self {
         Self {
             value: self.value,
             dim: Some(t.dim),
@@ -542,5 +619,94 @@ impl<'a> CompactStepper<'a> {
             ui.spacing_mut().item_spacing.x = prev;
         });
         delta
+    }
+}
+
+// ─── Slider ───────────────────────────────────────────────────────────────────
+
+/// Numeric slider — wraps `egui::Slider` with theme + style awareness.
+/// Used wherever the legacy code calls `egui::Slider::new(&mut value, range)`.
+///
+/// ```ignore
+/// Slider::new(&mut my_f32, 0.0..=1.0).label("Opacity").suffix("%").theme(t).show(ui);
+/// ```
+#[must_use = "Slider must be rendered via `.show(ui)`"]
+pub struct Slider<'a, T: egui::emath::Numeric> {
+    value: &'a mut T,
+    range: std::ops::RangeInclusive<T>,
+    label: Option<&'a str>,
+    step: Option<f64>,
+    width: Option<f32>,
+    fill_color: Option<Color32>,
+    show_value: bool,
+    suffix: Option<&'a str>,
+    theme: Option<&'a Theme>,
+}
+
+impl<'a, T: egui::emath::Numeric> Slider<'a, T> {
+    pub fn new(value: &'a mut T, range: std::ops::RangeInclusive<T>) -> Self {
+        Self {
+            value,
+            range,
+            label: None,
+            step: None,
+            width: None,
+            fill_color: None,
+            show_value: true,
+            suffix: None,
+            theme: None,
+        }
+    }
+
+    pub fn label(mut self, l: &'a str) -> Self { self.label = Some(l); self }
+    pub fn step(mut self, s: f64) -> Self { self.step = Some(s); self }
+    pub fn width(mut self, w: f32) -> Self { self.width = Some(w); self }
+    pub fn fill(mut self, c: Color32) -> Self { self.fill_color = Some(c); self }
+    pub fn show_value(mut self, s: bool) -> Self { self.show_value = s; self }
+    pub fn suffix(mut self, s: &'a str) -> Self { self.suffix = Some(s); self }
+    pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
+
+    pub fn show(self, ui: &mut Ui) -> Response {
+        let st = current();
+
+        // Resolve fill color: explicit > theme accent > style default.
+        let fill = self.fill_color
+            .or_else(|| self.theme.map(|t| color_alpha(t.accent, alpha_active())))
+            .unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
+
+        // Apply optional width constraint.
+        if let Some(w) = self.width {
+            ui.set_max_width(w);
+        }
+
+        let mut slider = egui::Slider::new(self.value, self.range)
+            .show_value(self.show_value)
+            .handle_shape(egui::style::HandleShape::Circle);
+
+        if let Some(s) = self.step {
+            slider = slider.step_by(s);
+        }
+        if let Some(sfx) = self.suffix {
+            slider = slider.suffix(sfx);
+        }
+
+        // Style the slider track using theme-aware visuals.
+        {
+            let visuals = ui.visuals_mut();
+            visuals.selection.bg_fill = fill;
+            // Use r_md from active style for the handle radius if accessible.
+            let _handle_r = st.r_md;
+        }
+
+        if let Some(lbl) = self.label {
+            ui.label(
+                RichText::new(lbl)
+                    .monospace()
+                    .size(font_sm())
+                    .color(self.theme.map(|t| t.dim).unwrap_or(Color32::from_rgb(140, 140, 150))),
+            );
+        }
+
+        ui.add(slider)
     }
 }
