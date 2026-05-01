@@ -122,7 +122,9 @@ pub(super) fn build_registry(watchlist: &Watchlist, active_pane_type: PaneType) 
     v.push(mk("setting:pane-chart",     "Pane type · Chart",     "Switch active pane to Chart",     Category::Setting, None));
     v.push(mk("setting:pane-portfolio", "Pane type · Portfolio", "Switch active pane to Portfolio", Category::Setting, None));
     v.push(mk("setting:pane-dashboard", "Pane type · Dashboard", "Switch active pane to Dashboard", Category::Setting, None));
-    v.push(mk("setting:pane-heatmap",   "Pane type · Heatmap",   "Switch active pane to Heatmap",   Category::Setting, None));
+    v.push(mk("setting:pane-heatmap",        "Pane type · Heatmap",        "Switch active pane to Heatmap",        Category::Setting, None));
+    v.push(mk("setting:pane-spreadsheet",    "Pane type · Spreadsheet",    "Switch active pane to Spreadsheet",    Category::Setting, None));
+    v.push(mk("setting:pane-design-preview", "Pane type · Design Preview", "Switch active pane to Design Preview", Category::Setting, None));
 
     // Help
     v.push(mk("help:prefixes", "Prefix modes — > @ # / ? =", "Quick reference", Category::Help, None));

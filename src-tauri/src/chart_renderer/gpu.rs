@@ -1299,6 +1299,7 @@ pub(crate) enum PaneType {
     Dashboard,      // masonry grid of widgets (no chart)
     Heatmap,        // market/sector heatmap treemap
     Spreadsheet,    // editable string-cell grid
+    DesignPreview,  // full-pane design system widget catalogue
 }
 
 impl Default for PaneType { fn default() -> Self { Self::Chart } }
@@ -1632,6 +1633,9 @@ pub(crate) struct Chart {
     pub(crate) spreadsheet_rows: usize,
     pub(crate) spreadsheet_selected: Option<(usize, usize)>,
     pub(crate) spreadsheet_editing: Option<(usize, usize, String)>,
+    // Design Preview pane
+    pub(crate) design_preview_styles: Vec<u8>,   // column style ids
+    pub(crate) design_preview_density: u8,        // 0=compact 1=normal 2=roomy
 }
 
 impl Chart {
@@ -1751,6 +1755,8 @@ impl Chart {
             spreadsheet_rows: 8,
             spreadsheet_selected: None,
             spreadsheet_editing: None,
+            design_preview_styles: vec![0, 1, 2],
+            design_preview_density: 1,
         }
     }
     fn process(&mut self, cmd: ChartCommand) {
@@ -5952,6 +5958,11 @@ fn render_chart_pane(
         PaneType::Spreadsheet => {
             let body_rects = [rect];
             super::ui::spreadsheet_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
+            return;
+        }
+        PaneType::DesignPreview => {
+            let body_rects = [rect];
+            super::ui::design_preview_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
             return;
         }
         PaneType::Chart => {} // continue to chart rendering below

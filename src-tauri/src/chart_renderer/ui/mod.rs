@@ -49,4 +49,5 @@ pub mod portfolio_pane;
 pub mod dashboard_pane;
 pub mod heatmap_pane;
 pub mod spreadsheet_pane;
+pub mod design_preview_pane;
 pub mod research_panel;
