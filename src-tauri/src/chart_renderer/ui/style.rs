@@ -811,6 +811,7 @@ pub enum ButtonTreatment {
     BlackFillActive,
 }
 
+#[derive(Clone)]
 pub struct StyleSettings {
     pub r_xs: u8,
     pub r_sm: u8,
@@ -886,96 +887,88 @@ pub fn toolbar_rect() -> egui::Rect {
     egui::Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y))
 }
 
-pub fn current() -> StyleSettings {
-    let id = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Relaxed);
+// ─── Live-editable style storage ─────────────────────────────────────────────
+// Three RwLock<StyleSettings> initialised once from the hardcoded defaults.
+// `current()` clones the active one; `set_style_settings` overwrites it.
+
+fn style_defaults(id: u8) -> StyleSettings {
     match id {
-        // Aperture — modern, soft pills, drop shadows, no uppercase, sans serif
         1 => StyleSettings {
-            r_xs: 4,
-            r_sm: 6,
-            r_md: 8,
-            r_lg: 12,
-            r_pill: 99,
+            r_xs: 4, r_sm: 6, r_md: 8, r_lg: 12, r_pill: 99,
             serif_headlines: false,
             button_treatment: ButtonTreatment::SoftPill,
             hairline_borders: false,
-            stroke_hair: 0.5,
-            stroke_thin: 1.0,
-            stroke_std: 1.5,
-            stroke_bold: 1.5,
-            stroke_thick: 2.0,
-            shadows_enabled: true,
-            solid_active_fills: false,
-            uppercase_section_labels: false,
-            label_letter_spacing_px: 0.0,
-            toolbar_height_scale: 1.0,
-            header_height_scale: 1.0,
-            font_hero: 22.0,
-            vertical_group_dividers: false,
+            stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.5,
+            stroke_bold: 1.5, stroke_thick: 2.0,
+            shadows_enabled: true, solid_active_fills: false,
+            uppercase_section_labels: false, label_letter_spacing_px: 0.0,
+            toolbar_height_scale: 1.0, header_height_scale: 1.0,
+            font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
-            active_header_fill_multiply: 1.2,
-            inactive_header_fill: true,
+            active_header_fill_multiply: 1.2, inactive_header_fill: true,
             account_strip_height: 26.0,
         },
-        // Octave — dense, sharp, raised-fill active treatment
         2 => StyleSettings {
-            r_xs: 1,
-            r_sm: 2,
-            r_md: 3,
-            r_lg: 4,
-            r_pill: 99,
+            r_xs: 1, r_sm: 2, r_md: 3, r_lg: 4, r_pill: 99,
             serif_headlines: false,
             button_treatment: ButtonTreatment::RaisedActive,
             hairline_borders: true,
-            stroke_hair: 0.4,
-            stroke_thin: 0.6,
-            stroke_std: 1.0,
-            stroke_bold: 1.0,
-            stroke_thick: 1.4,
-            shadows_enabled: false,
-            solid_active_fills: true,
-            uppercase_section_labels: true,
-            label_letter_spacing_px: 0.5,
-            toolbar_height_scale: 1.0,
-            header_height_scale: 1.0,
-            font_hero: 22.0,
-            vertical_group_dividers: false,
+            stroke_hair: 0.4, stroke_thin: 0.6, stroke_std: 1.0,
+            stroke_bold: 1.0, stroke_thick: 1.4,
+            shadows_enabled: false, solid_active_fills: true,
+            uppercase_section_labels: true, label_letter_spacing_px: 0.5,
+            toolbar_height_scale: 1.0, header_height_scale: 1.0,
+            font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
-            active_header_fill_multiply: 1.2,
-            inactive_header_fill: true,
+            active_header_fill_multiply: 1.2, inactive_header_fill: true,
             account_strip_height: 26.0,
         },
-        // Meridien (0) and all others — editorial: fully square corners,
-        // hairline borders, soft drop shadow, uppercase section labels,
-        // solid active fills, underline-active buttons, serif hero headlines.
         _ => StyleSettings {
-            r_xs: 0,
-            r_sm: 0,
-            r_md: 0,
-            r_lg: 0,
-            r_pill: 0,
+            r_xs: 0, r_sm: 0, r_md: 0, r_lg: 0, r_pill: 0,
             serif_headlines: true,
             button_treatment: ButtonTreatment::UnderlineActive,
             hairline_borders: true,
-            stroke_hair: 0.5,
-            stroke_thin: 1.0,
-            stroke_std: 1.0,
-            stroke_bold: 1.0,
-            stroke_thick: 1.0,
-            shadows_enabled: true,
-            solid_active_fills: true,
-            uppercase_section_labels: true,
-            label_letter_spacing_px: 1.0,
-            toolbar_height_scale: 1.40,
-            header_height_scale: 1.10,
-            font_hero: 36.0,
-            vertical_group_dividers: true,
+            stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
+            stroke_bold: 1.0, stroke_thick: 1.0,
+            shadows_enabled: true, solid_active_fills: true,
+            uppercase_section_labels: true, label_letter_spacing_px: 1.0,
+            toolbar_height_scale: 1.40, header_height_scale: 1.10,
+            font_hero: 36.0, vertical_group_dividers: true,
             show_active_tab_underline: false,
-            active_header_fill_multiply: 0.95,
-            inactive_header_fill: false,
+            active_header_fill_multiply: 0.95, inactive_header_fill: false,
             account_strip_height: 36.0,
         },
     }
+}
+
+static STYLE_STORE: std::sync::OnceLock<[std::sync::RwLock<StyleSettings>; 3]> =
+    std::sync::OnceLock::new();
+
+fn style_store() -> &'static [std::sync::RwLock<StyleSettings>; 3] {
+    STYLE_STORE.get_or_init(|| {
+        [
+            std::sync::RwLock::new(style_defaults(0)),
+            std::sync::RwLock::new(style_defaults(1)),
+            std::sync::RwLock::new(style_defaults(2)),
+        ]
+    })
+}
+
+/// Get a clone of a specific style's settings (0=Meridien, 1=Aperture, 2=Octave).
+pub fn get_style_settings(id: u8) -> StyleSettings {
+    let idx = (id as usize).min(2);
+    style_store()[idx].read().unwrap().clone()
+}
+
+/// Overwrite a specific style's settings — takes effect on the next frame.
+pub fn set_style_settings(id: u8, settings: StyleSettings) {
+    let idx = (id as usize).min(2);
+    *style_store()[idx].write().unwrap() = settings;
+}
+
+pub fn current() -> StyleSettings {
+    let id = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Relaxed);
+    get_style_settings(id)
 }
 
 // Style-aware corner radius helpers — route through `current()` so corners

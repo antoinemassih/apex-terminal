@@ -59,6 +59,7 @@ pub enum Category {
     SplitDivider,
     Tooltip,
     Separator,
+    Style,
 }
 
 impl Category {
@@ -70,6 +71,7 @@ impl Category {
         Category::Chart, Category::Watchlist, Category::OrderEntry,
         Category::PaneHeader, Category::Segmented, Category::IconButton,
         Category::Form, Category::SplitDivider, Category::Tooltip, Category::Separator,
+        Category::Style,
     ];
 
     fn label(self) -> &'static str {
@@ -99,6 +101,7 @@ impl Category {
             Category::SplitDivider => "Split Divider",
             Category::Tooltip => "Tooltips",
             Category::Separator => "Separators",
+            Category::Style => "Style Editor",
         }
     }
 
@@ -582,6 +585,9 @@ impl Inspector {
                 changed |= drag_f32(ui, "after_space (1)", &mut tokens.separator.after_space, 0.0..=10.0);
                 changed |= drag_f32(ui, "shadow_space (4)", &mut tokens.separator.shadow_space, 0.0..=20.0);
             }
+            Category::Style => {
+                changed |= render_style_editor(ui);
+            }
         }
         changed
     }
@@ -668,6 +674,158 @@ fn color_edit(ui: &mut Ui, label: &str, color: &mut Rgba) -> bool {
     changed
 }
 
+// ─── Style Editor ─────────────────────────────────────────────────────────────
+
+fn render_style_editor(ui: &mut Ui) -> bool {
+    use crate::chart_renderer::ui::style::{ButtonTreatment, get_style_settings, set_style_settings, set_active_style};
+    let mut changed = false;
+
+    // Active-style switch buttons
+    ui.horizontal(|ui| {
+        let active_id = {
+            use std::sync::atomic::Ordering;
+            // read the current active style id — mirror of ACTIVE_STYLE but accessible via public API
+            // We infer it by comparing get_style_settings(0..2) identity is not possible;
+            // instead store the last switch in a thread_local.
+            STYLE_EDITOR_ACTIVE.load(Ordering::Relaxed)
+        };
+        for (id, name) in [(0u8, "Meridien"), (1u8, "Aperture"), (2u8, "Octave")] {
+            let is_active = active_id == id;
+            let accent = Color32::from_rgb(203, 166, 247);
+            let dim    = Color32::from_rgb(120, 120, 130);
+            let (fg, bg, border) = if is_active {
+                (accent, Color32::from_rgba_unmultiplied(203, 166, 247, 30),
+                 Color32::from_rgba_unmultiplied(203, 166, 247, 120))
+            } else {
+                (dim, Color32::TRANSPARENT, Color32::from_rgb(50, 50, 60))
+            };
+            if ui.add(egui::Button::new(RichText::new(name).monospace().size(11.0).strong().color(fg))
+                .fill(bg)
+                .stroke(Stroke::new(0.8, border))
+                .corner_radius(3.0)
+                .min_size(egui::vec2(70.0, 22.0))
+            ).clicked() {
+                STYLE_EDITOR_ACTIVE.store(id, std::sync::atomic::Ordering::Relaxed);
+                set_active_style(id);
+                changed = true;
+            }
+        }
+    });
+
+    ui.add_space(6.0);
+
+    // Per-style collapsible sections
+    for style_id in 0u8..3 {
+        let style_name = match style_id { 0 => "Meridien", 1 => "Aperture", _ => "Octave" };
+        let header_color = Color32::from_rgb(180, 180, 200);
+
+        egui::CollapsingHeader::new(
+            RichText::new(style_name).monospace().size(11.0).strong().color(header_color)
+        )
+        .id_salt(egui::Id::new(("style_section", style_id)))
+        .default_open(style_id == STYLE_EDITOR_ACTIVE.load(std::sync::atomic::Ordering::Relaxed))
+        .show(ui, |ui| {
+            let mut s = get_style_settings(style_id);
+            let mut local_changed = false;
+
+            // Corner radii
+            ui.label(RichText::new("Corner radii").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+            local_changed |= style_drag_u8(ui, "r_xs", &mut s.r_xs);
+            local_changed |= style_drag_u8(ui, "r_sm", &mut s.r_sm);
+            local_changed |= style_drag_u8(ui, "r_md", &mut s.r_md);
+            local_changed |= style_drag_u8(ui, "r_lg", &mut s.r_lg);
+            local_changed |= style_drag_u8(ui, "r_pill", &mut s.r_pill);
+
+            ui.add_space(4.0);
+
+            // Button treatment
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.label(RichText::new("button_treatment").monospace().size(9.0).color(Color32::from_rgb(170,170,180)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    egui::ComboBox::from_id_salt(egui::Id::new(("bt_combo", style_id)))
+                        .selected_text(RichText::new(format!("{:?}", s.button_treatment)).monospace().size(9.0))
+                        .show_ui(ui, |ui| {
+                            for bt in [ButtonTreatment::SoftPill, ButtonTreatment::OutlineAccent,
+                                       ButtonTreatment::UnderlineActive, ButtonTreatment::RaisedActive,
+                                       ButtonTreatment::BlackFillActive] {
+                                if ui.selectable_label(s.button_treatment == bt, format!("{bt:?}")).clicked() {
+                                    s.button_treatment = bt;
+                                    local_changed = true;
+                                }
+                            }
+                        });
+                });
+            });
+
+            ui.add_space(4.0);
+
+            // Bool flags
+            local_changed |= style_checkbox(ui, "hairline_borders", &mut s.hairline_borders);
+            local_changed |= style_checkbox(ui, "shadows_enabled", &mut s.shadows_enabled);
+            local_changed |= style_checkbox(ui, "solid_active_fills", &mut s.solid_active_fills);
+            local_changed |= style_checkbox(ui, "uppercase_section_labels", &mut s.uppercase_section_labels);
+            local_changed |= style_checkbox(ui, "serif_headlines", &mut s.serif_headlines);
+            local_changed |= style_checkbox(ui, "vertical_group_dividers", &mut s.vertical_group_dividers);
+            local_changed |= style_checkbox(ui, "show_active_tab_underline", &mut s.show_active_tab_underline);
+            local_changed |= style_checkbox(ui, "inactive_header_fill", &mut s.inactive_header_fill);
+
+            ui.add_space(4.0);
+
+            // Stroke widths
+            ui.label(RichText::new("Stroke widths").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+            local_changed |= style_drag_f32(ui, "stroke_hair", &mut s.stroke_hair, 0.0..=3.0);
+            local_changed |= style_drag_f32(ui, "stroke_thin", &mut s.stroke_thin, 0.0..=3.0);
+            local_changed |= style_drag_f32(ui, "stroke_std",  &mut s.stroke_std,  0.0..=4.0);
+            local_changed |= style_drag_f32(ui, "stroke_bold", &mut s.stroke_bold, 0.0..=4.0);
+            local_changed |= style_drag_f32(ui, "stroke_thick",&mut s.stroke_thick,0.0..=6.0);
+
+            ui.add_space(4.0);
+
+            // Scale / size fields
+            local_changed |= style_drag_f32(ui, "toolbar_height_scale", &mut s.toolbar_height_scale, 0.5..=2.5);
+            local_changed |= style_drag_f32(ui, "header_height_scale",  &mut s.header_height_scale,  0.5..=2.5);
+            local_changed |= style_drag_f32(ui, "font_hero",             &mut s.font_hero,             8.0..=80.0);
+            local_changed |= style_drag_f32(ui, "active_header_fill_multiply", &mut s.active_header_fill_multiply, 0.0..=1.5);
+            local_changed |= style_drag_f32(ui, "account_strip_height", &mut s.account_strip_height, 16.0..=80.0);
+            local_changed |= style_drag_f32(ui, "label_letter_spacing_px", &mut s.label_letter_spacing_px, -2.0..=4.0);
+
+            if local_changed {
+                set_style_settings(style_id, s);
+                changed = true;
+            }
+        });
+    }
+
+    changed
+}
+
+static STYLE_EDITOR_ACTIVE: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
+
+fn style_drag_u8(ui: &mut Ui, label: &str, value: &mut u8) -> bool {
+    let mut v = *value as f32;
+    let changed = drag_f32(ui, label, &mut v, 0.0..=255.0);
+    if changed { *value = v as u8; }
+    changed
+}
+
+fn style_drag_f32(ui: &mut Ui, label: &str, value: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
+    drag_f32(ui, label, value, range)
+}
+
+fn style_checkbox(ui: &mut Ui, label: &str, value: &mut bool) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(170,170,180)));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.checkbox(value, "").changed() { changed = true; }
+        });
+    });
+    changed
+}
+
 // ─── Helper: map category string to enum ─────────────────────────────────────
 
 fn category_from_name(name: &str) -> Option<Category> {
@@ -697,6 +855,7 @@ fn category_from_name(name: &str) -> Option<Category> {
         "Split Divider" => Some(Category::SplitDivider),
         "Tooltips" | "Tooltip" => Some(Category::Tooltip),
         "Separators" | "Separator" => Some(Category::Separator),
+        "Style Editor" | "Style" => Some(Category::Style),
         _ => None,
     }
 }
