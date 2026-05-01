@@ -72,16 +72,17 @@ impl<'a, 'b, T: PartialEq + Copy> TabBar<'a, 'b, T> {
             return;
         }
         let fs = self.font_size.unwrap_or_else(font_lg);
+        // Use the style-settings tab_height knob as the default min height so the
+        // inspector `tab_height` field drives actual tab-bar row height.
+        let min_h = self.min_height.unwrap_or_else(style_tab_height);
         let tab_ul = crate::dt_f32!(tab.underline_thickness, 2.0);
         for (tab, label) in self.tabs {
             let active = *self.current == *tab;
             let color = if active { self.accent } else { self.dim };
-            let mut btn = egui::Button::new(
+            let btn = egui::Button::new(
                 egui::RichText::new(*label).monospace().size(fs).strong().color(color)
-            ).frame(false).fill(Color32::TRANSPARENT).stroke(Stroke::NONE);
-            if let Some(h) = self.min_height {
-                btn = btn.min_size(Vec2::new(0.0, h));
-            }
+            ).frame(false).fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
+                .min_size(Vec2::new(0.0, min_h));
             let resp = ui.add(btn);
             if resp.clicked() { *self.current = *tab; }
             if active && self.underline {

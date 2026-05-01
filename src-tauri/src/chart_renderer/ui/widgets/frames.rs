@@ -104,10 +104,13 @@ impl CardFrame {
     /// `components::card_frame` byte-for-byte.
     pub fn build(self) -> egui::Frame {
         let st = current();
+        // card_padding_y / card_padding_x knobs let the user tune card insets per style.
+        let pad_y = st.card_padding_y as i8;
+        let pad_x = st.card_padding_x as i8;
         let mut frame = egui::Frame::NONE
             .fill(self.bg)
             .corner_radius(r_md_cr())
-            .inner_margin(egui::Margin::same(gap_lg() as i8));
+            .inner_margin(egui::Margin { left: pad_x, right: pad_x, top: pad_y, bottom: pad_y });
 
         if st.hairline_borders {
             frame = frame.stroke(Stroke::new(
@@ -122,11 +125,12 @@ impl CardFrame {
         }
 
         if st.shadows_enabled {
+            // shadow_blur / shadow_offset_y / shadow_alpha knobs override global tokens.
             frame = frame.shadow(egui::epaint::Shadow {
-                offset: [0, shadow_offset() as i8],
-                blur:   shadow_spread() as u8,
+                offset: [0, st.shadow_offset_y as i8],
+                blur:   st.shadow_blur as u8,
                 spread: 0,
-                color:  Color32::from_black_alpha(shadow_alpha()),
+                color:  Color32::from_black_alpha(st.shadow_alpha),
             });
         }
 
@@ -194,11 +198,14 @@ impl<'a> DialogFrame<'a> {
         }
 
         if st.shadows_enabled {
+            // Dialogs use a stronger shadow than cards; offset_y and alpha still scale with style.
+            let alpha = (st.shadow_alpha as u16).saturating_add(40).min(255) as u8;
+            let blur = (st.shadow_blur * 1.2).min(64.0) as u8;
             frame = frame.shadow(egui::epaint::Shadow {
-                offset: [0, 8],
-                blur:   28,
+                offset: [0, st.shadow_offset_y as i8],
+                blur,
                 spread: 2,
-                color:  Color32::from_black_alpha(80),
+                color:  Color32::from_black_alpha(alpha),
             });
         } else {
             frame = frame.shadow(egui::epaint::Shadow::NONE);

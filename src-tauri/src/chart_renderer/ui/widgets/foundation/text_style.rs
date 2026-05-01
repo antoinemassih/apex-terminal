@@ -38,21 +38,24 @@ pub struct TextSpec {
 
 impl TextStyle {
     pub fn spec(self) -> TextSpec {
+        // font_section_label / font_body / font_caption pull from StyleSettings so
+        // the inspector knobs propagate to Label/Eyebrow, Body, and Caption roles.
+        let st = current();
         match self {
-            TextStyle::Display    => TextSpec { size: font_2xl() + 4.0, strong: true,  monospace: false, line_height_factor: 1.25 },
-            TextStyle::HeadingLg  => TextSpec { size: font_2xl(),       strong: true,  monospace: false, line_height_factor: 1.25 },
-            TextStyle::HeadingMd  => TextSpec { size: font_xl(),        strong: true,  monospace: false, line_height_factor: 1.3  },
-            TextStyle::BodyLg     => TextSpec { size: font_lg(),        strong: false, monospace: false, line_height_factor: 1.4  },
-            TextStyle::Body       => TextSpec { size: font_md(),        strong: false, monospace: false, line_height_factor: 1.4  },
-            TextStyle::BodySm     => TextSpec { size: font_sm(),        strong: false, monospace: false, line_height_factor: 1.35 },
-            TextStyle::Caption    => TextSpec { size: font_xs(),        strong: false, monospace: false, line_height_factor: 1.3  },
-            TextStyle::Mono       => TextSpec { size: font_md(),        strong: false, monospace: true,  line_height_factor: 1.35 },
-            TextStyle::MonoSm     => TextSpec { size: font_sm(),        strong: false, monospace: true,  line_height_factor: 1.3  },
-            TextStyle::Numeric    => TextSpec { size: font_md(),        strong: true,  monospace: true,  line_height_factor: 1.3  },
-            TextStyle::NumericLg  => TextSpec { size: font_xl(),        strong: true,  monospace: true,  line_height_factor: 1.25 },
+            TextStyle::Display    => TextSpec { size: font_2xl() + 4.0,  strong: true,  monospace: false, line_height_factor: 1.25 },
+            TextStyle::HeadingLg  => TextSpec { size: font_2xl(),        strong: true,  monospace: false, line_height_factor: 1.25 },
+            TextStyle::HeadingMd  => TextSpec { size: font_xl(),         strong: true,  monospace: false, line_height_factor: 1.3  },
+            TextStyle::BodyLg     => TextSpec { size: font_lg(),         strong: false, monospace: false, line_height_factor: 1.4  },
+            TextStyle::Body       => TextSpec { size: st.font_body,      strong: false, monospace: false, line_height_factor: 1.4  },
+            TextStyle::BodySm     => TextSpec { size: font_sm(),         strong: false, monospace: false, line_height_factor: 1.35 },
+            TextStyle::Caption    => TextSpec { size: st.font_caption,   strong: false, monospace: false, line_height_factor: 1.3  },
+            TextStyle::Mono       => TextSpec { size: st.font_body,      strong: false, monospace: true,  line_height_factor: 1.35 },
+            TextStyle::MonoSm     => TextSpec { size: font_sm(),         strong: false, monospace: true,  line_height_factor: 1.3  },
+            TextStyle::Numeric    => TextSpec { size: st.font_body,      strong: true,  monospace: true,  line_height_factor: 1.3  },
+            TextStyle::NumericLg  => TextSpec { size: font_xl(),         strong: true,  monospace: true,  line_height_factor: 1.25 },
             TextStyle::NumericHero => TextSpec { size: 30.0,             strong: true,  monospace: true,  line_height_factor: 1.2  },
-            TextStyle::Label      => TextSpec { size: font_sm(),        strong: true,  monospace: false, line_height_factor: 1.3  },
-            TextStyle::Eyebrow    => TextSpec { size: font_xs(),        strong: true,  monospace: false, line_height_factor: 1.2  },
+            TextStyle::Label      => TextSpec { size: st.font_section_label, strong: true,  monospace: false, line_height_factor: 1.3  },
+            TextStyle::Eyebrow    => TextSpec { size: st.font_section_label, strong: true,  monospace: false, line_height_factor: 1.2  },
         }
     }
 

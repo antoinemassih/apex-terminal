@@ -259,7 +259,8 @@ impl Layout {
     /// For Layout::Three, returns a custom arrangement: 1 full-width top (60%) + 2 bottom (40%).
     fn pane_rects(self, rect: egui::Rect, count: usize, split_h: f32, split_v: f32, split_h2: f32, split_v2: f32) -> Vec<egui::Rect> {
         if count == 0 { return vec![]; }
-        let gap = 1.0;
+        // pane_gap from StyleSettings lets the user control inter-pane spacing.
+        let gap = super::ui::style::current().pane_gap;
         match self {
             Layout::Two if count >= 2 => {
                 // Two side-by-side panes with adjustable horizontal split
@@ -5473,9 +5474,10 @@ fn render_chart_pane(
                 }
             }
         } else if visible_count > 1 {
-            // Legacy: colored rect stroke
+            // Legacy: colored rect stroke — width driven by pane_border_width.
+            let bw = st.pane_border_width;
             let border_color = if is_active { t.bull.gamma_multiply(0.8) } else { t.dim.gamma_multiply(0.3) };
-            let border_width = if is_active { 1.5 } else { 0.5 };
+            let border_width = if is_active { bw.max(1.0) } else { bw * 0.5 };
             ui.painter().rect_stroke(pane_rect, 0.0, egui::Stroke::new(border_width, border_color), egui::StrokeKind::Inside);
         }
     }

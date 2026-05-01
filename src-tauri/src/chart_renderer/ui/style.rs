@@ -873,6 +873,59 @@ pub struct StyleSettings {
     pub inactive_header_fill: bool,
     /// Account strip panel height in logical px.
     pub account_strip_height: f32,
+
+    // ── Layout & spacing ──────────────────────────────────────────────────
+    /// Pane border outline thickness in logical px.
+    pub pane_border_width: f32,
+    /// Gap between adjacent panes in px.
+    pub pane_gap: f32,
+    /// Card vertical inner padding in px.
+    pub card_padding_y: f32,
+    /// Card horizontal inner padding in px.
+    pub card_padding_x: f32,
+    /// Base list-row height in px.
+    pub row_height_px: f32,
+    /// Base button height in px.
+    pub button_height_px: f32,
+    /// Button horizontal padding in px.
+    pub button_padding_x: f32,
+    /// Tab strip height in px.
+    pub tab_height: f32,
+
+    // ── Typography overrides ──────────────────────────────────────────────
+    /// Section/eyebrow label font size in pt.
+    pub font_section_label: f32,
+    /// Body text font size in pt.
+    pub font_body: f32,
+    /// Caption font size in pt.
+    pub font_caption: f32,
+
+    // ── Interaction tokens ────────────────────────────────────────────────
+    /// Alpha for hover overlay (0-255).
+    pub hover_bg_alpha: u8,
+    /// Alpha for active/pressed state (0-255).
+    pub active_bg_alpha: u8,
+    /// Focus ring stroke width.
+    pub focus_ring_width: f32,
+    /// Focus ring alpha (0-255).
+    pub focus_ring_alpha: u8,
+    /// Opacity multiplier for disabled widgets (0.0-1.0).
+    pub disabled_opacity: f32,
+
+    // ── Drop shadow ───────────────────────────────────────────────────────
+    /// Shadow blur radius in px.
+    pub shadow_blur: f32,
+    /// Shadow vertical offset in px.
+    pub shadow_offset_y: f32,
+    /// Shadow alpha (0-255).
+    pub shadow_alpha: u8,
+
+    // ── Density & accent ─────────────────────────────────────────────────
+    /// Global density: 0=compact, 1=normal, 2=roomy. Drives row/tab/button
+    /// height multipliers when explicit overrides are not set.
+    pub density: u8,
+    /// Saturation/brightness multiplier for accent on active elements.
+    pub accent_emphasis: f32,
 }
 
 // Active style selection — set once at the top of each draw_chart frame
@@ -933,6 +986,15 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: true,
             active_header_fill_multiply: 1.2, inactive_header_fill: true,
             account_strip_height: 26.0,
+            pane_border_width: 1.0, pane_gap: 8.0,
+            card_padding_y: 12.0, card_padding_x: 14.0,
+            row_height_px: 26.0, button_height_px: 28.0, button_padding_x: 14.0,
+            tab_height: 32.0,
+            font_section_label: 10.0, font_body: 11.0, font_caption: 9.0,
+            hover_bg_alpha: 15, active_bg_alpha: 25,
+            focus_ring_width: 2.0, focus_ring_alpha: 90, disabled_opacity: 0.5,
+            shadow_blur: 24.0, shadow_offset_y: 8.0, shadow_alpha: 40,
+            density: 2, accent_emphasis: 1.1,
         },
         2 => StyleSettings {
             r_xs: 1, r_sm: 2, r_md: 3, r_lg: 4, r_pill: 99,
@@ -948,6 +1010,15 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: true,
             active_header_fill_multiply: 1.2, inactive_header_fill: true,
             account_strip_height: 26.0,
+            pane_border_width: 0.6, pane_gap: 2.0,
+            card_padding_y: 6.0, card_padding_x: 8.0,
+            row_height_px: 20.0, button_height_px: 22.0, button_padding_x: 8.0,
+            tab_height: 26.0,
+            font_section_label: 8.0, font_body: 10.0, font_caption: 8.0,
+            hover_bg_alpha: 18, active_bg_alpha: 30,
+            focus_ring_width: 1.5, focus_ring_alpha: 110, disabled_opacity: 0.45,
+            shadow_blur: 8.0, shadow_offset_y: 4.0, shadow_alpha: 20,
+            density: 0, accent_emphasis: 0.95,
         },
         _ => StyleSettings {
             r_xs: 0, r_sm: 0, r_md: 0, r_lg: 0, r_pill: 0,
@@ -963,6 +1034,15 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: false,
             active_header_fill_multiply: 0.95, inactive_header_fill: false,
             account_strip_height: 36.0,
+            pane_border_width: 0.5, pane_gap: 0.0,
+            card_padding_y: 8.0, card_padding_x: 10.0,
+            row_height_px: 22.0, button_height_px: 24.0, button_padding_x: 10.0,
+            tab_height: 28.0,
+            font_section_label: 8.0, font_body: 10.0, font_caption: 8.0,
+            hover_bg_alpha: 20, active_bg_alpha: 35,
+            focus_ring_width: 1.0, focus_ring_alpha: 120, disabled_opacity: 0.4,
+            shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
+            density: 1, accent_emphasis: 1.0,
         },
     }
 }
@@ -1062,13 +1142,38 @@ pub fn btn_simple_height() -> f32 { 24.0 }
 pub fn btn_small_height() -> f32 { 22.0 }
 pub fn btn_trade_height() -> f32 { 28.0 }
 
+// ── New style-setting helpers ────────────────────────────────────────────────
+/// Density-aware row height. Reads `row_height_px` then scales by density vscale.
+pub fn style_row_height() -> f32 {
+    let st = current();
+    let scale = match st.density { 0 => 0.85, 2 => 1.15, _ => 1.0 };
+    st.row_height_px * scale
+}
+/// Density-aware button height. Reads `button_height_px` then scales by density vscale.
+pub fn style_button_height() -> f32 {
+    let st = current();
+    let scale = match st.density { 0 => 0.85, 2 => 1.15, _ => 1.0 };
+    st.button_height_px * scale
+}
+/// Density-aware tab height. Reads `tab_height` then scales by density vscale.
+pub fn style_tab_height() -> f32 {
+    let st = current();
+    let scale = match st.density { 0 => 0.85, 2 => 1.15, _ => 1.0 };
+    st.tab_height * scale
+}
+/// Accent color with emphasis multiplier applied (brightness boost for active elements).
+pub fn accent_emphasised(color: egui::Color32) -> egui::Color32 {
+    color.gamma_multiply(current().accent_emphasis)
+}
+
 pub fn contrast_fg(bg: egui::Color32) -> egui::Color32 {
     let lum = 0.299 * bg.r() as f32 + 0.587 * bg.g() as f32 + 0.114 * bg.b() as f32;
     if lum > 140.0 { egui::Color32::BLACK } else { egui::Color32::WHITE }
 }
 
 pub fn rule_stroke_for(_bg: egui::Color32, border: egui::Color32) -> egui::Stroke {
-    egui::Stroke::new(stroke_thin(), border)
+    // Use pane_border_width so Meridien hairlines honour the style knob.
+    egui::Stroke::new(current().pane_border_width, border)
 }
 
 /// Paint a full-height inter-cluster vertical divider line in the toolbar (#4).

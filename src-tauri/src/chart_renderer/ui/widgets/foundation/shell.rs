@@ -75,7 +75,9 @@ impl<'a> ButtonShell<'a> {
     pub fn show(self, ui: &mut Ui) -> Response {
         let _pad = self.size.padding();
         let treatment = self.treatment.unwrap_or_else(|| current().button_treatment);
-        let accent = self.color.unwrap_or_else(|| self.variant.fill_color(self.theme));
+        let raw_accent = self.color.unwrap_or_else(|| self.variant.fill_color(self.theme));
+        // accent_emphasis multiplies brightness/saturation for active elements.
+        let accent = if self.active { accent_emphasised(raw_accent) } else { raw_accent };
         let base_fg     = self.variant.fg_color(self.theme);
         let base_border = self.variant.border_color(self.theme);
 
@@ -225,7 +227,9 @@ impl<'a> RowShell<'a> {
 
         // ── Painter-mode escape hatch ────────────────────────────────────
         if self.painter_mode {
-            let h = self.painter_height.unwrap_or_else(|| self.size.height());
+            // Use style_row_height() as the density-aware default row height so the
+            // `row_height_px` knob in the inspector drives all RowShell painter rows.
+            let h = self.painter_height.unwrap_or_else(style_row_height);
             let avail_w = ui.available_width();
             let (rect, click) = ui.allocate_exact_size(
                 Vec2::new(avail_w, h),

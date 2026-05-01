@@ -13,24 +13,27 @@ use super::super::super::style::*;
 pub enum Size { Xs, Sm, Md, Lg, Xl }
 
 impl Size {
-    /// Recommended height in logical px. Pulls from existing btn_*_height when relevant.
+    /// Recommended height in logical px. Md/Lg pull from StyleSettings so the
+    /// `button_height_px` knob applies to the primary button sizes.
     pub fn height(self) -> f32 {
+        let st = current();
         match self {
             Size::Xs => 16.0,
-            Size::Sm => btn_small_height(),    // 22.0
-            Size::Md => btn_simple_height(),   // 24.0
-            Size::Lg => btn_trade_height(),    // 28.0
-            Size::Xl => 32.0,
+            Size::Sm => btn_small_height(),       // 22.0 (fixed compact)
+            Size::Md => st.button_height_px,      // driven by style knob
+            Size::Lg => st.button_height_px + 4.0, // slightly taller than Md
+            Size::Xl => st.button_height_px + 8.0,
         }
     }
 
-    /// Inner padding for the shell. All values come from existing gap_* tokens.
+    /// Inner padding for the shell. Md/Lg x-padding reads from `button_padding_x`.
     pub fn padding(self) -> Margin {
+        let st = current();
         let (x, y) = match self {
             Size::Xs => (gap_sm(), gap_xs()),
             Size::Sm => (gap_md(), gap_xs()),
-            Size::Md => (gap_lg(), gap_sm()),
-            Size::Lg => (gap_xl(), gap_md()),
+            Size::Md => (st.button_padding_x, gap_sm()),
+            Size::Lg => (st.button_padding_x + 2.0, gap_md()),
             Size::Xl => (gap_2xl(), gap_lg()),
         };
         Margin { left: x as i8, right: x as i8, top: y as i8, bottom: y as i8 }

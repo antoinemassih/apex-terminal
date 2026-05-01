@@ -64,13 +64,16 @@ pub struct InteractionTokens {
 
 impl Default for InteractionTokens {
     fn default() -> Self {
+        // Read live StyleSettings so hover/focus/disabled knobs in the inspector
+        // propagate to all shells that use InteractionTokens::default().
+        let st = current();
         Self {
-            hover_bg_alpha:        alpha_ghost(),
+            hover_bg_alpha:        st.hover_bg_alpha,
             hover_border_alpha:    alpha_muted(),
-            focus_ring_width:      stroke_bold(),
-            focus_ring_alpha:      alpha_strong(),
+            focus_ring_width:      st.focus_ring_width,
+            focus_ring_alpha:      st.focus_ring_alpha,
             pressed_scale:         0.97,
-            disabled_opacity:      0.45,
+            disabled_opacity:      st.disabled_opacity,
             selected_bg_alpha:     alpha_tint(),
             selected_border_alpha: alpha_active(),
             hover_treatment:       HoverTreatment::AccentTint,
@@ -115,8 +118,9 @@ pub fn apply_interaction(
     }
 
     if state.pressed {
-        // Slight darken to convey press.
-        fill = color_alpha(base_color, tokens.hover_bg_alpha.saturating_add(15));
+        // active_bg_alpha from StyleSettings conveys press intensity.
+        let active_alpha = current().active_bg_alpha;
+        fill = color_alpha(base_color, active_alpha);
     }
 
     if state.focused {

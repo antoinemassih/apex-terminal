@@ -978,6 +978,23 @@ fn build_arm(id: u8, s: &crate::chart_renderer::ui::style::StyleSettings) -> Str
     out.push_str(&format!("{i}active_header_fill_multiply: {}, inactive_header_fill: {},\n",
         fmt_f32(s.active_header_fill_multiply), fmt_bool(s.inactive_header_fill)));
     out.push_str(&format!("{i}account_strip_height: {},\n", fmt_f32(s.account_strip_height)));
+    out.push_str(&format!("{i}pane_border_width: {}, pane_gap: {},\n",
+        fmt_f32(s.pane_border_width), fmt_f32(s.pane_gap)));
+    out.push_str(&format!("{i}card_padding_y: {}, card_padding_x: {},\n",
+        fmt_f32(s.card_padding_y), fmt_f32(s.card_padding_x)));
+    out.push_str(&format!("{i}row_height_px: {}, button_height_px: {}, button_padding_x: {},\n",
+        fmt_f32(s.row_height_px), fmt_f32(s.button_height_px), fmt_f32(s.button_padding_x)));
+    out.push_str(&format!("{i}tab_height: {},\n", fmt_f32(s.tab_height)));
+    out.push_str(&format!("{i}font_section_label: {}, font_body: {}, font_caption: {},\n",
+        fmt_f32(s.font_section_label), fmt_f32(s.font_body), fmt_f32(s.font_caption)));
+    out.push_str(&format!("{i}hover_bg_alpha: {}, active_bg_alpha: {},\n",
+        s.hover_bg_alpha, s.active_bg_alpha));
+    out.push_str(&format!("{i}focus_ring_width: {}, focus_ring_alpha: {}, disabled_opacity: {},\n",
+        fmt_f32(s.focus_ring_width), s.focus_ring_alpha, fmt_f32(s.disabled_opacity)));
+    out.push_str(&format!("{i}shadow_blur: {}, shadow_offset_y: {}, shadow_alpha: {},\n",
+        fmt_f32(s.shadow_blur), fmt_f32(s.shadow_offset_y), s.shadow_alpha));
+    out.push_str(&format!("{i}density: {}, accent_emphasis: {},\n",
+        s.density, fmt_f32(s.accent_emphasis)));
     out.push_str("        },");
     out
 }
@@ -1303,6 +1320,52 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 local_changed |= style_drag_f32(ui, "active_header_fill_multiply", &mut s.active_header_fill_multiply, 0.0..=1.5);
                 local_changed |= style_drag_f32(ui, "account_strip_height", &mut s.account_strip_height, 16.0..=80.0);
                 local_changed |= style_drag_f32(ui, "label_letter_spacing_px", &mut s.label_letter_spacing_px, -2.0..=4.0);
+
+                ui.add_space(4.0);
+
+                // ── Layout & spacing ──────────────────────────────────────────
+                ui.label(RichText::new("Layout & Spacing").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_f32(ui, "pane_border_width", &mut s.pane_border_width, 0.0..=4.0);
+                local_changed |= style_drag_f32(ui, "pane_gap",          &mut s.pane_gap,          0.0..=20.0);
+                local_changed |= style_drag_f32(ui, "card_padding_y",    &mut s.card_padding_y,    0.0..=32.0);
+                local_changed |= style_drag_f32(ui, "card_padding_x",    &mut s.card_padding_x,    0.0..=32.0);
+                local_changed |= style_drag_f32(ui, "row_height_px",     &mut s.row_height_px,     12.0..=48.0);
+                local_changed |= style_drag_f32(ui, "button_height_px",  &mut s.button_height_px,  14.0..=52.0);
+                local_changed |= style_drag_f32(ui, "button_padding_x",  &mut s.button_padding_x,  0.0..=28.0);
+                local_changed |= style_drag_f32(ui, "tab_height",        &mut s.tab_height,        14.0..=52.0);
+
+                ui.add_space(4.0);
+
+                // ── Typography ────────────────────────────────────────────────
+                ui.label(RichText::new("Typography").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_f32(ui, "font_section_label", &mut s.font_section_label, 6.0..=18.0);
+                local_changed |= style_drag_f32(ui, "font_body",          &mut s.font_body,          6.0..=18.0);
+                local_changed |= style_drag_f32(ui, "font_caption",       &mut s.font_caption,       5.0..=14.0);
+
+                ui.add_space(4.0);
+
+                // ── Interaction ───────────────────────────────────────────────
+                ui.label(RichText::new("Interaction").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_u8(ui,  "hover_bg_alpha",   &mut s.hover_bg_alpha);
+                local_changed |= style_drag_u8(ui,  "active_bg_alpha",  &mut s.active_bg_alpha);
+                local_changed |= style_drag_f32(ui, "focus_ring_width", &mut s.focus_ring_width, 0.0..=4.0);
+                local_changed |= style_drag_u8(ui,  "focus_ring_alpha", &mut s.focus_ring_alpha);
+                local_changed |= style_drag_f32(ui, "disabled_opacity", &mut s.disabled_opacity, 0.0..=1.0);
+
+                ui.add_space(4.0);
+
+                // ── Shadow ────────────────────────────────────────────────────
+                ui.label(RichText::new("Shadow").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_f32(ui, "shadow_blur",     &mut s.shadow_blur,     0.0..=64.0);
+                local_changed |= style_drag_f32(ui, "shadow_offset_y", &mut s.shadow_offset_y, 0.0..=32.0);
+                local_changed |= style_drag_u8(ui,  "shadow_alpha",    &mut s.shadow_alpha);
+
+                ui.add_space(4.0);
+
+                // ── Density & color ───────────────────────────────────────────
+                ui.label(RichText::new("Density & Color").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_u8(ui,  "density",         &mut s.density);
+                local_changed |= style_drag_f32(ui, "accent_emphasis", &mut s.accent_emphasis, 0.5..=2.0);
 
                 // Delete button for user presets
                 if !is_canonical {
