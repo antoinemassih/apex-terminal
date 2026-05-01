@@ -184,9 +184,17 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         let r = resp.rect;
         match st.button_treatment {
             ButtonTreatment::UnderlineActive => {
-                // Accent underline — bottom stripe (#18).
+                // Meridien active: tinted column across full toolbar height.
+                let tb = toolbar_rect();
+                let col_rect = egui::Rect::from_min_max(
+                    egui::pos2(r.left(), tb.top()),
+                    egui::pos2(r.right(), tb.bottom()),
+                );
+                ui.painter().rect_filled(col_rect, 0.0, color_alpha(toolbar_border, alpha_ghost()));
+                // Accent underline at the very bottom of the toolbar (#18).
+                let underline_y = tb.bottom() - 1.0;
                 ui.painter().line_segment(
-                    [egui::pos2(r.left(), r.bottom()), egui::pos2(r.right(), r.bottom())],
+                    [egui::pos2(r.left(), underline_y), egui::pos2(r.right(), underline_y)],
                     Stroke::new(2.0, accent));
             }
             _ => {
@@ -198,13 +206,25 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         }
     } else if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        if st.button_treatment != ButtonTreatment::UnderlineActive {
-            // Bevel highlight on top edge
-            let r = resp.rect;
-            ui.painter().rect_filled(
-                egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 1.0)),
-                egui::CornerRadius { nw: corner_r as u8, ne: corner_r as u8, sw: 0, se: 0 },
-                Color32::from_rgba_unmultiplied(255, 255, 255, 10));
+        match st.button_treatment {
+            ButtonTreatment::UnderlineActive => {
+                // Meridien hover: subtle column tint across full toolbar height.
+                let r = resp.rect;
+                let tb = toolbar_rect();
+                let col_rect = egui::Rect::from_min_max(
+                    egui::pos2(r.left(), tb.top()),
+                    egui::pos2(r.right(), tb.bottom()),
+                );
+                ui.painter().rect_filled(col_rect, 0.0, color_alpha(dim, alpha_ghost()));
+            }
+            _ => {
+                // Bevel highlight on top edge
+                let r = resp.rect;
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 1.0)),
+                    egui::CornerRadius { nw: corner_r as u8, ne: corner_r as u8, sw: 0, se: 0 },
+                    Color32::from_rgba_unmultiplied(255, 255, 255, 10));
+            }
         }
     }
     let _ = toolbar_bg; // may be used for future hover tint
@@ -837,6 +857,33 @@ static ACTIVE_STYLE: std::sync::atomic::AtomicU8 =
 
 pub fn set_active_style(id: u8) {
     ACTIVE_STYLE.store(id, std::sync::atomic::Ordering::Relaxed);
+}
+
+// Toolbar rect — set once at the start of each toolbar frame so tb_btn can
+// read it for full-height hover/active column overlays (Meridien only, #18).
+// Encoded as four f32 bits packed into four AtomicU32 cells (min_x, min_y, max_x, max_y).
+static TB_RECT: [std::sync::atomic::AtomicU32; 4] = [
+    std::sync::atomic::AtomicU32::new(0),
+    std::sync::atomic::AtomicU32::new(0),
+    std::sync::atomic::AtomicU32::new(0),
+    std::sync::atomic::AtomicU32::new(0),
+];
+
+/// Set the toolbar rect at the start of the toolbar panel (gpu.rs ~line 3700).
+pub fn set_toolbar_rect(r: egui::Rect) {
+    TB_RECT[0].store(r.min.x.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    TB_RECT[1].store(r.min.y.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    TB_RECT[2].store(r.max.x.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    TB_RECT[3].store(r.max.y.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Read the stored toolbar rect. Returns a zero-sized rect if not yet set.
+pub fn toolbar_rect() -> egui::Rect {
+    let min_x = f32::from_bits(TB_RECT[0].load(std::sync::atomic::Ordering::Relaxed));
+    let min_y = f32::from_bits(TB_RECT[1].load(std::sync::atomic::Ordering::Relaxed));
+    let max_x = f32::from_bits(TB_RECT[2].load(std::sync::atomic::Ordering::Relaxed));
+    let max_y = f32::from_bits(TB_RECT[3].load(std::sync::atomic::Ordering::Relaxed));
+    egui::Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y))
 }
 
 pub fn current() -> StyleSettings {

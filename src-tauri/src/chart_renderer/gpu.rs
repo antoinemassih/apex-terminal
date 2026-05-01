@@ -3698,6 +3698,8 @@ fn render_toolbar(
         .exact_height((if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale)
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
+        // Publish toolbar rect so tb_btn can read it for full-height hover/active column overlays.
+        super::ui::style::set_toolbar_rect(tb_rect);
         crate::design_tokens::register_hit(
             [tb_rect.min.x, tb_rect.min.y, tb_rect.width(), tb_rect.height()],
             "TOOLBAR", "Toolbar");
@@ -4859,22 +4861,25 @@ fn render_toolbar(
                 if ui.add(ToolbarBtn::new(&format!("{} Feed", Icon::NEWSPAPER)).active(watchlist.feed_panel_open).theme(t)).on_hover_text("Feed (News, Discord, Screenshots)").clicked() {
                     watchlist.feed_panel_open = !watchlist.feed_panel_open;
                 }
+                super::ui::style::tb_group_break(ui, tb_rect, t.toolbar_border);
 
                 // Playbook
                 if ui.add(ToolbarBtn::new(&format!("{} Playbook", Icon::STAR)).active(watchlist.playbook_panel_open).theme(t)).on_hover_text("Playbook (Trade Ideas)").clicked() {
                     watchlist.playbook_panel_open = !watchlist.playbook_panel_open;
                 }
-
+                super::ui::style::tb_group_break(ui, tb_rect, t.toolbar_border);
 
                 // Watchlist toggle
                 if ui.add(ToolbarBtn::new(&format!("{} Watchlist", Icon::LIST)).active(watchlist.open).theme(t)).on_hover_text("Watchlist").clicked() {
                     watchlist.open = !watchlist.open;
                 }
+                super::ui::style::tb_group_break(ui, tb_rect, t.toolbar_border);
 
                 // Analysis sidebar toggle (unified RRG / T&S / Scanner / Scripts)
                 if ui.add(ToolbarBtn::new(&format!("{} Analysis", Icon::CHART_LINE)).active(watchlist.analysis_open).theme(t)).on_hover_text("Analysis Sidebar").clicked() {
                     watchlist.analysis_open = !watchlist.analysis_open;
                 }
+                super::ui::style::tb_group_break(ui, tb_rect, t.toolbar_border);
 
                 // Signals pane (Alerts + Signals)
                 {
@@ -4890,6 +4895,7 @@ fn render_toolbar(
                     }
                     if signals_resp.clicked() { watchlist.signals_panel_open = !watchlist.signals_panel_open; }
                 }
+                super::ui::style::tb_group_break(ui, tb_rect, t.toolbar_border);
 
                 // New window
                 if ui.add(ToolbarBtn::new(&format!("{} Window", Icon::PLUS)).active(false).theme(t)).clicked() {
@@ -5445,6 +5451,11 @@ fn render_chart_pane(
                     [pane_rect.left_bottom(), pane_rect.right_bottom()],
                     rule_col,
                 );
+                // Right hairline
+                painter.line_segment(
+                    [pane_rect.right_top(), pane_rect.right_bottom()],
+                    rule_col,
+                );
                 // Active pane: accent top line inset by 1 px
                 if is_active {
                     let accent_col = t.accent.gamma_multiply(0.55);
@@ -5965,6 +5976,21 @@ fn render_chart_pane(
             // TF is now drawn in the chart-pane top-left badge strip, so the
             // header just shows the ticker. For options we show "UNDER STRIKE"
             // and append 0D / C-P badges after the (no-price-here) ticker.
+
+            // Meridien: hairline divider between nav buttons and symbol label.
+            {
+                let st = super::ui::style::current();
+                if st.hairline_borders {
+                    let div_x = sym_label_x - 4.0;
+                    let div_col = super::ui::style::color_alpha(t.toolbar_border, super::ui::style::alpha_ghost() as u8);
+                    header_painter.line_segment(
+                        [egui::pos2(div_x, header_rect.top() + 2.0),
+                         egui::pos2(div_x, header_rect.bottom() - 2.0)],
+                        egui::Stroke::new(1.0, div_col),
+                    );
+                }
+            }
+
             let title_font = egui::FontId::monospace(title_font_size);
             let sym_label = if chart.is_option && !chart.underlying.is_empty() {
                 let strike = chart.option_strike;
