@@ -5,6 +5,7 @@ use super::style::*;
 use super::super::gpu::{Watchlist, TapeRow, Theme};
 use super::widgets::frames::CompactPanelFrame;
 use super::widgets::text::MonospaceCode;
+use super::widgets::rows::ListRow;
 
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
@@ -47,31 +48,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
 
             let col_w = (panel_w - 12.0) / 3.0;
             for entry in entries.iter().rev().take(200).collect::<Vec<_>>().into_iter().rev() {
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(panel_w - 4.0, row_h), egui::Sense::hover());
-
-                let bg = if entry.is_buy {
-                    color_alpha(rgb(46, 204, 113), 12)
-                } else {
-                    color_alpha(rgb(231, 76, 60), 12)
-                };
-                ui.painter().rect_filled(rect, 0.0, bg);
-
                 let side_color = if entry.is_buy { rgb(46, 204, 113) } else { rgb(231, 76, 60) };
-                let font = egui::FontId::monospace(8.5);
 
-                // Time
+                // Build strings before the closure to avoid borrow issues.
                 let secs = entry.time / 1000;
                 let h = (secs / 3600) % 24;
                 let m = (secs / 60) % 60;
                 let s = secs % 60;
                 let time_str = format!("{:02}:{:02}:{:02}", h, m, s);
-                ui.painter().text(
-                    egui::pos2(rect.left() + 4.0, rect.center().y),
-                    egui::Align2::LEFT_CENTER, &time_str, font.clone(),
-                    t.dim.gamma_multiply(0.6),
-                );
-
-                // Price
                 let price_str = if entry.price >= 100.0 {
                     format!("{:.2}", entry.price)
                 } else if entry.price >= 1.0 {
@@ -79,23 +63,39 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                 } else {
                     format!("{:.6}", entry.price)
                 };
-                ui.painter().text(
-                    egui::pos2(rect.left() + 4.0 + col_w, rect.center().y),
-                    egui::Align2::LEFT_CENTER, &price_str, font.clone(),
-                    side_color,
-                );
-
-                // Size
                 let qty_str = if entry.qty >= 1.0 {
                     format!("{:.4}", entry.qty)
                 } else {
                     format!("{:.6}", entry.qty)
                 };
-                ui.painter().text(
-                    egui::pos2(rect.right() - 4.0, rect.center().y),
-                    egui::Align2::RIGHT_CENTER, &qty_str, font,
-                    egui::Color32::from_gray(180),
-                );
+
+                let dim_color = t.dim.gamma_multiply(0.6);
+                let qty_color = egui::Color32::from_gray(180);
+                let cw = col_w;
+
+                ListRow::new(row_h)
+                    .hover_enabled(false)
+                    .row_tint(side_color, 12)
+                    .body(move |ui| {
+                        let rect = ui.max_rect();
+                        let font = egui::FontId::monospace(8.5);
+                        ui.painter().text(
+                            egui::pos2(rect.left(), rect.center().y),
+                            egui::Align2::LEFT_CENTER, &time_str, font.clone(),
+                            dim_color,
+                        );
+                        ui.painter().text(
+                            egui::pos2(rect.left() + cw, rect.center().y),
+                            egui::Align2::LEFT_CENTER, &price_str, font.clone(),
+                            side_color,
+                        );
+                        ui.painter().text(
+                            egui::pos2(rect.right(), rect.center().y),
+                            egui::Align2::RIGHT_CENTER, &qty_str, font,
+                            qty_color,
+                        );
+                    })
+                    .show(ui);
             }
         });
 }

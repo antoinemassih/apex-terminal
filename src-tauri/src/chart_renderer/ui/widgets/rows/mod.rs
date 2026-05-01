@@ -65,6 +65,7 @@ pub struct ListRow<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> {
     theme_border: Option<Color32>,
     theme_accent: Option<Color32>,
     sense: Sense,
+    row_tint: Option<(Color32, u8)>,
 }
 
 impl<'a> ListRow<'a, fn(&mut Ui), fn(&mut Ui)> {
@@ -84,6 +85,7 @@ impl<'a> ListRow<'a, fn(&mut Ui), fn(&mut Ui)> {
             theme_border: None,
             theme_accent: None,
             sense: Sense::click(),
+            row_tint: None,
         }
     }
 }
@@ -105,6 +107,12 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
     /// Width of the right-aligned trailing zone (default 80).
     pub fn trailing_width(mut self, w: f32) -> Self { self.trailing_width = w; self }
     pub fn sense(mut self, s: Sense) -> Self { self.sense = s; self }
+    /// Paint a full-row tinted background at the given color + alpha (0–255),
+    /// layered on top of the normal hover/selection background. Used for
+    /// buy/sell direction tinting in tape rows and similar directional lists.
+    pub fn row_tint(mut self, color: Color32, alpha: u8) -> Self {
+        self.row_tint = Some((color, alpha)); self
+    }
     pub fn theme(mut self, t: &Theme) -> Self {
         self.theme_bg = Some(t.toolbar_bg);
         self.theme_border = Some(t.toolbar_border);
@@ -118,7 +126,7 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
             indent: self.indent, body: Some(f),
             trailing: self.trailing, trailing_width: self.trailing_width,
             theme_bg: self.theme_bg, theme_border: self.theme_border,
-            theme_accent: self.theme_accent, sense: self.sense,
+            theme_accent: self.theme_accent, sense: self.sense, row_tint: self.row_tint,
         }
     }
     pub fn trailing_actions<T2: FnOnce(&mut Ui) + 'a>(self, f: T2) -> ListRow<'a, B, T2> {
@@ -128,7 +136,7 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
             indent: self.indent, body: self.body,
             trailing: Some(f), trailing_width: self.trailing_width,
             theme_bg: self.theme_bg, theme_border: self.theme_border,
-            theme_accent: self.theme_accent, sense: self.sense,
+            theme_accent: self.theme_accent, sense: self.sense, row_tint: self.row_tint,
         }
     }
     /// Alias of `trailing_actions` — paints right-aligned action icons inside
@@ -158,6 +166,10 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
             Color32::TRANSPARENT
         };
         ui.painter().rect_filled(rect, 2.0, bg);
+
+        if let Some((tint_color, tint_alpha)) = self.row_tint {
+            ui.painter().rect_filled(rect, 0.0, color_alpha(tint_color, tint_alpha));
+        }
 
         if self.selected {
             // Left accent bar like watchlist active rows.
