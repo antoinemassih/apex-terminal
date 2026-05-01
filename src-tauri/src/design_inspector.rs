@@ -995,6 +995,23 @@ fn build_arm(id: u8, s: &crate::chart_renderer::ui::style::StyleSettings) -> Str
         fmt_f32(s.shadow_blur), fmt_f32(s.shadow_offset_y), s.shadow_alpha));
     out.push_str(&format!("{i}density: {}, accent_emphasis: {},\n",
         s.density, fmt_f32(s.accent_emphasis)));
+    // Reference-match fields
+    let fmt_opt_col = |c: Option<egui::Color32>| -> String {
+        match c {
+            None => "None".to_string(),
+            Some(c) => format!("Some(Color32::from_rgb({},{},{}))", c.r(), c.g(), c.b()),
+        }
+    };
+    out.push_str(&format!("{i}active_fill_color: {}, active_text_color: {}, idle_outline_color: {},\n",
+        fmt_opt_col(s.active_fill_color), fmt_opt_col(s.active_text_color), fmt_opt_col(s.idle_outline_color)));
+    out.push_str(&format!("{i}nav_letter_spacing_px: {}, tab_underline_thickness: {},\n",
+        fmt_f32(s.nav_letter_spacing_px), fmt_f32(s.tab_underline_thickness)));
+    out.push_str(&format!("{i}tab_underline_under_text: {}, card_floating_shadow: {},\n",
+        fmt_bool(s.tab_underline_under_text), fmt_bool(s.card_floating_shadow)));
+    out.push_str(&format!("{i}card_floating_shadow_alpha: {}, segmented_idle_fill: {}, segmented_idle_text: {},\n",
+        s.card_floating_shadow_alpha, fmt_opt_col(s.segmented_idle_fill), fmt_opt_col(s.segmented_idle_text)));
+    out.push_str(&format!("{i}cta_height_px: {}, cta_padding_x: {},\n",
+        fmt_f32(s.cta_height_px), fmt_f32(s.cta_padding_x)));
     out.push_str("        },");
     out
 }
@@ -1366,6 +1383,64 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.label(RichText::new("Density & Color").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_u8(ui,  "density",         &mut s.density);
                 local_changed |= style_drag_f32(ui, "accent_emphasis", &mut s.accent_emphasis, 0.5..=2.0);
+
+                ui.add_space(4.0);
+
+                // ── Reference Match (Newsprint/editorial) ─────────────────────
+                ui.label(RichText::new("Reference Match").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+
+                // active_fill_color
+                {
+                    let mut enabled = s.active_fill_color.is_some();
+                    let prev = enabled;
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut enabled, "active_fill_color").changed() || enabled != prev {
+                            if enabled { s.active_fill_color = Some(Color32::BLACK); }
+                            else { s.active_fill_color = None; }
+                            local_changed = true;
+                        }
+                        if let Some(ref mut c) = s.active_fill_color {
+                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
+                        }
+                    });
+                }
+                // active_text_color
+                {
+                    let mut enabled = s.active_text_color.is_some();
+                    let prev = enabled;
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut enabled, "active_text_color").changed() || enabled != prev {
+                            if enabled { s.active_text_color = Some(Color32::WHITE); }
+                            else { s.active_text_color = None; }
+                            local_changed = true;
+                        }
+                        if let Some(ref mut c) = s.active_text_color {
+                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
+                        }
+                    });
+                }
+                // idle_outline_color
+                {
+                    let mut enabled = s.idle_outline_color.is_some();
+                    let prev = enabled;
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut enabled, "idle_outline_color").changed() || enabled != prev {
+                            if enabled { s.idle_outline_color = Some(Color32::from_rgb(60,56,44)); }
+                            else { s.idle_outline_color = None; }
+                            local_changed = true;
+                        }
+                        if let Some(ref mut c) = s.idle_outline_color {
+                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
+                        }
+                    });
+                }
+                local_changed |= style_drag_f32(ui, "nav_letter_spacing_px",   &mut s.nav_letter_spacing_px,   0.0..=6.0);
+                local_changed |= style_drag_f32(ui, "tab_underline_thickness",  &mut s.tab_underline_thickness,  0.0..=8.0);
+                local_changed |= style_checkbox(ui,  "tab_underline_under_text", &mut s.tab_underline_under_text);
+                local_changed |= style_checkbox(ui,  "card_floating_shadow",     &mut s.card_floating_shadow);
+                local_changed |= style_drag_u8(ui,   "card_floating_shadow_alpha", &mut s.card_floating_shadow_alpha);
+                local_changed |= style_drag_f32(ui, "cta_height_px",  &mut s.cta_height_px,  16.0..=64.0);
+                local_changed |= style_drag_f32(ui, "cta_padding_x",  &mut s.cta_padding_x,  4.0..=32.0);
 
                 // Delete button for user presets
                 if !is_canonical {

@@ -157,19 +157,36 @@ pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let st = current();
     // Apply uppercase transform per active style (#5).
-    let display_label = style_label_case(label);
+    // For nav buttons, apply nav_letter_spacing_px separately from label_letter_spacing_px.
+    let display_label = {
+        let base = style_label_case(label);
+        let nav_sp = st.nav_letter_spacing_px;
+        if nav_sp < 0.5 {
+            base
+        } else {
+            let gap = if nav_sp > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
+            let parts: Vec<String> = base.chars().map(|c| c.to_string()).collect();
+            parts.join(gap)
+        }
+    };
     let corner_r = st.r_sm as f32;
+
+    // Resolve active fill/text from style overrides or fallback to accent.
+    let active_fill = st.active_fill_color.unwrap_or(accent);
+    let active_text = st.active_text_color.unwrap_or(accent);
 
     // Button treatment dispatch (#18).
     let (bg, fg, border) = match st.button_treatment {
         ButtonTreatment::UnderlineActive => {
-            // Transparent idle; text color shifts on active.
-            let fg = if active { accent } else { dim };
+            // Transparent idle; active uses active_fill/text overrides.
+            let fg = if active { active_text } else { dim };
             (Color32::TRANSPARENT, fg, Color32::TRANSPARENT)
         }
         _ => {
-            let bg = if active { color_alpha(accent, alpha_tint()) } else { color_alpha(toolbar_border, alpha_ghost()) };
-            let fg = if active { accent } else { dim };
+            let bg = if active {
+                if st.active_fill_color.is_some() { active_fill } else { color_alpha(accent, alpha_tint()) }
+            } else { color_alpha(toolbar_border, alpha_ghost()) };
+            let fg = if active { active_text } else { dim };
             let border = if active { color_alpha(accent, alpha_active()) } else { color_alpha(toolbar_border, alpha_muted()) };
             (bg, fg, border)
         }
@@ -205,10 +222,11 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         };
         bg_painter.rect_filled(col_rect, 0.0, col_tint);
         if active {
+            let ul_thickness = if st.tab_underline_thickness > 0.0 { st.tab_underline_thickness } else { st.stroke_bold };
             let underline_y = tb.bottom() - 1.0;
             bg_painter.line_segment(
                 [egui::pos2(btn_rect.left(), underline_y), egui::pos2(btn_rect.right(), underline_y)],
-                Stroke::new(st.stroke_bold, accent));
+                Stroke::new(ul_thickness, active_fill));
         }
         // Place the actual button in the already-allocated rect via put().
         let resp = ui.put(btn_rect, egui::Button::new(RichText::new(display_label).monospace().size(12.0).color(fg))
@@ -281,6 +299,13 @@ pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, widt
             blur: 28,
             spread: 2,
             color: Color32::from_black_alpha(80),
+        }
+    } else if st.card_floating_shadow {
+        egui::epaint::Shadow {
+            offset: [0, 3],
+            blur: 8,
+            spread: 0,
+            color: Color32::from_black_alpha(st.card_floating_shadow_alpha),
         }
     } else {
         egui::epaint::Shadow::NONE
@@ -714,6 +739,33 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
     resp.clicked()
 }
 
+/// Primary CTA button — solid filled accent, style-driven height/padding.
+/// Use for the "REVIEW BUY" / "PLACE ORDER" terminal action at the bottom of order tickets.
+/// The fill color and text color follow `active_fill_color` / `active_text_color` overrides
+/// when set (Newsprint: black fill + white text), otherwise uses `color` directly.
+pub fn cta_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
+    let st = current();
+    let fill = st.active_fill_color.unwrap_or(color);
+    let fg   = st.active_text_color.unwrap_or(Color32::WHITE);
+    let h    = st.cta_height_px;
+    let px   = st.cta_padding_x;
+    let cr   = st.r_sm as f32;
+    let prev_pad = ui.spacing().button_padding;
+    ui.spacing_mut().button_padding = egui::vec2(px, 4.0);
+    let resp = ui.add_enabled(enabled,
+        egui::Button::new(RichText::new(label).monospace().size(font_md()).strong().color(fg))
+            .fill(if enabled { fill } else { color_alpha(fill, alpha_muted()) })
+            .stroke(Stroke::NONE)
+            .corner_radius(cr)
+            .min_size(egui::vec2(ui.available_width(), h)));
+    ui.spacing_mut().button_padding = prev_pad;
+    hit(&resp.rect, "CTA_BTN", "Buttons");
+    if resp.hovered() && enabled && !crate::design_tokens::is_inspect_mode() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
+}
+
 /// Small action button — for inline header actions like "Clear All", "Close All".
 pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool {
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(color))
@@ -926,6 +978,40 @@ pub struct StyleSettings {
     pub density: u8,
     /// Saturation/brightness multiplier for accent on active elements.
     pub accent_emphasis: f32,
+
+    // ── Reference-match fields (Newsprint/editorial style) ────────────────
+    /// Fill color for active segments/buttons. `None` = use theme.accent.
+    /// Meridien: Some(BLACK), Aperture/Octave: None.
+    pub active_fill_color: Option<Color32>,
+    /// Text color on active segments/buttons. `None` = contrast-auto.
+    /// Meridien: Some(WHITE), Aperture/Octave: None.
+    pub active_text_color: Option<Color32>,
+    /// Outline color for idle connected-pill segments.
+    /// `None` = use toolbar_border. Meridien: Some(near-black dim).
+    pub idle_outline_color: Option<Color32>,
+    /// Letter-spacing added between glyphs in toolbar nav buttons (px).
+    /// Meridien: 1.5, others: 0.
+    pub nav_letter_spacing_px: f32,
+    /// Thickness of the tab-active underline in pane headers.
+    /// Meridien: 2.0, Aperture: 0.0 (hidden), Octave: 1.0.
+    pub tab_underline_thickness: f32,
+    /// When true, draw the underline directly under active tab text (not at header bottom).
+    /// Meridien: true, others: false.
+    pub tab_underline_under_text: bool,
+    /// Show a subtle floating shadow on card windows even when `shadows_enabled` is false.
+    /// Meridien: true, Aperture: covered by shadows_enabled, Octave: false.
+    pub card_floating_shadow: bool,
+    /// Alpha for the card floating shadow (0-255). Meridien: 25, others: 0.
+    pub card_floating_shadow_alpha: u8,
+    /// Fill for idle segments in connected-pill SegmentedControl.
+    /// `None` = transparent. Meridien: None.
+    pub segmented_idle_fill: Option<Color32>,
+    /// Text color for idle segments. `None` = use dim.
+    pub segmented_idle_text: Option<Color32>,
+    /// Height for the primary CTA button in px. Meridien: 36, Aperture: 40, Octave: 32.
+    pub cta_height_px: f32,
+    /// Horizontal padding for the primary CTA button in px. Meridien: 16, others: 12.
+    pub cta_padding_x: f32,
 }
 
 // Active style selection — set once at the top of each draw_chart frame
@@ -995,6 +1081,11 @@ fn style_defaults(id: u8) -> StyleSettings {
             focus_ring_width: 2.0, focus_ring_alpha: 90, disabled_opacity: 0.5,
             shadow_blur: 24.0, shadow_offset_y: 8.0, shadow_alpha: 40,
             density: 2, accent_emphasis: 1.1,
+            active_fill_color: None, active_text_color: None, idle_outline_color: None,
+            nav_letter_spacing_px: 0.0, tab_underline_thickness: 0.0,
+            tab_underline_under_text: false, card_floating_shadow: false,
+            card_floating_shadow_alpha: 0, segmented_idle_fill: None, segmented_idle_text: None,
+            cta_height_px: 40.0, cta_padding_x: 12.0,
         },
         2 => StyleSettings {
             r_xs: 1, r_sm: 2, r_md: 3, r_lg: 4, r_pill: 99,
@@ -1019,6 +1110,11 @@ fn style_defaults(id: u8) -> StyleSettings {
             focus_ring_width: 1.5, focus_ring_alpha: 110, disabled_opacity: 0.45,
             shadow_blur: 8.0, shadow_offset_y: 4.0, shadow_alpha: 20,
             density: 0, accent_emphasis: 0.95,
+            active_fill_color: None, active_text_color: None, idle_outline_color: None,
+            nav_letter_spacing_px: 0.0, tab_underline_thickness: 1.0,
+            tab_underline_under_text: false, card_floating_shadow: false,
+            card_floating_shadow_alpha: 0, segmented_idle_fill: None, segmented_idle_text: None,
+            cta_height_px: 32.0, cta_padding_x: 12.0,
         },
         _ => StyleSettings {
             r_xs: 0, r_sm: 0, r_md: 0, r_lg: 0, r_pill: 0,
@@ -1031,7 +1127,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             uppercase_section_labels: true, label_letter_spacing_px: 1.0,
             toolbar_height_scale: 1.40, header_height_scale: 1.10,
             font_hero: 36.0, vertical_group_dividers: true,
-            show_active_tab_underline: false,
+            show_active_tab_underline: true,
             active_header_fill_multiply: 0.95, inactive_header_fill: false,
             account_strip_height: 36.0,
             pane_border_width: 0.5, pane_gap: 0.0,
@@ -1043,6 +1139,12 @@ fn style_defaults(id: u8) -> StyleSettings {
             focus_ring_width: 1.0, focus_ring_alpha: 120, disabled_opacity: 0.4,
             shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
             density: 1, accent_emphasis: 1.0,
+            active_fill_color: Some(Color32::BLACK), active_text_color: Some(Color32::WHITE),
+            idle_outline_color: Some(Color32::from_rgb(60, 56, 44)),
+            nav_letter_spacing_px: 1.5, tab_underline_thickness: 2.0,
+            tab_underline_under_text: true, card_floating_shadow: true,
+            card_floating_shadow_alpha: 25, segmented_idle_fill: None, segmented_idle_text: None,
+            cta_height_px: 36.0, cta_padding_x: 16.0,
         },
     }
 }

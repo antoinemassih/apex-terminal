@@ -144,6 +144,7 @@ pub(crate) const THEMES: &[Theme] = &[
     Theme { name: "Bauhaus",     bg: rgb(242,242,238), bull: rgb(20,120,60),   bear: rgb(200,55,45),   dim: rgb(120,125,130), toolbar_bg: rgb(248,248,245), toolbar_border: rgb(225,225,220), accent: rgb(232,93,38),   text: rgb(22,22,24) },
     Theme { name: "Peach",       bg: rgb(243,241,238), bull: rgb(22,130,70),   bear: rgb(195,50,55),   dim: rgb(115,120,125), toolbar_bg: rgb(250,248,246), toolbar_border: rgb(228,225,220), accent: rgb(210,95,70),   text: rgb(20,20,22) },
     Theme { name: "Ivory",       bg: rgb(240,242,238), bull: rgb(80,160,50),   bear: rgb(210,60,50),   dim: rgb(118,122,128), toolbar_bg: rgb(248,250,246), toolbar_border: rgb(222,226,218), accent: rgb(160,190,40),  text: rgb(18,20,22) },
+    Theme { name: "Newsprint",   bg: rgb(238,232,220), bull: rgb(34,94,56),    bear: rgb(168,52,52),   dim: rgb(120,116,104), toolbar_bg: rgb(238,232,220), toolbar_border: rgb(180,170,150), accent: rgb(34,94,56),    text: rgb(28,28,28) },
 ];
 // └─ THEMES_END ────────────────────────────────────────────────────────────────
 
@@ -5533,11 +5534,15 @@ fn render_chart_pane(
                 hp.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(1.2));
             }
             if is_active && visible_count > 1 && st.show_active_tab_underline {
-                let underline_y = header_rect.bottom() - 1.0;
-                let (uw, ucol) = if style == 1 {
-                    (2.0_f32, color_alpha(t.accent, 140))
+                let uw = if st.tab_underline_thickness > 0.0 {
+                    st.tab_underline_thickness
+                } else if style == 1 { 2.0 } else { 3.0 };
+                let ucol = if style == 1 { color_alpha(t.accent, 140) } else { t.accent };
+                let underline_y = if st.tab_underline_under_text {
+                    // Under text: position at roughly text baseline inside header
+                    header_rect.top() + header_rect.height() * 0.82
                 } else {
-                    (3.0_f32, t.accent)
+                    header_rect.bottom() - 1.0
                 };
                 hp.line_segment(
                     [egui::pos2(header_rect.left(), underline_y),

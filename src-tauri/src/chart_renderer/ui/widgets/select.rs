@@ -516,14 +516,25 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
         let min_h = self.height.unwrap_or(if self.compact { 14.0 } else { 20.0 });
         let n = self.options.len();
 
+        let st = super::super::style::current();
         ui.horizontal(|ui| {
             for (i, (val, label)) in self.options.iter().enumerate() {
                 let active = val == current;
-                let fg = if active { accent } else { dim };
+                // Resolve active/idle colors from style overrides.
+                let active_fill = st.active_fill_color.unwrap_or_else(|| color_alpha(accent, alpha_tint()));
+                let active_fg   = st.active_text_color.unwrap_or(accent);
+                let idle_fg     = st.segmented_idle_text.unwrap_or(dim);
+                let fg = if active { active_fg } else { idle_fg };
+                let idle_border_col = st.idle_outline_color
+                    .or(st.segmented_idle_fill)
+                    .unwrap_or(Color32::TRANSPARENT);
                 let (bg, border) = if active {
-                    (color_alpha(accent, alpha_tint()), color_alpha(accent, alpha_dim()))
+                    // solid black (or accent) fill; use active_fill for border too
+                    let fill = if st.active_fill_color.is_some() { active_fill } else { color_alpha(accent, alpha_tint()) };
+                    (fill, color_alpha(accent, alpha_dim()))
                 } else {
-                    (Color32::TRANSPARENT, Color32::TRANSPARENT)
+                    let idle_bg = st.segmented_idle_fill.unwrap_or(Color32::TRANSPARENT);
+                    (idle_bg, idle_border_col)
                 };
 
                 let corner_r: egui::CornerRadius = if self.connected_pills {
