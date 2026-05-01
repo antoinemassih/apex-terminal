@@ -113,7 +113,7 @@ pub(crate) fn render(
     let sep_y = metrics_top + metrics_h + 4.0;
     painter.line_segment(
         [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
-        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, alpha_muted())));
 
     // ── Positions table ────────────────────────────────────────────────────────
     let table_top = sep_y + 8.0;
@@ -294,7 +294,7 @@ pub(crate) fn render(
                 }
                 painter.rect_filled(egui::Rect::from_min_size(
                     egui::pos2(sector_x, gauge_y), egui::vec2(gauge_w, 6.0)),
-                    3.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                    3.0, color_alpha(t.toolbar_border, alpha_muted()));
                 let fill_w = gauge_w * (margin_util / 100.0).min(1.0);
                 let gauge_col = if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
                 painter.rect_filled(egui::Rect::from_min_size(

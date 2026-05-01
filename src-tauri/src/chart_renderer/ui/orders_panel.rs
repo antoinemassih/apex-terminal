@@ -44,8 +44,8 @@ if watchlist.orders_panel_open {
             ui.painter().line_segment(
                 [egui::pos2(ui.min_rect().left(), line_y),
                  egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_MUTED)));
-            ui.add_space(GAP_SM);
+                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())));
+            ui.add_space(gap_sm());
 
             if watchlist.book_tab == BookTab::Journal {
                 super::journal_panel::draw_content(ui, watchlist, t);
@@ -84,7 +84,7 @@ if watchlist.orders_panel_open {
                         for pos in &ib_positions {
                             total_pnl += pos.unrealized_pnl;
                             let pnl_color = if pos.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
-                            order_card(ui, pnl_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
+                            order_card(ui, pnl_color, color_alpha(t.toolbar_border, alpha_faint()), |ui| {
                                 // Row 1: symbol, qty@price, close buttons
                                 ui.horizontal(|ui| {
                                     ui.add(MonospaceCode::new(&pos.symbol).size_px(9.0).strong(true).color(TEXT_PRIMARY));
@@ -115,7 +115,7 @@ if watchlist.orders_panel_open {
                                         // Close half button
                                         if pos.qty.abs() > 1 {
                                             if ui.add(ChromeBtn::new(egui::RichText::new("\u{00BD}").size(9.0).color(t.dim))
-                                                .fill(color_alpha(t.toolbar_border, ALPHA_GHOST)).corner_radius(r_sm_cr())
+                                                .fill(color_alpha(t.toolbar_border, alpha_ghost())).corner_radius(r_sm_cr())
                                                 .min_size(egui::vec2(18.0, 16.0))).clicked() {
                                                 let sym = pos.symbol.clone();
                                                 let half = (pos.qty.abs() / 2).max(1);
@@ -177,7 +177,7 @@ if watchlist.orders_panel_open {
                 // 2px solid line like sidebar border
                 ui.painter().rect_filled(
                     egui::Rect::from_min_max(egui::pos2(r.left(), y), egui::pos2(r.right(), y + 2.0)),
-                    0.0, color_alpha(t.toolbar_border, ALPHA_HEAVY));
+                    0.0, color_alpha(t.toolbar_border, alpha_heavy()));
                 ui.add_space(6.0);
             }
 
@@ -316,7 +316,7 @@ if watchlist.orders_panel_open {
                 let ib_orders = account_data_cached.as_ref().map(|(_, _, o)| o.clone()).unwrap_or_default();
                 if !ib_orders.is_empty() {
                     ui.add_space(4.0);
-                    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
                     ui.add_space(4.0);
                     wtext::section_label(ui, "IB ORDERS", t.accent);
                     ui.add_space(4.0);
@@ -358,7 +358,7 @@ if watchlist.orders_panel_open {
                 // ── Alerts ──
                 if !watchlist.alerts.is_empty() {
                     ui.add_space(4.0);
-                    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
                     ui.add_space(4.0);
                     wtext::section_label(ui, "ALERTS", t.dim);
                     ui.add_space(4.0);
@@ -366,7 +366,7 @@ if watchlist.orders_panel_open {
                     for alert in &watchlist.alerts {
                         let dir = if alert.above { "\u{2191}" } else { "\u{2193}" };
                         let alert_color = if alert.triggered { t.accent } else { t.dim };
-                        order_card(ui, alert_color, color_alpha(t.toolbar_border, ALPHA_FAINT), |ui| {
+                        order_card(ui, alert_color, color_alpha(t.toolbar_border, alpha_faint()), |ui| {
                             ui.horizontal(|ui| {
                                 ui.add(MonospaceCode::new(&alert.symbol).size_px(9.0).strong(true).color(TEXT_PRIMARY));
                                 ui.add(MonospaceCode::new(&format!("{} {:.2}", dir, alert.price)).size_px(9.0).color(alert_color));

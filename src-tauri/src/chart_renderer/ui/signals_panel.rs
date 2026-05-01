@@ -48,7 +48,7 @@ pub(crate) fn draw(
             let line_y = header.response.rect.max.y;
             ui.painter().line_segment(
                 [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())));
 
             let available_h = ui.available_height();
             let n = watchlist.signals_splits.len();
@@ -95,7 +95,7 @@ pub(crate) fn draw(
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
                      egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-                    egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_FAINT)));
+                    egui::Stroke::new(0.5, color_alpha(t.toolbar_border, alpha_faint())));
 
                 egui::ScrollArea::vertical().id_salt(format!("sig_sec_{}", i)).max_height(h).show(ui, |ui| {
                     match tab {
@@ -130,7 +130,7 @@ pub(crate) fn draw(
 
 /// Per-signal visibility toggles.
 fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &Theme) {
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
 
     let chart = &mut panes[ap];
     let demo_on = chart.trend_health_score > 0.0 || chart.precursor_active || chart.trade_plan.is_some();
@@ -142,12 +142,12 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
             if small_action_btn(ui, label, color) { chart.signal_demo_toggle = true; }
         });
     });
-    ui.add_space(GAP_SM);
-    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-    ui.add_space(GAP_MD);
+    ui.add_space(gap_sm());
+    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    ui.add_space(gap_md());
 
     ui.add(widgets::text::SectionLabel::new("VISIBILITY").tiny().color(t.dim));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
 
     let toggles: &mut [(&str, &str, &mut bool)] = &mut [
         ("Trend Health",    "Momentum & regime gauge (top-right)", &mut chart.show_trend_health),
@@ -168,7 +168,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
 
     for (name, hint, flag) in toggles {
         ui.horizontal(|ui| {
-            ui.add_space(GAP_SM);
+            ui.add_space(gap_sm());
             let icon = if **flag { Icon::EYE } else { Icon::EYE_SLASH };
             let color = if **flag { t.accent } else { t.dim.gamma_multiply(0.4) };
             if icon_btn(ui, icon, color, FONT_MD).clicked() { **flag = !**flag; }
@@ -178,7 +178,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
                 ui.add(widgets::text::MonospaceCode::new(*hint).xs().color(t.dim.gamma_multiply(0.5)));
             });
         });
-        ui.add_space(GAP_XS);
+        ui.add_space(gap_xs());
     }
 
     chart.hide_signal_drawings = !chart.show_auto_trendlines;

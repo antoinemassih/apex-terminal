@@ -9,7 +9,7 @@ use super::widgets::text::{BodyLabel, SectionLabel};
 
 /// Build a FormRow pre-configured to match the legacy `setting_row` look:
 /// 190px label gutter, left-aligned label in white_alpha(180), body right-aligned
-/// with 10px inner pad, GAP_XS bottom margin.
+/// with 10px inner pad, gap_xs() bottom margin.
 fn srow<'a>(label: &'a str, margin: f32) -> FormRow<'a> {
     FormRow::new(label)
         .gutter(190.0)
@@ -18,7 +18,7 @@ fn srow<'a>(label: &'a str, margin: f32) -> FormRow<'a> {
         .label_color(egui::Color32::from_white_alpha(180))
         .alignment(FormRowAlign::Right)
         .inner_pad(10.0)
-        .margins(0.0, GAP_XS)
+        .margins(0.0, gap_xs())
 }
 
 /// Settings tab selector.
@@ -31,13 +31,13 @@ if !watchlist.settings_open { return; }
 let screen = ctx.screen_rect();
 let dialog_w = 580.0_f32;
 let dialog_h = (screen.height() * 0.82).min(780.0).max(400.0);
-let border = color_alpha(t.toolbar_border, ALPHA_ACTIVE);
+let border = color_alpha(t.toolbar_border, alpha_active());
 egui::Window::new("settings_panel".to_string())
     .fixed_pos(egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0))
     .fixed_size(egui::vec2(dialog_w, dialog_h))
     .title_bar(false)
     .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(0.0).outer_margin(0.0)
-        .stroke(egui::Stroke::new(STROKE_STD, border)).corner_radius(r_lg_cr()))
+        .stroke(egui::Stroke::new(stroke_std(), border)).corner_radius(r_lg_cr()))
     .show(ctx, |ui| {
         if super::widgets::headers::DialogHeaderWithClose::new("SETTINGS").dim(t.dim).show(ui) { watchlist.settings_open = false; }
 
@@ -45,7 +45,7 @@ egui::Window::new("settings_panel".to_string())
         let tab_id = egui::Id::new("settings_active_tab");
         let mut tab: SettingsTab = ui.data_mut(|d| *d.get_temp_mut_or(tab_id, SettingsTab::Appearance));
         ui.horizontal(|ui| {
-            ui.add_space(GAP_LG);
+            ui.add_space(gap_lg());
             super::widgets::tabs::TabBar::new(&mut tab, &[
                 (SettingsTab::Appearance, "Appearance"),
                 (SettingsTab::Chart,     "Chart"),
@@ -54,8 +54,8 @@ egui::Window::new("settings_panel".to_string())
             ]).accent(t.accent).dim(t.dim).show(ui);
         });
         ui.data_mut(|d| d.insert_temp(tab_id, tab));
-        separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-        ui.add_space(GAP_SM);
+        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+        ui.add_space(gap_sm());
 
         // ── Tab content in a scroll area ──
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -68,11 +68,11 @@ egui::Window::new("settings_panel".to_string())
 // APPEARANCE TAB
 // ═══════════════════════════════════════════════════════════════
 SettingsTab::Appearance => {
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
 
     // ── Theme — big preview blocks with mini chart layout ──
     dialog_section(ui, "THEME", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     {
         let card_w = 80.0;
         let card_h = 48.0;
@@ -88,12 +88,12 @@ SettingsTab::Appearance => {
                     let p = ui.painter();
 
                     // Background fill
-                    p.rect_filled(r, RADIUS_MD, th.bg);
+                    p.rect_filled(r, radius_md(), th.bg);
 
                     // Mini toolbar bar at top
                     let tb_h = 6.0;
                     let tb_rect = egui::Rect::from_min_size(r.min, egui::vec2(card_w, tb_h));
-                    p.rect_filled(tb_rect, egui::CornerRadius { nw: RADIUS_MD as u8, ne: RADIUS_MD as u8, sw: 0, se: 0 },
+                    p.rect_filled(tb_rect, egui::CornerRadius { nw: radius_md() as u8, ne: radius_md() as u8, sw: 0, se: 0 },
                         egui::Color32::from_rgb(
                             th.bg.r().saturating_add(12),
                             th.bg.g().saturating_add(12),
@@ -119,7 +119,7 @@ SettingsTab::Appearance => {
                         p.line_segment(
                             [egui::pos2(x + bar_w / 2.0, body_top - 3.0),
                              egui::pos2(x + bar_w / 2.0, body_bot + 3.0)],
-                            egui::Stroke::new(0.5, color_alpha(color, ALPHA_STRONG)));
+                            egui::Stroke::new(0.5, color_alpha(color, alpha_strong())));
                         // Body
                         p.rect_filled(
                             egui::Rect::from_min_max(
@@ -131,7 +131,7 @@ SettingsTab::Appearance => {
                     let accent_y = chart_mid - 2.0;
                     p.line_segment(
                         [egui::pos2(r.left() + 6.0, accent_y), egui::pos2(r.right() - 6.0, accent_y)],
-                        egui::Stroke::new(1.0, color_alpha(th.accent, ALPHA_STRONG)));
+                        egui::Stroke::new(1.0, color_alpha(th.accent, alpha_strong())));
 
                     // Theme name at bottom
                     p.text(
@@ -143,9 +143,9 @@ SettingsTab::Appearance => {
 
                     // Selection border
                     if sel {
-                        p.rect_stroke(r, RADIUS_MD, egui::Stroke::new(2.0, th.accent), egui::StrokeKind::Outside);
+                        p.rect_stroke(r, radius_md(), egui::Stroke::new(2.0, th.accent), egui::StrokeKind::Outside);
                     } else if resp.hovered() {
-                        p.rect_stroke(r, RADIUS_MD, egui::Stroke::new(1.0, color_alpha(th.accent, ALPHA_LINE)), egui::StrokeKind::Outside);
+                        p.rect_stroke(r, radius_md(), egui::Stroke::new(1.0, color_alpha(th.accent, alpha_line())), egui::StrokeKind::Outside);
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
                     if resp.clicked() { commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i }); }
@@ -153,11 +153,11 @@ SettingsTab::Appearance => {
             });
         }
     }
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
     // ── Font Scale ──
     dialog_section(ui, "FONT SCALE", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     srow("Size", m).show(ui, t, |ui| {
         let display_pct = ((watchlist.font_scale - 0.96) / 0.016).round() as i32 + 60;
         let mut dp = display_pct.clamp(60, 160);
@@ -171,18 +171,18 @@ SettingsTab::Appearance => {
         for (label, ppp) in [(60, 0.96_f32), (80, 1.28), (100, 1.6), (120, 1.92), (140, 2.24), (160, 2.56)] {
             let active = (watchlist.font_scale - ppp).abs() < 0.05;
             let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
-            let bg = if active { color_alpha(t.accent, ALPHA_SUBTLE) } else { egui::Color32::TRANSPARENT };
+            let bg = if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT };
             if ui.add(egui::Button::new(egui::RichText::new(format!("{}%", label)).monospace().size(FONT_SM).color(fg))
                 .fill(bg).corner_radius(r_sm_cr()).min_size(egui::vec2(34.0, 20.0))).clicked() {
                 watchlist.font_scale = ppp;
             }
         }
     });
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
     // ── Font Family ──
     dialog_section(ui, "FONT", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     {
         let font_names = crate::ui_kit::icons::FONT_NAMES;
         let current_idx = watchlist.font_idx.min(font_names.len() - 1);
@@ -200,14 +200,14 @@ SettingsTab::Appearance => {
                     let sel = current_idx == i;
                     let (r, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
 
-                    let bg = if sel { color_alpha(t.accent, ALPHA_TINT) }
-                        else if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_SUBTLE) }
-                        else { color_alpha(t.toolbar_border, ALPHA_FAINT) };
+                    let bg = if sel { color_alpha(t.accent, alpha_tint()) }
+                        else if resp.hovered() { color_alpha(t.toolbar_border, alpha_subtle()) }
+                        else { color_alpha(t.toolbar_border, alpha_faint()) };
                     let border_col = if sel { t.accent }
-                        else if resp.hovered() { color_alpha(t.accent, ALPHA_LINE) }
-                        else { color_alpha(t.toolbar_border, ALPHA_MUTED) };
-                    ui.painter().rect_filled(r, RADIUS_MD, bg);
-                    ui.painter().rect_stroke(r, RADIUS_MD,
+                        else if resp.hovered() { color_alpha(t.accent, alpha_line()) }
+                        else { color_alpha(t.toolbar_border, alpha_muted()) };
+                    ui.painter().rect_filled(r, radius_md(), bg);
+                    ui.painter().rect_stroke(r, radius_md(),
                         egui::Stroke::new(if sel { 1.5 } else { 0.5 }, border_col), egui::StrokeKind::Outside);
 
                     // Font name
@@ -240,11 +240,11 @@ SettingsTab::Appearance => {
             });
         }
     }
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
     // ── Layout ──
     dialog_section(ui, "LAYOUT", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     setting_toggle(ui, m, "Compact Toolbar", t, &mut watchlist.compact_mode);
     setting_toggle(ui, m, "Auto-Hide Toolbar", t, &mut watchlist.toolbar_auto_hide);
     srow("Pane Headers", m).show(ui, t, |ui| {
@@ -262,38 +262,38 @@ SettingsTab::Appearance => {
             watchlist.pane_header_size = labels[i].0;
         }
     });
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 }
 
 // ═══════════════════════════════════════════════════════════════
 // CHART TAB
 // ═══════════════════════════════════════════════════════════════
 SettingsTab::Chart => {
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
 
     // ── Axes ──
     dialog_section(ui, "AXES & GRID", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     setting_toggle(ui, m, "Show X-Axis (time)", t, &mut watchlist.show_x_axis);
     setting_toggle(ui, m, "Show Y-Axis (price)", t, &mut watchlist.show_y_axis);
     setting_toggle(ui, m, "Shared X-Axis (multi-pane)", t, &mut watchlist.shared_x_axis);
     setting_toggle(ui, m, "Shared Y-Axis (multi-pane)", t, &mut watchlist.shared_y_axis);
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
     // ── Chart Behavior ──
     dialog_section(ui, "CHART BEHAVIOR", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     setting_toggle(ui, m, "OHLC Tooltip", t, &mut chart.ohlc_tooltip);
     setting_toggle(ui, m, "Magnet Snap", t, &mut chart.magnet);
     setting_toggle(ui, m, "Log Scale", t, &mut chart.log_scale);
     setting_toggle(ui, m, "Show Volume", t, &mut chart.show_volume);
     setting_toggle(ui, m, "Show Oscillators", t, &mut chart.show_oscillators);
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
     // ── Sessions ──
     let is_crypto = crate::data::is_crypto(&chart.symbol);
     dialog_section(ui, "SESSIONS", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     if is_crypto {
         ui.horizontal(|ui| {
             ui.add_space(m);
@@ -316,7 +316,7 @@ SettingsTab::Chart => {
                         let active = chart.session_bg_color == hex;
                         let c = hex_to_color(hex, 1.0);
                         let fg = if active { t.accent } else { egui::Color32::from_white_alpha(120) };
-                        let bg = if active { color_alpha(c, ALPHA_STRONG) } else { color_alpha(c, ALPHA_MUTED) };
+                        let bg = if active { color_alpha(c, alpha_strong()) } else { color_alpha(c, alpha_muted()) };
                         if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(8.0).color(fg))
                             .fill(bg).corner_radius(r_sm_cr()).min_size(egui::vec2(38.0, 18.0))).clicked() {
                             chart.session_bg_color = hex.to_string();
@@ -340,20 +340,20 @@ SettingsTab::Chart => {
             });
         }
     }
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 }
 
 // ═══════════════════════════════════════════════════════════════
 // TRADING TAB
 // ═══════════════════════════════════════════════════════════════
 SettingsTab::Trading => {
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
 
     // ── Paper Mode ──
     dialog_section(ui, "MODE", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     {
         let was_paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
         let mut paper = was_paper;
@@ -373,11 +373,11 @@ SettingsTab::Trading => {
         };
         ui.add(SectionLabel::new(label).tiny().color(color));
     });
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
     // ── Order Defaults ──
     dialog_section(ui, "ORDER DEFAULTS", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     srow("Stock Qty", m).show(ui, t, |ui| {
         let mut v = watchlist.default_stock_qty as i32;
         if ui.add(egui::DragValue::new(&mut v).range(1..=100_000).speed(10)
@@ -397,13 +397,13 @@ SettingsTab::Trading => {
         for (i, label) in ["MKT", "LMT", "STP"].iter().enumerate() {
             let sel = watchlist.default_order_type == i;
             let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.6) };
-            let bg = if sel { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) };
+            let bg = if sel { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_soft()) };
             let cr = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
                 else if i == 2 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
                 else { egui::CornerRadius::ZERO };
             if ui.add(egui::Button::new(egui::RichText::new(*label).monospace().size(FONT_SM).color(fg))
                 .fill(bg).corner_radius(cr).min_size(egui::vec2(34.0, 20.0))
-                .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_STRONG) } else { color_alpha(t.toolbar_border, ALPHA_MUTED) })))
+                .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_strong()) } else { color_alpha(t.toolbar_border, alpha_muted()) })))
                 .clicked() { watchlist.default_order_type = i; }
         }
     });
@@ -412,22 +412,22 @@ SettingsTab::Trading => {
         for (i, label) in ["DAY", "GTC", "IOC"].iter().enumerate() {
             let sel = watchlist.default_tif == i;
             let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.6) };
-            let bg = if sel { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) };
+            let bg = if sel { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_soft()) };
             let cr = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
                 else if i == 2 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
                 else { egui::CornerRadius::ZERO };
             if ui.add(egui::Button::new(egui::RichText::new(*label).monospace().size(FONT_SM).color(fg))
                 .fill(bg).corner_radius(cr).min_size(egui::vec2(34.0, 20.0))
-                .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_STRONG) } else { color_alpha(t.toolbar_border, ALPHA_MUTED) })))
+                .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_strong()) } else { color_alpha(t.toolbar_border, alpha_muted()) })))
                 .clicked() { watchlist.default_tif = i; }
         }
     });
     setting_toggle(ui, m, "Outside RTH", t, &mut watchlist.default_outside_rth);
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
     // ── Risk Management ──
     dialog_section(ui, "RISK MANAGEMENT", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     {
         use crate::chart_renderer::trading::order_manager;
         let mut limits = order_manager::get_risk_limits();
@@ -478,11 +478,11 @@ SettingsTab::Trading => {
         });
         order_manager::update_risk_limits(limits);
     }
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 
     // ── ApexData ─────────────────────────────────────────────────────
     dialog_section(ui, "APEX DATA", m, t.dim.gamma_multiply(0.5));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     {
         let mut enabled = crate::apex_data::is_enabled();
         let prev = enabled;
@@ -499,7 +499,7 @@ SettingsTab::Trading => {
             .label_color(egui::Color32::from_white_alpha(180))
             .alignment(FormRowAlign::Right)
             .inner_pad(10.0)
-            .margins(0.0, GAP_XS)
+            .margins(0.0, gap_xs())
             .show_with_cx(ui, t, |ui, _cx| {
                 let id = egui::Id::new("apex_data_url_edit");
                 let mut buf: String = ui.data_mut(|d|
@@ -518,7 +518,7 @@ SettingsTab::Trading => {
             .label_color(egui::Color32::from_white_alpha(180))
             .alignment(FormRowAlign::Right)
             .inner_pad(10.0)
-            .margins(0.0, GAP_XS)
+            .margins(0.0, gap_xs())
             .password(true)
             .hint("optional — leave blank if no token required")
             .show_with_cx(ui, t, |ui, cx| {
@@ -547,14 +547,14 @@ SettingsTab::Trading => {
             ui.add(SectionLabel::new(state_label).tiny().color(state_col));
         });
     }
-    ui.add_space(GAP_LG);
+    ui.add_space(gap_lg());
 }
 
 // ═══════════════════════════════════════════════════════════════
 // SHORTCUTS TAB
 // ═══════════════════════════════════════════════════════════════
 SettingsTab::Shortcuts => {
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     // Column header
     ui.horizontal(|ui| {
         ui.add_space(m);
@@ -563,8 +563,8 @@ SettingsTab::Shortcuts => {
         });
         ui.add(SectionLabel::new("SHORTCUT").tiny().color(t.dim.gamma_multiply(0.4)));
     });
-    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-    ui.add_space(GAP_XS);
+    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    ui.add_space(gap_xs());
 
     super::hotkey_editor::draw_content(ui, watchlist, t);
 }

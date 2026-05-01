@@ -34,7 +34,7 @@ pub(crate) fn draw(
                 watchlist.alerts_panel_open = false;
             }
             ui.add_space(4.0);
-            separator(ui, color_alpha(cx.toolbar_border, ALPHA_MUTED));
+            separator(ui, color_alpha(cx.toolbar_border, alpha_muted()));
             ui.add_space(4.0);
             draw_content_cx(ui, watchlist, panes, ap, &cx);
         });
@@ -94,9 +94,9 @@ fn draw_content_cx(
             if ui.add(widgets::buttons::ChromeBtn::new(
                 egui::RichText::new(format!("{} Above {:.2}", Icon::ARROW_FAT_UP, input_price))
                     .monospace().size(9.0).color(above_color))
-                .fill(color_alpha(above_color, ALPHA_GHOST))
+                .fill(color_alpha(above_color, alpha_ghost()))
                 .corner_radius(r_md_cr())
-                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(above_color, ALPHA_LINE)))
+                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(above_color, alpha_line())))
                 .min_size(egui::vec2(0.0, 20.0))).clicked()
             {
                 cx.dispatch(AppCommand::AddPriceAlert { pane: ap, price: input_price, above: true });
@@ -106,9 +106,9 @@ fn draw_content_cx(
             if ui.add(widgets::buttons::ChromeBtn::new(
                 egui::RichText::new(format!("{} Below {:.2}", Icon::ARROW_FAT_DOWN, input_price))
                     .monospace().size(9.0).color(below_color))
-                .fill(color_alpha(below_color, ALPHA_GHOST))
+                .fill(color_alpha(below_color, alpha_ghost()))
                 .corner_radius(r_md_cr())
-                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(below_color, ALPHA_LINE)))
+                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(below_color, alpha_line())))
                 .min_size(egui::vec2(0.0, 20.0))).clicked()
             {
                 cx.dispatch(AppCommand::AddPriceAlert { pane: ap, price: input_price, above: false });
@@ -117,7 +117,7 @@ fn draw_content_cx(
     }
 
     ui.add_space(6.0);
-    separator(ui, color_alpha(cx.toolbar_border, ALPHA_MUTED));
+    separator(ui, color_alpha(cx.toolbar_border, alpha_muted()));
     ui.add_space(4.0);
 
     // ── Draft Alerts (context-menu created, pending user Place) ──
@@ -154,7 +154,7 @@ fn draw_content_cx(
             });
         }
         ui.add_space(6.0);
-        separator(ui, color_alpha(cx.toolbar_border, ALPHA_MUTED));
+        separator(ui, color_alpha(cx.toolbar_border, alpha_muted()));
         ui.add_space(4.0);
     }
 
@@ -229,7 +229,7 @@ fn draw_content_cx(
     // ── Triggered section ──
     if total_triggered > 0 {
         ui.add_space(6.0);
-        separator(ui, color_alpha(cx.toolbar_border, ALPHA_MUTED));
+        separator(ui, color_alpha(cx.toolbar_border, alpha_muted()));
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {

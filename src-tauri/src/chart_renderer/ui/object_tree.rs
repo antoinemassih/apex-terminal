@@ -113,7 +113,7 @@ egui::SidePanel::left("object_tree_panel")
     .resizable(true)
     .frame(egui::Frame::NONE.fill(t.toolbar_bg)
         .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 })
-        .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
+        .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong()))))
     .show(ctx, |ui| {
         let panel_w = ui.available_width();
         ui.set_max_width(panel_w);

@@ -115,7 +115,7 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong()))))
         .show(ctx, |ui| {
             // Header
             ui.horizontal(|ui| {
@@ -158,7 +158,7 @@ pub(crate) fn draw_content(
                 .fill(t.bg.gamma_multiply(0.6))
                 .corner_radius(r_sm_cr())
                 .inner_margin(egui::Margin::same(6))
-                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
 
             card.show(ui, |ui| {
                 ui.horizontal(|ui| {

@@ -68,14 +68,14 @@ pub(crate) fn draw(
     let painter = ui.painter_at(dom_rect);
     painter.rect_filled(dom_rect, 0.0, t.toolbar_bg);
     painter.line_segment([egui::pos2(dom_rect.right(), dom_rect.top()), egui::pos2(dom_rect.right(), dom_rect.bottom())],
-        egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)));
+        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())));
 
     // Resize handle
     let hr = egui::Rect::from_min_size(egui::pos2(dom_rect.right()-3.0, dom_rect.top()), egui::vec2(6.0, dom_rect.height()));
     let hresp = ui.allocate_rect(hr, egui::Sense::drag());
     if hresp.hovered() || hresp.dragged() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal); }
     if hresp.dragged() { *dom_width = (*dom_width + hresp.drag_delta().x).clamp(DOM_MIN_W, DOM_MAX_W); }
-    if hresp.hovered() { painter.line_segment([egui::pos2(dom_rect.right()-1.0, dom_rect.top()+14.0), egui::pos2(dom_rect.right()-1.0, dom_rect.bottom())], egui::Stroke::new(STROKE_THICK, color_alpha(t.accent, ALPHA_STRONG))); }
+    if hresp.hovered() { painter.line_segment([egui::pos2(dom_rect.right()-1.0, dom_rect.top()+14.0), egui::pos2(dom_rect.right()-1.0, dom_rect.bottom())], egui::Stroke::new(stroke_thick(), color_alpha(t.accent, alpha_strong()))); }
 
     let inner = dom_rect.shrink2(egui::vec2(3.0, 0.0));
     let aw = inner.width();
@@ -126,15 +126,15 @@ pub(crate) fn draw(
     if minus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
     let sep_y = hy+12.0;
-    painter.line_segment([egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)], egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)));
+    painter.line_segment([egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)], egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())));
 
     // ── Bottom controls ──
     let ctrl_h = 54.0;
     let ctrl_top = inner.bottom() - ctrl_h;
     painter.rect_filled(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), ctrl_top), egui::pos2(dom_rect.right(), dom_rect.bottom())), 0.0, t.toolbar_bg);
     // Inset shadow
-    for i in 0..4u32 { painter.line_segment([egui::pos2(inner.left(), ctrl_top-i as f32), egui::pos2(inner.right(), ctrl_top-i as f32)], egui::Stroke::new(STROKE_STD, egui::Color32::from_rgba_unmultiplied(0,0,0, 20u8.saturating_sub(i as u8*5)))); }
-    painter.line_segment([egui::pos2(inner.left(), ctrl_top), egui::pos2(inner.right(), ctrl_top)], egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_LINE)));
+    for i in 0..4u32 { painter.line_segment([egui::pos2(inner.left(), ctrl_top-i as f32), egui::pos2(inner.right(), ctrl_top-i as f32)], egui::Stroke::new(stroke_std(), egui::Color32::from_rgba_unmultiplied(0,0,0, 20u8.saturating_sub(i as u8*5)))); }
+    painter.line_segment([egui::pos2(inner.left(), ctrl_top), egui::pos2(inner.right(), ctrl_top)], egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())));
 
     let fs = egui::FontId::monospace(7.5);
     let fm = egui::FontId::monospace(8.5);
@@ -149,7 +149,7 @@ pub(crate) fn draw(
     // [-]
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) });
+    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_soft()) });
     painter.text(r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(10.0), t.dim);
     if resp.clicked() && *order_qty > 1 { *order_qty -= 1; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -165,7 +165,7 @@ pub(crate) fn draw(
     // [+]
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) });
+    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_soft()) });
     painter.text(r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(10.0), t.dim);
     if resp.clicked() { *order_qty += 1; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }

@@ -19,7 +19,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
             .corner_radius(r_lg_cr()))
         .show(ctx, |ui| {
             let w = ui.available_width();
@@ -33,9 +33,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
                 if ui.add(ChromeBtn::new(
                     egui::RichText::new(filter_label).monospace().size(9.0).color(filter_col))
-                    .fill(color_alpha(filter_col, ALPHA_GHOST))
+                    .fill(color_alpha(filter_col, alpha_ghost()))
                     .corner_radius(r_md_cr())
-                    .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(filter_col, ALPHA_MUTED)))
+                    .stroke(egui::Stroke::new(stroke_thin(), color_alpha(filter_col, alpha_muted())))
                     .min_size(egui::vec2(0.0, 16.0))
                 ).clicked() {
                     watchlist.news_filter_symbol = !watchlist.news_filter_symbol;
@@ -51,7 +51,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
                 egui::vec2(w, 1.0),
             );
-            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
+            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
             ui.add_space(5.0);
 
             draw_content(ui, watchlist, active_symbol, t);

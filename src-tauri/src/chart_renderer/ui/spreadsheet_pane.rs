@@ -467,7 +467,7 @@ pub(crate) fn render(
     let toolbar_rect = egui::Rect::from_min_size(
         rect.min, egui::vec2(rect.width(), TOOLBAR_H));
     let mut toolbar_ui = ui.new_child(egui::UiBuilder::new()
-        .max_rect(toolbar_rect.shrink2(egui::vec2(GAP_SM, GAP_XS))));
+        .max_rect(toolbar_rect.shrink2(egui::vec2(gap_sm(), gap_xs()))));
     let mut do_save = false;
     toolbar_ui.horizontal_centered(|ui| {
         let btn = |ui: &mut egui::Ui, label: &str| -> bool {
@@ -508,7 +508,7 @@ pub(crate) fn render(
         egui::vec2(rect.width(), FORMULA_BAR_H));
     {
         let p = ui.painter_at(fbar_rect);
-        p.rect_filled(fbar_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_TINT));
+        p.rect_filled(fbar_rect, 0.0, color_alpha(t.toolbar_border, alpha_tint()));
         // "fx" tag
         p.text(egui::pos2(fbar_rect.left() + 6.0, fbar_rect.center().y),
             egui::Align2::LEFT_CENTER, "fx",
@@ -562,9 +562,9 @@ pub(crate) fn render(
             egui::vec2(bw, bh));
         let resp = ui.interact(br, ui.id().with("ss_empty_addrow"), egui::Sense::click());
         let p2 = ui.painter_at(br);
-        p2.rect_filled(br, RADIUS_SM, color_alpha(t.accent, ALPHA_TINT));
-        p2.rect_stroke(br, RADIUS_SM,
-            egui::Stroke::new(stroke_thin(), color_alpha(t.accent, ALPHA_LINE)),
+        p2.rect_filled(br, radius_sm(), color_alpha(t.accent, alpha_tint()));
+        p2.rect_stroke(br, radius_sm(),
+            egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_line())),
             egui::epaint::StrokeKind::Middle);
         p2.text(br.center(), egui::Align2::CENTER_CENTER, "Add row",
             egui::FontId::monospace(FONT_XS), t.accent);
@@ -591,7 +591,7 @@ pub(crate) fn render(
         egui::vec2(grid_rect.width(), HEADER_H));
     {
         let p = ui.painter_at(header_rect);
-        p.rect_filled(header_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_TINT));
+        p.rect_filled(header_rect, 0.0, color_alpha(t.toolbar_border, alpha_tint()));
     }
 
     // Body scroll
@@ -617,7 +617,7 @@ pub(crate) fn render(
                 egui::pos2(x, header_rect.top()),
                 egui::pos2(x, header_rect.bottom())],
                 egui::Stroke::new(stroke_thin(),
-                    color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                    color_alpha(t.toolbar_border, alpha_muted())));
             // Resize handle on right edge
             let handle = egui::Rect::from_min_size(
                 egui::pos2(x + w - 3.0, header_rect.top()),
@@ -655,12 +655,12 @@ pub(crate) fn render(
                 egui::vec2(total_w, total_h), egui::Sense::hover());
             let p = ui.painter_at(resp_rect);
             let stroke_grid = egui::Stroke::new(stroke_thin(),
-                color_alpha(t.toolbar_border, ALPHA_MUTED));
+                color_alpha(t.toolbar_border, alpha_muted()));
 
             // Sticky-ish gutter background
             let gutter_rect = egui::Rect::from_min_size(resp_rect.min,
                 egui::vec2(GUTTER_W, total_h));
-            p.rect_filled(gutter_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_TINT));
+            p.rect_filled(gutter_rect, 0.0, color_alpha(t.toolbar_border, alpha_tint()));
 
             for r in 0..chart.spreadsheet_rows {
                 let y = resp_rect.top() + (r as f32) * ROW_H;
@@ -688,7 +688,7 @@ pub(crate) fn render(
                     if in_range(&state, r, c) {
                         ui.painter_at(cell_rect).rect_filled(
                             cell_rect, 0.0,
-                            color_alpha(t.accent, ALPHA_TINT));
+                            color_alpha(t.accent, alpha_tint()));
                     }
 
                     let editing_here = matches!(chart.spreadsheet_editing,

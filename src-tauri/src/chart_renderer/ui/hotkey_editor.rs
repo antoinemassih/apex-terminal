@@ -102,7 +102,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             watchlist.hotkey_editing_id = Some(*hk_id);
                         }
                     }
-                    let key_bg = if *is_editing { color_alpha(t.accent, ALPHA_TINT) } else { color_alpha(t.toolbar_border, ALPHA_TINT) };
+                    let key_bg = if *is_editing { color_alpha(t.accent, alpha_tint()) } else { color_alpha(t.toolbar_border, alpha_tint()) };
                     let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
                     ui.add(ChromeBtn::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(9.0).color(key_fg))
                         .fill(key_bg).corner_radius(r_sm_cr()).min_size(egui::vec2(80.0, 18.0)));

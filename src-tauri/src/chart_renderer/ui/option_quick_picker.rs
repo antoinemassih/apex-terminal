@@ -56,8 +56,8 @@ pub(crate) fn draw(
         use super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
         let custom_frame = egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-            .inner_margin(egui::Margin::same(GAP_LG as i8))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
+            .inner_margin(egui::Margin::same(gap_lg() as i8))
             .corner_radius(r_lg_cr())
             .shadow(egui::epaint::Shadow {
                 offset: [0, 4], blur: 14, spread: 0,
@@ -86,13 +86,13 @@ pub(crate) fn draw(
                                 if close_button(ui, t.dim) { close_picker = true; }
                             });
                         });
-                        ui.add_space(GAP_SM);
-                        separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-                        ui.add_space(GAP_SM);
+                        ui.add_space(gap_sm());
+                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                        ui.add_space(gap_sm());
 
                         // ── Expiry nav: < [DTE] > ──
                         ui.horizontal(|ui| {
-                            ui.add_space(GAP_MD);
+                            ui.add_space(gap_md());
                             // Back arrow
                             let can_back = dte_idx > 0;
                             let back_col = if can_back { t.accent } else { t.dim.gamma_multiply(0.3) };
@@ -110,7 +110,7 @@ pub(crate) fn draw(
                             let can_fwd = dte_idx < DTE_LIST.len() - 1;
                             let fwd_col = if can_fwd { t.accent } else { t.dim.gamma_multiply(0.3) };
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.add_space(GAP_MD);
+                                ui.add_space(gap_md());
                                 if icon_btn(ui, Icon::CARET_RIGHT, fwd_col, FONT_LG).clicked() && can_fwd {
                                     panes[pi].option_quick_dte_idx = dte_idx + 1;
                                     let new_dte = DTE_LIST[dte_idx + 1];
@@ -118,25 +118,25 @@ pub(crate) fn draw(
                                 }
                             });
                         });
-                        ui.add_space(GAP_SM);
+                        ui.add_space(gap_sm());
 
                         // ── Quick strike navigation: < Prev Strike    Next Strike > ──
                         // Only show when we know the current strike (is_option tab)
                         if cur_strike > 0.0 {
-                            ui.add_space(GAP_XS);
+                            ui.add_space(gap_xs());
                             ui.horizontal(|ui| {
-                                ui.add_space(GAP_SM);
+                                ui.add_space(gap_sm());
                                 let half_w = 120.0;
                                 // Prev strike
                                 let (prev_rect, prev_resp) = ui.allocate_exact_size(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
                                 let prev_bg = if prev_resp.hovered() {
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                    color_alpha(t.accent, ALPHA_TINT)
-                                } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
+                                    color_alpha(t.accent, alpha_tint())
+                                } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                                 ui.painter().rect_filled(prev_rect, r_md_cr(), prev_bg);
                                 ui.painter().rect_stroke(prev_rect, r_md_cr(),
-                                    egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_LINE)),
+                                    egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_line())),
                                     egui::StrokeKind::Inside);
                                 ui.painter().text(
                                     prev_rect.center(), egui::Align2::CENTER_CENTER,
@@ -153,17 +153,17 @@ pub(crate) fn draw(
                                         pending_load = Some((lower, cur_is_call));
                                     }
                                 }
-                                ui.add_space(GAP_SM);
+                                ui.add_space(gap_sm());
                                 // Next strike
                                 let (next_rect, next_resp) = ui.allocate_exact_size(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
                                 let next_bg = if next_resp.hovered() {
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                    color_alpha(t.accent, ALPHA_TINT)
-                                } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
+                                    color_alpha(t.accent, alpha_tint())
+                                } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                                 ui.painter().rect_filled(next_rect, r_md_cr(), next_bg);
                                 ui.painter().rect_stroke(next_rect, r_md_cr(),
-                                    egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_LINE)),
+                                    egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_line())),
                                     egui::StrokeKind::Inside);
                                 ui.painter().text(
                                     next_rect.center(), egui::Align2::CENTER_CENTER,
@@ -180,9 +180,9 @@ pub(crate) fn draw(
                                     }
                                 }
                             });
-                            ui.add_space(GAP_SM);
-                            separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-                            ui.add_space(GAP_SM);
+                            ui.add_space(gap_sm());
+                            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                            ui.add_space(gap_sm());
                         }
 
                         // Column headers: CALL | STRIKE | PUT
@@ -192,7 +192,7 @@ pub(crate) fn draw(
                             col_header(ui, "STRIKE", cw, t.dim.gamma_multiply(0.5), false);
                             col_header(ui, "PUT",    cw, t.dim.gamma_multiply(0.5), false);
                         });
-                        separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
 
                         // ── Chain rows ──
                         // Source: watchlist.chain_0dte when current_dte == 0, else chain_far
@@ -208,12 +208,12 @@ pub(crate) fn draw(
                         let (calls, puts) = (&chain_ref.0, &chain_ref.1);
 
                         if calls.is_empty() && puts.is_empty() {
-                            ui.add_space(GAP_LG);
+                            ui.add_space(gap_lg());
                             ui.vertical_centered(|ui| {
                                 ui.label(egui::RichText::new("Loading chain…")
                                     .monospace().size(FONT_SM).color(t.dim));
                             });
-                            ui.add_space(GAP_LG);
+                            ui.add_space(gap_lg());
                         } else {
                             // Build a sorted list of unique strikes
                             let mut strikes: Vec<f32> = calls.iter().map(|r| r.strike)
@@ -238,7 +238,7 @@ pub(crate) fn draw(
                                             let (crect, cresp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
                                             if cresp.hovered() {
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                                ui.painter().rect_filled(crect, r_sm_cr(), color_alpha(t.bull, ALPHA_GHOST));
+                                                ui.painter().rect_filled(crect, r_sm_cr(), color_alpha(t.bull, alpha_ghost()));
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
                                                 &call_text, egui::FontId::monospace(FONT_SM),
@@ -264,7 +264,7 @@ pub(crate) fn draw(
                                             let (prect, presp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
                                             if presp.hovered() {
                                                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                                ui.painter().rect_filled(prect, r_sm_cr(), color_alpha(t.bear, ALPHA_GHOST));
+                                                ui.painter().rect_filled(prect, r_sm_cr(), color_alpha(t.bear, alpha_ghost()));
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
                                                 &put_text, egui::FontId::monospace(FONT_SM),

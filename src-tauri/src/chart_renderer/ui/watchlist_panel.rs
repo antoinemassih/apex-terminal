@@ -53,7 +53,7 @@ if watchlist.open {
                     // Market session badge
                     let (session, session_col) = market_session();
                     ui.add_space(4.0);
-                    let badge_bg = color_alpha(session_col, ALPHA_TINT);
+                    let badge_bg = color_alpha(session_col, alpha_tint());
                     ui.add(ChromeBtn::new(
                         egui::RichText::new(session).monospace().size(8.5).strong().color(session_col))
                         .fill(badge_bg).corner_radius(r_sm_cr()).stroke(egui::Stroke::NONE)
@@ -64,7 +64,7 @@ if watchlist.open {
             let line_y = tab_row_resp.response.rect.max.y + 1.0;
             ui.painter().line_segment(
                 [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(STROKE_STD, t.toolbar_border),
+                egui::Stroke::new(stroke_std(), t.toolbar_border),
             );
             ui.add_space(4.0);
 
@@ -286,7 +286,7 @@ if watchlist.open {
                         egui::Frame::popup(ui.style()).fill(egui::Color32::from_rgb(28, 28, 34)).corner_radius(r_sm_cr()).show(ui, |ui| {
                             for (i, (sym, name)) in watchlist.search_results.clone().iter().enumerate() {
                                 let is_sel = i as i32 == watchlist.search_sel;
-                                let bg = if is_sel { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
+                                let bg = if is_sel { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                                 let fg = if is_sel { t.text } else { t.dim };
                                 let resp = ui.add(ChromeBtn::new(
                                     egui::RichText::new(format!("{:6} {}", sym, name)).monospace().size(9.0).color(fg))
@@ -320,12 +320,12 @@ if watchlist.open {
                     if watchlist.wl_columns_open {
                         ui.add_space(2.0);
                         egui::Frame::NONE
-                            .fill(color_alpha(t.toolbar_border, ALPHA_FAINT))
-                            .inner_margin(egui::Margin::same(GAP_SM as i8))
+                            .fill(color_alpha(t.toolbar_border, alpha_faint()))
+                            .inner_margin(egui::Margin::same(gap_sm() as i8))
                             .corner_radius(r_sm_cr())
                             .show(ui, |ui| {
                                 ui.add(MonospaceCode::new("COLUMNS").size_px(7.0).color(t.accent).gamma(0.6));
-                                ui.add_space(GAP_XS);
+                                ui.add_space(gap_xs());
                                 for (label, flag) in [
                                     ("Sparkline", &mut watchlist.wl_col_sparkline),
                                     ("Volume", &mut watchlist.wl_col_volume),
@@ -379,7 +379,7 @@ if watchlist.open {
                             for (name, min_chg, max_chg) in &presets {
                                 let active = watchlist.filter_preset == *name;
                                 let col = if active { t.accent } else { t.dim };
-                                let bg = if active { color_alpha(t.accent, ALPHA_SUBTLE) } else { egui::Color32::TRANSPARENT };
+                                let bg = if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT };
                                 if ui.add(ChromeBtn::new(egui::RichText::new(*name).monospace().size(8.0).color(col))
                                     .fill(bg).corner_radius(r_md_cr()).min_size(egui::vec2(0.0, 16.0))).clicked() {
                                     watchlist.filter_preset = name.to_string();
@@ -475,15 +475,15 @@ if watchlist.open {
                             let sec_rect = egui::Rect::from_min_size(sec_top, egui::vec2(full_w, section_h));
                             {
                                 let p = ui.painter();
-                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_LINE));
+                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha_line()));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top()), egui::pos2(sec_rect.right(), sec_rect.top())],
-                                    egui::Stroke::new(STROKE_STD, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_DIM)));
+                                    egui::Stroke::new(stroke_std(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha_dim())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
-                                    egui::Stroke::new(STROKE_THIN, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_TINT)));
+                                    egui::Stroke::new(stroke_thin(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha_tint())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
-                                    egui::Stroke::new(STROKE_STD, color_alpha(t.text, 10)));
+                                    egui::Stroke::new(stroke_std(), color_alpha(t.text, 10)));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
-                                    egui::Stroke::new(STROKE_THIN, color_alpha(t.text, 5)));
+                                    egui::Stroke::new(stroke_thin(), color_alpha(t.text, 5)));
                             }
                             // 3px top padding so rows sit at the same position as before.
                             ui.add_space(3.0);
@@ -508,7 +508,7 @@ if watchlist.open {
                                     })
                                     .sym_layout(-6.0, 12.0, 10.0)
                                     .price_right_inset(8.0)
-                                    .hover_overlay(color_alpha(t.toolbar_border, ALPHA_GHOST))
+                                    .hover_overlay(color_alpha(t.toolbar_border, alpha_ghost()))
                                     .separator(true)
                                     .show(ui);
                                 // Star click → unpin; body click → activate.
@@ -542,7 +542,7 @@ if watchlist.open {
                                 ui.painter().line_segment(
                                     [egui::pos2(ui.min_rect().left(), cursor_y),
                                      egui::pos2(ui.min_rect().left() + full_w, cursor_y)],
-                                    egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG)));
+                                    egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())));
                                 ui.add_space(2.0);
                             }
 
@@ -776,7 +776,7 @@ if watchlist.open {
                                         if drag_resp.hovered() && !drag_confirmed {
                                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             if !is_active {
-                                                ui.painter().rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_SUBTLE));
+                                                ui.painter().rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, alpha_subtle()));
                                             }
                                         }
                                     } else {
@@ -827,7 +827,7 @@ if watchlist.open {
                                             .sense(egui::Sense::click_and_drag())
                                             .row_tint(row_tint)
                                             .separator(true)
-                                            .hover_overlay(color_alpha(t.toolbar_border, ALPHA_SOFT))
+                                            .hover_overlay(color_alpha(t.toolbar_border, alpha_soft()))
                                             .show_x_on_hover(true)
                                             .drag_confirmed(drag_confirmed)
                                             .sym_font(egui::FontId::monospace(font_sz))
@@ -973,7 +973,7 @@ if watchlist.open {
                                     let left = ui.min_rect().left();
                                     ui.painter().line_segment(
                                         [egui::pos2(left, indicator_y), egui::pos2(left + full_w, indicator_y)],
-                                        egui::Stroke::new(STROKE_THICK, t.accent));
+                                        egui::Stroke::new(stroke_thick(), t.accent));
                                     // Small circles at endpoints
                                     ui.painter().circle_filled(egui::pos2(left + 2.0, indicator_y), 3.0, t.accent);
                                     ui.painter().circle_filled(egui::pos2(left + full_w - 2.0, indicator_y), 3.0, t.accent);
@@ -986,8 +986,8 @@ if watchlist.open {
                                     let drag_sym = &watchlist.sections[src_sec].items[src_idx].symbol;
                                     let float_rect = egui::Rect::from_min_size(
                                         egui::pos2(mouse.x - 30.0, mouse.y - 10.0), egui::vec2(80.0, 20.0));
-                                    ui.painter().rect_filled(float_rect, 4.0, color_alpha(t.accent, ALPHA_MUTED));
-                                    ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(STROKE_STD, t.accent), egui::StrokeKind::Outside);
+                                    ui.painter().rect_filled(float_rect, 4.0, color_alpha(t.accent, alpha_muted()));
+                                    ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(stroke_std(), t.accent), egui::StrokeKind::Outside);
                                     ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
                                         drag_sym, egui::FontId::monospace(11.0), t.text);
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -1191,7 +1191,7 @@ if watchlist.open {
                                         let painter = ui.painter();
                                         painter.rect_filled(rect, 0.0, row_bg);
                                         if resp.hovered() {
-                                            painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, ALPHA_SUBTLE));
+                                            painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, alpha_subtle()));
                                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                         }
 
@@ -1213,7 +1213,7 @@ if watchlist.open {
                                         // Faint separator
                                         painter.line_segment(
                                             [egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
-                                            egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                                            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
 
                                         if resp.clicked() {
                                             click_opt = Some((item_underlying.clone(), item_strike, is_call, item_expiry.clone()));
@@ -1326,7 +1326,7 @@ if watchlist.open {
                         if ui.add(ChromeBtn::new(egui::RichText::new(if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() }).monospace().size(9.0)
                             .color(if sel_active { t.accent } else { t.dim }))
                             .fill(if sel_active { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),51) } else { t.toolbar_bg })
-                            .stroke(egui::Stroke::new(STROKE_STD, if sel_active { t.accent } else { t.toolbar_border }))
+                            .stroke(egui::Stroke::new(stroke_std(), if sel_active { t.accent } else { t.toolbar_border }))
                             .corner_radius(r_sm_cr())).clicked() {
                             watchlist.chain_select_mode = !watchlist.chain_select_mode;
                         }
@@ -1343,7 +1343,7 @@ if watchlist.open {
                     // ── Symbol selector + price ──
                     ui.horizontal(|ui| {
                         let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
-                        let input_bg = if has_focus { color_alpha(t.toolbar_border, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_GHOST) };
+                        let input_bg = if has_focus { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
                         let sym_resp = TextInput::new(&mut watchlist.chain_sym_input)
                             .id(egui::Id::new("chain_sym_edit"))
                             .placeholder(&watchlist.chain_symbol)
@@ -1405,7 +1405,7 @@ if watchlist.open {
                     let sep_r = ui.available_rect_before_wrap();
                     ui.painter().line_segment(
                         [egui::pos2(sep_r.left(), ui.cursor().min.y), egui::pos2(sep_r.right(), ui.cursor().min.y)],
-                        egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
                     ui.add_space(4.0);
 
                     // Loading indicator
@@ -1460,13 +1460,13 @@ if watchlist.open {
                         let color = if is_call { t.bull } else { t.bear };
                         let base_tint = if is_call { color_alpha(t.bull, 8) } else { color_alpha(t.bear, 8) };
                         let itm_bg = if row.itm { color.gamma_multiply(0.06) } else { base_tint };
-                        let saved_bg = if is_saved { color_alpha(t.accent, ALPHA_MUTED) } else { itm_bg };
+                        let saved_bg = if is_saved { color_alpha(t.accent, alpha_muted()) } else { itm_bg };
 
                         // Reserve a clickable rect for the whole row
                         let (rect, row_resp) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
 
                         // Paint background
-                        let bg = if row_resp.hovered() { color_alpha(t.toolbar_border, ALPHA_LINE) } else { saved_bg };
+                        let bg = if row_resp.hovered() { color_alpha(t.toolbar_border, alpha_line()) } else { saved_bg };
                         ui.painter().rect_filled(rect, 0.0, bg);
                         if row_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
@@ -1508,8 +1508,8 @@ if watchlist.open {
                         if row.iv > 0.0 {
                             let iv_color = if row.iv > 0.7 { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 180) }
                                 else if row.iv > 0.5 { egui::Color32::from_rgba_unmultiplied(240, 160, 40, 140) }
-                                else if row.iv > 0.3 { egui::Color32::from_rgba_unmultiplied(255, 193, 37, ALPHA_ACTIVE) }
-                                else { egui::Color32::from_rgba_unmultiplied(46, 204, 113, ALPHA_ACTIVE) };
+                                else if row.iv > 0.3 { egui::Color32::from_rgba_unmultiplied(255, 193, 37, alpha_active()) }
+                                else { egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha_active()) };
                             painter.rect_filled(egui::Rect::from_min_size(
                                 egui::pos2(rect.left(), rect.top()), egui::vec2(3.0, rect.height())),
                                 0.0, iv_color);
@@ -1523,7 +1523,7 @@ if watchlist.open {
                         // Faint row separator
                         painter.line_segment(
                             [egui::pos2(rect.left() + 4.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
-                            egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_TINT)));
+                            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_tint())));
 
                         // Click handling
                         if row_resp.clicked() {
@@ -1671,14 +1671,14 @@ if watchlist.open {
                             // Lines on either side of the badge
                             ui.painter().line_segment(
                                 [egui::pos2(r.left() + 4.0, y + 10.0), egui::pos2(center_x - badge_w / 2.0 - 4.0, y + 10.0)],
-                                egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG)));
+                                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())));
                             ui.painter().line_segment(
                                 [egui::pos2(center_x + badge_w / 2.0 + 4.0, y + 10.0), egui::pos2(r.right() - 4.0, y + 10.0)],
-                                egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG)));
+                                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())));
                             // Badge background
                             let badge_rect = egui::Rect::from_center_size(egui::pos2(center_x, y + 10.0), egui::vec2(badge_w, 18.0));
-                            ui.painter().rect_filled(badge_rect, 9.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
-                            ui.painter().rect_stroke(badge_rect, 9.0, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)), egui::StrokeKind::Outside);
+                            ui.painter().rect_filled(badge_rect, 9.0, color_alpha(t.toolbar_border, alpha_muted()));
+                            ui.painter().rect_stroke(badge_rect, 9.0, egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())), egui::StrokeKind::Outside);
                             // Price text
                             let badge_text = if center_offset != 0 {
                                 format!("${:.2} ({:+})", price, center_offset)
@@ -1742,7 +1742,7 @@ if watchlist.open {
                                 let active = watchlist.chain_0_nmf == lvl;
                                 let col = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
                                 if ui.add(ChromeBtn::new(egui::RichText::new(label).monospace().size(8.0).color(col))
-                                    .fill(if active { color_alpha(t.accent, ALPHA_SUBTLE) } else { egui::Color32::TRANSPARENT })
+                                    .fill(if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT })
                                     .min_size(egui::vec2(14.0, 14.0)).corner_radius(r_sm_cr())).clicked() { watchlist.chain_0_nmf = lvl; }
                             }
                             // Freeze + arrows
@@ -1752,8 +1752,8 @@ if watchlist.open {
                                 if !watchlist.chain_0_frozen { watchlist.chain_0_offset = 0; }
                             }
                             if watchlist.chain_0_frozen {
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, ALPHA_GHOST)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset += 1; }
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, ALPHA_GHOST)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset -= 1; }
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset += 1; }
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset -= 1; }
                             }
                         });
                         let ns_0 = watchlist.chain_0_num_strikes;
@@ -1766,7 +1766,7 @@ if watchlist.open {
                         let sep_r = ui.available_rect_before_wrap();
                         ui.painter().line_segment(
                             [egui::pos2(sep_r.left() + 4.0, ui.cursor().min.y), egui::pos2(sep_r.right() - 4.0, ui.cursor().min.y)],
-                            egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_LINE)));
+                            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())));
                         ui.add_space(4.0);
 
                         // Per-chain controls: far DTE
@@ -1800,7 +1800,7 @@ if watchlist.open {
                                 let active = watchlist.chain_far_nmf == lvl;
                                 let col = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
                                 if ui.add(ChromeBtn::new(egui::RichText::new(label).monospace().size(8.0).color(col))
-                                    .fill(if active { color_alpha(t.accent, ALPHA_SUBTLE) } else { egui::Color32::TRANSPARENT })
+                                    .fill(if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT })
                                     .min_size(egui::vec2(14.0, 14.0)).corner_radius(r_sm_cr())).clicked() { watchlist.chain_far_nmf = lvl; }
                             }
                             let fr_col = if watchlist.chain_far_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
@@ -1809,8 +1809,8 @@ if watchlist.open {
                                 if !watchlist.chain_far_frozen { watchlist.chain_far_offset = 0; }
                             }
                             if watchlist.chain_far_frozen {
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, ALPHA_GHOST)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset += 1; }
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, ALPHA_GHOST)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset -= 1; }
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset += 1; }
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset -= 1; }
                             }
                         });
                         let ns_f = watchlist.chain_far_num_strikes;
@@ -1992,7 +1992,7 @@ if watchlist.open {
                                     // Active symbol border
                                     if is_active {
                                         painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(col_w, cell_h - 2.0)),
-                                            2.0, egui::Stroke::new(STROKE_BOLD, t.accent), egui::StrokeKind::Outside);
+                                            2.0, egui::Stroke::new(stroke_bold(), t.accent), egui::StrokeKind::Outside);
                                     }
                                     // Background bar
                                     let bar_frac = if max_pct > 0.0 { item.1.abs() / max_pct } else { 0.0 };
@@ -2046,7 +2046,7 @@ if watchlist.open {
                                     let header_text = format!("{} {}  ({})  {:+.2}%", caret, sector, items.len(), avg_chg);
                                     let header_btn = ui.add(ChromeBtn::new(
                                         egui::RichText::new(&header_text).monospace().size(10.0).color(sector_col)
-                                    ).fill(color_alpha(sector_col, ALPHA_FAINT)).corner_radius(r_md_cr()).min_size(egui::vec2(ui.available_width(), 22.0)));
+                                    ).fill(color_alpha(sector_col, alpha_faint())).corner_radius(r_md_cr()).min_size(egui::vec2(ui.available_width(), 22.0)));
                                     if header_btn.clicked() {
                                         if is_collapsed { watchlist.heat_collapsed.remove(sector); }
                                         else { watchlist.heat_collapsed.insert(sector.clone()); }

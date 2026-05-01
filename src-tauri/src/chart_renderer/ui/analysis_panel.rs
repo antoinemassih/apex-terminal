@@ -63,7 +63,7 @@ pub(crate) fn draw(
             ui.painter().line_segment(
                 [egui::pos2(ui.min_rect().left(), line_y),
                  egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())));
 
             let available_h = ui.available_height();
             let n = watchlist.analysis_splits.len();
@@ -117,7 +117,7 @@ pub(crate) fn draw(
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
                      egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-                    egui::Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_FAINT)));
+                    egui::Stroke::new(0.5, color_alpha(t.toolbar_border, alpha_faint())));
 
                 // Content
                 egui::ScrollArea::vertical().id_salt(format!("analysis_sec_{}", i)).max_height(h).show(ui, |ui| {

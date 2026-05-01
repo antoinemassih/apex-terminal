@@ -22,7 +22,7 @@ if panes[ap].overlay_editing {
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
             .corner_radius(r_lg_cr()))
         .show(ctx, |ui| {
             let m = 8.0;
@@ -71,7 +71,7 @@ if panes[ap].overlay_editing {
 
             if n_ov > 0 {
                 ui.add_space(2.0);
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
                 ui.add_space(4.0);
             }
 

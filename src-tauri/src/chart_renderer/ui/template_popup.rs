@@ -24,8 +24,8 @@ pub(crate) fn draw(
         use super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
         let custom_frame = egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
-            .inner_margin(egui::Margin::same(GAP_LG as i8))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
+            .inner_margin(egui::Margin::same(gap_lg() as i8))
             .corner_radius(r_lg_cr())
             .shadow(egui::epaint::Shadow {
                 offset: [0, 4], blur: 14, spread: 0,
@@ -52,11 +52,11 @@ pub(crate) fn draw(
                         if close_button(ui, t.dim) { close_popup = true; }
                     });
                 });
-                ui.add_space(GAP_SM);
+                ui.add_space(gap_sm());
 
                         // ── Pane Type selector ──
                         ui.add(super::widgets::text::SectionLabel::new("PANE TYPE").tiny().color(t.dim));
-                        ui.add_space(GAP_XS);
+                        ui.add_space(gap_xs());
                         ui.horizontal(|ui| {
                             for (ptype, label, icon) in [
                                 (super::super::gpu::PaneType::Chart, "Chart", Icon::CHART_LINE),
@@ -67,25 +67,25 @@ pub(crate) fn draw(
                             ] {
                                 let active = panes[pi].pane_type == ptype;
                                 let fg = if active { t.accent } else { t.dim.gamma_multiply(0.5) };
-                                let bg = if active { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
+                                let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                                 if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
                                     .monospace().size(FONT_XS).color(fg))
                                     .fill(bg).corner_radius(r_sm_cr())
-                                    .stroke(egui::Stroke::new(if active { STROKE_THIN } else { 0.0 },
-                                        if active { color_alpha(t.accent, ALPHA_LINE) } else { egui::Color32::TRANSPARENT }))
+                                    .stroke(egui::Stroke::new(if active { stroke_thin() } else { 0.0 },
+                                        if active { color_alpha(t.accent, alpha_line()) } else { egui::Color32::TRANSPARENT }))
                                     .min_size(egui::vec2(0.0, 20.0))).clicked() {
                                     panes[pi].pane_type = ptype;
                                 }
                             }
                         });
-                        ui.add_space(GAP_SM);
-                        separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-                        ui.add_space(GAP_SM);
+                        ui.add_space(gap_sm());
+                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                        ui.add_space(gap_sm());
 
                         // Template list
                         if watchlist.pane_templates.is_empty() {
                             ui.add(BodyLabel::new("No saved templates").color(t.dim.gamma_multiply(0.5)));
-                            ui.add_space(GAP_SM);
+                            ui.add_space(gap_sm());
                         } else {
                             egui::ScrollArea::vertical()
                                 .id_salt(("tmpl_scroll", pi))
@@ -135,20 +135,20 @@ pub(crate) fn draw(
                                             egui::Id::new(("tmpl_apply", pi, i)), egui::Sense::click());
                                         if click_resp.hovered() {
                                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                            ui.painter().rect_filled(row_rect, RADIUS_SM,
-                                                color_alpha(t.accent, ALPHA_FAINT));
+                                            ui.painter().rect_filled(row_rect, radius_sm(),
+                                                color_alpha(t.accent, alpha_faint()));
                                         }
                                         if click_resp.clicked() {
                                             apply_idx = Some(i);
                                         }
 
-                                        ui.add_space(GAP_XS);
+                                        ui.add_space(gap_xs());
                                     }
                                 });
 
-                            ui.add_space(GAP_SM);
-                            separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-                            ui.add_space(GAP_SM);
+                            ui.add_space(gap_sm());
+                            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                            ui.add_space(gap_sm());
                         }
 
                         // Save Current section

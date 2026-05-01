@@ -217,7 +217,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     // Time slider
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new("TIME").xs().color(color_alpha(t.dim, ALPHA_ACTIVE)));
+        ui.add(MonospaceCode::new("TIME").xs().color(color_alpha(t.dim, alpha_active())));
         ui.spacing_mut().slider_width = plot_size - 50.0;
         Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
             .show_value(false)
@@ -225,7 +225,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             .show(ui);
     });
     ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new("TAIL").xs().color(color_alpha(t.dim, ALPHA_ACTIVE)));
+        ui.add(MonospaceCode::new("TAIL").xs().color(color_alpha(t.dim, alpha_active())));
         ui.spacing_mut().slider_width = plot_size - 50.0;
         let mut tail = watchlist.rrg_tail_length as f32;
         if Slider::new(&mut tail, 1.0..=15.0).show_value(false).step(1.0).theme(t).show(ui).changed() {
@@ -241,7 +241,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         "LATE EXPANSION"
     };
     ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new("CYCLE:").xs().color(color_alpha(t.dim, ALPHA_HEAVY)));
+        ui.add(MonospaceCode::new("CYCLE:").xs().color(color_alpha(t.dim, alpha_heavy())));
         ui.add(MonospaceCode::new(phase).xs().color(egui::Color32::from_rgb(56, 203, 137)));
     });
 
@@ -388,9 +388,9 @@ fn draw_rrg_content(
         egui::Color32::from_rgba_unmultiplied(74, 158, 255, 8),
     );
 
-    // ── Axis crosshair at (100, ALPHA_ACTIVE) ──
-    let axis_color = color_alpha(t.dim, ALPHA_TINT);
-    let axis_stroke = egui::Stroke::new(STROKE_STD, axis_color);
+    // ── Axis crosshair at (100, alpha_active()) ──
+    let axis_color = color_alpha(t.dim, alpha_tint());
+    let axis_stroke = egui::Stroke::new(stroke_std(), axis_color);
     // Vertical line (RS-Ratio = 100)
     painter.line_segment(
         [egui::pos2(center.x, plot_rect.top()), egui::pos2(center.x, plot_rect.bottom())],
@@ -403,7 +403,7 @@ fn draw_rrg_content(
     );
 
     // ── Axis labels ──
-    let axis_label_color = color_alpha(t.dim, ALPHA_DIM);
+    let axis_label_color = color_alpha(t.dim, alpha_dim());
     let axis_font = egui::FontId::monospace(8.0);
     // X-axis label
     painter.text(
@@ -423,7 +423,7 @@ fn draw_rrg_content(
     );
 
     // ── Axis tick marks ──
-    let tick_color = color_alpha(t.dim, ALPHA_SUBTLE);
+    let tick_color = color_alpha(t.dim, alpha_subtle());
     let tick_font = egui::FontId::monospace(7.0);
     // X-axis ticks
     let x_step = ((max_x - min_x) / 4.0).max(0.5);
@@ -440,7 +440,7 @@ fn draw_rrg_content(
         if (xv - 100.0).abs() > 0.1 {
             painter.line_segment(
                 [egui::pos2(screen.x, plot_rect.top()), egui::pos2(screen.x, plot_rect.bottom())],
-                egui::Stroke::new(STROKE_THIN, color_alpha(t.dim, 12)),
+                egui::Stroke::new(stroke_thin(), color_alpha(t.dim, 12)),
             );
         }
         xv += x_step;
@@ -460,7 +460,7 @@ fn draw_rrg_content(
         if (yv - 100.0).abs() > 0.1 {
             painter.line_segment(
                 [egui::pos2(plot_rect.left(), screen.y), egui::pos2(plot_rect.right(), screen.y)],
-                egui::Stroke::new(STROKE_THIN, color_alpha(t.dim, 12)),
+                egui::Stroke::new(stroke_thin(), color_alpha(t.dim, 12)),
             );
         }
         yv += y_step;
@@ -529,7 +529,7 @@ fn draw_rrg_content(
         painter.circle_filled(
             pos,
             dot_radius + 2.0,
-            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), ALPHA_SUBTLE),
+            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha_subtle()),
         );
         // Main dot
         painter.circle_filled(pos, dot_radius, color);
@@ -537,7 +537,7 @@ fn draw_rrg_content(
         painter.circle_filled(
             egui::pos2(pos.x - 1.0, pos.y - 1.0),
             dot_radius * 0.35,
-            egui::Color32::from_rgba_unmultiplied(255, 255, 255, ALPHA_LINE),
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha_line()),
         );
 
         // Label next to dot
@@ -566,7 +566,7 @@ fn draw_rrg_content(
     painter.rect_stroke(
         plot_rect,
         0.0,
-        egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_MUTED)),
+        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
         egui::StrokeKind::Outside,
     );
 }

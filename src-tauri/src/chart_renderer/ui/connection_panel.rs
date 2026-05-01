@@ -18,7 +18,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
     let custom_frame = egui::Frame::popup(&_ctx.style())
         .fill(t.toolbar_bg)
         .inner_margin(0.0)
-        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_ACTIVE)))
+        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_active())))
         .corner_radius(r_lg_cr());
     let resp = Modal::new("CONNECTIONS")
         .id("connections")

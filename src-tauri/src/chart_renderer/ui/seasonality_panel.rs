@@ -17,9 +17,9 @@ pub(crate) fn draw_content(
     let bars = &panes[ap].bars;
     let timestamps = &panes[ap].timestamps;
 
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     ui.add(SectionLabel::new(&format!("SEASONALITY — {}", sym)).tiny().color(t.accent));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
 
     if bars.len() < 252 || timestamps.len() < bars.len() {
         EmptyState::new("\u{1F4C5}", "Insufficient data", "Need at least 1 year of bars").theme(t).show(ui);
@@ -58,13 +58,13 @@ pub(crate) fn draw_content(
     let p = ui.painter();
 
     // Background
-    p.rect_filled(chart_rect, RADIUS_SM, color_alpha(t.toolbar_border, ALPHA_FAINT));
+    p.rect_filled(chart_rect, radius_sm(), color_alpha(t.toolbar_border, alpha_faint()));
 
     let mid_y = chart_rect.center().y;
     // Zero line
     p.line_segment(
         [egui::pos2(chart_rect.left(), mid_y), egui::pos2(chart_rect.right(), mid_y)],
-        egui::Stroke::new(0.5, color_alpha(t.dim, ALPHA_MUTED)));
+        egui::Stroke::new(0.5, color_alpha(t.dim, alpha_muted())));
 
     let col_w = bar_w / 12.0;
     let scale = (chart_h * 0.4) / max_abs;
@@ -103,7 +103,7 @@ pub(crate) fn draw_content(
             month_labels[i], egui::FontId::monospace(7.0), month_col);
     }
 
-    ui.add_space(GAP_MD);
+    ui.add_space(gap_md());
 
     // Current month highlight
     let now_secs = std::time::SystemTime::now()
@@ -117,7 +117,7 @@ pub(crate) fn draw_content(
         ui.add(MonospaceCode::new(&format!("{} avg {:+.2}%", month_labels[current_month], avg)).sm().color(col).strong(true));
     });
 
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
 
     // Best/worst months
     let best = avgs.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or((0, &0.0));
@@ -126,15 +126,15 @@ pub(crate) fn draw_content(
     ui.horizontal(|ui| {
         ui.add(DimLabel::new("Best:").color(t.dim));
         ui.add(MonospaceCode::new(&format!("{} {:+.2}%", month_labels[best.0], best.1)).xs().color(t.bull));
-        ui.add_space(GAP_MD);
+        ui.add_space(gap_md());
         ui.add(DimLabel::new("Worst:").color(t.dim));
         ui.add(MonospaceCode::new(&format!("{} {:+.2}%", month_labels[worst.0], worst.1)).xs().color(t.bear));
     });
 
     // Win rate per month
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
     ui.add(SectionLabel::new("WIN RATE BY MONTH").tiny().color(t.dim));
-    ui.add_space(GAP_XS);
+    ui.add_space(gap_xs());
 
     for (i, rets) in month_returns.iter().enumerate() {
         if rets.is_empty() { continue; }
@@ -149,10 +149,10 @@ pub(crate) fn draw_content(
             let bar_max = 60.0;
             let (r, _) = ui.allocate_exact_size(egui::vec2(bar_max, 8.0), egui::Sense::hover());
             let pp = ui.painter();
-            pp.rect_filled(r, 2.0, color_alpha(t.toolbar_border, ALPHA_FAINT));
+            pp.rect_filled(r, 2.0, color_alpha(t.toolbar_border, alpha_faint()));
             pp.rect_filled(
                 egui::Rect::from_min_size(r.min, egui::vec2(bar_max * pct / 100.0, 8.0)),
-                2.0, color_alpha(col, ALPHA_DIM));
+                2.0, color_alpha(col, alpha_dim()));
             ui.add(MonospaceCode::new(&format!("{:.0}% ({}/{})", pct, wins, total)).xs().color(col));
         });
     }

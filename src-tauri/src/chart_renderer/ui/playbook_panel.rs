@@ -32,8 +32,8 @@ pub(crate) fn draw(
             ui.painter().line_segment(
                 [egui::pos2(ui.min_rect().left(), line_y),
                  egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, ALPHA_MUTED)));
-            ui.add_space(GAP_SM);
+                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())));
+            ui.add_space(gap_sm());
 
             super::plays_panel::draw_content(ui, watchlist, panes, ap, t);
         });

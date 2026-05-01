@@ -113,7 +113,7 @@ if watchlist.discord_open {
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong()))))
         .show(ctx, |ui| {
             draw_content(ui, watchlist, t);
         });
@@ -214,7 +214,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     let strip_h = 44.0;
                     let (strip_bg_rect, _) = ui.allocate_exact_size(egui::vec2(panel_w, 0.0), egui::Sense::hover());
                     let bg_rect = egui::Rect::from_min_size(strip_bg_rect.min, egui::vec2(panel_w, strip_h));
-                    ui.painter().rect_filled(bg_rect, 0.0, color_alpha(egui::Color32::BLACK, ALPHA_TINT));
+                    ui.painter().rect_filled(bg_rect, 0.0, color_alpha(egui::Color32::BLACK, alpha_tint()));
 
                     egui::ScrollArea::horizontal().id_salt("guild_strip").show(ui, |ui| {
                         ui.horizontal(|ui| {
@@ -238,7 +238,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                 // Background glow on hover/selected
                                 if selected || hovered {
                                     let glow_rect = icon_rect.expand(2.0);
-                                    let glow_color = if selected { color_alpha(discord_blurple, ALPHA_STRONG) } else { color_alpha(egui::Color32::WHITE, ALPHA_SOFT) };
+                                    let glow_color = if selected { color_alpha(discord_blurple, alpha_strong()) } else { color_alpha(egui::Color32::WHITE, alpha_soft()) };
                                     ui.painter().rect_filled(glow_rect, rounding + 2.0, glow_color);
                                 }
 
@@ -292,7 +292,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     ui.add_space(2.0);
                     // Separator
                     let sep_rect = ui.allocate_exact_size(egui::vec2(panel_w, 1.0), egui::Sense::hover()).0;
-                    ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
+                    ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
                 }
 
                 // ── Content area ──
@@ -353,7 +353,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add_space(10.0);
                                         if ui.add(widgets::buttons::ChromeBtn::new(
                                             egui::RichText::new("Retry").monospace().size(8.0).color(t.dim))
-                                            .fill(color_alpha(t.toolbar_border, ALPHA_TINT))
+                                            .fill(color_alpha(t.toolbar_border, alpha_tint()))
                                             .corner_radius(r_md_cr())
                                         ).clicked() {
                                             if let Some(ref gid) = watchlist.discord_selected_guild {
@@ -499,7 +499,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 
                             // Input area
                             let sep_rect = ui.allocate_exact_size(egui::vec2(content_w, 1.0), egui::Sense::hover()).0;
-                            ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                            ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
                                 ui.add_space(6.0);

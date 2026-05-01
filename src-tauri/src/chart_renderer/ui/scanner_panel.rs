@@ -173,7 +173,7 @@ pub(crate) fn draw_content(
                 ui.add_space(20.0);
                 ui.vertical_centered(|ui| {
                     ui.add(Spinner::new().md().theme(t));
-                    ui.add_space(GAP_SM);
+                    ui.add_space(gap_sm());
                 });
                 EmptyState::new("\u{1F50D}", "Fetching quotes",
                     &format!("{} symbols in universe", SCANNER_UNIVERSE.len())).theme(t).show(ui);
@@ -244,7 +244,7 @@ pub(crate) fn draw_content(
                             .chg_font(egui::FontId::monospace(9.0))
                             .price_font(egui::FontId::monospace(9.0))
                             .fg(egui::Color32::from_gray(200))
-                            .hover_overlay(color_alpha(t.accent, ALPHA_GHOST))
+                            .hover_overlay(color_alpha(t.accent, alpha_ghost()))
                             .show(ui);
                         if resp.response.hovered() {
                             resp.response.clone().on_hover_text(format!("Vol: {}", fmt_volume(r.volume)));
@@ -261,7 +261,7 @@ pub(crate) fn draw_content(
                 }
 
                 ui.add_space(4.0);
-                separator(ui, color_alpha(t.toolbar_border, ALPHA_DIM));
+                separator(ui, color_alpha(t.toolbar_border, alpha_dim()));
                 ui.add_space(2.0);
             }
 

@@ -21,7 +21,7 @@ pub(crate) fn draw_content(
     ap: usize,
     t: &Theme,
 ) {
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
 
     // ── Header with "New Play" button ──
     ui.horizontal(|ui| {
@@ -38,25 +38,25 @@ pub(crate) fn draw_content(
             }
         });
     });
-    ui.add_space(GAP_SM);
-    separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-    ui.add_space(GAP_SM);
+    ui.add_space(gap_sm());
+    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    ui.add_space(gap_sm());
 
     // ── Play editor (inline) ──
     if watchlist.play_editor_open {
         let chart = if !panes.is_empty() { Some(&mut panes[ap]) } else { None };
         draw_play_editor(ui, watchlist, chart, t);
-        ui.add_space(GAP_SM);
-        separator(ui, color_alpha(t.toolbar_border, ALPHA_MUTED));
-        ui.add_space(GAP_SM);
+        ui.add_space(gap_sm());
+        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+        ui.add_space(gap_sm());
     }
 
     // ── Play cards ──
     if watchlist.plays.is_empty() {
-        ui.add_space(GAP_3XL);
+        ui.add_space(gap_3xl());
         ui.vertical_centered(|ui| {
             ui.label(egui::RichText::new(Icon::STAR).size(28.0).color(t.dim.gamma_multiply(0.2)));
-            ui.add_space(GAP_SM);
+            ui.add_space(gap_sm());
             ui.add(super::widgets::text::MonospaceCode::new("No plays yet").sm().color(t.dim).gamma(0.5));
             ui.add(super::widgets::text::MonospaceCode::new("Create a play to share a trade idea").xs().color(t.dim).gamma(0.3));
         });
@@ -192,24 +192,24 @@ fn draw_play_editor(
     let pt = watchlist.play_editor_type;
 
     egui::Frame::NONE
-        .fill(color_alpha(t.toolbar_border, ALPHA_FAINT))
-        .inner_margin(egui::Margin::same(GAP_LG as i8))
+        .fill(color_alpha(t.toolbar_border, alpha_faint()))
+        .inner_margin(egui::Margin::same(gap_lg() as i8))
         .corner_radius(r_lg_cr())
-        .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_MUTED)))
+        .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())))
         .show(ui, |ui| {
             ui.add(super::widgets::text::SectionLabel::new("NEW PLAY").color(t.accent));
-            ui.add_space(GAP_XS);
+            ui.add_space(gap_xs());
 
             // ── Play type selector ──
             ui.horizontal_wrapped(|ui| {
                 for pty in PlayType::all() {
                     let sel = pt == *pty;
                     let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                    let bg = if sel { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
+                    let bg = if sel { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                     let label = format!("{} {}", pty.icon(), pty.label());
                     if ui.add(ChromeBtn::new(egui::RichText::new(&label).monospace().size(FONT_XS).color(fg))
                         .fill(bg).corner_radius(r_sm_cr())
-                        .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_LINE) } else { egui::Stroke::NONE.color }))
+                        .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_line()) } else { egui::Stroke::NONE.color }))
                         .min_size(egui::vec2(0.0, 20.0))).clicked() {
                         let prev = watchlist.play_editor_type;
                         watchlist.play_editor_type = *pty;
@@ -230,7 +230,7 @@ fn draw_play_editor(
                 PlayType::Event       => "Catalyst-driven with pre/post levels",
             };
             ui.add(super::widgets::text::MonospaceCode::new(desc).xs().color(t.dim).gamma(0.4));
-            ui.add_space(GAP_XS);
+            ui.add_space(gap_xs());
 
             // ── Direction toggle ──
             ui.horizontal(|ui| {
@@ -240,17 +240,17 @@ fn draw_play_editor(
                 ] {
                     let sel = watchlist.play_editor_direction == dir;
                     let fg = if sel { color } else { t.dim.gamma_multiply(0.5) };
-                    let bg = if sel { color_alpha(color, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
+                    let bg = if sel { color_alpha(color, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                     if ui.add(ChromeBtn::new(egui::RichText::new(label).monospace().size(FONT_SM).strong().color(fg))
                         .fill(bg).corner_radius(r_sm_cr())
-                        .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(color, ALPHA_LINE) } else { egui::Stroke::NONE.color }))
+                        .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(color, alpha_line()) } else { egui::Stroke::NONE.color }))
                         .min_size(egui::vec2(56.0, 22.0))).clicked() {
                         watchlist.play_editor_direction = dir;
                         if let Some(ref mut c) = chart { spawn_play_lines(watchlist, c); }
                     }
                 }
             });
-            ui.add_space(GAP_XS);
+            ui.add_space(gap_xs());
 
             // ── Symbol ──
             ui.horizontal(|ui| {
@@ -258,7 +258,7 @@ fn draw_play_editor(
                 super::widgets::inputs::TextInput::new(&mut watchlist.play_editor_symbol)
                     .width(80.0).font_size(FONT_SM).placeholder("AAPL").show(ui);
             });
-            ui.add_space(GAP_XS);
+            ui.add_space(gap_xs());
 
             // ── Price fields with click-to-set ──
             let crosshair = "\u{2295}"; // ⊕
@@ -276,9 +276,9 @@ fn draw_play_editor(
             });
 
             // ── Legs section ──
-            ui.add_space(GAP_XS);
-            separator(ui, color_alpha(t.toolbar_border, ALPHA_FAINT));
-            ui.add_space(GAP_XS);
+            ui.add_space(gap_xs());
+            separator(ui, color_alpha(t.toolbar_border, alpha_faint()));
+            ui.add_space(gap_xs());
 
             ui.horizontal(|ui| {
                 section_label(ui, "LEGS", t.dim);
@@ -294,7 +294,7 @@ fn draw_play_editor(
                     }
                 });
             });
-            ui.add_space(GAP_XS);
+            ui.add_space(gap_xs());
 
             // T1 — primary target with allocation
             ui.horizontal(|ui| {
@@ -364,7 +364,7 @@ fn draw_play_editor(
 
             // Stop row (hidden for Scalp)
             if pt != PlayType::Scalp {
-                ui.add_space(GAP_XS);
+                ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
                     let stop_label = egui::RichText::new("STOP").monospace().size(7.0).color(t.bear.gamma_multiply(0.7));
                     ui.label(stop_label);
@@ -386,7 +386,7 @@ fn draw_play_editor(
             let reward = (target_f - entry_f).abs();
             if risk > 0.001 && pt != PlayType::Scalp {
                 let rr = reward / risk;
-                ui.add_space(GAP_XS);
+                ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
                     dim_label(ui, "R:R", t.dim);
                     let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
@@ -394,29 +394,29 @@ fn draw_play_editor(
                     let bar_w = ui.available_width().min(120.0);
                     let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 6.0), egui::Sense::hover());
                     let p = ui.painter();
-                    p.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                    p.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, alpha_muted()));
                     let risk_pct = (risk / (risk + reward)).min(1.0);
-                    p.rect_filled(egui::Rect::from_min_size(bar_rect.min, egui::vec2(bar_w * risk_pct, 6.0)), 2.0, color_alpha(t.bear, ALPHA_DIM));
+                    p.rect_filled(egui::Rect::from_min_size(bar_rect.min, egui::vec2(bar_w * risk_pct, 6.0)), 2.0, color_alpha(t.bear, alpha_dim()));
                     p.rect_filled(egui::Rect::from_min_size(
                         egui::pos2(bar_rect.left() + bar_w * risk_pct, bar_rect.top()),
-                        egui::vec2(bar_w * (1.0 - risk_pct), 6.0)), 2.0, color_alpha(t.bull, ALPHA_DIM));
+                        egui::vec2(bar_w * (1.0 - risk_pct), 6.0)), 2.0, color_alpha(t.bull, alpha_dim()));
                     p.circle_filled(egui::pos2(bar_rect.left() + bar_w * risk_pct, bar_rect.center().y), 3.0, t.text);
                 });
             }
 
-            ui.add_space(GAP_XS);
-            separator(ui, color_alpha(t.toolbar_border, ALPHA_FAINT));
-            ui.add_space(GAP_XS);
+            ui.add_space(gap_xs());
+            separator(ui, color_alpha(t.toolbar_border, alpha_faint()));
+            ui.add_space(gap_xs());
 
             // ── Tag chips + custom input ──
             ui.horizontal_wrapped(|ui| {
                 for tag in TAG_PRESETS {
                     let active = watchlist.play_editor_tags.iter().any(|t| t == tag);
                     let fg = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
-                    let bg = if active { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
+                    let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                     if ui.add(ChromeBtn::new(egui::RichText::new(*tag).monospace().size(7.0).color(fg))
                         .fill(bg).corner_radius(r_md_cr())
-                        .stroke(egui::Stroke::new(0.5, if active { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }))
+                        .stroke(egui::Stroke::new(0.5, if active { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_muted()) }))
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
                         if active { watchlist.play_editor_tags.retain(|x| x != tag); }
                         else { watchlist.play_editor_tags.push(tag.to_string()); }
@@ -441,19 +441,19 @@ fn draw_play_editor(
                     .cloned().collect();
                 for ct in &custom {
                     if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} \u{00D7}", ct)).monospace().size(7.0).color(t.accent))
-                        .fill(color_alpha(t.accent, ALPHA_TINT)).corner_radius(r_md_cr())
+                        .fill(color_alpha(t.accent, alpha_tint())).corner_radius(r_md_cr())
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
                         watchlist.play_editor_tags.retain(|x| x != ct);
                     }
                 }
             });
-            ui.add_space(GAP_XS);
+            ui.add_space(gap_xs());
 
             // ── Notes ──
             TextInput::new(&mut watchlist.play_editor_notes)
                 .multiline(true).width(ui.available_width())
                 .font_size(FONT_SM).placeholder("Strategy notes...").theme(t).show(ui);
-            ui.add_space(GAP_SM);
+            ui.add_space(gap_sm());
 
             // ── Buttons ──
             ui.horizontal(|ui| {
@@ -550,7 +550,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
     let mut val: u32 = pct_str.parse().unwrap_or(50);
 
     if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(FONT_XS).color(t.dim))
-        .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, ALPHA_FAINT))).clicked() {
+        .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
         val = val.saturating_sub(step).max(5);
     }
     ui.add(egui::TextEdit::singleline(pct_str)
@@ -558,7 +558,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
         .horizontal_align(egui::Align::Center));
     ui.add(super::widgets::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
     if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_XS).color(t.dim))
-        .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, ALPHA_FAINT))).clicked() {
+        .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
         val = (val + step).min(100);
     }
 
@@ -572,7 +572,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
 
 fn click_to_set_btn(ui: &mut egui::Ui, icon: &str, t: &Theme, active: bool) -> bool {
     let fg = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
-    let bg = if active { color_alpha(t.accent, ALPHA_TINT) } else { egui::Color32::TRANSPARENT };
+    let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
     ui.add(ChromeBtn::new(egui::RichText::new(icon).size(FONT_SM).color(fg))
         .fill(bg).corner_radius(r_sm_cr())
         .min_size(egui::vec2(18.0, 18.0))).clicked()
@@ -681,8 +681,8 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
     let p = ui.painter();
 
     // Shadow
-    p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), RADIUS_LG, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 25));
-    p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), RADIUS_LG, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 15));
+    p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), radius_lg(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, 25));
+    p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), radius_lg(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, 15));
 
     let bg = if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -692,14 +692,14 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
     } else {
         egui::Color32::from_rgb(t.toolbar_bg.r().saturating_add(8), t.toolbar_bg.g().saturating_add(8), t.toolbar_bg.b().saturating_add(8))
     };
-    p.rect_filled(card_rect, RADIUS_LG, bg);
+    p.rect_filled(card_rect, radius_lg(), bg);
 
     // Top bevel highlight
     p.rect_filled(egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
-        egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
+        egui::CornerRadius { nw: radius_lg() as u8, ne: radius_lg() as u8, sw: 0, se: 0 },
         egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 40 } else { 8 }));
 
-    p.rect_stroke(card_rect, RADIUS_LG, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)), egui::StrokeKind::Outside);
+    p.rect_stroke(card_rect, radius_lg(), egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())), egui::StrokeKind::Outside);
 
     // Accent stripe
     p.rect_filled(egui::Rect::from_min_max(
@@ -714,8 +714,8 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
     {
         let pill_w = 42.0;
         let pill_rect = egui::Rect::from_min_size(egui::pos2(cx, cy - 1.0), egui::vec2(pill_w, 16.0));
-        p.rect_filled(pill_rect, 3.0, color_alpha(dir_color, ALPHA_TINT));
-        p.rect_stroke(pill_rect, 3.0, egui::Stroke::new(STROKE_THIN, color_alpha(dir_color, ALPHA_DIM)), egui::StrokeKind::Outside);
+        p.rect_filled(pill_rect, 3.0, color_alpha(dir_color, alpha_tint()));
+        p.rect_stroke(pill_rect, 3.0, egui::Stroke::new(stroke_thin(), color_alpha(dir_color, alpha_dim())), egui::StrokeKind::Outside);
         p.text(pill_rect.center(), egui::Align2::CENTER_CENTER, play.direction.label(), egui::FontId::monospace(FONT_XS), dir_color);
 
         p.text(egui::pos2(cx + pill_w + 6.0, cy + 6.0), egui::Align2::LEFT_CENTER,
@@ -730,7 +730,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
         };
         let status_x = card_rect.right() - 60.0;
         let sr = egui::Rect::from_min_size(egui::pos2(status_x, cy - 1.0), egui::vec2(48.0, 16.0));
-        p.rect_filled(sr, 3.0, color_alpha(status_color, ALPHA_SUBTLE));
+        p.rect_filled(sr, 3.0, color_alpha(status_color, alpha_subtle()));
         p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), egui::FontId::monospace(7.0), status_color);
 
         if play.risk_reward > 0.0 {
@@ -777,12 +777,12 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
         let bar_x = cx;
         let bar_w = card_w - 24.0;
         let bar_rect = egui::Rect::from_min_size(egui::pos2(bar_x, cy), egui::vec2(bar_w, 4.0));
-        p.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        p.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, alpha_muted()));
         let total_range = (play.target_price - play.stop_price).abs();
         let risk = (play.entry_price - play.stop_price).abs();
         let risk_pct = if total_range > 0.0 { (risk / total_range).min(1.0) } else { 0.5 };
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, cy), egui::vec2(bar_w * risk_pct, 4.0)), 2.0, color_alpha(t.bear, ALPHA_DIM));
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + bar_w * risk_pct, cy), egui::vec2(bar_w * (1.0 - risk_pct), 4.0)), 2.0, color_alpha(t.bull, ALPHA_DIM));
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, cy), egui::vec2(bar_w * risk_pct, 4.0)), 2.0, color_alpha(t.bear, alpha_dim()));
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + bar_w * risk_pct, cy), egui::vec2(bar_w * (1.0 - risk_pct), 4.0)), 2.0, color_alpha(t.bull, alpha_dim()));
         p.circle_filled(egui::pos2(bar_x + bar_w * risk_pct, cy + 2.0), 3.0, t.text);
         cy += 10.0;
     }
@@ -810,7 +810,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
         let del_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 18.0, card_rect.top() + 4.0), egui::vec2(14.0, 14.0));
         let del_resp = ui.interact(del_rect, egui::Id::new(("play_del", &play.id[..8])), egui::Sense::click());
         if del_resp.hovered() {
-            p.rect_filled(del_rect, 2.0, color_alpha(t.bear, ALPHA_GHOST));
+            p.rect_filled(del_rect, 2.0, color_alpha(t.bear, alpha_ghost()));
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
         p.text(del_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.5));
@@ -819,7 +819,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
         if play.status == PlayStatus::Draft {
             let act_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 60.0, card_rect.bottom() - 18.0), egui::vec2(52.0, 14.0));
             let act_resp = ui.interact(act_rect, egui::Id::new(("play_act", &play.id[..8])), egui::Sense::click());
-            let act_bg = if act_resp.hovered() { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.accent, ALPHA_GHOST) };
+            let act_bg = if act_resp.hovered() { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.accent, alpha_ghost()) };
             p.rect_filled(act_rect, 3.0, act_bg);
             p.text(act_rect.center(), egui::Align2::CENTER_CENTER, "Activate", egui::FontId::monospace(7.0), t.accent);
             if act_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -832,5 +832,5 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
         *display_id = Some(play.id.clone());
     }
 
-    ui.add_space(GAP_MD);
+    ui.add_space(gap_md());
 }

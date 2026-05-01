@@ -31,7 +31,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
     let frame = egui::Frame::popup(&ctx.style())
         .fill(t.toolbar_bg)
         .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-        .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+        .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
         .corner_radius(r_md_cr());
 
     let id_str = format!("ind_editor_{}", edit_id);
@@ -61,7 +61,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 26.0)),
                     egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 },
-                    color_alpha(t.toolbar_border, ALPHA_TINT));
+                    color_alpha(t.toolbar_border, alpha_tint()));
                 ui.add_space(6.0);
                 // Color dot — uses the editing indicator's color (pre-fetched).
                 ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, hdr_color);
@@ -160,7 +160,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             let sel = ind.period == pr;
                             let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
                             if ui.add(ChromeBtn::new(egui::RichText::new(format!("{}", pr)).monospace().size(8.0).color(fg))
-                                .fill(if sel { color_alpha(t.accent, ALPHA_SOFT) } else { egui::Color32::TRANSPARENT })
+                                .fill(if sel { color_alpha(t.accent, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                                 .corner_radius(r_xs()).min_size(egui::vec2(22.0, 18.0))).clicked() && !sel {
                                 ind.period = pr; needs_recompute = true;
                             }
@@ -215,7 +215,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                                 let sel = (cur - s).abs() < 0.01;
                                 if ui.add(ChromeBtn::new(egui::RichText::new(format!("{:.1}", s)).monospace().size(8.0)
                                     .color(if sel { t.accent } else { t.dim.gamma_multiply(0.5) }))
-                                    .fill(if sel { color_alpha(t.accent, ALPHA_SOFT) } else { egui::Color32::TRANSPARENT })
+                                    .fill(if sel { color_alpha(t.accent, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                                     .corner_radius(r_xs()).min_size(egui::vec2(22.0, 18.0))).clicked() {
                                     ind.param2 = s; needs_recompute = true;
                                 }
@@ -304,13 +304,13 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         let label = if tf.is_empty() { "Chart" } else { tf };
                         let sel = ind.source_tf == tf;
                         let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                        let bg = if sel { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
+                        let bg = if sel { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                         let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
                             else if i == tfs.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
                             else { egui::CornerRadius::ZERO };
                         if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(9.0).color(fg))
                             .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 20.0))
-                            .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_HEAVY) } else { color_alpha(t.toolbar_border, ALPHA_LINE) })))
+                            .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_heavy()) } else { color_alpha(t.toolbar_border, alpha_line()) })))
                             .clicked() && !sel {
                             ind.source_tf = tf.to_string();
                             ind.source_loaded = tf.is_empty();
@@ -322,7 +322,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 });
 
                 ui.add_space(6.0);
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
                 ui.add_space(6.0);
 
                 // ── APPEARANCE ──
@@ -337,8 +337,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         let is_cur = ind.color == c;
                         let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
                         if is_cur {
-                            ui.painter().rect_filled(r, 3.0, color_alpha(color, ALPHA_TINT));
-                            ui.painter().rect_stroke(r, 3.0, egui::Stroke::new(STROKE_STD, color), egui::StrokeKind::Outside);
+                            ui.painter().rect_filled(r, 3.0, color_alpha(color, alpha_tint()));
+                            ui.painter().rect_stroke(r, 3.0, egui::Stroke::new(stroke_std(), color), egui::StrokeKind::Outside);
                         }
                         ui.painter().circle_filled(r.center(), if is_cur { 5.0 } else { 4.0 }, color);
                         if resp.clicked() { ind.color = c.to_string(); }
@@ -353,13 +353,13 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     for (i, &th) in widths.iter().enumerate() {
                         let sel = (ind.thickness - th).abs() < 0.1;
                         let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                        let bg = if sel { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) };
+                        let bg = if sel { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                         let rounding = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
                             else if i == widths.len() - 1 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
                             else { egui::CornerRadius::ZERO };
                         if ui.add(egui::Button::new(egui::RichText::new(format!("{:.1}", th)).monospace().size(8.0).color(fg))
                             .fill(bg).corner_radius(rounding).min_size(egui::vec2(26.0, 18.0))
-                            .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, ALPHA_HEAVY) } else { color_alpha(t.toolbar_border, ALPHA_LINE) })))
+                            .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_heavy()) } else { color_alpha(t.toolbar_border, alpha_line()) })))
                             .clicked() { ind.thickness = th; }
                     }
                     ui.add_space(6.0);
@@ -388,7 +388,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                                 let is_cur = *color_field == c;
                                 let (r, resp) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::click());
                                 if is_cur {
-                                    ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(STROKE_STD, col), egui::StrokeKind::Outside);
+                                    ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
                                 }
                                 ui.painter().circle_filled(r.center(), if is_cur { 4.0 } else { 3.0 }, col);
                                 if resp.clicked() { *color_field = c.to_string(); }
@@ -397,7 +397,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             let is_auto = color_field.is_empty();
                             if ui.add(ChromeBtn::new(egui::RichText::new("auto").monospace().size(7.0)
                                 .color(if is_auto { t.accent } else { t.dim.gamma_multiply(0.5) }))
-                                .fill(if is_auto { color_alpha(t.accent, ALPHA_SOFT) } else { egui::Color32::TRANSPARENT })
+                                .fill(if is_auto { color_alpha(t.accent, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                                 .corner_radius(r_xs()).min_size(egui::vec2(24.0, 12.0))).clicked() {
                                 *color_field = String::new();
                             }
@@ -410,13 +410,13 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                                 let cur = if *thickness_field > 0.0 { *thickness_field } else { 0.8 };
                                 let sel = (cur - th).abs() < 0.1;
                                 let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.6) };
-                                let bg = if sel { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_SOFT) };
+                                let bg = if sel { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_soft()) };
                                 let rounding = if i == 0 { egui::CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 } }
                                     else if i == 4 { egui::CornerRadius { nw: 0, sw: 0, ne: 2, se: 2 } }
                                     else { egui::CornerRadius::ZERO };
                                 if ui.add(egui::Button::new(egui::RichText::new(format!("{:.1}", th)).monospace().size(7.0).color(fg))
                                     .fill(bg).corner_radius(rounding).min_size(egui::vec2(22.0, 14.0))
-                                    .stroke(egui::Stroke::new(STROKE_THIN, if sel { color_alpha(t.accent, 80) } else { color_alpha(t.toolbar_border, ALPHA_MUTED) })))
+                                    .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, 80) } else { color_alpha(t.toolbar_border, alpha_muted()) })))
                                     .clicked() { *thickness_field = th; }
                             }
                         });
@@ -437,7 +437,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             let is_cur = ind.fill_color_hex == c;
                             let (r, resp) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::click());
                             if is_cur {
-                                ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(STROKE_STD, col), egui::StrokeKind::Outside);
+                                ui.painter().rect_stroke(r, 2.0, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
                             }
                             ui.painter().circle_filled(r.center(), if is_cur { 4.0 } else { 3.0 }, color_alpha(col, 80));
                             if resp.clicked() { ind.fill_color_hex = c.to_string(); }
@@ -445,7 +445,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         let is_auto = ind.fill_color_hex.is_empty();
                         if ui.add(ChromeBtn::new(egui::RichText::new("auto").monospace().size(7.0)
                             .color(if is_auto { t.accent } else { t.dim.gamma_multiply(0.5) }))
-                            .fill(if is_auto { color_alpha(t.accent, ALPHA_SOFT) } else { egui::Color32::TRANSPARENT })
+                            .fill(if is_auto { color_alpha(t.accent, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                             .corner_radius(r_xs()).min_size(egui::vec2(24.0, 12.0))).clicked() {
                             ind.fill_color_hex = String::new();
                         }
@@ -453,7 +453,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 }
 
                 ui.add_space(6.0);
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, ALPHA_MUTED));
+                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
                 ui.add_space(4.0);
 
                 // ── Footer: visibility + delete ──
@@ -462,15 +462,15 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
                     let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
                     let vr = ui.add(ChromeBtn::new(egui::RichText::new(vis_icon).size(10.0).color(vis_fg))
-                        .fill(if ind.visible { color_alpha(t.toolbar_border, ALPHA_SOFT) } else { egui::Color32::TRANSPARENT })
+                        .fill(if ind.visible { color_alpha(t.toolbar_border, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                         .corner_radius(r_sm_cr()).min_size(egui::vec2(24.0, 22.0)));
                     if vr.on_hover_text("Toggle Visibility").clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         let del_color = egui::Color32::from_rgb(224, 85, 96);
                         let dr = ui.add(ChromeBtn::new(egui::RichText::new(Icon::TRASH).size(10.0).color(del_color))
-                            .fill(color_alpha(del_color, ALPHA_GHOST)).corner_radius(r_sm_cr())
-                            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(del_color, ALPHA_DIM)))
+                            .fill(color_alpha(del_color, alpha_ghost())).corner_radius(r_sm_cr())
+                            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
                             .min_size(egui::vec2(24.0, 22.0)));
                         if dr.on_hover_text("Delete Indicator").clicked() {
                             delete_id = Some(edit_id); close_editor = true;

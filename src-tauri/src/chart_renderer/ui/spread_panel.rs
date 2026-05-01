@@ -236,7 +236,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_HEAVY)))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
             .corner_radius(r_lg_cr()))
         .show(ctx, |ui| {
             let w = ui.available_width();
@@ -256,7 +256,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
                 egui::vec2(w, 1.0),
             );
-            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_DIM));
+            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
             ui.add_space(6.0);
 
             egui::ScrollArea::vertical().id_salt("spread_body").show(ui, |ui| {
@@ -281,9 +281,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         ui.add_space(4.0);
                         if ui.add(egui::Button::new(
                             egui::RichText::new(active_symbol).monospace().size(8.0).color(t.accent))
-                            .fill(color_alpha(t.accent, ALPHA_GHOST))
+                            .fill(color_alpha(t.accent, alpha_ghost()))
                             .corner_radius(r_md_cr())
-                            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_MUTED)))
+                            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_muted())))
                             .min_size(egui::vec2(0.0, 16.0))
                         ).on_hover_text("Use chart symbol").clicked() {
                             watchlist.spread_state.symbol = active_symbol.to_string();
@@ -328,7 +328,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         egui::vec2(w - m * 2.0 + 4.0, 26.0),
                     );
                     let _ = ui.allocate_rect(card_rect, egui::Sense::hover());
-                    ui.painter().rect_filled(card_rect, 3.0, color_alpha(t.toolbar_border, ALPHA_SUBTLE));
+                    ui.painter().rect_filled(card_rect, 3.0, color_alpha(t.toolbar_border, alpha_subtle()));
 
                     // Draw leg label + controls
                     let leg_label_col = if leg.side == "BUY" { t.bull } else { t.bear };

@@ -365,7 +365,7 @@ fn draw_normal_mode(
                             let (rect, resp) = ui.allocate_exact_size(
                                 egui::vec2(ui.available_width(), row_h),
                                 egui::Sense::click());
-                            let bg = if is_sel { color_alpha(t.accent, ALPHA_TINT) }
+                            let bg = if is_sel { color_alpha(t.accent, alpha_tint()) }
                                      else if resp.hovered() { color_alpha(t.accent, 18) }
                                      else { egui::Color32::TRANSPARENT };
                             let painter = ui.painter_at(rect);
