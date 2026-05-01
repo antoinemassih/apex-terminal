@@ -29,7 +29,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Align2, Color32, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
+use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
 
 use super::super::style::{
     alpha_active, alpha_line, alpha_muted, alpha_subtle, color_alpha, font_md, font_sm, gap_sm,
@@ -70,6 +70,18 @@ pub struct PainterPaneHeader<'a> {
     hovered_tab: Option<usize>,
 
     title_font_size: f32,
+
+    // ── New knobs ──────────────────────────────────────────────────────────
+    /// Option badges: `(side, expiry_str)` — paints C/P pill + DTE countdown badge.
+    option_badges: Option<(&'a str, &'a str)>,
+    /// Whether to show the star/template button after symbol/tabs.
+    show_template_btn: bool,
+    /// Whether the template button is currently active (popup open).
+    template_btn_active: bool,
+    /// Sense for tab strip interactions — use `Sense::click_and_drag()` for cross-pane drag.
+    tab_sense: Option<Sense>,
+    /// Pane index — used to build unique egui Ids for tab interactions.
+    pane_index: usize,
 }
 
 impl<'a> PainterPaneHeader<'a> {
@@ -96,6 +108,11 @@ impl<'a> PainterPaneHeader<'a> {
             active_tab: 0,
             hovered_tab: None,
             title_font_size: font_md(),
+            option_badges: None,
+            show_template_btn: false,
+            template_btn_active: false,
+            tab_sense: None,
+            pane_index: 0,
         }
     }
 
@@ -123,6 +140,20 @@ impl<'a> PainterPaneHeader<'a> {
     pub fn hovered_tab(mut self, i: Option<usize>) -> Self { self.hovered_tab = i; self }
 
     pub fn title_font_size(mut self, s: f32) -> Self { self.title_font_size = s; self }
+
+    /// Paint C/P pill + DTE countdown badge after the symbol/tab.
+    /// `side` = "C" or "P"; `expiry` = "YYYY-MM-DD" date string.
+    pub fn option_badges(mut self, side: &'a str, expiry: &'a str) -> Self {
+        self.option_badges = Some((side, expiry)); self
+    }
+    /// Show star/template button. `active` = popup is already open.
+    pub fn show_template_btn(mut self, active: bool) -> Self {
+        self.show_template_btn = true; self.template_btn_active = active; self
+    }
+    /// Override tab `Sense` — use `Sense::click_and_drag()` for cross-pane drag support.
+    pub fn tab_sense(mut self, s: Sense) -> Self { self.tab_sense = Some(s); self }
+    /// Pane index — used to form unique egui Ids for tabs and drag state.
+    pub fn pane_index(mut self, i: usize) -> Self { self.pane_index = i; self }
 
     pub fn show(self, ui: &mut Ui) -> PainterPaneHeaderResponse {
         let t = self.theme;
@@ -161,6 +192,12 @@ impl<'a> PainterPaneHeader<'a> {
             clicked_indicator_remove: None,
             clicked_tab: None,
             hover_pos: None,
+            clicked_template: false,
+            tab_drag_started: None,
+            tab_drag_pos: None,
+            tab_drag_released: None,
+            symbol_rect: None,
+            clicked_symbol: false,
         };
         out.hover_pos = ui.ctx().pointer_hover_pos().filter(|p| rect.contains(*p));
 
@@ -238,12 +275,26 @@ impl<'a> PainterPaneHeader<'a> {
                     + price_galley.size().x + gap_between + close_w + tab_pad;
 
                 let tab_rect = Rect::from_min_size(pos2(cx, tab_y), Vec2::new(tab_w, tab_h));
+                let effective_sense = self.tab_sense.unwrap_or_else(Sense::click);
                 let tab_resp = ui.interact(
                     tab_rect,
-                    egui::Id::new(("painter_pane_tab", rect.min.x as i32, rect.min.y as i32, ti)),
-                    Sense::click(),
+                    egui::Id::new(("painter_pane_tab", self.pane_index, ti)),
+                    effective_sense,
                 );
                 if tab_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                // Cross-pane drag support — only fires when tab_sense includes drag
+                if tab_resp.drag_started_by(egui::PointerButton::Primary) {
+                    out.tab_drag_started = Some(ti);
+                }
+                if tab_resp.dragged_by(egui::PointerButton::Primary) {
+                    if let Some(p) = tab_resp.interact_pointer_pos() {
+                        out.tab_drag_pos = Some((ti, p));
+                    }
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
+                if tab_resp.drag_stopped() {
+                    out.tab_drag_released = Some(ti);
+                }
 
                 // Bg
                 let tab_bg = if is_active_tab {
@@ -275,7 +326,36 @@ impl<'a> PainterPaneHeader<'a> {
                     pos2(tab_rect.left() + tab_pad, tab_rect.center().y),
                     Align2::LEFT_CENTER, sym, title_font.clone(), sym_col,
                 );
-                let price_x = tab_rect.left() + tab_pad + sym_galley.size().x + gap_between;
+                let mut price_x = tab_rect.left() + tab_pad + sym_galley.size().x + gap_between;
+                // Option badges in tab strip (C/P pill + DTE)
+                if let Some((side, expiry)) = self.option_badges {
+                    let bh = (tab_rect.height() - 6.0).min(16.0);
+                    let by = tab_rect.center().y - bh / 2.0;
+                    let badge_font = FontId::monospace(9.5);
+                    let dark_fg = Color32::from_rgb(24, 24, 28);
+                    if side == "C" || side == "P" {
+                        let g = painter.layout_no_wrap(side.to_string(), badge_font.clone(), dark_fg);
+                        let bw = g.size().x + 8.0;
+                        let r = Rect::from_min_size(pos2(price_x, by), Vec2::new(bw, bh));
+                        let accent_color = if side == "C" { t.bull } else { t.bear };
+                        painter.rect_filled(r, 3.0, color_alpha(accent_color, 200));
+                        painter.text(r.center(), Align2::CENTER_CENTER, side, badge_font.clone(), dark_fg);
+                        price_x += bw + 4.0;
+                    }
+                    if !expiry.is_empty() {
+                        use chrono::NaiveDate;
+                        let today = chrono::Utc::now().date_naive();
+                        let dte = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
+                            .ok().map(|d| (d - today).num_days()).unwrap_or(0);
+                        let lbl = if dte <= 0 { "0D".to_string() } else { format!("{}D", dte) };
+                        let g = painter.layout_no_wrap(lbl.clone(), badge_font.clone(), dark_fg);
+                        let bw = g.size().x + 6.0;
+                        let r = Rect::from_min_size(pos2(price_x, by), Vec2::new(bw, bh));
+                        painter.rect_filled(r, 3.0, color_alpha(t.accent, 200));
+                        painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
+                        price_x += bw + 6.0;
+                    }
+                }
                 let price_color = self.price_color.unwrap_or(t.dim);
                 painter.text(
                     pos2(price_x, tab_rect.center().y),
@@ -314,11 +394,62 @@ impl<'a> PainterPaneHeader<'a> {
             // Simple label
             let label_color = if self.is_active { t.bull } else { t.text };
             let sym_galley = painter.layout_no_wrap(sym.to_string(), title_font.clone(), label_color);
+            // Allocate a click rect for the symbol label so callers can anchor pickers.
+            let sym_label_rect = Rect::from_min_size(
+                pos2(cx, rect.center().y - sym_galley.size().y / 2.0),
+                Vec2::new(sym_galley.size().x + 4.0, sym_galley.size().y + 2.0),
+            );
+            let sym_resp = ui.allocate_rect(sym_label_rect, Sense::click());
+            if sym_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            out.symbol_rect = Some(sym_label_rect);
+            if sym_resp.clicked() {
+                // Caller handles by checking symbol_rect + bg_resp.clicked(); surface via symbol_rect presence.
+                // We set a dedicated flag by re-using clicked_tab = None and symbol_rect set.
+                // Actually signal via a dedicated field — use out.symbol_rect + allocate_rect clicked:
+                // Re-use the trick: mark symbol_rect and let caller check sym_resp.clicked().
+                // Since we can't embed a Response in out cleanly, we repurpose clicked_tab with sentinel.
+                // Simplest: just expose symbol_rect; caller checks `out.symbol_rect.is_some()` and re-queries ctx.
+                // For full fidelity keep it simple — store clicked state via a new mechanism:
+                // We set clicked_plus temporarily with a different convention... instead, add a bool.
+                // NOTE: symbol_rect is always set; caller must check `out.symbol_clicked`.
+            }
+            // Track symbol click separately
+            let sym_clicked = sym_resp.clicked();
             let p0 = pos2(cx + 2.0, rect.center().y);
             painter.text(pos2(p0.x + 0.5, p0.y), Align2::LEFT_CENTER, sym,
                 title_font.clone(), label_color);
             painter.text(p0, Align2::LEFT_CENTER, sym, title_font.clone(), label_color);
             cx += sym_galley.size().x + gap_md_local() + 4.0;
+
+            // Option badges: C/P pill + DTE countdown
+            if let Some((side, expiry)) = self.option_badges {
+                let bh = (h - 6.0).min(16.0);
+                let by = rect.center().y - bh / 2.0;
+                let badge_font = FontId::monospace(9.5);
+                let dark_fg = Color32::from_rgb(24, 24, 28);
+                if side == "C" || side == "P" {
+                    let g = painter.layout_no_wrap(side.to_string(), badge_font.clone(), dark_fg);
+                    let bw = g.size().x + 8.0;
+                    let r = Rect::from_min_size(pos2(cx, by), Vec2::new(bw, bh));
+                    let accent_color = if side == "C" { t.bull } else { t.bear };
+                    painter.rect_filled(r, 3.0, color_alpha(accent_color, 200));
+                    painter.text(r.center(), Align2::CENTER_CENTER, side, badge_font.clone(), dark_fg);
+                    cx += bw + 4.0;
+                }
+                if !expiry.is_empty() {
+                    use chrono::NaiveDate;
+                    let today = chrono::Utc::now().date_naive();
+                    let dte = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
+                        .ok().map(|d| (d - today).num_days()).unwrap_or(0);
+                    let lbl = if dte <= 0 { "0D".to_string() } else { format!("{}D", dte) };
+                    let g = painter.layout_no_wrap(lbl.clone(), badge_font.clone(), dark_fg);
+                    let bw = g.size().x + 6.0;
+                    let r = Rect::from_min_size(pos2(cx, by), Vec2::new(bw, bh));
+                    painter.rect_filled(r, 3.0, color_alpha(t.accent, 200));
+                    painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
+                    cx += bw + 6.0;
+                }
+            }
 
             if let Some(tf) = self.timeframe {
                 let tf_font = FontId::monospace(font_sm());
@@ -335,6 +466,9 @@ impl<'a> PainterPaneHeader<'a> {
                     price_text, price_font, price_color);
                 cx += g.size().x + gap_md_local() + 4.0;
             }
+
+            // Surface symbol click to caller
+            if sym_clicked { out.clicked_symbol = true; }
         }
 
         // ── Indicator chips with painted ✕ ──
@@ -403,6 +537,38 @@ impl<'a> PainterPaneHeader<'a> {
             cx += plus_w + gap_md_local();
         }
 
+        // ── Template / star button ──
+        if self.show_template_btn {
+            let t_w = 22.0;
+            let t_h = h - 6.0;
+            let t_rect = Rect::from_min_size(
+                pos2(cx, rect.center().y - t_h / 2.0),
+                Vec2::new(t_w, t_h),
+            );
+            let t_resp = ui.allocate_rect(t_rect, Sense::click());
+            let t_active = self.template_btn_active;
+            let (bg, fg, border) = if t_active {
+                (color_alpha(t.accent, 38), t.accent, color_alpha(t.accent, alpha_active()))
+            } else if t_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                (color_alpha(t.toolbar_border, alpha_subtle()),
+                 t.text,
+                 color_alpha(t.accent, alpha_line()))
+            } else {
+                (color_alpha(t.toolbar_border, 18),
+                 t.dim.gamma_multiply(0.8),
+                 color_alpha(t.toolbar_border, alpha_muted()))
+            };
+            painter.rect_filled(t_rect, 4.0, bg);
+            painter.rect_stroke(t_rect, 4.0,
+                Stroke::new(stroke_thin(), border), StrokeKind::Outside);
+            painter.text(t_rect.center(), Align2::CENTER_CENTER,
+                crate::ui_kit::icons::Icon::STAR,
+                FontId::proportional((self.title_font_size - 2.0).max(font_sm())), fg);
+            if t_resp.clicked() { out.clicked_template = true; }
+            cx += t_w + gap_sm();
+        }
+
         // ── Close button (right-anchored) ──
         if self.show_close {
             let close_size = 18.0_f32;
@@ -445,6 +611,20 @@ pub struct PainterPaneHeaderResponse {
     pub clicked_tab: Option<usize>,
     /// Pointer position relative to viewport, if hovering inside `rect`.
     pub hover_pos: Option<egui::Pos2>,
+
+    // ── New response fields ────────────────────────────────────────────────
+    /// Star/template button was clicked.
+    pub clicked_template: bool,
+    /// Index of the tab whose drag just started (first frame of drag).
+    pub tab_drag_started: Option<usize>,
+    /// Pointer position reported during drag, per dragging tab index.
+    pub tab_drag_pos: Option<(usize, Pos2)>,
+    /// Index of the tab whose drag was just released.
+    pub tab_drag_released: Option<usize>,
+    /// Screen rect of the painted symbol label (for anchoring picker popups).
+    pub symbol_rect: Option<Rect>,
+    /// Symbol label was clicked (simple-label mode only).
+    pub clicked_symbol: bool,
 }
 
 // ─── Local helpers ──────────────────────────────────────────────────────────
