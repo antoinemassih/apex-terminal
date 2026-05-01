@@ -16817,18 +16817,35 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
     });
     span_end(); // chart_panes
 
-    // ── Design Mode — egui style editor (affects ALL widgets globally) ──
+    // ── Design Mode — full inspector with Style/Theme/Preview/click-to-select ──
     #[cfg(feature = "design-mode")]
     if crate::design_tokens::is_active() {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static DESIGN_PANEL_OPEN: AtomicBool = AtomicBool::new(true);
+        // F12 toggles the new inspector. Defaults open on first activation.
+        let f12 = ctx.input(|i| i.key_pressed(egui::Key::F12));
+        DESIGN_INSPECTOR.with(|cell| {
+            let mut cell = cell.borrow_mut();
+            if cell.is_none() {
+                *cell = Some(crate::design_inspector::Inspector::new(
+                    std::path::PathBuf::from("design.toml"),
+                ));
+            }
+            if let Some(inspector) = cell.as_mut() {
+                if f12 { inspector.toggle(); }
+                if let Some(tokens_lock) = crate::design_tokens::get_lock() {
+                    if let Ok(mut tokens) = tokens_lock.write() {
+                        let _changed = inspector.show(ctx, &mut *tokens);
+                    }
+                }
+            }
+        });
 
-        // Ctrl+Shift+D toggles
+        // Legacy inline simple panel — kept gated on Ctrl+Shift+D for back-compat.
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static DESIGN_PANEL_OPEN: AtomicBool = AtomicBool::new(false);
         if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::D)) {
             let was = DESIGN_PANEL_OPEN.load(Ordering::Relaxed);
             DESIGN_PANEL_OPEN.store(!was, Ordering::Relaxed);
         }
-
         if DESIGN_PANEL_OPEN.load(Ordering::Relaxed) {
             egui::SidePanel::right("design_mode_panel")
                 .min_width(300.0)

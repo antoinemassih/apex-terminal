@@ -202,6 +202,11 @@ pub fn get() -> Option<DesignTokens> {
 }
 
 #[cfg(feature = "design-mode")]
+pub fn get_lock() -> Option<&'static RwLock<DesignTokens>> {
+    DESIGN_TOKENS.get()
+}
+
+#[cfg(feature = "design-mode")]
 pub fn is_active() -> bool { DESIGN_TOKENS.get().is_some() }
 
 // ─── No-op stubs when feature is off ────────────────────────────────────────

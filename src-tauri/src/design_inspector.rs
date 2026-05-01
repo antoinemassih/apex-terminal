@@ -132,7 +132,7 @@ impl Category {
 impl Inspector {
     pub fn new(toml_path: PathBuf) -> Self {
         Self {
-            open: false,
+            open: true,
             toml_path,
             category: Category::Font,
             dirty: false,
