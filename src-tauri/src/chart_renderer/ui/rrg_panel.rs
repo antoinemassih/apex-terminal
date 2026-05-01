@@ -9,6 +9,7 @@ use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
 use super::widgets::text::{SectionLabel, MonospaceCode};
+use super::widgets::status::StatusDot;
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
 const SECTOR_COLORS: &[(&str, &str, (u8, u8, u8))] = &[
@@ -251,22 +252,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             for s in legend_sectors.iter().take(half) {
-                ui.horizontal(|ui| {
-                    let c = sector_color(&s.symbol);
-                    let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 10.0));
-                    ui.painter().circle_filled(dot_rect.center(), 3.0, c);
-                    ui.add(MonospaceCode::new(&s.symbol).xs().color(c));
-                });
+                let c = sector_color(&s.symbol);
+                ui.add(StatusDot::new().color(c).label(&s.symbol).radius(3.0));
             }
         });
         ui.vertical(|ui| {
             for s in legend_sectors.iter().skip(half) {
-                ui.horizontal(|ui| {
-                    let c = sector_color(&s.symbol);
-                    let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 10.0));
-                    ui.painter().circle_filled(dot_rect.center(), 3.0, c);
-                    ui.add(MonospaceCode::new(&s.symbol).xs().color(c));
-                });
+                let c = sector_color(&s.symbol);
+                ui.add(StatusDot::new().color(c).label(&s.symbol).radius(3.0));
             }
         });
     });
@@ -285,9 +278,7 @@ pub(crate) fn draw(
         .min_width(240.0)
         .max_width(500.0)
         .resizable(true)
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
-            .stroke(egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_STRONG))))
+        .frame(panel_frame_compact(t.toolbar_bg, t.toolbar_border))
         .show(ctx, |ui| {
             // Add close button at the top
             ui.horizontal(|ui| {

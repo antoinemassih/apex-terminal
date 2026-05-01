@@ -3,7 +3,9 @@
 use egui;
 use super::style::*;
 use super::super::gpu::{Watchlist, Theme};
-use super::widgets::text::MonospaceCode;
+use super::widgets::text::{MonospaceCode, SectionLabel};
+use super::widgets::buttons::{SimpleBtn, IconBtn, TradeBtn};
+use super::widgets::cards::metric_card::MetricCard;
 
 // ─── Data Structures ────────────────────────────────────────────────────────
 
@@ -310,7 +312,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Legs ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.add(MonospaceCode::new("LEGS").size_px(9.0).strong(true).color(t.dim));
+                    ui.add(SectionLabel::new("LEGS").xs().color(t.dim));
                 });
                 ui.add_space(4.0);
 
@@ -341,13 +343,14 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     // Remove button (right side)
                     if leg_count > 1 {
                         let x_rect = egui::Rect::from_min_size(
-                            egui::pos2(card_rect.right() - 18.0, card_rect.min.y + 4.0),
-                            egui::vec2(14.0, 18.0),
+                            egui::pos2(card_rect.right() - 18.0, card_rect.min.y + 2.0),
+                            egui::vec2(18.0, 22.0),
                         );
-                        let x_resp = ui.allocate_rect(x_rect, egui::Sense::click());
-                        let x_col = if x_resp.hovered() { t.bear } else { t.dim.gamma_multiply(0.4) };
-                        ui.painter().text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(12.0), x_col);
-                        if x_resp.clicked() { remove_leg = Some(idx); }
+                        // Render an IconBtn inside the pre-allocated rect using a child UI.
+                        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(x_rect));
+                        if child.add(IconBtn::new("\u{00D7}").small().color(t.dim)).clicked() {
+                            remove_leg = Some(idx);
+                        }
                     }
 
                     ui.add_space(2.0);
@@ -357,28 +360,16 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         ui.add_space(m + 4.0);
                         // Side toggle
                         let side_col = if leg.side == "BUY" { t.bull } else { t.bear };
-                        if ui.add(egui::Button::new(egui::RichText::new(&leg.side).monospace().size(8.0).color(side_col))
-                            .fill(color_alpha(side_col, ALPHA_GHOST)).corner_radius(RADIUS_SM)
-                            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(side_col, ALPHA_MUTED)))
-                            .min_size(egui::vec2(30.0, 14.0))
-                        ).clicked() {
+                        if ui.add(SimpleBtn::new(&leg.side).color(side_col).min_width(30.0).height(14.0)).clicked() {
                             leg.side = if leg.side == "BUY" { "SELL".into() } else { "BUY".into() };
                         }
                         // Qty
-                        if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(9.0).color(t.dim))
-                            .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))
-                        ).clicked() && leg.qty > 1 { leg.qty -= 1; }
+                        if ui.add(IconBtn::new("-").small().color(t.dim)).clicked() && leg.qty > 1 { leg.qty -= 1; }
                         ui.add(MonospaceCode::new(&format!("{}", leg.qty)).size_px(9.0).color(egui::Color32::from_gray(220)));
-                        if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(9.0).color(t.dim))
-                            .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))
-                        ).clicked() { leg.qty += 1; }
+                        if ui.add(IconBtn::new("+").small().color(t.dim)).clicked() { leg.qty += 1; }
                         // Option type toggle
                         let ot_col = if leg.option_type == "CALL" { t.bull } else { t.bear };
-                        if ui.add(egui::Button::new(egui::RichText::new(&leg.option_type).monospace().size(8.0).color(ot_col))
-                            .fill(color_alpha(ot_col, ALPHA_GHOST)).corner_radius(RADIUS_SM)
-                            .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(ot_col, ALPHA_MUTED)))
-                            .min_size(egui::vec2(34.0, 14.0))
-                        ).clicked() {
+                        if ui.add(SimpleBtn::new(&leg.option_type).color(ot_col).min_width(34.0).height(14.0)).clicked() {
                             leg.option_type = if leg.option_type == "CALL" { "PUT".into() } else { "CALL".into() };
                         }
                         // Strike
@@ -407,12 +398,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // Add leg button
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    if ui.add(egui::Button::new(egui::RichText::new("+ Add Leg").monospace().size(9.0).color(t.accent))
-                        .fill(color_alpha(t.accent, ALPHA_FAINT))
-                        .corner_radius(RADIUS_MD)
-                        .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.accent, ALPHA_TINT)))
-                        .min_size(egui::vec2(w - m * 2.0, 18.0))
-                    ).clicked() {
+                    if ui.add(SimpleBtn::new("+ Add Leg").color(t.accent).min_width(w - m * 2.0).height(18.0)).clicked() {
                         add_leg = true;
                     }
                 });
@@ -421,25 +407,25 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Spread Metrics ──
                 let (net_dc, max_profit, max_loss, break_even) = compute_spread_metrics(&watchlist.spread_state.legs, active_symbol);
                 let dc_label = if net_dc < 0.0 { "Net Debit" } else { "Net Credit" };
-                let dc_col = if net_dc < 0.0 { t.bear } else { t.bull };
 
-                let metrics = [
-                    (dc_label, format!("${:.2}", net_dc.abs()), dc_col),
-                    ("Max Profit", format!("${:.2}", max_profit), t.bull),
-                    ("Max Loss", format!("${:.2}", max_loss), t.bear),
-                    ("Break Even", format!("${:.2}", break_even), t.dim),
-                ];
-
-                for (label, value, col) in &metrics {
-                    ui.horizontal(|ui| {
-                        ui.add_space(m);
-                        ui.add(MonospaceCode::new(*label).size_px(9.0).color(t.dim));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add_space(m);
-                            ui.add(MonospaceCode::new(value).size_px(9.0).strong(true).color(*col));
-                        });
-                    });
-                }
+                // Two-column grid of MetricCards
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    MetricCard::new(dc_label, format!("${:.2}", net_dc.abs()))
+                        .theme(t).show(ui);
+                    ui.add_space(4.0);
+                    MetricCard::new("Max Profit", format!("${:.2}", max_profit))
+                        .theme(t).show(ui);
+                });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    MetricCard::new("Max Loss", format!("${:.2}", max_loss))
+                        .theme(t).show(ui);
+                    ui.add_space(4.0);
+                    MetricCard::new("Break Even", format!("${:.2}", break_even))
+                        .theme(t).show(ui);
+                });
                 ui.add_space(6.0);
 
                 // ── Qty multiplier ──
@@ -447,17 +433,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Qty").size_px(9.0).color(t.dim));
                     ui.add_space(6.0);
-                    if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(10.0).color(t.dim))
-                        .fill(color_alpha(t.toolbar_border, ALPHA_MUTED)).corner_radius(RADIUS_MD)
-                        .min_size(egui::vec2(22.0, 18.0))
-                    ).clicked() && watchlist.spread_state.combo_qty > 1 {
+                    if ui.add(IconBtn::new("-").color(t.dim)).clicked() && watchlist.spread_state.combo_qty > 1 {
                         watchlist.spread_state.combo_qty -= 1;
                     }
                     ui.add(MonospaceCode::new(&format!("{}", watchlist.spread_state.combo_qty)).size_px(12.0).strong(true).color(egui::Color32::from_gray(240)));
-                    if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(10.0).color(t.dim))
-                        .fill(color_alpha(t.toolbar_border, ALPHA_MUTED)).corner_radius(RADIUS_MD)
-                        .min_size(egui::vec2(22.0, 18.0))
-                    ).clicked() {
+                    if ui.add(IconBtn::new("+").color(t.dim)).clicked() {
                         watchlist.spread_state.combo_qty += 1;
                     }
                 });
@@ -466,13 +446,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Submit button ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    let btn_col = t.accent;
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new("SUBMIT SPREAD").monospace().size(10.0).strong().color(egui::Color32::WHITE))
-                        .fill(btn_col)
-                        .corner_radius(4.0)
-                        .min_size(egui::vec2(w - m * 2.0, 30.0))
-                    ).clicked() {
+                    if ui.add(TradeBtn::new("SUBMIT SPREAD").color(t.accent).width(w - m * 2.0).height(30.0)).clicked() {
                         do_submit = true;
                     }
                 });

@@ -12,6 +12,9 @@ use super::widgets::frames::CompactPanelFrame;
 use super::widgets::status::Spinner;
 use super::widgets::layout::EmptyState;
 use super::widgets::text::{SectionLabel, MonospaceCode};
+use super::widgets::buttons::SimpleBtn;
+use super::widgets::form::FormRow;
+use super::widgets::rows::WatchlistRow;
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
@@ -107,20 +110,17 @@ pub(crate) fn draw_content(
             ui.add(MonospaceCode::new("New Scanner").size_px(9.0).strong(true).color(t.accent));
             ui.add_space(2.0);
 
-            ui.horizontal(|ui| {
-                ui.add(MonospaceCode::new("Name").size_px(8.0).color(t.dim));
+            FormRow::new("Name").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
                 ui.add(egui::TextEdit::singleline(&mut watchlist.scanner_new_name)
                     .desired_width(panel_w - 60.0)
                     .font(egui::FontId::monospace(9.0)));
             });
-            ui.horizontal(|ui| {
-                ui.add(MonospaceCode::new("Min %").size_px(8.0).color(t.dim));
+            FormRow::new("Min %").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_min_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
                 ui.add(MonospaceCode::new("Max %").size_px(8.0).color(t.dim));
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_max_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
             });
-            ui.horizontal(|ui| {
-                ui.add(MonospaceCode::new("Min Vol").size_px(8.0).color(t.dim));
+            FormRow::new("Min Vol").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
                 ui.add(egui::TextEdit::singleline(&mut watchlist.scanner_new_min_volume)
                     .desired_width(80.0)
                     .font(egui::FontId::monospace(9.0))
@@ -128,7 +128,7 @@ pub(crate) fn draw_content(
             });
 
             ui.horizontal(|ui| {
-                if simple_btn(ui, "Create", t.accent, 60.0) {
+                if ui.add(SimpleBtn::new("Create").color(t.accent).min_width(60.0)).clicked() {
                     let name = if watchlist.scanner_new_name.trim().is_empty() {
                         "Custom Scanner".to_string()
                     } else {
@@ -153,7 +153,7 @@ pub(crate) fn draw_content(
                     watchlist.scanner_new_min_volume.clear();
                     watchlist.scanner_builder_open = false;
                 }
-                if simple_btn(ui, "Cancel", t.dim, 50.0) {
+                if ui.add(SimpleBtn::new("Cancel").color(t.dim).min_width(50.0)).clicked() {
                     watchlist.scanner_builder_open = false;
                 }
             });
@@ -232,55 +232,27 @@ pub(crate) fn draw_content(
                     });
 
                     for r in &results {
-                        let row_h = 16.0;
-                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(panel_w - 4.0, row_h), egui::Sense::click());
-
-                        if resp.hovered() {
-                            ui.painter().rect_filled(rect, 2.0, color_alpha(t.accent, ALPHA_GHOST));
-                        }
-
-                        let change_col = if r.change_pct >= 0.0 { t.bull } else { t.bear };
-                        let font = egui::FontId::monospace(9.0);
-                        let cw = (panel_w - 16.0) / 3.0;
-
-                        ui.painter().text(
-                            egui::pos2(rect.left() + 4.0, rect.center().y),
-                            egui::Align2::LEFT_CENTER,
-                            &r.symbol,
-                            font.clone(),
-                            egui::Color32::from_gray(200),
-                        );
-
-                        let price_str = if r.price >= 100.0 {
-                            format!("{:.2}", r.price)
-                        } else if r.price >= 1.0 {
+                        let price_str = if r.price >= 1.0 {
                             format!("{:.2}", r.price)
                         } else {
                             format!("{:.4}", r.price)
                         };
-                        ui.painter().text(
-                            egui::pos2(rect.left() + 4.0 + cw + cw * 0.9, rect.center().y),
-                            egui::Align2::RIGHT_CENTER,
-                            &price_str,
-                            font.clone(),
-                            egui::Color32::from_gray(180),
-                        );
-
-                        let sign = if r.change_pct >= 0.0 { "+" } else { "" };
-                        let change_str = format!("{}{:.2}%", sign, r.change_pct);
-                        ui.painter().text(
-                            egui::pos2(rect.right() - 4.0, rect.center().y),
-                            egui::Align2::RIGHT_CENTER,
-                            &change_str,
-                            font.clone(),
-                            change_col,
-                        );
-
-                        if resp.hovered() {
-                            resp.clone().on_hover_text(format!("Vol: {}", fmt_volume(r.volume)));
+                        let resp = WatchlistRow::new(&r.symbol, r.price, r.change_pct)
+                            .height(16.0)
+                            .theme(t)
+                            .price_string(price_str)
+                            .price_right_inset(4.0)
+                            .sym_layout(0.0, 0.0, 4.0)
+                            .sym_font(egui::FontId::monospace(9.0))
+                            .chg_font(egui::FontId::monospace(9.0))
+                            .price_font(egui::FontId::monospace(9.0))
+                            .fg(egui::Color32::from_gray(200))
+                            .hover_overlay(color_alpha(t.accent, ALPHA_GHOST))
+                            .show(ui);
+                        if resp.response.hovered() {
+                            resp.response.clone().on_hover_text(format!("Vol: {}", fmt_volume(r.volume)));
                         }
-
-                        if resp.clicked() {
+                        if resp.response.clicked() {
                             *pending_symbol = Some(r.symbol.clone());
                         }
                     }

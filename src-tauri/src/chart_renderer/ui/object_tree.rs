@@ -10,6 +10,7 @@ use super::super::DrawingKind;
 use super::widgets::rows::ListRow;
 use super::widgets::buttons::{IconBtn, SimpleBtn};
 use super::widgets::text::MonospaceCode;
+use super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
 use crate::ui_kit::icons::Icon;
 
 // Six discrete opacity levels: fully faded (readable) up to fully opaque.
@@ -439,31 +440,39 @@ egui::SidePanel::left("object_tree_panel")
                                         }
                                     }
                                 });
-                                ui.separator();
-                                let lock_label = format!("  {} Lock/Unlock", Icon::LOCK);
-                                if ui.add(SimpleBtn::new(&lock_label).color(t.dim)).clicked() {
+                                ui.add(egui::Separator::default().spacing(2.0));
+                                let lock_label = format!("{} Lock/Unlock", Icon::LOCK);
+                                let mt = super::widgets::context_menu::MenuTheme::from_theme(t);
+                                if MenuItemWithIcon::new("Lock/Unlock", Icon::LOCK).show(ui, &mt).clicked() {
                                     toggle_lock_id = Some(ds.id.clone());
                                     ui.close_menu();
                                 }
-                                let del_label = format!("  {} Delete", Icon::TRASH);
-                                if ui.add(SimpleBtn::new(&del_label).color(t.bear)).clicked() {
+                                if DangerMenuItem::new("Delete").icon(Icon::TRASH).show(ui, &mt).clicked() {
                                     delete_id = Some(ds.id.clone());
                                     ui.close_menu();
                                 }
-                                // Move to group submenu
-                                ui.menu_button(egui::RichText::new(format!("  {} Move to Group", Icon::FOLDER)).monospace().size(9.0), |ui| {
-                                    let mut gs = vec![("default".to_string(), "default".to_string())];
-                                    for g in &chart.groups { if g.id != "default" { gs.push((g.id.clone(), g.name.clone())); } }
+                                let _ = lock_label;
+                                // Move to group — cascading submenu via Submenu widget
+                                let gs: Vec<(String, String)> = {
+                                    let mut v = vec![("default".to_string(), "default".to_string())];
+                                    for g in &chart.groups { if g.id != "default" { v.push((g.id.clone(), g.name.clone())); } }
+                                    v
+                                };
+                                let mut move_to_group: Option<String> = None;
+                                Submenu::new(&format!("{} Move to Group", Icon::FOLDER), |menu| {
                                     for (gid, gname) in &gs {
-                                        if ui.add(SimpleBtn::new(gname.as_str()).color(t.dim)).clicked() {
-                                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == ds.id) {
-                                                d.group_id = gid.clone();
-                                                crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
-                                            }
-                                            ui.close_menu();
+                                        if menu.add(MenuItem::new(gname.as_str())).clicked() {
+                                            move_to_group = Some(gid.clone());
                                         }
                                     }
-                                });
+                                }).show(ui, &mt);
+                                if let Some(gid) = move_to_group {
+                                    if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == ds.id) {
+                                        d.group_id = gid;
+                                        crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                                    }
+                                    ui.close_menu();
+                                }
                             });
                         }
                     }
