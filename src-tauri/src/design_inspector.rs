@@ -40,6 +40,8 @@ pub struct Inspector {
     pub is_popout: bool,
     /// When true, render the Style Preview as a docked left-side panel simultaneously.
     pub is_preview_left_open: bool,
+    /// Active sub-tab within the Design category (0=Style, 1=Theme, 2=Preview).
+    pub current_design_subtab: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,11 +74,12 @@ pub enum Category {
     Style,
     Theme,
     Preview,
+    Design,
 }
 
 impl Category {
     const ALL: &[Category] = &[
-        Category::Style, Category::Theme, Category::Preview,
+        Category::Design,
         Category::Font, Category::Spacing, Category::Radius, Category::Stroke,
         Category::Alpha, Category::Colors,
     ];
@@ -111,6 +114,7 @@ impl Category {
             Category::Style => "Style Editor",
             Category::Theme => "Theme Editor",
             Category::Preview => "Style Preview",
+            Category::Design => "Design",
         }
     }
 
@@ -145,6 +149,7 @@ impl Inspector {
             drag_start_radius: 0.0,
             is_popout: false,
             is_preview_left_open: false,
+            current_design_subtab: 0,
         }
     }
 
@@ -836,6 +841,9 @@ impl Inspector {
             Category::Preview => {
                 render_style_preview(ui);
             }
+            Category::Design => {
+                changed |= render_design_category(ui);
+            }
         }
         changed
     }
@@ -1027,6 +1035,50 @@ fn save_style_defaults_to_source() -> Result<(), String> {
     std::fs::write(&style_path, new_src)
         .map_err(|e| format!("write failed: {e}"))?;
     Ok(())
+}
+
+thread_local! {
+    static DESIGN_SUBTAB: std::cell::RefCell<u8> = const { std::cell::RefCell::new(0) };
+}
+
+/// Unified "Design" category: Style / Theme / Preview in sub-tabs.
+fn render_design_category(ui: &mut Ui) -> bool {
+    let mut changed = false;
+    let accent = Color32::from_rgb(203, 166, 247);
+    let dim = Color32::from_rgb(120, 120, 130);
+
+    // Sub-tab bar
+    let current_tab = DESIGN_SUBTAB.with(|t| *t.borrow());
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for (idx, label) in ["Style", "Theme", "Preview"].iter().enumerate() {
+            let idx = idx as u8;
+            let active = current_tab == idx;
+            let (fg, bg, border) = if active {
+                (accent, Color32::from_rgba_unmultiplied(203, 166, 247, 20),
+                 Color32::from_rgba_unmultiplied(203, 166, 247, 80))
+            } else {
+                (dim, Color32::TRANSPARENT, Color32::from_rgb(50, 50, 60))
+            };
+            if ui.add(egui::Button::new(RichText::new(*label).monospace().size(10.0).strong().color(fg))
+                .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(3.0)
+                .min_size(egui::vec2(60.0, 22.0))
+            ).clicked() {
+                DESIGN_SUBTAB.with(|t| *t.borrow_mut() = idx);
+            }
+        }
+    });
+
+    ui.add_space(6.0);
+    ui.separator();
+    ui.add_space(4.0);
+
+    match current_tab {
+        0 => { changed |= render_style_editor(ui); }
+        1 => { render_theme_editor(ui); }
+        _ => { render_style_preview(ui); }
+    }
+    changed
 }
 
 fn render_style_editor(ui: &mut Ui) -> bool {
@@ -1301,14 +1353,33 @@ thread_local! {
 }
 
 fn style_drag_u8(ui: &mut Ui, label: &str, value: &mut u8) -> bool {
-    let mut v = *value as f32;
-    let changed = drag_f32(ui, label, &mut v, 0.0..=255.0);
-    if changed { *value = v as u8; }
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let dim = Color32::from_rgb(170, 170, 180);
+        ui.label(RichText::new(label).monospace().size(9.0).color(dim));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.add(egui::Slider::new(value, 0u8..=99u8).suffix("px")).changed() {
+                changed = true;
+            }
+        });
+    });
     changed
 }
 
 fn style_drag_f32(ui: &mut Ui, label: &str, value: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
-    drag_f32(ui, label, value, range)
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let dim = Color32::from_rgb(170, 170, 180);
+        ui.label(RichText::new(label).monospace().size(9.0).color(dim));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.add(egui::Slider::new(value, range)).changed() {
+                changed = true;
+            }
+        });
+    });
+    changed
 }
 
 fn style_checkbox(ui: &mut Ui, label: &str, value: &mut bool) -> bool {
@@ -1607,23 +1678,12 @@ fn theme_save_status() -> &'static std::sync::Mutex<String> {
 fn theme_color_row(ui: &mut Ui, label: &str, color: &mut egui::Color32) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
-        // Swatch
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 2.0, *color);
-        ui.painter().rect_stroke(rect, 2.0,
-            egui::Stroke::new(0.5, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
+        ui.spacing_mut().item_spacing.x = 6.0;
         ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(170, 170, 180)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let [r, g, b, _] = color.to_array();
-            let mut rv = r as f32;
-            let mut gv = g as f32;
-            let mut bv = b as f32;
-            let rb = ui.add(egui::DragValue::new(&mut bv).range(0.0..=255.0).speed(1.0).prefix("b:"));
-            let rg = ui.add(egui::DragValue::new(&mut gv).range(0.0..=255.0).speed(1.0).prefix("g:"));
-            let rr = ui.add(egui::DragValue::new(&mut rv).range(0.0..=255.0).speed(1.0).prefix("r:"));
-            if rr.changed() || rg.changed() || rb.changed() {
-                *color = Color32::from_rgb(rv as u8, gv as u8, bv as u8);
+            if egui::color_picker::color_edit_button_srgba(
+                ui, color, egui::color_picker::Alpha::Opaque
+            ).changed() {
                 changed = true;
             }
         });

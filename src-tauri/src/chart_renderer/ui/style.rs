@@ -175,6 +175,52 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         }
     };
 
+    // For UnderlineActive (Meridien), paint the column tint BEFORE the button
+    // via the Background layer so the button's text/fill renders on top.
+    if matches!(st.button_treatment, ButtonTreatment::UnderlineActive) {
+        // We need the button rect first. Allocate exact size, paint bg, then add button inside.
+        let btn_width = {
+            let galley = ui.fonts(|f| f.layout_no_wrap(
+                display_label.clone(),
+                egui::FontId::monospace(12.0),
+                Color32::WHITE,
+            ));
+            galley.rect.width() + 16.0 // approx button padding
+        };
+        let btn_size = egui::vec2(btn_width.max(0.0), 24.0);
+        let (btn_rect, _btn_sense) = ui.allocate_exact_size(btn_size, egui::Sense::hover());
+        let tb = toolbar_rect();
+        let col_rect = egui::Rect::from_min_max(
+            egui::pos2(btn_rect.left(), tb.top()),
+            egui::pos2(btn_rect.right(), tb.bottom()),
+        );
+        // Paint column tint in Background layer so button draws on top.
+        let bg_painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("tb_btn_col_bg")));
+        let col_tint = if active {
+            color_alpha(toolbar_border, alpha_tint())
+        } else if ui.rect_contains_pointer(btn_rect) {
+            color_alpha(dim, alpha_ghost())
+        } else {
+            Color32::TRANSPARENT
+        };
+        bg_painter.rect_filled(col_rect, 0.0, col_tint);
+        if active {
+            let underline_y = tb.bottom() - 1.0;
+            bg_painter.line_segment(
+                [egui::pos2(btn_rect.left(), underline_y), egui::pos2(btn_rect.right(), underline_y)],
+                Stroke::new(st.stroke_bold, accent));
+        }
+        // Place the actual button in the already-allocated rect via put().
+        let resp = ui.put(btn_rect, egui::Button::new(RichText::new(display_label).monospace().size(12.0).color(fg))
+            .fill(Color32::TRANSPARENT).stroke(Stroke::new(0.0, Color32::TRANSPARENT)).corner_radius(corner_r));
+        hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
+        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        let _ = toolbar_bg;
+        return resp;
+    }
+
     let resp = ui.add(egui::Button::new(RichText::new(display_label).monospace().size(12.0).color(fg))
         .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(corner_r)
         .min_size(egui::vec2(0.0, 24.0)));
@@ -182,52 +228,19 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
 
     if active {
         let r = resp.rect;
-        match st.button_treatment {
-            ButtonTreatment::UnderlineActive => {
-                // Meridien active: tinted column across full toolbar height.
-                let tb = toolbar_rect();
-                let col_rect = egui::Rect::from_min_max(
-                    egui::pos2(r.left(), tb.top()),
-                    egui::pos2(r.right(), tb.bottom()),
-                );
-                ui.painter().rect_filled(col_rect, 0.0, color_alpha(toolbar_border, alpha_ghost()));
-                // Accent underline at the very bottom of the toolbar (#18).
-                // Uses stroke_bold so Meridien can tune the active-state line weight.
-                let underline_y = tb.bottom() - 1.0;
-                ui.painter().line_segment(
-                    [egui::pos2(r.left(), underline_y), egui::pos2(r.right(), underline_y)],
-                    Stroke::new(st.stroke_bold, accent));
-            }
-            _ => {
-                // stroke_bold drives the active-state accent underline for non-Meridien styles.
-                ui.painter().line_segment(
-                    [egui::pos2(r.left() + 4.0, r.bottom() + 0.5),
-                     egui::pos2(r.right() - 4.0, r.bottom() + 0.5)],
-                    Stroke::new(st.stroke_bold, color_alpha(accent, alpha_dim())));
-            }
-        }
+        // stroke_bold drives the active-state accent underline for non-Meridien styles.
+        ui.painter().line_segment(
+            [egui::pos2(r.left() + 4.0, r.bottom() + 0.5),
+             egui::pos2(r.right() - 4.0, r.bottom() + 0.5)],
+            Stroke::new(st.stroke_bold, color_alpha(accent, alpha_dim())));
     } else if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        match st.button_treatment {
-            ButtonTreatment::UnderlineActive => {
-                // Meridien hover: subtle column tint across full toolbar height.
-                let r = resp.rect;
-                let tb = toolbar_rect();
-                let col_rect = egui::Rect::from_min_max(
-                    egui::pos2(r.left(), tb.top()),
-                    egui::pos2(r.right(), tb.bottom()),
-                );
-                ui.painter().rect_filled(col_rect, 0.0, color_alpha(dim, alpha_ghost()));
-            }
-            _ => {
-                // Bevel highlight on top edge
-                let r = resp.rect;
-                ui.painter().rect_filled(
-                    egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 1.0)),
-                    egui::CornerRadius { nw: corner_r as u8, ne: corner_r as u8, sw: 0, se: 0 },
-                    Color32::from_rgba_unmultiplied(255, 255, 255, 10));
-            }
-        }
+        // Bevel highlight on top edge
+        let r = resp.rect;
+        ui.painter().rect_filled(
+            egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 1.0)),
+            egui::CornerRadius { nw: corner_r as u8, ne: corner_r as u8, sw: 0, se: 0 },
+            Color32::from_rgba_unmultiplied(255, 255, 255, 10));
     }
     let _ = toolbar_bg; // may be used for future hover tint
     resp
@@ -1065,9 +1078,10 @@ pub fn tb_group_break(ui: &mut egui::Ui, panel_rect: egui::Rect, border: egui::C
     if !current().vertical_group_dividers { return; }
     ui.add_space(6.0);
     let x = ui.cursor().left();
-    let color = color_alpha(border, 80);
+    // Use alpha_heavy (120) for clearly visible dividers even on dim toolbar_border colors.
+    let color = color_alpha(border, alpha_heavy());
     ui.painter().line_segment(
-        [egui::pos2(x, panel_rect.top()), egui::pos2(x, panel_rect.bottom())],
+        [egui::pos2(x, panel_rect.top() + 2.0), egui::pos2(x, panel_rect.bottom() - 2.0)],
         egui::Stroke::new(1.0, color),
     );
     ui.add_space(6.0);
