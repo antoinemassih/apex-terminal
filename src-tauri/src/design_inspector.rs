@@ -38,6 +38,8 @@ pub struct Inspector {
     drag_start_radius: f32,
     /// When true the inspector floats as a draggable egui::Window instead of SidePanel.
     pub is_popout: bool,
+    /// When true, render the Style Preview as a docked left-side panel simultaneously.
+    pub is_preview_left_open: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -74,17 +76,9 @@ pub enum Category {
 
 impl Category {
     const ALL: &[Category] = &[
-        // ─── Primary design controls (use these day-to-day) ───
         Category::Style, Category::Theme, Category::Preview,
-        // ─── Per-component overrides ───
-        Category::Toolbar, Category::Panel, Category::Dialog, Category::Button,
-        Category::Card, Category::Badge, Category::Tab, Category::Table,
-        Category::PaneHeader, Category::Segmented, Category::IconButton,
-        Category::Form, Category::SplitDivider, Category::Tooltip, Category::Separator,
-        Category::Chart, Category::Watchlist, Category::OrderEntry,
-        // ─── Primitive tokens (advanced — you usually don't touch these directly) ───
         Category::Font, Category::Spacing, Category::Radius, Category::Stroke,
-        Category::Alpha, Category::Shadow, Category::Colors,
+        Category::Alpha, Category::Colors,
     ];
 
     fn label(self) -> &'static str {
@@ -150,6 +144,7 @@ impl Inspector {
             drag_corner: None,
             drag_start_radius: 0.0,
             is_popout: false,
+            is_preview_left_open: false,
         }
     }
 
@@ -367,6 +362,16 @@ impl Inspector {
             .stroke(Stroke::new(1.0, Color32::from_rgb(40, 42, 54)))
             .inner_margin(0.0);
 
+        // ── Left preview panel (optional, simultaneous with right inspector) ──
+        if self.is_preview_left_open {
+            egui::SidePanel::left("design_preview_left")
+                .min_width(380.0)
+                .max_width(640.0)
+                .default_width(420.0)
+                .frame(panel_frame)
+                .show(ctx, |ui| { render_style_preview(ui); });
+        }
+
         // ── Dispatch: SidePanel (docked) or Window (popout) ──────────────────
         let is_popout = self.is_popout;
         if !is_popout {
@@ -413,6 +418,22 @@ impl Inspector {
                                 ).on_hover_text(if self.is_popout { "Dock back to side panel" } else { "Float as draggable window" })
                                 .clicked() {
                                     self.is_popout = !self.is_popout;
+                                }
+
+                                // Preview left toggle
+                                let preview_col = if self.is_preview_left_open {
+                                    Color32::from_rgb(250, 179, 135)
+                                } else {
+                                    Color32::from_rgb(100, 100, 110)
+                                };
+                                if ui.add(egui::Button::new(
+                                    RichText::new("👁 LEFT").monospace().size(10.0).strong().color(preview_col))
+                                    .fill(if self.is_preview_left_open { Color32::from_rgba_unmultiplied(250, 179, 135, 20) } else { Color32::TRANSPARENT })
+                                    .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(preview_col.r(), preview_col.g(), preview_col.b(), 60)))
+                                    .corner_radius(3.0)
+                                ).on_hover_text("Toggle Style Preview as a docked left panel")
+                                .clicked() {
+                                    self.is_preview_left_open = !self.is_preview_left_open;
                                 }
 
                                 if ui.add(egui::Button::new(
