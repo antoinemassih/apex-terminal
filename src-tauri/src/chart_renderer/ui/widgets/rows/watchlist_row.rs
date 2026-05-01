@@ -153,6 +153,7 @@ pub struct WatchlistRow<'a> {
     star_x_offset: f32,
     sym_x_offset: f32,
     sym_x_offset_no_star: f32,
+    fg_override: Option<Color32>,
 }
 
 impl<'a> WatchlistRow<'a> {
@@ -193,6 +194,7 @@ impl<'a> WatchlistRow<'a> {
             star_x_offset: 0.0,
             sym_x_offset: 10.0,
             sym_x_offset_no_star: 10.0,
+            fg_override: None,
         }
     }
     pub fn spark(mut self, s: &'a [f32]) -> Self { self.spark = Some(s); self }
@@ -253,6 +255,9 @@ impl<'a> WatchlistRow<'a> {
     pub fn price_font(mut self, f: egui::FontId) -> Self { self.price_font_id = Some(f); self }
     pub fn price_string(mut self, s: String) -> Self { self.price_str_override = Some(s); self }
     pub fn price_right_inset(mut self, px: f32) -> Self { self.price_right_inset = px; self }
+    /// Override the foreground (symbol + price) colour. Used by pinned rows
+    /// to render active-row symbol text in white.
+    pub fn fg(mut self, c: Color32) -> Self { self.fg_override = Some(c); self }
     pub fn sym_layout(mut self, star_x_offset: f32, sym_x_after_star: f32, sym_x_no_star: f32) -> Self {
         self.star_x_offset = star_x_offset;
         self.sym_x_offset = sym_x_after_star;
@@ -265,7 +270,7 @@ impl<'a> WatchlistRow<'a> {
         let bull = self.theme_bull.unwrap_or(Color32::from_rgb(0, 200, 120));
         let bear = self.theme_bear.unwrap_or(Color32::from_rgb(220, 80, 80));
         let dim = self.theme_dim.unwrap_or(Color32::from_gray(120));
-        let fg = self.theme_fg.unwrap_or(Color32::from_gray(220));
+        let fg = self.fg_override.unwrap_or_else(|| self.theme_fg.unwrap_or(Color32::from_gray(220)));
         let accent = self.theme_accent.unwrap_or(Color32::from_rgb(80, 140, 220));
         let border = self.theme_border.unwrap_or(Color32::from_gray(60));
         let symbol = self.symbol;

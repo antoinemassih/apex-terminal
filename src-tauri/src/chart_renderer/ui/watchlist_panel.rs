@@ -463,82 +463,60 @@ if watchlist.open {
                                     }
                                 }
                             }
-                            // Darker section background
+                            // Paint section background + inset bevel directly onto the
+                            // upcoming cursor rect (without allocating — rows will allocate
+                            // themselves via WatchlistRow::show).
                             let section_h = pinned_items.len() as f32 * 30.0 + 6.0;
-                            let (sec_rect, _) = ui.allocate_exact_size(egui::vec2(full_w, section_h), egui::Sense::hover());
-                            let p = ui.painter();
-                            // Darker section background + inset bevel
-                            p.rect_filled(sec_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_LINE));
-                            // Inset effect: dark line at top, light line at bottom
-                            p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top()), egui::pos2(sec_rect.right(), sec_rect.top())],
-                                egui::Stroke::new(STROKE_STD, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_DIM)));
-                            p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
-                                egui::Stroke::new(STROKE_THIN, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_TINT)));
-                            p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
-                                egui::Stroke::new(STROKE_STD, color_alpha(t.text,10)));
-                            p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
-                                egui::Stroke::new(STROKE_THIN, color_alpha(t.text,5)));
-                            // Render each pinned row
-                            for (idx, (si, ii, pin_sym, pin_price, pin_prev, pin_loaded, avg_range)) in pinned_items.iter().enumerate() {
-                                let row_y = sec_rect.top() + 3.0 + idx as f32 * 30.0;
-                                let row_rect = egui::Rect::from_min_size(egui::pos2(sec_rect.left(), row_y), egui::vec2(full_w, 28.0));
-                                let yc = row_rect.center().y;
+                            let sec_top = ui.cursor().min;
+                            let sec_rect = egui::Rect::from_min_size(sec_top, egui::vec2(full_w, section_h));
+                            {
+                                let p = ui.painter();
+                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_LINE));
+                                p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top()), egui::pos2(sec_rect.right(), sec_rect.top())],
+                                    egui::Stroke::new(STROKE_STD, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_DIM)));
+                                p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
+                                    egui::Stroke::new(STROKE_THIN, egui::Color32::from_rgba_unmultiplied(0, 0, 0, ALPHA_TINT)));
+                                p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
+                                    egui::Stroke::new(STROKE_STD, color_alpha(t.text, 10)));
+                                p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
+                                    egui::Stroke::new(STROKE_THIN, color_alpha(t.text, 5)));
+                            }
+                            // 3px top padding so rows sit at the same position as before.
+                            ui.add_space(3.0);
+                            // Render each pinned row via the design-system WatchlistRow widget.
+                            for (si, ii, pin_sym, pin_price, pin_prev, _pin_loaded, avg_range) in &pinned_items {
                                 let is_active = *pin_sym == active_sym;
                                 let change_pct = if *pin_prev > 0.0 { (*pin_price / *pin_prev - 1.0) * 100.0 } else { 0.0 };
-                                let col = if change_pct >= 0.0 { t.bull } else { t.bear };
-                                // Extreme movement background
-                                if change_pct.abs() > *avg_range * 1.5 {
-                                    let extreme_bg = if change_pct >= 0.0 { egui::Color32::from_rgba_unmultiplied(46, 204, 113, ALPHA_GHOST) }
-                                        else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, ALPHA_GHOST) };
-                                    p.rect_filled(row_rect, 0.0, extreme_bg);
-                                }
-                                // Active indicator
-                                if is_active {
-                                    p.rect_filled(egui::Rect::from_min_max(row_rect.min, egui::pos2(row_rect.min.x + 2.5, row_rect.max.y)), 1.0, t.accent);
-                                }
-                                // Gold star (always visible for pinned)
-                                p.text(egui::pos2(row_rect.left() + 10.0, yc), egui::Align2::CENTER_CENTER,
-                                    Icon::SPARKLE, egui::FontId::proportional(9.0), egui::Color32::from_rgb(255, 193, 37));
-                                // Symbol
-                                let sym_col = if is_active { egui::Color32::WHITE } else { color_alpha(t.text,230) };
-                                p.text(egui::pos2(row_rect.left() + 22.0, yc), egui::Align2::LEFT_CENTER,
-                                    pin_sym, egui::FontId::monospace(14.0), sym_col);
-                                // Change %
-                                p.text(egui::pos2(row_rect.left() + full_w * 0.45, yc), egui::Align2::LEFT_CENTER,
-                                    &format!("{:+.2}%", change_pct), egui::FontId::monospace(14.0), col);
-                                // Price
-                                p.text(egui::pos2(row_rect.right() - 8.0, yc), egui::Align2::RIGHT_CENTER,
-                                    &format!("{:.2}", pin_price), egui::FontId::monospace(14.0), col.gamma_multiply(0.6));
-                                // Row separator
-                                p.line_segment([egui::pos2(row_rect.left() + 18.0, row_rect.bottom() - 0.5), egui::pos2(row_rect.right() - 4.0, row_rect.bottom() - 0.5)],
-                                    egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_TINT)));
-                            }
-                            // Hover + click detection over the entire pinned section
-                            if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
-                                if sec_rect.contains(hover_pos) {
-                                    let row_idx = ((hover_pos.y - sec_rect.top() - 3.0) / 30.0).floor() as usize;
-                                    if row_idx < pinned_items.len() {
-                                        let row_y = sec_rect.top() + 3.0 + row_idx as f32 * 30.0;
-                                        let row_rect = egui::Rect::from_min_size(egui::pos2(sec_rect.left(), row_y), egui::vec2(full_w, 28.0));
-                                        p.rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, ALPHA_GHOST));
-                                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                let sym_fg = if is_active { egui::Color32::WHITE } else { color_alpha(t.text, 230) };
+                                let wresp = WatchlistRow::new(pin_sym, *pin_price, change_pct)
+                                    .theme(t)
+                                    .height(28.0)
+                                    .font_size_override(14.0)
+                                    .pin_state(WatchlistPinState::Pinned)
+                                    .active(is_active)
+                                    .extreme_move_tint(if *pin_prev > 0.0 { Some(*avg_range) } else { None })
+                                    .fg(sym_fg)
+                                    .icon_set(WatchlistIconSet {
+                                        drag_handle: Icon::DOTS_SIX_VERTICAL,
+                                        star: Icon::SPARKLE,
+                                        x: Icon::X,
+                                        alert: Icon::LIGHTNING,
+                                    })
+                                    .sym_layout(-6.0, 12.0, 10.0)
+                                    .price_right_inset(8.0)
+                                    .hover_overlay(color_alpha(t.toolbar_border, ALPHA_GHOST))
+                                    .separator(true)
+                                    .show(ui);
+                                // Star click → unpin; body click → activate.
+                                if wresp.star_clicked {
+                                    if let Some(sec) = watchlist.sections.get_mut(*si) {
+                                        if let Some(item) = sec.items.get_mut(*ii) { item.pinned = false; }
                                     }
-                                    if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                                        if row_idx < pinned_items.len() {
-                                            let (si, ii, ref sym, ..) = pinned_items[row_idx];
-                                            if hover_pos.x < sec_rect.left() + 20.0 {
-                                                // Unpin
-                                                if let Some(sec) = watchlist.sections.get_mut(si) {
-                                                    if let Some(item) = sec.items.get_mut(ii) { item.pinned = false; }
-                                                }
-                                            } else {
-                                                active_sym_change = Some(sym.clone());
-                                            }
-                                        }
-                                    }
+                                } else if wresp.response.clicked() {
+                                    active_sym_change = Some(pin_sym.clone());
                                 }
                             }
-                            // Small spacer after the inset section
+                            // Small spacer after the inset section (matches original layout).
                             ui.allocate_exact_size(egui::vec2(full_w, 3.0), egui::Sense::hover());
                         }
                         for si in 0..section_count {
