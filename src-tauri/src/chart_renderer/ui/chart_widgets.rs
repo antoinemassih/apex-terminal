@@ -127,7 +127,7 @@ pub(crate) fn draw_widgets(
             .map(|w| if w.collapsed { 26.0 } else { w.h })
             .fold(0.0f32, f32::max);
         let strip = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), max_h + STRIP_PAD * 2.0));
-        painter.rect_filled(strip, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 18));
+        painter.rect_filled(strip, 0.0, color_alpha(t.shadow_color, 18));
         painter.line_segment(
             [egui::pos2(strip.left(), strip.bottom()), egui::pos2(strip.right(), strip.bottom())],
             Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
@@ -139,7 +139,7 @@ pub(crate) fn draw_widgets(
             .fold(0.0f32, f32::max);
         let strip = egui::Rect::from_min_max(
             egui::pos2(rect.left(), rect.bottom() - max_h - STRIP_PAD * 2.0), rect.max);
-        painter.rect_filled(strip, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 18));
+        painter.rect_filled(strip, 0.0, color_alpha(t.shadow_color, 18));
         painter.line_segment(
             [egui::pos2(strip.left(), strip.top()), egui::pos2(strip.right(), strip.top())],
             Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
@@ -189,9 +189,9 @@ pub(crate) fn draw_widgets(
         if mode == WidgetDisplayMode::Card {
             // Shadow
             painter.rect_filled(card_rect.translate(egui::vec2(0.0, 3.0)).expand(2.0),
-                12.0, Color32::from_rgba_unmultiplied(0, 0, 0, 20));
+                12.0, color_alpha(t.shadow_color, 20));
             painter.rect_filled(card_rect.translate(egui::vec2(0.0, 1.5)).expand(1.0),
-                11.0, Color32::from_rgba_unmultiplied(0, 0, 0, 10));
+                11.0, color_alpha(t.shadow_color, 10));
 
             // Sentiment-driven background: the color reflects the data state
             let sentiment = widget_sentiment(kind, &wd);
@@ -285,7 +285,7 @@ pub(crate) fn draw_widgets(
                 egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(font_xs()), t.text);
             if w.locked {
                 painter.text(egui::pos2(hdr.left() + 24.0 + kind.label().len() as f32 * 7.0 + 6.0, hdr.center().y),
-                    egui::Align2::LEFT_CENTER, "\u{1F512}", egui::FontId::proportional(8.0), t.dim.gamma_multiply(0.5));
+                    egui::Align2::LEFT_CENTER, "\u{1F512}", egui::FontId::proportional(font_xs()), t.dim.gamma_multiply(0.5));
             }
 
             // ── Buttons — large, visible, with hover backgrounds ──
@@ -318,7 +318,7 @@ pub(crate) fn draw_widgets(
                 Stroke::new(stroke_thin(), if tog_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
                 egui::StrokeKind::Outside);
             painter.text(tog_rect.center(), egui::Align2::CENTER_CENTER,
-                mode_icon, egui::FontId::proportional(14.0),
+                mode_icon, egui::FontId::proportional(font_lg()),
                 if tog_hov { t.accent } else { t.dim });
             if tog_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             card_toggle_rect = Some(tog_rect);
