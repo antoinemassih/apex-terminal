@@ -267,12 +267,12 @@ impl<'a> WatchlistRow<'a> {
 
     pub fn show(self, ui: &mut Ui) -> WatchlistRowResponse {
         let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let bull = self.theme_bull.unwrap_or(Color32::from_rgb(0, 200, 120));
-        let bear = self.theme_bear.unwrap_or(Color32::from_rgb(220, 80, 80));
-        let dim = self.theme_dim.unwrap_or(Color32::from_gray(120));
-        let fg = self.fg_override.unwrap_or_else(|| self.theme_fg.unwrap_or(Color32::from_gray(220)));
-        let accent = self.theme_accent.unwrap_or(Color32::from_rgb(80, 140, 220));
-        let border = self.theme_border.unwrap_or(Color32::from_gray(60));
+        let bull = self.theme_bull.unwrap_or(fallback_theme().bull);
+        let bear = self.theme_bear.unwrap_or(fallback_theme().bear);
+        let dim = self.theme_dim.unwrap_or(fallback_theme().dim);
+        let fg = self.fg_override.unwrap_or_else(|| self.theme_fg.unwrap_or(fallback_theme().text));
+        let accent = self.theme_accent.unwrap_or(fallback_theme().accent);
+        let border = self.theme_border.unwrap_or(fallback_theme().toolbar_border);
         let symbol = self.symbol;
         let price = self.price;
         let change_pct = self.change_pct;
@@ -500,7 +500,7 @@ impl<'a> WatchlistRow<'a> {
                                 let x1 = extra_x + j as f32 * sw / (n - 1) as f32;
                                 let y1 = sy + sh - (s[j] - lo) / span * sh;
                                 painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)],
-                                    Stroke::new(1.0, color_alpha(chg_col, 120)));
+                                    Stroke::new(stroke_std(), color_alpha(chg_col, 120)));
                             }
                             extra_x += sw + 6.0;
                         }
@@ -529,7 +529,7 @@ impl<'a> WatchlistRow<'a> {
                             let pos = ((last - lo) / (hi - lo)).clamp(0.0, 1.0);
                             painter.line_segment(
                                 [egui::pos2(extra_x, cy), egui::pos2(extra_x + rw, cy)],
-                                Stroke::new(2.0, color_alpha(border, ALPHA_MUTED)));
+                                Stroke::new(stroke_thick(), color_alpha(border, ALPHA_MUTED)));
                             painter.circle_filled(egui::pos2(extra_x + rw * pos, cy), 2.5, chg_col);
                             extra_x += rw + 6.0;
                         }
@@ -544,7 +544,7 @@ impl<'a> WatchlistRow<'a> {
                             let pos = ((last - lo) / (hi - lo)).clamp(0.0, 1.0);
                             painter.line_segment(
                                 [egui::pos2(extra_x, cy), egui::pos2(extra_x + rw, cy)],
-                                Stroke::new(2.0, color_alpha(border, ALPHA_MUTED)));
+                                Stroke::new(stroke_thick(), color_alpha(border, ALPHA_MUTED)));
                             painter.circle_filled(egui::pos2(extra_x + rw * pos, cy), 2.5, fg);
                             extra_x += rw + 6.0;
                         }
@@ -568,7 +568,7 @@ impl<'a> WatchlistRow<'a> {
                             egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5),
                             egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5),
                         ],
-                        Stroke::new(STROKE_THIN, color_alpha(border, ALPHA_MUTED)),
+                        Stroke::new(stroke_thin(), color_alpha(border, ALPHA_MUTED)),
                     );
                 }
 

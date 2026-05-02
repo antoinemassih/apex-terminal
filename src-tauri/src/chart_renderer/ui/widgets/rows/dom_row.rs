@@ -546,7 +546,7 @@ impl<'a> DomRow<'a> {
         } else if self.price >= 1.0 && (self.price.fract() == 0.0) {
             format!("{:.0}", self.price)
         } else { format!("{:.2}", self.price) };
-        let price_font = if self.current_price { egui::FontId::monospace(11.0) } else { font.clone() };
+        let price_font = if self.current_price { egui::FontId::monospace(font_md()) } else { font.clone() };
         painter.text(egui::pos2(xp + cp * 0.5, cy), egui::Align2::CENTER_CENTER, &ps, price_font, pc);
 
         // ASK
