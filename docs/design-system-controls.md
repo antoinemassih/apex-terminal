@@ -1,6 +1,6 @@
 # Apex Terminal Design Controls — what each parameter does
 
-**Refreshed:** 2026-05-02 (post-R4)  
+**Refreshed:** 2026-05-02 (post-R5)  
 **Field count:** 77 fields in `StyleSettings` (struct at `style.rs:912`)  
 **Styles:** Meridien (0), Aperture (1), Octave (2) + 7 aliases (Cadence, Chord, Lattice, Tangent, Tempo, Contour, Relay)
 
@@ -204,6 +204,39 @@ Open the Design Inspector (F12) → **Design** tab → **Style Editor** to live-
 | `widgets/foundation/tokens.rs Radius` | `r_xs/sm/md/lg/pill` |
 | `widgets/frames.rs PopupFrame` | `shadow_offset_y`, `shadow_blur`, `shadow_alpha`, `shadows_enabled` |
 | `widgets/foundation/tokens.rs Size` | `button_height_px`, `row_height_px`, `tab_height`, `density` |
+
+---
+
+## R5 New Theme Fields (Token Promotion, 2026-05-02)
+
+Ten fields added to the `Theme` struct in R5-1, replacing previously hardcoded `Color32::from_rgb(...)` literals across ~43 call sites.
+
+| Field | Description | Replaces |
+|-------|-------------|---------|
+| `warn` | Amber/yellow warning state (R:R ≥ 1 indicator, active status, non-critical alerts) | `Color32::from_rgb(255, 191, 0)` and variants |
+| `notification_red` | High-urgency notification / error badge color | `Color32::from_rgb(231, 76, 60)` and per-theme equivalents |
+| `gold` | Star/favorite, earnings highlight, gold accent | `Color32::from_rgb(255, 193, 37)` and per-theme equivalents |
+| `shadow_color` | Drop-shadow base color (black for dark themes, near-black for light) | `Color32::BLACK` hardcodes in shadow paint |
+| `overlay_text` | Text rendered directly on chart canvas / overlay backgrounds | `Color32::from_rgb(240, 240, 250)` and per-theme equivalents |
+| `rrg_leading` | RRG quadrant fill — Leading (top-right, strong RS + improving momentum) | `Color32::from_rgb(56, 203, 137)` and per-theme equivalents |
+| `rrg_improving` | RRG quadrant fill — Improving (bottom-right, improving RS) | `Color32::from_rgb(74, 158, 255)` and per-theme equivalents |
+| `rrg_weakening` | RRG quadrant fill — Weakening (top-left, weakening momentum) | `Color32::from_rgb(230, 200, 50)` and per-theme equivalents |
+| `rrg_lagging` | RRG quadrant fill — Lagging (bottom-left, weak RS + momentum) | `Color32::from_rgb(224, 82, 82)` and per-theme equivalents |
+| `cmd_palette` | `[Color32; 11]` — command palette row colors (background, text, highlight, divider, etc.) | Inline `CMD_PALETTE_DEFAULT` array usages across command_palette files |
+
+All 10 fields are defined per-theme in the `THEMES` array at `gpu.rs:169–186` and are zero-maintenance — adding a new theme row automatically inherits all tokens.
+
+### R5 Token Consumer Reference
+
+| Helper / component | Field(s) consumed |
+|---|---|
+| `rrg_panel.rs` RRG quadrant painter | `t.rrg_leading`, `t.rrg_improving`, `t.rrg_weakening`, `t.rrg_lagging` |
+| `status.rs` StatusDot / ConnectionIndicator | `t.warn` (replaces `COLOR_AMBER` inline) |
+| `command_palette/mod.rs` palette rows | `t.cmd_palette[0..10]` (11-slot array) |
+| `watchlist_row.rs` earnings pill | `t.gold` (replaces `rgb(255,193,37)` inline) |
+| `dom_panel.rs` / `dom_action.rs` inputs | `t.warn`, `t.notification_red` |
+| `play_card.rs` card shadow | `t.shadow_color` |
+| `design_preview_pane.rs` token preview | `t.warn`, `t.gold`, `t.overlay_text`, `t.rrg_*`, `t.cmd_palette` |
 
 ---
 

@@ -1,6 +1,6 @@
 # Design System Usage Map
 
-**Audit date:** 2026-05-02 (refreshed post-R4)
+**Audit date:** 2026-05-02 (refreshed post-R5)
 **Scope:** `src/chart_renderer/ui/` — all panel files + `gpu.rs`
 **Excluded from hardcoded audit:** `widgets/`, `components/`, `components_extra/`, `foundation/`, `style.rs`, `design_inspector.rs`, `design_preview_pane.rs`
 
@@ -74,6 +74,23 @@ No usages found outside widget definition files.
 
 ---
 
+### R5 New Theme Token Usage Counts
+
+| Token | Primary consumers | Verified usages |
+|-------|------------------|-----------------|
+| `t.warn` | `status.rs`, `dom_panel.rs`, `dom_action.rs`, `apex_diagnostics.rs` | 4 files (≥12 call sites) |
+| `t.notification_red` | `status.rs`, `dom_action.rs`, `command_palette/mod.rs` | 3 files |
+| `t.gold` | `watchlist_row.rs`, `plays_panel.rs` | 2 files |
+| `t.shadow_color` | `play_card.rs`, shadow paint paths | 1 widget file |
+| `t.overlay_text` | `chart_widgets.rs`, `design_preview_pane.rs` | 2 files |
+| `t.rrg_leading/improving/weakening/lagging` | `rrg_panel.rs` | 19 usages (4 tokens × quadrant fills) |
+| `t.cmd_palette[*]` | `command_palette/mod.rs`, `render.rs`, `execute.rs` | 52 usages in mod.rs alone |
+| **Total new token usages** | Across 16 consumer files | **~102 call sites** |
+
+> Count verified: `grep -rn "t\.warn|t\.notification_red|t\.gold|t\.shadow_color|t\.overlay_text|t\.rrg_|cmd_palette"` returned 102 hits across 16 files.
+
+---
+
 ### R4 New Helpers and Widget Usage Counts
 
 | Helper / Widget | Location | Usages | Wave |
@@ -137,31 +154,32 @@ Patterns counted: `Color32::` literals, `Stroke::new`/`Stroke {`, `vec2(` spacin
 
 > **Note:** `design_preview_pane.rs` and `style.rs` are intentionally excluded — they define the system, not consume it. `gpu.rs` counted separately.
 
-### Panel-level Color32 counts (verified 2026-05-02 grep)
+### Panel-level Color32 counts (verified 2026-05-02 grep, post-R5)
 
-| File | Color32 | Stroke | Vec2 | Notes |
-|------|---------|--------|------|-------|
-| `chart_widgets.rs` | **86** | 39 | 43 | Largely chart-paint-adjacent; ~20 UI-chrome sites remain — R5 |
-| `discord_panel.rs` | 16 | 1 | 12 | R4-L migrated partial; brand CTA color remains |
-| `rrg_panel.rs` | 15 | 5 | 1 | Quadrant fills intentional (domain-specific brand colors) |
-| `watchlist_panel.rs` | 15 | 16 | 39 | R4-A/C/H reduced from ~80; context menu inline buttons remain |
-| `plays_panel.rs` | 11 | 6 | 18 | R4-L migrated; 11 semantic colors remain |
-| `object_tree.rs` | 7 | 0 | 3 | R4-M `CategoryHeader` adopted; 7 literals remain |
-| `script_panel.rs` | 5 | 7 | 11 | Medium panel |
-| `indicator_editor.rs` | 4 | 3 | 5 | Reduced post-R1/R2 |
-| `settings_panel.rs` | 4 | 5 | 9 | Light |
-| `hotkey_editor.rs` | 3 | 0 | 2 | Light |
-| `research_panel.rs` | 3 | 0 | 4 | Light |
-| `signals_panel.rs` | 3 | 2 | 3 | Light |
-| `analysis_panel.rs` | 3 | 2 | 3 | Light |
-| `template_popup.rs` | 3 | 2 | 3 | Light |
-| `dom_panel.rs` | 2 | 5 | 17 | Low |
-| `tape_panel.rs` | 2 | 0 | 0 | Low |
-| `heatmap_pane.rs` | 2 | 1 | 5 | Intentional (heatmap domain) |
-| `spread_panel.rs` | 2 | 2 | 5 | Low |
-| `feed_panel.rs` | 2 | 2 | 2 | Low |
-| Others (≤1 Color32) | ~10 | ~20 | ~60 | scanner, alerts, options, trendline, etc. |
-| **Totals (excl. style+preview)** | **195** | **122** | **241** | Verified grep 2026-05-02 |
+| File | Color32 | Notes |
+|------|---------|-------|
+| `chart_widgets.rs` | **82** | R5-7: 4 additional UI-chrome sites migrated; ~20 migratable remain |
+| `discord_panel.rs` | 16 | Brand CTA color; intentional |
+| `watchlist_panel.rs` | 15 | Context menu inline buttons remain |
+| `plays_panel.rs` | 11 | Semantic colors remain |
+| `object_tree.rs` | 7 | 7 literals remain |
+| `rrg_panel.rs` | **6** | R5-2: all 4 quadrant fills now `t.rrg_*`; 6 structural literals remain |
+| `script_panel.rs` | 5 | Medium panel |
+| `indicator_editor.rs` | 4 | Reduced post-R1/R2 |
+| `settings_panel.rs` | 4 | Light |
+| `hotkey_editor.rs` | 3 | Light |
+| `research_panel.rs` | 3 | Light |
+| `signals_panel.rs` | 3 | Light |
+| `analysis_panel.rs` | 3 | Light |
+| `template_popup.rs` | 3 | Light |
+| `command_palette/mod.rs` | **2** | R5-2: palette rows now use `t.cmd_palette[*]` |
+| `dom_panel.rs` | **1** | R5-2/5: warn/notification_red migrated |
+| `tape_panel.rs` | 2 | Low |
+| `heatmap_pane.rs` | 2 | Intentional (heatmap domain) |
+| `spread_panel.rs` | 2 | Low |
+| `feed_panel.rs` | 2 | Low |
+| Others (≤1 Color32) | ~11 | scanner, alerts, options, trendline, overlay_manager, etc. |
+| **Totals (excl. style+preview)** | **183** | Verified grep 2026-05-02 post-R5 (was 195 post-R4) |
 
 ### `gpu.rs` (counted separately)
 

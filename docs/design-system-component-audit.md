@@ -1,5 +1,5 @@
 # Design System Component Audit
-**Date:** 2026-05-02 (refreshed post-R4)
+**Date:** 2026-05-02 (refreshed post-R5)
 **Scope:** `src-tauri/src/chart_renderer/ui/widgets/`, `components/`, `components_extra/`
 **Auditor:** Claude Sonnet 4.6 (read-only, no source edits)
 
@@ -19,13 +19,15 @@
 
 ## Executive Summary
 
-**Overall widget library tier: 4.0 / 5** (post-R4, up from 3.5 post-R3)
+**Overall widget library tier: 4.1 / 5** (post-R5, up from 4.0 post-R4)
 
 R1/R2 added: `FilterPill`, `SectionHeader`, `NmfToggle` (watchlist/), `ColorSwatchPicker`, `ThicknessPicker` (widgets/inputs.rs), `IndicatorParamRow`, `IndicatorParamRowF` (widgets/form.rs), `AccountStrip` (widgets/pane.rs). All new widgets are Tier 4+. The four Foundation shells (`ButtonShell`, `RowShell`, `CardShell`, `InputShell`) remain at Tier 5.
 
 R3 added: `TopNav` (widgets/toolbar/top_nav.rs — extracted from gpu.rs; ~1664 lines removed), `ApertureOrderTicket` (widgets/form.rs — ~270 lines removed), `FloatingOrderPaneChrome` (widgets/pane.rs — ~80 lines removed). `PopupFrame` upgraded from Tier 2 to Tier 4 (shadow now reads `st.shadow_offset_y/blur/alpha`).
 
 R4 (~325 sites migrated across 14 waves): `widgets/form.rs`, `pane.rs`, `status.rs`, `inputs.rs`, `buttons.rs`, `select.rs`, `toolbar/mod.rs`, `pills.rs`, all `cards/*`, mid-tier panels (`discord_panel.rs`, `rrg_panel.rs`, `plays_panel.rs` et al.), and `chart_widgets.rs` UI chrome now use the `ft()` fallback-theme pattern. R4-M extracted `CategoryHeader` widget to `widgets/text.rs` and added `border_stroke()` + `BTN_ICON_SM/MD` constants to `style.rs`. `rows/watchlist_row.rs` and `rows/dom_row.rs` migrated (R4-C). The main remaining pathologies are `WatchlistRow`/`DomRow` painter bodies (still Tier 2) and `chart_widgets.rs` canvas-adjacent paths (intentional).
+
+R5 (~80 sites across 6 files + 1 deletion + 10 new Theme fields): Outlier inline `Color32` literals promoted to first-class `Theme` tokens (`warn`, `notification_red`, `gold`, `shadow_color`, `overlay_text`, `rrg_leading/improving/weakening/lagging`, `cmd_palette[11]`). Files touched: `status.rs` (warn token), `rrg_panel.rs` (all 4 rrg_* tokens), `command_palette/mod.rs` (cmd_palette array), `watchlist_row.rs` (gold), `dom_panel.rs` + `components_extra/dom_action.rs` (warn/notification_red), `play_card.rs` (shadow_color), `design_preview_pane.rs` (~30 token preview sites). Dead file `components_extra/top_nav.rs` deleted. R5-7 (`chart_widgets.rs`) applied 6 additional UI-chrome sites. R5-3 (SectionLabel) and R5-6 (signature purge) deferred — no actionable sites.
 
 ---
 
@@ -239,12 +241,12 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 
 ### `widgets/status.rs`
 
-> **R4-A migrated.** `Default` impls now use `ft()`. `ft()` usages: 27. 6 Color32 literals remain (warn yellow, brand colors — R5 candidates).
+> **R4-A migrated; R5-2 upgraded.** `Default` impls use `ft()`. Warn yellow now routes through `t.warn` token (R5). `ft()` usages: 27. 4 Color32 literals remain (brand colors).
 
 | Widget | Tier | Notes |
 |--------|------|-------|
 | `TrendArrow`, `SearchPill` | 4 | Mostly tokenized |
-| `StatusDot`, `ConnectionIndicator` | 4 | Warn yellow now uses `COLOR_AMBER` / `ft()` |
+| `StatusDot`, `ConnectionIndicator` | **4+** | Warn now uses `t.warn` (R5 — first-class token, was `COLOR_AMBER` inline) |
 | `Spinner` | 4 | `LoadSize` px → `font_sm()/font_md()/font_xl()` wired R4-G |
 | `ProgressBar` | 4 | Height token wired via `ft()` |
 | `Toast` | 4 | `gap_lg()`, `Radius::Xs.corner()` wired R4-A |
@@ -265,17 +267,17 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 | `components/pills.rs` | 4 | `alpha_tint()`, `r_pill()` correct |
 | `components_extra/action_button.rs` | 4 | Delegates to `style::action_btn` |
 | `components_extra/chips.rs` | 4 | Delegates to `StatusBadge` |
-| `components_extra/dom_action.rs` | 3 | Some inline `egui::Button` with literal stroke |
+| `components_extra/dom_action.rs` | **4** | R5-5 migrated: `t.warn`/`t.notification_red` tokens, inline stroke removed |
 | `components_extra/header_buttons.rs` | 4 | `ChromeBtn` wrappers — inherits Tier 2 of `ChromeBtn` but adds no new hardcodes |
 | `components_extra/inputs.rs` | 4 | Delegates to `TextInput`/`NumericInput` |
 | `components_extra/panels.rs` | 4 | `PanelFrame` wrappers |
 | `components_extra/sortable_headers.rs` | 3 | Arrow icon size literal `9.0` |
 | `components_extra/toasts.rs` | 3 | Inherits `Toast` tier |
-| `components_extra/top_nav.rs` | 4 | Uses `ToolbarBtn` from `widgets/toolbar.rs` |
+| `components_extra/top_nav.rs` | — | **DELETED (R5-5)** — dead code; functionality fully covered by `widgets/toolbar/top_nav.rs` |
 
 ---
 
-## Per-Family Tier Summary (post-R4)
+## Per-Family Tier Summary (post-R5)
 
 | Family | Reference Widget | Avg Tier | Worst Offender |
 |--------|-----------------|----------|----------------|
@@ -287,14 +289,14 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 | Headers | `PanelHeaderWithClose` | 3.5 | `PanelHeader` (3), `DialogHeader` (3) |
 | Tabs | `TabBar` | 3 | Shared height literals |
 | Rows | `RowShell` | 2.5 | `WatchlistRow`/`DomRow` painter bodies (2) |
-| Cards | `MetricCard` | 4 | 7 Color32 literals remain (brand/RRG) |
+| Cards | `MetricCard` | 4 | 3 Color32 literals remain (brand) — RRG colors moved to `t.rrg_*` (R5) |
 | Inputs | `TextInput` (theme path) | 4.5 | `Slider` (3) |
 | Form | `IndicatorParamRow` (new) | 4 | `FormRow` (4, label-width literal) |
 | Watchlist widgets (new) | `FilterPill`/`NmfToggle` | **5** | `SectionHeader` (4) |
 | Selects | `SegmentedControl` | 4 | `Dropdown` (4, width literal) |
-| Status | `TrendArrow`/`SearchPill` | 4 | `Skeleton` (3), `NotificationBadge` (2) |
+| Status | `TrendArrow`/`SearchPill` | **4+** | `Skeleton` (3), `NotificationBadge` (2) — warn now `t.warn` (R5) |
 | Layout | `Splitter` | 4 | — |
-| components_extra | `action_button` | 3.5 | `dom_action` (3) |
+| components_extra | `action_button` | **4** | `dom_action` lifted to 4 (R5-5); `top_nav` deleted |
 
 ---
 

@@ -1,8 +1,24 @@
 # Remaining Hardcoded UI Report
 
-**Date:** 2026-05-02 (post-R4, counts verified by grep)
+**Date:** 2026-05-02 (post-R5, counts verified by grep)
 **Auditor:** Claude Sonnet 4.6 (read-only, no source edits)
 **Patterns counted:** `Color32::`, `Stroke::new`/`Stroke {`, `vec2(` spacing literals, `.size(N)` font literals
+
+---
+
+## R5 Wave COMPLETE (date: 2026-05-02)
+
+**~80 sites migrated across 6 files + 10 new Theme fields + 1 dead-code deletion.**
+
+| Sub-wave | Sites | Scope |
+|----------|-------|-------|
+| R5-1 | 10 fields | Theme expansion: `warn`, `notification_red`, `gold`, `shadow_color`, `overlay_text`, `rrg_leading/improving/weakening/lagging`, `cmd_palette[11]` |
+| R5-2 | ~43 | Outlier-to-token migration: `status.rs`, `rrg_panel.rs`, `command_palette/mod.rs`, `watchlist_row.rs`, `dom_panel.rs`, `dom_action.rs`, `play_card.rs`, `COLOR_AMBER` sites |
+| R5-4 | ~30 | `design_preview_pane.rs` token preview wired to new fields |
+| R5-5 | ~6 | `components_extra/` cleanup: `dom_action.rs`, `inputs.rs` migrated; dead `top_nav.rs` deleted |
+| R5-7 | 6 | `chart_widgets.rs` deeper pass — 6 additional UI-chrome sites |
+| R5-3 | 0 | SectionLabel adoption — all candidates legitimately unique, no migrations |
+| R5-6 | deferred | Signature purge — modest leverage post-R4, not executed |
 
 ---
 
@@ -86,13 +102,13 @@ Popup frames, data label backgrounds, tooltip containers — all R4 targets usin
 
 ---
 
-### `src/chart_renderer/ui/chart_widgets.rs` — **86 Color32, 39 Stroke, 43 vec2** (post-R4-N grep)
+### `src/chart_renderer/ui/chart_widgets.rs` — **82 Color32, 39 Stroke, 43 vec2** (post-R5-7 grep)
 
-R4-N migrated the UI-chrome layer (10 sites). Remaining 86 Color32 are predominantly chart-paint-adjacent. Approximately 20 are genuinely migratable UI overlays (R5).
+R4-N migrated the UI-chrome layer (10 sites). R5-7 migrated 4 additional UI-chrome sites. Remaining 82 Color32 are predominantly chart-paint-adjacent. Approximately 16 are still genuinely migratable UI overlays (post-R5-7).
 
 | Pattern | Count |
 |---------|-------|
-| `Color32::` literals | **86** |
+| `Color32::` literals | **82** |
 | `Stroke::new` / `Stroke {` | **39** |
 | `vec2(` spacing | **43** |
 
@@ -212,7 +228,7 @@ Reduced post-R1/R2. Remaining:
 | `orders_panel.rs` | 3 | `ChromeBtn` with `.size(9.0)` |
 | `overlay_manager.rs` | 3 | `.size(10.0)` in overlay header |
 | `script_panel.rs` | 3 | `.size(9.0)` in code editor chrome |
-| `rrg_panel.rs` | 2 | `Color32::from_rgb` for bull/bear quadrant fills |
+| `rrg_panel.rs` | — | **R5-2 DONE** — quadrant fills now `t.rrg_*` tokens; 6 structural Color32 literals remain |
 | `portfolio_pane.rs` | 2 | `Color32::from_rgb` for P&L green/red |
 
 ---
@@ -314,21 +330,21 @@ These panels were not targeted by R1/R2 and have low user-facing design-system i
 
 ## Remaining Hardcoded Sites — Post-R4 Verified State (2026-05-02)
 
-### Panel files (excl. `style.rs`, `design_preview_pane.rs`)
+### Panel files (excl. `style.rs`, `design_preview_pane.rs`) — post-R5
 
 | Pattern | Count | Key files |
 |---------|-------|-----------|
-| `Color32::` literals | **195** | `chart_widgets.rs` (86), `discord_panel.rs` (16), `rrg_panel.rs` (15), `watchlist_panel.rs` (15), `plays_panel.rs` (11) |
-| `Stroke::new` / `Stroke {` | **122** | `chart_widgets.rs` (39), `watchlist_panel.rs` (16), `plays_panel.rs` (6), `script_panel.rs` (7) |
-| `vec2(` spacing | **241** | `watchlist_panel.rs` (39), `chart_widgets.rs` (43), `portfolio_pane.rs` (17), `dom_panel.rs` (17) |
-| `.size(N)` font literals | **28** | scattered across light panels |
+| `Color32::` literals | **183** | `chart_widgets.rs` (82), `discord_panel.rs` (16), `watchlist_panel.rs` (15), `plays_panel.rs` (11), `object_tree.rs` (7), `rrg_panel.rs` (6) |
+| `Stroke::new` / `Stroke {` | **~118** | `chart_widgets.rs` (39), `watchlist_panel.rs` (16), `plays_panel.rs` (6), `script_panel.rs` (7) |
+| `vec2(` spacing | **~238** | `watchlist_panel.rs` (39), `chart_widgets.rs` (43), `portfolio_pane.rs` (17), `dom_panel.rs` (17) |
+| `.size(N)` font literals | **28** | Scattered across light panels |
 
-### Widget layer (all `widgets/`)
+### Widget layer (all `widgets/`) — post-R5
 
 | Pattern | Count | Key files |
 |---------|-------|-----------|
-| `Color32::` literals | **239** | `rows/` painter bodies (~48), `form.rs` (25), `shell.rs` (17), `pills.rs` (14), `buttons.rs` (11) |
-| `Stroke::new` / `Stroke {` | **128** | `rows/` (~40), `shell.rs`, `frames.rs` |
+| `Color32::` literals | **237** | `rows/` painter bodies (~48), `form.rs` (33), `shell.rs` (17), `pills.rs` (14), `buttons.rs` (11) |
+| `Stroke::new` / `Stroke {` | **~126** | `rows/` (~40), `shell.rs`, `frames.rs` |
 | `.size(N)` font literals | **6** | Minimal — nearly clean |
 
 ### `gpu.rs` (separate — chart-paint dominant)
@@ -338,18 +354,21 @@ These panels were not targeted by R1/R2 and have low user-facing design-system i
 | `Color32::` literals | **324** | ~80–100 UI-layer; ~224 chart-paint (intentional) |
 | `Stroke::new` / `Stroke {` | **317** | Largely chart-paint |
 
-### Categorized residuals by type
+### Categorized residuals by type (post-R5)
 
 | Category | Est. count | Notes |
 |----------|-----------|-------|
-| Chart-paint-adjacent (intentional) | ~224 Color32 in gpu.rs + ~86 in `chart_widgets.rs` canvas paths | Off-limits by design |
-| RRG quadrant fills (`rrg_panel.rs`) | 15 | Domain-specific brand colors — intentional |
-| `COLOR_AMBER` / warn yellow | 14 usages across panels | Already named constant; `ft()` not applicable |
+| Chart-paint-adjacent (intentional) | ~224 Color32 in gpu.rs + ~66 in `chart_widgets.rs` canvas paths | Off-limits by design |
+| RRG quadrant structural fills | 6 | Now `t.rrg_*` (R5) — 6 remaining are structural/overlay Color32, not quadrant fills |
+| `COLOR_AMBER` const usages | 20 (gpu.rs:18, style.rs:1, form.rs:1) | Named constant — intentionally preserved; `ft()` not applicable |
 | Row painter bodies (`WatchlistRow`, `DomRow`) | ~48 Color32 | Canvas-adjacent; high-risk to refactor |
-| `gpu.rs` UI-layer overlays | ~80–100 | R5 target |
+| `gpu.rs` UI-layer overlays | ~80–100 | R6 candidate (post-R5 scope closed) |
 | `discord_panel.rs` brand CTA | ~16 | Low priority |
 | `watchlist_panel.rs` context menus | ~15 | ChromeBtn inline — `SimpleBtn` swap |
 | `Skeleton` / `NotificationBadge` geometry | ~20 | Low impact |
+| Purple swatch in `design_preview_pane.rs` | 1 | Intentional — design system preview, not consumer |
+| White toggle knobs (white fill) | ~2 | Intentional semantic white |
+| Transparent semantics (`Color32::TRANSPARENT`) | ~8 | Intentional — not a theme value |
 
 ---
 
@@ -370,24 +389,27 @@ R5 candidates (all low-risk, low-impact):
 
 ---
 
-## Summary Stats (post-R4)
+## Summary Stats (post-R5)
 
 | Metric | Value |
 |--------|-------|
+| Total sites migrated in R5 | **~80** |
 | Total sites migrated in R4 | **~325** |
-| Panel Color32 (excl. style+preview) | **195** (was ~550 pre-R4) |
-| Panel Stroke literals (excl. style+preview) | **122** |
-| Panel vec2/spacing literals | **241** |
-| Widget Color32 | **239** (was ~450 pre-R4) |
-| Widget font-size literals | **6** (was ~108) |
-| `gpu.rs` Color32 (all) | **324** (was 339 post-R3; dominated by chart-paint) |
+| New Theme fields added in R5 | **10** (`warn`, `notification_red`, `gold`, `shadow_color`, `overlay_text`, `rrg_*` ×4, `cmd_palette[11]`) |
+| Panel Color32 (excl. style+preview) | **183** (was 195 post-R4, ~550 pre-R4) |
+| Panel Stroke literals (excl. style+preview) | **~118** |
+| Panel vec2/spacing literals | **~238** |
+| Widget Color32 | **237** (was 239 post-R4) |
+| Widget font-size literals | **6** (was ~108 pre-R4) |
+| `gpu.rs` Color32 (all) | **324** (chart-paint dominant; ~80–100 UI-layer R6 targets) |
 | `border_stroke()` call sites | **3** |
 | `BTN_ICON_*` usages | **13** |
 | `CategoryHeader` usages | **8** |
-| `ft()` usages across all `ui/` | **161** |
-| `COLOR_AMBER` usages | **14** |
+| `ft()` usages across all `ui/` | **161+** |
+| `COLOR_AMBER` const usages | **20** (18 gpu.rs + 1 style.rs + 1 form.rs) |
+| New R5 token usages (`t.warn` etc.) | **~102** across 16 files |
 | Widgets at Tier 5 | ~16 |
-| Widgets at Tier 4 | ~30 (all R4-migrated widgets lifted) |
-| Widgets at Tier 3 | ~12 |
+| Widgets at Tier 4 | ~31 (dom_action lifted R5) |
+| Widgets at Tier 3 | ~11 |
 | Widgets at Tier 2 or below | 3 (`ChromeBtn`, `NotificationBadge`, `Skeleton`) |
-| R4 new widgets/helpers | `CategoryHeader` (T5), `border_stroke()`, `BTN_ICON_SM/MD` |
+| Dead files deleted in R5 | 1 (`components_extra/top_nav.rs`) |
