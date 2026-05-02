@@ -114,7 +114,7 @@ impl Category {
             Category::Style => "Style Editor",
             Category::Theme => "Theme Editor",
             Category::Preview => "Style Preview",
-            Category::Design => "Design",
+            Category::Design => "Style Editor",
         }
     }
 
@@ -492,8 +492,10 @@ impl Inspector {
                             ).clicked() {
                                 self.inspect_mode = !self.inspect_mode;
                                 if !self.inspect_mode {
-                                    self.selected_family = None;
                                     self.hovered_family = None;
+                                    // NOTE: selected_family intentionally NOT cleared here.
+                                    // Selection persists so the user can navigate the inspector
+                                    // while keeping the locked element visible.
                                 }
                             }
 
@@ -502,6 +504,22 @@ impl Inspector {
                             if let Some(fam) = display {
                                 ui.label(RichText::new(fam).monospace().size(10.0).strong()
                                     .color(Color32::from_rgb(166, 227, 161)));
+                            }
+                            // Clear selection button — shown when selected outside inspect mode
+                            if !self.inspect_mode {
+                                if let Some(fam) = self.selected_family {
+                                    ui.separator();
+                                    ui.horizontal(|ui| {
+                                        ui.label(RichText::new(format!("LOCKED: {fam}")).monospace().size(9.0)
+                                            .color(Color32::from_rgb(250, 179, 135)));
+                                        if ui.add(egui::Button::new(
+                                            RichText::new("×").monospace().size(10.0).color(Color32::from_rgb(150,150,160)))
+                                            .fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
+                                        ).on_hover_text("Clear selection").clicked() {
+                                            self.selected_family = None;
+                                        }
+                                    });
+                                }
                             }
                         });
 
@@ -1085,7 +1103,7 @@ fn render_design_category(ui: &mut Ui) -> bool {
     let current_tab = DESIGN_SUBTAB.with(|t| *t.borrow());
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
-        for (idx, label) in ["Style", "Theme", "Preview"].iter().enumerate() {
+        for (idx, label) in ["STYLE", "THEME", "PREVIEW"].iter().enumerate() {
             let idx = idx as u8;
             let active = current_tab == idx;
             let (fg, bg, border) = if active {
@@ -1490,9 +1508,68 @@ thread_local! {
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
+/// Returns a short description tooltip for a StyleSettings field name.
+fn field_tip(name: &str) -> &'static str {
+    match name {
+        "r_xs"   => "r_xs → tiny chip corners (badges, tags)",
+        "r_sm"   => "r_sm → button corners, small card corners",
+        "r_md"   => "r_md → card corners, dialog corners, main buttons",
+        "r_lg"   => "r_lg → modal / overlay corners, large cards",
+        "r_pill" => "r_pill → pill-shaped buttons and segmented controls",
+        "stroke_hair"  => "stroke_hair → hairline borders, dividers (thinnest)",
+        "stroke_thin"  => "stroke_thin → subtle borders, inactive outlines",
+        "stroke_std"   => "stroke_std → standard borders and separators",
+        "stroke_bold"  => "stroke_bold → active / hover borders",
+        "stroke_thick" => "stroke_thick → emphasis borders, chart annotations",
+        "toolbar_height_scale"  => "Multiplier applied to the base toolbar height",
+        "header_height_scale"   => "Multiplier applied to pane header heights",
+        "font_hero"             => "Font size for large price / P&L numerics",
+        "active_header_fill_multiply" => "Brightness multiplier for the active pane header fill",
+        "account_strip_height"  => "Height of the account summary strip",
+        "label_letter_spacing_px" => "Extra spacing between uppercase label characters (0 = off)",
+        "pane_border_width" => "Width of the border between panes",
+        "pane_gap"          => "Gap between pane tiles",
+        "card_padding_y"    => "Vertical inner padding inside cards",
+        "card_padding_x"    => "Horizontal inner padding inside cards",
+        "row_height_px"     => "Height of table / list rows",
+        "button_height_px"  => "Standard action button height",
+        "button_padding_x"  => "Horizontal padding inside buttons",
+        "tab_height"        => "Height of tab bar items",
+        "font_section_label" => "Font size for section label text (e.g. ORDERS, POSITIONS)",
+        "font_body"          => "Font size for body / table text",
+        "font_caption"       => "Font size for captions, badges, secondary text",
+        "hover_bg_alpha"  => "Background alpha on hover (0–255)",
+        "active_bg_alpha" => "Background alpha when active / selected",
+        "focus_ring_width" => "Width of the keyboard focus ring",
+        "focus_ring_alpha" => "Opacity of the keyboard focus ring",
+        "disabled_opacity" => "Opacity multiplier for disabled widgets",
+        "shadow_blur"     => "Blur radius of drop shadows",
+        "shadow_offset_y" => "Vertical offset of drop shadows",
+        "shadow_alpha"    => "Opacity of drop shadows",
+        "density"         => "Spacing density preset (0=compact, 1=normal, 2=spacious)",
+        "accent_emphasis" => "Multiplier on accent color saturation/brightness",
+        "nav_letter_spacing_px"   => "Extra letter spacing for nav/toolbar text labels (0 = off)",
+        "tab_underline_thickness" => "Thickness of the active tab underline indicator",
+        "card_floating_shadow_alpha" => "Opacity of the floating card drop shadow",
+        "cta_height_px" => "Height of CTA (call-to-action) buy/sell buttons",
+        "cta_padding_x" => "Horizontal padding inside CTA buttons",
+        "hairline_borders"          => "Use hairline (very thin) borders globally",
+        "shadows_enabled"           => "Enable drop shadows on cards and modals",
+        "solid_active_fills"        => "Use solid fills on active/selected items instead of tinted",
+        "uppercase_section_labels"  => "Uppercase section label text globally",
+        "serif_headlines"           => "Use serif font for hero numerics (price, P&L)",
+        "vertical_group_dividers"   => "Show vertical group dividers in the toolbar",
+        "show_active_tab_underline" => "Show an underline beneath the active tab",
+        "inactive_header_fill"      => "Apply a fill to inactive pane headers",
+        "tab_underline_under_text"  => "Position tab underline directly under the text (vs full width)",
+        "card_floating_shadow"      => "Add a floating drop shadow beneath cards",
+        _ => "",
+    }
+}
+
 fn style_drag_u8(ui: &mut Ui, label: &str, value: &mut u8) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
+    let resp = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         let dim = Color32::from_rgb(170, 170, 180);
         ui.label(RichText::new(label).monospace().size(9.0).color(dim));
@@ -1502,12 +1579,14 @@ fn style_drag_u8(ui: &mut Ui, label: &str, value: &mut u8) -> bool {
             }
         });
     });
+    let tip = field_tip(label);
+    if !tip.is_empty() { resp.response.on_hover_text(tip); }
     changed
 }
 
 fn style_drag_f32(ui: &mut Ui, label: &str, value: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
+    let resp = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         let dim = Color32::from_rgb(170, 170, 180);
         ui.label(RichText::new(label).monospace().size(9.0).color(dim));
@@ -1517,18 +1596,22 @@ fn style_drag_f32(ui: &mut Ui, label: &str, value: &mut f32, range: std::ops::Ra
             }
         });
     });
+    let tip = field_tip(label);
+    if !tip.is_empty() { resp.response.on_hover_text(tip); }
     changed
 }
 
 fn style_checkbox(ui: &mut Ui, label: &str, value: &mut bool) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
+    let resp = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(170,170,180)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.checkbox(value, "").changed() { changed = true; }
         });
     });
+    let tip = field_tip(label);
+    if !tip.is_empty() { resp.response.on_hover_text(tip); }
     changed
 }
 
@@ -1969,6 +2052,19 @@ thread_local! {
 
 fn render_style_preview(ui: &mut Ui) {
     use crate::chart_renderer::ui::style::{get_style_settings, set_active_style, list_style_presets};
+
+    // ── Limitation notice ──────────────────────────────────────────────────────
+    egui::Frame::NONE
+        .fill(Color32::from_rgba_unmultiplied(250, 179, 135, 18))
+        .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(250, 179, 135, 60)))
+        .inner_margin(egui::Margin { left: 8, right: 8, top: 5, bottom: 5 })
+        .corner_radius(3.0)
+        .show(ui, |ui| {
+            ui.label(RichText::new("Preview uses static mocks. For exact appearance, switch active style and view the running app.")
+                .monospace().size(8.5)
+                .color(Color32::from_rgb(250, 179, 135)));
+        });
+    ui.add_space(6.0);
 
     let presets = list_style_presets();
 

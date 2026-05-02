@@ -3790,16 +3790,16 @@ fn render_toolbar(
             }
 
             // ── Orders book ──
-            if ui.add(ToolbarBtn::new(Icon::ARTICLE).active(watchlist.orders_panel_open).theme(t)).on_hover_text("Orders").clicked() {
+            if ui.add(ToolbarBtn::new("ORDERS").active(watchlist.orders_panel_open).theme(t)).on_hover_text("Orders").clicked() {
                 watchlist.orders_panel_open = !watchlist.orders_panel_open;
             }
 
             // ── DOM sidebar ──
-            if ui.add(ToolbarBtn::new(Icon::SIDEBAR).active(panes[ap].dom_sidebar_open).theme(t)).on_hover_text("DOM Sidebar").clicked() {
+            if ui.add(ToolbarBtn::new("DOM").active(panes[ap].dom_sidebar_open).theme(t)).on_hover_text("DOM Sidebar").clicked() {
                 panes[ap].dom_sidebar_open = !panes[ap].dom_sidebar_open;
             }
             // ── Order Entry ──
-            if ui.add(ToolbarBtn::new(Icon::CURRENCY_DOLLAR).active(watchlist.order_entry_open).theme(t)).on_hover_text("Order Entry").clicked() {
+            if ui.add(ToolbarBtn::new("ORDER").active(watchlist.order_entry_open).theme(t)).on_hover_text("Order Entry").clicked() {
                 watchlist.order_entry_open = !watchlist.order_entry_open;
             }
 
@@ -3929,23 +3929,23 @@ fn render_toolbar(
                 TB_BTN_CLICKED.with(|f| f.set(true));
             }
             // Magnet (crosshair icon)
-            if ui.add(ToolbarBtn::new(Icon::CROSSHAIR).active(panes[ap].magnet).theme(t)).on_hover_text("Magnet Snap").clicked() { panes[ap].magnet = !panes[ap].magnet; }
+            if ui.add(ToolbarBtn::new("MAG").active(panes[ap].magnet).theme(t)).on_hover_text("Magnet Snap").clicked() { panes[ap].magnet = !panes[ap].magnet; }
             // Object tree toggle (consolidated drawings/indicators/overlays panel)
             let draw_count = panes[ap].drawings.len();
-            let list_label = if draw_count > 0 { format!("{} {}", Icon::LIST, draw_count) } else { Icon::LIST.to_string() };
+            let list_label = if draw_count > 0 { format!("TREE {}", draw_count) } else { "TREE".to_string() };
             if ui.add(ToolbarBtn::new(&list_label).active(watchlist.object_tree_open).theme(t)).on_hover_text("Object Tree").clicked() {
                 watchlist.object_tree_open = !watchlist.object_tree_open;
             }
             // ── Broadcast — drawing section (applies to all panes) ──
             {
                 let bc = watchlist.broadcast_mode;
-                if ui.add(ToolbarBtn::new(Icon::MEGAPHONE).active(bc).theme(t)).on_hover_text("Broadcast — changes apply to all panes").clicked() {
+                if ui.add(ToolbarBtn::new("BCAST").active(bc).theme(t)).on_hover_text("Broadcast — changes apply to all panes").clicked() {
                     watchlist.broadcast_mode = !watchlist.broadcast_mode;
                     TB_BTN_CLICKED.with(|f| f.set(true));
                 }
             }
             // ── Trendline filter — drawing section ──
-            if ui.add(ToolbarBtn::new(Icon::FUNNEL).active(watchlist.trendline_filter_open).theme(t)).on_hover_text("Trendline Filter").clicked() {
+            if ui.add(ToolbarBtn::new("FILTER").active(watchlist.trendline_filter_open).theme(t)).on_hover_text("Trendline Filter").clicked() {
                 watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
             }
 
@@ -4473,7 +4473,7 @@ fn render_toolbar(
             // ⚡ Hit Highlight icon toggle
             {
                 let hh = panes[ap].hit_highlight;
-                let hh_resp = ui.add(ToolbarBtn::new(Icon::LIGHTNING).active(hh).theme(t)).on_hover_text("Hit Highlight");
+                let hh_resp = ui.add(ToolbarBtn::new("SIGNALS").active(hh).theme(t)).on_hover_text("Hit Highlight");
                 if hh_resp.clicked() { panes[ap].hit_highlight = !hh; }
             }
 

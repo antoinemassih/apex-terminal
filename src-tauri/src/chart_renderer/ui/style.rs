@@ -157,18 +157,7 @@ pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let st = current();
     // Apply uppercase transform per active style (#5).
-    // For nav buttons, apply nav_letter_spacing_px separately from label_letter_spacing_px.
-    let display_label = {
-        let base = style_label_case(label);
-        let nav_sp = st.nav_letter_spacing_px;
-        if nav_sp < 0.5 {
-            base
-        } else {
-            let gap = if nav_sp > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
-            let parts: Vec<String> = base.chars().map(|c| c.to_string()).collect();
-            parts.join(gap)
-        }
-    };
+    let display_label = style_label_case(label);
     let corner_r = st.r_sm as f32;
 
     // Resolve active fill/text from style overrides or fallback to accent.
@@ -1095,7 +1084,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             stroke_hair: 0.4, stroke_thin: 0.6, stroke_std: 1.0,
             stroke_bold: 1.0, stroke_thick: 1.4,
             shadows_enabled: false, solid_active_fills: true,
-            uppercase_section_labels: true, label_letter_spacing_px: 0.5,
+            uppercase_section_labels: true, label_letter_spacing_px: 0.0,
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
@@ -1124,7 +1113,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
             stroke_bold: 1.0, stroke_thick: 1.0,
             shadows_enabled: true, solid_active_fills: true,
-            uppercase_section_labels: true, label_letter_spacing_px: 1.0,
+            uppercase_section_labels: true, label_letter_spacing_px: 0.0,
             toolbar_height_scale: 1.40, header_height_scale: 1.10,
             font_hero: 36.0, vertical_group_dividers: true,
             show_active_tab_underline: true,
@@ -1141,7 +1130,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             density: 1, accent_emphasis: 1.0,
             active_fill_color: Some(Color32::BLACK), active_text_color: Some(Color32::WHITE),
             idle_outline_color: Some(Color32::from_rgb(60, 56, 44)),
-            nav_letter_spacing_px: 1.5, tab_underline_thickness: 2.0,
+            nav_letter_spacing_px: 0.0, tab_underline_thickness: 2.0,
             tab_underline_under_text: true, card_floating_shadow: true,
             card_floating_shadow_alpha: 25, segmented_idle_fill: None, segmented_idle_text: None,
             cta_height_px: 36.0, cta_padding_x: 16.0,
@@ -1305,15 +1294,7 @@ pub fn tb_group_break(ui: &mut egui::Ui, panel_rect: egui::Rect, border: egui::C
 /// This is a visual approximation; the effective gap depends on font rendering.
 pub fn style_label_case(s: &str) -> String {
     let st = current();
-    let upper = if st.uppercase_section_labels { s.to_uppercase() } else { return s.to_string(); };
-    let spacing = st.label_letter_spacing_px;
-    if spacing < 0.5 {
-        upper
-    } else {
-        let gap = if spacing > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
-        let parts: Vec<String> = upper.chars().map(|c| c.to_string()).collect();
-        parts.join(gap)
-    }
+    if st.uppercase_section_labels { s.to_uppercase() } else { s.to_string() }
 }
 
 /// Returns a `FontId` appropriate for hero numerics — serif when the active
