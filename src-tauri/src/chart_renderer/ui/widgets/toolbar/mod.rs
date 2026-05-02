@@ -1,7 +1,11 @@
 //! Builder + impl Widget primitives — toolbar family.
 //! See ui/widgets/mod.rs for the rationale.
+//!
+//! `top_nav` — the top navigation toolbar panel, extracted from `gpu.rs`.
 
 #![allow(dead_code, unused_imports)]
+
+pub mod top_nav;
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;
