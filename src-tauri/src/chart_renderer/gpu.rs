@@ -4473,6 +4473,7 @@ fn render_chart_pane(
 
     // Volume + candles + indicators + oscillators + drawings
     span_begin("pane_render");
+    span_begin("chart_canvas");
 
     // Volume bars (gated by show_volume).
     // MARK_BARS_PROTOCOL: in Mark mode bars carry volume=0 — hide the histogram
@@ -5109,6 +5110,7 @@ fn render_chart_pane(
         }
     }
 
+    span_begin("indicator_paint");
     // ── MA Ribbon (6 EMAs) ───────────────────────────────────────────────
     if chart.show_ma_ribbon && !chart.hide_all_indicators {
         let ribbon_periods = [8_usize, 13, 21, 34, 55, 89];
@@ -6297,6 +6299,7 @@ fn render_chart_pane(
         }
     }
 
+    span_begin("drawings_paint");
     // Drawings (with selection highlight + endpoint handles)
     // Clamp helper — prevents extreme coordinates from causing massive tessellation allocations
     // ── Trigger level lines (options conditional orders on underlying) ──
@@ -7086,6 +7089,7 @@ fn render_chart_pane(
         }
     }
 
+    span_begin("oscillator_paint");
     // ── Oscillator sub-panel (RSI, MACD, Stochastic, CVD) ───────────────
     if needs_osc_panel && osc_h > 10.0 {
         let osc_top = rect.top() + pt + ch + 2.0;
@@ -7494,6 +7498,7 @@ fn render_chart_pane(
         }
     }
 
+    span_begin("signal_overlays");
     // ── Signal drawings (auto-generated trendlines from server) ──────────
     if !chart.hide_signal_drawings && !chart.signal_drawings.is_empty() {
         for sd in &chart.signal_drawings {
@@ -10936,6 +10941,7 @@ fn render_chart_pane(
         }
     }
 
+    span_begin("pane_chrome");
     // ── Chart-area top-left badge strip (TF + OV) ──────────────────────────
     {
         let pad = 6.0_f32;
@@ -15102,6 +15108,19 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
                     });
                 });
         }
+    }
+
+    // ── Perf HUD (Ctrl+Shift+P) ─────────────────────────────────────────────
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static PERF_HUD_OPEN: AtomicBool = AtomicBool::new(false);
+        if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::P)) {
+            let was = PERF_HUD_OPEN.load(Ordering::Relaxed);
+            PERF_HUD_OPEN.store(!was, Ordering::Relaxed);
+        }
+        let mut open = PERF_HUD_OPEN.load(Ordering::Relaxed);
+        super::ui::widgets::perf_hud::show(ctx, &mut open);
+        PERF_HUD_OPEN.store(open, Ordering::Relaxed);
     }
 
     handle_deferred(ctx, panes, active_pane, layout, watchlist);

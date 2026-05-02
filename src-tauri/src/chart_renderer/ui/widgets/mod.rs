@@ -32,3 +32,4 @@ pub mod status;
 pub mod foundation;
 pub mod icons;
 pub mod watchlist;
+pub mod perf_hud;
