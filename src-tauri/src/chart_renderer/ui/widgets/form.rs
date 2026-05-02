@@ -17,6 +17,10 @@ use super::super::style::*;
 // Shorthand for the Theme type used across the codebase.
 type Theme = crate::chart_renderer::gpu::Theme;
 
+fn ft() -> &'static Theme {
+    &crate::chart_renderer::gpu::THEMES[0]
+}
+
 // ─── FormRow ──────────────────────────────────────────────────────────────────
 
 /// Horizontal `label : control` row with a fixed-width label gutter.
@@ -341,7 +345,7 @@ impl<'a> HelpText<'a> {
 
 impl<'a> egui::Widget for HelpText<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let base = self.color.unwrap_or(Color32::from_rgb(120, 120, 130));
+        let base = self.color.unwrap_or_else(|| ft().dim);
         let c = color_alpha(base, alpha_dim());
         ui.label(
             RichText::new(self.text)
@@ -371,7 +375,7 @@ impl<'a> ErrorText<'a> {
 
 impl<'a> egui::Widget for ErrorText<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let c = self.color.unwrap_or(Color32::from_rgb(220, 80, 80));
+        let c = self.color.unwrap_or_else(|| ft().bear);
         ui.label(
             RichText::new(self.text)
                 .monospace()
@@ -401,7 +405,7 @@ impl Default for RequiredMarker {
 
 impl egui::Widget for RequiredMarker {
     fn ui(self, ui: &mut Ui) -> Response {
-        let c = self.color.unwrap_or(Color32::from_rgb(220, 80, 80));
+        let c = self.color.unwrap_or_else(|| ft().bear);
         ui.label(
             RichText::new("*")
                 .monospace()
@@ -459,15 +463,15 @@ impl egui::Widget for InlineValidation {
         let (glyph, color) = match self.state {
             ValidationState::Ok => (
                 "✓",
-                self.ok_color.unwrap_or(Color32::from_rgb(80, 200, 120)),
+                self.ok_color.unwrap_or_else(|| ft().bull),
             ),
             ValidationState::Error => (
                 "✗",
-                self.err_color.unwrap_or(Color32::from_rgb(220, 80, 80)),
+                self.err_color.unwrap_or_else(|| ft().bear),
             ),
             ValidationState::Neutral => (
                 "•",
-                self.dim_color.unwrap_or(Color32::from_rgb(150, 150, 160)),
+                self.dim_color.unwrap_or_else(|| ft().dim),
             ),
         };
         ui.label(
@@ -894,9 +898,9 @@ impl<'a> IndicatorParamRow<'a> {
     /// Returns `true` if the value changed.
     pub fn show(self, ui: &mut Ui) -> bool {
         use super::buttons::ChromeBtn;
-        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
-        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
-        let border = self.border.unwrap_or_else(|| Color32::from_rgb(60, 60, 70));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
         let value = self.value;
         let mut changed = false;
 
@@ -987,8 +991,8 @@ impl<'a> IndicatorParamRowF<'a> {
     /// Returns `true` if the value changed.
     pub fn show(self, ui: &mut Ui) -> bool {
         use super::buttons::ChromeBtn;
-        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
-        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let dim = self.dim.unwrap_or_else(|| ft().dim);
         let d = self.decimals;
         let value = self.value;
         // Treat 0.0 as "use default"

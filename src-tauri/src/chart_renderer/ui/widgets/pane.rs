@@ -16,6 +16,10 @@ use super::super::components::{pane_header_bar, pane_title, section_label_widget
 use super::headers::PaneHeader;
 use super::pills::{PillButton, RemovableChip, DisplayChip, StatusBadge};
 
+fn ft() -> &'static crate::chart_renderer::gpu::Theme {
+    &crate::chart_renderer::gpu::THEMES[0]
+}
+
 // ─── PaneSymbolBadge ─────────────────────────────────────────────────────────
 
 /// Symbol + exchange + asset-class chip combo for a pane header.
@@ -41,8 +45,8 @@ impl<'a> PaneSymbolBadge<'a> {
             symbol,
             exchange: None,
             asset_class: None,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim:    Color32::from_rgb(120, 120, 130),
+            accent: ft().accent,
+            dim:    ft().dim,
         }
     }
     pub fn exchange(mut self, e: &'a str) -> Self { self.exchange = Some(e); self }
@@ -97,8 +101,8 @@ impl<'a> PaneTimeframeBadge<'a> {
         Self {
             label,
             active: false,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim:    Color32::from_rgb(120, 120, 130),
+            accent: ft().accent,
+            dim:    ft().dim,
         }
     }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
@@ -142,8 +146,8 @@ impl<'a> PaneIndicatorChip<'a> {
     pub fn new(label: &'a str) -> Self {
         Self {
             label,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim:    Color32::from_rgb(120, 120, 130),
+            accent: ft().accent,
+            dim:    ft().dim,
         }
     }
     pub fn palette(mut self, accent: Color32, dim: Color32) -> Self {
@@ -191,10 +195,10 @@ impl PaneStatusStrip {
             connected: None,
             loading: false,
             data_quality: None,
-            bull: Color32::from_rgb(110, 180, 130),
+            bull: ft().bull,
             warn: Color32::from_rgb(220, 180, 80),
-            bear: Color32::from_rgb(210, 90, 90),
-            dim:  Color32::from_rgb(120, 120, 130),
+            bear: ft().bear,
+            dim:  ft().dim,
         }
     }
     pub fn connected(mut self, v: bool) -> Self { self.connected = Some(v); self }
@@ -290,10 +294,10 @@ impl<'a> PaneHeaderBar<'a> {
             asset_class: None,
             indicators: &[],
             height: 28.0,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim:    Color32::from_rgb(120, 120, 130),
-            bg:     Color32::from_rgb(20, 20, 28),
-            border: Color32::from_rgb(50, 50, 60),
+            accent: ft().accent,
+            dim:    ft().dim,
+            bg:     ft().toolbar_bg,
+            border: ft().toolbar_border,
         }
     }
     pub fn exchange(mut self, e: &'a str) -> Self { self.exchange = Some(e); self }
@@ -375,8 +379,8 @@ impl PaneToolbar {
     pub fn new() -> Self {
         Self {
             height: 24.0,
-            bg:     Color32::from_rgb(18, 18, 24),
-            border: Color32::from_rgb(50, 50, 60),
+            bg:     ft().toolbar_bg,
+            border: ft().toolbar_border,
         }
     }
     pub fn height(mut self, h: f32) -> Self { self.height = h; self }
@@ -433,11 +437,11 @@ impl<'a> PaneFooter<'a> {
             time:       None,
             connected:  None,
             height:     22.0,
-            bg:         Color32::from_rgb(18, 18, 24),
-            border:     Color32::from_rgb(50, 50, 60),
-            bull:       Color32::from_rgb(110, 180, 130),
-            bear:       Color32::from_rgb(210, 90, 90),
-            dim:        Color32::from_rgb(120, 120, 130),
+            bg:         ft().toolbar_bg,
+            border:     ft().toolbar_border,
+            bull:       ft().bull,
+            bear:       ft().bear,
+            dim:        ft().dim,
         }
     }
     pub fn last_price(mut self, s: &'a str, c: Color32) -> Self { self.last_price = Some((s, c)); self }
@@ -536,9 +540,9 @@ impl<'a> PaneHeaderActions<'a> {
         Self {
             actions,
             header_height: 28.0,
-            active_color: Color32::from_rgb(220, 220, 230),
-            inactive_color: Color32::from_rgb(120, 120, 130),
-            border_color: Color32::from_rgb(60, 60, 70),
+            active_color: ft().text,
+            inactive_color: ft().dim,
+            border_color: ft().toolbar_border,
         }
     }
     pub fn header_height(mut self, h: f32) -> Self { self.header_height = h; self }
@@ -633,14 +637,14 @@ impl PaneDivider {
     pub fn horizontal() -> Self {
         Self {
             orient: PaneDividerOrientation::Horizontal,
-            border: Color32::from_rgb(50, 50, 60),
+            border: ft().toolbar_border,
             thickness: 4.0,
         }
     }
     pub fn vertical() -> Self {
         Self {
             orient: PaneDividerOrientation::Vertical,
-            border: Color32::from_rgb(50, 50, 60),
+            border: ft().toolbar_border,
             thickness: 4.0,
         }
     }
@@ -904,10 +908,10 @@ impl<'a> FloatingOrderPaneChrome<'a> {
             armed:          false,
             advanced:       false,
             pos_text:       None,
-            accent:         Color32::from_rgb(120, 140, 220),
-            dim:            Color32::from_rgb(120, 120, 130),
-            toolbar_bg:     Color32::from_rgb(20, 20, 28),
-            toolbar_border: Color32::from_rgb(50, 50, 60),
+            accent:         ft().accent,
+            dim:            ft().dim,
+            toolbar_bg:     ft().toolbar_bg,
+            toolbar_border: ft().toolbar_border,
         }
     }
 

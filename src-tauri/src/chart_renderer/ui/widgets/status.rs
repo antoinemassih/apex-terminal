@@ -19,6 +19,10 @@ use super::super::style::*;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
+fn ft() -> &'static Theme {
+    &crate::chart_renderer::gpu::THEMES[0]
+}
+
 // ─── Shared size enum ─────────────────────────────────────────────────────────
 
 /// Tri-size knob shared by [`Spinner`] and other loading primitives.
@@ -56,8 +60,8 @@ impl<'a> StatusDot<'a> {
         Self {
             label: None,
             variant: DotVariant::Neutral,
-            color: Color32::from_rgb(120, 120, 130),
-            label_color: Color32::from_rgb(200, 200, 210),
+            color: ft().dim,
+            label_color: ft().text,
             pulsing: false,
             radius: 3.5,
         }
@@ -144,7 +148,7 @@ pub struct Spinner {
 
 impl Spinner {
     pub fn new() -> Self {
-        Self { size: LoadSize::Md, color: Color32::from_rgb(120, 140, 220), width: 1.5 }
+        Self { size: LoadSize::Md, color: ft().accent, width: 1.5 }
     }
     pub fn size(mut self, s: LoadSize) -> Self { self.size = s; self }
     pub fn sm(mut self) -> Self { self.size = LoadSize::Sm; self }
@@ -213,9 +217,9 @@ impl<'a> ProgressBar<'a> {
             progress: progress.clamp(0.0, 1.0),
             label: None,
             variant: BarVariant::Thin,
-            fill: Color32::from_rgb(120, 140, 220),
-            track: Color32::from_rgb(60, 60, 70),
-            text_color: Color32::from_rgb(200, 200, 210),
+            fill: ft().accent,
+            track: ft().toolbar_border,
+            text_color: ft().text,
             width: None,
         }
     }
@@ -308,9 +312,9 @@ impl ProgressRing {
         Self {
             progress: progress.clamp(0.0, 1.0),
             diameter: 32.0,
-            fill: Color32::from_rgb(120, 140, 220),
-            track: Color32::from_rgb(60, 60, 70),
-            text_color: Color32::from_rgb(200, 200, 210),
+            fill: ft().accent,
+            track: ft().toolbar_border,
+            text_color: ft().text,
             show_label: true,
         }
     }
@@ -386,8 +390,8 @@ impl Skeleton {
         Self {
             size: Vec2::new(80.0, 12.0),
             rounding: 3.0,
-            base: Color32::from_rgb(60, 60, 70),
-            highlight: Color32::from_rgb(110, 110, 125),
+            base: ft().toolbar_border,
+            highlight: ft().dim,
         }
     }
     pub fn size(mut self, w: f32, h: f32) -> Self { self.size = Vec2::new(w, h); self }
@@ -478,9 +482,9 @@ impl<'a> Toast<'a> {
             body: None,
             variant: ToastVariant::Info,
             accent: None,
-            bg: Color32::from_rgb(20, 20, 24),
-            border: Color32::from_rgb(60, 60, 70),
-            text: Color32::from_rgb(220, 220, 230),
+            bg: ft().toolbar_bg,
+            border: ft().toolbar_border,
+            text: ft().text,
             auto_dismiss_secs: None,
             width: 280.0,
         }
@@ -508,7 +512,7 @@ impl<'a> Toast<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> ToastResponse {
-        let accent = self.accent.unwrap_or(Color32::from_rgb(120, 140, 220));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
         let due = self.auto_dismiss_secs
             .map(|s| ui.ctx().input(|i| i.time) + s as f64);
 
@@ -636,11 +640,11 @@ impl<'a> ConnectionIndicator<'a> {
         Self {
             label,
             status,
-            bull: Color32::from_rgb(46, 204, 113),
-            bear: Color32::from_rgb(231, 76, 60),
+            bull: ft().bull,
+            bear: ft().bear,
             warn: Color32::from_rgb(241, 196, 15),
-            dim: Color32::from_rgb(120, 120, 130),
-            text: Color32::from_rgb(200, 200, 210),
+            dim: ft().dim,
+            text: ft().text,
         }
     }
     pub fn theme(mut self, t: &Theme) -> Self {
@@ -706,10 +710,10 @@ impl SearchPill {
         Self {
             width: 78.0,
             height: 20.0,
-            bg: egui::Color32::from_rgb(40, 40, 50),
-            border: egui::Color32::from_rgb(70, 70, 80),
-            icon_color: egui::Color32::from_rgb(140, 140, 155),
-            label_color: egui::Color32::from_rgb(180, 180, 195),
+            bg: ft().toolbar_bg,
+            border: ft().toolbar_border,
+            icon_color: ft().dim,
+            label_color: ft().text,
         }
     }
     pub fn width(mut self, w: f32) -> Self { self.width = w; self }
@@ -786,9 +790,9 @@ impl<'a> TrendArrow<'a> {
         Self {
             dir,
             value: None,
-            bull: Color32::from_rgb(46, 204, 113),
-            bear: Color32::from_rgb(231, 76, 60),
-            dim:  Color32::from_rgb(120, 120, 130),
+            bull: ft().bull,
+            bear: ft().bear,
+            dim:  ft().dim,
         }
     }
     pub fn up()   -> Self { Self::new(TrendDir::Up) }
