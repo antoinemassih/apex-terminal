@@ -1,18 +1,29 @@
 //! `PainterPaneHeader` — absolute-rect, painter-mode pane header chrome.
 //!
-//! This is a NEW widget (not yet wired into the chart pane chrome at
-//! `gpu.rs:5370+`). The existing pane chrome computes geometry directly on
-//! `pane_rect.min` + `pane_top_offset` and paints into a `painter_at(rect)`,
-//! which is fundamentally incompatible with egui's flow-layout-based widgets
-//! in `widgets/pane.rs` (`PaneHeaderBar` etc.).
+//! **Wiring status (verified 2026-05-02):**
+//! This widget IS the sole header renderer for all chart pane types
+//! (Chart, Portfolio, Dashboard, Heatmap, Spreadsheet, DesignPreview).
+//! It is called at `gpu.rs:3816` inside `render_chart_pane`, which runs
+//! for every pane regardless of `PaneType`.  All pane types share this
+//! one header path; non-chart panes receive their body rect AFTER the
+//! widget has already painted the header strip.
 //!
-//! `PainterPaneHeader` mirrors the gpu.rs paint code exactly but:
+//! The style-aware background fills (active indicator, underline, hairline
+//! borders) are painted by the caller (gpu.rs ~3694–3745) directly onto
+//! a `painter_at(header_rect)` BEFORE calling this widget, because they
+//! depend on style-token knobs (`pane_active_indicator`, `hairline_borders`)
+//! that would add complexity to the widget builder.  That is intentional
+//! and is NOT a parallel header path.
+//!
+//! Non-chart panes (Portfolio, Heatmap) also render an inner section header
+//! via `PaneHeader` (from `widgets/headers.rs`) INSIDE their body rect —
+//! this is a title bar for the body content, not a duplicate of the pane
+//! chrome header.
+//!
+//! `PainterPaneHeader`:
 //!   - takes an absolute `egui::Rect` instead of consuming layout flow,
 //!   - exposes click outcomes via a `PainterPaneHeaderResponse` struct,
 //!   - stays read-only over chart state (caller drives all mutations).
-//!
-//! The intent is for `gpu.rs:5370+` to eventually adopt this widget, but
-//! that migration is a follow-up wave — the chart paint is sacred.
 //!
 //! ```ignore
 //! let resp = PainterPaneHeader::new(header_rect, theme)
