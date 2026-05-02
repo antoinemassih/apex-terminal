@@ -362,34 +362,11 @@ impl Inspector {
         }
 
         // ── Selection highlight when inspect mode is OFF but something is selected ──
-        // Paint the green selection rect so the user still sees what is locked.
-        if !self.inspect_mode {
-            if self.selected_family.is_some() {
-                let hits = crate::design_tokens::get_hits();
-                let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("inspect_overlay")));
-                self.selected_rect = None;
-                for h in &hits {
-                    if self.selected_family == Some(h.family) {
-                        let rect = egui::Rect::from_min_size(
-                            egui::pos2(h.rect[0], h.rect[1]),
-                            egui::vec2(h.rect[2], h.rect[3]));
-                        painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(166, 227, 161, 30));
-                        painter.rect_stroke(rect, 2.0, Stroke::new(1.5, Color32::from_rgba_unmultiplied(166, 227, 161, 160)), egui::StrokeKind::Outside);
-                        self.selected_rect = Some(rect);
-                        // Family label above
-                        let label_pos = egui::pos2(rect.left(), rect.top() - 2.0);
-                        let galley = painter.layout_no_wrap(h.family.to_string(), egui::FontId::monospace(10.0), Color32::WHITE);
-                        let label_rect = egui::Rect::from_min_size(
-                            egui::pos2(label_pos.x - 2.0, label_pos.y - galley.size().y - 2.0),
-                            egui::vec2(galley.size().x + 4.0, galley.size().y + 4.0));
-                        painter.rect_filled(label_rect, 2.0, Color32::from_rgba_unmultiplied(20, 20, 30, 200));
-                        painter.text(egui::pos2(label_pos.x, label_pos.y - 1.0), egui::Align2::LEFT_BOTTOM,
-                            h.family, egui::FontId::monospace(10.0), Color32::from_rgb(166, 227, 161));
-                        break;
-                    }
-                }
-            }
-        }
+        // (No persistent highlight outside inspect mode — user wants the
+        // INFO BOX to persist, not the on-canvas green rect highlight.
+        // The info box / Selection details panel below already persists
+        // because it gates on `selected_family.is_some()`, not on
+        // `inspect_mode`.)
 
         // Clear hits at end of frame (they get populated again next frame by style.rs)
         crate::design_tokens::clear_hits();
