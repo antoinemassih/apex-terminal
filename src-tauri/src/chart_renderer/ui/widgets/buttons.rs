@@ -7,6 +7,9 @@ use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;
 
 #[inline(always)]
+fn ft() -> &'static super::super::super::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
+
+#[inline(always)]
 fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
     crate::design_tokens::register_hit(
         [r.min.x, r.min.y, r.width(), r.height()], family, category);
@@ -47,7 +50,7 @@ impl<'a> IconBtn<'a> {
 
 impl<'a> Widget for IconBtn<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let color = self.color.unwrap_or_else(|| color_alpha(Color32::from_rgb(120, 120, 130), alpha_dim()));
+        let color = self.color.unwrap_or_else(|| color_alpha(ft().dim, alpha_dim()));
         let size = self.size;
         let side = (size + 8.0).max(22.0);
         let prev_pad = ui.spacing().button_padding;
@@ -86,7 +89,7 @@ pub struct TradeBtn<'a> {
 
 impl<'a> TradeBtn<'a> {
     pub fn new(label: &'a str) -> Self {
-        Self { label, color: Color32::from_rgb(80, 180, 100), width: 0.0, height: None }
+        Self { label, color: ft().bull, width: 0.0, height: None }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn width(mut self, w: f32) -> Self { self.width = w; self }
@@ -114,7 +117,7 @@ impl<'a> Widget for TradeBtn<'a> {
 
         let (bg, fg, stroke_w, border, cr) = match s.button_treatment {
             ButtonTreatment::SoftPill => (dim_bg, Color32::WHITE, 0.0_f32, Color32::TRANSPARENT, r_sm_cr()),
-            ButtonTreatment::OutlineAccent => (color, contrast_fg(color), 1.5_f32, color, r_md_cr()),
+            ButtonTreatment::OutlineAccent => (color, contrast_fg(color), stroke_bold(), color, r_md_cr()),
             ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => (Color32::TRANSPARENT, color, 0.0_f32, Color32::TRANSPARENT, r_xs()),
         };
 
@@ -151,7 +154,7 @@ impl<'a> Widget for TradeBtn<'a> {
             ui.painter().line_segment(
                 [egui::pos2(r.left(), r.bottom() + 0.5),
                  egui::pos2(r.right(), r.bottom() + 0.5)],
-                Stroke::new(1.0, color));
+                Stroke::new(stroke_std(), color));
         }
         resp
     }
@@ -175,7 +178,7 @@ pub struct SimpleBtn<'a> {
 
 impl<'a> SimpleBtn<'a> {
     pub fn new(label: &'a str) -> Self {
-        Self { label, color: Color32::from_rgb(120, 120, 130), min_width: 0.0, height: None }
+        Self { label, color: ft().dim, min_width: 0.0, height: None }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn min_width(mut self, w: f32) -> Self { self.min_width = w; self }
@@ -199,7 +202,7 @@ impl<'a> Widget for SimpleBtn<'a> {
                 color_alpha(color, alpha_faint()), color, stroke_thin(), color_alpha(color, alpha_muted()), r_sm_cr()
             ),
             ButtonTreatment::OutlineAccent => (
-                Color32::TRANSPARENT, color, 1.5_f32, color_alpha(color, alpha_strong()), r_md_cr()
+                Color32::TRANSPARENT, color, stroke_bold(), color_alpha(color, alpha_strong()), r_md_cr()
             ),
             ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => (
                 Color32::TRANSPARENT, color, 0.0_f32, Color32::TRANSPARENT, r_xs()
@@ -218,7 +221,7 @@ impl<'a> Widget for SimpleBtn<'a> {
                 ButtonTreatment::OutlineAccent => {
                     ui.painter().rect_filled(resp.rect, current().r_md, color_alpha(color, alpha_soft()));
                     ui.painter().rect_stroke(resp.rect, current().r_md,
-                        Stroke::new(1.5, color), egui::StrokeKind::Inside);
+                        Stroke::new(stroke_bold(), color), egui::StrokeKind::Inside);
                 }
                 ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => {
                     ui.painter().rect_filled(resp.rect, current().r_xs, color_alpha(color, alpha_ghost()));
@@ -231,7 +234,7 @@ impl<'a> Widget for SimpleBtn<'a> {
             ui.painter().line_segment(
                 [egui::pos2(r.left(), r.bottom() + 0.5),
                  egui::pos2(r.right(), r.bottom() + 0.5)],
-                Stroke::new(1.0, color));
+                Stroke::new(stroke_std(), color));
         }
         resp
     }
@@ -252,7 +255,7 @@ pub struct SmallActionBtn<'a> {
 
 impl<'a> SmallActionBtn<'a> {
     pub fn new(label: &'a str) -> Self {
-        Self { label, color: Color32::from_rgb(120, 120, 130) }
+        Self { label, color: ft().dim }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
@@ -272,7 +275,7 @@ impl<'a> Widget for SmallActionBtn<'a> {
                 color_alpha(color, alpha_soft()), color, stroke_thin(), color_alpha(color, alpha_dim()), r_sm_cr()
             ),
             ButtonTreatment::OutlineAccent => (
-                Color32::TRANSPARENT, color, 1.5_f32, color_alpha(color, alpha_strong()), r_md_cr()
+                Color32::TRANSPARENT, color, stroke_bold(), color_alpha(color, alpha_strong()), r_md_cr()
             ),
             ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => (
                 Color32::TRANSPARENT, color, 0.0_f32, Color32::TRANSPARENT, r_xs()
@@ -290,7 +293,7 @@ impl<'a> Widget for SmallActionBtn<'a> {
                 ButtonTreatment::OutlineAccent => {
                     ui.painter().rect_filled(resp.rect, current().r_md, color_alpha(color, alpha_soft()));
                     ui.painter().rect_stroke(resp.rect, current().r_md,
-                        Stroke::new(1.5, color), egui::StrokeKind::Inside);
+                        Stroke::new(stroke_bold(), color), egui::StrokeKind::Inside);
                 }
                 ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => {
                     ui.painter().rect_filled(resp.rect, current().r_xs, color_alpha(color, alpha_ghost()));
@@ -303,7 +306,7 @@ impl<'a> Widget for SmallActionBtn<'a> {
             ui.painter().line_segment(
                 [egui::pos2(r.left(), r.bottom() + 0.5),
                  egui::pos2(r.right(), r.bottom() + 0.5)],
-                Stroke::new(1.0, color));
+                Stroke::new(stroke_std(), color));
         }
         resp
     }
@@ -384,7 +387,7 @@ pub struct ActionBtn<'a> {
 
 impl<'a> ActionBtn<'a> {
     pub fn new(label: &'a str) -> Self {
-        Self { label, color: Color32::from_rgb(120, 140, 220), enabled: true }
+        Self { label, color: ft().accent, enabled: true }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn enabled(mut self, e: bool) -> Self { self.enabled = e; self }
@@ -416,7 +419,7 @@ impl<'a> Widget for ActionBtn<'a> {
                 } else {
                     (Color32::TRANSPARENT, color_alpha(color, alpha_muted()), color_alpha(color, alpha_muted()))
                 };
-                (bg, fg, border, 1.5_f32, r_md_cr())
+                (bg, fg, border, stroke_bold(), r_md_cr())
             }
             ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => {
                 let fg = if enabled { color } else { color_alpha(color, alpha_muted()) };
@@ -434,7 +437,7 @@ impl<'a> Widget for ActionBtn<'a> {
             ui.painter().line_segment(
                 [egui::pos2(r.left(), r.bottom() + 0.5),
                  egui::pos2(r.right(), r.bottom() + 0.5)],
-                Stroke::new(1.0, color));
+                Stroke::new(stroke_std(), color));
         }
         resp
     }

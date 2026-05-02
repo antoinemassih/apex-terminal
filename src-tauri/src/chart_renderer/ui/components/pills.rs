@@ -8,7 +8,7 @@ use egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};
 /// Status pill — small accent-colored chip with text. Square under Meridien.
 pub fn status_pill(ui: &mut Ui, text: &str, fill: Color32, fg: Color32) -> Response {
     let st = current();
-    let cr = egui::CornerRadius::same(st.r_pill as u8);
+    let cr = r_pill();
     let stroke = if st.hairline_borders {
         Stroke::new(st.stroke_hair, color_alpha(fill, alpha_dim()))
     } else {
@@ -44,7 +44,7 @@ pub fn pill_btn(
     fg_inactive: Color32,
 ) -> Response {
     let st = current();
-    let cr = egui::CornerRadius::same(st.r_pill as u8);
+    let cr = r_pill();
 
     let (bg, fg, stroke) = if active {
         if st.solid_active_fills {
@@ -86,7 +86,7 @@ pub fn pill_btn(
 /// Status badge — small filled pill for things like DRAFT, ACTIVE, FILLED.
 pub fn status_badge(ui: &mut Ui, text: &str, bg: Color32, fg: Color32) -> Response {
     let st = current();
-    let cr = egui::CornerRadius::same(st.r_pill as u8);
+    let cr = r_pill();
     let stroke = if st.hairline_borders {
         Stroke::new(st.stroke_hair, color_alpha(bg, alpha_strong()))
     } else {
@@ -117,7 +117,7 @@ pub fn status_badge(ui: &mut Ui, text: &str, bg: Color32, fg: Color32) -> Respon
 /// - **Active**: accent-tinted fill, accent text, accent border.
 /// - **Inactive**: transparent fill, dim text, dim border.
 ///
-/// Uses `font_sm()`, `gap_md()` x-padding, `CornerRadius::same(99)` for pill shape.
+/// Uses `font_sm()`, `gap_md()` x-padding, `r_pill()` for pill shape.
 pub fn pill_button(
     ui: &mut Ui,
     text: &str,
@@ -125,7 +125,7 @@ pub fn pill_button(
     accent: Color32,
     dim: Color32,
 ) -> Response {
-    let pill_r = egui::CornerRadius::same(99);
+    let pill_r = r_pill();
     let (bg, fg, border) = if active {
         (
             color_alpha(accent, alpha_muted()),

@@ -10,6 +10,10 @@ pub mod top_nav;
 use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;
 
+fn ft() -> &'static super::super::super::gpu::Theme {
+    &super::super::super::gpu::THEMES[0]
+}
+
 // Re-export the enums from components_extra so call-sites can use either path.
 pub use super::super::components_extra::{TopNavTreatment, TopNavToggleSize, PaneTabStyle};
 
@@ -36,13 +40,14 @@ pub struct ToolbarBtn<'a> {
 
 impl<'a> ToolbarBtn<'a> {
     pub fn new(label: &'a str) -> Self {
+        let f = ft();
         Self {
             label,
             active: false,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim: Color32::from_rgb(120, 120, 130),
-            toolbar_bg: Color32::from_rgb(20, 20, 28),
-            toolbar_border: Color32::from_rgb(50, 50, 60),
+            accent: f.accent,
+            dim: f.dim,
+            toolbar_bg: f.toolbar_bg,
+            toolbar_border: f.toolbar_border,
         }
     }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
@@ -86,12 +91,13 @@ pub struct TopNavBtn<'a> {
 
 impl<'a> TopNavBtn<'a> {
     pub fn new(label: &'a str) -> Self {
+        let f = ft();
         Self {
             label,
             active: false,
             treatment: TopNavTreatment::Raised,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim: Color32::from_rgb(120, 120, 130),
+            accent: f.accent,
+            dim: f.dim,
         }
     }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
@@ -164,12 +170,13 @@ pub struct TopNavToggle<'a> {
 
 impl<'a> TopNavToggle<'a> {
     pub fn new(icon: &'a str) -> Self {
+        let f = ft();
         Self {
             icon,
             active: false,
             size: TopNavToggleSize::Small,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim: Color32::from_rgb(120, 120, 130),
+            accent: f.accent,
+            dim: f.dim,
         }
     }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
@@ -229,13 +236,14 @@ pub struct PaneTabBtn<'a> {
 
 impl<'a> PaneTabBtn<'a> {
     pub fn new(label: &'a str) -> Self {
+        let f = ft();
         Self {
             label,
             icon: None,
             active: false,
             style: PaneTabStyle::Underline,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim: Color32::from_rgb(120, 120, 130),
+            accent: f.accent,
+            dim: f.dim,
         }
     }
     pub fn icon(mut self, ic: Option<&'a str>) -> Self { self.icon = ic; self }
@@ -308,11 +316,12 @@ pub struct TimeframeSelector<'a> {
 
 impl<'a> TimeframeSelector<'a> {
     pub fn new(options: &'a [&'a str], active_idx: usize) -> Self {
+        let f = ft();
         Self {
             options,
             active_idx,
-            accent: Color32::from_rgb(120, 140, 220),
-            dim: Color32::from_rgb(120, 120, 130),
+            accent: f.accent,
+            dim: f.dim,
         }
     }
     pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
@@ -375,11 +384,12 @@ pub struct PaneHeaderAction<'a> {
 
 impl<'a> PaneHeaderAction<'a> {
     pub fn new(label: &'a str) -> Self {
+        let f = ft();
         Self {
             label,
             active: false,
-            text_color: Color32::from_rgb(200, 200, 210),
-            dim_color: Color32::from_rgb(120, 120, 130),
+            text_color: f.text,
+            dim_color: f.dim,
         }
     }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }

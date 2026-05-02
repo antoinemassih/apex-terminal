@@ -8,7 +8,7 @@ use egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};
 /// Keyboard shortcut hint chip — small pill with hint text (Cmd+K, Esc).
 pub fn keybind_chip(ui: &mut Ui, hint: &str, fg: Color32, bg_border: Color32) -> Response {
     let st = current();
-    let cr = egui::CornerRadius::same(st.r_xs as u8);
+    let cr = r_xs();
     let stroke = if st.hairline_borders {
         Stroke::new(st.stroke_std, color_alpha(bg_border, alpha_strong()))
     } else {
@@ -40,7 +40,7 @@ pub fn filter_chip(
     fg_inactive: Color32,
 ) -> Response {
     let st = current();
-    let cr = egui::CornerRadius::same(st.r_pill as u8);
+    let cr = r_pill();
 
     let (bg, fg, stroke) = if active {
         if st.solid_active_fills {
@@ -82,8 +82,7 @@ pub fn filter_chip(
 
 /// Small filled pill with a count. Used to indicate unread items.
 pub fn notification_badge(ui: &mut Ui, count: u32, accent: Color32, fg: Color32) -> Response {
-    let st = current();
-    let cr = egui::CornerRadius::same(st.r_pill as u8);
+    let cr = r_pill();
     let text = if count > 99 { "99+".to_string() } else { count.to_string() };
     ui.add(
         egui::Button::new(
@@ -123,7 +122,7 @@ pub fn display_chip(
         )
         .fill(color_alpha(color, alpha_tint()))
         .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
-        .corner_radius(egui::CornerRadius::same(99))
+        .corner_radius(r_pill())
         .min_size(egui::vec2(0.0, 14.0))
         .sense(egui::Sense::hover()),
     );

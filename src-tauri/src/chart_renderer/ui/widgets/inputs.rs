@@ -8,6 +8,9 @@ use super::super::style::*;
 use super::foundation::{InputShell, InputState, InputVariant, Size as FSize, Radius as FRadius};
 use super::super::super::gpu::Theme;
 
+#[inline(always)]
+fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
+
 // ─── TextInput ────────────────────────────────────────────────────────────────
 
 /// Single-line text input with placeholder + optional width/font-size.
@@ -160,8 +163,8 @@ impl<'a, 'b> TextInput<'a, 'b> {
         }
 
         // Fallback: legacy hand-rolled frame for palette()-only callers.
-        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
-        let border = self.border.unwrap_or_else(|| Color32::from_rgb(80, 80, 90));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
         let border_color = if focused {
             color_alpha(accent, alpha_active())
         } else {
@@ -234,9 +237,9 @@ impl<'a, 'b> NumericInput<'a, 'b> {
     pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
-        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
-        let border = self.border.unwrap_or_else(|| Color32::from_rgb(80, 80, 90));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
 
         let buf_id = ui.next_auto_id();
         let value = self.value;
@@ -246,7 +249,7 @@ impl<'a, 'b> NumericInput<'a, 'b> {
         let resp = TextInput::new(&mut buf)
             .placeholder(self.placeholder)
             .font_size(self.font_size)
-            .palette(accent, Color32::from_rgb(220, 80, 90), dim)
+            .palette(accent, ft().bear, dim)
             .border(border)
             .variant_internal(InputVariant::Numeric);
         let resp = if let Some(w) = self.width { resp.width(w) } else { resp };
@@ -316,9 +319,9 @@ impl<'b> Stepper<'b> {
     pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
-        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
-        let border = self.border.unwrap_or_else(|| Color32::from_rgb(80, 80, 90));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
         let compact = self.compact;
         let step = self.step;
         let min = self.min;
@@ -409,7 +412,7 @@ impl<'a, 'b> ToggleRow<'a, 'b> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let label_color = self.label_color.unwrap_or_else(|| Color32::from_rgb(140, 140, 150));
+        let label_color = self.label_color.unwrap_or_else(|| ft().dim);
         let label = self.label;
         let value = self.value;
 
@@ -472,9 +475,9 @@ impl<'a, 'b> SearchInput<'a, 'b> {
     pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
-        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
-        let border = self.border.unwrap_or_else(|| Color32::from_rgb(80, 80, 90));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
 
         let avail = ui.available_width();
         let buffer = self.buffer;
@@ -578,8 +581,8 @@ impl<'a> CompactStepper<'a> {
 
     /// Body mirrors `components_extra::compact_stepper` byte-for-byte.
     pub fn show(self, ui: &mut Ui) -> i32 {
-        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
-        let border = self.border.unwrap_or_else(|| Color32::from_rgb(80, 80, 90));
+        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
         let value = self.value;
 
         let mut delta = 0;
@@ -672,7 +675,7 @@ impl<'a, T: egui::emath::Numeric> Slider<'a, T> {
         // Resolve fill color: explicit > theme accent > style default.
         let fill = self.fill_color
             .or_else(|| self.theme.map(|t| color_alpha(t.accent, alpha_active())))
-            .unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
+            .unwrap_or_else(|| ft().accent);
 
         // Apply optional width constraint.
         if let Some(w) = self.width {
@@ -703,7 +706,7 @@ impl<'a, T: egui::emath::Numeric> Slider<'a, T> {
                 RichText::new(lbl)
                     .monospace()
                     .size(font_sm())
-                    .color(self.theme.map(|t| t.dim).unwrap_or(Color32::from_rgb(140, 140, 150))),
+                    .color(self.theme.map(|t| t.dim).unwrap_or_else(|| ft().dim)),
             );
         }
 
@@ -770,8 +773,8 @@ impl<'a> ColorSwatchPicker<'a> {
     /// Returns `true` if the value was changed.
     pub fn show(self, ui: &mut Ui) -> bool {
         use super::super::style::*;
-        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
-        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let dim = self.dim.unwrap_or_else(|| ft().dim);
         let dot_r = self.dot_radius;
         let sel_dot_r = dot_r + 1.0;
         let sz = self.swatch_size;
@@ -875,9 +878,9 @@ impl<'a> ThicknessPicker<'a> {
     /// Returns `true` if the value was changed.
     pub fn show(self, ui: &mut Ui) -> bool {
         use super::super::style::*;
-        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
-        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
-        let border = self.border.unwrap_or_else(|| Color32::from_rgb(60, 60, 70));
+        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
         let n = self.values.len();
         let st = current();
         let r_sm = st.r_sm;
