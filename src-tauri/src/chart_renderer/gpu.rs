@@ -5794,65 +5794,44 @@ fn render_chart_pane(
                     .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
                     .corner_radius(4.0))
                 .show(ctx, |ui| {
-                    // ── Header: title | armed | X ──
-                    let header_resp = ui.horizontal(|ui| {
-                        ui.set_min_width(fp_panel_w);
-                        let header_rect = ui.max_rect();
-                        ui.painter().rect_filled(
-                            egui::Rect::from_min_size(header_rect.min, egui::vec2(fp_panel_w, 22.0)),
-                            egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
-                            color_alpha(t.toolbar_border, 30));
-                        ui.add_space(4.0);
-                        // Armed toggle
-                        let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
-                        let armed_color = if chart.armed { t.accent } else { t.dim.gamma_multiply(0.4) };
-                        let armed_resp = ui.add(egui::Button::new(egui::RichText::new(armed_icon).size(11.0).color(armed_color))
-                            .fill(if chart.armed { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                            .stroke(egui::Stroke::NONE).min_size(egui::vec2(18.0, 18.0)).corner_radius(2.0));
-                        if armed_resp.clicked() { chart.armed = !chart.armed; }
-                        if armed_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                        // Title
-                        ui.label(egui::RichText::new(&pane.title).monospace().size(9.0).strong().color(t.dim.gamma_multiply(0.7)));
-                        // Position indicator
-                        if let Some((_, ref positions, _)) = account_data_cached {
-                            if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
-                                let pos_color = if pos.qty > 0 { t.bull } else { t.bear };
-                                let pos_text = if pos.qty > 0 { format!("+{}", pos.qty) } else { format!("{}", pos.qty) };
-                                ui.label(egui::RichText::new(pos_text).monospace().size(9.0).strong().color(pos_color));
-                            }
-                        }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add_space(4.0);
-                            // Close button
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.5)))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 18.0)).corner_radius(2.0)).clicked() {
-                                close_ids.push(pane.id);
-                            }
-                            // Separator
-                            ui.add(egui::Separator::default().spacing(2.0));
-                            // Expand/collapse advanced toggle
-                            let exp_icon = if adv { Icon::MINUS } else { Icon::PLUS };
-                            let exp_resp = ui.add(egui::Button::new(egui::RichText::new(exp_icon).size(9.0).color(t.dim.gamma_multiply(0.5)))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 18.0)).corner_radius(2.0));
-                            if exp_resp.clicked() { chart.order_advanced = !chart.order_advanced; }
-                            if exp_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                        });
-                    });
-                    // Drag header
-                    let hdr_min = header_resp.response.rect.min;
-                    let mid_rect = egui::Rect::from_min_size(
-                        egui::pos2(hdr_min.x + 26.0, hdr_min.y),
-                        egui::vec2(fp_panel_w - 80.0, 22.0));
-                    let drag_resp = ui.interact(mid_rect, egui::Id::new(("float_order_drag", pane.id)), egui::Sense::click_and_drag());
-                    if drag_resp.dragged() {
-                        let delta = drag_resp.drag_delta();
-                        pane.pos.x += delta.x;
-                        pane.pos.y += delta.y;
-                    }
-                    if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+                    use super::ui::widgets::pane::FloatingOrderPaneChrome;
 
-                    // ── Body (shared component) ──
-                    render_order_entry_body(ui, chart, t, 1000 + pane.id as u64, fp_panel_w);
+                    // Optional position indicator text
+                    let pos_info: Option<(String, egui::Color32)> =
+                        account_data_cached.as_ref().and_then(|(_, positions, _)| {
+                            positions.iter().find(|p| p.symbol == chart.symbol).map(|pos| {
+                                let color = if pos.qty > 0 { t.bull } else { t.bear };
+                                let text  = if pos.qty > 0 {
+                                    format!("+{}", pos.qty)
+                                } else {
+                                    format!("{}", pos.qty)
+                                };
+                                (text, color)
+                            })
+                        });
+
+                    let mut chrome = FloatingOrderPaneChrome::new(pane.id)
+                        .title(&pane.title)
+                        .width(fp_panel_w)
+                        .armed(chart.armed)
+                        .advanced(adv)
+                        .theme(t);
+                    if let Some((ref text, color)) = pos_info {
+                        chrome = chrome.position_text(text, color);
+                    }
+
+                    let cr = chrome.show(ui, |ui| {
+                        // ── Body (shared component) ──
+                        render_order_entry_body(ui, chart, t, 1000 + pane.id as u64, fp_panel_w);
+                    });
+
+                    if cr.close_clicked    { close_ids.push(pane.id); }
+                    if cr.armed_toggled    { chart.armed = !chart.armed; }
+                    if cr.advanced_toggled { chart.order_advanced = !chart.order_advanced; }
+                    if cr.drag_delta != egui::Vec2::ZERO {
+                        pane.pos.x += cr.drag_delta.x;
+                        pane.pos.y += cr.drag_delta.y;
+                    }
                 });
         }
 

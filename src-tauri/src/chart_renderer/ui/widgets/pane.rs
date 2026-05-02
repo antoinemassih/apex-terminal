@@ -846,3 +846,206 @@ impl<'a> AccountStrip<'a> {
 impl Default for AccountStrip<'_> {
     fn default() -> Self { Self::new() }
 }
+
+// ─── FloatingOrderPaneChrome ──────────────────────────────────────────────────
+
+/// Chrome wrapper for a floating order-entry window.
+///
+/// Renders the title bar (background fill, armed toggle, title label, optional
+/// position indicator, expand/collapse toggle, close button) and a drag handle
+/// occupying the middle of that header strip. The body closure receives the
+/// inner `Ui` and should call `render_order_entry_body` (or equivalent).
+///
+/// ```ignore
+/// FloatingOrderPaneChrome::new(pane.id)
+///     .title(&pane.title)
+///     .width(fp_panel_w)
+///     .armed(chart.armed)
+///     .advanced(chart.order_advanced)
+///     .position_text(pos_text, pos_color) // optional
+///     .theme(t)
+///     .show(ui, |ui| {
+///         render_order_entry_body(ui, chart, t, 1000 + pane.id as u64, fp_panel_w);
+///     })
+/// ```
+///
+/// Returns a `FloatingOrderPaneChromeResponse` with flags for what happened.
+#[must_use = "FloatingOrderPaneChrome must be shown with `.show(ui, body)` to render"]
+pub struct FloatingOrderPaneChrome<'a> {
+    id:           u32,
+    title:        &'a str,
+    width:        f32,
+    armed:        bool,
+    advanced:     bool,
+    pos_text:     Option<(&'a str, Color32)>,
+    accent:       Color32,
+    dim:          Color32,
+    toolbar_bg:   Color32,
+    toolbar_border: Color32,
+}
+
+pub struct FloatingOrderPaneChromeResponse {
+    /// Close button was clicked — caller should remove this pane.
+    pub close_clicked: bool,
+    /// Armed toggle was clicked — caller should flip `chart.armed`.
+    pub armed_toggled: bool,
+    /// Expand/collapse toggle was clicked — caller should flip `chart.order_advanced`.
+    pub advanced_toggled: bool,
+    /// Drag delta this frame (zero if not dragging).
+    pub drag_delta: egui::Vec2,
+}
+
+impl<'a> FloatingOrderPaneChrome<'a> {
+    pub fn new(id: u32) -> Self {
+        Self {
+            id,
+            title:          "",
+            width:          210.0,
+            armed:          false,
+            advanced:       false,
+            pos_text:       None,
+            accent:         Color32::from_rgb(120, 140, 220),
+            dim:            Color32::from_rgb(120, 120, 130),
+            toolbar_bg:     Color32::from_rgb(20, 20, 28),
+            toolbar_border: Color32::from_rgb(50, 50, 60),
+        }
+    }
+
+    pub fn title(mut self, t: &'a str) -> Self { self.title = t; self }
+    pub fn width(mut self, w: f32) -> Self { self.width = w; self }
+    pub fn armed(mut self, v: bool) -> Self { self.armed = v; self }
+    pub fn advanced(mut self, v: bool) -> Self { self.advanced = v; self }
+    /// Optional: current position label for this symbol, e.g. "+2" in bull color.
+    pub fn position_text(mut self, text: &'a str, color: Color32) -> Self {
+        self.pos_text = Some((text, color)); self
+    }
+    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
+        self.accent         = t.accent;
+        self.dim            = t.dim;
+        self.toolbar_bg     = t.toolbar_bg;
+        self.toolbar_border = t.toolbar_border;
+        self
+    }
+
+    /// Render the header chrome and call `body` for the pane contents.
+    pub fn show(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui),
+    ) -> FloatingOrderPaneChromeResponse {
+        use crate::ui_kit::icons::Icon;
+
+        let header_h = 22.0_f32;
+        let w        = self.width;
+        let armed    = self.armed;
+        let advanced = self.advanced;
+        let dim      = self.dim;
+        let accent   = self.accent;
+        let border   = self.toolbar_border;
+
+        let mut close_clicked    = false;
+        let mut armed_toggled    = false;
+        let mut advanced_toggled = false;
+        let mut drag_delta       = egui::Vec2::ZERO;
+
+        // ── Header row ────────────────────────────────────────────────────
+        let header_resp = ui.horizontal(|ui| {
+            ui.set_min_width(w);
+            let header_rect = ui.max_rect();
+            // Background fill
+            ui.painter().rect_filled(
+                egui::Rect::from_min_size(header_rect.min, egui::vec2(w, header_h)),
+                egui::CornerRadius { nw: radius_md() as u8, ne: radius_md() as u8, sw: 0, se: 0 },
+                color_alpha(border, alpha_soft()),
+            );
+            ui.add_space(gap_sm());
+
+            // Armed toggle
+            let armed_icon  = if armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
+            let armed_color = if armed { accent } else { dim.gamma_multiply(0.4) };
+            let armed_resp  = ui.add(
+                egui::Button::new(egui::RichText::new(armed_icon).size(font_xs() + 3.0).color(armed_color))
+                    .fill(if armed { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
+                    .stroke(egui::Stroke::NONE)
+                    .min_size(egui::vec2(18.0, 18.0))
+                    .corner_radius(radius_sm()),
+            );
+            if armed_resp.clicked()  { armed_toggled = true; }
+            if armed_resp.hovered()  { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+
+            // Title
+            ui.label(
+                egui::RichText::new(self.title)
+                    .monospace()
+                    .size(font_xs() + 1.0)
+                    .strong()
+                    .color(color_alpha(dim, alpha_strong())),
+            );
+
+            // Optional position indicator
+            if let Some((text, color)) = self.pos_text {
+                ui.label(
+                    egui::RichText::new(text)
+                        .monospace()
+                        .size(font_xs() + 1.0)
+                        .strong()
+                        .color(color),
+                );
+            }
+
+            // Right-side controls
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(gap_sm());
+
+                // Close button
+                let close_resp = ui.add(
+                    egui::Button::new(
+                        egui::RichText::new(Icon::X).size(font_xs() + 1.0).color(dim.gamma_multiply(0.5)),
+                    )
+                    .fill(Color32::TRANSPARENT)
+                    .min_size(egui::vec2(20.0, 18.0))
+                    .corner_radius(radius_sm()),
+                );
+                if close_resp.clicked() { close_clicked = true; }
+
+                ui.add(egui::Separator::default().spacing(2.0));
+
+                // Expand/collapse toggle
+                let exp_icon = if advanced { Icon::MINUS } else { Icon::PLUS };
+                let exp_resp = ui.add(
+                    egui::Button::new(
+                        egui::RichText::new(exp_icon).size(font_xs() + 1.0).color(dim.gamma_multiply(0.5)),
+                    )
+                    .fill(Color32::TRANSPARENT)
+                    .min_size(egui::vec2(20.0, 18.0))
+                    .corner_radius(radius_sm()),
+                );
+                if exp_resp.clicked() { advanced_toggled = true; }
+                if exp_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            });
+        });
+
+        // ── Drag handle (middle strip of header) ─────────────────────────
+        let hdr_min  = header_resp.response.rect.min;
+        let mid_rect = egui::Rect::from_min_size(
+            egui::pos2(hdr_min.x + 26.0, hdr_min.y),
+            egui::vec2(w - 80.0, header_h),
+        );
+        let drag_resp = ui.interact(
+            mid_rect,
+            egui::Id::new(("float_order_drag", self.id)),
+            egui::Sense::click_and_drag(),
+        );
+        if drag_resp.dragged()  { drag_delta = drag_resp.drag_delta(); }
+        if drag_resp.hovered()  { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+
+        // ── Body ──────────────────────────────────────────────────────────
+        body(ui);
+
+        FloatingOrderPaneChromeResponse { close_clicked, armed_toggled, advanced_toggled, drag_delta }
+    }
+}
+
+impl Default for FloatingOrderPaneChrome<'_> {
+    fn default() -> Self { Self::new(0) }
+}
