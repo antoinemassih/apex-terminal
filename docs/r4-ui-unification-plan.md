@@ -1,5 +1,39 @@
 # R4 UI Unification Plan
 
+## Status: COMPLETE — 2026-05-02
+
+All 14 waves executed. **~325 sites migrated.**
+
+| Wave | Description | Sites | Status |
+|------|-------------|-------|--------|
+| R4-A | Widget defaults: `form.rs`, `pane.rs`, `status.rs` — `ft()` replaces `Color32::from_rgb` in all `Default`/`new()` impls | 66 | ✓ Done |
+| R4-B | Function signature purge: `style.rs` color-param helpers | — | ✓ Merged into R4-A/L |
+| R4-C | Core rows: `watchlist_row.rs`, `dom_row.rs` | 10 | ✓ Done |
+| R4-D | Inputs + buttons + select: `inputs.rs`, `buttons.rs`, `select.rs` | ~50 | ✓ Done |
+| R4-E | Toolbar chrome: `toolbar/mod.rs`, `toolbar/top_nav.rs` | (in D/F) | ✓ Done |
+| R4-F | Pills, chips, badges: `pills.rs`, chips | (in D) | ✓ Done |
+| R4-G | Font-size literal sweep (cross-cutting) | 108 | ✓ Done |
+| R4-H | Spacing literal sweep: panels | 8 | ✓ Done |
+| R4-I | Frame hand-rolls in panels | 0 | ✓ Audit only — no actionable sites |
+| R4-J | Card widgets: all `cards/*` | 24 | ✓ Done |
+| R4-K | Foundation layer: `foundation/shell.rs`, `variants.rs`, `tokens.rs` | 0 | ✓ Audit only — already at desired state |
+| R4-L | Mid-tier panel Color32 pass | 40 | ✓ Done |
+| R4-M | Extract micro-widgets: `border_stroke()`, `BTN_ICON_*`, `CategoryHeader` | — | ✓ Done |
+| R4-N | `chart_widgets.rs` UI-chrome layer | 10 | ✓ Done |
+
+**Total migrated: ~325 sites**
+
+Post-R4 verified grep counts (2026-05-02):
+- Panel Color32 (excl. `style.rs`, `design_preview_pane.rs`): **195**
+- Widget Color32: **239** (dominated by `rows/` painter bodies — canvas-adjacent)
+- Font-size literals in widgets: **6** (was ~108 pre-R4-G)
+- `ft()` usages across `ui/`: **161**
+- `border_stroke()` call sites: **3**
+- `BTN_ICON_*` usages: **13**
+- `CategoryHeader` usages: **8**
+
+---
+
 **Date:** 2026-05-02  
 **Auditor:** Claude Sonnet 4.6 (read-only audit, no source edits)  
 **Scope:** All UI surfaces under `src/chart_renderer/ui/**`, `src/design_inspector.rs`, `src/native_main.rs`, `src/chart_renderer/gpu.rs` (UI-chrome only), `src/chart_renderer/mod.rs`. Chart-paint engine excluded.  

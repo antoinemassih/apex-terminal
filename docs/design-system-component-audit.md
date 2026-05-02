@@ -1,5 +1,5 @@
 # Design System Component Audit
-**Date:** 2026-05-02 (refreshed post-R3)
+**Date:** 2026-05-02 (refreshed post-R4)
 **Scope:** `src-tauri/src/chart_renderer/ui/widgets/`, `components/`, `components_extra/`
 **Auditor:** Claude Sonnet 4.6 (read-only, no source edits)
 
@@ -19,11 +19,13 @@
 
 ## Executive Summary
 
-**Overall widget library tier: 3.5 / 5** (post-R1/R2, up from ~2.5 pre-refactor)
+**Overall widget library tier: 4.0 / 5** (post-R4, up from 3.5 post-R3)
 
 R1/R2 added: `FilterPill`, `SectionHeader`, `NmfToggle` (watchlist/), `ColorSwatchPicker`, `ThicknessPicker` (widgets/inputs.rs), `IndicatorParamRow`, `IndicatorParamRowF` (widgets/form.rs), `AccountStrip` (widgets/pane.rs). All new widgets are Tier 4+. The four Foundation shells (`ButtonShell`, `RowShell`, `CardShell`, `InputShell`) remain at Tier 5.
 
-R3 added: `TopNav` (widgets/toolbar/top_nav.rs — extracted from gpu.rs; ~1664 lines removed), `ApertureOrderTicket` (widgets/form.rs — ~270 lines removed), `FloatingOrderPaneChrome` (widgets/pane.rs — ~80 lines removed). `PopupFrame` upgraded from Tier 2 to Tier 4 (shadow now reads `st.shadow_offset_y/blur/alpha`). The main remaining pathologies are in `WatchlistRow`/`DomRow` painter bodies (Tier 2) and the legacy button builders (Tier 3).
+R3 added: `TopNav` (widgets/toolbar/top_nav.rs — extracted from gpu.rs; ~1664 lines removed), `ApertureOrderTicket` (widgets/form.rs — ~270 lines removed), `FloatingOrderPaneChrome` (widgets/pane.rs — ~80 lines removed). `PopupFrame` upgraded from Tier 2 to Tier 4 (shadow now reads `st.shadow_offset_y/blur/alpha`).
+
+R4 (~325 sites migrated across 14 waves): `widgets/form.rs`, `pane.rs`, `status.rs`, `inputs.rs`, `buttons.rs`, `select.rs`, `toolbar/mod.rs`, `pills.rs`, all `cards/*`, mid-tier panels (`discord_panel.rs`, `rrg_panel.rs`, `plays_panel.rs` et al.), and `chart_widgets.rs` UI chrome now use the `ft()` fallback-theme pattern. R4-M extracted `CategoryHeader` widget to `widgets/text.rs` and added `border_stroke()` + `BTN_ICON_SM/MD` constants to `style.rs`. `rows/watchlist_row.rs` and `rows/dom_row.rs` migrated (R4-C). The main remaining pathologies are `WatchlistRow`/`DomRow` painter bodies (still Tier 2) and `chart_widgets.rs` canvas-adjacent paths (intentional).
 
 ---
 
@@ -61,13 +63,15 @@ R3 added: `TopNav` (widgets/toolbar/top_nav.rs — extracted from gpu.rs; ~1664 
 
 ### `widgets/buttons.rs`
 
+> **R4-D migrated.** All state colors now use `ft()` fallback-theme pattern. 11 Color32 literals remain (brand colors, canvas-adjacent).
+
 | Widget | Tier | Key Issues |
 |--------|------|------------|
-| `IconBtn` | 3 | `.small/.medium/.large` = `11.0/14.0/18.0` literals; `22.0` min floor not from `btn_small_height()` |
-| `TradeBtn` | 3 | `Stroke::new(1.5, border)` in `OutlineAccent`; `Stroke::new(1.0, color)` underline — should be `stroke_bold()` |
-| `SimpleBtn` | 3 | Same underline/outline stroke literals as `TradeBtn` |
-| `SmallActionBtn` | 3 | Same underline/outline stroke literals |
-| `ActionBtn` | 3 | `Stroke::new(0.5, ...)` — should be `stroke_hair()` |
+| `IconBtn` | 4 | `BTN_ICON_SM/MD` constants now used; minor `.small` floor literal remains |
+| `TradeBtn` | 4 | Stroke literals replaced with `stroke_bold()`/`stroke_hair()` via R4-D |
+| `SimpleBtn` | 4 | Same as `TradeBtn` |
+| `SmallActionBtn` | 4 | Same as `TradeBtn` |
+| `ActionBtn` | 4 | `stroke_hair()` wired |
 | `ChromeBtn` | 2 | Intentional escape hatch. Caller supplies pre-styled `RichText`. `.padding` field stored but not applied |
 
 **Reference:** `ButtonShell` (Tier 5). Migrate all five legacy builders onto it.
@@ -76,24 +80,29 @@ R3 added: `TopNav` (widgets/toolbar/top_nav.rs — extracted from gpu.rs; ~1664 
 
 ### `widgets/pills.rs`
 
+> **R4-F migrated.** Radius and color literals replaced via `ft()`. 14 Color32 literals remain (brand/semantic colors).
+
 | Widget | Tier | Key Issues |
 |--------|------|------------|
 | `PillButton` | 4 | Height literal `18.0` — should be `btn_small_height()` |
-| `BrandCtaButton` | 3 | Heights `24.0/32.0/40.0` hardcoded; hover alpha literal `12` should be `alpha_ghost()` |
-| `RemovableChip` | 3 | `CornerRadius { nw: 99, ... }` — literal `99` for pill radius |
+| `BrandCtaButton` | 4 | Heights now use `ft()` density sizing; hover alpha wired |
+| `RemovableChip` | 4 | `r_pill()` now used via `ft()` |
 | `DisplayChip` | 4 | Height `14.0` hardcoded; otherwise correct |
 | `StatusBadge` | 4 | `dt_f32!(badge.*)` design-token knobs; `Radius::Pill.corner()` correct |
-| `KeybindChip` | 3 | `CornerRadius::same(st.r_xs as u8)` — truncating cast; should use `Radius::Xs.corner()` |
+| `KeybindChip` | 4 | `Radius::Xs.corner()` now used (truncating cast fixed R4-F) |
 
 ---
 
 ### `widgets/text.rs`
+
+> **R4-M added `CategoryHeader`.** Font-size literals reduced (R4-G).
 
 | Widget | Tier | Notes |
 |--------|------|-------|
 | `BodyLabel`, `MutedLabel`, `CaptionLabel`, `PaneTitle`, `Subheader`, `DimLabel` | **5** | Route through `TextStyle::as_rich()` |
 | `SectionLabel` (Sm variant) | **5** | Uses `TextStyle::Label` |
 | `SectionLabel` (Tiny/Xs/Md/Lg) | 3 | Fallback to raw `RichText::new(s).monospace().size(N)` — bypasses `TextStyle` |
+| **`CategoryHeader`** (R4-M) | **5** | New widget; `.monospace().size(font_xs()).color(t.dim)` for eyebrow labels in nav/tree views. 8 usages: `object_tree.rs`, `top_nav.rs`, `watchlist_panel.rs`. |
 | `NumericDisplay` (Lg) | 3 | Manual override to `font_lg()` — documented |
 | `MonospaceCode` (Xs) | 3 | Manual override to `font_xs()` — documented |
 
@@ -146,18 +155,22 @@ R3 added: `TopNav` (widgets/toolbar/top_nav.rs — extracted from gpu.rs; ~1664 
 
 ### `widgets/cards/`
 
-All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCard`, `PlayCard`, `PlaybookCard`, `StatCard`, `TradeCard`) — migrated onto `CardShell` in R1/R2. **Tier: 4** across the board. Minor remaining issue: some use `font_*()` + raw `RichText` rather than `TextStyle::as_rich()`.
+> **R4-J migrated.** All card color literals replaced with `ft()` pattern (32 `ft()` usages across cards). 7 Color32 literals remain (brand/semantic: `COLOR_AMBER`, RRG quadrant colors).
+
+All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCard`, `PlayCard`, `PlaybookCard`, `StatCard`, `TradeCard`) — migrated onto `CardShell` in R1/R2, fully `ft()`-wired in R4-J. **Tier: 4** across the board. Minor remaining issue: some use `font_*()` + raw `RichText` rather than `TextStyle::as_rich()`.
 
 ---
 
 ### `widgets/inputs.rs`
 
+> **R4-D migrated.** `TextInput`/`NumericInput` border/focus colors now use `ft()`. 5 Color32 literals remain (brand colors, canvas-adjacent).
+
 | Widget | Tier | Notes |
 |--------|------|-------|
-| `TextInput` (theme path) | 4 | Uses `InputShell` |
-| `TextInput` (palette path) | 3 | `Stroke::new(1.0, ...)` literal — should be `stroke_thin()` |
-| `NumericInput` | 3 | Always uses palette path (no `.theme()` call) |
-| `Stepper`, `CompactStepper` | 4 | `CornerRadius::same(st.r_xs as u8)` truncating cast |
+| `TextInput` (theme path) | **5** | Uses `InputShell`; stroke literal removed R4-D |
+| `TextInput` (palette path) | 4 | `stroke_thin()` now wired |
+| `NumericInput` | 4 | Focus/border wired via `ft()` |
+| `Stepper`, `CompactStepper` | 4 | `Radius::Xs.corner()` (truncating cast fixed R4-D) |
 | `SearchInput` | 4 | Foundation path correct; fallback has `avail - 36.0` literal |
 | `ToggleRow` | 3 | No `TextStyle` usage; checkbox styled by egui visuals |
 | `Slider` | 3 | Mutates egui visuals directly, not token path |
@@ -168,13 +181,15 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 
 ### `widgets/form.rs`
 
+> **R4-A migrated.** All `Default`/`new()` impls now call `ft()` instead of `Color32::from_rgb(...)`. 25 Color32 literals remain (brand colors, `COLOR_AMBER`, canvas-adjacent). `ft()` usages: 12.
+
 | Widget | Tier | Notes |
 |--------|------|-------|
-| `FormRow` | 3 | `label_width: 120.0` hardcoded default |
+| `FormRow` | 4 | `label_width: 120.0` default remains; color/stroke now via `ft()` |
 | `MeridienOrderTicket` | 4 | Routed through `cta_btn`, `action_btn`, `simple_btn` — all token-using |
 | **`IndicatorParamRow`** (R1/R2) | **5** | New widget; fully tokenized |
 | **`IndicatorParamRowF`** (R1/R2) | **5** | New widget; fully tokenized |
-| **`ApertureOrderTicket`** (R3) | 4 | New widget; Aperture/Octave order entry (~270 lines from gpu.rs). `SegmentedControl`, `NumericInput`, `Stepper`, `trade_btn`. One RTH amber literal pending `COLOR_AMBER` cleanup. |
+| **`ApertureOrderTicket`** (R3) | 4 | New widget; Aperture/Octave order entry (~270 lines from gpu.rs). `SegmentedControl`, `NumericInput`, `Stepper`, `trade_btn`. RTH amber → `COLOR_AMBER` wired R4-A. |
 
 ---
 
@@ -190,43 +205,51 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 
 ### `widgets/toolbar/top_nav.rs`
 
+> **R4-E migrated.** Toolbar frame margins and inline `Color32` accents wired via `ft()`. `ft()` usages in `top_nav.rs`: 9. 9 Color32 literals remain (brand/semantic colors).
+
 | Widget | Tier | Notes |
 |--------|------|-------|
-| **`TopNav`** (R3) | 3 | Extracted from gpu.rs (~1664 lines). Nav buttons, workspace picker, layout picker, symbol search, Paper-Live toggle, connection indicator. Delegates to `ToolbarBtn`, `SegmentedControl`, `SearchInput`, `AccountStrip`, `ConnectionIndicator`. Remaining hardcodes: toolbar frame margins and some inline `Color32` for toolbar accents — R4 targets. |
+| **`TopNav`** (R3, R4-E) | 4 | Extracted from gpu.rs (~1664 lines). Nav buttons, workspace picker, layout picker, symbol search, Paper-Live toggle, connection indicator. Delegates to `ToolbarBtn`, `SegmentedControl`, `SearchInput`, `AccountStrip`, `ConnectionIndicator`. Frame margins and accent colors wired R4-E. |
 
 ---
 
 ### `widgets/pane.rs`
+
+> **R4-A migrated.** All `Default` color impls now use `ft()`. `ft()` usages: 30. 6 Color32 literals remain (brand/semantic colors).
 
 | Widget | Tier | Notes |
 |--------|------|-------|
 | `PaneFrame` | 4 | `pane_active_indicator`, `pane_border_width` — correct |
 | `PaneSymbolBadge` | 4 | Uses `PillButton` internally |
 | **`AccountStrip`** (R1/R2) | **5** | New widget; `account_strip_height`, `font_body/caption`, `TextStyle` |
-| **`FloatingOrderPaneChrome`** (R3) | 4 | New widget (~80 lines from gpu.rs). Header chrome for floating order window: armed toggle, title, expand/collapse, X close. Uses `icon_btn`, `dialog_window_themed`. One inline stroke literal remaining. |
+| **`FloatingOrderPaneChrome`** (R3) | **5** | New widget (~80 lines from gpu.rs). Inline stroke literal removed R4-A. Fully tokenized. |
 
 ---
 
 ### `widgets/select.rs`
 
+> **R4-D migrated.** Dropdown state colors now use `ft()`. `ft()` usages: 20. 2 Color32 literals remain (brand/semantic).
+
 | Widget | Tier | Notes |
 |--------|------|-------|
 | `SegmentedControl` | 4 | `idle_outline_color`, `segmented_idle_fill/text`, `r_pill` — correct |
-| `Dropdown`, `Combobox` | 3 | `width: 140.0` hardcoded |
+| `Dropdown`, `Combobox` | 4 | `width: 140.0` hardcoded; state colors via `ft()` |
 
 ---
 
 ### `widgets/status.rs`
 
+> **R4-A migrated.** `Default` impls now use `ft()`. `ft()` usages: 27. 6 Color32 literals remain (warn yellow, brand colors — R5 candidates).
+
 | Widget | Tier | Notes |
 |--------|------|-------|
 | `TrendArrow`, `SearchPill` | 4 | Mostly tokenized |
-| `StatusDot`, `ConnectionIndicator` | 3 | `Color32::from_rgb(241, 196, 15)` warn yellow hardcoded (4× total in file) |
-| `Spinner` | 3 | `LoadSize` px `10.0/14.0/20.0` literals |
-| `ProgressBar` | 3 | Height literals `3.0/8.0/6.0` |
-| `Toast` | 3 | `add_space(8.0)`, accent stripe `3.0`, `CornerRadius::same(2)` — literals |
-| `Skeleton` | 2 | `rounding: 3.0`, `from_rgb(60,60,70)` base/highlight colors |
-| `NotificationBadge` | 2 | All geometry hardcoded: `h=12.0`, `pad_x=4.0`, `font=7.5` |
+| `StatusDot`, `ConnectionIndicator` | 4 | Warn yellow now uses `COLOR_AMBER` / `ft()` |
+| `Spinner` | 4 | `LoadSize` px → `font_sm()/font_md()/font_xl()` wired R4-G |
+| `ProgressBar` | 4 | Height token wired via `ft()` |
+| `Toast` | 4 | `gap_lg()`, `Radius::Xs.corner()` wired R4-A |
+| `Skeleton` | 3 | `rounding: 3.0`, base/highlight colors still partially hardcoded |
+| `NotificationBadge` | 2 | All geometry hardcoded: `h=12.0`, `pad_x=4.0`, `font=7.5` — R5 |
 
 ---
 
@@ -252,24 +275,24 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 
 ---
 
-## Per-Family Tier Summary
+## Per-Family Tier Summary (post-R4)
 
 | Family | Reference Widget | Avg Tier | Worst Offender |
 |--------|-----------------|----------|----------------|
 | Foundation | `ButtonShell` / `ChipShell` | **5** | `CardShell` (4, fallback colors) |
-| Buttons | `ButtonShell` | 3 | `ChromeBtn` (2), `IconBtn` (3) |
-| Pills/Chips | `ChipShell` | 3.5 | `RemovableChip` (3), `KeybindChip` (3) |
-| Text | `BodyLabel` | 4.5 | `SectionLabel` non-Sm (3) |
+| Buttons | `ButtonShell` | 4 | `ChromeBtn` (2) |
+| Pills/Chips | `ChipShell` | 4 | `BrandCtaButton` (4, height floor) |
+| Text | `BodyLabel` | 4.5 | `SectionLabel` non-Sm (3), `CategoryHeader` (5) |
 | Frames | `CardFrame` | 4.8 | `TooltipFrame` (4) |
-| Headers | `PanelHeaderWithClose` | 3 | `PanelHeader` (2), `DialogHeader` (3) |
+| Headers | `PanelHeaderWithClose` | 3.5 | `PanelHeader` (3), `DialogHeader` (3) |
 | Tabs | `TabBar` | 3 | Shared height literals |
 | Rows | `RowShell` | 2.5 | `WatchlistRow`/`DomRow` painter bodies (2) |
-| Cards | `MetricCard` | 4 | All near Tier 4 |
-| Inputs | `TextInput` (theme path) | 3.5 | `NumericInput` (3), `Slider` (3) |
-| Form | `IndicatorParamRow` (new) | 3.5 | `FormRow` (3), `MeridienOrderTicket` (4) |
+| Cards | `MetricCard` | 4 | 7 Color32 literals remain (brand/RRG) |
+| Inputs | `TextInput` (theme path) | 4.5 | `Slider` (3) |
+| Form | `IndicatorParamRow` (new) | 4 | `FormRow` (4, label-width literal) |
 | Watchlist widgets (new) | `FilterPill`/`NmfToggle` | **5** | `SectionHeader` (4) |
-| Selects | `SegmentedControl` | 3.5 | `Dropdown` (3) |
-| Status | `TrendArrow`/`SearchPill` | 3 | `Skeleton`/`NotificationBadge` (2) |
+| Selects | `SegmentedControl` | 4 | `Dropdown` (4, width literal) |
+| Status | `TrendArrow`/`SearchPill` | 4 | `Skeleton` (3), `NotificationBadge` (2) |
 | Layout | `Splitter` | 4 | — |
 | components_extra | `action_button` | 3.5 | `dom_action` (3) |
 

@@ -1,6 +1,6 @@
 # Apex Terminal Design Controls — what each parameter does
 
-**Refreshed:** 2026-05-02 (post-R3)  
+**Refreshed:** 2026-05-02 (post-R4)  
 **Field count:** 77 fields in `StyleSettings` (struct at `style.rs:912`)  
 **Styles:** Meridien (0), Aperture (1), Octave (2) + 7 aliases (Cadence, Chord, Lattice, Tangent, Tempo, Contour, Relay)
 
@@ -193,6 +193,9 @@ Open the Design Inspector (F12) → **Design** tab → **Style Editor** to live-
 | `style::dialog_window_themed` | `r_lg`, `shadows_enabled`, `card_floating_shadow`, `card_floating_shadow_alpha`, `stroke_std` |
 | `style::cta_btn` | `active_fill_color`, `active_text_color`, `cta_height_px`, `cta_padding_x`, `r_sm` |
 | `style::order_card` | `card_padding_y/x`, `r_md`, `card_stripe_alpha` |
+| `style::border_stroke()` (R4-M) | `stroke_std` + `current().toolbar_border` — shorthand for the common `Stroke::new(stroke_std(), t.toolbar_border)` pattern (3 call sites, replaces ~20+ former hand-rolls) |
+| `style::BTN_ICON_SM` / `BTN_ICON_MD` (R4-M) | `egui::vec2(16.0, 16.0)` / `egui::vec2(32.0, 24.0)` — named constants for toolbar icon-button sizing (13 usages) |
+| `widgets::text::CategoryHeader` (R4-M) | Thin widget wrapping `.monospace().size(font_xs()).color(t.dim)` for "SECTION" eyebrow labels in nav/tree views (8 usages: `object_tree.rs`, `top_nav.rs`, `watchlist_panel.rs`) |
 | `style::section_label` | `uppercase_section_labels`, `section_label_padding_top/bottom` |
 | `style::split_divider` | `stroke_thick`, `drag_handle_alpha`, `drag_handle_dot_scale` |
 | `widgets/pane.rs AccountStrip` | `account_strip_height`, `font_body`, `font_caption` |

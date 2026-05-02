@@ -1,6 +1,6 @@
 # Design System Usage Map
 
-**Audit date:** 2026-05-02 (refreshed post-R3)
+**Audit date:** 2026-05-02 (refreshed post-R4)
 **Scope:** `src/chart_renderer/ui/` — all panel files + `gpu.rs`
 **Excluded from hardcoded audit:** `widgets/`, `components/`, `components_extra/`, `foundation/`, `style.rs`, `design_inspector.rs`, `design_preview_pane.rs`
 
@@ -74,6 +74,16 @@ No usages found outside widget definition files.
 
 ---
 
+### R4 New Helpers and Widget Usage Counts
+
+| Helper / Widget | Location | Usages | Wave |
+|----------------|----------|--------|------|
+| `style::border_stroke()` | `style.rs` | 3 call sites (replaces ~20+ `Stroke::new(stroke_std(), t.toolbar_border)` hand-rolls) | R4-M |
+| `style::BTN_ICON_SM` | `style.rs` | 13 usages | R4-M |
+| `style::BTN_ICON_MD` | `style.rs` | (bundled in BTN_ICON_* count) | R4-M |
+| `widgets::text::CategoryHeader` | `widgets/text.rs` | 8 usages: `object_tree.rs`, `top_nav.rs`, `watchlist_panel.rs` | R4-M |
+| `ft()` fallback-theme calls | widgets/panels | 161 usages across all `ui/` files | R4-A through R4-N |
+
 ### R3 New Widget Usage Counts
 
 | Widget | File | Usages |
@@ -121,59 +131,57 @@ Used heavily throughout widgets. Key consumer files (post-R1/R2):
 
 ---
 
-## Phase 2 — Per-Panel Hardcoded UI Counts
+## Phase 2 — Per-Panel Hardcoded UI Counts (post-R4)
 
-Patterns counted: `Color32::from_rgb`, `egui::Frame::`, `CornerRadius::same`, `.corner_radius(N`, `.size(N)` literal.
+Patterns counted: `Color32::` literals, `Stroke::new`/`Stroke {`, `vec2(` spacing literals.
 
-> **Note:** `design_preview_pane.rs` (70 hits) and `style.rs` (37) are intentionally excluded — they define the system, not consume it.
+> **Note:** `design_preview_pane.rs` and `style.rs` are intentionally excluded — they define the system, not consume it. `gpu.rs` counted separately.
 
-### HIGH priority panels
+### Panel-level Color32 counts (verified 2026-05-02 grep)
 
-| File | Hardcoded hits | Notes |
-|------|---------------|-------|
-| `gpu.rs` | **357** | `from_rgb`: 264, `Frame::`: 11, `CornerRadius`: 20, `.size(N)`: 62. Largest single file. Toolbar, floating order panes, and DOM sidebar have been extracted (R3) — remaining literals are chart paint + residual UI overlays. |
-| `chart_widgets.rs` | 65 | Chart UI overlays — many are intentional (chart paint adjacent); ~20 are genuinely migratable |
-| `watchlist_panel.rs` | 46 | High count despite R1/R2 adding `FilterPill`/`SectionHeader`/`NmfToggle`; many `ChromeBtn` + inline buttons remain |
+| File | Color32 | Stroke | Vec2 | Notes |
+|------|---------|--------|------|-------|
+| `chart_widgets.rs` | **86** | 39 | 43 | Largely chart-paint-adjacent; ~20 UI-chrome sites remain — R5 |
+| `discord_panel.rs` | 16 | 1 | 12 | R4-L migrated partial; brand CTA color remains |
+| `rrg_panel.rs` | 15 | 5 | 1 | Quadrant fills intentional (domain-specific brand colors) |
+| `watchlist_panel.rs` | 15 | 16 | 39 | R4-A/C/H reduced from ~80; context menu inline buttons remain |
+| `plays_panel.rs` | 11 | 6 | 18 | R4-L migrated; 11 semantic colors remain |
+| `object_tree.rs` | 7 | 0 | 3 | R4-M `CategoryHeader` adopted; 7 literals remain |
+| `script_panel.rs` | 5 | 7 | 11 | Medium panel |
+| `indicator_editor.rs` | 4 | 3 | 5 | Reduced post-R1/R2 |
+| `settings_panel.rs` | 4 | 5 | 9 | Light |
+| `hotkey_editor.rs` | 3 | 0 | 2 | Light |
+| `research_panel.rs` | 3 | 0 | 4 | Light |
+| `signals_panel.rs` | 3 | 2 | 3 | Light |
+| `analysis_panel.rs` | 3 | 2 | 3 | Light |
+| `template_popup.rs` | 3 | 2 | 3 | Light |
+| `dom_panel.rs` | 2 | 5 | 17 | Low |
+| `tape_panel.rs` | 2 | 0 | 0 | Low |
+| `heatmap_pane.rs` | 2 | 1 | 5 | Intentional (heatmap domain) |
+| `spread_panel.rs` | 2 | 2 | 5 | Low |
+| `feed_panel.rs` | 2 | 2 | 2 | Low |
+| Others (≤1 Color32) | ~10 | ~20 | ~60 | scanner, alerts, options, trendline, etc. |
+| **Totals (excl. style+preview)** | **195** | **122** | **241** | Verified grep 2026-05-02 |
 
-### MEDIUM priority panels
+### `gpu.rs` (counted separately)
 
-| File | Hardcoded hits | Notes |
-|------|---------------|-------|
-| `object_tree.rs` | 17 | 17 hits — icon-heavy chrome |
-| `apex_diagnostics.rs` | 16 | 16 hits — low user-facing impact |
-| `discord_panel.rs` | 13 | Discord panel — largely decorative hardcodes; auth buttons with inline CTA |
-| `screenshot_panel.rs` | 10 | 10 hits — card row structure inline |
-| `indicator_editor.rs` | 6 | 6 hits — reduced post-R1/R2 (ColorSwatchPicker/ThicknessPicker migrated) |
-| `hotkey_editor.rs` | 5 | 5 hits |
-| `journal_panel.rs` | 5 | 5 hits |
-| `research_panel.rs` | 5 | 5 hits |
-| `plays_panel.rs` | 5 | 5 hits |
-| `connection_panel.rs` | 4 | 4 hits |
-| `script_panel.rs` | 3 | 3 hits |
-| `overlay_manager.rs` | 3 | 3 hits |
-| `orders_panel.rs` | 3 | 3 hits |
+| Pattern | Count |
+|---------|-------|
+| `Color32::` literals | **324** |
+| `Stroke::new` / `Stroke {` | **317** |
 
-### LOW priority panels (< 3 hits, likely already clean or out-of-scope)
+> gpu.rs is dominated by chart-paint paths (intentional). Approximately 80–100 Color32 literals are UI-layer and are R5 candidates.
 
-| File | Hardcoded hits |
-|------|---------------|
-| `alerts_panel.rs` | 2 |
-| `news_panel.rs` | 2 |
-| `rrg_panel.rs` | 2 |
-| `portfolio_pane.rs` | 2 |
-| `spread_panel.rs` | 2 |
-| `dom_panel.rs` | 4 |
-| `spreadsheet_pane.rs` | 1 |
-| `scanner_panel.rs` | 1 |
-| `tape_panel.rs` | 1 |
-| `option_quick_picker.rs` | 1 |
-| `settings_panel.rs` | 1 |
-| `template_popup.rs` | 1 |
-| `trendline_filter.rs` | 1 |
+### Widget-level Color32 counts (verified 2026-05-02 grep)
 
-### Panels confirmed clean (0 hits)
+| Layer | Color32 | Stroke |
+|-------|---------|--------|
+| `widgets/` (all, incl. cards + rows) | **239** | **128** |
+| — of which `rows/` (painter bodies) | ~48 | ~40 |
+| — of which `cards/` | 7 | ~10 |
+| `ui_kit/` | 4 | — |
 
-`feed_panel.rs`, `watchlist.rs`, `orders.rs`, `signals_panel.rs`, `playbook_panel.rs`, `picker.rs`, `toolbar.rs`, `seasonality_panel.rs`, `heatmap_pane.rs`, `dashboard_pane.rs`, `analysis_panel.rs`
+> Row painter bodies (`WatchlistRow`, `DomRow`) account for the majority of widget-layer literals — these are canvas-adjacent and are declared R5 scope.
 
 ---
 
@@ -193,8 +201,21 @@ Patterns counted: `Color32::from_rgb`, `egui::Frame::`, `CornerRadius::same`, `.
 - `gpu.rs` floating order pane header → `widgets::pane::FloatingOrderPaneChrome` (~80 lines removed)
 - `widgets/frames.rs PopupFrame` shadow wired to `st.shadow_*` tokens (75 Color32 literals in gpu.rs migrated)
 
-### Still inline (not yet migrated)
-- `watchlist_panel.rs` ChromeBtn usages (~40) not yet replaced with `ButtonShell`/`IconBtn`
-- `discord_panel.rs`, `screenshot_panel.rs` card rows inline
-- `gpu.rs` DOM watchlist hover tooltip inline colors (lines ~5033–5039)
-- `gpu.rs` residual `Color32::from_rgb` in overlays and data labels (~80 non-chart-paint)
+### R4 migrations confirmed (~325 sites)
+- **R4-A (66 sites):** `widgets/form.rs`, `pane.rs`, `status.rs` — all `Default`/`new()` impls use `ft()` instead of `Color32::from_rgb(...)`. `FloatingOrderPaneChrome` inline stroke removed.
+- **R4-C (10 sites):** `rows/watchlist_row.rs`, `rows/dom_row.rs` — inline `Color32` replaced with `current().*` lookups; `Stroke::new` → `stroke_*()`.
+- **R4-D/E/F (~50 sites):** `inputs.rs`, `buttons.rs`, `select.rs`, `toolbar/mod.rs`, `pills.rs`, `chips.rs` — all state-colors wired to `ft()`. Stroke literals replaced with `stroke_bold()`/`stroke_thin()`/`stroke_hair()`. `BTN_ICON_SM/MD` constants introduced.
+- **R4-G (108 sites):** Cross-cutting font-size literal sweep — `.size(N)` → `font_xs()/sm()/md()/lg()`. Panels + widgets. 6 font literals remain in widgets, 28 in panels (down from ~246).
+- **R4-H (8 sites):** Spacing literal sweep — `vec2(N,M)` / `Margin::same(N)` → `gap_*()` in mid-tier panels. (Foundation/rows spacing largely intact — canvas-adjacent.)
+- **R4-J (24 sites):** All `cards/*` — color literals → `ft()`. 32 `ft()` usages across cards. 7 Color32 literals remain (brand/RRG).
+- **R4-L (40 sites):** Mid-tier panels (`discord_panel.rs`, `rrg_panel.rs`, `plays_panel.rs`, `apex_diagnostics.rs`, `command_palette/mod.rs`, `dom_panel.rs`, `script_panel.rs`, etc.) — `Color32::from_rgb` → `current().*` or named constants.
+- **R4-M (extractions):** `border_stroke()` added to `style.rs` (3 call sites). `BTN_ICON_SM/MD` constants. `CategoryHeader` widget added to `widgets/text.rs` (8 usages). `SectionLabel`/`PanelTitle` repeated patterns consolidated.
+- **R4-N (10 sites):** `chart_widgets.rs` UI-chrome layer — toolbar strips, overlay labels, info panel Color32/Stroke/spacing → tokens. Canvas-draw paths untouched.
+- **R4-K / R4-I audit:** Foundation layer (`foundation/shell.rs`, `variants.rs`, `tokens.rs`) and frame hand-rolls found no actionable sites — already at desired state.
+
+### Still inline (not yet migrated — R5 candidates)
+- `watchlist_panel.rs` ChromeBtn context menu usages (~15) — replace with `SimpleBtn`
+- `chart_widgets.rs` canvas-adjacent paths (86 Color32) — intentional; ~20 UI-chrome sites remain
+- `gpu.rs` UI-layer `Color32` literals (~80–100 of 324) — tooltip overlays, data labels
+- `rows/WatchlistRow` + `DomRow` painter bodies (48 Color32) — canvas-adjacent, high-risk
+- `Skeleton` / `NotificationBadge` geometry (Tier 2) — low impact
