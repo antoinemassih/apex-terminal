@@ -109,7 +109,7 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
         ui.horizontal(|ui| {
             ui.add(super::widgets::text::MonospaceCode::new("health").color(t.dim));
             pill(ui, if h.ready { "ready" } else { "not ready" },
-                 if h.ready { t.bull } else { COLOR_AMBER });
+                 if h.ready { t.bull } else { t.warn });
             ui.add(super::widgets::text::MonospaceCode::new(&format!("tick age {}ms, redis={} questdb={} feeds {}/{}",
                 h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total)).color(t.dim));
         });
@@ -126,7 +126,7 @@ fn section_rest_stats(ui: &mut egui::Ui, t: &Theme) {
     ui.horizontal_wrapped(|ui| {
         kv(ui, "total",  &format!("{total}"), t, None); ui.add_space(gap_lg());
         kv(ui, "ok",     &format!("{ok} ({:.0}%)",        pct(ok)), t, Some(t.bull)); ui.add_space(gap_lg());
-        kv(ui, "http",   &format!("{http_err} ({:.0}%)",  pct(http_err)), t, Some(COLOR_AMBER)); ui.add_space(gap_lg());
+        kv(ui, "http",   &format!("{http_err} ({:.0}%)",  pct(http_err)), t, Some(t.warn)); ui.add_space(gap_lg());
         kv(ui, "net",    &format!("{net_err} ({:.0}%)",   pct(net_err)), t, Some(t.bear)); ui.add_space(gap_lg());
         kv(ui, "parse",  &format!("{parse_err} ({:.0}%)", pct(parse_err)), t, Some(t.bear)); ui.add_space(gap_lg());
         kv(ui, "skip",   &format!("{skipped} ({:.0}%)",   pct(skipped)), t, Some(t.dim));
@@ -155,7 +155,7 @@ fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
     });
     for (ul, rows, age_s) in summary {
         let age_color = if age_s < 10 { t.bull }
-                       else if age_s < 60 { COLOR_AMBER }
+                       else if age_s < 60 { t.warn }
                        else { t.bear };
         ui.horizontal(|ui| {
             ui.add(super::widgets::text::MonospaceCode::new(&ul).sm().color(t.text).strong(true));
@@ -177,7 +177,7 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
     for call in recent.iter().rev().take(25) {
         let color = match call.outcome {
             "ok"    => t.bull,
-            "http"  => COLOR_AMBER,
+            "http"  => t.warn,
             "parse" => t.bear,
             "err"   => t.bear,
             _       => t.dim,

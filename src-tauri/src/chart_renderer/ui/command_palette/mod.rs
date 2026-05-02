@@ -52,21 +52,21 @@ impl Category {
     }
     pub(super) fn color(self, t: &Theme) -> egui::Color32 {
         match self {
-            Category::Command => t.accent,
-            Category::Symbol  => egui::Color32::from_rgb(120, 180, 255),
-            Category::Widget  => egui::Color32::from_rgb(180, 140, 240),
-            Category::Overlay => egui::Color32::from_rgb(160, 200, 140),
-            Category::Theme   => egui::Color32::from_rgb(240, 180, 140),
-            Category::Timeframe => egui::Color32::from_rgb(140, 220, 200),
-            Category::Layout  => egui::Color32::from_rgb(220, 200, 120),
-            Category::Play    => egui::Color32::from_rgb(240, 140, 180),
-            Category::Alert   => egui::Color32::from_rgb(240, 120, 120),
-            Category::Setting => t.dim,
-            Category::Ai      => egui::Color32::from_rgb(255, 120, 200),
-            Category::Dynamic => egui::Color32::from_rgb(255, 180, 80),
-            Category::Help    => t.dim,
-            Category::Calc    => egui::Color32::from_rgb(140, 240, 200),
-            Category::Recent  => t.dim,
+            Category::Command   => t.accent,
+            Category::Symbol    => t.cmd_palette[0],
+            Category::Widget    => t.cmd_palette[1],
+            Category::Overlay   => t.cmd_palette[2],
+            Category::Theme     => t.cmd_palette[3],
+            Category::Timeframe => t.cmd_palette[4],
+            Category::Layout    => t.cmd_palette[5],
+            Category::Play      => t.cmd_palette[6],
+            Category::Alert     => t.cmd_palette[7],
+            Category::Setting   => t.dim,
+            Category::Ai        => t.cmd_palette[8],
+            Category::Dynamic   => t.cmd_palette[9],
+            Category::Help      => t.dim,
+            Category::Calc      => t.cmd_palette[10],
+            Category::Recent    => t.dim,
         }
     }
 }

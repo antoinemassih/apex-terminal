@@ -153,7 +153,7 @@ pub fn paint_dom_action(
         }
         QtyReadout => {
             let fill = if ctx.is_light { Color32::WHITE } else { color_alpha(t.bg, 180) };
-            let text_col = if ctx.is_light { ctx.dark_ink } else { Color32::from_rgb(220,220,230) };
+            let text_col = if ctx.is_light { ctx.dark_ink } else { t.text };
             painter.rect_filled(rect, egui::CornerRadius::ZERO, fill);
             painter.rect_stroke(rect, egui::CornerRadius::ZERO, border_stroke, egui::StrokeKind::Inside);
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_label.clone(), text_col);
@@ -169,7 +169,7 @@ pub fn paint_dom_action(
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_label, text_col);
         }
         ArmedChip => {
-            let ac = if ctx.armed { Color32::from_rgb(230, 70, 70) } else { t.dim.gamma_multiply(0.4) };
+            let ac = if ctx.armed { t.notification_red } else { t.dim.gamma_multiply(0.4) };
             let fill = if ctx.armed { color_alpha(ac, 35) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
             painter.rect_filled(rect, r_xs, fill);
             let stroke_a = if ctx.armed { 90 } else { 30 };
@@ -192,7 +192,7 @@ pub fn paint_dom_action(
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_glyph, text_col);
         }
         Warn => {
-            let fc = Color32::from_rgb(200, 150, 50);
+            let fc = t.warn;
             painter.rect_filled(rect, r_xs,
                 if hover { color_alpha(fc, alpha_line()) } else { color_alpha(fc, 18) });
             painter.rect_stroke(rect, r_xs,

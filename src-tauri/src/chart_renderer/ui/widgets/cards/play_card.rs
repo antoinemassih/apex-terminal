@@ -53,8 +53,8 @@ impl<'a> PlayCard<'a> {
         let p = ui.painter();
 
         // Shadow
-        p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), RADIUS_LG, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 25));
-        p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), RADIUS_LG, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 15));
+        p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), RADIUS_LG, color_alpha(t.shadow_color, 25));
+        p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), RADIUS_LG, color_alpha(t.shadow_color, 15));
 
         let bg = if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -97,7 +97,7 @@ impl<'a> PlayCard<'a> {
 
             let status_color = match play.status {
                 PlayStatus::Draft => t.dim, PlayStatus::Published => t.accent,
-                PlayStatus::Active => COLOR_AMBER,
+                PlayStatus::Active => t.warn,
                 PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => t.dim.gamma_multiply(0.5),
             };
             let status_x = card_rect.right() - 60.0;

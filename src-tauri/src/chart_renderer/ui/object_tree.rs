@@ -101,7 +101,7 @@ fn kind_short_label(kind: &DrawingKind) -> &'static str {
 /// Significance score badge color.
 fn sig_color(score: f32) -> egui::Color32 {
     if score >= 7.0 { ft().bear }                // red — critical
-    else if score >= 5.0 { COLOR_AMBER }         // gold — strong
+    else if score >= 5.0 { ft().warn }            // gold — strong
     else if score >= 3.0 { ft().bull }           // green — moderate
     else { ft().dim }                            // gray — weak
 }

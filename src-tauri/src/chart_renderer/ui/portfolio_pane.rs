@@ -256,7 +256,7 @@ pub(crate) fn render(
                 ("Beta", format!("{:.2}", portfolio_beta), t.text),
                 ("VaR (95%)", format!("${:.0}", var_95), t.bear),
                 ("Margin", format!("{:.0}%", margin_util),
-                    if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { COLOR_AMBER } else { t.bull }),
+                    if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { t.warn } else { t.bull }),
                 ("Sharpe", format!("{:.2}", 1.45), t.accent),
             ];
 
@@ -296,7 +296,7 @@ pub(crate) fn render(
                     egui::pos2(sector_x, gauge_y), egui::vec2(gauge_w, 6.0)),
                     3.0, color_alpha(t.toolbar_border, alpha_muted()));
                 let fill_w = gauge_w * (margin_util / 100.0).min(1.0);
-                let gauge_col = if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { COLOR_AMBER } else { t.bull };
+                let gauge_col = if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { t.warn } else { t.bull };
                 painter.rect_filled(egui::Rect::from_min_size(
                     egui::pos2(sector_x, gauge_y), egui::vec2(fill_w, 6.0)),
                     3.0, gauge_col);

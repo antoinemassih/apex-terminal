@@ -7,7 +7,14 @@
 
 use egui::{self, Color32, RichText, Stroke};
 use super::super::gpu::*;
-use super::style::{get_style_settings, list_style_presets, StyleSettings};
+use super::style::{
+    get_style_settings, list_style_presets, StyleSettings,
+    stroke_hair, stroke_thin, stroke_std,
+    gap_xs, gap_sm, gap_md, gap_lg,
+    font_xs, font_sm, font_md, font_lg,
+};
+
+#[inline] fn ft() -> &'static Theme { &THEMES[0] }
 
 const COL_W: f32 = 320.0;
 
@@ -35,8 +42,8 @@ pub fn draw(ui: &mut egui::Ui, chart: &mut Chart) {
     // ── Toolbar ──────────────────────────────────────────────────────────────
     ui.horizontal(|ui| {
         ui.add(egui::Label::new(
-            RichText::new("Design Preview").monospace().size(10.0)
-                .color(Color32::from_rgb(140, 140, 160))
+            RichText::new("Design Preview").monospace().size(font_sm())
+                .color(ft().dim)
         ));
         ui.separator();
 
@@ -49,7 +56,7 @@ pub fn draw(ui: &mut egui::Ui, chart: &mut Chart) {
                 .map(|(_, n)| n.as_str())
                 .unwrap_or("?");
             egui::ComboBox::from_id_salt(egui::Id::new(("dp_col", col_idx)))
-                .selected_text(RichText::new(selected_name).monospace().size(9.5))
+                .selected_text(RichText::new(selected_name).monospace().size(font_sm()))
                 .width(80.0)
                 .show_ui(ui, |ui| {
                     for (id, name) in &presets {
@@ -75,13 +82,13 @@ pub fn draw(ui: &mut egui::Ui, chart: &mut Chart) {
         ui.separator();
 
         // Density selector
-        ui.label(RichText::new("Density:").monospace().size(9.0)
-            .color(Color32::from_rgb(120, 125, 140)));
+        ui.label(RichText::new("Density:").monospace().size(font_xs())
+            .color(ft().dim));
         for (label, val) in [("Compact", 0u8), ("Normal", 1), ("Roomy", 2)] {
             let active = chart.design_preview_density == val;
-            let fg = if active { Color32::from_rgb(137, 180, 250) } else { Color32::from_rgb(90, 95, 110) };
-            if ui.add(egui::Button::new(RichText::new(label).monospace().size(9.0).color(fg))
-                .fill(if active { Color32::from_rgba_unmultiplied(137, 180, 250, 25) } else { Color32::TRANSPARENT })
+            let fg = if active { ft().accent } else { fa(ft().dim, 160) };
+            if ui.add(egui::Button::new(RichText::new(label).monospace().size(font_xs()).color(fg))
+                .fill(if active { fa(ft().accent, 25) } else { Color32::TRANSPARENT })
             ).clicked() {
                 chart.design_preview_density = val;
             }
@@ -116,12 +123,12 @@ pub fn draw(ui: &mut egui::Ui, chart: &mut Chart) {
 
                         // Column header
                         egui::Frame::NONE
-                            .fill(Color32::from_rgb(22, 22, 32))
+                            .fill(ft().toolbar_bg)
                             .inner_margin(egui::Margin { left: 10, right: 10, top: 6, bottom: 6 })
                             .show(ui, |ui| {
                                 ui.label(RichText::new(&style_name)
-                                    .monospace().size(12.0).strong()
-                                    .color(Color32::from_rgb(203, 166, 247)));
+                                    .monospace().size(font_md()).strong()
+                                    .color(ft().accent));
                             });
 
                         egui::ScrollArea::vertical()
@@ -129,7 +136,7 @@ pub fn draw(ui: &mut egui::Ui, chart: &mut Chart) {
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 egui::Frame::NONE
-                                    .fill(Color32::from_rgb(14, 14, 20))
+                                    .fill(ft().bg)
                                     .inner_margin(egui::Margin { left: 12, right: 12, top: 10, bottom: 16 })
                                     .show(ui, |ui| {
                                         draw_column_widgets(ui, &st, density);
@@ -146,14 +153,15 @@ pub fn draw(ui: &mut egui::Ui, chart: &mut Chart) {
 fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     let gap = match density { 0 => 3.0, 2 => 10.0, _ => 6.0 };
 
-    let accent = Color32::from_rgb(137, 180, 250);
-    let text   = Color32::from_rgb(205, 210, 225);
-    let dim    = Color32::from_rgb(120, 125, 140);
-    let border = Color32::from_rgb(50, 55, 70);
-    let green  = Color32::from_rgb(166, 227, 161);
-    let red    = Color32::from_rgb(243, 139, 168);
-    let amber  = Color32::from_rgb(249, 226, 175);
-    let purple = Color32::from_rgb(203, 166, 247);
+    let t      = ft();
+    let accent = t.accent;
+    let text   = t.text;
+    let dim    = t.dim;
+    let border = t.toolbar_border;
+    let green  = t.bull;
+    let red    = t.bear;
+    let amber  = t.warn;
+    let purple = Color32::from_rgb(203, 166, 247); // no token — intentional swatch
 
     let r_sm = egui::CornerRadius::same(st.r_sm);
     let r_md = egui::CornerRadius::same(st.r_md);
@@ -168,13 +176,13 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
         let hh = 28.0 * st.header_height_scale;
         let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, hh), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect, egui::CornerRadius::ZERO, Color32::from_rgb(26, 28, 38));
+        p.rect_filled(rect, egui::CornerRadius::ZERO, t.toolbar_bg);
         p.rect_stroke(rect, egui::CornerRadius::ZERO,
-            Stroke::new(st.stroke_hair, fa(border, 80)), egui::StrokeKind::Outside);
+            Stroke::new(stroke_hair(), fa(border, 80)), egui::StrokeKind::Outside);
         p.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER,
-            "AAPL  1D", egui::FontId::monospace(11.0), accent);
+            "AAPL  1D", egui::FontId::monospace(font_sm()), accent);
         p.text(egui::pos2(rect.right() - 8.0, rect.center().y), egui::Align2::RIGHT_CENTER,
-            "⊞ ×", egui::FontId::monospace(10.0), dim);
+            "⊞ ×", egui::FontId::monospace(font_sm()), dim);
     }
     ui.add_space(gap);
 
@@ -183,7 +191,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 22.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect, egui::CornerRadius::ZERO, Color32::from_rgb(20, 20, 30));
+        p.rect_filled(rect, egui::CornerRadius::ZERO, t.toolbar_bg);
         let tabs = ["Chart", "Trades", "News", "Alerts"];
         let tab_w = aw / tabs.len() as f32;
         for (i, lbl) in tabs.iter().enumerate() {
@@ -193,12 +201,12 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
             let active = i == 0;
             let fg = if active { accent } else { dim };
             p.text(tr.center(), egui::Align2::CENTER_CENTER,
-                *lbl, egui::FontId::monospace(10.0), fg);
+                *lbl, egui::FontId::monospace(font_sm()), fg);
             if active && st.show_active_tab_underline {
                 p.line_segment(
                     [egui::pos2(tr.left() + 2.0, tr.bottom()),
                      egui::pos2(tr.right() - 2.0, tr.bottom())],
-                    Stroke::new(2.0, accent));
+                    Stroke::new(stroke_std(), accent));
             }
         }
     }
@@ -263,7 +271,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
         let (r, _) = ui.allocate_exact_size(egui::vec2(20.0, 16.0), egui::Sense::hover());
         ui.painter().circle_filled(r.center(), 8.0, fa(red, 200));
         ui.painter().text(r.center(), egui::Align2::CENTER_CENTER,
-            "3", egui::FontId::monospace(8.0), Color32::WHITE);
+            "3", egui::FontId::monospace(8.0), ft().overlay_text);
     });
     ui.add_space(gap);
 
@@ -297,7 +305,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 52.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect, r_md, Color32::from_rgb(26, 28, 38));
+        p.rect_filled(rect, r_md, t.toolbar_bg);
         p.rect_stroke(rect, r_md, Stroke::new(sw, fa(border, 60)), egui::StrokeKind::Outside);
         let stripe = egui::Rect::from_min_max(rect.min, egui::pos2(rect.left() + 3.0, rect.bottom()));
         p.rect_filled(stripe, egui::CornerRadius { nw: st.r_md, sw: st.r_md, ne: 0, se: 0 }, accent);
@@ -313,8 +321,8 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 36.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect.translate(egui::vec2(2.0, 2.0)), r_md, fa(Color32::BLACK, 60));
-        p.rect_filled(rect, r_md, Color32::from_rgb(30, 30, 42));
+        p.rect_filled(rect.translate(egui::vec2(2.0, 2.0)), r_md, fa(t.shadow_color, 60));
+        p.rect_filled(rect, r_md, fa(t.toolbar_bg, 230));
         p.rect_stroke(rect, r_md, Stroke::new(sw, fa(border, 40)), egui::StrokeKind::Outside);
         p.text(egui::pos2(rect.left() + 10.0, rect.center().y), egui::Align2::LEFT_CENTER,
             "Elevated card", egui::FontId::monospace(10.0), text);
@@ -332,7 +340,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     // ── 9. Rows (List / Order / Watchlist / News / Alert / DOM) ──────────────
     section(ui, "Rows (List / Order / Watchlist / News / Alert / DOM)", dim);
     // Watchlist row
-    row(ui, aw, Color32::from_rgb(18, 20, 28), |p, r| {
+    row(ui, aw, t.bg, |p, r| {
         p.text(egui::pos2(r.left() + 8.0, r.center().y), egui::Align2::LEFT_CENTER,
             "AAPL", egui::FontId::monospace(10.0), accent);
         p.text(egui::pos2(r.center().x, r.center().y), egui::Align2::CENTER_CENTER,
@@ -341,7 +349,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
             "+1.24%", egui::FontId::monospace(9.0), green);
     });
     // Order row
-    row(ui, aw, Color32::from_rgb(20, 22, 30), |p, r| {
+    row(ui, aw, fa(t.bg, 230), |p, r| {
         p.text(egui::pos2(r.left() + 8.0, r.center().y), egui::Align2::LEFT_CENTER,
             "BUY 100 AAPL LMT 184.00", egui::FontId::monospace(9.0), text);
         let badge = egui::Rect::from_min_size(egui::pos2(r.right() - 52.0, r.center().y - 7.0), egui::vec2(44.0, 14.0));
@@ -350,14 +358,14 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
             "WORKING", egui::FontId::monospace(7.5), amber);
     });
     // News row
-    row(ui, aw, Color32::from_rgb(16, 18, 26), |p, r| {
+    row(ui, aw, fa(t.bg, 210), |p, r| {
         p.text(egui::pos2(r.left() + 8.0, r.center().y - 4.0), egui::Align2::LEFT_CENTER,
             "Fed holds rates steady — markets react", egui::FontId::monospace(9.0), text);
         p.text(egui::pos2(r.left() + 8.0, r.center().y + 6.0), egui::Align2::LEFT_CENTER,
             "Reuters · 3m ago", egui::FontId::monospace(7.5), dim);
     });
     // DOM row
-    row(ui, aw, Color32::from_rgb(18, 22, 28), |p, r| {
+    row(ui, aw, fa(t.bg, 220), |p, r| {
         p.text(egui::pos2(r.left() + 8.0, r.center().y), egui::Align2::LEFT_CENTER,
             "300", egui::FontId::monospace(9.0), fa(green, 180));
         p.text(egui::pos2(r.center().x, r.center().y), egui::Align2::CENTER_CENTER,
@@ -371,18 +379,18 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     section(ui, "Forms", dim);
     // TextInput
     form_row(ui, aw, "Symbol", |p, inp, r_inp| {
-        p.rect_filled(inp, r_sm, Color32::from_rgb(18, 20, 28));
+        p.rect_filled(inp, r_sm, t.toolbar_bg);
         p.rect_stroke(inp, r_sm, Stroke::new(sw * 0.5, fa(border, 80)), egui::StrokeKind::Outside);
         p.text(egui::pos2(inp.left() + 6.0, inp.center().y), egui::Align2::LEFT_CENTER,
-            "AAPL", egui::FontId::monospace(10.0), text);
+            "AAPL", egui::FontId::monospace(font_sm()), text);
         let _ = r_inp;
     });
     // Numeric input
     form_row(ui, aw, "Qty", |p, inp, _| {
-        p.rect_filled(inp, r_sm, Color32::from_rgb(18, 20, 28));
+        p.rect_filled(inp, r_sm, t.toolbar_bg);
         p.rect_stroke(inp, r_sm, Stroke::new(sw * 0.5, fa(border, 80)), egui::StrokeKind::Outside);
         p.text(egui::pos2(inp.left() + 6.0, inp.center().y), egui::Align2::LEFT_CENTER,
-            "100", egui::FontId::monospace(10.0), accent);
+            "100", egui::FontId::monospace(font_sm()), accent);
         // Stepper arrows
         p.text(egui::pos2(inp.right() - 10.0, inp.center().y - 3.0), egui::Align2::CENTER_CENTER,
             "▴", egui::FontId::monospace(7.0), dim);
@@ -393,10 +401,10 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 22.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect, r_sm, Color32::from_rgb(18, 20, 28));
+        p.rect_filled(rect, r_sm, t.toolbar_bg);
         p.rect_stroke(rect, r_sm, Stroke::new(sw * 0.5, fa(accent, 100)), egui::StrokeKind::Outside);
         p.text(egui::pos2(rect.left() + 6.0, rect.center().y), egui::Align2::LEFT_CENTER,
-            "⌕  Search...", egui::FontId::monospace(9.5), dim);
+            "⌕  Search...", egui::FontId::monospace(font_sm()), dim);
     }
     ui.add_space(3.0);
     // Toggle
@@ -422,10 +430,10 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 22.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect, r_sm, Color32::from_rgb(22, 24, 32));
+        p.rect_filled(rect, r_sm, fa(t.toolbar_bg, 240));
         p.rect_stroke(rect, r_sm, Stroke::new(sw * 0.5, fa(border, 80)), egui::StrokeKind::Outside);
         p.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER,
-            "Limit", egui::FontId::monospace(9.5), text);
+            "Limit", egui::FontId::monospace(font_sm()), text);
         p.text(egui::pos2(rect.right() - 8.0, rect.center().y), egui::Align2::RIGHT_CENTER,
             "▾", egui::FontId::monospace(9.0), dim);
     }
@@ -451,7 +459,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
         for lbl in ["−", "100", "+"] {
             let w = if lbl == "100" { 40.0 } else { 20.0 };
             let (r, _) = ui.allocate_exact_size(egui::vec2(w, 20.0), egui::Sense::hover());
-            let bg = if lbl == "100" { Color32::from_rgb(18, 20, 28) } else { fa(border, 30) };
+            let bg = if lbl == "100" { t.toolbar_bg } else { fa(border, 30) };
             ui.painter().rect_filled(r, r_sm, bg);
             ui.painter().rect_stroke(r, r_sm, Stroke::new(sw * 0.5, fa(border, 60)), egui::StrokeKind::Outside);
             ui.painter().text(r.center(), egui::Align2::CENTER_CENTER,
@@ -468,7 +476,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
         let header_cols = ["Symbol", "Price", "Change", "Volume"];
         let (hr, _) = ui.allocate_exact_size(egui::vec2(aw, 18.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(hr, egui::CornerRadius::ZERO, Color32::from_rgb(24, 24, 34));
+        p.rect_filled(hr, egui::CornerRadius::ZERO, t.toolbar_bg);
         let mut x = hr.left();
         for (i, lbl) in header_cols.iter().enumerate() {
             let col_r = egui::Rect::from_min_size(egui::pos2(x, hr.top()), egui::vec2(col_ws[i], hr.height()));
@@ -483,7 +491,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
             ("NVDA", "820.00", "+2.5%", "22.1M"),
         ];
         for (row_i, (sym, price, chg, vol)) in table_data.iter().enumerate() {
-            let bg = if row_i % 2 == 0 { Color32::from_rgb(16, 16, 24) } else { Color32::from_rgb(19, 19, 28) };
+            let bg = if row_i % 2 == 0 { t.bg } else { fa(t.bg, 230) };
             let (rr, _) = ui.allocate_exact_size(egui::vec2(aw, 18.0), egui::Sense::hover());
             let p = ui.painter();
             p.rect_filled(rr, egui::CornerRadius::ZERO, bg);
@@ -504,11 +512,11 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 80.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect, r_lg, Color32::from_rgb(24, 24, 34));
+        p.rect_filled(rect, r_lg, t.toolbar_bg);
         p.rect_stroke(rect, r_lg, Stroke::new(sw, fa(border, 100)), egui::StrokeKind::Outside);
         let hdr = egui::Rect::from_min_size(rect.min, egui::vec2(aw, 24.0));
         p.rect_filled(hdr, egui::CornerRadius { nw: st.r_lg, ne: st.r_lg, sw: 0, se: 0 },
-            Color32::from_rgb(18, 18, 28));
+            t.bg);
         p.text(egui::pos2(hdr.left() + 10.0, hdr.center().y), egui::Align2::LEFT_CENTER,
             "Confirm Order", egui::FontId::monospace(11.0), text);
         p.text(egui::pos2(hdr.right() - 8.0, hdr.center().y), egui::Align2::RIGHT_CENTER,
@@ -536,7 +544,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(tw, 48.0), egui::Sense::hover());
         let p = ui.painter();
         let tip_r = egui::CornerRadius::same(st.r_md.max(4));
-        p.rect_filled(rect, tip_r, Color32::from_rgb(20, 20, 30));
+        p.rect_filled(rect, tip_r, t.toolbar_bg);
         p.rect_stroke(rect, tip_r, Stroke::new(st.stroke_thin, fa(border, 100)), egui::StrokeKind::Outside);
         for (i, (k, v)) in [("Volume", "1.23M"), ("Avg Vol", "980K"), ("Float", "15.4B")].iter().enumerate() {
             let y = rect.top() + 8.0 + i as f32 * 13.0;
@@ -581,7 +589,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
 
     // ── 17. Trade row (P&L) ──────────────────────────────────────────────────
     section(ui, "Trade Row (P&L)", dim);
-    row(ui, aw, Color32::from_rgb(16, 18, 26), |p, r| {
+    row(ui, aw, t.bg, |p, r| {
         p.text(egui::pos2(r.left() + 8.0, r.center().y), egui::Align2::LEFT_CENTER,
             "TSLA  2025-04-28", egui::FontId::monospace(9.0), dim);
         p.text(egui::pos2(r.center().x, r.center().y), egui::Align2::CENTER_CENTER,
@@ -632,7 +640,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
         ui.add_space(8.0);
         // MonospaceCode
         let (r, _) = ui.allocate_exact_size(egui::vec2(70.0, 16.0), egui::Sense::hover());
-        ui.painter().rect_filled(r, r_sm, Color32::from_rgb(18, 18, 28));
+        ui.painter().rect_filled(r, r_sm, t.toolbar_bg);
         ui.painter().text(egui::pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER,
             "println!()", egui::FontId::monospace(8.0), purple);
     });
@@ -643,7 +651,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
     {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(aw, 40.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(rect, r_md, Color32::from_rgb(22, 26, 34));
+        p.rect_filled(rect, r_md, t.toolbar_bg);
         p.rect_stroke(rect, r_md, Stroke::new(sw, fa(accent, 80)), egui::StrokeKind::Outside);
         let bar = egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height()));
         p.rect_filled(bar, egui::CornerRadius { nw: st.r_md, sw: st.r_md, ne: 0, se: 0 }, accent);
@@ -673,7 +681,7 @@ fn draw_column_widgets(ui: &mut egui::Ui, st: &StyleSettings, density: u8) {
         for (label, value, col) in [("Day P&L", "+$1,245", green), ("Win Rate", "68%", accent), ("Drawdown", "−2.1%", red)] {
             let (rect, _) = ui.allocate_exact_size(egui::vec2((aw - 8.0) / 3.0, 40.0), egui::Sense::hover());
             let p = ui.painter();
-            p.rect_filled(rect, r_md, Color32::from_rgb(20, 22, 32));
+            p.rect_filled(rect, r_md, fa(t.toolbar_bg, 220));
             p.rect_stroke(rect, r_md, Stroke::new(sw * 0.5, fa(border, 50)), egui::StrokeKind::Outside);
             p.text(egui::pos2(rect.center().x, rect.top() + 10.0), egui::Align2::CENTER_TOP,
                 label, egui::FontId::monospace(7.5), dim);
@@ -743,7 +751,7 @@ fn row(ui: &mut egui::Ui, aw: f32, bg: Color32, paint: impl Fn(&egui::Painter, e
     ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, bg);
     ui.painter().line_segment(
         [rect.left_bottom(), rect.right_bottom()],
-        Stroke::new(0.5, Color32::from_rgb(35, 38, 50)));
+        Stroke::new(stroke_hair(), fa(ft().toolbar_border, 80)));
     paint(ui.painter(), rect);
 }
 
@@ -752,7 +760,7 @@ fn form_row(ui: &mut egui::Ui, aw: f32, label: &str, paint_input: impl Fn(&egui:
     let lw = 60.0;
     let p = ui.painter();
     p.text(egui::pos2(rect.left() + lw - 4.0, rect.center().y), egui::Align2::RIGHT_CENTER,
-        label, egui::FontId::monospace(9.0), Color32::from_rgb(120, 125, 140));
+        label, egui::FontId::monospace(font_sm()), ft().dim);
     let inp = egui::Rect::from_min_max(
         egui::pos2(rect.left() + lw + 4.0, rect.top() + 2.0),
         egui::pos2(rect.right(), rect.bottom() - 2.0));

@@ -572,7 +572,7 @@ impl NotificationBadge {
         Self {
             count,
             max: 99,
-            color: Color32::from_rgb(231, 76, 60),
+            color: ft().notification_red,
             fg: Color32::WHITE,
             show_zero: false,
         }
@@ -642,7 +642,7 @@ impl<'a> ConnectionIndicator<'a> {
             status,
             bull: ft().bull,
             bear: ft().bear,
-            warn: Color32::from_rgb(241, 196, 15),
+            warn: ft().warn,
             dim: ft().dim,
             text: ft().text,
         }

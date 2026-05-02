@@ -15,7 +15,6 @@ pub mod sortable_headers;
 pub mod toasts;
 pub mod header_buttons;
 pub mod panels;
-pub mod top_nav;
 pub mod action_button;
 pub mod dom_action;
 
@@ -25,6 +24,10 @@ pub use sortable_headers::*;
 pub use toasts::*;
 pub use header_buttons::*;
 pub use panels::*;
-pub use top_nav::*;
 pub use action_button::*;
 pub use dom_action::*;
+
+// TopNav enums are defined in widgets/toolbar/mod.rs; re-export here for
+// backward compatibility so callers using `components_extra::TopNavTreatment`
+// continue to compile without changes.
+pub use super::widgets::toolbar::{TopNavTreatment, TopNavToggleSize, PaneTabStyle};

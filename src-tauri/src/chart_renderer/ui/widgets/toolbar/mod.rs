@@ -14,8 +14,27 @@ fn ft() -> &'static super::super::super::gpu::Theme {
     &super::super::super::gpu::THEMES[0]
 }
 
-// Re-export the enums from components_extra so call-sites can use either path.
-pub use super::super::components_extra::{TopNavTreatment, TopNavToggleSize, PaneTabStyle};
+// Enums formerly defined in components_extra/top_nav.rs — canonical home is here.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopNavTreatment {
+    Raised,
+    Underline,
+    SoftPill,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopNavToggleSize {
+    Small,
+    Medium,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneTabStyle {
+    Underline,
+    Filled,
+    Border,
+}
 
 // ─── ToolbarBtn ───────────────────────────────────────────────────────────────
 

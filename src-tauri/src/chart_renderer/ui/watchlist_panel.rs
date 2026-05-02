@@ -1479,8 +1479,8 @@ if watchlist.open {
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
                             let iv_color = if row.iv > 0.7 { color_alpha(t.bear, 180) }
-                                else if row.iv > 0.5 { color_alpha(COLOR_AMBER, 140) }
-                                else if row.iv > 0.3 { color_alpha(COLOR_AMBER, alpha_active()) }
+                                else if row.iv > 0.5 { color_alpha(t.warn, 140) }
+                                else if row.iv > 0.3 { color_alpha(t.warn, alpha_active()) }
                                 else { color_alpha(t.bull, alpha_active()) };
                             painter.rect_filled(egui::Rect::from_min_size(
                                 egui::pos2(rect.left(), rect.top()), egui::vec2(3.0, rect.height())),

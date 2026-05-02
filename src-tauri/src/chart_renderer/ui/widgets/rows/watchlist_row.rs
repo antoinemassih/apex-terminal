@@ -412,7 +412,7 @@ impl<'a> WatchlistRow<'a> {
                 let star_visible_here = show_star;
                 if star_visible_here {
                     let star_col = match pin_state {
-                        PinState::Pinned => Color32::from_rgb(255, 193, 37),
+                        PinState::Pinned => theme_ref.gold,
                         PinState::NotPinned => dim.gamma_multiply(0.3),
                     };
                     let star_x = left + 16.0 + star_x_offset;
@@ -447,7 +447,7 @@ impl<'a> WatchlistRow<'a> {
                         let pw = e_galley.size().x + 6.0;
                         let pill_rect = egui::Rect::from_min_size(
                             egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0));
-                        painter.rect_filled(pill_rect, 6.0, Color32::from_rgb(255, 193, 37));
+                        painter.rect_filled(pill_rect, 6.0, theme_ref.gold);
                         painter.text(egui::pos2(ind_x + pw / 2.0, cy), egui::Align2::CENTER_CENTER,
                             &e_text, egui::FontId::monospace(7.0), Color32::BLACK);
                         zones_body.borrow_mut().earnings = Some(pill_rect);
@@ -458,7 +458,7 @@ impl<'a> WatchlistRow<'a> {
                 // ── Alert bell ──────────────────────────────────────────
                 if alert_indicator {
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 5.5,
-                        Color32::from_rgb(231, 76, 60));
+                        theme_ref.notification_red);
                     painter.text(egui::pos2(ind_x + 5.0, cy), egui::Align2::CENTER_CENTER,
                         icon_set.alert, egui::FontId::proportional(7.0), Color32::WHITE);
                     zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
@@ -511,7 +511,7 @@ impl<'a> WatchlistRow<'a> {
                 if optional_cols.rvol_badge {
                     if let Some(rv) = rvol {
                         if rv > 0.0 {
-                            let rcol = if rv > 2.0 { Color32::from_rgb(255, 193, 37) }
+                            let rcol = if rv > 2.0 { theme_ref.gold }
                                 else if rv > 1.2 { bull }
                                 else { dim.gamma_multiply(0.4) };
                             painter.text(egui::pos2(extra_x, cy), egui::Align2::LEFT_CENTER,

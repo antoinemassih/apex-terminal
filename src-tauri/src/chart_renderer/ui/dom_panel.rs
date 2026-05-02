@@ -211,7 +211,7 @@ pub(crate) fn draw(
 
     // Middle: FLATTEN (top) + CANCEL (bottom)
     let mid_x = inner.left()+1.0+side_w+3.0;
-    let fc = COLOR_AMBER;
+    let fc = t.warn;
 
     // FLATTEN — design-system SimpleBtn (amber)
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y), egui::vec2(mid_w, mid_half_h));
@@ -369,7 +369,7 @@ fn draw_order_label(painter: &egui::Painter, rect: egui::Rect, side: &str, qty: 
     let qty_str = format!("{}", qty);
     let side_font = egui::FontId::monospace(9.0);
     let qty_font = egui::FontId::monospace(12.0);
-    let text_col = egui::Color32::from_rgb(10, 12, 16); // dark, high contrast against colored badge
+    let text_col = _color; // high contrast against colored badge (caller provides)
     // Side letter on the left
     painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, side, side_font, text_col);
     // Qty number, large and bold, centered in remaining space

@@ -389,7 +389,7 @@ fn draw_play_editor(
                 ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
                     dim_label(ui, "R:R", t.dim);
-                    let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { COLOR_AMBER } else { t.bear };
+                    let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { t.warn } else { t.bear };
                     ui.add(super::widgets::text::MonospaceCode::new(&format!("{:.1} : 1", rr)).sm().color(rr_col).strong(true));
                     let bar_w = ui.available_width().min(120.0);
                     let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 6.0), egui::Sense::hover());
@@ -725,7 +725,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
 
         let status_color = match play.status {
             PlayStatus::Draft => t.dim, PlayStatus::Published => t.accent,
-            PlayStatus::Active => COLOR_AMBER,
+            PlayStatus::Active => t.warn,
             PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => t.dim.gamma_multiply(0.5),
         };
         let status_x = card_rect.right() - 60.0;

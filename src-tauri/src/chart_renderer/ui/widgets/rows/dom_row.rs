@@ -277,7 +277,7 @@ impl<'a> DomRow<'a> {
 
                 let f_lg = egui::FontId::monospace(12.5);
                 let f_sm = egui::FontId::monospace(9.0);
-                let dark = Color32::from_rgb(12, 14, 18);
+                let dark = theme_ref.overlay_text;
                 let cy = rect.center().y;
 
                 // ── Δ column ──
@@ -388,7 +388,7 @@ impl<'a> DomRow<'a> {
                                 StrokeKind::Outside);
                             let label = format!("{}{}", ord.side, ord.qty);
                             painter.text(cr.center(), egui::Align2::CENTER_CENTER,
-                                &label, f_sm.clone(), Color32::from_rgb(10, 12, 16));
+                                &label, f_sm.clone(), theme_ref.overlay_text);
 
                             // Hit-test: per-chip click + drag.
                             let id = ui.id().with(("dom_row_chip", ord.id));
@@ -479,7 +479,7 @@ impl<'a> DomRow<'a> {
 
         let font = egui::FontId::monospace(12.5);
         let font_sm = egui::FontId::monospace(9.0);
-        let dark = Color32::from_rgb(12, 14, 18);
+        let dark = theme_ref.overlay_text;
 
         // Backgrounds: selected / current / hovered
         if self.selected {
@@ -657,7 +657,7 @@ fn draw_order_chip_label(painter: &Painter, rect: Rect, side: char, qty: u32) {
     let qty_str = format!("{}", qty);
     let side_font = egui::FontId::monospace(9.0);
     let qty_font = egui::FontId::monospace(12.0);
-    let text_col = Color32::from_rgb(10, 12, 16);
+    let text_col = fallback_theme().overlay_text; // high-contrast label on colored chip
     let s = side.to_string();
     painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, &s, side_font, text_col);
     painter.text(egui::pos2(rect.left() + 8.0 + (rect.width() - 8.0) * 0.5, rect.center().y), egui::Align2::CENTER_CENTER, &qty_str, qty_font, text_col);

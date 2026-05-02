@@ -361,31 +361,31 @@ fn draw_rrg_content(
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, plot_rect.top()), plot_rect.right_bottom().into()),
         0.0,
-        egui::Color32::from_rgba_unmultiplied(56, 203, 137, 8),
+        color_alpha(t.rrg_leading, 8),
     );
     // Correct: Leading = top-right corner
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, plot_rect.top()), egui::pos2(plot_rect.right(), center.y)),
         0.0,
-        egui::Color32::from_rgba_unmultiplied(56, 203, 137, 8),
+        color_alpha(t.rrg_leading, 8),
     );
     // Weakening (bottom-right): faint yellow
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, center.y), egui::pos2(plot_rect.right(), plot_rect.bottom())),
         0.0,
-        egui::Color32::from_rgba_unmultiplied(230, 200, 50, 8),
+        color_alpha(t.rrg_weakening, 8),
     );
     // Lagging (bottom-left): faint red
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(plot_rect.left(), center.y), egui::pos2(center.x, plot_rect.bottom())),
         0.0,
-        egui::Color32::from_rgba_unmultiplied(224, 82, 82, 8),
+        color_alpha(t.rrg_lagging, 8),
     );
     // Improving (top-left): faint blue
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(plot_rect.left(), plot_rect.top()), center),
         0.0,
-        egui::Color32::from_rgba_unmultiplied(74, 158, 255, 8),
+        color_alpha(t.rrg_improving, 8),
     );
 
     // ── Axis crosshair at (100, alpha_active()) ──
@@ -475,7 +475,7 @@ fn draw_rrg_content(
         egui::Align2::RIGHT_TOP,
         "LEADING",
         quad_font.clone(),
-        egui::Color32::from_rgba_unmultiplied(56, 203, 137, quad_alpha),
+        color_alpha(t.rrg_leading, quad_alpha),
     );
     // Weakening (bottom-right)
     painter.text(
@@ -483,7 +483,7 @@ fn draw_rrg_content(
         egui::Align2::RIGHT_BOTTOM,
         "WEAKENING",
         quad_font.clone(),
-        egui::Color32::from_rgba_unmultiplied(230, 200, 50, quad_alpha),
+        color_alpha(t.rrg_weakening, quad_alpha),
     );
     // Lagging (bottom-left)
     painter.text(
@@ -491,7 +491,7 @@ fn draw_rrg_content(
         egui::Align2::LEFT_BOTTOM,
         "LAGGING",
         quad_font.clone(),
-        egui::Color32::from_rgba_unmultiplied(224, 82, 82, quad_alpha),
+        color_alpha(t.rrg_lagging, quad_alpha),
     );
     // Improving (top-left)
     painter.text(
@@ -499,7 +499,7 @@ fn draw_rrg_content(
         egui::Align2::LEFT_TOP,
         "IMPROVING",
         quad_font,
-        egui::Color32::from_rgba_unmultiplied(74, 158, 255, quad_alpha),
+        color_alpha(t.rrg_improving, quad_alpha),
     );
 
     // ── Draw sector tails and dots ──

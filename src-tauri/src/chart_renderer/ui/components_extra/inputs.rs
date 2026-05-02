@@ -190,7 +190,7 @@ pub fn toggle_switch(ui: &mut Ui, state: &mut bool, accent: Color32, dim: Color3
         let track_color = if *state { color_alpha(accent, alpha_active()) } else { color_alpha(dim, alpha_dim()) };
         p.rect_filled(rect, cr, track_color);
         if !*state {
-            p.rect_stroke(rect, cr, Stroke::new(1.0, color_alpha(dim, alpha_muted())), egui::StrokeKind::Inside);
+            p.rect_stroke(rect, cr, Stroke::new(stroke_std(), color_alpha(dim, alpha_muted())), egui::StrokeKind::Inside);
         }
         let thumb_travel = track_w - thumb_d - pad * 2.0;
         let thumb_cx = rect.left() + pad + thumb_d / 2.0 + thumb_travel * t;
@@ -214,7 +214,7 @@ pub fn text_input_field(
     let focused = ui.memory(|m| m.has_focus(id));
     let border_color = if focused { color_alpha(accent, alpha_active()) } else { color_alpha(border, alpha_line()) };
     let frame = egui::Frame::NONE
-        .stroke(Stroke::new(1.0, border_color))
+        .stroke(Stroke::new(stroke_std(), border_color))
         .inner_margin(gap_sm())
         .corner_radius(radius_sm());
     let mut resp_opt: Option<Response> = None;
@@ -280,7 +280,7 @@ pub fn radio_button_row<T: PartialEq + Clone>(
             let resp = ui.add(
                 egui::Button::new(RichText::new(*label).monospace().size(font_sm()).strong().color(fg))
                     .fill(bg)
-                    .stroke(Stroke::new(1.0, border))
+                    .stroke(Stroke::new(stroke_std(), border))
                     .corner_radius(radius_sm())
                     .min_size(egui::vec2(0.0, 20.0)),
             );
