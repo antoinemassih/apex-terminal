@@ -192,7 +192,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY, COLOR_AMBER};
 use super::ui::style as style;
 use super::ui::widgets::foundation::text_style::TextStyle;
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
@@ -4166,7 +4166,7 @@ fn render_chart_pane(
             let outer = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(total_w, bar_h));
             p.rect_filled(outer, 3.0, t.bg.gamma_multiply(0.4));
             p.rect_stroke(outer, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Inside);
-            let mark_color = egui::Color32::from_rgb(220, 90, 90);
+            let mark_color = t.bear;
             for (idx, (label, is_mark)) in parts.iter().enumerate() {
                 let r = egui::Rect::from_min_size(
                     egui::pos2(x + part_w * idx as f32, y), egui::vec2(part_w, bar_h));
@@ -7694,7 +7694,7 @@ fn render_chart_pane(
             painter.text(
                 egui::pos2(gauge_x + 17.0, y + pill_h / 2.0), egui::Align2::LEFT_CENTER,
                 label, egui::FontId::monospace(8.5),
-                egui::Color32::from_rgb(180, 180, 190),
+                t.dim,
             );
             // Right: score
             painter.text(
@@ -7706,9 +7706,9 @@ fn render_chart_pane(
         // ── Trend Health ─────────────────────────────────────────────────
         if chart.show_trend_health && chart.trend_health_score > 0.0 {
             let th = chart.trend_health_score;
-            let th_color = if th > 70.0 { egui::Color32::from_rgb(56, 203, 137) }
-                else if th > 40.0 { egui::Color32::from_rgb(230, 186, 57) }
-                else { egui::Color32::from_rgb(224, 82, 82) };
+            let th_color = if th > 70.0 { t.bull }
+                else if th > 40.0 { COLOR_AMBER }
+                else { t.bear };
             let dir = match chart.trend_health_direction { 1 => "TH ▲", -1 => "TH ▼", _ => "TH ─" };
             draw_pill(&painter, gauge_y, dir, th, th_color);
             gauge_y += pill_h + 2.0;
@@ -7717,10 +7717,10 @@ fn render_chart_pane(
         // ── Exit Gauge ───────────────────────────────────────────────────
         if chart.show_exit_gauge && chart.exit_gauge_score > 0.0 {
             let eg = chart.exit_gauge_score;
-            let eg_color = if eg > 80.0 { egui::Color32::from_rgb(224, 50, 50) }
-                else if eg > 60.0 { egui::Color32::from_rgb(230, 140, 30) }
-                else if eg > 40.0 { egui::Color32::from_rgb(230, 200, 50) }
-                else { egui::Color32::from_rgb(56, 180, 100) };
+            let eg_color = if eg > 80.0 { t.bear }
+                else if eg > 60.0 { COLOR_AMBER }
+                else if eg > 40.0 { COLOR_AMBER }
+                else { t.bull };
             let label = if eg > 80.0 { "EXIT" } else if eg > 60.0 { "CLOSE" } else if eg > 40.0 { "TIGHT" } else { "HOLD" };
             draw_pill(&painter, gauge_y, label, eg, eg_color);
 
@@ -7729,7 +7729,7 @@ fn render_chart_pane(
                 let pulse = ((ctx.input(|i| i.time) * 3.0).sin() * 0.3 + 0.7) as f32;
                 painter.rect_stroke(
                     egui::Rect::from_min_size(egui::pos2(gauge_x - 1.0, gauge_y - 1.0), egui::vec2(pill_w + 2.0, pill_h + 2.0)),
-                    pill_r, egui::Stroke::new(1.0, color_alpha(egui::Color32::from_rgb(255, 60, 60), (pulse * 120.0) as u8)), egui::StrokeKind::Outside,
+                    pill_r, egui::Stroke::new(1.0, color_alpha(t.bear, (pulse * 120.0) as u8)), egui::StrokeKind::Outside,
                 );
                 ctx.request_repaint();
             }
@@ -7739,9 +7739,9 @@ fn render_chart_pane(
         // ── Precursor Badge ──────────────────────────────────────────────
         if chart.show_precursor && chart.precursor_active && chart.precursor_score > 30.0 {
             let pr_color = match chart.precursor_direction {
-                d if d > 0 => egui::Color32::from_rgb(56, 203, 137),
-                d if d < 0 => egui::Color32::from_rgb(224, 82, 82),
-                _ => egui::Color32::from_rgb(230, 186, 57),
+                d if d > 0 => t.bull,
+                d if d < 0 => t.bear,
+                _ => COLOR_AMBER,
             };
             let dir = if chart.precursor_direction > 0 { "PRE ▲" } else if chart.precursor_direction < 0 { "PRE ▼" } else { "PRE ?" };
             draw_pill(&painter, gauge_y, dir, chart.precursor_score, pr_color);
@@ -7765,18 +7765,18 @@ fn render_chart_pane(
         let card_rect = egui::Rect::from_min_size(egui::pos2(card_x, card_y), egui::vec2(card_w, card_h));
 
         // Card background
-        let bg = egui::Color32::from_rgba_unmultiplied(18, 18, 24, 230);
+        let bg = color_alpha(t.toolbar_bg, 230);
         painter.rect_filled(card_rect, 6.0, bg);
 
         // Top accent — amber warning stripe
-        let accent = egui::Color32::from_rgb(230, 186, 57);
+        let accent = COLOR_AMBER;
         painter.rect_filled(
             egui::Rect::from_min_size(egui::pos2(card_x, card_y), egui::vec2(card_w, 3.0)),
             egui::Rounding { nw: 6, ne: 6, sw: 0, se: 0 }, accent,
         );
 
         let text_x = card_x + 10.0;
-        let dim = egui::Color32::from_rgb(120, 120, 140);
+        let dim = t.dim;
         let bright = t.text;
 
         // Title
@@ -7788,10 +7788,10 @@ fn render_chart_pane(
         let y = card_y + 28.0;
         painter.text(egui::pos2(text_x, y), egui::Align2::LEFT_CENTER,
             format!("VIX spot:      {:.1}", chart.vix_spot),
-            egui::FontId::monospace(9.0), egui::Color32::from_rgb(224, 82, 82));
+            egui::FontId::monospace(9.0), t.bear);
         painter.text(egui::pos2(text_x, y + 13.0), egui::Align2::LEFT_CENTER,
             format!("Expiring fut:  {:.1}  ← settlement target", chart.vix_expiring_future),
-            egui::FontId::monospace(9.0), egui::Color32::from_rgb(56, 203, 137));
+            egui::FontId::monospace(9.0), t.bull);
         painter.text(egui::pos2(text_x, y + 26.0), egui::Align2::LEFT_CENTER,
             format!("Realized vol:  {:.1}%", chart.vix_realized_vol),
             egui::FontId::monospace(9.0), dim);
@@ -7808,9 +7808,7 @@ fn render_chart_pane(
         } else {
             "SIGNAL: VIX near fair value"
         };
-        let signal_color = if chart.vix_gap_pct > 20.0 {
-            egui::Color32::from_rgb(56, 203, 137)
-        } else { dim };
+        let signal_color = if chart.vix_gap_pct > 20.0 { t.bull } else { dim };
         painter.text(egui::pos2(text_x, y + 56.0), egui::Align2::LEFT_CENTER,
             signal_text, egui::FontId::monospace(8.5), signal_color);
 
@@ -7819,10 +7817,10 @@ fn render_chart_pane(
         let bar_w = card_w - 20.0;
         painter.rect_filled(
             egui::Rect::from_min_size(egui::pos2(text_x, bar_y), egui::vec2(bar_w, 8.0)),
-            4.0, egui::Color32::from_rgba_unmultiplied(40, 40, 50, 180),
+            4.0, color_alpha(t.toolbar_bg, 180),
         );
         let fill = bar_w * (chart.vix_convergence_score / 100.0).min(1.0);
-        let bar_color = if chart.vix_convergence_score > 70.0 { egui::Color32::from_rgb(56, 203, 137) }
+        let bar_color = if chart.vix_convergence_score > 70.0 { t.bull }
             else if chart.vix_convergence_score > 40.0 { accent }
             else { dim };
         painter.rect_filled(
@@ -7967,11 +7965,11 @@ fn render_chart_pane(
 
         // Price labels on the right edge (price axis)
         let price_axis_x = rect.right() + 2.0;
-        let label_bg = egui::Color32::from_rgba_unmultiplied(18, 18, 24, 220);
+        let label_bg = color_alpha(t.toolbar_bg, 220);
         for (price, y, color, label) in [
             (entry, entry_y, t.dim, ""),
-            (target, target_y, egui::Color32::from_rgb(56, 203, 137), "T"),
-            (stop, stop_y, egui::Color32::from_rgb(224, 82, 82), "S"),
+            (target, target_y, t.bull, "T"),
+            (stop, stop_y, t.bear, "S"),
         ] {
             if y > rect.top() && y < rect.bottom() {
                 let txt = if label.is_empty() { format!("{:.2}", price) } else { format!("{} {:.2}", label, price) };
@@ -7994,9 +7992,9 @@ fn render_chart_pane(
         let card_rect = egui::Rect::from_min_size(egui::pos2(card_x, card_y), egui::vec2(card_w, card_h));
 
         // Card background
-        painter.rect_filled(card_rect, 6.0, egui::Color32::from_rgba_unmultiplied(22, 22, 30, 230));
+        painter.rect_filled(card_rect, 6.0, color_alpha(t.toolbar_bg, 230));
         // Left accent stripe
-        let accent = if dir > 0 { egui::Color32::from_rgb(56, 203, 137) } else { egui::Color32::from_rgb(224, 82, 82) };
+        let accent = if dir > 0 { t.bull } else { t.bear };
         painter.rect_filled(
             egui::Rect::from_min_size(egui::pos2(card_x, card_y), egui::vec2(3.0, card_h)),
             egui::Rounding { nw: 6, sw: 6, ne: 0, se: 0 }, accent,
@@ -8009,11 +8007,11 @@ fn render_chart_pane(
         let move_pct = ((target - entry) / entry * 100.0).abs();
         painter.text(egui::pos2(card_x + 10.0, card_y + 24.0), egui::Align2::LEFT_CENTER,
             format!("R:R {:.1}  |  +{:.1}%  |  CVT {:.0}", rr, move_pct, conviction),
-            egui::FontId::monospace(8.0), egui::Color32::from_rgb(140, 140, 160));
+            egui::FontId::monospace(8.0), t.dim);
         // Entry → Target (third line)
         painter.text(egui::pos2(card_x + 10.0, card_y + 38.0), egui::Align2::LEFT_CENTER,
             format!("{:.2} → {:.2}  stop {:.2}", entry, target, stop),
-            egui::FontId::monospace(8.0), egui::Color32::from_rgb(110, 110, 130));
+            egui::FontId::monospace(8.0), t.dim.gamma_multiply(0.75));
     }
 
     // ── Periodic signal fetch (every 30s) ────────────────────────────────
@@ -8564,11 +8562,11 @@ fn render_chart_pane(
                             let mid_y = py(mid_price);
                             painter.rect_filled(egui::Rect::from_min_max(
                                 egui::pos2(rect.left(), tp_y.min(mid_y)), egui::pos2(rect.left() + cw, tp_y.max(mid_y))),
-                                0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 12));
+                                0.0, color_alpha(t.bull, 12));
                             // Red-tinted zone (loss zone: between midpoint and SL)
                             painter.rect_filled(egui::Rect::from_min_max(
                                 egui::pos2(rect.left(), sl_y.min(mid_y)), egui::pos2(rect.left() + cw, sl_y.max(mid_y))),
-                                0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 12));
+                                0.0, color_alpha(t.bear, 12));
                             // Vertical dotted connector line on right side of chart
                             let connector_x = rect.left() + cw - 20.0;
                             let top_y = y1.min(y2);
@@ -8586,10 +8584,10 @@ fn render_chart_pane(
                             // Small horizontal ticks at each end of the connector
                             painter.line_segment(
                                 [egui::pos2(connector_x - 4.0, tp_y), egui::pos2(connector_x + 4.0, tp_y)],
-                                egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 180)));
+                                egui::Stroke::new(1.0, color_alpha(t.bull, 180)));
                             painter.line_segment(
                                 [egui::pos2(connector_x - 4.0, sl_y), egui::pos2(connector_x + 4.0, sl_y)],
-                                egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 180)));
+                                egui::Stroke::new(1.0, color_alpha(t.bear, 180)));
                             // R:R ratio label at midpoint of connector
                             let reward = (target_order.price - mid_price).abs();
                             let risk = (stop_order.price - mid_price).abs();
@@ -8640,7 +8638,7 @@ fn render_chart_pane(
         if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
         let color = order.color(t.bull, t.bear);
         let is_draft = order.status == OrderStatus::Draft;
-        let dark = egui::Color32::from_rgb(10, 12, 16);
+        let dark = t.bg;
         let badge_h = 24.0;
 
         // Dashed line across full width
@@ -8722,9 +8720,9 @@ fn render_chart_pane(
         let x_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| x_rect.contains(p));
         let x_bg_alpha = if x_hovered { 160 } else { 80 };
         painter.rect_filled(x_rect, egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 },
-            egui::Color32::from_rgba_unmultiplied(180, 60, 60, x_bg_alpha));
+            color_alpha(t.bear, x_bg_alpha));
         painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, Icon::X, egui::FontId::monospace(9.0),
-            if x_hovered { egui::Color32::WHITE } else { egui::Color32::from_rgb(220, 100, 100) });
+            if x_hovered { egui::Color32::WHITE } else { t.bear });
         if x_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
         // Price label — outside badge, slightly above the line, right of badge
@@ -8797,10 +8795,10 @@ fn render_chart_pane(
             // Ticks
             painter.line_segment(
                 [egui::pos2(cx_x - 4.0, ty_y), egui::pos2(cx_x + 4.0, ty_y)],
-                egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 180)));
+                egui::Stroke::new(1.0, color_alpha(t.bull, 180)));
             painter.line_segment(
                 [egui::pos2(cx_x - 4.0, sy_y), egui::pos2(cx_x + 4.0, sy_y)],
-                egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 180)));
+                egui::Stroke::new(1.0, color_alpha(t.bear, 180)));
             // R:R label
             if let Some(ep) = entry_price {
                 let reward = (tp - ep).abs();
@@ -8845,7 +8843,7 @@ fn render_chart_pane(
             let kind_label = pl.kind.short();
             let price_d = if pl.price >= 10.0 { 2 } else { 4 };
             let price_str = format!("{:.1$}", pl.price, price_d);
-            let dark = egui::Color32::from_rgb(10, 12, 16);
+            let dark = t.bg;
             let badge_h = 20.0;
 
             let kind_w = if kind_label.len() > 1 { 24.0 } else { 18.0 };
@@ -8965,8 +8963,8 @@ fn render_chart_pane(
     // Click hitboxes for PLACE/X are stashed in thread-locals and handled in
     // the same priority-0 block that processes other overlay clicks.
     {
-        let placed_color = egui::Color32::from_rgb(255, 191, 0); // amber = placed
-        let draft_color  = egui::Color32::from_rgb(230, 80, 80); // red = draft (needs attention)
+        let placed_color = COLOR_AMBER; // amber = placed
+        let draft_color  = t.bear; // red = draft (needs attention)
         let hover_pos = ui.input(|i| i.pointer.hover_pos());
         ALERT_BADGE_HITS.with(|h| h.borrow_mut().clear());
         let alert_ids: Vec<u32> = chart.price_alerts.iter()
@@ -9033,7 +9031,7 @@ fn render_chart_pane(
                 let badge_rect = egui::Rect::from_min_size(egui::pos2(lx, y - badge_h / 2.0), egui::vec2(badge_w, badge_h));
                 painter.rect_filled(badge_rect, 4.0, alert_color);
                 painter.rect_stroke(badge_rect, 4.0,
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 40, 40)), egui::StrokeKind::Outside);
+                    egui::Stroke::new(1.0, t.bear), egui::StrokeKind::Outside);
                 painter.text(egui::pos2(lx + pad, y), egui::Align2::LEFT_CENTER, &label_text, label_font, egui::Color32::WHITE);
 
                 // PLACE button
@@ -9044,7 +9042,7 @@ fn render_chart_pane(
                 let place_bg = if place_hover { egui::Color32::WHITE }
                     else { egui::Color32::from_rgba_unmultiplied(255, 255, 255, 230) };
                 painter.rect_filled(place_rect, 3.0, place_bg);
-                let place_fg = if place_hover { alert_color } else { egui::Color32::from_rgb(180, 40, 40) };
+                let place_fg = if place_hover { alert_color } else { t.bear };
                 painter.text(place_rect.center(), egui::Align2::CENTER_CENTER, "PLACE", egui::FontId::monospace(9.0), place_fg);
 
                 // X cancel
@@ -9447,7 +9445,7 @@ fn render_chart_pane(
                                 ui.painter().rect_filled(rr, 0.0, bg);
                                 if has_buy { ui.painter().rect_filled(rr, 0.0, color_alpha(t.bull, 25)); }
                                 if has_sell { ui.painter().rect_filled(rr, 0.0, color_alpha(t.bear, 25)); }
-                                if is_entry { ui.painter().rect_stroke(rr, 0.0, egui::Stroke::new(1.0, color_alpha(egui::Color32::from_rgb(255, 200, 50), 150)), egui::StrokeKind::Inside); }
+                                if is_entry { ui.painter().rect_stroke(rr, 0.0, egui::Stroke::new(1.0, color_alpha(COLOR_AMBER, 150)), egui::StrokeKind::Inside); }
                                 let col_w = (panel_w - 8.0) / 3.0;
                                 let bc = if rh { t.bull } else { t.bull.gamma_multiply(0.6) };
                                 let bbg = if rh { color_alpha(t.bull, 15) } else { egui::Color32::TRANSPARENT };
@@ -10660,7 +10658,7 @@ fn render_chart_pane(
                             if rvol > 1.5 {
                                 painter.text(egui::pos2(hdr_rect.right() - 10.0, hy + 14.0), egui::Align2::RIGHT_CENTER,
                                     &format!("{:.1}x vol", rvol), hdr_med.clone(),
-                                    if rvol > 2.5 { egui::Color32::from_rgb(255, 193, 37) } else { color_alpha(t.text,160) });
+                                    if rvol > 2.5 { COLOR_AMBER } else { color_alpha(t.text,160) });
                             }
 
                             // Row 2: Volume concentration (visual bar) + POC price
@@ -10675,7 +10673,7 @@ fn render_chart_pane(
                             painter.text(egui::pos2(conc_bar_x + conc_bar_w + 6.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
                                 &format!("Upper {:.0}%  Lower {:.0}%", upper_pct, 100.0 - upper_pct), hdr_sm.clone(), color_alpha(t.text,130));
                             painter.text(egui::pos2(hx + 320.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
-                                &format!("POC {:.2}", fp_levels[poc_idx].price), hdr_med.clone(), egui::Color32::from_rgb(255, 193, 37));
+                                &format!("POC {:.2}", fp_levels[poc_idx].price), hdr_med.clone(), COLOR_AMBER);
 
                             // Row 3: Insight tags (larger, pill-shaped)
                             let mut tag_x = hx;
@@ -10692,7 +10690,7 @@ fn render_chart_pane(
                                 painter.text(egui::pos2(*x + tw / 2.0, tag_y), egui::Align2::CENTER_CENTER, label, tag_font, col);
                                 *x += tw + 6.0;
                             };
-                            if exhaustion { draw_tag(&painter, &mut tag_x, "EXHAUSTION", egui::Color32::from_rgb(255, 160, 50)); }
+                            if exhaustion { draw_tag(&painter, &mut tag_x, "EXHAUSTION", COLOR_AMBER); }
                             if trapped { draw_tag(&painter, &mut tag_x, "TRAPPED", egui::Color32::from_rgb(200, 100, 200)); }
                             if let Some((label, _, col)) = wick_insight { draw_tag(&painter, &mut tag_x, label, col); }
                             // Imbalance tags
@@ -10739,11 +10737,11 @@ fn render_chart_pane(
                                 let is_max_buy = li == max_buy_idx && info.delta > 0.0;
                                 let is_max_sell = li == max_sell_idx && info.delta < 0.0;
                                 let card_border = if is_poc {
-                                    egui::Color32::from_rgba_unmultiplied(255, 193, 37, 120) // gold
+                                    color_alpha(COLOR_AMBER, 120)
                                 } else if is_max_buy {
-                                    egui::Color32::from_rgba_unmultiplied(46, 204, 113, 80)
+                                    color_alpha(t.bull, 80)
                                 } else if is_max_sell {
-                                    egui::Color32::from_rgba_unmultiplied(231, 76, 60, 80)
+                                    color_alpha(t.bear, 80)
                                 } else {
                                     color_alpha(t.toolbar_border, 40)
                                 };
@@ -10765,7 +10763,7 @@ fn render_chart_pane(
                                 // Tag badge (POC / BUY / SELL / ABS) — right-aligned on line 1
                                 let absorption = info.vol > bar_data.volume / num_levels as f32 * 1.3 && info.delta.abs() < info.vol * 0.15;
                                 let (tag_text, tag_col) = if is_poc {
-                                    ("POC", egui::Color32::from_rgb(255, 193, 37))
+                                    ("POC", COLOR_AMBER)
                                 } else if is_max_buy && info.delta > 0.0 {
                                     ("BUY", t.bull)
                                 } else if is_max_sell && info.delta < 0.0 {
@@ -10793,9 +10791,9 @@ fn render_chart_pane(
                                 let sell_bar_w = bar_total_w * (1.0 - buy_frac);
                                 let buy_bar_w = bar_total_w * buy_frac;
                                 painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, bar_y), egui::vec2(sell_bar_w, bar_h)),
-                                    3.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 150));
+                                    3.0, color_alpha(t.bear, 150));
                                 painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx + sell_bar_w, bar_y), egui::vec2(buy_bar_w, bar_h)),
-                                    3.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 150));
+                                    3.0, color_alpha(t.bull, 150));
                                 // Sell/Buy labels inside the bars (if wide enough)
                                 if sell_bar_w > 30.0 {
                                     painter.text(egui::pos2(cx + sell_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
@@ -10923,7 +10921,7 @@ fn render_chart_pane(
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 (t.bg.gamma_multiply(0.55), if active { t.accent } else { t.text })
             } else if has_overlays {
-                (t.bg.gamma_multiply(0.4), egui::Color32::from_rgb(190, 190, 200))
+                (t.bg.gamma_multiply(0.4), t.dim)
             } else {
                 (t.bg.gamma_multiply(0.4), t.dim.gamma_multiply(0.85))
             };
@@ -10950,7 +10948,7 @@ fn render_chart_pane(
             // Subtle frame
             p.rect_filled(outer, 3.0, t.bg.gamma_multiply(0.4));
             p.rect_stroke(outer, 3.0, egui::Stroke::new(0.5, t.toolbar_border), egui::StrokeKind::Inside);
-            let mark_color = egui::Color32::from_rgb(220, 90, 90); // red-ish accent for MARK
+            let mark_color = t.bear; // red-ish accent for MARK
             for (idx, (label, is_mark)) in parts.iter().enumerate() {
                 let r = egui::Rect::from_min_size(
                     egui::pos2(x + part_w * idx as f32, y), egui::vec2(part_w, seg_h));
@@ -11799,8 +11797,8 @@ fn render_chart_pane(
         } else {
             if let Some(pos) = hover_pos {
                 let zr = egui::Rect::from_two_pos(chart.zoom_start, pos);
-                painter.rect_filled(zr, 0.0, egui::Color32::from_rgba_unmultiplied(110,190,255,20));
-                painter.rect_stroke(zr, 0.0, egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(110,190,255,180)), egui::StrokeKind::Outside);
+                painter.rect_filled(zr, 0.0, color_alpha(t.accent, 20));
+                painter.rect_stroke(zr, 0.0, egui::Stroke::new(1.0, color_alpha(t.accent, 180)), egui::StrokeKind::Outside);
             }
             if resp.clicked() || resp.drag_stopped() {
                 if let Some(pos) = hover_pos {
@@ -12602,8 +12600,8 @@ fn render_chart_pane(
                     let dim = t.dim.gamma_multiply(0.5);
 
                     // Score bar
-                    let score_color = if sig.score >= 7.0 { egui::Color32::from_rgb(255, 180, 40) }
-                        else if sig.score >= 5.0 { egui::Color32::from_rgb(46, 204, 113) }
+                    let score_color = if sig.score >= 7.0 { COLOR_AMBER }
+                        else if sig.score >= 5.0 { t.bull }
                         else if sig.score >= 3.0 { t.accent }
                         else { t.dim.gamma_multiply(0.6) };
                     painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Score", label_font.clone(), dim);
@@ -12618,9 +12616,9 @@ fn render_chart_pane(
 
                     // Strength badge
                     let str_color = match sig.strength.as_str() {
-                        "CRITICAL" => egui::Color32::from_rgb(255, 60, 60),
-                        "STRONG" => egui::Color32::from_rgb(255, 180, 40),
-                        "MODERATE" => egui::Color32::from_rgb(46, 204, 113),
+                        "CRITICAL" => t.bear,
+                        "STRONG" => COLOR_AMBER,
+                        "MODERATE" => t.bull,
                         _ => t.dim,
                     };
                     painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Strength", label_font.clone(), dim);
@@ -12629,25 +12627,25 @@ fn render_chart_pane(
 
                     // Touches
                     painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Touches", label_font.clone(), dim);
-                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &format!("{}", sig.touches), value_font.clone(), egui::Color32::from_rgb(210, 210, 220));
+                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &format!("{}", sig.touches), value_font.clone(), t.dim);
                     ly += 13.0;
 
                     // Volume Index
                     painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Vol Idx", label_font.clone(), dim);
-                    let vi_color = if sig.volume_index > 1.5 { egui::Color32::from_rgb(255, 180, 40) } else { egui::Color32::from_rgb(210, 210, 220) };
+                    let vi_color = if sig.volume_index > 1.5 { COLOR_AMBER } else { t.dim };
                     painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &format!("{:.1}x", sig.volume_index), value_font.clone(), vi_color);
                     ly += 13.0;
 
                     // Last Tested
                     painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Tested", label_font.clone(), dim);
                     let test_str = if sig.last_tested_bars == 0 { "now".to_string() } else { format!("{} bars ago", sig.last_tested_bars) };
-                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &test_str, value_font.clone(), egui::Color32::from_rgb(210, 210, 220));
+                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &test_str, value_font.clone(), t.dim);
                     ly += 13.0;
 
                     // Age
                     painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, "Age", label_font.clone(), dim);
                     let age_str = if sig.age_days == 0 { "< 1 day".to_string() } else { format!("{} days", sig.age_days) };
-                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &age_str, value_font.clone(), egui::Color32::from_rgb(210, 210, 220));
+                    painter.text(egui::pos2(lx + 60.0, ly), egui::Align2::LEFT_CENTER, &age_str, value_font.clone(), t.dim);
 
                     // Timeframe (if set by backend)
                     if !sig.timeframe.is_empty() {
@@ -12846,7 +12844,7 @@ fn render_chart_pane(
             ui.close_menu();
         }
         // OCO Bracket (simple) — routed through IB native OCO API
-        if ui.button(egui::RichText::new(format!("\u{21C5} OCO Bracket")).color(egui::Color32::from_rgb(167,139,250))).clicked() {
+        if ui.button(egui::RichText::new(format!("\u{21C5} OCO Bracket")).color(t.accent)).clicked() {
             use super::trading::order_manager::*;
             let target_price = click_price * 1.01;
             let stop_price = click_price * 0.99;
@@ -12878,7 +12876,7 @@ fn render_chart_pane(
             ui.close_menu();
         }
         // Bracket presets submenu
-        ui.menu_button(egui::RichText::new(format!("\u{21C5} Bracket Presets \u{25BA}")).color(egui::Color32::from_rgb(167,139,250)), |ui| {
+        ui.menu_button(egui::RichText::new(format!("\u{21C5} Bracket Presets \u{25BA}")).color(t.accent), |ui| {
             let templates = chart.bracket_templates.clone();
             let mut delete_idx: Option<usize> = None;
             for (ti, tmpl) in templates.iter().enumerate() {
@@ -12964,7 +12962,7 @@ fn render_chart_pane(
             ui.close_menu();
         }
         if !chart.orders.is_empty() {
-            if ui.button(egui::RichText::new(format!("{} Cancel All Orders", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Cancel All Orders", Icon::TRASH)).color(t.bear)).clicked() {
                 super::trading::order_manager::cancel_all_orders(&chart.symbol);
                 chart.orders.clear(); ui.close_menu();
             }
@@ -12972,7 +12970,7 @@ fn render_chart_pane(
         // ── Play lines (when editor active) ──
         if !chart.play_lines.is_empty() {
             ui.separator();
-            ui.label(egui::RichText::new("PLAY LEVELS").small().color(egui::Color32::from_rgb(100, 140, 255)));
+            ui.label(egui::RichText::new("PLAY LEVELS").small().color(t.accent));
             if ui.button(format!("\u{2295} Set Entry @ {:.2}", click_price)).clicked() {
                 if let Some(pl) = chart.play_lines.iter_mut().find(|l| l.kind == super::PlayLineKind::Entry) {
                     pl.price = click_price;
@@ -13279,7 +13277,7 @@ fn render_chart_pane(
         // ── DELETE section ──
         // ══════════════════════════════════════════════════════
         if !chart.selected_ids.is_empty() {
-            if ui.button(egui::RichText::new(format!("{} Delete Selected ({})", Icon::TRASH, chart.selected_ids.len())).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Delete Selected ({})", Icon::TRASH, chart.selected_ids.len())).color(t.bear)).clicked() {
                 let ids = chart.selected_ids.clone();
                 for d in chart.drawings.iter().filter(|d| ids.contains(&d.id)) {
                     if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
@@ -13293,7 +13291,7 @@ fn render_chart_pane(
             }
         }
         if !chart.drawings.is_empty() {
-            if ui.button(egui::RichText::new(format!("{} Delete All Drawings", Icon::TRASH)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Delete All Drawings", Icon::TRASH)).color(t.bear)).clicked() {
                 for d in &chart.drawings {
                     if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                     chart.undo_stack.push(DrawingAction::Remove(d.clone()));
@@ -13307,7 +13305,7 @@ fn render_chart_pane(
         }
         let temp_count = chart.drawings.iter().filter(|d| d.group_id == "default").count();
         if temp_count > 0 {
-            if ui.button(egui::RichText::new(format!("{} Delete Temp Drawings ({})", Icon::TRASH, temp_count)).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Delete Temp Drawings ({})", Icon::TRASH, temp_count)).color(t.bear)).clicked() {
                 let to_remove: Vec<String> = chart.drawings.iter().filter(|d| d.group_id == "default").map(|d| d.id.clone()).collect();
                 for id in &to_remove { crate::drawing_db::remove(id); }
                 chart.drawings.retain(|d| d.group_id != "default");
@@ -13316,7 +13314,7 @@ fn render_chart_pane(
             }
         }
         ui.menu_button(format!("{} Delete \u{25BA}", Icon::TRASH), |ui| {
-            let red = egui::Color32::from_rgb(224,85,96);
+            let red = t.bear;
 
             // Drawings
             ui.label(egui::RichText::new("DRAWINGS").small().color(t.dim));
@@ -13571,7 +13569,7 @@ fn render_chart_pane(
                                 ui.add(egui::Separator::default().spacing(6.0));
 
                                 // Delete
-                                if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(11.0).color(egui::Color32::from_rgb(224,85,96))).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(11.0).color(t.bear)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
                                     if let Some(d) = chart.drawings.iter().find(|d| d.id == sel_id) {
                                         chart.undo_stack.push(DrawingAction::Remove(d.clone()));
                                     }
@@ -13585,7 +13583,7 @@ fn render_chart_pane(
                                 // Alert bell toggle
                                 ui.add(egui::Separator::default().spacing(4.0));
                                 let has_alert = sel_draw.alert_enabled;
-                                let bell_col = if has_alert { egui::Color32::from_rgb(255, 193, 37) } else { dim };
+                                let bell_col = if has_alert { COLOR_AMBER } else { dim };
                                 let bell_label = if has_alert { "\u{1F514} ON" } else { "\u{1F514}" };
                                 if ui.add(egui::Button::new(egui::RichText::new(bell_label).monospace().size(9.0).color(bell_col)).fill(egui::Color32::TRANSPARENT)).clicked() {
                                     if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
