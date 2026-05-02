@@ -1,0 +1,317 @@
+[font]
+xxs = 7.0
+xs = 8.0
+sm_tight = 9.0
+sm = 10.0
+md = 11.0
+input = 12.0
+lg = 13.0
+xl = 14.0
+xxl = 15.0
+display = 28.0
+display_lg = 36.0
+
+[spacing]
+xs = 2.0
+sm = 4.0
+md = 6.0
+lg = 8.0
+xl = 10.0
+xxl = 12.0
+xxxl = 20.0
+
+[radius]
+xs = 2.0
+sm = 3.0
+md = 4.0
+lg = 8.0
+
+[stroke]
+hair = 0.30000001192092896
+thin = 0.5
+std = 1.0
+bold = 1.5
+thick = 2.0
+heavy = 2.5
+xheavy = 5.0
+
+[alpha]
+faint = 10
+ghost = 15
+soft = 20
+subtle = 25
+tint = 30
+muted = 40
+line = 50
+dim = 60
+strong = 80
+active = 100
+heavy = 120
+
+[shadow]
+offset = 2.0
+alpha = 60
+spread = 4.0
+gradient = [
+    20,
+    12,
+    4,
+]
+
+[toolbar]
+height = 36.0
+height_compact = 28.0
+btn_min_height = 24.0
+btn_padding_x = 7.0
+right_controls_width = 150.0
+
+[panel]
+margin_x = 10.0
+margin_top = 10.0
+margin_bottom = 8.0
+compact_margin_x = 8.0
+compact_margin_top = 8.0
+compact_margin_bottom = 6.0
+width_sm = 240.0
+width_md = 260.0
+width_default = 280.0
+width_lg = 300.0
+width_xl = 320.0
+order_width_compact = 230.0
+order_width_advanced = 300.0
+tooltip_width_sm = 160.0
+tooltip_width_md = 220.0
+content_width_lg = 520.0
+content_width_xl = 680.0
+
+[dialog]
+header_darken = 8
+header_padding_x = 10.0
+header_padding_y = 8.0
+section_indent = 10.0
+
+[button]
+action_height = 24.0
+trade_height = 30.0
+small_height = 18.0
+simple_height = 20.0
+trade_brightness = 0.550000011920929
+trade_hover_brightness = 0.699999988079071
+
+[card]
+margin_left = 9
+margin_right = 6
+margin_y = 5
+radius = 4.0
+stripe_width = 3.0
+width_sm = 200.0
+width_md = 240.0
+height_sm = 48.0
+height_md = 52.0
+height_lg = 120.0
+
+[badge]
+font_size = 8.0
+height = 16.0
+
+[tab]
+underline_thickness = 2.0
+close_width = 14.0
+padding_x = 10.0
+add_width = 44.0
+
+[table]
+header_height = 12.0
+row_height = 20.0
+row_height_compact = 18.0
+item_height = 36.0
+interact_height = 22.0
+
+[chart]
+right_pad_bars = 20
+padding_bottom = 30.0
+padding_top = 4.0
+padding_right = 80.0
+replay_height = 28.0
+replay_progress_height = 6.0
+pnl_strip_height = 60.0
+pnl_header_height = 68.0
+style_bar_width = 480.0
+
+[watchlist]
+row_width = 236.0
+strip_width = 50.0
+strip_width_narrow = 14.0
+
+[order_entry]
+padding = 8.0
+pill_width_sm = 90.0
+pill_width_md = 130.0
+pill_height = 22.0
+
+[pane_header]
+height_compact = 28.0
+height = 36.0
+
+[segmented]
+trough_darken = 12
+trough_expand_x = 4.0
+btn_padding_x = 7.0
+btn_min_height = 24.0
+
+[icon_button]
+icon_padding = 5.0
+min_size = 26.0
+
+[form]
+label_width = 80.0
+row_height = 18.0
+
+[split_divider]
+height = 6.0
+dot_spacing = 8.0
+dot_radius = 1.5
+dot_count = 3
+active_stroke = 2.0
+inactive_stroke = 1.0
+inset = 8.0
+
+[tooltip]
+corner_radius = 8.0
+padding = 8.0
+stat_label_size = 8.0
+stat_value_size = 10.0
+
+[separator]
+after_space = 1.0
+shadow_space = 4.0
+
+[color]
+text_primary = [
+    220,
+    220,
+    230,
+    255,
+]
+text_secondary = [
+    200,
+    200,
+    210,
+    255,
+]
+text_dim = [
+    180,
+    180,
+    195,
+    255,
+]
+text_on_accent = [
+    255,
+    255,
+    255,
+    255,
+]
+amber = [
+    255,
+    191,
+    0,
+    255,
+]
+earnings = [
+    255,
+    193,
+    37,
+    255,
+]
+paper_orange = [
+    255,
+    165,
+    0,
+    255,
+]
+live_green = [
+    46,
+    204,
+    113,
+    255,
+]
+danger = [
+    224,
+    85,
+    96,
+    255,
+]
+triggered_red = [
+    231,
+    76,
+    60,
+    255,
+]
+dark_pool = [
+    180,
+    100,
+    255,
+    255,
+]
+info_blue = [
+    100,
+    200,
+    255,
+    255,
+]
+discord = [
+    88,
+    101,
+    242,
+    255,
+]
+dialog_fill = [
+    26,
+    26,
+    32,
+    255,
+]
+dialog_border = [
+    60,
+    60,
+    70,
+    80,
+]
+deep_bg = [
+    10,
+    12,
+    16,
+    255,
+]
+deep_bg_alt = [
+    12,
+    14,
+    18,
+    255,
+]
+pane_tints = [
+    [
+    62,
+    120,
+    180,
+    30,
+],
+    [
+    180,
+    100,
+    255,
+    30,
+],
+    [
+    46,
+    204,
+    113,
+    30,
+],
+    [
+    255,
+    191,
+    0,
+    30,
+],
+]

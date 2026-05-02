@@ -157,7 +157,15 @@ pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let st = current();
     // Apply uppercase transform per active style (#5).
-    let display_label = style_label_case(label);
+    let raw_label = style_label_case(label);
+    // Apply nav letter-spacing approximation via thin-spaces (U+2009).
+    let nav_sp = st.nav_letter_spacing_px;
+    let display_label = if nav_sp < 0.5 {
+        raw_label
+    } else {
+        let sep = if nav_sp > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
+        raw_label.chars().map(|c| c.to_string()).collect::<Vec<_>>().join(sep)
+    };
     let corner_r = st.r_sm as f32;
 
     // Resolve active fill/text from style overrides or fallback to accent.
@@ -201,9 +209,10 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
             egui::pos2(btn_rect.right(), tb.bottom()),
         );
         // Paint column tint in Background layer so button draws on top.
+        // nav_active_col_alpha controls the column tint alpha for the active nav button.
         let bg_painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("tb_btn_col_bg")));
         let col_tint = if active {
-            color_alpha(toolbar_border, alpha_tint())
+            color_alpha(toolbar_border, st.nav_active_col_alpha.max(alpha_ghost()))
         } else if ui.rect_contains_pointer(btn_rect) {
             color_alpha(dim, alpha_ghost())
         } else {
@@ -406,10 +415,14 @@ pub fn dialog_section(ui: &mut egui::Ui, text: &str, margin: f32, color: Color32
 // ─── Labels ───────────────────────────────────────────────────────────────────
 
 /// Section header — FONT_SM bold. Uppercases label when the active style requires it (#12).
+/// Adds `section_label_padding_top` space before and `section_label_padding_bottom` after.
 #[inline]
 pub fn section_label(ui: &mut egui::Ui, text: &str, color: Color32) {
+    let st = current();
+    if st.section_label_padding_top > 0.0 { ui.add_space(st.section_label_padding_top); }
     let label = style_label_case(text);
     ui.label(RichText::new(label).monospace().size(7.0).strong().color(color));
+    if st.section_label_padding_bottom > 0.0 { ui.add_space(st.section_label_padding_bottom); }
 }
 
 /// Extra-small section label — dim monospace at 6 pt, uppercase when style requires (#12).
@@ -653,10 +666,14 @@ pub fn form_row(ui: &mut egui::Ui, label: &str, label_width: f32, dim: Color32, 
 
 /// Status badge — small tinted pill (e.g. "DRAFT", "PLACED", "TRIGGERED").
 pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
+    // r_chip overrides r_sm for badges/chips when non-zero; allows pill chips alongside
+    // square buttons on the same style.
+    let st = current();
+    let chip_r = if st.r_chip > 0 { st.r_chip as f32 } else { radius_sm() };
     let resp = ui.add(egui::Button::new(RichText::new(text).monospace().size(crate::dt_f32!(badge.font_size, 8.0)).strong().color(color))
         .fill(color_alpha(color, alpha_subtle()))
         .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
-        .corner_radius(radius_sm())
+        .corner_radius(chip_r)
         .min_size(egui::vec2(0.0, crate::dt_f32!(badge.height, 16.0))));
     hit(&resp.rect, "BADGE", "Badges");
 }
@@ -678,7 +695,8 @@ pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: 
             let stripe = egui::Rect::from_min_max(
                 egui::pos2(outer.left() - ml as f32, outer.top() - my as f32),
                 egui::pos2(outer.left() - ml as f32 + crate::dt_f32!(card.stripe_width, 3.0), outer.bottom() + my as f32));
-            ui.painter().rect_filled(stripe, egui::CornerRadius { nw: cr as u8, sw: cr as u8, ne: 0, se: 0 }, accent);
+            let stripe_col = color_alpha(accent, current().card_stripe_alpha);
+            ui.painter().rect_filled(stripe, egui::CornerRadius { nw: cr as u8, sw: cr as u8, ne: 0, se: 0 }, stripe_col);
             add_content(ui);
         });
     let card_rect = resp.response.rect;
@@ -843,10 +861,14 @@ pub fn split_divider(ui: &mut egui::Ui, _id_salt: &str, dim: Color32) -> f32 {
     let p = ui.painter();
 
     let active = resp.hovered() || resp.dragged();
-    let color = if active { dim.gamma_multiply(0.6) } else { color_alpha(dim, alpha_faint()) };
+    let st_dh = current();
+    let handle_alpha_mult = if active { 1.0 } else { st_dh.drag_handle_alpha };
+    let color = if active { dim.gamma_multiply(0.6) } else {
+        color_alpha(dim, (alpha_faint() as f32 * (handle_alpha_mult / 0.5).min(1.0)) as u8)
+    };
 
     // Active drag handle uses stroke_thick from the style preset for a prominent feel.
-    let effective_active_sw = current().stroke_thick.max(active_sw);
+    let effective_active_sw = st_dh.stroke_thick.max(active_sw);
     p.line_segment(
         [egui::pos2(rect.left() + inset, rect.center().y),
          egui::pos2(rect.right() - inset, rect.center().y)],
@@ -855,8 +877,9 @@ pub fn split_divider(ui: &mut egui::Ui, _id_salt: &str, dim: Color32) -> f32 {
     if active {
         let cy = rect.center().y;
         let cx = rect.center().x;
+        let scaled_dot_r = dot_r * st_dh.drag_handle_dot_scale;
         for dx in [-dot_sp, 0.0, dot_sp] {
-            p.circle_filled(egui::pos2(cx + dx, cy), dot_r, dim.gamma_multiply(0.4));
+            p.circle_filled(egui::pos2(cx + dx, cy), scaled_dot_r, dim.gamma_multiply(0.4));
         }
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
     }
@@ -1001,6 +1024,44 @@ pub struct StyleSettings {
     pub cta_height_px: f32,
     /// Horizontal padding for the primary CTA button in px. Meridien: 16, others: 12.
     pub cta_padding_x: f32,
+
+    // ── New knobs added in design-pass 2 ─────────────────────────────────────
+
+    /// Pane gap fill color alpha (0-255). 0 = transparent (gap shows bg).
+    /// Controls the visible color of the gutter between panes.
+    /// Meridien: 0 (flush), Aperture: 30, Octave: 15.
+    pub pane_gap_alpha: u8,
+    /// Pane active indicator: 0=none, 1=top border line, 2=header fill, 3=both.
+    /// Meridien: 1, Aperture: 2, Octave: 3.
+    pub pane_active_indicator: u8,
+    /// Toolbar nav background alpha for active button column tint.
+    /// Meridien: 18, Aperture: 0 (none), Octave: 25.
+    pub nav_active_col_alpha: u8,
+    /// Alpha for the dialog/popup backdrop overlay (0-255). 0 = no backdrop.
+    pub dialog_backdrop_alpha: u8,
+    /// Tab inactive text alpha multiplier (0.0-1.0). 0.5 = dimmed, 1.0 = full.
+    pub tab_inactive_alpha: f32,
+    /// Tab hover background alpha (0-255). Applied when hovering an inactive tab.
+    pub tab_hover_bg_alpha: u8,
+    /// Section label top padding in px (space above eyebrow labels).
+    pub section_label_padding_top: f32,
+    /// Section label bottom padding in px (space below eyebrow labels before content).
+    pub section_label_padding_bottom: f32,
+    /// Input border focus color override. None = use accent.
+    pub input_focus_color: Option<Color32>,
+    /// Pane gap (gutter) fill color override. None = use toolbar_border at pane_gap_alpha.
+    pub pane_gap_color: Option<Color32>,
+    /// Drag handle (split divider) color alpha multiplier (0.0-1.0).
+    pub drag_handle_alpha: f32,
+    /// Drag handle dot size multiplier (0.5-2.0). 1.0 = default.
+    pub drag_handle_dot_scale: f32,
+    /// Toast / status-bar background alpha (0-255).
+    pub toast_bg_alpha: u8,
+    /// Stripe/accent-banner fill alpha for order/alert cards (0-255).
+    pub card_stripe_alpha: u8,
+    /// Pill / chip border radius separate from r_sm. 0 = use r_sm.
+    /// When non-zero, overrides r_sm for badge/chip corners specifically.
+    pub r_chip: u8,
 }
 
 // Active style selection — set once at the top of each draw_chart frame
@@ -1075,6 +1136,14 @@ fn style_defaults(id: u8) -> StyleSettings {
             tab_underline_under_text: false, card_floating_shadow: false,
             card_floating_shadow_alpha: 0, segmented_idle_fill: None, segmented_idle_text: None,
             cta_height_px: 40.0, cta_padding_x: 12.0,
+            pane_gap_alpha: 30, pane_active_indicator: 2,
+            nav_active_col_alpha: 0, dialog_backdrop_alpha: 0,
+            tab_inactive_alpha: 0.55, tab_hover_bg_alpha: 18,
+            section_label_padding_top: 6.0, section_label_padding_bottom: 2.0,
+            input_focus_color: None, pane_gap_color: None,
+            drag_handle_alpha: 0.7, drag_handle_dot_scale: 1.0,
+            toast_bg_alpha: 200, card_stripe_alpha: 255,
+            r_chip: 0,
         },
         2 => StyleSettings {
             r_xs: 1, r_sm: 2, r_md: 3, r_lg: 4, r_pill: 99,
@@ -1104,6 +1173,14 @@ fn style_defaults(id: u8) -> StyleSettings {
             tab_underline_under_text: false, card_floating_shadow: false,
             card_floating_shadow_alpha: 0, segmented_idle_fill: None, segmented_idle_text: None,
             cta_height_px: 32.0, cta_padding_x: 12.0,
+            pane_gap_alpha: 15, pane_active_indicator: 3,
+            nav_active_col_alpha: 25, dialog_backdrop_alpha: 0,
+            tab_inactive_alpha: 0.5, tab_hover_bg_alpha: 20,
+            section_label_padding_top: 3.0, section_label_padding_bottom: 1.0,
+            input_focus_color: None, pane_gap_color: None,
+            drag_handle_alpha: 0.6, drag_handle_dot_scale: 0.85,
+            toast_bg_alpha: 220, card_stripe_alpha: 255,
+            r_chip: 0,
         },
         _ => StyleSettings {
             r_xs: 0, r_sm: 0, r_md: 0, r_lg: 0, r_pill: 0,
@@ -1134,6 +1211,14 @@ fn style_defaults(id: u8) -> StyleSettings {
             tab_underline_under_text: true, card_floating_shadow: true,
             card_floating_shadow_alpha: 25, segmented_idle_fill: None, segmented_idle_text: None,
             cta_height_px: 36.0, cta_padding_x: 16.0,
+            pane_gap_alpha: 0, pane_active_indicator: 1,
+            nav_active_col_alpha: 18, dialog_backdrop_alpha: 0,
+            tab_inactive_alpha: 0.6, tab_hover_bg_alpha: 12,
+            section_label_padding_top: 4.0, section_label_padding_bottom: 2.0,
+            input_focus_color: None, pane_gap_color: None,
+            drag_handle_alpha: 0.5, drag_handle_dot_scale: 1.0,
+            toast_bg_alpha: 230, card_stripe_alpha: 255,
+            r_chip: 0,
         },
     }
 }
@@ -1294,7 +1379,15 @@ pub fn tb_group_break(ui: &mut egui::Ui, panel_rect: egui::Rect, border: egui::C
 /// This is a visual approximation; the effective gap depends on font rendering.
 pub fn style_label_case(s: &str) -> String {
     let st = current();
-    if st.uppercase_section_labels { s.to_uppercase() } else { s.to_string() }
+    let base = if st.uppercase_section_labels { s.to_uppercase() } else { s.to_string() };
+    // Apply letter-spacing approximation via Unicode thin-spaces (U+2009).
+    let sp = st.label_letter_spacing_px;
+    if sp < 0.5 {
+        base
+    } else {
+        let sep = if sp > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
+        base.chars().map(|c| c.to_string()).collect::<Vec<_>>().join(sep)
+    }
 }
 
 /// Returns a `FontId` appropriate for hero numerics — serif when the active
@@ -1353,6 +1446,11 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
         style.spacing.menu_margin      = egui::Margin { left: 6, right: 6, top: 4, bottom: 4 };
         style.spacing.interact_size.y  = 22.0;
         style.spacing.item_spacing     = egui::vec2(4.0, 3.0);
+    }
+
+    // input_focus_color: override the focus-ring stroke on text inputs.
+    if let Some(focus_col) = settings.input_focus_color {
+        style.visuals.selection.stroke = egui::Stroke::new(settings.focus_ring_width, focus_col);
     }
 
     ctx.set_style(style);

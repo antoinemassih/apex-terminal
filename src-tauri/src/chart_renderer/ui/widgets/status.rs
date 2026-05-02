@@ -512,8 +512,11 @@ impl<'a> Toast<'a> {
         let due = self.auto_dismiss_secs
             .map(|s| ui.ctx().input(|i| i.time) + s as f64);
 
+        // toast_bg_alpha controls how opaque the toast background is (semi-transparent = glassmorphic).
+        let st_toast = crate::chart_renderer::ui::style::current();
+        let toast_fill = color_alpha(self.bg, st_toast.toast_bg_alpha);
         let frame = egui::Frame::NONE
-            .fill(self.bg)
+            .fill(toast_fill)
             .stroke(Stroke::new(stroke_thin(), color_alpha(self.border, alpha_strong())))
             .corner_radius(r_md_cr())
             .inner_margin(egui::Margin::same(gap_lg() as i8));

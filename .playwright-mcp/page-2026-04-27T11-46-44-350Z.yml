@@ -1,0 +1,653 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e7]: MERIDIAN
+      - generic [ref=e8]: v.2.4
+    - generic [ref=e9]:
+      - button "Trade" [ref=e10] [cursor=pointer]
+      - button "Live tiles" [ref=e11] [cursor=pointer]
+      - button "Dashboard" [ref=e12] [cursor=pointer]
+      - button "Research" [ref=e13] [cursor=pointer]
+      - button "Risk" [ref=e14] [cursor=pointer]
+    - generic [ref=e15]:
+      - generic [ref=e16]: ⌕
+      - textbox "Type a function or symbol…" [ref=e17]
+      - generic [ref=e18]: ⌘K
+    - generic [ref=e19]:
+      - generic [ref=e21]: NYSE
+      - generic [ref=e22]: 15:46
+    - generic [ref=e23]: JM
+  - generic [ref=e24]:
+    - generic [ref=e25]:
+      - button "1m" [ref=e26] [cursor=pointer]
+      - button "5m" [ref=e27] [cursor=pointer]
+      - button "15m" [ref=e28] [cursor=pointer]
+      - button "1H" [ref=e29] [cursor=pointer]
+      - button "4H" [ref=e30] [cursor=pointer]
+      - button "1D" [ref=e31] [cursor=pointer]
+      - button "1W" [ref=e32] [cursor=pointer]
+    - generic [ref=e33]:
+      - button "MA ▾" [ref=e35] [cursor=pointer]:
+        - text: MA
+        - generic [ref=e36]: ▾
+      - button "Oscillators ▾" [ref=e38] [cursor=pointer]:
+        - text: Oscillators
+        - generic [ref=e39]: ▾
+      - button "Trends ▾" [ref=e41] [cursor=pointer]:
+        - text: Trends
+        - generic [ref=e42]: ▾
+      - button "Volatility ▾" [ref=e44] [cursor=pointer]:
+        - text: Volatility
+        - generic [ref=e45]: ▾
+      - button "Volume ▾" [ref=e47] [cursor=pointer]:
+        - text: Volume
+        - generic [ref=e48]: ▾
+    - button "∿" [ref=e49] [cursor=pointer]
+    - button "✎" [ref=e50] [cursor=pointer]
+    - button "◔" [ref=e51] [cursor=pointer]
+    - generic [ref=e53]:
+      - generic [ref=e54]:
+        - generic [ref=e55]: NVDA
+        - generic [ref=e56]: "1284.32"
+        - generic [ref=e57]: +2.26%
+      - generic [ref=e58]:
+        - generic [ref=e59]: AAPL
+        - generic [ref=e60]: "177.69"
+        - generic [ref=e61]: "-1.31%"
+      - generic [ref=e62]:
+        - generic [ref=e63]: MSFT
+        - generic [ref=e64]: "421.10"
+        - generic [ref=e65]: +0.72%
+      - generic [ref=e66]:
+        - generic [ref=e67]: TSLA
+        - generic [ref=e68]: "256.83"
+        - generic [ref=e69]: +2.18%
+      - generic [ref=e70]:
+        - generic [ref=e71]: META
+        - generic [ref=e72]: "571.99"
+        - generic [ref=e73]: +1.85%
+      - generic [ref=e74]:
+        - generic [ref=e75]: AMZN
+        - generic [ref=e76]: "185.07"
+        - generic [ref=e77]: +0.32%
+      - generic [ref=e78]:
+        - generic [ref=e79]: GOOGL
+        - generic [ref=e80]: "174.29"
+        - generic [ref=e81]: "-0.41%"
+      - generic [ref=e82]:
+        - generic [ref=e83]: AMD
+        - generic [ref=e84]: "165.20"
+        - generic [ref=e85]: "-2.42%"
+      - generic [ref=e86]:
+        - generic [ref=e87]: AVGO
+        - generic [ref=e88]: "182.40"
+        - generic [ref=e89]: +1.18%
+      - generic [ref=e90]:
+        - generic [ref=e91]: NFLX
+        - generic [ref=e92]: "742.61"
+        - generic [ref=e93]: +0.55%
+      - generic [ref=e94]:
+        - generic [ref=e95]: JPM
+        - generic [ref=e96]: "230.84"
+        - generic [ref=e97]: "-0.18%"
+      - generic [ref=e98]:
+        - generic [ref=e99]: XOM
+        - generic [ref=e100]: "115.62"
+        - generic [ref=e101]: +0.94%
+      - generic [ref=e102]:
+        - generic [ref=e103]: BRK.B
+        - generic [ref=e104]: "452.80"
+        - generic [ref=e105]: +0.21%
+      - generic [ref=e106]:
+        - generic [ref=e107]: CRM
+        - generic [ref=e108]: "312.44"
+        - generic [ref=e109]: "-0.66%"
+      - generic [ref=e110]:
+        - generic [ref=e111]: ORCL
+        - generic [ref=e112]: "178.92"
+        - generic [ref=e113]: +1.11%
+      - generic [ref=e114]:
+        - generic [ref=e115]: UNH
+        - generic [ref=e116]: "572.18"
+        - generic [ref=e117]: "-0.88%"
+      - generic [ref=e118]:
+        - generic [ref=e119]: V
+        - generic [ref=e120]: "295.41"
+        - generic [ref=e121]: +0.42%
+      - generic [ref=e122]:
+        - generic [ref=e123]: HD
+        - generic [ref=e124]: "412.07"
+        - generic [ref=e125]: +0.13%
+      - generic [ref=e126]:
+        - generic [ref=e127]: NVDA
+        - generic [ref=e128]: "1284.32"
+        - generic [ref=e129]: +2.26%
+      - generic [ref=e130]:
+        - generic [ref=e131]: AAPL
+        - generic [ref=e132]: "177.69"
+        - generic [ref=e133]: "-1.31%"
+      - generic [ref=e134]:
+        - generic [ref=e135]: MSFT
+        - generic [ref=e136]: "421.10"
+        - generic [ref=e137]: +0.72%
+      - generic [ref=e138]:
+        - generic [ref=e139]: TSLA
+        - generic [ref=e140]: "256.83"
+        - generic [ref=e141]: +2.18%
+      - generic [ref=e142]:
+        - generic [ref=e143]: META
+        - generic [ref=e144]: "571.99"
+        - generic [ref=e145]: +1.85%
+      - generic [ref=e146]:
+        - generic [ref=e147]: AMZN
+        - generic [ref=e148]: "185.07"
+        - generic [ref=e149]: +0.32%
+      - generic [ref=e150]:
+        - generic [ref=e151]: GOOGL
+        - generic [ref=e152]: "174.29"
+        - generic [ref=e153]: "-0.41%"
+      - generic [ref=e154]:
+        - generic [ref=e155]: AMD
+        - generic [ref=e156]: "165.20"
+        - generic [ref=e157]: "-2.42%"
+      - generic [ref=e158]:
+        - generic [ref=e159]: AVGO
+        - generic [ref=e160]: "182.40"
+        - generic [ref=e161]: +1.18%
+      - generic [ref=e162]:
+        - generic [ref=e163]: NFLX
+        - generic [ref=e164]: "742.61"
+        - generic [ref=e165]: +0.55%
+      - generic [ref=e166]:
+        - generic [ref=e167]: JPM
+        - generic [ref=e168]: "230.84"
+        - generic [ref=e169]: "-0.18%"
+      - generic [ref=e170]:
+        - generic [ref=e171]: XOM
+        - generic [ref=e172]: "115.62"
+        - generic [ref=e173]: +0.94%
+      - generic [ref=e174]:
+        - generic [ref=e175]: BRK.B
+        - generic [ref=e176]: "452.80"
+        - generic [ref=e177]: +0.21%
+      - generic [ref=e178]:
+        - generic [ref=e179]: CRM
+        - generic [ref=e180]: "312.44"
+        - generic [ref=e181]: "-0.66%"
+      - generic [ref=e182]:
+        - generic [ref=e183]: ORCL
+        - generic [ref=e184]: "178.92"
+        - generic [ref=e185]: +1.11%
+      - generic [ref=e186]:
+        - generic [ref=e187]: UNH
+        - generic [ref=e188]: "572.18"
+        - generic [ref=e189]: "-0.88%"
+      - generic [ref=e190]:
+        - generic [ref=e191]: V
+        - generic [ref=e192]: "295.41"
+        - generic [ref=e193]: +0.42%
+      - generic [ref=e194]:
+        - generic [ref=e195]: HD
+        - generic [ref=e196]: "412.07"
+        - generic [ref=e197]: +0.13%
+    - button "+" [ref=e198] [cursor=pointer]
+  - generic [ref=e825]:
+    - generic [ref=e826]:
+      - generic [ref=e827]: Live tiles
+      - generic [ref=e828]: Default workspace
+      - generic [ref=e829]: Auto-refresh · 1s
+      - generic [ref=e830]:
+        - button "+ Add tile" [ref=e831] [cursor=pointer]
+        - button "+ New ticket" [ref=e832] [cursor=pointer]
+    - generic [ref=e833]:
+      - generic [ref=e834]:
+        - generic [ref=e835]: Today's P&L
+        - button "⋯" [ref=e836] [cursor=pointer]
+        - generic [ref=e837]:
+          - generic [ref=e838]: 1D
+          - generic [ref=e839]: 1W
+          - generic [ref=e840]: 1M
+        - generic [ref=e841]: +$290,794
+        - generic [ref=e842]:
+          - generic [ref=e843]:
+            - text: REALIZED
+            - generic [ref=e844]: +$48,210
+          - generic [ref=e845]:
+            - text: UNREALIZED
+            - generic [ref=e846]: +$242,584
+          - generic [ref=e847]:
+            - text: WIN-RATE
+            - generic [ref=e848]: 72%
+      - generic [ref=e849]:
+        - generic [ref=e850]:
+          - generic [ref=e851]: NVDA
+          - generic [ref=e852]: 1,284.32
+          - generic [ref=e853]: +2.26%
+          - generic [ref=e854]:
+            - generic [ref=e855]: 1H
+            - generic [ref=e856]: 4H
+            - generic [ref=e857]: 1D
+        - img [ref=e859]
+        - generic [ref=e920]:
+          - generic [ref=e921]: O 1,256 · H 1,392 · L 1,252
+          - generic [ref=e922]: VOL 32.4M
+      - generic [ref=e923]:
+        - generic [ref=e924]: SENTIMENT · 24H
+        - generic [ref=e925]:
+          - img [ref=e926]
+          - generic [ref=e929]:
+            - generic [ref=e930]: "68"
+            - generic [ref=e931]: GREEDY
+      - generic [ref=e932]:
+        - generic [ref=e933]: NYSE · OPEN
+        - button "⋯" [ref=e934] [cursor=pointer]
+        - generic [ref=e935]:
+          - generic [ref=e936]:
+            - generic [ref=e937]: AM
+            - generic [ref=e938]: PM
+          - generic [ref=e939]: 02:14
+        - generic [ref=e940]: 3h 51m to close
+      - generic [ref=e941]:
+        - generic [ref=e942]: S&P 500
+        - button "⋯" [ref=e943] [cursor=pointer]
+        - generic [ref=e944]: +0.38%
+        - generic [ref=e945]: 5,824.10
+      - generic [ref=e946]:
+        - generic [ref=e947]: NASDAQ
+        - button "⋯" [ref=e948] [cursor=pointer]
+        - generic [ref=e949]: +0.85%
+        - generic [ref=e950]: 18,642.20
+      - generic [ref=e951]:
+        - generic [ref=e952]: VIX
+        - button "⋯" [ref=e953] [cursor=pointer]
+        - generic [ref=e954]: −3.21%
+        - generic [ref=e955]: 14.32 · risk off
+      - generic [ref=e956]:
+        - generic [ref=e957]: DXY
+        - button "⋯" [ref=e958] [cursor=pointer]
+        - generic [ref=e959]: +0.18%
+        - generic [ref=e960]: "104.18"
+      - generic [ref=e961]:
+        - generic [ref=e962]: GOLD
+        - button "⋯" [ref=e963] [cursor=pointer]
+        - generic [ref=e964]: +0.42%
+        - generic [ref=e965]: 2,714.40
+      - generic [ref=e966]:
+        - generic [ref=e967]: 10Y · TNX
+        - button "⋯" [ref=e968] [cursor=pointer]
+        - generic [ref=e969]: +4bp
+        - generic [ref=e970]: 4.218%
+      - generic [ref=e971]:
+        - generic [ref=e972]:
+          - generic [ref=e973]: Watchlist
+          - generic [ref=e974]: TOP 6
+        - table [ref=e975]:
+          - rowgroup [ref=e976]:
+            - row "SYM NAME LAST CHG%" [ref=e977]:
+              - columnheader "SYM" [ref=e978]
+              - columnheader "NAME" [ref=e979]
+              - columnheader "LAST" [ref=e980]
+              - columnheader "CHG%" [ref=e981]
+          - rowgroup [ref=e982]:
+            - row "NVDA NVIDIA Corp 1,284.32 +2.26%" [ref=e983]:
+              - cell "NVDA" [ref=e984]
+              - cell "NVIDIA Corp" [ref=e985]
+              - cell "1,284.32" [ref=e986]
+              - cell "+2.26%" [ref=e987]
+            - row "AAPL Apple Inc 221.18 -0.83%" [ref=e988]:
+              - cell "AAPL" [ref=e989]
+              - cell "Apple Inc" [ref=e990]
+              - cell "221.18" [ref=e991]
+              - cell "-0.83%" [ref=e992]
+            - row "MSFT Microsoft Corp 438.94 +0.72%" [ref=e993]:
+              - cell "MSFT" [ref=e994]
+              - cell "Microsoft Corp" [ref=e995]
+              - cell "438.94" [ref=e996]
+              - cell "+0.72%" [ref=e997]
+            - row "TSLA Tesla Inc 254.18 -3.88%" [ref=e998]:
+              - cell "TSLA" [ref=e999]
+              - cell "Tesla Inc" [ref=e1000]
+              - cell "254.18" [ref=e1001]
+              - cell "-3.88%" [ref=e1002]
+            - row "AMZN Amazon.com 187.42 +0.63%" [ref=e1003]:
+              - cell "AMZN" [ref=e1004]
+              - cell "Amazon.com" [ref=e1005]
+              - cell "187.42" [ref=e1006]
+              - cell "+0.63%" [ref=e1007]
+            - row "META Meta Platforms 571.90 +1.50%" [ref=e1008]:
+              - cell "META" [ref=e1009]
+              - cell "Meta Platforms" [ref=e1010]
+              - cell "571.90" [ref=e1011]
+              - cell "+1.50%" [ref=e1012]
+      - generic [ref=e1013]:
+        - generic [ref=e1014]:
+          - generic [ref=e1015]: Sector exposure
+          - generic [ref=e1016]: NAV %
+        - generic [ref=e1017]:
+          - img [ref=e1019]
+          - generic [ref=e1027]:
+            - generic [ref=e1028]:
+              - generic [ref=e1030]: Tech
+              - text: "42"
+            - generic [ref=e1031]:
+              - generic [ref=e1033]: Comm
+              - text: "19"
+            - generic [ref=e1034]:
+              - generic [ref=e1036]: Disc
+              - text: "14"
+            - generic [ref=e1037]:
+              - generic [ref=e1039]: Fin
+              - text: "12"
+            - generic [ref=e1040]:
+              - generic [ref=e1042]: HC
+              - text: "8"
+            - generic [ref=e1043]:
+              - generic [ref=e1045]: Cash
+              - text: "5"
+      - generic [ref=e1046]:
+        - generic [ref=e1047]: VaR · 95%
+        - button "⋯" [ref=e1048] [cursor=pointer]
+        - generic [ref=e1049]: $48k
+        - generic [ref=e1050]: 1.7% NAV
+      - generic [ref=e1051]:
+        - generic [ref=e1052]: Realized
+        - button "⋯" [ref=e1053] [cursor=pointer]
+        - generic [ref=e1054]: +$48k
+        - generic [ref=e1055]: today
+      - generic [ref=e1056]:
+        - generic [ref=e1057]: WIN-RATE
+        - generic [ref=e1058]:
+          - img [ref=e1059]
+          - generic [ref=e1062]:
+            - generic [ref=e1063]: 72%
+            - generic [ref=e1064]: L50 TRADES
+      - generic [ref=e1065]:
+        - generic [ref=e1066]:
+          - generic [ref=e1067]: Liquidity matrix
+          - generic [ref=e1068]: 14×5 · TOP 196
+        - generic [ref=e1140]:
+          - generic [ref=e1141]: HIGH
+          - generic [ref=e1143]: NORM
+          - generic [ref=e1145]: THIN
+      - generic [ref=e1147]:
+        - generic [ref=e1148]:
+          - generic [ref=e1149]: Factor scorecard
+          - generic [ref=e1150]: NORM 0–100
+        - generic [ref=e1151]:
+          - generic [ref=e1152]:
+            - generic [ref=e1153]: Momentum
+            - generic [ref=e1156]: "78"
+          - generic [ref=e1157]:
+            - generic [ref=e1158]: Quality
+            - generic [ref=e1161]: "62"
+          - generic [ref=e1162]:
+            - generic [ref=e1163]: Value
+            - generic [ref=e1166]: "34"
+          - generic [ref=e1167]:
+            - generic [ref=e1168]: Size
+            - generic [ref=e1171]: "51"
+          - generic [ref=e1172]:
+            - generic [ref=e1173]: Vol
+            - generic [ref=e1176]: "88"
+      - generic [ref=e1177]:
+        - generic [ref=e1178]:
+          - generic [ref=e1179]: TSLA
+          - generic [ref=e1180]: +5.21%
+        - generic [ref=e1181]: Tesla
+        - img [ref=e1183]
+        - generic [ref=e1220]:
+          - generic [ref=e1221]: "256.83"
+          - generic [ref=e1222]: vol 32M
+      - generic [ref=e1223]:
+        - generic [ref=e1224]:
+          - generic [ref=e1225]: AMD
+          - generic [ref=e1226]: "-2.42%"
+        - generic [ref=e1227]: AMD
+        - img [ref=e1229]
+        - generic [ref=e1266]:
+          - generic [ref=e1267]: "165.20"
+          - generic [ref=e1268]: vol 32M
+      - generic [ref=e1269]:
+        - generic:
+          - generic [ref=e1270]: Conviction
+          - button "⋯" [ref=e1271] [cursor=pointer]
+        - generic [ref=e1272]: AI-blended order-flow
+        - generic [ref=e1273]: +17.4%
+        - generic [ref=e1277]:
+          - generic [ref=e1278]: +18.5%
+          - generic [ref=e1279]: Est +15.7%
+      - generic [ref=e1280]:
+        - generic [ref=e1281]:
+          - generic [ref=e1282]: MERIDIAN
+          - generic [ref=e1283]: HOURS · 12M
+        - generic [ref=e1284]:
+          - generic [ref=e1285]:
+            - generic [ref=e1286]: HOURS TRADED
+            - generic [ref=e1287]: +8% YOY
+          - generic [ref=e1288]: 554h
+          - generic [ref=e1289]:
+            - generic [ref=e1293]: J
+            - generic [ref=e1297]: F
+            - generic [ref=e1301]: M
+            - generic [ref=e1305]: A
+            - generic [ref=e1309]: M
+            - generic [ref=e1313]: J
+            - generic [ref=e1317]: J
+            - generic [ref=e1321]: A
+            - generic [ref=e1325]: S
+            - generic [ref=e1329]: O
+            - generic [ref=e1333]: "N"
+            - generic [ref=e1337]: D
+      - generic [ref=e1338]:
+        - generic [ref=e1339]:
+          - generic [ref=e1340]: Allocation targets
+          - generic [ref=e1341]: NAV $3.24M
+          - button "Rebalance →" [ref=e1342] [cursor=pointer]
+        - generic [ref=e1350]:
+          - generic [ref=e1351]:
+            - text: Tech 42 ·
+            - generic [ref=e1353]: tgt 40
+          - generic [ref=e1354]:
+            - text: Comm 19 ·
+            - generic [ref=e1356]: tgt 18
+          - generic [ref=e1357]:
+            - text: Disc 14 ·
+            - generic [ref=e1359]: tgt 15
+          - generic [ref=e1360]: Fin 12
+          - generic [ref=e1362]: HC 8
+          - generic [ref=e1364]: Cash 5
+        - generic [ref=e1366]:
+          - button "+ Tech" [ref=e1367] [cursor=pointer]
+          - button "− Disc" [ref=e1368] [cursor=pointer]
+          - button "Apply targets" [ref=e1369] [cursor=pointer]
+          - generic [ref=e1370]: ↗
+      - generic [ref=e1371]:
+        - generic [ref=e1372]: Open positions
+        - generic [ref=e1373]: "12"
+      - generic [ref=e1374]:
+        - generic [ref=e1375]: Pending
+        - generic [ref=e1376]: "2"
+      - generic [ref=e1377]:
+        - generic [ref=e1378]: Avg hold
+        - generic [ref=e1379]: 2.4d
+      - generic [ref=e1380]:
+        - generic [ref=e1381]: Largest
+        - generic [ref=e1382]: NVDA · 18%
+      - generic [ref=e1383]:
+        - generic [ref=e1384]: Slippage today
+        - generic [ref=e1385]: 0.4 bp
+      - generic [ref=e1386]:
+        - generic [ref=e1387]: Brokerage
+        - generic [ref=e1388]: IBKR · MARGIN
+      - generic [ref=e1389]:
+        - generic [ref=e1390]:
+          - generic [ref=e1391]: News · live feed
+          - generic [ref=e1392]: ● LIVE
+          - generic [ref=e1393]: 5/124
+        - generic [ref=e1394]:
+          - generic [ref=e1395]:
+            - generic [ref=e1396]: 09:42
+            - generic [ref=e1397]: FED
+            - generic [ref=e1398]: Powell signals Sept cut on hold
+            - generic [ref=e1399]: BUL
+          - generic [ref=e1400]:
+            - generic [ref=e1401]: 09:36
+            - generic [ref=e1402]: NVDA
+            - generic [ref=e1403]: Earnings beat consensus by 12%
+            - generic [ref=e1404]: BUL
+          - generic [ref=e1405]:
+            - generic [ref=e1406]: 09:31
+            - generic [ref=e1407]: TSLA
+            - generic [ref=e1408]: Cybercab delivery date pushed
+            - generic [ref=e1409]: BEA
+          - generic [ref=e1410]:
+            - generic [ref=e1411]: 09:28
+            - generic [ref=e1412]: AAPL
+            - generic [ref=e1413]: India production 18% of global
+            - generic [ref=e1414]: BUL
+          - generic [ref=e1415]:
+            - generic [ref=e1416]: 09:21
+            - generic [ref=e1417]: XOM
+            - generic [ref=e1418]: Brent breaks 86 on supply data
+            - generic [ref=e1419]: BUL
+      - generic [ref=e1420]:
+        - generic [ref=e1421]:
+          - generic [ref=e1422]: Risk gauges
+          - generic [ref=e1423]: VAR 95%
+        - generic [ref=e1424]:
+          - generic [ref=e1425]:
+            - generic [ref=e1426]: BETA
+            - generic [ref=e1427]: "1.18"
+            - generic [ref=e1428]: vs SPY
+          - generic [ref=e1429]:
+            - generic [ref=e1430]: VOL
+            - generic [ref=e1431]: "14.2"
+            - generic [ref=e1432]: 20D RV
+          - generic [ref=e1433]:
+            - generic [ref=e1434]: SHARP
+            - generic [ref=e1435]: "2.41"
+            - generic [ref=e1436]: TRAIL
+      - generic [ref=e1437]:
+        - generic [ref=e1438]:
+          - generic [ref=e1439]: Top movers · 1H
+          - generic [ref=e1440]: S&P500
+        - generic [ref=e1441]:
+          - generic [ref=e1442]:
+            - generic [ref=e1443]: TSLA
+            - generic [ref=e1446]: +5.21%
+          - generic [ref=e1447]:
+            - generic [ref=e1448]: NVDA
+            - generic [ref=e1451]: +2.26%
+          - generic [ref=e1452]:
+            - generic [ref=e1453]: META
+            - generic [ref=e1456]: +1.85%
+          - generic [ref=e1457]:
+            - generic [ref=e1458]: AMD
+            - generic [ref=e1461]: −2.42%
+          - generic [ref=e1462]:
+            - generic [ref=e1463]: AAPL
+            - generic [ref=e1466]: −0.83%
+      - generic [ref=e1468]:
+        - button "+ New ticket" [ref=e1469] [cursor=pointer]
+        - button "Compare" [ref=e1470] [cursor=pointer]
+        - button "Hedge book" [ref=e1471] [cursor=pointer]
+        - button "Run scenario" [ref=e1472] [cursor=pointer]
+        - generic [ref=e1473]: →
+        - button "Pairs scan" [ref=e1474] [cursor=pointer]
+        - button "Earnings table" [ref=e1475] [cursor=pointer]
+        - generic [ref=e1476]: ↓
+        - button "Buy NVDA · 100" [ref=e1477] [cursor=pointer]
+        - button "Tax lots" [ref=e1478] [cursor=pointer]
+        - button "Download statements" [ref=e1479] [cursor=pointer]
+  - complementary [ref=e564]:
+    - generic [ref=e565]:
+      - button "WATCH" [ref=e566] [cursor=pointer]
+      - button "POS" [ref=e567] [cursor=pointer]
+      - button "ALERT" [ref=e568] [cursor=pointer]
+    - generic [ref=e569]:
+      - generic [ref=e570]:
+        - generic [ref=e571]: Watchlist · Megacaps
+        - generic [ref=e572]: "12"
+      - generic [ref=e573]:
+        - generic [ref=e574] [cursor=pointer]:
+          - generic [ref=e575]: NVDA
+          - generic [ref=e576]: NVIDIA
+          - generic [ref=e577]: 1,284.32
+          - generic [ref=e578]: +2.26%
+        - generic [ref=e579] [cursor=pointer]:
+          - generic [ref=e580]: AAPL
+          - generic [ref=e581]: Apple
+          - generic [ref=e582]: "221.18"
+          - generic [ref=e583]: "-0.83%"
+        - generic [ref=e584] [cursor=pointer]:
+          - generic [ref=e585]: MSFT
+          - generic [ref=e586]: Microsoft
+          - generic [ref=e587]: "438.94"
+          - generic [ref=e588]: +0.72%
+        - generic [ref=e589] [cursor=pointer]:
+          - generic [ref=e590]: TSLA
+          - generic [ref=e591]: Tesla
+          - generic [ref=e592]: "254.18"
+          - generic [ref=e593]: "-3.88%"
+        - generic [ref=e594] [cursor=pointer]:
+          - generic [ref=e595]: AMZN
+          - generic [ref=e596]: Amazon
+          - generic [ref=e597]: "187.42"
+          - generic [ref=e598]: +0.63%
+        - generic [ref=e599] [cursor=pointer]:
+          - generic [ref=e600]: META
+          - generic [ref=e601]: Meta
+          - generic [ref=e602]: "571.90"
+          - generic [ref=e603]: +1.50%
+        - generic [ref=e604] [cursor=pointer]:
+          - generic [ref=e605]: GOOGL
+          - generic [ref=e606]: Alphabet
+          - generic [ref=e607]: "174.29"
+          - generic [ref=e608]: "-0.41%"
+        - generic [ref=e609] [cursor=pointer]:
+          - generic [ref=e610]: AMD
+          - generic [ref=e611]: AMD
+          - generic [ref=e612]: "165.20"
+          - generic [ref=e613]: "-2.42%"
+        - generic [ref=e614] [cursor=pointer]:
+          - generic [ref=e615]: AVGO
+          - generic [ref=e616]: Broadcom
+          - generic [ref=e617]: "182.40"
+          - generic [ref=e618]: +1.18%
+        - generic [ref=e619] [cursor=pointer]:
+          - generic [ref=e620]: NFLX
+          - generic [ref=e621]: Netflix
+          - generic [ref=e622]: "742.61"
+          - generic [ref=e623]: +0.55%
+        - generic [ref=e624] [cursor=pointer]:
+          - generic [ref=e625]: JPM
+          - generic [ref=e626]: JPMorgan
+          - generic [ref=e627]: "230.84"
+          - generic [ref=e628]: "-0.18%"
+        - generic [ref=e629] [cursor=pointer]:
+          - generic [ref=e630]: XOM
+          - generic [ref=e631]: Exxon
+          - generic [ref=e632]: "115.62"
+          - generic [ref=e633]: +0.94%
+    - generic [ref=e634]:
+      - generic [ref=e635]: P&L · TODAY
+      - generic [ref=e636]: +$290,794
+      - generic [ref=e637]: +1.32% · NAV $3.24M
+      - generic [ref=e638]:
+        - generic [ref=e639]:
+          - generic [ref=e640]: REALIZED
+          - generic [ref=e641]: +$48k
+        - generic [ref=e642]:
+          - generic [ref=e643]: UNREAL.
+          - generic [ref=e644]: +$242k
+    - generic [ref=e645]:
+      - generic [ref=e646]:
+        - text: Stream OK ·
+        - generic [ref=e648]: 4ms
+      - generic [ref=e649]:
+        - text: NY-4 ·
+        - generic [ref=e651]: L1+L2
+      - generic [ref=e652]:
+        - text: BP
+        - generic [ref=e653]: $5.83M
+        - text: · 2026-04-26

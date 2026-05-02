@@ -1,0 +1,880 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: M
+      - generic [ref=e7]:
+        - generic [ref=e8]: MERIDIAN
+        - generic [ref=e9]: Trading Terminal · v4.2
+    - generic [ref=e10]:
+      - generic [ref=e11] [cursor=pointer]: Dashboard
+      - generic [ref=e12] [cursor=pointer]: Chart
+      - generic [ref=e13] [cursor=pointer]: Trade
+      - generic [ref=e14] [cursor=pointer]: Apex
+      - generic [ref=e15] [cursor=pointer]: Tiles
+      - generic [ref=e16] [cursor=pointer]: Portfolio
+      - generic [ref=e17] [cursor=pointer]: Research
+      - generic [ref=e18] [cursor=pointer]: Risk
+      - generic [ref=e19] [cursor=pointer]: Options
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - generic "News (N)" [ref=e22] [cursor=pointer]: News
+        - generic "Social (⌘⇧S)" [ref=e23] [cursor=pointer]: Social
+        - generic "Chain (⌘O)" [ref=e24] [cursor=pointer]: Chain
+        - generic "Portfolio (P)" [ref=e25] [cursor=pointer]: Portfolio
+        - generic "Settings" [ref=e26] [cursor=pointer]
+      - generic [ref=e27] [cursor=pointer]:
+        - generic [ref=e28]: Type a function
+        - generic [ref=e29]: ⌘
+        - generic [ref=e30]: K
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - generic [ref=e34]: NYSE OPEN
+          - generic [ref=e35]: 15:52:43 ET
+        - generic [ref=e36]:
+          - generic [ref=e37]: USR
+          - generic [ref=e38]: j.morgan@meridian
+  - generic [ref=e40]:
+    - generic [ref=e41]:
+      - generic [ref=e42]: S&P 500
+      - generic [ref=e43]: 5,824.10
+      - generic [ref=e44]: +0.38%
+    - generic [ref=e45]:
+      - generic [ref=e46]: NASDAQ
+      - generic [ref=e47]: 18,642.20
+      - generic [ref=e48]: +0.85%
+    - generic [ref=e49]:
+      - generic [ref=e50]: DOW
+      - generic [ref=e51]: 42,118.40
+      - generic [ref=e52]: "-0.12%"
+    - generic [ref=e53]:
+      - generic [ref=e54]: RUSSELL
+      - generic [ref=e55]: 2,284.66
+      - generic [ref=e56]: +0.94%
+    - generic [ref=e57]:
+      - generic [ref=e58]: VIX
+      - generic [ref=e59]: "14.82"
+      - generic [ref=e60]: "-3.21%"
+    - generic [ref=e61]:
+      - generic [ref=e62]: 10Y YIELD
+      - generic [ref=e63]: 4.218%
+      - generic [ref=e64]: +0.04%
+    - generic [ref=e65]:
+      - generic [ref=e66]: DXY
+      - generic [ref=e67]: "104.18"
+      - generic [ref=e68]: +0.18%
+    - generic [ref=e69]:
+      - generic [ref=e70]: GOLD
+      - generic [ref=e71]: 2,714.40
+      - generic [ref=e72]: +0.62%
+    - generic [ref=e73]:
+      - generic [ref=e74]: WTI
+      - generic [ref=e75]: "72.18"
+      - generic [ref=e76]: +2.41%
+    - generic [ref=e77]:
+      - generic [ref=e78]: BTC
+      - generic [ref=e79]: 97,184
+      - generic [ref=e80]: +1.84%
+    - generic [ref=e81]:
+      - generic [ref=e82]: S&P 500
+      - generic [ref=e83]: 5,824.10
+      - generic [ref=e84]: +0.38%
+    - generic [ref=e85]:
+      - generic [ref=e86]: NASDAQ
+      - generic [ref=e87]: 18,642.20
+      - generic [ref=e88]: +0.85%
+    - generic [ref=e89]:
+      - generic [ref=e90]: DOW
+      - generic [ref=e91]: 42,118.40
+      - generic [ref=e92]: "-0.12%"
+    - generic [ref=e93]:
+      - generic [ref=e94]: RUSSELL
+      - generic [ref=e95]: 2,284.66
+      - generic [ref=e96]: +0.94%
+    - generic [ref=e97]:
+      - generic [ref=e98]: VIX
+      - generic [ref=e99]: "14.82"
+      - generic [ref=e100]: "-3.21%"
+    - generic [ref=e101]:
+      - generic [ref=e102]: 10Y YIELD
+      - generic [ref=e103]: 4.218%
+      - generic [ref=e104]: +0.04%
+    - generic [ref=e105]:
+      - generic [ref=e106]: DXY
+      - generic [ref=e107]: "104.18"
+      - generic [ref=e108]: +0.18%
+    - generic [ref=e109]:
+      - generic [ref=e110]: GOLD
+      - generic [ref=e111]: 2,714.40
+      - generic [ref=e112]: +0.62%
+    - generic [ref=e113]:
+      - generic [ref=e114]: WTI
+      - generic [ref=e115]: "72.18"
+      - generic [ref=e116]: +2.41%
+    - generic [ref=e117]:
+      - generic [ref=e118]: BTC
+      - generic [ref=e119]: 97,184
+      - generic [ref=e120]: +1.84%
+    - generic [ref=e121]:
+      - generic [ref=e122]: S&P 500
+      - generic [ref=e123]: 5,824.10
+      - generic [ref=e124]: +0.38%
+    - generic [ref=e125]:
+      - generic [ref=e126]: NASDAQ
+      - generic [ref=e127]: 18,642.20
+      - generic [ref=e128]: +0.85%
+    - generic [ref=e129]:
+      - generic [ref=e130]: DOW
+      - generic [ref=e131]: 42,118.40
+      - generic [ref=e132]: "-0.12%"
+    - generic [ref=e133]:
+      - generic [ref=e134]: RUSSELL
+      - generic [ref=e135]: 2,284.66
+      - generic [ref=e136]: +0.94%
+    - generic [ref=e137]:
+      - generic [ref=e138]: VIX
+      - generic [ref=e139]: "14.82"
+      - generic [ref=e140]: "-3.21%"
+    - generic [ref=e141]:
+      - generic [ref=e142]: 10Y YIELD
+      - generic [ref=e143]: 4.218%
+      - generic [ref=e144]: +0.04%
+    - generic [ref=e145]:
+      - generic [ref=e146]: DXY
+      - generic [ref=e147]: "104.18"
+      - generic [ref=e148]: +0.18%
+    - generic [ref=e149]:
+      - generic [ref=e150]: GOLD
+      - generic [ref=e151]: 2,714.40
+      - generic [ref=e152]: +0.62%
+    - generic [ref=e153]:
+      - generic [ref=e154]: WTI
+      - generic [ref=e155]: "72.18"
+      - generic [ref=e156]: +2.41%
+    - generic [ref=e157]:
+      - generic [ref=e158]: BTC
+      - generic [ref=e159]: 97,184
+      - generic [ref=e160]: +1.84%
+  - generic [ref=e161]:
+    - generic [ref=e163]:
+      - generic [ref=e164]:
+        - generic [ref=e165]:
+          - generic [ref=e166]: NVDA
+          - generic [ref=e167]: NVIDIA Corp · NASDAQ
+        - generic [ref=e168]: 1,284.32
+        - generic [ref=e169]:
+          - generic [ref=e170]: +28.40 · +2.26%
+          - generic [ref=e171]: vs prev close
+      - generic [ref=e173]:
+        - generic [ref=e174]: 1D · INTRADAY
+        - img [ref=e176]
+      - generic [ref=e180]:
+        - generic [ref=e181]:
+          - generic [ref=e182]: OPEN
+          - generic [ref=e183]: 1,386.55
+        - generic [ref=e184]:
+          - generic [ref=e185]: HIGH
+          - generic [ref=e186]: 1,392.72
+        - generic [ref=e187]:
+          - generic [ref=e188]: LOW
+          - generic [ref=e189]: 1,276.40
+        - generic [ref=e190]:
+          - generic [ref=e191]: VOL
+          - generic [ref=e192]: 48.2M
+        - generic [ref=e193]:
+          - generic [ref=e194]: 52W H
+          - generic [ref=e195]: 1,348.55
+        - generic [ref=e196]:
+          - generic [ref=e197]: 52W L
+          - generic [ref=e198]: "718.10"
+        - generic [ref=e199]:
+          - generic [ref=e200]: MKT CAP
+          - generic [ref=e201]: 3.16T
+        - generic [ref=e202]:
+          - generic [ref=e203]: P/E
+          - generic [ref=e204]: "68.2"
+    - generic [ref=e206]:
+      - generic [ref=e207]:
+        - generic [ref=e208]:
+          - generic [ref=e209]: "01"
+          - generic [ref=e210]: Watchlist
+          - generic [ref=e211]: Top 12
+        - generic [ref=e212]:
+          - button "expand" [ref=e213] [cursor=pointer]:
+            - img [ref=e214]
+          - button "⋯" [ref=e216] [cursor=pointer]
+      - generic [ref=e218]:
+        - generic [ref=e219]:
+          - generic [ref=e220]: SYM
+          - generic [ref=e221]: NAME
+          - generic [ref=e222]: LAST
+          - generic [ref=e223]: CHG%
+        - generic [ref=e224]:
+          - generic [ref=e225] [cursor=pointer]: NVDA
+          - generic [ref=e226] [cursor=pointer]: NVIDIA Corp
+          - generic [ref=e227] [cursor=pointer]: 1,284.32
+          - generic [ref=e228] [cursor=pointer]: +2.26%
+        - generic [ref=e229]:
+          - generic [ref=e230] [cursor=pointer]: AAPL
+          - generic [ref=e231] [cursor=pointer]: Apple Inc
+          - generic [ref=e232] [cursor=pointer]: "221.18"
+          - generic [ref=e233] [cursor=pointer]: "-0.83%"
+        - generic [ref=e234]:
+          - generic [ref=e235] [cursor=pointer]: MSFT
+          - generic [ref=e236] [cursor=pointer]: Microsoft Corp
+          - generic [ref=e237] [cursor=pointer]: "438.94"
+          - generic [ref=e238] [cursor=pointer]: +0.72%
+        - generic [ref=e239]:
+          - generic [ref=e240] [cursor=pointer]: TSLA
+          - generic [ref=e241] [cursor=pointer]: Tesla Inc
+          - generic [ref=e242] [cursor=pointer]: "254.18"
+          - generic [ref=e243] [cursor=pointer]: "-3.88%"
+        - generic [ref=e244]:
+          - generic [ref=e245] [cursor=pointer]: AMZN
+          - generic [ref=e246] [cursor=pointer]: Amazon.com
+          - generic [ref=e247] [cursor=pointer]: "187.42"
+          - generic [ref=e248] [cursor=pointer]: +0.63%
+        - generic [ref=e249]:
+          - generic [ref=e250] [cursor=pointer]: META
+          - generic [ref=e251] [cursor=pointer]: Meta Platforms
+          - generic [ref=e252] [cursor=pointer]: "571.90"
+          - generic [ref=e253] [cursor=pointer]: +1.50%
+        - generic [ref=e254]:
+          - generic [ref=e255] [cursor=pointer]: GOOGL
+          - generic [ref=e256] [cursor=pointer]: Alphabet Inc
+          - generic [ref=e257] [cursor=pointer]: "171.06"
+          - generic [ref=e258] [cursor=pointer]: "-0.53%"
+        - generic [ref=e259]:
+          - generic [ref=e260] [cursor=pointer]: AVGO
+          - generic [ref=e261] [cursor=pointer]: Broadcom Inc
+          - generic [ref=e262] [cursor=pointer]: 1,742.10
+          - generic [ref=e263] [cursor=pointer]: +1.94%
+        - generic [ref=e264]:
+          - generic [ref=e265] [cursor=pointer]: AMD
+          - generic [ref=e266] [cursor=pointer]: Advanced Micro
+          - generic [ref=e267] [cursor=pointer]: "158.31"
+          - generic [ref=e268] [cursor=pointer]: +2.62%
+        - generic [ref=e269]:
+          - generic [ref=e270] [cursor=pointer]: JPM
+          - generic [ref=e271] [cursor=pointer]: JPMorgan Chase
+          - generic [ref=e272] [cursor=pointer]: "219.84"
+          - generic [ref=e273] [cursor=pointer]: "-0.19%"
+        - generic [ref=e274]:
+          - generic [ref=e275] [cursor=pointer]: SPY
+          - generic [ref=e276] [cursor=pointer]: SPDR S&P 500 ETF
+          - generic [ref=e277] [cursor=pointer]: "582.41"
+          - generic [ref=e278] [cursor=pointer]: +0.38%
+        - generic [ref=e279]:
+          - generic [ref=e280] [cursor=pointer]: QQQ
+          - generic [ref=e281] [cursor=pointer]: Invesco QQQ Trust
+          - generic [ref=e282] [cursor=pointer]: "498.76"
+          - generic [ref=e283] [cursor=pointer]: +0.85%
+    - generic [ref=e285]:
+      - generic [ref=e286]:
+        - generic [ref=e287]:
+          - generic [ref=e288]: "02"
+          - generic [ref=e289]: NVDA · 1D
+          - generic [ref=e290]: Candles · 5m
+        - generic [ref=e292]:
+          - generic [ref=e293] [cursor=pointer]: 1m
+          - generic [ref=e294] [cursor=pointer]: 5m
+          - generic [ref=e295] [cursor=pointer]: 15m
+          - generic [ref=e296] [cursor=pointer]: 1H
+          - generic [ref=e297] [cursor=pointer]: 1D
+          - generic [ref=e298] [cursor=pointer]: 1W
+      - generic [ref=e300]:
+        - img [ref=e301]:
+          - generic [ref=e303]: "1160.64"
+          - generic [ref=e305]: "1201.51"
+          - generic [ref=e307]: "1242.38"
+          - generic [ref=e309]: "1283.25"
+          - generic [ref=e311]: "1324.12"
+          - generic [ref=e313]: "1364.99"
+          - generic [ref=e315]: "1405.86"
+          - generic [ref=e316]: T-119
+          - generic [ref=e317]: T-99
+          - generic [ref=e318]: T-79
+          - generic [ref=e319]: T-59
+          - generic [ref=e320]: T-40
+          - generic [ref=e321]: T-20
+          - generic [ref=e322]: T-0
+          - generic [ref=e687]: VOL
+          - generic [ref=e690]: "1284.32"
+        - generic:
+          - generic: O 1386.55
+          - generic: H 1392.72
+          - generic: L 1276.40
+          - generic: C 1284.32
+          - generic: MA20 · 1212.18
+          - generic: MA50 · 1184.62
+    - generic [ref=e692]:
+      - generic [ref=e693]:
+        - generic [ref=e694]:
+          - generic [ref=e695]: "03"
+          - generic [ref=e696]: Order Book
+          - generic [ref=e697]: Lvl 2 · 14 deep
+        - generic [ref=e698]:
+          - button "expand" [ref=e699] [cursor=pointer]:
+            - img [ref=e700]
+          - button "⋯" [ref=e702] [cursor=pointer]
+      - generic [ref=e704]:
+        - generic [ref=e705]:
+          - generic [ref=e706]: PRICE
+          - generic [ref=e707]: SIZE
+          - generic [ref=e708]: TOTAL
+        - generic [ref=e709]:
+          - generic [ref=e710]:
+            - generic [ref=e712]: "1284.37"
+            - generic [ref=e713]: "279"
+            - generic [ref=e714]: "279"
+          - generic [ref=e715]:
+            - generic [ref=e717]: "1284.42"
+            - generic [ref=e718]: "411"
+            - generic [ref=e719]: "690"
+          - generic [ref=e720]:
+            - generic [ref=e722]: "1284.47"
+            - generic [ref=e723]: "285"
+            - generic [ref=e724]: "975"
+          - generic [ref=e725]:
+            - generic [ref=e727]: "1284.52"
+            - generic [ref=e728]: "168"
+            - generic [ref=e729]: "1143"
+          - generic [ref=e730]:
+            - generic [ref=e732]: "1284.57"
+            - generic [ref=e733]: "173"
+            - generic [ref=e734]: "1316"
+          - generic [ref=e735]:
+            - generic [ref=e737]: "1284.62"
+            - generic [ref=e738]: "118"
+            - generic [ref=e739]: "1434"
+          - generic [ref=e740]:
+            - generic [ref=e742]: "1284.67"
+            - generic [ref=e743]: "188"
+            - generic [ref=e744]: "1622"
+          - generic [ref=e745]:
+            - generic [ref=e747]: "1284.72"
+            - generic [ref=e748]: "117"
+            - generic [ref=e749]: "1739"
+          - generic [ref=e750]:
+            - generic [ref=e752]: "1284.77"
+            - generic [ref=e753]: "136"
+            - generic [ref=e754]: "1875"
+          - generic [ref=e755]:
+            - generic [ref=e757]: "1284.82"
+            - generic [ref=e758]: "47"
+            - generic [ref=e759]: "1922"
+          - generic [ref=e760]:
+            - generic [ref=e762]: "1284.87"
+            - generic [ref=e763]: "47"
+            - generic [ref=e764]: "1969"
+          - generic [ref=e765]:
+            - generic [ref=e767]: "1284.92"
+            - generic [ref=e768]: "44"
+            - generic [ref=e769]: "2013"
+          - generic [ref=e770]:
+            - generic [ref=e772]: "1284.97"
+            - generic [ref=e773]: "182"
+            - generic [ref=e774]: "2195"
+          - generic [ref=e775]:
+            - generic [ref=e777]: "1285.02"
+            - generic [ref=e778]: "216"
+            - generic [ref=e779]: "2411"
+        - generic [ref=e780]:
+          - generic [ref=e781]:
+            - generic [ref=e782]: MID
+            - generic [ref=e783]: "1284.32"
+          - generic [ref=e784]:
+            - generic [ref=e785]: SPREAD
+            - generic [ref=e786]: 0.05 / 0.004%
+        - generic [ref=e787]:
+          - generic [ref=e788]:
+            - generic [ref=e790]: "1284.27"
+            - generic [ref=e791]: "360"
+            - generic [ref=e792]: "360"
+          - generic [ref=e793]:
+            - generic [ref=e795]: "1284.22"
+            - generic [ref=e796]: "456"
+            - generic [ref=e797]: "816"
+          - generic [ref=e798]:
+            - generic [ref=e800]: "1284.17"
+            - generic [ref=e801]: "231"
+            - generic [ref=e802]: "1047"
+          - generic [ref=e803]:
+            - generic [ref=e805]: "1284.12"
+            - generic [ref=e806]: "112"
+            - generic [ref=e807]: "1159"
+          - generic [ref=e808]:
+            - generic [ref=e810]: "1284.07"
+            - generic [ref=e811]: "67"
+            - generic [ref=e812]: "1226"
+          - generic [ref=e813]:
+            - generic [ref=e815]: "1284.02"
+            - generic [ref=e816]: "44"
+            - generic [ref=e817]: "1270"
+          - generic [ref=e818]:
+            - generic [ref=e820]: "1283.97"
+            - generic [ref=e821]: "179"
+            - generic [ref=e822]: "1449"
+          - generic [ref=e823]:
+            - generic [ref=e825]: "1283.92"
+            - generic [ref=e826]: "142"
+            - generic [ref=e827]: "1591"
+          - generic [ref=e828]:
+            - generic [ref=e830]: "1283.87"
+            - generic [ref=e831]: "196"
+            - generic [ref=e832]: "1787"
+          - generic [ref=e833]:
+            - generic [ref=e835]: "1283.82"
+            - generic [ref=e836]: "216"
+            - generic [ref=e837]: "2003"
+          - generic [ref=e838]:
+            - generic [ref=e840]: "1283.77"
+            - generic [ref=e841]: "92"
+            - generic [ref=e842]: "2095"
+          - generic [ref=e843]:
+            - generic [ref=e845]: "1283.72"
+            - generic [ref=e846]: "67"
+            - generic [ref=e847]: "2162"
+          - generic [ref=e848]:
+            - generic [ref=e850]: "1283.67"
+            - generic [ref=e851]: "117"
+            - generic [ref=e852]: "2279"
+          - generic [ref=e853]:
+            - generic [ref=e855]: "1283.62"
+            - generic [ref=e856]: "171"
+            - generic [ref=e857]: "2450"
+    - generic [ref=e859]:
+      - generic [ref=e860]:
+        - generic [ref=e861]:
+          - generic [ref=e862]: "04"
+          - generic [ref=e863]: News
+          - generic [ref=e864]: Live
+        - generic [ref=e865]:
+          - button "expand" [ref=e866] [cursor=pointer]:
+            - img [ref=e867]
+          - button "⋯" [ref=e869] [cursor=pointer]
+      - generic [ref=e871]:
+        - generic [ref=e872] [cursor=pointer]:
+          - generic [ref=e873]: 09:42
+          - generic [ref=e874]: BBG
+          - generic [ref=e875]: Nvidia surges past $1.28T as Blackwell shipments accelerate; analysts raise PT to $1,400
+          - generic [ref=e876]: NVDA
+        - generic [ref=e877] [cursor=pointer]:
+          - generic [ref=e878]: 09:38
+          - generic [ref=e879]: RTRS
+          - generic [ref=e880]: Tesla deliveries miss; Q3 guide trimmed on China softness
+          - generic [ref=e881]: TSLA
+        - generic [ref=e882] [cursor=pointer]:
+          - generic [ref=e883]: 09:35
+          - generic [ref=e884]: WSJ
+          - generic [ref=e885]: Fed minutes show split on December cut; two members favor pause
+          - generic [ref=e886]: MACRO
+        - generic [ref=e887] [cursor=pointer]:
+          - generic [ref=e888]: 09:31
+          - generic [ref=e889]: CNBC
+          - generic [ref=e890]: Apple Vision Pro 2 production ramping for Q1 '26 launch — supply chain note
+          - generic [ref=e891]: AAPL
+        - generic [ref=e892] [cursor=pointer]:
+          - generic [ref=e893]: 09:28
+          - generic [ref=e894]: BBG
+          - generic [ref=e895]: AMD wins major hyperscaler deal; MI400 ramp ahead of schedule
+          - generic [ref=e896]: AMD
+        - generic [ref=e897] [cursor=pointer]:
+          - generic [ref=e898]: 09:24
+          - generic [ref=e899]: FT
+          - generic [ref=e900]: EU antitrust opens probe into Meta's ad-stack acquisition
+          - generic [ref=e901]: META
+        - generic [ref=e902] [cursor=pointer]:
+          - generic [ref=e903]: 09:20
+          - generic [ref=e904]: RTRS
+          - generic [ref=e905]: Crude jumps 2.4% on OPEC+ extension speculation
+          - generic [ref=e906]: OIL
+    - generic [ref=e907]:
+      - generic [ref=e909]:
+        - generic [ref=e910]:
+          - generic [ref=e911]:
+            - generic [ref=e912]: "05"
+            - generic [ref=e913]: Sector Heatmap
+            - generic [ref=e914]: S&P 500 · today
+          - generic [ref=e915]:
+            - button "expand" [ref=e916] [cursor=pointer]:
+              - img [ref=e917]
+            - button "⋯" [ref=e919] [cursor=pointer]
+        - generic [ref=e921]:
+          - generic [ref=e922]:
+            - generic [ref=e923]:
+              - text: TECH
+              - generic [ref=e924]: · 32%
+            - generic [ref=e925]:
+              - generic [ref=e926]:
+                - generic [ref=e927]: NVDA
+                - generic [ref=e928]: +2.26%
+              - generic [ref=e929]:
+                - generic [ref=e930]: AAPL
+                - generic [ref=e931]: "-0.83%"
+              - generic [ref=e932]:
+                - generic [ref=e933]: MSFT
+                - generic [ref=e934]: +0.72%
+              - generic [ref=e935]:
+                - generic [ref=e936]: AVGO
+                - generic [ref=e937]: +1.94%
+              - generic [ref=e938]:
+                - generic [ref=e939]: AMD
+                - generic [ref=e940]: +2.62%
+              - generic [ref=e941]:
+                - generic [ref=e942]: CRM
+                - generic [ref=e943]: +0.41%
+              - generic [ref=e944]:
+                - generic [ref=e945]: ORCL
+                - generic [ref=e946]: +1.10%
+              - generic [ref=e947]:
+                - generic [ref=e948]: ADBE
+                - generic [ref=e949]: "-0.22%"
+          - generic [ref=e950]:
+            - generic [ref=e951]:
+              - text: COMMS
+              - generic [ref=e952]: · 16%
+            - generic [ref=e953]:
+              - generic [ref=e954]:
+                - generic [ref=e955]: META
+                - generic [ref=e956]: +1.50%
+              - generic [ref=e957]:
+                - generic [ref=e958]: GOOGL
+                - generic [ref=e959]: "-0.53%"
+              - generic [ref=e960]:
+                - generic [ref=e961]: NFLX
+                - generic [ref=e962]: +0.84%
+              - generic [ref=e963]:
+                - generic [ref=e964]: DIS
+                - generic [ref=e965]: "-1.21%"
+          - generic [ref=e966]:
+            - generic [ref=e967]:
+              - text: CONS DISC
+              - generic [ref=e968]: · 14%
+            - generic [ref=e969]:
+              - generic [ref=e970]:
+                - generic [ref=e971]: AMZN
+                - generic [ref=e972]: +0.63%
+              - generic [ref=e973]:
+                - generic [ref=e974]: TSLA
+                - generic [ref=e975]: "-3.88%"
+              - generic [ref=e976]:
+                - generic [ref=e977]: HD
+                - generic [ref=e978]: +0.18%
+              - generic [ref=e979]:
+                - generic [ref=e980]: MCD
+                - generic [ref=e981]: "-0.42%"
+          - generic [ref=e982]:
+            - generic [ref=e983]:
+              - text: FIN
+              - generic [ref=e984]: · 12%
+            - generic [ref=e985]:
+              - generic [ref=e986]:
+                - generic [ref=e987]: JPM
+                - generic [ref=e988]: "-0.19%"
+              - generic [ref=e989]:
+                - generic [ref=e990]: BAC
+                - generic [ref=e991]: +0.34%
+              - generic [ref=e992]:
+                - generic [ref=e993]: V
+                - generic [ref=e994]: +0.66%
+              - generic [ref=e995]:
+                - generic [ref=e996]: MA
+                - generic [ref=e997]: +0.51%
+          - generic [ref=e998]:
+            - generic [ref=e999]:
+              - text: HEALTH
+              - generic [ref=e1000]: · 10%
+            - generic [ref=e1001]:
+              - generic [ref=e1002]:
+                - generic [ref=e1003]: LLY
+                - generic [ref=e1004]: "-1.04%"
+              - generic [ref=e1005]:
+                - generic [ref=e1006]: UNH
+                - generic [ref=e1007]: +0.22%
+              - generic [ref=e1008]:
+                - generic [ref=e1009]: JNJ
+                - generic [ref=e1010]: "-0.18%"
+              - generic [ref=e1011]:
+                - generic [ref=e1012]: PFE
+                - generic [ref=e1013]: +1.42%
+          - generic [ref=e1014]:
+            - generic [ref=e1015]:
+              - text: ENERGY
+              - generic [ref=e1016]: · 6%
+            - generic [ref=e1017]:
+              - generic [ref=e1018]:
+                - generic [ref=e1019]: XOM
+                - generic [ref=e1020]: +1.84%
+              - generic [ref=e1021]:
+                - generic [ref=e1022]: CVX
+                - generic [ref=e1023]: +1.21%
+              - generic [ref=e1024]:
+                - generic [ref=e1025]: COP
+                - generic [ref=e1026]: +2.04%
+          - generic [ref=e1027]:
+            - generic [ref=e1028]:
+              - text: INDU
+              - generic [ref=e1029]: · 5%
+            - generic [ref=e1030]:
+              - generic [ref=e1031]:
+                - generic [ref=e1032]: CAT
+                - generic [ref=e1033]: "-0.42%"
+              - generic [ref=e1034]:
+                - generic [ref=e1035]: GE
+                - generic [ref=e1036]: +0.88%
+              - generic [ref=e1037]:
+                - generic [ref=e1038]: BA
+                - generic [ref=e1039]: "-2.18%"
+          - generic [ref=e1040]:
+            - generic [ref=e1041]:
+              - text: STAPLES
+              - generic [ref=e1042]: · 3%
+            - generic [ref=e1043]:
+              - generic [ref=e1044]:
+                - generic [ref=e1045]: PG
+                - generic [ref=e1046]: +0.18%
+              - generic [ref=e1047]:
+                - generic [ref=e1048]: KO
+                - generic [ref=e1049]: "-0.12%"
+              - generic [ref=e1050]:
+                - generic [ref=e1051]: WMT
+                - generic [ref=e1052]: +0.41%
+      - generic [ref=e1054]:
+        - generic [ref=e1055]:
+          - generic [ref=e1056]:
+            - generic [ref=e1057]: "06"
+            - generic [ref=e1058]: Time & Sales
+            - generic [ref=e1059]: NVDA
+          - generic [ref=e1060]:
+            - button "expand" [ref=e1061] [cursor=pointer]:
+              - img [ref=e1062]
+            - button "⋯" [ref=e1064] [cursor=pointer]
+        - generic [ref=e1066]:
+          - generic [ref=e1067]: TIME
+          - generic [ref=e1068]: PRICE
+          - generic [ref=e1069]: SIZE
+          - generic [ref=e1071]: 09:42:29
+          - generic [ref=e1072]: "1284.32"
+          - generic [ref=e1073]: "554"
+          - generic [ref=e1074]: S
+          - generic [ref=e1075]: 09:42:22
+          - generic [ref=e1076]: "1284.27"
+          - generic [ref=e1077]: "448"
+          - generic [ref=e1078]: B
+          - generic [ref=e1079]: 09:42:15
+          - generic [ref=e1080]: "1284.19"
+          - generic [ref=e1081]: "840"
+          - generic [ref=e1082]: B
+          - generic [ref=e1083]: 09:42:08
+          - generic [ref=e1084]: "1284.17"
+          - generic [ref=e1085]: "305"
+          - generic [ref=e1086]: B
+          - generic [ref=e1087]: 09:42:01
+          - generic [ref=e1088]: "1284.20"
+          - generic [ref=e1089]: "118"
+          - generic [ref=e1090]: B
+          - generic [ref=e1091]: 09:42:54
+          - generic [ref=e1092]: "1284.15"
+          - generic [ref=e1093]: "654"
+          - generic [ref=e1094]: S
+          - generic [ref=e1095]: 09:42:47
+          - generic [ref=e1096]: "1284.16"
+          - generic [ref=e1097]: "488"
+          - generic [ref=e1098]: S
+          - generic [ref=e1099]: 09:42:40
+          - generic [ref=e1100]: "1284.08"
+          - generic [ref=e1101]: "895"
+          - generic [ref=e1102]: B
+          - generic [ref=e1103]: 09:42:33
+          - generic [ref=e1104]: "1284.01"
+          - generic [ref=e1105]: "449"
+          - generic [ref=e1106]: B
+          - generic [ref=e1107]: 09:41:26
+          - generic [ref=e1108]: "1283.95"
+          - generic [ref=e1109]: "427"
+          - generic [ref=e1110]: B
+          - generic [ref=e1111]: 09:41:19
+          - generic [ref=e1112]: "1283.98"
+          - generic [ref=e1113]: "302"
+          - generic [ref=e1114]: S
+          - generic [ref=e1115]: 09:41:12
+          - generic [ref=e1116]: "1284.07"
+          - generic [ref=e1117]: "451"
+          - generic [ref=e1118]: S
+          - generic [ref=e1119]: 09:41:05
+          - generic [ref=e1120]: "1284.08"
+          - generic [ref=e1121]: "347"
+          - generic [ref=e1122]: S
+          - generic [ref=e1123]: 09:41:58
+          - generic [ref=e1124]: "1284.13"
+          - generic [ref=e1125]: "366"
+          - generic [ref=e1126]: S
+          - generic [ref=e1127]: 09:41:51
+          - generic [ref=e1128]: "1284.05"
+          - generic [ref=e1129]: "883"
+          - generic [ref=e1130]: S
+          - generic [ref=e1131]: 09:41:44
+          - generic [ref=e1132]: "1284.12"
+          - generic [ref=e1133]: "473"
+          - generic [ref=e1134]: S
+          - generic [ref=e1135]: 09:41:37
+          - generic [ref=e1136]: "1284.14"
+          - generic [ref=e1137]: "411"
+          - generic [ref=e1138]: B
+          - generic [ref=e1139]: 09:41:30
+          - generic [ref=e1140]: "1284.17"
+          - generic [ref=e1141]: "172"
+          - generic [ref=e1142]: S
+          - generic [ref=e1143]: 09:40:23
+          - generic [ref=e1144]: "1284.16"
+          - generic [ref=e1145]: "131"
+          - generic [ref=e1146]: S
+          - generic [ref=e1147]: 09:40:16
+          - generic [ref=e1148]: "1284.14"
+          - generic [ref=e1149]: "662"
+          - generic [ref=e1150]: B
+          - generic [ref=e1151]: 09:40:09
+          - generic [ref=e1152]: "1284.22"
+          - generic [ref=e1153]: "342"
+          - generic [ref=e1154]: S
+          - generic [ref=e1155]: 09:40:02
+          - generic [ref=e1156]: "1284.22"
+          - generic [ref=e1157]: "444"
+          - generic [ref=e1158]: B
+    - generic [ref=e1160]:
+      - generic [ref=e1161]:
+        - generic [ref=e1162]:
+          - generic [ref=e1163]: "07"
+          - generic [ref=e1164]: Order Ticket
+          - generic [ref=e1165]: NVDA
+        - generic [ref=e1166]:
+          - button "expand" [ref=e1167] [cursor=pointer]:
+            - img [ref=e1168]
+          - button "⋯" [ref=e1170] [cursor=pointer]
+      - generic [ref=e1172]:
+        - generic [ref=e1173]:
+          - button "Buy" [ref=e1174] [cursor=pointer]
+          - button "Sell" [ref=e1175] [cursor=pointer]
+        - generic [ref=e1176]:
+          - generic [ref=e1177]: Symbol
+          - generic [ref=e1178]:
+            - generic [ref=e1179]: NVDA
+            - generic [ref=e1180]: NASDAQ · USD
+        - generic [ref=e1181]:
+          - generic [ref=e1182]:
+            - generic [ref=e1183]: Order Type
+            - generic [ref=e1184]:
+              - generic [ref=e1185]: LMT
+              - generic [ref=e1186]: ▾
+          - generic [ref=e1187]:
+            - generic [ref=e1188]: Quantity
+            - generic [ref=e1189]:
+              - generic [ref=e1190]: "100"
+              - generic [ref=e1191]:
+                - generic [ref=e1192] [cursor=pointer]: −
+                - generic [ref=e1193] [cursor=pointer]: +
+        - generic [ref=e1194]:
+          - generic [ref=e1195]: Limit Price
+          - generic [ref=e1196]:
+            - generic [ref=e1197]: "1284.32"
+            - generic [ref=e1198]:
+              - generic [ref=e1199] [cursor=pointer]: −
+              - generic [ref=e1200] [cursor=pointer]: +
+        - generic [ref=e1201]:
+          - generic [ref=e1202]: Time in force
+          - generic [ref=e1203]:
+            - generic [ref=e1204] [cursor=pointer]: DAY
+            - generic [ref=e1205] [cursor=pointer]: GTC
+            - generic [ref=e1206] [cursor=pointer]: IOC
+        - generic [ref=e1207]:
+          - generic [ref=e1208]: Estimated cost
+          - generic [ref=e1209]: $128,432.00
+          - generic [ref=e1210]: Buying power
+          - generic [ref=e1211]: $2,418,294.10
+          - generic [ref=e1212]: Commission
+          - generic [ref=e1213]: $0.00
+          - generic [ref=e1214]: Margin req.
+          - generic [ref=e1215]: $64,216.00
+        - button "Review Buy · 100 @ 1284.32" [ref=e1216] [cursor=pointer]
+    - generic [ref=e1218]:
+      - generic [ref=e1219]:
+        - generic [ref=e1220]:
+          - generic [ref=e1221]: "08"
+          - generic [ref=e1222]: Positions
+          - generic [ref=e1223]: 7 open · long-short
+        - generic [ref=e1224]:
+          - button "expand" [ref=e1225] [cursor=pointer]:
+            - img [ref=e1226]
+          - button "⋯" [ref=e1228] [cursor=pointer]
+      - generic [ref=e1230]:
+        - generic [ref=e1231]:
+          - generic [ref=e1232]:
+            - generic [ref=e1233]: Net P&L (today)
+            - generic [ref=e1234]: +290.8K
+          - generic [ref=e1235]:
+            - generic [ref=e1236]: Market value
+            - generic [ref=e1237]: $3.25M
+          - generic [ref=e1238]:
+            - generic [ref=e1239]: Cash
+            - generic [ref=e1240]: $2.42M
+          - generic [ref=e1241]:
+            - generic [ref=e1242]: Buying power
+            - generic [ref=e1243]: $5.83M
+        - generic [ref=e1245]:
+          - generic [ref=e1246]: SYM
+          - generic [ref=e1247]: SIDE
+          - generic [ref=e1248]: QTY
+          - generic [ref=e1249]: AVG
+          - generic [ref=e1250]: MARKET VALUE
+          - generic [ref=e1251]: P&L
+          - generic [ref=e1252]: NVDA
+          - generic [ref=e1253]: LONG
+          - generic [ref=e1254]: 1,200
+          - generic [ref=e1255]: 1,142.80
+          - generic [ref=e1256]: $1,541,184
+          - generic [ref=e1257]: +169,824 · +12.39%
+          - generic [ref=e1258]: AAPL
+          - generic [ref=e1259]: LONG
+          - generic [ref=e1260]: 2,400
+          - generic [ref=e1261]: "198.40"
+          - generic [ref=e1262]: $530,832
+          - generic [ref=e1263]: +54,672 · +11.48%
+          - generic [ref=e1264]: TSLA
+          - generic [ref=e1265]: SHORT
+          - generic [ref=e1266]: "800"
+          - generic [ref=e1267]: "281.20"
+          - generic [ref=e1268]: $203,344
+          - generic [ref=e1269]: +21,616 · +9.61%
+          - generic [ref=e1270]: AMD
+          - generic [ref=e1271]: LONG
+          - generic [ref=e1272]: 1,800
+          - generic [ref=e1273]: "142.10"
+          - generic [ref=e1274]: $284,958
+          - generic [ref=e1275]: +29,178 · +11.41%
+          - generic [ref=e1276]: SPY
+          - generic [ref=e1277]: LONG
+          - generic [ref=e1278]: "600"
+          - generic [ref=e1279]: "561.40"
+          - generic [ref=e1280]: $349,446
+          - generic [ref=e1281]: +12,606 · +3.74%
+          - generic [ref=e1282]: META
+          - generic [ref=e1283]: LONG
+          - generic [ref=e1284]: "300"
+          - generic [ref=e1285]: "548.20"
+          - generic [ref=e1286]: $171,570
+          - generic [ref=e1287]: +7,110 · +4.32%
+          - generic [ref=e1288]: AMZN
+          - generic [ref=e1289]: LONG
+          - generic [ref=e1290]: "900"
+          - generic [ref=e1291]: "192.10"
+          - generic [ref=e1292]: $168,678
+          - generic [ref=e1293]: "-4,212 · -2.44%"
+  - generic [ref=e1294]:
+    - generic [ref=e1295]:
+      - generic [ref=e1296]: ●
+      - text: Stream OK · 0ms
+    - generic [ref=e1297]: Latency 4ms
+    - generic [ref=e1298]: "Region: NY-4"
+    - generic [ref=e1299]: "Subscribed: NVDA · NASDAQ TotalView"
+    - generic [ref=e1300]: Buying power $5.83M
+    - generic [ref=e1301]: 2026-04-27 11:52:43 UTC

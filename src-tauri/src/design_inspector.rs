@@ -447,6 +447,22 @@ impl Inspector {
                             ("density",                 "u8",   "Spacing density (0=compact 1=normal 2=spacious)"),
                             ("accent_emphasis",         "f32",  "Accent color saturation/brightness multiplier"),
                             ("card_floating_shadow_alpha","u8", "Floating card drop shadow opacity"),
+                            // ── New knobs — design-pass 2 ──────────────────────
+                            ("pane_gap_alpha",            "u8",   "Gutter fill alpha between panes (0=none)"),
+                            ("pane_active_indicator",     "u8",   "Active pane: 0=none 1=top-line 2=fill 3=both"),
+                            ("nav_active_col_alpha",      "u8",   "Active nav button column tint alpha"),
+                            ("dialog_backdrop_alpha",     "u8",   "Modal backdrop overlay alpha"),
+                            ("tab_inactive_alpha",        "f32",  "Opacity of inactive tab text (0–1)"),
+                            ("tab_hover_bg_alpha",        "u8",   "Hovered tab background alpha"),
+                            ("section_label_padding_top","f32",  "Space above section labels in px"),
+                            ("section_label_padding_bottom","f32","Space below section labels in px"),
+                            ("input_focus_color",         "Color?","Focus ring color for text inputs"),
+                            ("pane_gap_color",            "Color?","Pane gutter fill color (None=toolbar_border)"),
+                            ("drag_handle_alpha",         "f32",  "Drag handle rest opacity (0–1)"),
+                            ("drag_handle_dot_scale",     "f32",  "Drag handle dot size scale (1.0=default)"),
+                            ("toast_bg_alpha",            "u8",   "Toast notification background opacity"),
+                            ("card_stripe_alpha",         "u8",   "Order card left-stripe opacity (255=solid)"),
+                            ("r_chip",                    "u8",   "Badge/chip corner radius (0=use r_sm)"),
                         ];
                         for (field, ty, affects) in FIELD_REF {
                             ui.horizontal(|ui| {
@@ -1156,6 +1172,22 @@ fn build_arm(id: u8, s: &crate::chart_renderer::ui::style::StyleSettings) -> Str
         s.card_floating_shadow_alpha, fmt_opt_col(s.segmented_idle_fill), fmt_opt_col(s.segmented_idle_text)));
     out.push_str(&format!("{i}cta_height_px: {}, cta_padding_x: {},\n",
         fmt_f32(s.cta_height_px), fmt_f32(s.cta_padding_x)));
+    // New knobs — design-pass 2
+    out.push_str(&format!("{i}pane_gap_alpha: {}, pane_active_indicator: {},\n",
+        s.pane_gap_alpha, s.pane_active_indicator));
+    out.push_str(&format!("{i}nav_active_col_alpha: {}, dialog_backdrop_alpha: {},\n",
+        s.nav_active_col_alpha, s.dialog_backdrop_alpha));
+    out.push_str(&format!("{i}tab_inactive_alpha: {}, tab_hover_bg_alpha: {},\n",
+        fmt_f32(s.tab_inactive_alpha), s.tab_hover_bg_alpha));
+    out.push_str(&format!("{i}section_label_padding_top: {}, section_label_padding_bottom: {},\n",
+        fmt_f32(s.section_label_padding_top), fmt_f32(s.section_label_padding_bottom)));
+    out.push_str(&format!("{i}input_focus_color: {}, pane_gap_color: {},\n",
+        fmt_opt_col(s.input_focus_color), fmt_opt_col(s.pane_gap_color)));
+    out.push_str(&format!("{i}drag_handle_alpha: {}, drag_handle_dot_scale: {},\n",
+        fmt_f32(s.drag_handle_alpha), fmt_f32(s.drag_handle_dot_scale)));
+    out.push_str(&format!("{i}toast_bg_alpha: {}, card_stripe_alpha: {},\n",
+        s.toast_bg_alpha, s.card_stripe_alpha));
+    out.push_str(&format!("{i}r_chip: {},\n", s.r_chip));
     out.push_str("        },");
     out
 }
@@ -1586,6 +1618,66 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 local_changed |= style_drag_f32(ui, "cta_height_px",  &mut s.cta_height_px,  16.0..=64.0);
                 local_changed |= style_drag_f32(ui, "cta_padding_x",  &mut s.cta_padding_x,  4.0..=32.0);
 
+                ui.add_space(4.0);
+
+                // ── New knobs — design-pass 2 ─────────────────────────────────
+                ui.label(RichText::new("Pane Chrome").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_u8(ui,  "pane_gap_alpha",       &mut s.pane_gap_alpha);
+                local_changed |= style_drag_u8(ui,  "pane_active_indicator",&mut s.pane_active_indicator);
+                local_changed |= style_drag_u8(ui,  "nav_active_col_alpha", &mut s.nav_active_col_alpha);
+                // pane_gap_color optional override
+                {
+                    let mut enabled = s.pane_gap_color.is_some();
+                    let prev = enabled;
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut enabled, "pane_gap_color").changed() || enabled != prev {
+                            if enabled { s.pane_gap_color = Some(egui::Color32::from_rgb(30,30,40)); }
+                            else { s.pane_gap_color = None; }
+                            local_changed = true;
+                        }
+                        if let Some(ref mut c) = s.pane_gap_color {
+                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
+                        }
+                    });
+                }
+
+                ui.add_space(4.0);
+                ui.label(RichText::new("Tabs").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_f32(ui, "tab_inactive_alpha",  &mut s.tab_inactive_alpha,  0.0..=1.0);
+                local_changed |= style_drag_u8(ui,  "tab_hover_bg_alpha",  &mut s.tab_hover_bg_alpha);
+
+                ui.add_space(4.0);
+                ui.label(RichText::new("Labels & Cards").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_f32(ui, "section_label_padding_top",    &mut s.section_label_padding_top,    0.0..=16.0);
+                local_changed |= style_drag_f32(ui, "section_label_padding_bottom", &mut s.section_label_padding_bottom, 0.0..=16.0);
+                local_changed |= style_drag_u8(ui,  "card_stripe_alpha",            &mut s.card_stripe_alpha);
+                local_changed |= style_drag_u8(ui,  "r_chip",                       &mut s.r_chip);
+
+                ui.add_space(4.0);
+                ui.label(RichText::new("Drag Handles").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_f32(ui, "drag_handle_alpha",     &mut s.drag_handle_alpha,     0.0..=1.0);
+                local_changed |= style_drag_f32(ui, "drag_handle_dot_scale", &mut s.drag_handle_dot_scale, 0.25..=3.0);
+
+                ui.add_space(4.0);
+                ui.label(RichText::new("Overlays & Toasts").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                local_changed |= style_drag_u8(ui,  "toast_bg_alpha",        &mut s.toast_bg_alpha);
+                local_changed |= style_drag_u8(ui,  "dialog_backdrop_alpha", &mut s.dialog_backdrop_alpha);
+                // input_focus_color optional override
+                {
+                    let mut enabled = s.input_focus_color.is_some();
+                    let prev = enabled;
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut enabled, "input_focus_color").changed() || enabled != prev {
+                            if enabled { s.input_focus_color = Some(egui::Color32::from_rgb(100,150,255)); }
+                            else { s.input_focus_color = None; }
+                            local_changed = true;
+                        }
+                        if let Some(ref mut c) = s.input_focus_color {
+                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
+                        }
+                    });
+                }
+
                 // Delete button for user presets
                 if !is_canonical {
                     ui.add_space(6.0);
@@ -1689,6 +1781,22 @@ fn field_tip(name: &str) -> &'static str {
         "inactive_header_fill"      => "Apply a fill to inactive pane headers",
         "tab_underline_under_text"  => "Position tab underline directly under the text (vs full width)",
         "card_floating_shadow"      => "Add a floating drop shadow beneath cards",
+        // New knobs — design-pass 2
+        "pane_gap_alpha"             => "Alpha of the gutter fill color between panes (0=transparent)",
+        "pane_active_indicator"      => "Active pane indicator: 0=none 1=top-border 2=header-fill 3=both",
+        "nav_active_col_alpha"       => "Column tint alpha for active nav button in toolbar (Meridien style)",
+        "dialog_backdrop_alpha"      => "Background overlay alpha behind modal dialogs (0=no backdrop)",
+        "tab_inactive_alpha"         => "Opacity multiplier for inactive tab text (0=invisible, 1=full)",
+        "tab_hover_bg_alpha"         => "Background alpha on hovered inactive tab",
+        "section_label_padding_top"  => "Space above eyebrow/section labels in px",
+        "section_label_padding_bottom" => "Space below eyebrow/section labels before content in px",
+        "input_focus_color"          => "Focus ring color for text inputs (None=use accent)",
+        "pane_gap_color"             => "Gutter fill color between panes (None=use toolbar_border)",
+        "drag_handle_alpha"          => "Opacity of drag handles at rest (0=invisible, 1=full)",
+        "drag_handle_dot_scale"      => "Size multiplier for drag handle dots (1.0=default)",
+        "toast_bg_alpha"             => "Background opacity of toast notifications (200=semi-solid)",
+        "card_stripe_alpha"          => "Opacity of left-edge accent stripe on order/alert cards (255=solid)",
+        "r_chip"                     => "Corner radius for badges/chips specifically (0=use r_sm)",
         _ => "",
     }
 }

@@ -296,13 +296,14 @@ impl<'a> PainterPaneHeader<'a> {
                     out.tab_drag_released = Some(ti);
                 }
 
-                // Bg
+                // Bg — tab_hover_bg_alpha and tab_inactive_alpha knobs from StyleSettings
+                let style_st = crate::chart_renderer::ui::style::current();
                 let tab_bg = if is_active_tab {
                     t.bg.gamma_multiply(0.5)
                 } else if tab_resp.hovered() {
-                    t.bg.gamma_multiply(0.75)
+                    crate::chart_renderer::ui::style::color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha)
                 } else {
-                    t.bg.gamma_multiply(0.9)
+                    crate::chart_renderer::ui::style::color_alpha(t.bg, 0)
                 };
                 painter.rect_filled(
                     tab_rect,
@@ -317,10 +318,11 @@ impl<'a> PainterPaneHeader<'a> {
                     );
                 }
 
+                // tab_inactive_alpha dims inactive tab text
                 let sym_col = if is_active_tab {
                     if self.is_active && self.visible_count > 1 { t.accent } else { t.text }
                 } else {
-                    t.dim.gamma_multiply(0.7)
+                    t.dim.gamma_multiply(style_st.tab_inactive_alpha)
                 };
                 painter.text(
                     pos2(tab_rect.left() + tab_pad, tab_rect.center().y),

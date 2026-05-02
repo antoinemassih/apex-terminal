@@ -1,0 +1,223 @@
+src-tauri/src/chart_renderer/ui/components.rs:228:                    egui::Button::new(
+src-tauri/src/chart_renderer/ui/components.rs:244:                    egui::Button::new(
+src-tauri/src/chart_renderer/ui/components.rs:391:                egui::Button::new(
+src-tauri/src/chart_renderer/ui/components.rs:48:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components.rs:578:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components.rs:595:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components.rs:614:        egui::Button::new(RichText::new(icon).size(size).color(color))
+src-tauri/src/chart_renderer/ui/components.rs:733:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components.rs:98:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:1057:        egui::Button::new(RichText::new(&text).monospace().size(font_sm()).color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:1101:            egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:1138:        let te = egui::TextEdit::singleline(buffer)
+src-tauri/src/chart_renderer/ui/components_extra.rs:1229:                egui::Button::new(RichText::new(*label).monospace().size(font_sm()).strong().color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:146:                egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:22:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:232:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:278:            egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:390:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:411:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:430:        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:482:                        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:496:                        egui::Button::new(
+src-tauri/src/chart_renderer/ui/components_extra.rs:63:            let edit = egui::TextEdit::singleline(buffer)
+src-tauri/src/chart_renderer/ui/components_extra.rs:731:    if r + g + b > 140.0 { Color32::from_rgb(20, 20, 20) } else { Color32::from_rgb(245, 245, 245) }
+src-tauri/src/chart_renderer/ui/components_extra.rs:744:    if lum > 140.0 { Color32::from_rgb(20, 20, 24) } else { Color32::from_rgb(240, 240, 244) }
+src-tauri/src/chart_renderer/ui/components_extra.rs:780:        egui::Button::new(RichText::new(label).size(font_md()).strong().color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:825:        egui::Button::new(RichText::new(icon).size(font).color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:878:        egui::Button::new(RichText::new(label).size(font_size).strong().color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:912:        egui::Button::new(RichText::new(display).size(font_sm()).strong().color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:936:        egui::Button::new(RichText::new(display).size(font_sm()).color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:998:            egui::Button::new(RichText::new(&display).size(font_sm()).color(fg))
+src-tauri/src/chart_renderer/ui/components_extra.rs:99:                egui::Button::new(
+src-tauri/src/chart_renderer/ui/style.rs:1010:    let trough = Color32::from_rgb(
+src-tauri/src/chart_renderer/ui/style.rs:1068:            egui::Button::new(RichText::new(*label).monospace().size(12.0).strong().color(fg))
+src-tauri/src/chart_renderer/ui/style.rs:1112:        egui::Button::new(RichText::new(icon).size(size).color(color))
+src-tauri/src/chart_renderer/ui/style.rs:1142:        egui::Button::new(RichText::new(icon).size(spec.glyph_size).color(color))
+src-tauri/src/chart_renderer/ui/style.rs:1210:            egui::Button::new(RichText::new(label_text).monospace().size(font_lg()).strong().color(color))
+src-tauri/src/chart_renderer/ui/style.rs:1281:    if lum > 140.0 { Color32::from_rgb(12, 12, 14) } else { Color32::from_rgb(240, 240, 244) }
+src-tauri/src/chart_renderer/ui/style.rs:1312:    let resp = ui.add(egui::Button::new(RichText::new(txt).monospace().size(crate::dt_f32!(badge.font_size, 8.0)).strong().color(color))
+src-tauri/src/chart_renderer/ui/style.rs:1381:        egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(fg))
+src-tauri/src/chart_renderer/ui/style.rs:1400:    let dim_bg = Color32::from_rgb(
+src-tauri/src/chart_renderer/ui/style.rs:1411:    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_md()).strong().color(fg))
+src-tauri/src/chart_renderer/ui/style.rs:1420:                let hover_bg = Color32::from_rgb(
+src-tauri/src/chart_renderer/ui/style.rs:1462:    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(fg))
+src-tauri/src/chart_renderer/ui/style.rs:1506:    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).color(fg))
+src-tauri/src/chart_renderer/ui/style.rs:433:pub static TEXT_PRIMARY: Color32 = Color32::from_rgb(220, 220, 230);
+src-tauri/src/chart_renderer/ui/style.rs:434:pub static TEXT_SECONDARY: Color32 = Color32::from_rgb(200, 200, 210);
+src-tauri/src/chart_renderer/ui/style.rs:540:    let resp = ui.add(egui::Button::new(RichText::new(&display_label).monospace().size(font_md()).color(fg))
+src-tauri/src/chart_renderer/ui/style.rs:648:        let resp = ui.add(egui::Button::new(
+src-tauri/src/chart_renderer/ui/style.rs:665:        egui::Button::new(RichText::new(lbl)
+src-tauri/src/chart_renderer/ui/style.rs:724:        Color32::from_rgb(20, 20, 20)
+src-tauri/src/chart_renderer/ui/style.rs:730:        Color32::from_rgb(20, 20, 20)
+src-tauri/src/chart_renderer/ui/style.rs:733:        Color32::from_rgb(238, 232, 218)
+src-tauri/src/chart_renderer/ui/style.rs:741:            egui::Button::new(RichText::new(*label)
+src-tauri/src/chart_renderer/ui/style.rs:800:    let base_fill = Color32::from_rgb(26, 26, 32);
+src-tauri/src/chart_renderer/ui/style.rs:804:        Color32::from_rgb(80, 80, 92)
+src-tauri/src/chart_renderer/ui/style.rs:858:        Color32::from_rgb(bg.r().saturating_sub(darken), bg.g().saturating_sub(darken), bg.b().saturating_sub(darken))
+src-tauri/src/design_inspector.rs:1003:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1004:                            RichText::new("LOAD").monospace().size(9.0).color(Color32::from_rgb(180, 220, 250)))
+src-tauri/src/design_inspector.rs:1028:            .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1031:            ui.add(egui::TextEdit::singleline(name_buf)
+src-tauri/src/design_inspector.rs:1035:            if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1036:                RichText::new("+ SAVE").monospace().size(10.0).color(Color32::from_rgb(166, 227, 161)))
+src-tauri/src/design_inspector.rs:1051:                .monospace().size(9.5).italics().color(Color32::from_rgb(110, 110, 120)));
+src-tauri/src/design_inspector.rs:1054:                .monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1061:                        .color(Color32::from_rgb(220, 220, 230)));
+src-tauri/src/design_inspector.rs:1063:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1064:                            RichText::new("✕").monospace().size(9.0).color(Color32::from_rgb(220, 100, 100)))
+src-tauri/src/design_inspector.rs:1071:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1072:                            RichText::new("RECALL").monospace().size(9.0).color(Color32::from_rgb(180, 220, 250)))
+src-tauri/src/design_inspector.rs:1096:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1102:                        .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1104:                        ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1105:                            RichText::new(label).monospace().size(10.0).color(Color32::from_rgb(220, 220, 230)))
+src-tauri/src/design_inspector.rs:1107:                            .stroke(Stroke::new(0.5, Color32::from_rgb(80, 80, 90)))
+src-tauri/src/design_inspector.rs:1130:                        .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1131:                    if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1132:                        RichText::new("☀ Derive Light").monospace().size(10.0).color(Color32::from_rgb(220, 220, 230)))
+src-tauri/src/design_inspector.rs:1134:                        .stroke(Stroke::new(0.5, Color32::from_rgb(80, 80, 90)))
+src-tauri/src/design_inspector.rs:1140:                    if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1141:                        RichText::new("🌙 Derive Dark").monospace().size(10.0).color(Color32::from_rgb(220, 220, 230)))
+src-tauri/src/design_inspector.rs:1143:                        .stroke(Stroke::new(0.5, Color32::from_rgb(80, 80, 90)))
+src-tauri/src/design_inspector.rs:1159:                    .color(Color32::from_rgb(166, 227, 161)), |ui| {
+src-tauri/src/design_inspector.rs:1161:                        .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1176:                            ui.label(RichText::new(name).monospace().size(9.0).color(Color32::from_rgb(180, 180, 195)));
+src-tauri/src/design_inspector.rs:1183:                                ui.painter().rect_filled(rect, 1.5, Color32::from_rgb(r, g, b));
+src-tauri/src/design_inspector.rs:1184:                                ui.painter().rect_stroke(rect, 1.5, Stroke::new(0.3, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
+src-tauri/src/design_inspector.rs:1195:                        .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1196:                    if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1197:                        RichText::new("📄 Style Guide (MD)").monospace().size(10.0).color(Color32::from_rgb(220, 220, 230)))
+src-tauri/src/design_inspector.rs:1199:                        .stroke(Stroke::new(0.5, Color32::from_rgb(80, 80, 90)))
+src-tauri/src/design_inspector.rs:1226:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1243:                    .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1245:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1258:                    let (badge, col) = if r >= 7.0 { ("AAA", Color32::from_rgb(80, 200, 120)) }
+src-tauri/src/design_inspector.rs:1259:                                       else if r >= 4.5 { ("AA",  Color32::from_rgb(180, 210, 80)) }
+src-tauri/src/design_inspector.rs:1260:                                       else if r >= 3.0 { ("A",   Color32::from_rgb(220, 180, 60)) }
+src-tauri/src/design_inspector.rs:1261:                                       else { ("FAIL", Color32::from_rgb(220, 80, 80)) };
+src-tauri/src/design_inspector.rs:1266:                        ui.painter().rect_stroke(rect, 2.0, Stroke::new(0.5, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
+src-tauri/src/design_inspector.rs:1270:                            .color(Color32::from_rgb(180, 180, 195)));
+src-tauri/src/design_inspector.rs:1272:                            ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1277:                                .color(Color32::from_rgb(220, 220, 230)));
+src-tauri/src/design_inspector.rs:1284:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1290:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1308:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1313:                    .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1315:                    .monospace().size(9.0).italics().color(Color32::from_rgb(140, 140, 150)));
+src-tauri/src/design_inspector.rs:1320:                        ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(180, 180, 195))
+src-tauri/src/design_inspector.rs:1337:                let body_color = Color32::from_rgb(220, 220, 230);
+src-tauri/src/design_inspector.rs:1342:                    .color(Color32::from_rgb(180, 220, 250)), |ui| {
+src-tauri/src/design_inspector.rs:1357:                    .color(Color32::from_rgb(180, 220, 250)), |ui| {
+src-tauri/src/design_inspector.rs:1372:                    .color(Color32::from_rgb(180, 220, 250)), |ui| {
+src-tauri/src/design_inspector.rs:1386:                    .monospace().size(9.0).italics().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1388:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1393:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1395:                ui.label(RichText::new("HOVER BRIGHTNESS").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1401:                ui.label(RichText::new("PRESSED BRIGHTNESS").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1407:                ui.label(RichText::new("ACTIVE / FOCUS / DISABLED").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1418:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1420:                ui.label(RichText::new("CANDLES").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1426:                ui.label(RichText::new("VOLUME").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1430:                ui.label(RichText::new("GRID & AXES").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1436:                ui.label(RichText::new("OVERLAYS").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1440:                ui.label(RichText::new("INDICATOR PALETTE (8 distinct lines)").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1449:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1451:                ui.label(RichText::new("HEIGHTS").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1461:                ui.label(RichText::new("PADDING & SHAPE").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1467:                ui.label(RichText::new("TYPOGRAPHY").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1472:                ui.label(RichText::new("BRIGHTNESS").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:1479:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1495:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1512:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1521:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1532:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1544:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1557:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1567:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1585:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1599:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1611:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1650:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1662:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1671:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1683:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1725:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1735:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1742:                ui.label(RichText::new("Widths").monospace().size(9.0).color(Color32::from_rgb(130, 130, 140)));
+src-tauri/src/design_inspector.rs:1759:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1795:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1827:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1844:                    .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:1897:        let lbl = ui.label(RichText::new(label).monospace().size(10.0).color(Color32::from_rgb(180, 180, 195)));
+src-tauri/src/design_inspector.rs:1901:                ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:1902:                    RichText::new(glyph).monospace().size(11.0).color(Color32::from_rgb(220, 220, 230)))
+src-tauri/src/design_inspector.rs:1904:                    .stroke(Stroke::new(0.5, Color32::from_rgb(80, 80, 90)))
+src-tauri/src/design_inspector.rs:1990:        ui.label(RichText::new(label).monospace().size(10.0).color(Color32::from_rgb(180, 180, 195)));
+src-tauri/src/design_inspector.rs:2262:            Stroke::new(0.5, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
+src-tauri/src/design_inspector.rs:2264:        ui.label(RichText::new(label).monospace().size(10.0).color(Color32::from_rgb(180, 180, 190)));
+src-tauri/src/design_inspector.rs:2269:                .selected_text(RichText::new(cur_label).monospace().size(10.0).color(Color32::from_rgb(203, 166, 247)))
+src-tauri/src/design_inspector.rs:2334:                let r = ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:2746:        ui.label(RichText::new(label).monospace().size(10.0).color(Color32::from_rgb(180, 180, 195)));
+src-tauri/src/design_inspector.rs:369:                    h.family, egui::FontId::monospace(10.0), Color32::from_rgb(203, 166, 247));
+src-tauri/src/design_inspector.rs:403:                .fill(Color32::from_rgb(18, 18, 24))
+src-tauri/src/design_inspector.rs:404:                .stroke(Stroke::new(1.0, Color32::from_rgb(40, 42, 54)))
+src-tauri/src/design_inspector.rs:456:                .fill(Color32::from_rgb(18, 18, 24))
+src-tauri/src/design_inspector.rs:457:                .stroke(Stroke::new(1.0, Color32::from_rgb(40, 42, 54)))
+src-tauri/src/design_inspector.rs:493:            .fill(Color32::from_rgb(14, 14, 20))
+src-tauri/src/design_inspector.rs:499:                        .color(Color32::from_rgb(203, 166, 247)));
+src-tauri/src/design_inspector.rs:501:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:504:                                .color(if self.dirty { Color32::from_rgb(166, 227, 161) } else { Color32::from_rgb(100, 100, 110) }))
+src-tauri/src/design_inspector.rs:506:                            .stroke(Stroke::new(0.5, if self.dirty { Color32::from_rgba_unmultiplied(166, 227, 161, 80) } else { Color32::from_rgb(50, 50, 60) }))
+src-tauri/src/design_inspector.rs:521:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:523:                                .color(Color32::from_rgb(243, 139, 168)))
+src-tauri/src/design_inspector.rs:534:                        let popout_color = Color32::from_rgb(137, 180, 250);
+src-tauri/src/design_inspector.rs:535:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:548:                        let copy_color = Color32::from_rgb(180, 220, 250);
+src-tauri/src/design_inspector.rs:549:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:568:                        let undo_col = if undo_enabled { Color32::from_rgb(220, 220, 230) } else { Color32::from_rgb(80, 80, 88) };
+src-tauri/src/design_inspector.rs:569:                        let redo_col = if redo_enabled { Color32::from_rgb(220, 220, 230) } else { Color32::from_rgb(80, 80, 88) };
+src-tauri/src/design_inspector.rs:570:                        if ui.add_enabled(redo_enabled, egui::Button::new(
+src-tauri/src/design_inspector.rs:578:                        if ui.add_enabled(undo_enabled, egui::Button::new(
+src-tauri/src/design_inspector.rs:593:                        Color32::from_rgb(255, 191, 0)
+src-tauri/src/design_inspector.rs:595:                        Color32::from_rgb(100, 100, 110)
+src-tauri/src/design_inspector.rs:597:                    if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:615:                            .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:626:                        .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:631:                            .color(Color32::from_rgb(203, 166, 247)))
+src-tauri/src/design_inspector.rs:648:                    .color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:654:                        .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:656:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:657:                            RichText::new(*name).monospace().size(10.0).color(Color32::from_rgb(220, 220, 230)))
+src-tauri/src/design_inspector.rs:659:                            .stroke(Stroke::new(0.5, Color32::from_rgb(80, 80, 90)))
+src-tauri/src/design_inspector.rs:674:                    ui.add(egui::TextEdit::singleline(&mut self.filter)
+src-tauri/src/design_inspector.rs:681:                            .color(if hit == 0 { Color32::from_rgb(220, 100, 100) } else { Color32::from_rgb(166, 227, 161) }));
+src-tauri/src/design_inspector.rs:696:                            .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:698:                            .color(Color32::from_rgb(203, 166, 247)));
+src-tauri/src/design_inspector.rs:700:                            if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:702:                                    .color(Color32::from_rgb(150, 150, 160)))
+src-tauri/src/design_inspector.rs:712:                        .color(Color32::from_rgb(140, 140, 150)));
+src-tauri/src/design_inspector.rs:726:            .fill(Color32::from_rgb(22, 22, 30))
+src-tauri/src/design_inspector.rs:730:                    .color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:733:                    .color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:777:                    egui::Button::new(
+src-tauri/src/design_inspector.rs:779:                            .color(if active { Color32::from_rgb(203, 166, 247) } else { Color32::from_rgb(150, 150, 160) }))
+src-tauri/src/design_inspector.rs:790:                        .fill(Color32::from_rgb(22, 22, 30))
+src-tauri/src/design_inspector.rs:832:                .fill(Color32::from_rgb(14, 14, 20))
+src-tauri/src/design_inspector.rs:836:                        .color(Color32::from_rgb(150, 150, 160)));
+src-tauri/src/design_inspector.rs:897:                h.family, egui::FontId::monospace(10.0), Color32::from_rgb(203, 166, 247));
+src-tauri/src/design_inspector.rs:920:            .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:923:            ui.label(RichText::new("PATH").monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:924:            ui.add(egui::TextEdit::singleline(path)
+src-tauri/src/design_inspector.rs:930:        let status_col = if path.is_empty() { Color32::from_rgb(120, 120, 130) }
+src-tauri/src/design_inspector.rs:931:                        else if exists { Color32::from_rgb(166, 227, 161) }
+src-tauri/src/design_inspector.rs:932:                        else { Color32::from_rgb(220, 100, 100) };
+src-tauri/src/design_inspector.rs:953:            .monospace().size(9.0).italics().color(Color32::from_rgb(120, 120, 130)));
+src-tauri/src/design_inspector.rs:956:            ui.add(egui::TextEdit::singleline(name_buf)
+src-tauri/src/design_inspector.rs:960:            if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:961:                RichText::new("+ SAVE").monospace().size(10.0).color(Color32::from_rgb(166, 227, 161)))
+src-tauri/src/design_inspector.rs:983:                .monospace().size(9.5).italics().color(Color32::from_rgb(110, 110, 120)));
+src-tauri/src/design_inspector.rs:986:                .monospace().size(9.0).strong().color(Color32::from_rgb(166, 227, 161)));
+src-tauri/src/design_inspector.rs:993:                        .color(Color32::from_rgb(220, 220, 230)));
+src-tauri/src/design_inspector.rs:995:                        if ui.add(egui::Button::new(
+src-tauri/src/design_inspector.rs:996:                            RichText::new("✕").monospace().size(9.0).color(Color32::from_rgb(220, 100, 100)))

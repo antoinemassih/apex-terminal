@@ -5528,10 +5528,20 @@ fn render_chart_pane(
         {
             let st = super::ui::style::current();
             let hp = ui.painter_at(header_rect);
-            if is_active && visible_count > 1 {
+            // pane_active_indicator: 0=none, 1=top-border line only, 2=header fill, 3=both.
+            let draw_fill   = is_active && visible_count > 1 && (st.pane_active_indicator == 2 || st.pane_active_indicator == 3);
+            let draw_topbar = is_active && visible_count > 1 && (st.pane_active_indicator == 1 || st.pane_active_indicator == 3);
+            if draw_fill {
                 hp.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(st.active_header_fill_multiply));
             } else if st.inactive_header_fill {
                 hp.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(1.2));
+            }
+            if draw_topbar {
+                hp.line_segment(
+                    [egui::pos2(header_rect.left(), header_rect.top()),
+                     egui::pos2(header_rect.right(), header_rect.top())],
+                    egui::Stroke::new(2.0, t.accent),
+                );
             }
             if is_active && visible_count > 1 && st.show_active_tab_underline {
                 let uw = if st.tab_underline_thickness > 0.0 {
@@ -16649,6 +16659,20 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
         // Compute max pane header height (tabs make headers taller)
         let any_pane_has_tabs = panes.iter().take(visible_count).any(|c| c.tab_symbols.len() > 1);
         let max_header_h = if any_pane_has_tabs { 28.0_f32 } else if visible_count > 1 { 18.0_f32 } else { 0.0_f32 };
+
+        // ── Pane gap fill (gutter color between panes) ────────────────────────
+        // pane_gap_alpha > 0 paints the full_rect underneath all pane tiles so
+        // the gap/gutter area shows a distinct tint rather than raw background.
+        if visible_count > 1 {
+            let st_gap = super::ui::style::current();
+            if st_gap.pane_gap_alpha > 0 || st_gap.pane_gap_color.is_some() {
+                let gap_col = match st_gap.pane_gap_color {
+                    Some(c) => super::ui::style::color_alpha(c, st_gap.pane_gap_alpha),
+                    None    => super::ui::style::color_alpha(t.toolbar_border, st_gap.pane_gap_alpha),
+                };
+                ui.painter().rect_filled(full_rect, 0.0, gap_col);
+            }
+        }
 
         // ── Pane divider drag handles (geometry-based, works for all layouts) ──
         if visible_count > 1 {
