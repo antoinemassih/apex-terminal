@@ -1392,5 +1392,15 @@ fn aperture_stub_theme_full(
         toolbar_border,
         accent,
         text:           Color32::from_rgb(220, 215, 205),
+        warn:               crate::chart_renderer::ui::style::COLOR_AMBER,
+        notification_red:   Color32::from_rgb(231, 76, 60),
+        gold:               Color32::from_rgb(255, 193, 37),
+        shadow_color:       Color32::from_rgb(0, 0, 0),
+        overlay_text:       Color32::from_rgb(240, 240, 250),
+        rrg_leading:        Color32::from_rgb(56, 203, 137),
+        rrg_improving:      Color32::from_rgb(74, 158, 255),
+        rrg_weakening:      Color32::from_rgb(230, 200, 50),
+        rrg_lagging:        Color32::from_rgb(224, 82, 82),
+        cmd_palette:        crate::chart_renderer::gpu::CMD_PALETTE_DEFAULT,
     }
 }

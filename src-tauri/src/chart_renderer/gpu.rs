@@ -79,6 +79,29 @@ pub(crate) struct Theme {
     pub(crate) bg: egui::Color32, pub(crate) bull: egui::Color32, pub(crate) bear: egui::Color32, pub(crate) dim: egui::Color32,
     pub(crate) toolbar_bg: egui::Color32, pub(crate) toolbar_border: egui::Color32, pub(crate) accent: egui::Color32,
     pub(crate) text: egui::Color32, // primary text color (light on dark, dark on light)
+    // ── Extended semantic tokens (R5-1) ─────────────────────────────────────────
+    /// Amber/yellow warn state — replaces COLOR_AMBER usages (R:R indicator, active status).
+    pub(crate) warn: egui::Color32,
+    /// Brand red for notification badges — distinct from `.bear` (e.g. NotificationBadge).
+    pub(crate) notification_red: egui::Color32,
+    /// Gold — star pin, earnings pill, RVOL >2× highlight.
+    pub(crate) gold: egui::Color32,
+    /// Base shadow color — themes can use a warm/cool tint instead of pure black.
+    pub(crate) shadow_color: egui::Color32,
+    /// Near-black/near-white overlay text — high-contrast price labels (DOM), light on dark or
+    /// dark on light depending on theme polarity.
+    pub(crate) overlay_text: egui::Color32,
+    /// RRG Leading quadrant (top-right, green).
+    pub(crate) rrg_leading: egui::Color32,
+    /// RRG Improving quadrant (top-left, blue).
+    pub(crate) rrg_improving: egui::Color32,
+    /// RRG Weakening quadrant (bottom-right, yellow).
+    pub(crate) rrg_weakening: egui::Color32,
+    /// RRG Lagging quadrant (bottom-left, red).
+    pub(crate) rrg_lagging: egui::Color32,
+    /// Command-palette category badge palette.
+    /// Slots: [symbol, widget, overlay, theme, timeframe, layout, play, alert, ai, dynamic, calc]
+    pub(crate) cmd_palette: [egui::Color32; 11],
 }
 pub(crate) const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
@@ -126,25 +149,41 @@ pub(crate) fn pane_tabs_header_h(wl: &Watchlist) -> f32 {
 }
 
 // ┌─ THEMES_BEGIN ──────────────────────────────────────────────────────────────
+/// Shared command-palette category badge palette (theme-invariant hardcoded colors).
+/// Slots: [symbol, widget, overlay, theme_cat, timeframe, layout, play, alert, ai, dynamic, calc]
+pub(crate) const CMD_PALETTE_DEFAULT: [egui::Color32; 11] = [
+    rgb(120,180,255), // symbol
+    rgb(180,140,240), // widget
+    rgb(160,200,140), // overlay
+    rgb(240,180,140), // theme
+    rgb(140,220,200), // timeframe
+    rgb(220,200,120), // layout
+    rgb(240,140,180), // play
+    rgb(240,120,120), // alert
+    rgb(255,120,200), // ai
+    rgb(255,180, 80), // dynamic
+    rgb(140,240,200), // calc
+];
+
 pub(crate) const THEMES: &[Theme] = &[
-    Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: rgb(28,32,40),  accent: rgb(62,120,180),  text: rgb(220,220,230) },
-    Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: rgb(50,56,70),  accent: rgb(136,192,208), text: rgb(220,220,230) },
-    Theme { name: "Monokai",     bg: rgb(39,40,34),   bull: rgb(166,226,46),  bear: rgb(249,38,114),  dim: rgb(165,159,133), toolbar_bg: rgb(33,34,28),  toolbar_border: rgb(55,54,44),  accent: rgb(230,219,116), text: rgb(220,220,230) },
-    Theme { name: "Solarized",   bg: rgb(0,43,54),    bull: rgb(133,153,0),   bear: rgb(220,50,47),   dim: rgb(131,148,150), toolbar_bg: rgb(0,37,48),   toolbar_border: rgb(7,54,66),   accent: rgb(42,161,152),  text: rgb(220,220,230) },
-    Theme { name: "Dracula",     bg: rgb(40,42,54),   bull: rgb(80,250,123),  bear: rgb(255,85,85),   dim: rgb(189,147,249), toolbar_bg: rgb(34,36,48),  toolbar_border: rgb(52,55,70),  accent: rgb(255,121,198), text: rgb(220,220,230) },
-    Theme { name: "Gruvbox",     bg: rgb(40,40,40),   bull: rgb(184,187,38),  bear: rgb(251,73,52),   dim: rgb(213,196,161), toolbar_bg: rgb(34,34,34),  toolbar_border: rgb(55,52,50),  accent: rgb(254,128,25),  text: rgb(220,220,230) },
-    Theme { name: "Catppuccin",  bg: rgb(30,30,46),   bull: rgb(166,227,161), bear: rgb(243,139,168), dim: rgb(180,190,254), toolbar_bg: rgb(24,24,38),  toolbar_border: rgb(49,50,68),  accent: rgb(203,166,247), text: rgb(220,220,230) },
-    Theme { name: "Tokyo Night", bg: rgb(26,27,38),   bull: rgb(158,206,106), bear: rgb(247,118,142), dim: rgb(122,162,247), toolbar_bg: rgb(21,22,32),  toolbar_border: rgb(36,40,59),  accent: rgb(125,207,255), text: rgb(220,220,230) },
+    Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: rgb(28,32,40),  accent: rgb(62,120,180),  text: rgb(220,220,230),  warn: rgb(255,191,  0), notification_red: rgb(231, 76, 60), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(240,240,250), rrg_leading: rgb(56,203,137), rrg_improving: rgb(74,158,255), rrg_weakening: rgb(230,200,50), rrg_lagging: rgb(224,82,82), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: rgb(50,56,70),  accent: rgb(136,192,208), text: rgb(220,220,230),  warn: rgb(235,203,139), notification_red: rgb(191, 97,106), gold: rgb(235,203,139), shadow_color: rgb(0,0,0),       overlay_text: rgb(236,239,244), rrg_leading: rgb(163,190,140), rrg_improving: rgb(136,192,208), rrg_weakening: rgb(235,203,139), rrg_lagging: rgb(191,97,106), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Monokai",     bg: rgb(39,40,34),   bull: rgb(166,226,46),  bear: rgb(249,38,114),  dim: rgb(165,159,133), toolbar_bg: rgb(33,34,28),  toolbar_border: rgb(55,54,44),  accent: rgb(230,219,116), text: rgb(220,220,230),  warn: rgb(230,219,116), notification_red: rgb(249, 38,114), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(248,248,240), rrg_leading: rgb(166,226, 46), rrg_improving: rgb(102,217,239), rrg_weakening: rgb(230,219,116), rrg_lagging: rgb(249,38,114), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Solarized",   bg: rgb(0,43,54),    bull: rgb(133,153,0),   bear: rgb(220,50,47),   dim: rgb(131,148,150), toolbar_bg: rgb(0,37,48),   toolbar_border: rgb(7,54,66),   accent: rgb(42,161,152),  text: rgb(220,220,230),  warn: rgb(181,137,  0), notification_red: rgb(220, 50, 47), gold: rgb(181,137,  0), shadow_color: rgb(0,0,0),       overlay_text: rgb(253,246,227), rrg_leading: rgb(133,153,  0), rrg_improving: rgb( 38,139,210), rrg_weakening: rgb(181,137,  0), rrg_lagging: rgb(220,50, 47), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Dracula",     bg: rgb(40,42,54),   bull: rgb(80,250,123),  bear: rgb(255,85,85),   dim: rgb(189,147,249), toolbar_bg: rgb(34,36,48),  toolbar_border: rgb(52,55,70),  accent: rgb(255,121,198), text: rgb(220,220,230),  warn: rgb(241,250,140), notification_red: rgb(255, 85, 85), gold: rgb(241,250,140), shadow_color: rgb(0,0,0),       overlay_text: rgb(248,248,242), rrg_leading: rgb( 80,250,123), rrg_improving: rgb(139,233,253), rrg_weakening: rgb(241,250,140), rrg_lagging: rgb(255,85, 85), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Gruvbox",     bg: rgb(40,40,40),   bull: rgb(184,187,38),  bear: rgb(251,73,52),   dim: rgb(213,196,161), toolbar_bg: rgb(34,34,34),  toolbar_border: rgb(55,52,50),  accent: rgb(254,128,25),  text: rgb(220,220,230),  warn: rgb(250,189, 47), notification_red: rgb(251, 73, 52), gold: rgb(250,189, 47), shadow_color: rgb(0,0,0),       overlay_text: rgb(235,219,178), rrg_leading: rgb(184,187, 38), rrg_improving: rgb(131,165,152), rrg_weakening: rgb(250,189, 47), rrg_lagging: rgb(251,73, 52), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Catppuccin",  bg: rgb(30,30,46),   bull: rgb(166,227,161), bear: rgb(243,139,168), dim: rgb(180,190,254), toolbar_bg: rgb(24,24,38),  toolbar_border: rgb(49,50,68),  accent: rgb(203,166,247), text: rgb(220,220,230),  warn: rgb(249,226,175), notification_red: rgb(243,139,168), gold: rgb(249,226,175), shadow_color: rgb(0,0,0),       overlay_text: rgb(205,214,244), rrg_leading: rgb(166,227,161), rrg_improving: rgb(137,220,235), rrg_weakening: rgb(249,226,175), rrg_lagging: rgb(243,139,168), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Tokyo Night", bg: rgb(26,27,38),   bull: rgb(158,206,106), bear: rgb(247,118,142), dim: rgb(122,162,247), toolbar_bg: rgb(21,22,32),  toolbar_border: rgb(36,40,59),  accent: rgb(125,207,255), text: rgb(220,220,230),  warn: rgb(224,175,104), notification_red: rgb(247,118,142), gold: rgb(224,175,104), shadow_color: rgb(0,0,0),       overlay_text: rgb(192,202,245), rrg_leading: rgb(158,206,106), rrg_improving: rgb(125,207,255), rrg_weakening: rgb(224,175,104), rrg_lagging: rgb(247,118,142), cmd_palette: CMD_PALETTE_DEFAULT },
     // ── Additional themes ──
-    Theme { name: "Kanagawa",    bg: rgb(22,22,29),   bull: rgb(118,169,130), bear: rgb(195,64,67),   dim: rgb(84,88,104),   toolbar_bg: rgb(18,18,24),  toolbar_border: rgb(34,34,46),  accent: rgb(127,180,202), text: rgb(220,220,230) },
-    Theme { name: "Everforest",  bg: rgb(39,46,38),   bull: rgb(167,192,128), bear: rgb(230,126,128), dim: rgb(157,169,140), toolbar_bg: rgb(33,40,32),  toolbar_border: rgb(52,60,50),  accent: rgb(131,165,152), text: rgb(220,220,230) },
-    Theme { name: "Vesper",      bg: rgb(16,16,16),   bull: rgb(166,218,149), bear: rgb(238,130,98),  dim: rgb(120,120,120), toolbar_bg: rgb(11,11,11),  toolbar_border: rgb(36,36,36),  accent: rgb(255,199,119), text: rgb(220,220,230) },
-    Theme { name: "Rosé Pine",   bg: rgb(25,23,36),   bull: rgb(156,207,216), bear: rgb(235,111,146), dim: rgb(110,106,134), toolbar_bg: rgb(20,18,30),  toolbar_border: rgb(38,35,53),  accent: rgb(196,167,231), text: rgb(220,220,230) },
+    Theme { name: "Kanagawa",    bg: rgb(22,22,29),   bull: rgb(118,169,130), bear: rgb(195,64,67),   dim: rgb(84,88,104),   toolbar_bg: rgb(18,18,24),  toolbar_border: rgb(34,34,46),  accent: rgb(127,180,202), text: rgb(220,220,230),  warn: rgb(228,175, 69), notification_red: rgb(195, 64, 67), gold: rgb(228,175, 69), shadow_color: rgb(0,0,0),       overlay_text: rgb(220,215,186), rrg_leading: rgb(118,169,130), rrg_improving: rgb(127,180,202), rrg_weakening: rgb(228,175, 69), rrg_lagging: rgb(195,64, 67), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Everforest",  bg: rgb(39,46,38),   bull: rgb(167,192,128), bear: rgb(230,126,128), dim: rgb(157,169,140), toolbar_bg: rgb(33,40,32),  toolbar_border: rgb(52,60,50),  accent: rgb(131,165,152), text: rgb(220,220,230),  warn: rgb(223,199,118), notification_red: rgb(230,126,128), gold: rgb(223,199,118), shadow_color: rgb(0,0,0),       overlay_text: rgb(211,198,170), rrg_leading: rgb(167,192,128), rrg_improving: rgb(131,165,152), rrg_weakening: rgb(223,199,118), rrg_lagging: rgb(230,126,128), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Vesper",      bg: rgb(16,16,16),   bull: rgb(166,218,149), bear: rgb(238,130,98),  dim: rgb(120,120,120), toolbar_bg: rgb(11,11,11),  toolbar_border: rgb(36,36,36),  accent: rgb(255,199,119), text: rgb(220,220,230),  warn: rgb(255,199,119), notification_red: rgb(238,130, 98), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(230,230,230), rrg_leading: rgb(166,218,149), rrg_improving: rgb( 74,158,255), rrg_weakening: rgb(255,199,119), rrg_lagging: rgb(238,130, 98), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Rosé Pine",   bg: rgb(25,23,36),   bull: rgb(156,207,216), bear: rgb(235,111,146), dim: rgb(110,106,134), toolbar_bg: rgb(20,18,30),  toolbar_border: rgb(38,35,53),  accent: rgb(196,167,231), text: rgb(220,220,230),  warn: rgb(246,193,119), notification_red: rgb(235,111,146), gold: rgb(246,193,119), shadow_color: rgb(0,0,0),       overlay_text: rgb(224,222,244), rrg_leading: rgb(156,207,216), rrg_improving: rgb(196,167,231), rrg_weakening: rgb(246,193,119), rrg_lagging: rgb(235,111,146), cmd_palette: CMD_PALETTE_DEFAULT },
     // ── Light themes ──
-    Theme { name: "Bauhaus",     bg: rgb(242,242,238), bull: rgb(20,120,60),   bear: rgb(200,55,45),   dim: rgb(120,125,130), toolbar_bg: rgb(248,248,245), toolbar_border: rgb(225,225,220), accent: rgb(232,93,38),   text: rgb(22,22,24) },
-    Theme { name: "Peach",       bg: rgb(243,241,238), bull: rgb(22,130,70),   bear: rgb(195,50,55),   dim: rgb(115,120,125), toolbar_bg: rgb(250,248,246), toolbar_border: rgb(228,225,220), accent: rgb(210,95,70),   text: rgb(20,20,22) },
-    Theme { name: "Ivory",       bg: rgb(240,242,238), bull: rgb(80,160,50),   bear: rgb(210,60,50),   dim: rgb(118,122,128), toolbar_bg: rgb(248,250,246), toolbar_border: rgb(222,226,218), accent: rgb(160,190,40),  text: rgb(18,20,22) },
-    Theme { name: "Newsprint",   bg: rgb(238,232,220), bull: rgb(34,94,56),    bear: rgb(168,52,52),   dim: rgb(120,116,104), toolbar_bg: rgb(238,232,220), toolbar_border: rgb(180,170,150), accent: rgb(34,94,56),    text: rgb(28,28,28) },
+    Theme { name: "Bauhaus",     bg: rgb(242,242,238), bull: rgb(20,120,60),   bear: rgb(200,55,45),   dim: rgb(120,125,130), toolbar_bg: rgb(248,248,245), toolbar_border: rgb(225,225,220), accent: rgb(232,93,38),   text: rgb(22,22,24),   warn: rgb(204,120,  0), notification_red: rgb(200, 55, 45), gold: rgb(204,153,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 20, 20, 22), rrg_leading: rgb( 20,120, 60), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(200,55, 45), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Peach",       bg: rgb(243,241,238), bull: rgb(22,130,70),   bear: rgb(195,50,55),   dim: rgb(115,120,125), toolbar_bg: rgb(250,248,246), toolbar_border: rgb(228,225,220), accent: rgb(210,95,70),   text: rgb(20,20,22),   warn: rgb(200,130,  0), notification_red: rgb(195, 50, 55), gold: rgb(200,150,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 20, 20, 22), rrg_leading: rgb( 22,130, 70), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(195,50, 55), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Ivory",       bg: rgb(240,242,238), bull: rgb(80,160,50),   bear: rgb(210,60,50),   dim: rgb(118,122,128), toolbar_bg: rgb(248,250,246), toolbar_border: rgb(222,226,218), accent: rgb(160,190,40),  text: rgb(18,20,22),   warn: rgb(190,140,  0), notification_red: rgb(210, 60, 50), gold: rgb(190,150,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 18, 20, 22), rrg_leading: rgb( 80,160, 50), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(210,60, 50), cmd_palette: CMD_PALETTE_DEFAULT },
+    Theme { name: "Newsprint",   bg: rgb(238,232,220), bull: rgb(34,94,56),    bear: rgb(168,52,52),   dim: rgb(120,116,104), toolbar_bg: rgb(238,232,220), toolbar_border: rgb(180,170,150), accent: rgb(34,94,56),    text: rgb(28,28,28),   warn: rgb(168,120,  0), notification_red: rgb(168, 52, 52), gold: rgb(168,130,  0), shadow_color: rgb(60,50,40),    overlay_text: rgb( 28, 28, 28), rrg_leading: rgb( 34, 94, 56), rrg_improving: rgb( 30, 90,160), rrg_weakening: rgb(160,120,  0), rrg_lagging: rgb(168,52, 52), cmd_palette: CMD_PALETTE_DEFAULT },
 ];
 // └─ THEMES_END ────────────────────────────────────────────────────────────────
 
