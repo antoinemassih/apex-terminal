@@ -30,3 +30,7 @@ discord_token.json
 target/
 src-tauri/target/
 apex-native/target/
+
+# Agent worktrees (Claude Code session isolation)
+.claude/worktrees/
+.playwright-mcp/
