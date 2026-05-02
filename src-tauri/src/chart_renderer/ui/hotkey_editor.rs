@@ -93,18 +93,18 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             }
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.add(BodyLabel::new(hk_name.as_str()).size(9.0).monospace(true).color(egui::Color32::from_white_alpha(180)));
+                ui.add(BodyLabel::new(hk_name.as_str()).size(font_sm()).monospace(true).color(egui::Color32::from_white_alpha(180)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if *is_editing {
-                        ui.add(BodyLabel::new("Press a key...").size(9.0).monospace(true).color(t.accent));
+                        ui.add(BodyLabel::new("Press a key...").size(font_sm()).monospace(true).color(t.accent));
                     } else {
-                        if ui.add(ChromeBtn::new(egui::RichText::new("Edit").monospace().size(8.0).color(t.dim)).frameless(true)).clicked() {
+                        if ui.add(ChromeBtn::new(egui::RichText::new("Edit").monospace().size(font_xs()).color(t.dim)).frameless(true)).clicked() {
                             watchlist.hotkey_editing_id = Some(*hk_id);
                         }
                     }
                     let key_bg = if *is_editing { color_alpha(t.accent, alpha_tint()) } else { color_alpha(t.toolbar_border, alpha_tint()) };
                     let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
-                    ui.add(ChromeBtn::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(9.0).color(key_fg))
+                    ui.add(ChromeBtn::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(font_sm()).color(key_fg))
                         .fill(key_bg).corner_radius(r_sm_cr()).min_size(egui::vec2(80.0, 18.0)));
                 });
             });

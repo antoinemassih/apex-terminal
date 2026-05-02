@@ -70,7 +70,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 // Color dot — uses the editing indicator's color (pre-fetched).
                 ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, hdr_color);
                 ui.add_space(10.0);
-                ui.label(egui::RichText::new(&hdr_name).monospace().size(9.0).strong().color(TEXT_PRIMARY));
+                ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(4.0);
                     if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.7), FONT_LG).on_hover_text("Close").clicked() {
@@ -253,7 +253,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.add_space(m);
-                        ui.label(egui::RichText::new("Source").monospace().size(9.0).color(t.dim));
+                        ui.label(egui::RichText::new("Source").monospace().size(font_sm()).color(t.dim));
                         ui.add_space(4.0);
                         ui.spacing_mut().item_spacing.x = 0.0;
                         const SOURCES: &[(u8, &str)] = &[
@@ -388,14 +388,14 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     ui.add_space(m);
                     let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
                     let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
-                    let vr = ui.add(ChromeBtn::new(egui::RichText::new(vis_icon).size(10.0).color(vis_fg))
+                    let vr = ui.add(ChromeBtn::new(egui::RichText::new(vis_icon).size(font_sm()).color(vis_fg))
                         .fill(if ind.visible { color_alpha(t.toolbar_border, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                         .corner_radius(r_sm_cr()).min_size(egui::vec2(24.0, 22.0)));
                     if vr.on_hover_text("Toggle Visibility").clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         let del_color = COLOR_DANGER;
-                        let dr = ui.add(ChromeBtn::new(egui::RichText::new(Icon::TRASH).size(10.0).color(del_color))
+                        let dr = ui.add(ChromeBtn::new(egui::RichText::new(Icon::TRASH).size(font_sm()).color(del_color))
                             .fill(color_alpha(del_color, alpha_ghost())).corner_radius(r_sm_cr())
                             .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
                             .min_size(egui::vec2(24.0, 22.0)));

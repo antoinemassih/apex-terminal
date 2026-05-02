@@ -270,7 +270,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(4.0);
                     let resp = TextInput::new(&mut watchlist.spread_state.symbol)
                         .width(80.0)
-                        .margin(egui::Margin::symmetric(4, 2))
+                        .margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
                         .theme(t)
                         .show(ui);
                     if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -377,7 +377,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         // Strike
                         let mut strike_str = format!("{:.0}", leg.strike);
                         let strike_resp = TextInput::new(&mut strike_str)
-                            .width(44.0).margin(egui::Margin::symmetric(2, 1))
+                            .width(44.0).margin(egui::Margin::symmetric(gap_xs() as i8, 1))
                             .theme(t)
                             .show(ui);
                         if strike_resp.changed() {

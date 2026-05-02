@@ -157,7 +157,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(t.dim.gamma_multiply(0.5)));
                         } else {
                             if ui.add(widgets::buttons::ChromeBtn::new(
-                                egui::RichText::new("  Connect Discord  ").monospace().size(10.0).strong().color(egui::Color32::WHITE))
+                                egui::RichText::new("  Connect Discord  ").monospace().size(font_sm()).strong().color(egui::Color32::WHITE))
                                 .fill(discord_blurple)
                                 .corner_radius(r_lg_cr())
                                 .min_size(egui::vec2(180.0, 36.0))
@@ -179,7 +179,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 ui.horizontal(|ui| {
                     ui.add_space(6.0);
                     if !watchlist.discord_channel.is_empty() {
-                        ui.add(widgets::text::BodyLabel::new(&watchlist.discord_channel).monospace(true).strong(true).size(10.0).color(egui::Color32::WHITE));
+                        ui.add(widgets::text::BodyLabel::new(&watchlist.discord_channel).monospace(true).strong(true).size(font_sm()).color(egui::Color32::WHITE));
                     } else {
                         ui.add(widgets::text::SectionLabel::new("DISCORD").color(discord_blurple));
                     }
@@ -187,7 +187,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                         ui.add_space(6.0);
                         if close_button(ui, t.dim) { watchlist.discord_open = false; }
                         if ui.add(widgets::buttons::ChromeBtn::new(
-                            egui::RichText::new("×").monospace().size(9.0).color(rgb(231, 76, 60)))
+                            egui::RichText::new("×").monospace().size(font_sm()).color(rgb(231, 76, 60)))
                             .fill(egui::Color32::TRANSPARENT).frameless(true)
                         ).on_hover_text("Disconnect").clicked() {
                             crate::discord::disconnect();
@@ -336,7 +336,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(t.dim.gamma_multiply(0.5)));
                                         ui.add_space(8.0);
                                         if ui.add(widgets::buttons::ChromeBtn::new(
-                                            egui::RichText::new("  Add Bot to Server  ").monospace().size(9.0).strong().color(egui::Color32::WHITE))
+                                            egui::RichText::new("  Add Bot to Server  ").monospace().size(font_sm()).strong().color(egui::Color32::WHITE))
                                             .fill(discord_blurple)
                                             .corner_radius(r_sm_cr())
                                             .min_size(egui::vec2(160.0, 30.0))
@@ -352,7 +352,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add(widgets::text::CaptionLabel::new("Server admins can also\nadd the bot themselves").color(t.dim).gamma(0.4));
                                         ui.add_space(10.0);
                                         if ui.add(widgets::buttons::ChromeBtn::new(
-                                            egui::RichText::new("Retry").monospace().size(8.0).color(t.dim))
+                                            egui::RichText::new("Retry").monospace().size(font_xs()).color(t.dim))
                                             .fill(color_alpha(t.toolbar_border, alpha_tint()))
                                             .corner_radius(r_md_cr())
                                         ).clicked() {
@@ -377,7 +377,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                             ui.horizontal(|ui| {
                                                 ui.add_space(8.0);
                                                 let name = ch.name.as_deref().unwrap_or("UNKNOWN").to_uppercase();
-                                                ui.label(egui::RichText::new(Icon::CARET_DOWN).size(8.0).color(t.dim.gamma_multiply(0.5)));
+                                                ui.label(egui::RichText::new(Icon::CARET_DOWN).size(font_xs()).color(t.dim.gamma_multiply(0.5)));
                                                 ui.add(widgets::text::SectionLabel::new(&name).xs().color(t.dim).gamma(0.6));
                                             });
                                             current_category = ch.id.clone();
@@ -416,7 +416,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.horizontal(|ui| {
                                 ui.add_space(6.0);
                                 if ui.add(widgets::buttons::ChromeBtn::new(
-                                    egui::RichText::new(Icon::CARET_RIGHT).size(9.0).color(t.dim))
+                                    egui::RichText::new(Icon::CARET_RIGHT).size(font_sm()).color(t.dim))
                                     .fill(egui::Color32::TRANSPARENT).frameless(true)
                                 ).on_hover_text("Back to channels").clicked() {
                                     watchlist.discord_selected_channel = None;
@@ -489,7 +489,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.horizontal(|ui| {
                                             ui.add_space(22.0); // align with text after avatar dot
                                             ui.add(egui::Label::new(
-                                                egui::RichText::new(&msg.content).monospace().size(9.0).color(egui::Color32::from_gray(210))
+                                                egui::RichText::new(&msg.content).monospace().size(font_sm()).color(egui::Color32::from_gray(210))
                                             ).wrap_mode(egui::TextWrapMode::Wrap));
                                         });
                                         prev_author = msg.author.clone();
@@ -510,7 +510,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     .theme(t)
                                     .show(ui);
                                 let send_clicked = ui.add(widgets::buttons::ChromeBtn::new(
-                                    egui::RichText::new("Send").monospace().size(9.0).color(egui::Color32::WHITE))
+                                    egui::RichText::new("Send").monospace().size(font_sm()).color(egui::Color32::WHITE))
                                     .fill(discord_blurple)
                                     .corner_radius(r_md_cr())
                                     .min_size(egui::vec2(38.0, 22.0))

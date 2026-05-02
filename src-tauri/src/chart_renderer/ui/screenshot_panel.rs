@@ -120,7 +120,7 @@ pub(crate) fn draw(
             // Header
             ui.horizontal(|ui| {
                 ui.add(SectionLabel::new("SCREENSHOTS").tiny().size_px(9.0).strong(true).color(t.accent));
-                ui.add(BodyLabel::new(&format!("({})", watchlist.screenshot_entries.len())).size(9.0).monospace(true).color(t.dim));
+                ui.add(BodyLabel::new(&format!("({})", watchlist.screenshot_entries.len())).size(font_sm()).monospace(true).color(t.dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if close_button(ui, t.dim) { watchlist.screenshot_open = false; }
                 });
@@ -141,9 +141,9 @@ pub(crate) fn draw_content(
     if watchlist.screenshot_entries.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
-            ui.add(BodyLabel::new("No screenshots yet").size(9.0).monospace(true).color(t.dim));
+            ui.add(BodyLabel::new("No screenshots yet").size(font_sm()).monospace(true).color(t.dim));
             ui.add_space(4.0);
-            ui.add(BodyLabel::new("Press Ctrl+Shift+S to capture").size(9.0).monospace(true).color(t.dim.gamma_multiply(0.6)));
+            ui.add(BodyLabel::new("Press Ctrl+Shift+S to capture").size(font_sm()).monospace(true).color(t.dim.gamma_multiply(0.6)));
         });
         return;
     }
@@ -157,18 +157,18 @@ pub(crate) fn draw_content(
             let card = egui::Frame::NONE
                 .fill(t.bg.gamma_multiply(0.6))
                 .corner_radius(r_sm_cr())
-                .inner_margin(egui::Margin::same(6))
+                .inner_margin(egui::Margin::same(gap_md() as i8))
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
 
             card.show(ui, |ui| {
                 ui.horizontal(|ui| {
                     // Symbol + timeframe
-                    ui.add(BodyLabel::new(&entry.symbol).size(10.0).monospace(true).strong(true).color(t.accent));
-                    ui.add(BodyLabel::new(&entry.timeframe).size(9.0).monospace(true).color(t.dim));
+                    ui.add(BodyLabel::new(&entry.symbol).size(font_sm()).monospace(true).strong(true).color(t.accent));
+                    ui.add(BodyLabel::new(&entry.timeframe).size(font_sm()).monospace(true).color(t.dim));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Delete button
                         if ui.add(egui::Button::new(
-                            egui::RichText::new("\u{e9a8}").size(9.0).color(t.bear.gamma_multiply(0.5)) // X icon
+                            egui::RichText::new("\u{e9a8}").size(font_sm()).color(t.bear.gamma_multiply(0.5)) // X icon
                         ).frame(false).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Delete").clicked() {
                             remove_id = Some(entry.id.clone());
                         }
@@ -176,11 +176,11 @@ pub(crate) fn draw_content(
                 });
 
                 // Timestamp
-                ui.add(BodyLabel::new(&format_timestamp(entry.timestamp)).size(8.5).monospace(true).color(t.dim.gamma_multiply(0.7)));
+                ui.add(BodyLabel::new(&format_timestamp(entry.timestamp)).size(font_xs()).monospace(true).color(t.dim.gamma_multiply(0.7)));
 
                 // Note (if any)
                 if !entry.note.is_empty() {
-                    ui.add(BodyLabel::new(&entry.note).size(9.0).monospace(true).color(t.dim));
+                    ui.add(BodyLabel::new(&entry.note).size(font_sm()).monospace(true).color(t.dim));
                 }
 
                 // View button — navigates to the chart state

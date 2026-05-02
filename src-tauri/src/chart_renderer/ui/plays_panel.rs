@@ -414,7 +414,7 @@ fn draw_play_editor(
                     let active = watchlist.play_editor_tags.iter().any(|t| t == tag);
                     let fg = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
                     let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
-                    if ui.add(ChromeBtn::new(egui::RichText::new(*tag).monospace().size(7.0).color(fg))
+                    if ui.add(ChromeBtn::new(egui::RichText::new(*tag).monospace().size(font_xs()).color(fg))
                         .fill(bg).corner_radius(r_md_cr())
                         .stroke(egui::Stroke::new(0.5, if active { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_muted()) }))
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
@@ -440,7 +440,7 @@ fn draw_play_editor(
                     .filter(|tg| !TAG_PRESETS.contains(&tg.as_str()))
                     .cloned().collect();
                 for ct in &custom {
-                    if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} \u{00D7}", ct)).monospace().size(7.0).color(t.accent))
+                    if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} \u{00D7}", ct)).monospace().size(font_xs()).color(t.accent))
                         .fill(color_alpha(t.accent, alpha_tint())).corner_radius(r_md_cr())
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
                         watchlist.play_editor_tags.retain(|x| x != ct);

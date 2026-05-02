@@ -37,6 +37,7 @@ use crate::chart_renderer::ui::style::{
     FONT_MD, FONT_SM, STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM,
     set_toolbar_rect, tb_group_break, current as style_current,
+    font_xs, font_sm, font_md,
 };
 use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, OrderStatus};
@@ -580,7 +581,7 @@ pub(crate) fn render(
             });
 
             // Volume dropdown
-            ui.menu_button(egui::RichText::new("Vol").monospace().size(12.0).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Vol").monospace().size(font_md()).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let vol = panes[ap].show_volume;
@@ -914,7 +915,7 @@ pub(crate) fn render(
                     ui.menu_button(egui::RichText::new(&cat_label).monospace().size(FONT_SM)
                         .color(if active_in_cat > 0 { t.accent } else { t.dim }), |ui| {
                         ui.set_min_width(280.0);
-                        ui.label(egui::RichText::new(*cat_name).monospace().size(7.0).strong().color(t.accent));
+                        ui.label(egui::RichText::new(*cat_name).monospace().size(font_xs()).strong().color(t.accent));
                         ui.add_space(2.0);
 
                         for &kind in *kinds {
@@ -985,12 +986,12 @@ pub(crate) fn render(
             {
                 let ws_names = list_workspaces();
                 let ws_label = format!("{} {}", Icon::BROWSERS, &watchlist.active_workspace);
-                ui.menu_button(egui::RichText::new(&ws_label).monospace().size(12.0).strong().color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(&ws_label).monospace().size(font_md()).strong().color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.set_min_width(200.0);
 
-                    ui.label(egui::RichText::new("WORKSPACES").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                    ui.label(egui::RichText::new("WORKSPACES").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.5)));
                     ui.add_space(4.0);
 
                     // Workspace list
@@ -999,9 +1000,9 @@ pub(crate) fn render(
                         ui.horizontal(|ui| {
                             // Active dot
                             if is_active {
-                                ui.label(egui::RichText::new("●").size(8.0).color(t.accent));
+                                ui.label(egui::RichText::new("●").size(font_xs()).color(t.accent));
                             } else {
-                                ui.label(egui::RichText::new("  ").size(8.0));
+                                ui.label(egui::RichText::new("  ").size(font_xs()));
                             }
                             let label_col = if is_active { t.accent } else { t.dim };
                             if ui.selectable_label(is_active,
@@ -1048,7 +1049,7 @@ pub(crate) fn render(
 
                     // Auto-save info
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new("Auto-saves every 30s").monospace().size(7.0).color(t.dim.gamma_multiply(0.3)));
+                    ui.label(egui::RichText::new("Auto-saves every 30s").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.3)));
                 });
             }
 
@@ -1395,7 +1396,7 @@ pub(crate) fn render(
                         }
                         ui.horizontal(|ui| {
                             ui.add_space(6.0);
-                            ui.label(egui::RichText::new(sec).monospace().size(8.0).strong().color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(sec).monospace().size(font_xs()).strong().color(t.dim.gamma_multiply(0.5)));
                         });
                         ui.add_space(2.0);
                         last_section = sec;
@@ -1551,7 +1552,7 @@ pub(crate) fn render(
                     .fill(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (40.0 * alpha) as u8))
                     .inner_margin(4.0))
                 .show(ctx, |ui| {
-                    ui.label(egui::RichText::new(format!("{} {}", Icon::CHECK, msg)).monospace().size(9.0)
+                    ui.label(egui::RichText::new(format!("{} {}", Icon::CHECK, msg)).monospace().size(font_sm())
                         .color(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (255.0 * alpha) as u8)));
                 });
         }

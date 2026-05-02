@@ -530,7 +530,7 @@ pub(crate) fn render(
         let resp = TextInput::new(&mut state.formula_buf)
             .font_size(FONT_SM)
             .frameless(true)
-            .margin(egui::Margin::same(2))
+            .margin(egui::Margin::same(gap_xs() as i8))
             .width(edit_rect.width() - 4.0)
             .show(&mut child);
         state.formula_focus = resp.has_focus();
@@ -702,7 +702,7 @@ pub(crate) fn render(
                             let resp = TextInput::new(buf)
                                 .font_size(FONT_SM)
                                 .frameless(true)
-                                .margin(egui::Margin::same(2))
+                                .margin(egui::Margin::same(gap_xs() as i8))
                                 .width(cw - 4.0)
                                 .show(&mut child);
                             ui.painter_at(cell_rect).rect_stroke(cell_rect, 0.0,

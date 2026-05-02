@@ -1183,7 +1183,7 @@ impl ApertureOrderTicket {
                     color_alpha(self.toolbar_border, 40)
                 });
                 if ui.add(egui::Button::new(
-                        egui::RichText::new("EXT").monospace().size(8.0).color(rth_fg))
+                        egui::RichText::new("EXT").monospace().size(font_xs()).color(rth_fg))
                     .fill(rth_bg).corner_radius(2.0).stroke(rth_stroke)
                     .min_size(egui::vec2(26.0, 18.0)))
                     .on_hover_text("Trade outside regular trading hours")
@@ -1215,7 +1215,7 @@ impl ApertureOrderTicket {
                 } else { 0 };
                 if qty > 0 { *s.order_qty = qty as u32; }
                 ui.label(egui::RichText::new(format!("= {} @ {:.2}", qty, premium))
-                    .monospace().size(9.0).color(color_alpha(self.dim, 60)));
+                    .monospace().size(font_sm()).color(color_alpha(self.dim, 60)));
             }
         });
         ui.add_space(2.0);
@@ -1247,7 +1247,7 @@ impl ApertureOrderTicket {
             if !adv {
                 if *s.order_market {
                     ui.label(egui::RichText::new(format!("{:.2}", last))
-                        .monospace().size(12.0).color(self.dim));
+                        .monospace().size(font_md()).color(self.dim));
                 } else {
                     ui.add(egui::TextEdit::singleline(s.order_limit_price)
                         .desired_width(68.0).font(egui::FontId::monospace(10.0))
@@ -1256,7 +1256,7 @@ impl ApertureOrderTicket {
                 ui.add_space(2.0);
                 let mkt_label = if *s.order_market { "MKT" } else { "LMT" };
                 if ui.add(egui::Button::new(
-                        egui::RichText::new(mkt_label).monospace().size(9.0).strong()
+                        egui::RichText::new(mkt_label).monospace().size(font_sm()).strong()
                             .color(if *s.order_market { self.accent } else { self.dim }))
                     .fill(if *s.order_market { color_alpha(self.accent, 35) } else { self.toolbar_bg })
                     .stroke(Stroke::new(0.5, color_alpha(self.toolbar_border, 90))).corner_radius(2.0)
@@ -1270,7 +1270,7 @@ impl ApertureOrderTicket {
                 }
             } else {
                 ui.label(egui::RichText::new(format!("Last {:.2}", last))
-                    .monospace().size(9.0).color(color_alpha(self.dim, 60)));
+                    .monospace().size(font_sm()).color(color_alpha(self.dim, 60)));
             }
         });
 
@@ -1313,7 +1313,7 @@ impl ApertureOrderTicket {
                 ui.add_space(pad);
                 let brk_color = if *s.order_bracket { self.accent } else { color_alpha(self.dim, 50) };
                 if ui.add(egui::Button::new(
-                        egui::RichText::new("Bracket").monospace().size(9.0).color(brk_color))
+                        egui::RichText::new("Bracket").monospace().size(font_sm()).color(brk_color))
                     .fill(if *s.order_bracket { color_alpha(self.accent, 25) } else { egui::Color32::TRANSPARENT })
                     .stroke(Stroke::new(STROKE_THIN, color_alpha(self.toolbar_border, ALPHA_DIM)))
                     .corner_radius(2.0).min_size(egui::vec2(0.0, 18.0)))
@@ -1323,11 +1323,11 @@ impl ApertureOrderTicket {
                 }
                 if *s.order_bracket {
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new("TP").monospace().size(9.0).color(self.bull));
+                    ui.label(egui::RichText::new("TP").monospace().size(font_sm()).color(self.bull));
                     ui.add(egui::TextEdit::singleline(s.order_tp_price)
                         .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Take")
                         .horizontal_align(egui::Align::RIGHT));
-                    ui.label(egui::RichText::new("SL").monospace().size(9.0).color(self.bear));
+                    ui.label(egui::RichText::new("SL").monospace().size(font_sm()).color(self.bear));
                     ui.add(egui::TextEdit::singleline(s.order_sl_price)
                         .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Stop")
                         .horizontal_align(egui::Align::RIGHT));

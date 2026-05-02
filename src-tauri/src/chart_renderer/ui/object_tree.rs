@@ -147,7 +147,7 @@ egui::SidePanel::left("object_tree_panel")
                 // Per-type fade menu
                 if !chart.drawings.is_empty() {
                     let sym2 = sym.clone(); let tf2 = tf.clone();
-                    ui.menu_button(egui::RichText::new("type").monospace().size(7.0).color(t.dim), |ui| {
+                    ui.menu_button(egui::RichText::new("type").monospace().size(font_xs()).color(t.dim), |ui| {
                         let mut type_keys: Vec<&'static str> = chart.drawings.iter()
                             .map(|d| kind_type_key(&d.kind)).collect();
                         type_keys.sort(); type_keys.dedup();
@@ -204,11 +204,11 @@ egui::SidePanel::left("object_tree_panel")
                 // as a local, then apply the mutation after show().
                 let mut bulk_assign_gid: Option<String> = None;
                 egui::ComboBox::from_id_salt("otree_bulk_grp")
-                    .selected_text(egui::RichText::new(Icon::FOLDER).monospace().size(9.0))
+                    .selected_text(egui::RichText::new(Icon::FOLDER).monospace().size(font_sm()))
                     .width(60.0)
                     .show_ui(ui, |ui| {
                         for (gid, gname) in &groups_snap {
-                            if ui.selectable_label(false, egui::RichText::new(gname).monospace().size(9.0)).clicked() {
+                            if ui.selectable_label(false, egui::RichText::new(gname).monospace().size(font_sm())).clicked() {
                                 bulk_assign_gid = Some(gid.clone());
                             }
                         }

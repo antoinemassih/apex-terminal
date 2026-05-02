@@ -95,7 +95,7 @@ fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
     ui.horizontal(|ui| {
         ui.add_space(gap_sm());
         ui.vertical(|ui| {
-            ui.label(egui::RichText::new("TOTAL P&L").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+            ui.label(egui::RichText::new("TOTAL P&L").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.5)));
             let sign = if total_pnl >= 0.0 { "+" } else { "" };
             ui.label(egui::RichText::new(format!("{}${:.0}", sign, total_pnl)).size(34.0).color(pnl_col));
         });
@@ -180,10 +180,10 @@ fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f6
         p.rect_filled(br, 2.0, color_alpha(t.toolbar_border, alpha_faint()));
         p.rect_filled(egui::Rect::from_min_size(br.min, egui::vec2(bar_w * wr / 100.0, 8.0)),
             2.0, color_alpha(col, alpha_dim()));
-        ui.label(egui::RichText::new(format!("{:.0}%", wr)).monospace().size(7.0).color(col));
-        ui.label(egui::RichText::new(format!("{}t", total)).monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
+        ui.label(egui::RichText::new(format!("{:.0}%", wr)).monospace().size(font_xs()).color(col));
+        ui.label(egui::RichText::new(format!("{}t", total)).monospace().size(font_xs()).color(t.dim.gamma_multiply(0.4)));
         let pc = if pnl >= 0.0 { t.bull } else { t.bear };
-        ui.label(egui::RichText::new(format!("${:+.0}", pnl)).monospace().size(7.0).color(pc));
+        ui.label(egui::RichText::new(format!("${:+.0}", pnl)).monospace().size(font_xs()).color(pc));
     });
 }
 

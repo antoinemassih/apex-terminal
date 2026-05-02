@@ -118,7 +118,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             .font_size(9.5)
             .placeholder("Describe your indicator or strategy...")
             .text_color(egui::Color32::from_gray(210))
-            .margin(egui::Margin::symmetric(6, 3))
+            .margin(egui::Margin::symmetric(gap_md() as i8, gap_xs() as i8))
             .theme(t)
             .show(ui);
     });
@@ -129,7 +129,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.add(MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
         for (name, source) in PRESETS {
             let btn = ui.add(ChromeBtn::new(
-                egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
+                egui::RichText::new(*name).monospace().size(font_xs()).color(t.accent.gamma_multiply(0.8)))
                 .fill(color_alpha(t.accent, 12))
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
             );
@@ -269,7 +269,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     .font_size(9.5)
                     .placeholder("Describe your indicator or strategy...")
                     .text_color(egui::Color32::from_gray(210))
-                    .margin(egui::Margin::symmetric(6, 3))
+                    .margin(egui::Margin::symmetric(gap_md() as i8, gap_xs() as i8))
                     .theme(t)
                     .show(ui);
                 // Style the text edit background
@@ -292,7 +292,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                 ui.add_space(4.0);
                 for (name, source) in PRESETS {
                     let btn = ui.add(ChromeBtn::new(
-                        egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
+                        egui::RichText::new(*name).monospace().size(font_xs()).color(t.accent.gamma_multiply(0.8)))
                         .fill(color_alpha(t.accent, 12))
                         .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
                     );
@@ -644,7 +644,7 @@ fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: 
     let border = if is_active { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_muted()) };
 
     let resp = ui.add(ChromeBtn::new(
-        egui::RichText::new(label).monospace().size(9.0).color(fg))
+        egui::RichText::new(label).monospace().size(font_sm()).color(fg))
         .fill(bg)
         .stroke(egui::Stroke::new(stroke_thin(), border))
         .corner_radius(r_md_cr())

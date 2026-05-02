@@ -769,53 +769,53 @@ impl<'a> AccountStrip<'a> {
                         ui.add_space(pad);
 
                         // NAV — hero number
-                        ui.label(RichText::new("NAV").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("NAV").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(hero_text(&format!("${:.0}", acct.nav), t.text).strong());
 
                         ui.add(egui::Separator::default().spacing(8.0));
 
                         // Buying Power
-                        ui.label(RichText::new("BP").monospace().size(11.0).color(color_alpha(t.dim, 128)));
-                        ui.label(RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(11.0).color(t.dim));
+                        ui.label(RichText::new("BP").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(font_md()).color(t.dim));
 
                         ui.add(egui::Separator::default().spacing(8.0));
 
                         // Daily P&L — hero, colored
                         let daily_color = if acct.daily_pnl >= 0.0 { t.bull } else { t.bear };
-                        ui.label(RichText::new("Day P&L").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("Day P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(hero_text(&format!("{:+.0}", acct.daily_pnl), daily_color).strong());
 
                         ui.add(egui::Separator::default().spacing(8.0));
 
                         // Unrealized P&L
                         let unr_color = if acct.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
-                        ui.label(RichText::new("Unr P&L").monospace().size(11.0).color(color_alpha(t.dim, 128)));
-                        ui.label(RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(11.0).color(unr_color));
+                        ui.label(RichText::new("Unr P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(font_md()).color(unr_color));
 
                         ui.add(egui::Separator::default().spacing(8.0));
 
                         // Margin
-                        ui.label(RichText::new("Margin").monospace().size(11.0).color(color_alpha(t.dim, 128)));
-                        ui.label(RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(11.0).color(t.dim));
+                        ui.label(RichText::new("Margin").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(font_md()).color(t.dim));
 
                         ui.add(egui::Separator::default().spacing(8.0));
 
                         // Excess Liquidity
-                        ui.label(RichText::new("Excess").monospace().size(11.0).color(color_alpha(t.dim, 128)));
-                        ui.label(RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(11.0).color(t.dim));
+                        ui.label(RichText::new("Excess").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(font_md()).color(t.dim));
 
                         ui.add(egui::Separator::default().spacing(8.0));
 
                         // Realized P&L
                         let rpnl_color = if acct.realized_pnl >= 0.0 { t.bull } else { t.bear };
-                        ui.label(RichText::new("Real P&L").monospace().size(11.0).color(color_alpha(t.dim, 128)));
-                        ui.label(RichText::new(format!("{:+.0}", acct.realized_pnl)).monospace().size(11.0).strong().color(rpnl_color));
+                        ui.label(RichText::new("Real P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("{:+.0}", acct.realized_pnl)).monospace().size(font_md()).strong().color(rpnl_color));
 
                         ui.add(egui::Separator::default().spacing(8.0));
 
                         // Emergency action buttons
                         if ui.add(
-                            egui::Button::new(RichText::new("CANCEL ALL").monospace().size(9.0).strong().color(Color32::WHITE))
+                            egui::Button::new(RichText::new("CANCEL ALL").monospace().size(font_sm()).strong().color(Color32::WHITE))
                                 .fill(color_alpha(t.bear, 120))
                                 .corner_radius(3.0)
                                 .min_size(egui::vec2(0.0, 22.0))
@@ -825,7 +825,7 @@ impl<'a> AccountStrip<'a> {
                         }
 
                         if ui.add(
-                            egui::Button::new(RichText::new("FLATTEN").monospace().size(9.0).strong().color(Color32::WHITE))
+                            egui::Button::new(RichText::new("FLATTEN").monospace().size(font_sm()).strong().color(Color32::WHITE))
                                 .fill(color_alpha(t.bear, 180))
                                 .corner_radius(3.0)
                                 .min_size(egui::vec2(0.0, 22.0))
@@ -835,12 +835,12 @@ impl<'a> AccountStrip<'a> {
                         }
                     } else {
                         // Disconnected
-                        ui.label(RichText::new("IB Disconnected").monospace().size(9.0).color(color_alpha(t.dim, 128)));
-                        ui.label(RichText::new(format!("connecting to {}...", self.broker_url)).monospace().size(9.0).color(color_alpha(t.dim, 76)));
+                        ui.label(RichText::new("IB Disconnected").monospace().size(font_sm()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("connecting to {}...", self.broker_url)).monospace().size(font_sm()).color(color_alpha(t.dim, 76)));
                     }
                 } else {
                     // Loading
-                    ui.label(RichText::new("Loading account...").monospace().size(11.0).color(color_alpha(t.dim, 102)));
+                    ui.label(RichText::new("Loading account...").monospace().size(font_md()).color(color_alpha(t.dim, 102)));
                 }
             });
         }).response

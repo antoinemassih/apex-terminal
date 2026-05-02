@@ -62,7 +62,7 @@ if watchlist.open {
                     ui.add_space(4.0);
                     let badge_bg = color_alpha(session_col, alpha_tint());
                     ui.add(ChromeBtn::new(
-                        egui::RichText::new(session).monospace().size(8.5).strong().color(session_col))
+                        egui::RichText::new(session).monospace().size(font_xs()).strong().color(session_col))
                         .fill(badge_bg).corner_radius(r_sm_cr()).stroke(egui::Stroke::NONE)
                         .min_size(egui::vec2(34.0, 14.0)));
                 });
@@ -119,17 +119,17 @@ if watchlist.open {
                                 .font_size(9.0)
                                 .item_context_menu(|idx, ui| {
                                     let i = *idx;
-                                    if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
+                                    if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
                                         wl_rename_idx = Some(i);
                                         ui.close_menu();
                                     }
-                                    if ui.button(egui::RichText::new("Duplicate").monospace().size(9.0)).clicked() {
+                                    if ui.button(egui::RichText::new("Duplicate").monospace().size(font_sm())).clicked() {
                                         wl_dup_idx = Some(i);
                                         ui.close_menu();
                                     }
                                     if wl_count > 1 {
                                         ui.separator();
-                                        if ui.button(egui::RichText::new("Delete").monospace().size(9.0)
+                                        if ui.button(egui::RichText::new("Delete").monospace().size(font_sm())
                                             .color(COLOR_DANGER)).clicked() {
                                             wl_delete_idx = Some(i);
                                             ui.close_menu();
@@ -145,17 +145,17 @@ if watchlist.open {
                             }
                             // Right-click the combo header for rename/dup/delete of active
                             combo_resp.context_menu(|ui| {
-                                if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
+                                if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
                                     wl_rename_idx = Some(active_idx);
                                     ui.close_menu();
                                 }
-                                if ui.button(egui::RichText::new("Duplicate").monospace().size(9.0)).clicked() {
+                                if ui.button(egui::RichText::new("Duplicate").monospace().size(font_sm())).clicked() {
                                     wl_dup_idx = Some(active_idx);
                                     ui.close_menu();
                                 }
                                 if wl_count > 1 {
                                     ui.separator();
-                                    if ui.button(egui::RichText::new("Delete").monospace().size(9.0)
+                                    if ui.button(egui::RichText::new("Delete").monospace().size(font_sm())
                                         .color(COLOR_DANGER)).clicked() {
                                         wl_delete_idx = Some(active_idx);
                                         ui.close_menu();
@@ -163,7 +163,7 @@ if watchlist.open {
                                 }
                             });
                             // "+" button to create new watchlist
-                            if ui.add(ChromeBtn::new(egui::RichText::new(Icon::PLUS).size(12.0).color(t.dim)).frameless(true)).clicked() {
+                            if ui.add(ChromeBtn::new(egui::RichText::new(Icon::PLUS).size(font_md()).color(t.dim)).frameless(true)).clicked() {
                                 let n = watchlist.saved_watchlists.len() + 1;
                                 let syms = watchlist.create_watchlist(&format!("Watchlist {}", n));
                                 if !syms.is_empty() { wl_fetch_syms = syms; }
@@ -173,7 +173,7 @@ if watchlist.open {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
                             let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
-                            let opt_resp = ui.add(ChromeBtn::new(egui::RichText::new(opt_icon).size(10.0).color(opt_color))
+                            let opt_resp = ui.add(ChromeBtn::new(egui::RichText::new(opt_icon).size(font_sm()).color(opt_color))
                                 .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)));
                             if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -296,7 +296,7 @@ if watchlist.open {
                                 let bg = if is_sel { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                                 let fg = if is_sel { t.text } else { t.dim };
                                 let resp = ui.add(ChromeBtn::new(
-                                    egui::RichText::new(format!("{:6} {}", sym, name)).monospace().size(9.0).color(fg))
+                                    egui::RichText::new(format!("{:6} {}", sym, name)).monospace().size(font_sm()).color(fg))
                                     .fill(bg).frameless(true).min_size(egui::vec2(ui.available_width(), 20.0)));
                                 if resp.clicked() {
                                     watchlist.add_symbol(sym);
@@ -365,7 +365,7 @@ if watchlist.open {
                             super::widgets::inputs::TextInput::new(&mut watchlist.filter_text)
                                 .placeholder("Search...").width((ui.available_width() - 30.0).max(40.0)).font_size(9.0).show(ui);
                             if !watchlist.filter_text.is_empty() {
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(8.0).color(t.dim)).frameless(true)).clicked() {
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(font_xs()).color(t.dim)).frameless(true)).clicked() {
                                     watchlist.filter_text.clear();
                                 }
                             }
@@ -406,7 +406,7 @@ if watchlist.open {
                                     TextInput::new(&mut *name_cell.borrow_mut()).placeholder("name").width(50.0).font_size(8.0).theme(t).show(ui);
                                     ui.add(MonospaceCode::new(">").size_px(8.0).color(t.dim));
                                     TextInput::new(&mut *min_cell.borrow_mut()).placeholder("%").width(30.0).font_size(8.0).theme(t).show(ui);
-                                    if ui.add(ChromeBtn::new(egui::RichText::new(Icon::CHECK).size(8.0).color(t.accent)).frameless(true)).clicked() {
+                                    if ui.add(ChromeBtn::new(egui::RichText::new(Icon::CHECK).size(font_xs()).color(t.accent)).frameless(true)).clicked() {
                                         let name = name_cell.borrow().trim().to_string();
                                         let min_val: f32 = min_cell.borrow().parse().unwrap_or(0.0);
                                         if !name.is_empty() {
@@ -571,7 +571,7 @@ if watchlist.open {
                                 // Right-click context menu on section header
                                 header_resp.response.context_menu(|ui| {
                                     // Rename
-                                    if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
+                                    if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
                                         watchlist.rename_buf = sec_title.clone();
                                         ui.close_menu();
@@ -583,7 +583,7 @@ if watchlist.open {
                                         ui.horizontal(|ui| {
                                             for hex in row {
                                                 let c = hex_to_color(hex, 1.0);
-                                                if ui.add(ChromeBtn::new(egui::RichText::new("\u{25CF}").size(14.0).color(c)).frameless(true)).clicked() {
+                                                if ui.add(ChromeBtn::new(egui::RichText::new("\u{25CF}").size(font_lg()).color(c)).frameless(true)).clicked() {
                                                     if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                         sec.color = Some(hex.to_string());
                                                     }
@@ -593,7 +593,7 @@ if watchlist.open {
                                             }
                                         });
                                     }
-                                    if ui.button(egui::RichText::new("No color").monospace().size(9.0).color(t.dim)).clicked() {
+                                    if ui.button(egui::RichText::new("No color").monospace().size(font_sm()).color(t.dim)).clicked() {
                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                             sec.color = None;
                                         }
@@ -602,7 +602,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     if sec_item_count == 0 {
-                                        if ui.button(egui::RichText::new("Delete section").monospace().size(9.0).color(COLOR_DANGER)).clicked() {
+                                        if ui.button(egui::RichText::new("Delete section").monospace().size(font_sm()).color(COLOR_DANGER)).clicked() {
                                             remove_section = Some(si);
                                             ui.close_menu();
                                         }
@@ -618,7 +618,7 @@ if watchlist.open {
 
                                     // Collapse chevron (keep visible during rename)
                                     let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                    ui.add(ChromeBtn::new(egui::RichText::new(chevron).size(9.0).color(t.dim.gamma_multiply(0.6))).frameless(true));
+                                    ui.add(ChromeBtn::new(egui::RichText::new(chevron).size(font_sm()).color(t.dim.gamma_multiply(0.6))).frameless(true));
 
                                     let te = super::widgets::inputs::TextInput::new(&mut watchlist.rename_buf)
                                         .width((ui.available_width() - 10.0).max(40.0)).font_size(9.0).show(ui);
@@ -725,7 +725,7 @@ if watchlist.open {
                                             // C/P badge
                                             let badge_bg = color_alpha(opt_color, 35);
                                             let badge_resp = ui.add(ChromeBtn::new(
-                                                egui::RichText::new(&item_option_type).monospace().size(9.0).strong().color(opt_color))
+                                                egui::RichText::new(&item_option_type).monospace().size(font_sm()).strong().color(opt_color))
                                                 .fill(badge_bg).corner_radius(r_sm_cr()).stroke(egui::Stroke::NONE)
                                                 .min_size(egui::vec2(16.0, 16.0)));
                                             let _ = badge_resp;
@@ -735,7 +735,7 @@ if watchlist.open {
                                             ui.add(MonospaceCode::new(&item_sym).size_px(10.5).strong(true).color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
-                                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(9.0).color(t.dim.gamma_multiply(0.3))).frameless(true)).clicked() {
+                                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(font_sm()).color(t.dim.gamma_multiply(0.3))).frameless(true)).clicked() {
                                                     remove_sym = Some(item_sym.clone());
                                                 }
                                                 // Bid x Ask (or price fallback)
@@ -1010,7 +1010,7 @@ if watchlist.open {
                         // "+ Section" always at bottom of stocks scroll
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
-                            if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
+                            if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(font_sm()).color(t.dim.gamma_multiply(0.4)))
                                 .frameless(true)).clicked() {
                                 watchlist.add_section("New Section");
                                 watchlist.persist();
@@ -1105,7 +1105,7 @@ if watchlist.open {
                                 // Right-click context menu on option section header (same as stock sections)
                                 header_resp.response.context_menu(|ui| {
                                     // Rename
-                                    if ui.button(egui::RichText::new("Rename").monospace().size(9.0)).clicked() {
+                                    if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
                                         watchlist.rename_buf = sec_title.clone();
                                         ui.close_menu();
@@ -1117,7 +1117,7 @@ if watchlist.open {
                                         ui.horizontal(|ui| {
                                             for hex in row {
                                                 let c = hex_to_color(hex, 1.0);
-                                                if ui.add(ChromeBtn::new(egui::RichText::new("\u{25CF}").size(14.0).color(c)).frameless(true)).clicked() {
+                                                if ui.add(ChromeBtn::new(egui::RichText::new("\u{25CF}").size(font_lg()).color(c)).frameless(true)).clicked() {
                                                     if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                         sec.color = Some(hex.to_string());
                                                     }
@@ -1127,7 +1127,7 @@ if watchlist.open {
                                             }
                                         });
                                     }
-                                    if ui.button(egui::RichText::new("No color").monospace().size(9.0).color(t.dim)).clicked() {
+                                    if ui.button(egui::RichText::new("No color").monospace().size(font_sm()).color(t.dim)).clicked() {
                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                             sec.color = None;
                                         }
@@ -1136,7 +1136,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     if sec_item_count == 0 {
-                                        if ui.button(egui::RichText::new("Delete section").monospace().size(9.0).color(COLOR_DANGER)).clicked() {
+                                        if ui.button(egui::RichText::new("Delete section").monospace().size(font_sm()).color(COLOR_DANGER)).clicked() {
                                             opt_remove_section = Some(si);
                                             ui.close_menu();
                                         }
@@ -1225,7 +1225,7 @@ if watchlist.open {
                             // "+ Section" button at bottom of options area
                             ui.add_space(6.0);
                             ui.horizontal(|ui| {
-                                if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(9.0).color(t.dim.gamma_multiply(0.4)))
+                                if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(font_sm()).color(t.dim.gamma_multiply(0.4)))
                                     .frameless(true)).clicked() {
                                     watchlist.add_option_section("New Options");
                                     watchlist.persist();
@@ -1295,7 +1295,7 @@ if watchlist.open {
                         }
                         // Select mode toggle
                         let sel_active = watchlist.chain_select_mode;
-                        if ui.add(ChromeBtn::new(egui::RichText::new(if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() }).monospace().size(9.0)
+                        if ui.add(ChromeBtn::new(egui::RichText::new(if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() }).monospace().size(font_sm())
                             .color(if sel_active { t.accent } else { t.dim }))
                             .fill(if sel_active { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),51) } else { t.toolbar_bg })
                             .stroke(egui::Stroke::new(stroke_std(), if sel_active { t.accent } else { t.toolbar_border }))
@@ -1323,7 +1323,7 @@ if watchlist.open {
                             .font_size(14.0)
                             .text_color(t.accent)
                             .background_color(input_bg)
-                            .margin(egui::Margin::symmetric(4, 3))
+                            .margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
                             .theme(t)
                             .show(ui);
                         if !has_focus {
@@ -1358,7 +1358,7 @@ if watchlist.open {
                     if !watchlist.chain_sym_input.is_empty() && !watchlist.search_results.is_empty() {
                         PopupFrame::new().colors(egui::Color32::from_rgb(28, 28, 34), t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
                             for (sym, name) in watchlist.search_results.clone() {
-                                if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(10.0).color(t.dim))
+                                if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(font_sm()).color(t.dim))
                                     .frameless(true).min_size(egui::vec2(ui.available_width(), 20.0))).clicked() {
                                     watchlist.chain_symbol = sym;
                                     watchlist.chain_sym_input.clear();
@@ -1706,20 +1706,20 @@ if watchlist.open {
                                     .show(ui, &mut watchlist.chain_0_strike_mode);
                             }
                             // Count ± (always visible)
-                            if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
+                            if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(font_sm())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_0_num_strikes)).size_px(8.0).color(t.dim));
-                            if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes += 1; }
+                            if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(font_sm())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes += 1; }
                             // Near / Mid / Far toggles
                             NmfToggle::new(&mut watchlist.chain_0_nmf).theme(t).show(ui);
                             // Freeze + arrows
                             let fr_col = if watchlist.chain_0_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
-                            if ui.add(ChromeBtn::new(egui::RichText::new(if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY }).size(9.0).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                            if ui.add(ChromeBtn::new(egui::RichText::new(if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY }).size(font_sm()).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
                                 watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
                                 if !watchlist.chain_0_frozen { watchlist.chain_0_offset = 0; }
                             }
                             if watchlist.chain_0_frozen {
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset += 1; }
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset -= 1; }
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(font_sm()).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset += 1; }
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(font_sm()).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset -= 1; }
                             }
                         });
                         let ns_0 = watchlist.chain_0_num_strikes;
@@ -1759,18 +1759,18 @@ if watchlist.open {
                                     .theme(t)
                                     .show(ui, &mut watchlist.chain_far_strike_mode);
                             }
-                            if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
+                            if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(font_sm())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(8.0).color(t.dim));
-                            if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(9.0)).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
+                            if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(font_sm())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
                             NmfToggle::new(&mut watchlist.chain_far_nmf).theme(t).show(ui);
                             let fr_col = if watchlist.chain_far_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
-                            if ui.add(ChromeBtn::new(egui::RichText::new(if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY }).size(9.0).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                            if ui.add(ChromeBtn::new(egui::RichText::new(if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY }).size(font_sm()).color(fr_col)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
                                 watchlist.chain_far_frozen = !watchlist.chain_far_frozen;
                                 if !watchlist.chain_far_frozen { watchlist.chain_far_offset = 0; }
                             }
                             if watchlist.chain_far_frozen {
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset += 1; }
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(9.0).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset -= 1; }
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_UP).size(font_sm()).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset += 1; }
+                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::ARROW_FAT_DOWN).size(font_sm()).color(t.dim)).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset -= 1; }
                             }
                         });
                         let ns_f = watchlist.chain_far_num_strikes;
@@ -1816,7 +1816,7 @@ if watchlist.open {
                         }
                         // Expand / Collapse / Columns / Sort — all with hover cursor
                         let hbtn = |ui: &mut egui::Ui, label: &str, col: egui::Color32, tip: &str| -> bool {
-                            let resp = ui.add(ChromeBtn::new(egui::RichText::new(label).monospace().size(9.0).color(col))
+                            let resp = ui.add(ChromeBtn::new(egui::RichText::new(label).monospace().size(font_sm()).color(col))
                                 .min_size(egui::vec2(20.0, 18.0)).corner_radius(r_md_cr()));
                             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                             resp.on_hover_text(tip).clicked()
@@ -2005,7 +2005,7 @@ if watchlist.open {
                                     let caret = if is_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
                                     let header_text = format!("{} {}  ({})  {:+.2}%", caret, sector, items.len(), avg_chg);
                                     let header_btn = ui.add(ChromeBtn::new(
-                                        egui::RichText::new(&header_text).monospace().size(10.0).color(sector_col)
+                                        egui::RichText::new(&header_text).monospace().size(font_sm()).color(sector_col)
                                     ).fill(color_alpha(sector_col, alpha_faint())).corner_radius(r_md_cr()).min_size(egui::vec2(ui.available_width(), 22.0)));
                                     if header_btn.clicked() {
                                         if is_collapsed { watchlist.heat_collapsed.remove(sector); }
