@@ -3526,10 +3526,17 @@ fn render_toolbar(
     conn_panel_open: &mut bool,
     toasts: &[(String, f32, std::time::Instant, bool)],
 ) {
-    super::ui::widgets::toolbar::top_nav::render(
-        ctx, panes, active_pane, layout, watchlist, t, theme_idx,
-        account_data_cached, win_ref, conn_panel_open, toasts,
-    );
+    super::ui::widgets::toolbar::top_nav::TopNav::new()
+        .panes(panes)
+        .active_pane(active_pane)
+        .layout(layout)
+        .watchlist(watchlist)
+        .theme(t, theme_idx)
+        .account(Some(account_data_cached))
+        .window(win_ref)
+        .conn_panel_open(conn_panel_open)
+        .toasts(toasts)
+        .show(ctx);
 }
 
 // ── toolbar body moved to ui/widgets/toolbar/top_nav.rs ───────────────────────

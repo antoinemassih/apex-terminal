@@ -11,6 +11,78 @@
 
 #![allow(unused_imports, unused_variables, clippy::too_many_arguments)]
 
+/// Builder-style entry point for the top-nav toolbar.
+///
+/// Usage:
+/// ```ignore
+/// TopNav::new()
+///     .panes(panes)
+///     .active_pane(active_pane)
+///     .layout(layout)
+///     .watchlist(watchlist)
+///     .theme(t, theme_idx)
+///     .account(account_data_cached.as_ref())
+///     .window(win_ref)
+///     .conn_panel_open(conn_panel_open)
+///     .toasts(toasts)
+///     .show(ctx);
+/// ```
+pub struct TopNav<'a> {
+    panes: Option<&'a mut Vec<Chart>>,
+    active_pane: Option<&'a mut usize>,
+    layout: Option<&'a mut Layout>,
+    watchlist: Option<&'a mut Watchlist>,
+    theme: Option<&'a Theme>,
+    theme_idx: usize,
+    account_data_cached: Option<&'a Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>,
+    window: Option<Arc<Window>>,
+    conn_panel_open: Option<&'a mut bool>,
+    toasts: &'a [(String, f32, std::time::Instant, bool)],
+}
+
+impl<'a> TopNav<'a> {
+    pub fn new() -> Self {
+        Self {
+            panes: None,
+            active_pane: None,
+            layout: None,
+            watchlist: None,
+            theme: None,
+            theme_idx: 0,
+            account_data_cached: None,
+            window: None,
+            conn_panel_open: None,
+            toasts: &[],
+        }
+    }
+
+    pub fn panes(mut self, p: &'a mut Vec<Chart>) -> Self { self.panes = Some(p); self }
+    pub fn active_pane(mut self, p: &'a mut usize) -> Self { self.active_pane = Some(p); self }
+    pub fn layout(mut self, l: &'a mut Layout) -> Self { self.layout = Some(l); self }
+    pub fn watchlist(mut self, w: &'a mut Watchlist) -> Self { self.watchlist = Some(w); self }
+    pub fn theme(mut self, t: &'a Theme, idx: usize) -> Self { self.theme = Some(t); self.theme_idx = idx; self }
+    pub fn account(mut self, a: Option<&'a Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>) -> Self { self.account_data_cached = a; self }
+    pub fn window(mut self, w: Option<Arc<Window>>) -> Self { self.window = w; self }
+    pub fn conn_panel_open(mut self, b: &'a mut bool) -> Self { self.conn_panel_open = Some(b); self }
+    pub fn toasts(mut self, t: &'a [(String, f32, std::time::Instant, bool)]) -> Self { self.toasts = t; self }
+
+    pub fn show(self, ctx: &egui::Context) {
+        render(
+            ctx,
+            self.panes.expect("TopNav requires .panes(...)"),
+            self.active_pane.expect("TopNav requires .active_pane(...)"),
+            self.layout.expect("TopNav requires .layout(...)"),
+            self.watchlist.expect("TopNav requires .watchlist(...)"),
+            self.theme.expect("TopNav requires .theme(...)"),
+            self.theme_idx,
+            self.account_data_cached.unwrap_or(&None),
+            self.window,
+            self.conn_panel_open.expect("TopNav requires .conn_panel_open(...)"),
+            self.toasts,
+        );
+    }
+}
+
 use std::sync::Arc;
 use winit::window::Window;
 
