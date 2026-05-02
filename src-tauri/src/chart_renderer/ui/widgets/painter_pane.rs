@@ -474,7 +474,7 @@ impl<'a> PainterPaneHeader<'a> {
         // ── Helper: paint a vertical hairline divider at the current cx ──
         let paint_divider = |cx_pos: f32| {
             if current().vertical_group_dividers {
-                let div_col = color_alpha(t.toolbar_border, alpha_heavy());
+                let div_col = t.text.gamma_multiply(0.25);
                 painter.line_segment(
                     [pos2(cx_pos, rect.top() + 4.0), pos2(cx_pos, rect.bottom() - 4.0)],
                     Stroke::new(stroke_hair(), div_col),

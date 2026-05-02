@@ -42,6 +42,8 @@ pub struct Inspector {
     pub is_preview_left_open: bool,
     /// Active sub-tab within the Design category (0=Style, 1=Theme, 2=Preview).
     pub current_design_subtab: u8,
+    /// Whether the Field Reference help window is open.
+    pub show_help: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -150,6 +152,7 @@ impl Inspector {
             is_popout: false,
             is_preview_left_open: false,
             current_design_subtab: 0,
+            show_help: false,
         }
     }
 
@@ -358,8 +361,138 @@ impl Inspector {
             }
         }
 
+        // ── Selection highlight when inspect mode is OFF but something is selected ──
+        // Paint the green selection rect so the user still sees what is locked.
+        if !self.inspect_mode {
+            if self.selected_family.is_some() {
+                let hits = crate::design_tokens::get_hits();
+                let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("inspect_overlay")));
+                self.selected_rect = None;
+                for h in &hits {
+                    if self.selected_family == Some(h.family) {
+                        let rect = egui::Rect::from_min_size(
+                            egui::pos2(h.rect[0], h.rect[1]),
+                            egui::vec2(h.rect[2], h.rect[3]));
+                        painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(166, 227, 161, 30));
+                        painter.rect_stroke(rect, 2.0, Stroke::new(1.5, Color32::from_rgba_unmultiplied(166, 227, 161, 160)), egui::StrokeKind::Outside);
+                        self.selected_rect = Some(rect);
+                        // Family label above
+                        let label_pos = egui::pos2(rect.left(), rect.top() - 2.0);
+                        let galley = painter.layout_no_wrap(h.family.to_string(), egui::FontId::monospace(10.0), Color32::WHITE);
+                        let label_rect = egui::Rect::from_min_size(
+                            egui::pos2(label_pos.x - 2.0, label_pos.y - galley.size().y - 2.0),
+                            egui::vec2(galley.size().x + 4.0, galley.size().y + 4.0));
+                        painter.rect_filled(label_rect, 2.0, Color32::from_rgba_unmultiplied(20, 20, 30, 200));
+                        painter.text(egui::pos2(label_pos.x, label_pos.y - 1.0), egui::Align2::LEFT_BOTTOM,
+                            h.family, egui::FontId::monospace(10.0), Color32::from_rgb(166, 227, 161));
+                        break;
+                    }
+                }
+            }
+        }
+
         // Clear hits at end of frame (they get populated again next frame by style.rs)
         crate::design_tokens::clear_hits();
+
+        // ── Field Reference window ────────────────────────────────────────────
+        if self.show_help {
+            let mut open = self.show_help;
+            egui::Window::new("Field Reference")
+                .open(&mut open)
+                .resizable([true, true])
+                .default_size(egui::vec2(520.0, 560.0))
+                .default_pos(egui::pos2(60.0, 60.0))
+                .show(ctx, |ui| {
+                    ui.label(RichText::new("All StyleSettings fields and what they affect.")
+                        .size(11.0).color(Color32::from_rgb(170, 170, 180)));
+                    ui.add_space(6.0);
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        // Header row
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Field").monospace().size(10.0).strong()
+                                .color(Color32::from_rgb(203, 166, 247)));
+                            ui.add_space(140.0);
+                            ui.label(RichText::new("Affects").monospace().size(10.0).strong()
+                                .color(Color32::from_rgb(203, 166, 247)));
+                        });
+                        ui.separator();
+                        const FIELD_REF: &[(&str, &str, &str)] = &[
+                            ("r_xs",                    "u8",   "Tiny chip / badge corners"),
+                            ("r_sm",                    "u8",   "Button corners, small card corners"),
+                            ("r_md",                    "u8",   "Card / dialog / main button corners"),
+                            ("r_lg",                    "u8",   "Modal / overlay / large card corners"),
+                            ("r_pill",                  "u8",   "Pill buttons and segmented controls"),
+                            ("button_treatment",        "enum", "All button widgets' active visual style"),
+                            ("hairline_borders",        "bool", "Frames, separators, borders, pills, chips"),
+                            ("shadows_enabled",         "bool", "Drop shadows on cards and modals"),
+                            ("solid_active_fills",      "bool", "Solid fills on active/selected items"),
+                            ("uppercase_section_labels","bool", "Uppercase section label text globally"),
+                            ("serif_headlines",         "bool", "Serif font for hero numerics (price, P&L)"),
+                            ("vertical_group_dividers", "bool", "Vertical group dividers in toolbar"),
+                            ("show_active_tab_underline","bool","Underline beneath the active tab"),
+                            ("inactive_header_fill",    "bool", "Fill applied to inactive pane headers"),
+                            ("tab_underline_under_text","bool", "Tab underline under text vs full width"),
+                            ("card_floating_shadow",    "bool", "Floating drop shadow beneath cards"),
+                            ("stroke_hair",             "f32",  "Hairline borders and dividers (thinnest)"),
+                            ("stroke_thin",             "f32",  "Subtle borders, inactive outlines"),
+                            ("stroke_std",              "f32",  "Standard borders and separators"),
+                            ("stroke_bold",             "f32",  "Active / hover borders"),
+                            ("stroke_thick",            "f32",  "Emphasis borders, chart annotations"),
+                            ("toolbar_height_scale",    "f32",  "Multiplier on base toolbar height"),
+                            ("header_height_scale",     "f32",  "Multiplier on pane header heights"),
+                            ("active_header_fill_multiply","f32","Brightness of active pane header fill"),
+                            ("font_hero",               "f32",  "Large price / P&L numeric font size"),
+                            ("font_section_label",      "f32",  "Section label font size (ORDERS, etc.)"),
+                            ("font_body",               "f32",  "Body / table text font size"),
+                            ("font_caption",            "f32",  "Caption, badge, secondary text size"),
+                            ("account_strip_height",    "f32",  "Account summary strip height"),
+                            ("label_letter_spacing_px", "f32",  "Extra spacing between uppercase label chars"),
+                            ("nav_letter_spacing_px",   "f32",  "Extra letter spacing for nav/toolbar text"),
+                            ("pane_border_width",       "f32",  "Border width between pane tiles"),
+                            ("pane_gap",                "f32",  "Gap between pane tiles"),
+                            ("card_padding_y",          "f32",  "Vertical inner padding inside cards"),
+                            ("card_padding_x",          "f32",  "Horizontal inner padding inside cards"),
+                            ("row_height_px",           "f32",  "Table / list row height"),
+                            ("button_height_px",        "f32",  "Standard action button height"),
+                            ("button_padding_x",        "f32",  "Horizontal padding inside buttons"),
+                            ("tab_height",              "f32",  "Tab bar item height"),
+                            ("tab_underline_thickness", "f32",  "Active tab underline thickness"),
+                            ("cta_height_px",           "f32",  "CTA buy/sell button height"),
+                            ("cta_padding_x",           "f32",  "CTA button horizontal padding"),
+                            ("hover_bg_alpha",          "u8",   "Background alpha on hover (0–255)"),
+                            ("active_bg_alpha",         "u8",   "Background alpha when active/selected"),
+                            ("focus_ring_width",        "f32",  "Keyboard focus ring width"),
+                            ("focus_ring_alpha",        "u8",   "Keyboard focus ring opacity"),
+                            ("disabled_opacity",        "f32",  "Opacity multiplier for disabled widgets"),
+                            ("shadow_blur",             "f32",  "Drop shadow blur radius"),
+                            ("shadow_offset_y",         "f32",  "Drop shadow vertical offset"),
+                            ("shadow_alpha",            "u8",   "Drop shadow opacity"),
+                            ("density",                 "u8",   "Spacing density (0=compact 1=normal 2=spacious)"),
+                            ("accent_emphasis",         "f32",  "Accent color saturation/brightness multiplier"),
+                            ("card_floating_shadow_alpha","u8", "Floating card drop shadow opacity"),
+                        ];
+                        for (field, ty, affects) in FIELD_REF {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(*field).monospace().size(9.5)
+                                    .color(Color32::from_rgb(137, 180, 250)));
+                                ui.add_space(4.0);
+                                ui.label(RichText::new(format!("({})", ty)).monospace().size(9.0)
+                                    .color(Color32::from_rgb(100, 100, 110)));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(RichText::new(*affects).size(9.5)
+                                        .color(Color32::from_rgb(200, 200, 210)));
+                                });
+                            });
+                            ui.add_space(1.0);
+                        }
+                        ui.add_space(8.0);
+                        ui.separator();
+                        ui.label(RichText::new("Full trace: docs/design-mode-field-trace.md")
+                            .monospace().size(9.0).color(Color32::from_rgb(100, 100, 110)));
+                    });
+                });
+            if !open { self.show_help = false; }
+        }
 
         let mut modified = false;
         let panel_frame = egui::Frame::NONE
@@ -423,6 +556,22 @@ impl Inspector {
                                 ).on_hover_text(if self.is_popout { "Dock back to side panel" } else { "Float as draggable window" })
                                 .clicked() {
                                     self.is_popout = !self.is_popout;
+                                }
+
+                                // Help / Field Reference toggle
+                                let help_col = if self.show_help {
+                                    Color32::from_rgb(250, 179, 135)
+                                } else {
+                                    Color32::from_rgb(100, 100, 110)
+                                };
+                                if ui.add(egui::Button::new(
+                                    RichText::new("📖 Help").monospace().size(10.0).strong().color(help_col))
+                                    .fill(if self.show_help { Color32::from_rgba_unmultiplied(250, 179, 135, 18) } else { Color32::TRANSPARENT })
+                                    .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(help_col.r(), help_col.g(), help_col.b(), 60)))
+                                    .corner_radius(3.0)
+                                ).on_hover_text("Open Field Reference — all StyleSettings fields and what they affect")
+                                .clicked() {
+                                    self.show_help = !self.show_help;
                                 }
 
                                 // Preview left toggle

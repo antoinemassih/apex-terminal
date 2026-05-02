@@ -5564,7 +5564,7 @@ fn render_chart_pane(
             }
             // Meridien: draw a hairline border around just the header strip (#d).
             if st.hairline_borders {
-                let rule_col = super::ui::style::rule_stroke_for(t.bg, t.toolbar_border);
+                let rule_col = egui::Stroke::new(0.5, t.text.gamma_multiply(0.3));
                 hp.rect_stroke(header_rect, 0.0, rule_col, egui::StrokeKind::Inside);
             }
         }
