@@ -298,7 +298,7 @@ fn draw_play_editor(
 
             // T1 — primary target with allocation
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("T1").monospace().size(7.0).strong().color(t.bull.gamma_multiply(0.7)));
+                ui.label(egui::RichText::new("T1").monospace().size(font_xs()).strong().color(t.bull.gamma_multiply(0.7)));
                 let resp = TextInput::new(&mut watchlist.play_editor_target)
                     .id(egui::Id::new(("play_price", PlayLineKind::Target as u8)))
                     .width(65.0).font_size(FONT_SM).theme(t).show(ui);
@@ -313,7 +313,7 @@ fn draw_play_editor(
             if watchlist.play_editor_has_t2 {
                 let mut remove_t2 = false;
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("T2").monospace().size(7.0).strong().color(egui::Color32::from_rgb(26, 188, 156)));
+                    ui.label(egui::RichText::new("T2").monospace().size(font_xs()).strong().color(COLOR_T2));
                     let resp = TextInput::new(&mut watchlist.play_editor_t2)
                         .id(egui::Id::new(("play_price", PlayLineKind::Target2 as u8)))
                         .width(65.0).font_size(FONT_SM).theme(t).show(ui);
@@ -340,7 +340,7 @@ fn draw_play_editor(
             if watchlist.play_editor_has_t3 {
                 let mut remove_t3 = false;
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("T3").monospace().size(7.0).strong().color(egui::Color32::from_rgb(52, 152, 219)));
+                    ui.label(egui::RichText::new("T3").monospace().size(font_xs()).strong().color(COLOR_T3));
                     let resp = TextInput::new(&mut watchlist.play_editor_t3)
                         .id(egui::Id::new(("play_price", PlayLineKind::Target3 as u8)))
                         .width(65.0).font_size(FONT_SM).theme(t).show(ui);
@@ -366,7 +366,7 @@ fn draw_play_editor(
             if pt != PlayType::Scalp {
                 ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
-                    let stop_label = egui::RichText::new("STOP").monospace().size(7.0).color(t.bear.gamma_multiply(0.7));
+                    let stop_label = egui::RichText::new("STOP").monospace().size(font_xs()).color(t.bear.gamma_multiply(0.7));
                     ui.label(stop_label);
                     let resp = TextInput::new(&mut watchlist.play_editor_stop)
                         .id(egui::Id::new(("play_price", PlayLineKind::Stop as u8)))
@@ -389,7 +389,7 @@ fn draw_play_editor(
                 ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
                     dim_label(ui, "R:R", t.dim);
-                    let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+                    let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { COLOR_AMBER } else { t.bear };
                     ui.add(super::widgets::text::MonospaceCode::new(&format!("{:.1} : 1", rr)).sm().color(rr_col).strong(true));
                     let bar_w = ui.available_width().min(120.0);
                     let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 6.0), egui::Sense::hover());
@@ -725,7 +725,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
 
         let status_color = match play.status {
             PlayStatus::Draft => t.dim, PlayStatus::Published => t.accent,
-            PlayStatus::Active => egui::Color32::from_rgb(255, 191, 0),
+            PlayStatus::Active => COLOR_AMBER,
             PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => t.dim.gamma_multiply(0.5),
         };
         let status_x = card_rect.right() - 60.0;

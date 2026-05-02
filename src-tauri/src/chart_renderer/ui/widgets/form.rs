@@ -832,3 +832,200 @@ impl MeridienOrderTicket {
 impl Default for MeridienOrderTicket {
     fn default() -> Self { Self::new() }
 }
+
+// ─── IndicatorParamRow ────────────────────────────────────────────────────────
+
+/// Horizontal row: `indent → label → DragValue → optional preset chips`.
+///
+/// Designed for the indicator editor parameter section. Combines the
+/// label-gutter pattern of `FormRow` with an inline `DragValue` and a list of
+/// preset values displayed as small ChromeBtn chips.
+///
+/// ```ignore
+/// let changed = IndicatorParamRow::new("Period", &mut ind.period as &mut usize)
+///     .indent(8.0)
+///     .presets(&[9, 20, 50, 100, 200])
+///     .theme(t)
+///     .show(ui);
+/// ```
+#[must_use = "IndicatorParamRow must be rendered via `.show(ui)`"]
+pub struct IndicatorParamRow<'a> {
+    label: &'a str,
+    value: &'a mut usize,
+    indent: f32,
+    presets: &'a [usize],
+    range_min: usize,
+    range_max: usize,
+    speed: f64,
+    accent: Option<Color32>,
+    dim: Option<Color32>,
+    border: Option<Color32>,
+    theme: Option<&'a Theme>,
+}
+
+impl<'a> IndicatorParamRow<'a> {
+    pub fn new(label: &'a str, value: &'a mut usize) -> Self {
+        Self {
+            label,
+            value,
+            indent: 0.0,
+            presets: &[],
+            range_min: 1,
+            range_max: 500,
+            speed: 0.5,
+            accent: None,
+            dim: None,
+            border: None,
+            theme: None,
+        }
+    }
+    pub fn indent(mut self, s: f32) -> Self { self.indent = s; self }
+    pub fn presets(mut self, p: &'a [usize]) -> Self { self.presets = p; self }
+    pub fn range(mut self, min: usize, max: usize) -> Self { self.range_min = min; self.range_max = max; self }
+    pub fn speed(mut self, s: f64) -> Self { self.speed = s; self }
+    pub fn theme(mut self, t: &'a Theme) -> Self {
+        self.theme = Some(t);
+        self.accent = Some(t.accent);
+        self.dim = Some(t.dim);
+        self.border = Some(t.toolbar_border);
+        self
+    }
+
+    /// Returns `true` if the value changed.
+    pub fn show(self, ui: &mut Ui) -> bool {
+        use super::buttons::ChromeBtn;
+        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
+        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
+        let border = self.border.unwrap_or_else(|| Color32::from_rgb(60, 60, 70));
+        let value = self.value;
+        let mut changed = false;
+
+        ui.horizontal(|ui| {
+            if self.indent > 0.0 { ui.add_space(self.indent); }
+            ui.label(egui::RichText::new(self.label).monospace().size(font_sm()).color(dim));
+            ui.add_space(gap_sm());
+            let mut p = *value as i32;
+            if ui.add(egui::DragValue::new(&mut p)
+                .range(self.range_min as i32..=self.range_max as i32)
+                .speed(self.speed)
+                .custom_formatter(|v, _| format!("{}", v as i32))).changed()
+            {
+                *value = (p as usize).max(self.range_min);
+                changed = true;
+            }
+            if !self.presets.is_empty() {
+                ui.add_space(gap_md());
+                let prev = ui.spacing().item_spacing.x;
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for &pr in self.presets {
+                    let sel = *value == pr;
+                    let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
+                    if ui.add(ChromeBtn::new(
+                            egui::RichText::new(format!("{}", pr)).monospace().size(font_xs()).color(fg))
+                        .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
+                        .corner_radius(r_xs())
+                        .min_size(egui::vec2(22.0, 18.0))).clicked() && !sel
+                    {
+                        *value = pr;
+                        changed = true;
+                    }
+                }
+                ui.spacing_mut().item_spacing.x = prev;
+            }
+        });
+        changed
+    }
+}
+
+/// Float variant of `IndicatorParamRow` for `f32` parameters (e.g. std-dev, multiplier).
+#[must_use = "IndicatorParamRowF must be rendered via `.show(ui)`"]
+pub struct IndicatorParamRowF<'a> {
+    label: &'a str,
+    value: &'a mut f32,
+    default: f32,
+    indent: f32,
+    presets: &'a [f32],
+    range_min: f32,
+    range_max: f32,
+    speed: f64,
+    decimals: usize,
+    accent: Option<Color32>,
+    dim: Option<Color32>,
+    border: Option<Color32>,
+    theme: Option<&'a Theme>,
+}
+
+impl<'a> IndicatorParamRowF<'a> {
+    pub fn new(label: &'a str, value: &'a mut f32, default: f32) -> Self {
+        Self {
+            label, value, default,
+            indent: 0.0,
+            presets: &[],
+            range_min: 0.0,
+            range_max: 500.0,
+            speed: 0.05,
+            decimals: 1,
+            accent: None,
+            dim: None,
+            border: None,
+            theme: None,
+        }
+    }
+    pub fn indent(mut self, s: f32) -> Self { self.indent = s; self }
+    pub fn presets(mut self, p: &'a [f32]) -> Self { self.presets = p; self }
+    pub fn range(mut self, min: f32, max: f32) -> Self { self.range_min = min; self.range_max = max; self }
+    pub fn speed(mut self, s: f64) -> Self { self.speed = s; self }
+    pub fn decimals(mut self, d: usize) -> Self { self.decimals = d; self }
+    pub fn theme(mut self, t: &'a Theme) -> Self {
+        self.theme = Some(t);
+        self.accent = Some(t.accent);
+        self.dim = Some(t.dim);
+        self.border = Some(t.toolbar_border);
+        self
+    }
+
+    /// Returns `true` if the value changed.
+    pub fn show(self, ui: &mut Ui) -> bool {
+        use super::buttons::ChromeBtn;
+        let accent = self.accent.unwrap_or_else(|| Color32::from_rgb(120, 140, 220));
+        let dim = self.dim.unwrap_or_else(|| Color32::from_rgb(100, 100, 110));
+        let d = self.decimals;
+        let value = self.value;
+        // Treat 0.0 as "use default"
+        if *value <= 0.0 { *value = self.default; }
+        let mut changed = false;
+
+        ui.horizontal(|ui| {
+            if self.indent > 0.0 { ui.add_space(self.indent); }
+            ui.label(egui::RichText::new(self.label).monospace().size(font_sm()).color(dim));
+            ui.add_space(gap_sm());
+            if ui.add(egui::DragValue::new(value)
+                .range(self.range_min..=self.range_max)
+                .speed(self.speed)
+                .custom_formatter(move |v, _| format!("{:.prec$}", v, prec = d))).changed()
+            {
+                changed = true;
+            }
+            if !self.presets.is_empty() {
+                ui.add_space(gap_sm());
+                let prev = ui.spacing().item_spacing.x;
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for &pr in self.presets {
+                    let sel = (*value - pr).abs() < 0.01;
+                    let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
+                    if ui.add(ChromeBtn::new(
+                            egui::RichText::new(format!("{:.prec$}", pr, prec = d)).monospace().size(font_xs()).color(fg))
+                        .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
+                        .corner_radius(r_xs())
+                        .min_size(egui::vec2(22.0, 18.0))).clicked() && !sel
+                    {
+                        *value = pr;
+                        changed = true;
+                    }
+                }
+                ui.spacing_mut().item_spacing.x = prev;
+            }
+        });
+        changed
+    }
+}

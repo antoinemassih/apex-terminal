@@ -31,13 +31,12 @@ if !watchlist.settings_open { return; }
 let screen = ctx.screen_rect();
 let dialog_w = 580.0_f32;
 let dialog_h = (screen.height() * 0.82).min(780.0).max(400.0);
-let border = color_alpha(t.toolbar_border, alpha_active());
 egui::Window::new("settings_panel".to_string())
     .fixed_pos(egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0))
     .fixed_size(egui::vec2(dialog_w, dialog_h))
     .title_bar(false)
-    .frame(egui::Frame::popup(&ctx.style()).fill(t.toolbar_bg).inner_margin(0.0).outer_margin(0.0)
-        .stroke(egui::Stroke::new(stroke_std(), border)).corner_radius(r_lg_cr()))
+    .frame(super::widgets::frames::PopupFrame::new().theme(t).ctx(ctx).build()
+        .inner_margin(0.0).outer_margin(0.0))
     .show(ctx, |ui| {
         if super::widgets::headers::DialogHeaderWithClose::new("SETTINGS").dim(t.dim).show(ui) { watchlist.settings_open = false; }
 
@@ -119,7 +118,7 @@ SettingsTab::Appearance => {
                         p.line_segment(
                             [egui::pos2(x + bar_w / 2.0, body_top - 3.0),
                              egui::pos2(x + bar_w / 2.0, body_bot + 3.0)],
-                            egui::Stroke::new(0.5, color_alpha(color, alpha_strong())));
+                            egui::Stroke::new(stroke_thin(), color_alpha(color, alpha_strong())));
                         // Body
                         p.rect_filled(
                             egui::Rect::from_min_max(
@@ -131,7 +130,7 @@ SettingsTab::Appearance => {
                     let accent_y = chart_mid - 2.0;
                     p.line_segment(
                         [egui::pos2(r.left() + 6.0, accent_y), egui::pos2(r.right() - 6.0, accent_y)],
-                        egui::Stroke::new(1.0, color_alpha(th.accent, alpha_strong())));
+                        egui::Stroke::new(stroke_std(), color_alpha(th.accent, alpha_strong())));
 
                     // Theme name at bottom
                     p.text(
@@ -143,9 +142,9 @@ SettingsTab::Appearance => {
 
                     // Selection border
                     if sel {
-                        p.rect_stroke(r, radius_md(), egui::Stroke::new(2.0, th.accent), egui::StrokeKind::Outside);
+                        p.rect_stroke(r, radius_md(), egui::Stroke::new(stroke_thick(), th.accent), egui::StrokeKind::Outside);
                     } else if resp.hovered() {
-                        p.rect_stroke(r, radius_md(), egui::Stroke::new(1.0, color_alpha(th.accent, alpha_line())), egui::StrokeKind::Outside);
+                        p.rect_stroke(r, radius_md(), egui::Stroke::new(stroke_std(), color_alpha(th.accent, alpha_line())), egui::StrokeKind::Outside);
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
                     if resp.clicked() { commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i }); }
@@ -172,7 +171,8 @@ SettingsTab::Appearance => {
             let active = (watchlist.font_scale - ppp).abs() < 0.05;
             let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
             let bg = if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT };
-            if ui.add(egui::Button::new(egui::RichText::new(format!("{}%", label)).monospace().size(FONT_SM).color(fg))
+            if ui.add(super::widgets::buttons::ChromeBtn::new(
+                    egui::RichText::new(format!("{}%", label)).monospace().size(FONT_SM).color(fg))
                 .fill(bg).corner_radius(r_sm_cr()).min_size(egui::vec2(34.0, 20.0))).clicked() {
                 watchlist.font_scale = ppp;
             }
@@ -208,7 +208,7 @@ SettingsTab::Appearance => {
                         else { color_alpha(t.toolbar_border, alpha_muted()) };
                     ui.painter().rect_filled(r, radius_md(), bg);
                     ui.painter().rect_stroke(r, radius_md(),
-                        egui::Stroke::new(if sel { 1.5 } else { 0.5 }, border_col), egui::StrokeKind::Outside);
+                        egui::Stroke::new(if sel { stroke_bold() } else { stroke_thin() }, border_col), egui::StrokeKind::Outside);
 
                     // Font name
                     let name_col = if sel { t.accent } else { TEXT_PRIMARY };
@@ -317,7 +317,8 @@ SettingsTab::Chart => {
                         let c = hex_to_color(hex, 1.0);
                         let fg = if active { t.accent } else { egui::Color32::from_white_alpha(120) };
                         let bg = if active { color_alpha(c, alpha_strong()) } else { color_alpha(c, alpha_muted()) };
-                        if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(8.0).color(fg))
+                        if ui.add(super::widgets::buttons::ChromeBtn::new(
+                                egui::RichText::new(label).monospace().size(FONT_XS).color(fg))
                             .fill(bg).corner_radius(r_sm_cr()).min_size(egui::vec2(38.0, 18.0))).clicked() {
                             chart.session_bg_color = hex.to_string();
                         }
@@ -357,7 +358,7 @@ SettingsTab::Trading => {
     {
         let was_paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
         let mut paper = was_paper;
-        let color = if paper { egui::Color32::from_rgb(46, 204, 113) } else { egui::Color32::from_rgb(230, 70, 70) };
+        let color = if paper { t.bull } else { t.bear };
         setting_toggle_with_color(ui, m, "Paper Trading", t, &mut paper, color);
         if paper != was_paper {
             crate::chart_renderer::trading::order_manager::set_paper_mode(paper);
@@ -367,9 +368,9 @@ SettingsTab::Trading => {
         ui.add_space(m + 2.0);
         let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
         let (label, color) = if paper {
-            ("Paper mode — orders go to simulated account", egui::Color32::from_rgb(46, 204, 113))
+            ("Paper mode — orders go to simulated account", t.bull)
         } else {
-            ("LIVE mode — real money at risk", egui::Color32::from_rgb(230, 70, 70))
+            ("LIVE mode — real money at risk", t.bear)
         };
         ui.add(SectionLabel::new(label).tiny().color(color));
     });
@@ -393,33 +394,15 @@ SettingsTab::Trading => {
         }
     });
     srow("Order Type", m).show(ui, t, |ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        for (i, label) in ["MKT", "LMT", "STP"].iter().enumerate() {
-            let sel = watchlist.default_order_type == i;
-            let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.6) };
-            let bg = if sel { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_soft()) };
-            let cr = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
-                else if i == 2 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
-                else { egui::CornerRadius::ZERO };
-            if ui.add(egui::Button::new(egui::RichText::new(*label).monospace().size(FONT_SM).color(fg))
-                .fill(bg).corner_radius(cr).min_size(egui::vec2(34.0, 20.0))
-                .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_strong()) } else { color_alpha(t.toolbar_border, alpha_muted()) })))
-                .clicked() { watchlist.default_order_type = i; }
+        if let Some(i) = segmented_control(ui, watchlist.default_order_type,
+            &["MKT", "LMT", "STP"], t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
+            watchlist.default_order_type = i;
         }
     });
     srow("Time in Force", m).show(ui, t, |ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        for (i, label) in ["DAY", "GTC", "IOC"].iter().enumerate() {
-            let sel = watchlist.default_tif == i;
-            let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.6) };
-            let bg = if sel { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_soft()) };
-            let cr = if i == 0 { egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 } }
-                else if i == 2 { egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 } }
-                else { egui::CornerRadius::ZERO };
-            if ui.add(egui::Button::new(egui::RichText::new(*label).monospace().size(FONT_SM).color(fg))
-                .fill(bg).corner_radius(cr).min_size(egui::vec2(34.0, 20.0))
-                .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_strong()) } else { color_alpha(t.toolbar_border, alpha_muted()) })))
-                .clicked() { watchlist.default_tif = i; }
+        if let Some(i) = segmented_control(ui, watchlist.default_tif,
+            &["DAY", "GTC", "IOC"], t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
+            watchlist.default_tif = i;
         }
     });
     setting_toggle(ui, m, "Outside RTH", t, &mut watchlist.default_outside_rth);
@@ -492,14 +475,7 @@ SettingsTab::Trading => {
             if enabled { crate::apex_data::ws::start(); }
         }
 
-        FormRow::new("Base URL")
-            .gutter(190.0)
-            .leading_space(m)
-            .label_left(true)
-            .label_color(egui::Color32::from_white_alpha(180))
-            .alignment(FormRowAlign::Right)
-            .inner_pad(10.0)
-            .margins(0.0, gap_xs())
+        srow("Base URL", m)
             .show_with_cx(ui, t, |ui, _cx| {
                 let id = egui::Id::new("apex_data_url_edit");
                 let mut buf: String = ui.data_mut(|d|
@@ -511,14 +487,7 @@ SettingsTab::Trading => {
                 }
             });
 
-        FormRow::new("Auth Token")
-            .gutter(190.0)
-            .leading_space(m)
-            .label_left(true)
-            .label_color(egui::Color32::from_white_alpha(180))
-            .alignment(FormRowAlign::Right)
-            .inner_pad(10.0)
-            .margins(0.0, gap_xs())
+        srow("Auth Token", m)
             .password(true)
             .hint("optional — leave blank if no token required")
             .show_with_cx(ui, t, |ui, cx| {
@@ -540,9 +509,9 @@ SettingsTab::Trading => {
             ui.add_space(m + 2.0);
             let ws_connected = crate::apex_data::ws::is_connected();
             let (state_label, state_col) = if ws_connected {
-                ("WS connected", egui::Color32::from_rgb(46, 204, 113))
+                ("WS connected", t.bull)
             } else {
-                ("WS disconnected", egui::Color32::from_rgb(230, 70, 70))
+                ("WS disconnected", t.bear)
             };
             ui.add(SectionLabel::new(state_label).tiny().color(state_col));
         });

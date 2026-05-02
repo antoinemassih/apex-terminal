@@ -31,3 +31,4 @@ pub mod painter_pane;
 pub mod status;
 pub mod foundation;
 pub mod icons;
+pub mod watchlist;

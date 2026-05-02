@@ -97,7 +97,7 @@ impl<'a> PlayCard<'a> {
 
             let status_color = match play.status {
                 PlayStatus::Draft => t.dim, PlayStatus::Published => t.accent,
-                PlayStatus::Active => egui::Color32::from_rgb(255, 191, 0),
+                PlayStatus::Active => COLOR_AMBER,
                 PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => t.dim.gamma_multiply(0.5),
             };
             let status_x = card_rect.right() - 60.0;

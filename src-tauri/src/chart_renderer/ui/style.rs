@@ -118,6 +118,14 @@ pub const SHADOW_SPREAD: f32 = 4.0;
 pub static TEXT_PRIMARY: Color32 = Color32::from_rgb(220, 220, 230);
 pub static TEXT_SECONDARY: Color32 = Color32::from_rgb(200, 200, 210);
 
+// ─── Semantic accent colors (design-system tokens) ───────────────────────────
+/// Amber — used for "Active" status, R:R ≥ 1 indicator, and warning states.
+pub const COLOR_AMBER: Color32 = Color32::from_rgb(255, 191, 0);
+/// Teal — T2 target label color (second exit level).
+pub const COLOR_T2: Color32 = Color32::from_rgb(26, 188, 156);
+/// Blue — T3 target label color (third exit level).
+pub const COLOR_T3: Color32 = Color32::from_rgb(52, 152, 219);
+
 // ─── Raw text helpers ─────────────────────────────────────────────────────────
 
 #[inline]
