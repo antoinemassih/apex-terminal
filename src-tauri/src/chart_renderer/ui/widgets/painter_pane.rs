@@ -32,8 +32,8 @@
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
 
 use super::super::style::{
-    alpha_active, alpha_line, alpha_muted, alpha_subtle, color_alpha, font_md, font_sm, gap_sm,
-    gap_xs, stroke_thin,
+    alpha_active, alpha_heavy, alpha_line, alpha_muted, alpha_subtle, color_alpha, current,
+    font_md, font_sm, gap_sm, gap_xs, stroke_hair, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
 
@@ -471,6 +471,20 @@ impl<'a> PainterPaneHeader<'a> {
             if sym_clicked { out.clicked_symbol = true; }
         }
 
+        // ── Helper: paint a vertical hairline divider at the current cx ──
+        let paint_divider = |cx_pos: f32| {
+            if current().vertical_group_dividers {
+                let div_col = color_alpha(t.toolbar_border, alpha_heavy());
+                painter.line_segment(
+                    [pos2(cx_pos, rect.top() + 4.0), pos2(cx_pos, rect.bottom() - 4.0)],
+                    Stroke::new(stroke_hair(), div_col),
+                );
+            }
+        };
+
+        // Divider after symbol/tabs section (before indicator chips)
+        paint_divider(cx);
+
         // ── Indicator chips with painted ✕ ──
         for (i, ind) in self.indicators.iter().enumerate() {
             let chip_font = FontId::monospace(font_sm());
@@ -508,35 +522,6 @@ impl<'a> PainterPaneHeader<'a> {
             cx += chip_w + gap_sm();
         }
 
-        // ── + Tab button (right-aligned tile from current cursor) ──
-        if self.show_plus_tab {
-            let plus_w = 44.0;
-            let plus_h = h - 6.0;
-            let plus_rect = Rect::from_min_size(
-                pos2(cx + 4.0, rect.center().y - plus_h / 2.0),
-                Vec2::new(plus_w, plus_h),
-            );
-            let resp = ui.allocate_rect(plus_rect, Sense::click());
-            let (bg, fg, border) = if resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                (color_alpha(t.toolbar_border, alpha_subtle()),
-                 t.text,
-                 color_alpha(t.accent, alpha_line()))
-            } else {
-                (color_alpha(t.toolbar_border, 18),
-                 t.dim.gamma_multiply(0.8),
-                 color_alpha(t.toolbar_border, alpha_muted()))
-            };
-            painter.rect_filled(plus_rect, 4.0, bg);
-            painter.rect_stroke(plus_rect, 4.0,
-                Stroke::new(stroke_thin(), border), StrokeKind::Outside);
-            painter.text(plus_rect.center(), Align2::CENTER_CENTER,
-                "+ Tab",
-                FontId::monospace((self.title_font_size - 2.0).max(font_sm())), fg);
-            if resp.clicked() { out.clicked_plus = true; }
-            cx += plus_w + gap_md_local();
-        }
-
         // ── Template / star button ──
         if self.show_template_btn {
             let t_w = 22.0;
@@ -569,9 +554,48 @@ impl<'a> PainterPaneHeader<'a> {
             cx += t_w + gap_sm();
         }
 
+        // ── Right cluster: +Tab (far right, before close) ──────────────────
+        // Compute right cluster geometry to anchor +Tab from the right edge.
+        let close_size = 18.0_f32;
+        let close_total = if self.show_close { gap_md_local() + close_size + gap_md_local() } else { gap_sm() };
+
+        // Divider before right cluster
+        {
+            let div_x = rect.right() - close_total
+                - if self.show_plus_tab { 44.0 + gap_md_local() + 4.0 } else { 0.0 };
+            paint_divider(div_x);
+        }
+
+        if self.show_plus_tab {
+            let plus_w = 44.0;
+            let plus_h = h - 6.0;
+            let plus_x = rect.right() - close_total - plus_w - 4.0;
+            let plus_rect = Rect::from_min_size(
+                pos2(plus_x, rect.center().y - plus_h / 2.0),
+                Vec2::new(plus_w, plus_h),
+            );
+            let resp = ui.allocate_rect(plus_rect, Sense::click());
+            let (bg, fg, border) = if resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                (color_alpha(t.toolbar_border, alpha_subtle()),
+                 t.text,
+                 color_alpha(t.accent, alpha_line()))
+            } else {
+                (color_alpha(t.toolbar_border, 18),
+                 t.dim.gamma_multiply(0.8),
+                 color_alpha(t.toolbar_border, alpha_muted()))
+            };
+            painter.rect_filled(plus_rect, 4.0, bg);
+            painter.rect_stroke(plus_rect, 4.0,
+                Stroke::new(stroke_thin(), border), StrokeKind::Outside);
+            painter.text(plus_rect.center(), Align2::CENTER_CENTER,
+                "+ Tab",
+                FontId::monospace((self.title_font_size - 2.0).max(font_sm())), fg);
+            if resp.clicked() { out.clicked_plus = true; }
+        }
+
         // ── Close button (right-anchored) ──
         if self.show_close {
-            let close_size = 18.0_f32;
             let close_rect = Rect::from_center_size(
                 pos2(rect.right() - gap_md_local() - close_size / 2.0, rect.center().y),
                 Vec2::splat(close_size),
