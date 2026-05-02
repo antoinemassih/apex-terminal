@@ -996,216 +996,53 @@ fn render_order_entry_body(
         }
         return;
     }
-    // ── Aperture / Octave path continues below ────────────────────────────────
+    // ── Aperture / Octave path: delegated to ApertureOrderTicket widget ──────
+    use super::ui::widgets::form::{ApertureOrderTicket, ApertureOrderState, ApertureAction, ApertureVariant};
 
-    // Meridien style-aware density tweak: tighter vertical spacing + uppercase labels (#13).
-    let oe_st = super::ui::style::current();
-    let oe_label_color = t.dim.gamma_multiply(if oe_st.hairline_borders { 0.7 } else { 1.0 });
-    let oe_pad_top = if oe_st.hairline_borders { 2.0 } else { 4.0 };
-
-    let adv = chart.order_advanced;
     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
     let spread = (last_price * 0.0001).max(0.01);
-    let pad = 8.0;
-    ui.add_space(oe_pad_top);
-    // Suppress unused variable warnings when not used below.
-    let _ = oe_label_color;
 
-    // Advanced: Order type + TIF selectors
-    if adv {
-        ui.horizontal(|ui| {
-            ui.add_space(pad);
-            {
-                use super::ui::widgets::select::SegmentedControl;
-                const OT_STOCK: &[(usize, &str)] = &[
-                    (0, "MKT"), (1, "LMT"), (2, "STP"), (3, "STP-LMT"), (4, "TRAIL"),
-                ];
-                const OT_OPTION: &[(usize, &str)] = &[
-                    (0, "MKT"), (1, "LMT"), (2, "STP"), (3, "STP-LMT"), (4, "TRAIL"), (5, "UND"),
-                ];
-                let ot_opts = if chart.is_option { OT_OPTION } else { OT_STOCK };
-                if SegmentedControl::new().options(ot_opts).connected_pills(true).compact(true)
-                    .height(18.0).theme(t).show(ui, &mut chart.order_type_idx) {
-                    chart.order_market = chart.order_type_idx == 0;
-                }
-            }
-            ui.add_space(8.0);
-            // TIF — SegmentedControl<usize>
-            {
-                use super::ui::widgets::select::SegmentedControl;
-                let tif_opts: &[(usize, &str)] = &[(0, "DAY"), (1, "GTC"), (2, "IOC")];
-                SegmentedControl::new().options(tif_opts).theme(t).show(ui, &mut chart.order_tif_idx);
-            }
-            ui.add_space(6.0);
-            // Outside RTH toggle
-            let rth_fg = if chart.order_outside_rth { egui::Color32::from_rgb(255, 191, 0) } else { t.dim.gamma_multiply(0.4) };
-            let rth_bg = if chart.order_outside_rth { color_alpha(egui::Color32::from_rgb(255, 191, 0), 30) } else { egui::Color32::TRANSPARENT };
-            if ui.add(egui::Button::new(egui::RichText::new("EXT").monospace().size(8.0).color(rth_fg))
-                .fill(rth_bg).corner_radius(2.0)
-                .stroke(egui::Stroke::new(0.5, if chart.order_outside_rth { color_alpha(egui::Color32::from_rgb(255, 191, 0), 80) } else { color_alpha(t.toolbar_border, 40) }))
-                .min_size(egui::vec2(26.0, 18.0))).on_hover_text("Trade outside regular trading hours").clicked() {
-                chart.order_outside_rth = !chart.order_outside_rth;
-            }
-        });
-        ui.add_space(4.0);
-    }
-
-    // Row 0: QTY / $ mode toggle → SegmentedControl<bool>
-    ui.horizontal(|ui| {
-        ui.add_space(pad);
-        {
-            use super::ui::widgets::select::SegmentedControl;
-            let mode_opts: &[(bool, &str)] = &[(false, "QTY"), (true, "$")];
-            SegmentedControl::new().options(mode_opts).theme(t).show(ui, &mut chart.order_notional_mode);
-        }
-        if chart.order_notional_mode {
-            ui.add_space(4.0);
-            let ask = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-            let premium = if chart.is_option { ask } else { ask };
-            ui.add(egui::TextEdit::singleline(&mut chart.order_notional_amount)
-                .desired_width(70.0).font(egui::FontId::monospace(9.0)).hint_text("Amount"));
-            let notional: f32 = chart.order_notional_amount.parse().unwrap_or(0.0);
-            let qty = contracts_for_notional(notional, premium, if chart.is_option { 100.0 } else { 1.0 });
-            if qty > 0 { chart.order_qty = qty as u32; }
-            ui.label(egui::RichText::new(format!("= {} @ {:.2}", qty, premium)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
-        }
-    });
-    ui.add_space(2.0);
-
-    // Row 1: [-] qty [+] → Stepper (dynamic step based on magnitude)
-    ui.horizontal(|ui| {
-        ui.add_space(pad);
-        ui.spacing_mut().item_spacing.x = 2.0;
-        let step = if chart.order_qty >= 100 { 10u32 } else if chart.order_qty >= 10 { 5 } else { 1 };
-        if !chart.order_notional_mode {
-            use super::ui::widgets::inputs::Stepper;
-            Stepper::new(&mut chart.order_qty).step(step).range(1, u32::MAX).theme(t).show(ui);
-        } else {
-        // Notional mode: show derived qty read-only
-        let _ = ui.add(egui::TextEdit::singleline(&mut format!("{} contracts", chart.order_qty))
-            .desired_width(100.0).font(egui::FontId::monospace(9.0))
-            .horizontal_align(egui::Align::Center).interactive(false));
-        }
-        ui.add_space(4.0);
-        let cursor = ui.cursor().min;
-        ui.painter().line_segment(
-            [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
-            egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 80)));
-        ui.add_space(6.0);
-
-        if !adv {
-            // Compact mode: single price + MKT/LMT toggle
-            if chart.order_market {
-                ui.label(egui::RichText::new(format!("{:.2}", last_price)).monospace().size(12.0).color(t.dim));
-            } else {
-                ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
-                    .desired_width(68.0).font(egui::FontId::monospace(10.0)).hint_text("Price")
-                    .horizontal_align(egui::Align::RIGHT));
-            }
-            ui.add_space(2.0);
-            let mkt_label = if chart.order_market { "MKT" } else { "LMT" };
-            if ui.add(egui::Button::new(egui::RichText::new(mkt_label).monospace().size(9.0).strong()
-                .color(if chart.order_market { t.accent } else { t.dim }))
-                .fill(if chart.order_market { color_alpha(t.accent, 35) } else { t.toolbar_bg })
-                .stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 90))).corner_radius(2.0)
-                .min_size(egui::vec2(30.0, 20.0))).clicked() {
-                chart.order_market = !chart.order_market;
-                if !chart.order_market && chart.order_limit_price.is_empty() {
-                    chart.order_limit_price = format!("{:.2}", last_price);
-                }
-            }
-        } else {
-            // Advanced: show last price as reference
-            ui.label(egui::RichText::new(format!("Last {:.2}", last_price)).monospace().size(9.0).color(t.dim.gamma_multiply(0.6)));
-        }
-    });
-
-    // Advanced: price fields per order type
-    if adv {
-        let oti = chart.order_type_idx;
-        ui.add_space(2.0);
-        // LMT, STP-LMT: Limit price → FormRow
-        if oti == 1 || oti == 3 {
-            use super::ui::widgets::form::FormRow;
-            FormRow::new("Limit").leading_space(pad).label_width(32.0).hint("Limit price").show(ui, t, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut chart.order_limit_price)
-                    .desired_width(80.0).font(egui::FontId::monospace(9.0))
-                    .horizontal_align(egui::Align::RIGHT));
-            });
-        }
-        // STP, STP-LMT: Stop price → FormRow
-        if oti == 2 || oti == 3 {
-            use super::ui::widgets::form::FormRow;
-            FormRow::new("Stop").leading_space(pad).label_width(32.0).label_color(t.bear).hint("Stop price").show(ui, t, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut chart.order_stop_price)
-                    .desired_width(80.0).font(egui::FontId::monospace(9.0))
-                    .horizontal_align(egui::Align::RIGHT));
-            });
-        }
-        // TRAIL: Trailing amount → FormRow
-        if oti == 4 {
-            use super::ui::widgets::form::FormRow;
-            FormRow::new("Trail").leading_space(pad).label_width(32.0).label_color(t.accent).hint("Trail amt").show(ui, t, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut chart.order_trail_amt)
-                    .desired_width(80.0).font(egui::FontId::monospace(9.0))
-                    .horizontal_align(egui::Align::RIGHT));
-            });
-        }
-    }
-
-    // Advanced: Bracket mode (TP + SL)
-    if adv {
-        ui.add_space(2.0);
-        ui.horizontal(|ui| {
-            ui.add_space(pad);
-            let brk_color = if chart.order_bracket { t.accent } else { t.dim.gamma_multiply(0.5) };
-            if ui.add(egui::Button::new(egui::RichText::new("Bracket").monospace().size(9.0).color(brk_color))
-                .fill(if chart.order_bracket { color_alpha(t.accent, 25) } else { egui::Color32::TRANSPARENT })
-                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))).corner_radius(2.0)
-                .min_size(egui::vec2(0.0, 18.0))).clicked() {
-                chart.order_bracket = !chart.order_bracket;
-            }
-            if chart.order_bracket {
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("TP").monospace().size(9.0).color(t.bull));
-                ui.add(egui::TextEdit::singleline(&mut chart.order_tp_price)
-                    .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Take")
-                    .horizontal_align(egui::Align::RIGHT));
-                ui.label(egui::RichText::new("SL").monospace().size(9.0).color(t.bear));
-                ui.add(egui::TextEdit::singleline(&mut chart.order_sl_price)
-                    .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Stop")
-                    .horizontal_align(egui::Align::RIGHT));
-            }
-        });
-    }
+    let mut oe_state = ApertureOrderState {
+        last_price,
+        spread,
+        order_advanced:        chart.order_advanced,
+        order_market:          &mut chart.order_market,
+        order_type_idx:        &mut chart.order_type_idx,
+        order_tif_idx:         &mut chart.order_tif_idx,
+        order_qty:             &mut chart.order_qty,
+        order_notional_mode:   &mut chart.order_notional_mode,
+        order_notional_amount: &mut chart.order_notional_amount,
+        order_limit_price:     &mut chart.order_limit_price,
+        order_stop_price:      &mut chart.order_stop_price,
+        order_trail_amt:       &mut chart.order_trail_amt,
+        order_bracket:         &mut chart.order_bracket,
+        order_tp_price:        &mut chart.order_tp_price,
+        order_sl_price:        &mut chart.order_sl_price,
+        order_outside_rth:     &mut chart.order_outside_rth,
+        is_option:             chart.is_option,
+        option_type:           &chart.option_type,
+        armed:                 chart.armed,
+    };
 
     ui.add_space(4.0);
+    let outcome = ApertureOrderTicket::new()
+        .variant(ApertureVariant::Aperture)
+        .theme(t)
+        .panel_width(panel_w)
+        .show(ui, &mut oe_state);
 
-    // Row 2: BUY | SELL
-    let buy_price = if chart.order_market { last_price + spread } else {
-        chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
-    };
-    let sell_price = if chart.order_market { last_price - spread } else {
-        chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
-    };
-
-    ui.horizontal(|ui| {
-        ui.add_space(pad);
-        ui.spacing_mut().item_spacing.x = 4.0;
-        let btn_w = (panel_w - pad * 2.0 - 8.0) / 2.0;
-        let is_und = adv && chart.order_type_idx == 5 && chart.is_option;
-        let buy_label = if is_und { format!("BUY {} on UND", chart.option_type) } else { format!("BUY {:.2}", buy_price) };
-        let sell_label = if is_und { format!("SELL {} on UND", chart.option_type) } else { format!("SELL {:.2}", sell_price) };
-        // BUY → TradeBtn widget (respects button_treatment style token)
-        if ui.add(super::ui::widgets::buttons::TradeBtn::new(&buy_label).color(t.bull).width(btn_w)).clicked() {
-            if is_und {
-                chart.pending_und_order = Some(OrderSide::TriggerBuy);
-            } else if chart.armed && adv {
+    // Handle the action returned by the widget — submission lives here because
+    // submit_ib_order / submit_order are in this module.
+    let adv = chart.order_advanced;
+    match outcome.action {
+        ApertureAction::TriggerBuy  => { chart.pending_und_order = Some(OrderSide::TriggerBuy); }
+        ApertureAction::TriggerSell => { chart.pending_und_order = Some(OrderSide::TriggerSell); }
+        ApertureAction::Buy { price } => {
+            if chart.armed && adv {
                 let sym = chart.symbol.clone();
                 let qty = chart.order_qty;
                 let ot_idx = chart.order_type_idx;
                 let tif_idx = chart.order_tif_idx;
-                let price = buy_price;
                 let bracket = chart.order_bracket;
                 let tp = chart.order_tp_price.parse::<f32>().ok();
                 let sl = chart.order_sl_price.parse::<f32>().ok();
@@ -1216,31 +1053,27 @@ fn render_order_entry_body(
                 use super::trading::order_manager::*;
                 let result = submit_order(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                    order_type: ManagedOrderType::Limit, price: buy_price, qty: chart.order_qty,
+                    order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
                     source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
                 });
                 match result {
                     OrderResult::Accepted(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
                     }
                     OrderResult::NeedsConfirmation(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price: buy_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
                         chart.pending_confirms.push((id as u32, std::time::Instant::now()));
                     }
                     _ => {}
                 }
             }
         }
-        // SELL → TradeBtn widget (respects button_treatment style token)
-        if ui.add(super::ui::widgets::buttons::TradeBtn::new(&sell_label).color(t.bear).width(btn_w)).clicked() {
-            if is_und {
-                chart.pending_und_order = Some(OrderSide::TriggerSell);
-            } else if chart.armed && adv {
+        ApertureAction::Sell { price } => {
+            if chart.armed && adv {
                 let sym = chart.symbol.clone();
                 let qty = chart.order_qty;
                 let ot_idx = chart.order_type_idx;
                 let tif_idx = chart.order_tif_idx;
-                let price = sell_price;
                 let bracket = chart.order_bracket;
                 let tp = chart.order_tp_price.parse::<f32>().ok();
                 let sl = chart.order_sl_price.parse::<f32>().ok();
@@ -1251,23 +1084,23 @@ fn render_order_entry_body(
                 use super::trading::order_manager::*;
                 let result = submit_order(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                    order_type: ManagedOrderType::Limit, price: sell_price, qty: chart.order_qty,
+                    order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
                     source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
                 });
                 match result {
                     OrderResult::Accepted(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
                     }
                     OrderResult::NeedsConfirmation(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price: sell_price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
                         chart.pending_confirms.push((id as u32, std::time::Instant::now()));
                     }
                     _ => {}
                 }
             }
         }
-    });
-    ui.add_space(6.0);
+        ApertureAction::None => {}
+    }
 }
 
 // ─── Overlay colors for multi-symbol overlays ───────────────────────────────

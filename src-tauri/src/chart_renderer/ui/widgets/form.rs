@@ -1029,3 +1029,364 @@ impl<'a> IndicatorParamRowF<'a> {
         changed
     }
 }
+
+// ─── ApertureOrderTicket (#aperture) ─────────────────────────────────────────
+
+/// Which design variant to render.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ApertureVariant {
+    Aperture,
+    Octave,
+}
+
+impl Default for ApertureVariant {
+    fn default() -> Self { Self::Aperture }
+}
+
+/// All mutable order state threaded through `ApertureOrderTicket::show`.
+pub struct ApertureOrderState<'a> {
+    pub last_price:            f32,
+    pub spread:                f32,
+    pub order_advanced:        bool,
+    pub order_market:          &'a mut bool,
+    pub order_type_idx:        &'a mut usize,
+    pub order_tif_idx:         &'a mut usize,
+    pub order_qty:             &'a mut u32,
+    pub order_notional_mode:   &'a mut bool,
+    pub order_notional_amount: &'a mut String,
+    pub order_limit_price:     &'a mut String,
+    pub order_stop_price:      &'a mut String,
+    pub order_trail_amt:       &'a mut String,
+    pub order_bracket:         &'a mut bool,
+    pub order_tp_price:        &'a mut String,
+    pub order_sl_price:        &'a mut String,
+    pub order_outside_rth:     &'a mut bool,
+    pub is_option:             bool,
+    pub option_type:           &'a str,
+    pub armed:                 bool,
+}
+
+/// Action signalled by `ApertureOrderTicket::show`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ApertureAction {
+    None,
+    Buy  { price: f32 },
+    Sell { price: f32 },
+    TriggerBuy,
+    TriggerSell,
+}
+
+/// Outcome returned by `ApertureOrderTicket::show`.
+pub struct ApertureOrderOutcome {
+    pub action: ApertureAction,
+}
+
+/// Compact order-entry widget for the Aperture and Octave theme families.
+#[must_use = "ApertureOrderTicket must be rendered with `.show(ui, state)`"]
+pub struct ApertureOrderTicket {
+    variant:        ApertureVariant,
+    panel_w:        f32,
+    text:           Color32,
+    dim:            Color32,
+    bull:           Color32,
+    bear:           Color32,
+    accent:         Color32,
+    toolbar_bg:     Color32,
+    toolbar_border: Color32,
+}
+
+impl ApertureOrderTicket {
+    pub fn new() -> Self {
+        Self {
+            variant:        ApertureVariant::default(),
+            panel_w:        0.0,
+            text:           Color32::from_rgb(220, 215, 205),
+            dim:            Color32::from_rgb(140, 132, 120),
+            bull:           Color32::from_rgb(100, 160, 88),
+            bear:           Color32::from_rgb(200, 88, 60),
+            accent:         Color32::from_rgb(100, 130, 200),
+            toolbar_bg:     Color32::from_rgb(28, 26, 24),
+            toolbar_border: Color32::from_rgb(60, 56, 50),
+        }
+    }
+    pub fn variant(mut self, v: ApertureVariant) -> Self { self.variant = v; self }
+    pub fn panel_width(mut self, w: f32) -> Self { self.panel_w = w; self }
+    pub fn theme(mut self, t: &Theme) -> Self {
+        self.text           = t.text;
+        self.dim            = t.dim;
+        self.bull           = t.bull;
+        self.bear           = t.bear;
+        self.accent         = t.accent;
+        self.toolbar_bg     = t.toolbar_bg;
+        self.toolbar_border = t.toolbar_border;
+        self
+    }
+
+    pub fn show(self, ui: &mut Ui, s: &mut ApertureOrderState<'_>) -> ApertureOrderOutcome {
+        use super::select::SegmentedControl;
+        use super::inputs::Stepper;
+        use super::buttons::TradeBtn;
+
+        let panel_w = if self.panel_w > 0.0 { self.panel_w } else { ui.available_width() };
+        let pad     = 8.0_f32;
+        let adv     = s.order_advanced;
+        let last    = s.last_price;
+        let spread  = s.spread;
+        let _ = self.variant;
+        let _ = self.text;
+        // Build a minimal theme stub so sub-widgets that accept &Theme can be
+        // called without the caller threading a full Theme reference here.
+        let t_stub  = aperture_stub_theme_full(
+            self.dim, self.bull, self.bear, self.accent,
+            self.toolbar_bg, self.toolbar_border);
+
+        let mut action = ApertureAction::None;
+
+        // ── Advanced: order type + TIF + EXT ──────────────────────────────
+        if adv {
+            ui.horizontal(|ui| {
+                ui.add_space(pad);
+                const OT_STOCK: &[(usize, &str)] = &[
+                    (0, "MKT"), (1, "LMT"), (2, "STP"), (3, "STP-LMT"), (4, "TRAIL"),
+                ];
+                const OT_OPTION: &[(usize, &str)] = &[
+                    (0, "MKT"), (1, "LMT"), (2, "STP"), (3, "STP-LMT"), (4, "TRAIL"), (5, "UND"),
+                ];
+                let ot_opts = if s.is_option { OT_OPTION } else { OT_STOCK };
+                if SegmentedControl::new()
+                    .options(ot_opts)
+                    .connected_pills(true)
+                    .compact(true)
+                    .height(18.0)
+                    .theme(&t_stub)
+                    .show(ui, s.order_type_idx)
+                {
+                    *s.order_market = *s.order_type_idx == 0;
+                }
+                ui.add_space(8.0);
+                let tif_opts: &[(usize, &str)] = &[(0, "DAY"), (1, "GTC"), (2, "IOC")];
+                SegmentedControl::new()
+                    .options(tif_opts)
+                    .theme(&t_stub)
+                    .show(ui, s.order_tif_idx);
+                ui.add_space(6.0);
+                let rth_amber = egui::Color32::from_rgb(255, 191, 0);
+                let rth_fg = if *s.order_outside_rth { rth_amber } else { color_alpha(self.dim, 40) };
+                let rth_bg = if *s.order_outside_rth { color_alpha(rth_amber, 30) } else { egui::Color32::TRANSPARENT };
+                let rth_stroke = Stroke::new(0.5, if *s.order_outside_rth {
+                    color_alpha(rth_amber, 80)
+                } else {
+                    color_alpha(self.toolbar_border, 40)
+                });
+                if ui.add(egui::Button::new(
+                        egui::RichText::new("EXT").monospace().size(8.0).color(rth_fg))
+                    .fill(rth_bg).corner_radius(2.0).stroke(rth_stroke)
+                    .min_size(egui::vec2(26.0, 18.0)))
+                    .on_hover_text("Trade outside regular trading hours")
+                    .clicked()
+                {
+                    *s.order_outside_rth = !*s.order_outside_rth;
+                }
+            });
+            ui.add_space(4.0);
+        }
+
+        // ── QTY / $ mode ──────────────────────────────────────────────────
+        ui.horizontal(|ui| {
+            ui.add_space(pad);
+            let mode_opts: &[(bool, &str)] = &[(false, "QTY"), (true, "$")];
+            SegmentedControl::new()
+                .options(mode_opts)
+                .theme(&t_stub)
+                .show(ui, s.order_notional_mode);
+            if *s.order_notional_mode {
+                ui.add_space(4.0);
+                let premium = last;
+                let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
+                ui.add(egui::TextEdit::singleline(s.order_notional_amount)
+                    .desired_width(70.0).font(egui::FontId::monospace(9.0)).hint_text("Amount"));
+                let notional: f32 = s.order_notional_amount.parse().unwrap_or(0.0);
+                let qty = if premium > 0.0 && mult > 0.0 {
+                    (notional / (premium * mult)).floor() as i32
+                } else { 0 };
+                if qty > 0 { *s.order_qty = qty as u32; }
+                ui.label(egui::RichText::new(format!("= {} @ {:.2}", qty, premium))
+                    .monospace().size(9.0).color(color_alpha(self.dim, 60)));
+            }
+        });
+        ui.add_space(2.0);
+
+        // ── QTY stepper + compact price / MKT-LMT ────────────────────────
+        ui.horizontal(|ui| {
+            ui.add_space(pad);
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let step = if *s.order_qty >= 100 { 10u32 }
+                       else if *s.order_qty >= 10 { 5 }
+                       else { 1 };
+            if !*s.order_notional_mode {
+                Stepper::new(s.order_qty)
+                    .step(step).range(1, u32::MAX)
+                    .theme(&t_stub)
+                    .show(ui);
+            } else {
+                let _ = ui.add(
+                    egui::TextEdit::singleline(&mut format!("{} contracts", s.order_qty))
+                        .desired_width(100.0).font(egui::FontId::monospace(9.0))
+                        .horizontal_align(egui::Align::Center).interactive(false));
+            }
+            ui.add_space(4.0);
+            let cursor = ui.cursor().min;
+            ui.painter().line_segment(
+                [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
+                Stroke::new(1.0, color_alpha(self.toolbar_border, 80)));
+            ui.add_space(6.0);
+            if !adv {
+                if *s.order_market {
+                    ui.label(egui::RichText::new(format!("{:.2}", last))
+                        .monospace().size(12.0).color(self.dim));
+                } else {
+                    ui.add(egui::TextEdit::singleline(s.order_limit_price)
+                        .desired_width(68.0).font(egui::FontId::monospace(10.0))
+                        .hint_text("Price").horizontal_align(egui::Align::RIGHT));
+                }
+                ui.add_space(2.0);
+                let mkt_label = if *s.order_market { "MKT" } else { "LMT" };
+                if ui.add(egui::Button::new(
+                        egui::RichText::new(mkt_label).monospace().size(9.0).strong()
+                            .color(if *s.order_market { self.accent } else { self.dim }))
+                    .fill(if *s.order_market { color_alpha(self.accent, 35) } else { self.toolbar_bg })
+                    .stroke(Stroke::new(0.5, color_alpha(self.toolbar_border, 90))).corner_radius(2.0)
+                    .min_size(egui::vec2(30.0, 20.0)))
+                    .clicked()
+                {
+                    *s.order_market = !*s.order_market;
+                    if !*s.order_market && s.order_limit_price.is_empty() {
+                        *s.order_limit_price = format!("{:.2}", last);
+                    }
+                }
+            } else {
+                ui.label(egui::RichText::new(format!("Last {:.2}", last))
+                    .monospace().size(9.0).color(color_alpha(self.dim, 60)));
+            }
+        });
+
+        // ── Advanced: per-order-type price fields ─────────────────────────
+        if adv {
+            let oti = *s.order_type_idx;
+            ui.add_space(2.0);
+            if oti == 1 || oti == 3 {
+                FormRow::new("Limit").leading_space(pad).label_width(32.0).hint("Limit price")
+                    .show(ui, &t_stub, |ui| {
+                        ui.add(egui::TextEdit::singleline(s.order_limit_price)
+                            .desired_width(80.0).font(egui::FontId::monospace(9.0))
+                            .horizontal_align(egui::Align::RIGHT));
+                    });
+            }
+            if oti == 2 || oti == 3 {
+                FormRow::new("Stop").leading_space(pad).label_width(32.0)
+                    .label_color(self.bear).hint("Stop price")
+                    .show(ui, &t_stub, |ui| {
+                        ui.add(egui::TextEdit::singleline(s.order_stop_price)
+                            .desired_width(80.0).font(egui::FontId::monospace(9.0))
+                            .horizontal_align(egui::Align::RIGHT));
+                    });
+            }
+            if oti == 4 {
+                FormRow::new("Trail").leading_space(pad).label_width(32.0)
+                    .label_color(self.accent).hint("Trail amt")
+                    .show(ui, &t_stub, |ui| {
+                        ui.add(egui::TextEdit::singleline(s.order_trail_amt)
+                            .desired_width(80.0).font(egui::FontId::monospace(9.0))
+                            .horizontal_align(egui::Align::RIGHT));
+                    });
+            }
+        }
+
+        // ── Advanced: Bracket + TP/SL ─────────────────────────────────────
+        if adv {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.add_space(pad);
+                let brk_color = if *s.order_bracket { self.accent } else { color_alpha(self.dim, 50) };
+                if ui.add(egui::Button::new(
+                        egui::RichText::new("Bracket").monospace().size(9.0).color(brk_color))
+                    .fill(if *s.order_bracket { color_alpha(self.accent, 25) } else { egui::Color32::TRANSPARENT })
+                    .stroke(Stroke::new(STROKE_THIN, color_alpha(self.toolbar_border, ALPHA_DIM)))
+                    .corner_radius(2.0).min_size(egui::vec2(0.0, 18.0)))
+                    .clicked()
+                {
+                    *s.order_bracket = !*s.order_bracket;
+                }
+                if *s.order_bracket {
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("TP").monospace().size(9.0).color(self.bull));
+                    ui.add(egui::TextEdit::singleline(s.order_tp_price)
+                        .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Take")
+                        .horizontal_align(egui::Align::RIGHT));
+                    ui.label(egui::RichText::new("SL").monospace().size(9.0).color(self.bear));
+                    ui.add(egui::TextEdit::singleline(s.order_sl_price)
+                        .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Stop")
+                        .horizontal_align(egui::Align::RIGHT));
+                }
+            });
+        }
+
+        ui.add_space(4.0);
+
+        // ── BUY / SELL ────────────────────────────────────────────────────
+        let buy_price = if *s.order_market { last + spread }
+            else { s.order_limit_price.parse::<f32>().unwrap_or(last) };
+        let sell_price = if *s.order_market { last - spread }
+            else { s.order_limit_price.parse::<f32>().unwrap_or(last) };
+        ui.horizontal(|ui| {
+            ui.add_space(pad);
+            ui.spacing_mut().item_spacing.x = 4.0;
+            let btn_w = (panel_w - pad * 2.0 - 8.0) / 2.0;
+            let is_und = adv && *s.order_type_idx == 5 && s.is_option;
+            let buy_label = if is_und {
+                format!("BUY {} on UND", s.option_type)
+            } else {
+                format!("BUY {:.2}", buy_price)
+            };
+            let sell_label = if is_und {
+                format!("SELL {} on UND", s.option_type)
+            } else {
+                format!("SELL {:.2}", sell_price)
+            };
+            if ui.add(TradeBtn::new(&buy_label).color(self.bull).width(btn_w)).clicked() {
+                action = if is_und { ApertureAction::TriggerBuy }
+                         else      { ApertureAction::Buy { price: buy_price } };
+            }
+            if ui.add(TradeBtn::new(&sell_label).color(self.bear).width(btn_w)).clicked() {
+                action = if is_und { ApertureAction::TriggerSell }
+                         else      { ApertureAction::Sell { price: sell_price } };
+            }
+        });
+        ui.add_space(6.0);
+
+        ApertureOrderOutcome { action }
+    }
+}
+
+impl Default for ApertureOrderTicket {
+    fn default() -> Self { Self::new() }
+}
+
+/// Build a Theme stub for sub-widgets (SegmentedControl, Stepper, FormRow, TradeBtn)
+/// from the color fields the Aperture ticket carries.
+fn aperture_stub_theme_full(
+    dim: Color32, bull: Color32, bear: Color32, accent: Color32,
+    toolbar_bg: Color32, toolbar_border: Color32,
+) -> Theme {
+    Theme {
+        name:           "aperture-stub",
+        bg:             toolbar_bg,
+        bull,
+        bear,
+        dim,
+        toolbar_bg,
+        toolbar_border,
+        accent,
+        text:           Color32::from_rgb(220, 215, 205),
+    }
+}
