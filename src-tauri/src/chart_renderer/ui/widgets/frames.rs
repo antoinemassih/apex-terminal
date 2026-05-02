@@ -277,10 +277,10 @@ impl<'a> PopupFrame<'a> {
 
         if st.shadows_enabled {
             frame = frame.shadow(egui::epaint::Shadow {
-                offset: [0, 8],
-                blur:   24,
+                offset: [0, st.shadow_offset_y as i8],
+                blur:   st.shadow_blur as u8,
                 spread: 1,
-                color:  Color32::from_black_alpha(40),
+                color:  Color32::from_black_alpha(st.shadow_alpha),
             });
         } else {
             frame = frame.shadow(egui::epaint::Shadow::NONE);
