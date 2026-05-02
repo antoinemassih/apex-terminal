@@ -130,7 +130,7 @@ pub(crate) fn draw_widgets(
         painter.rect_filled(strip, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 18));
         painter.line_segment(
             [egui::pos2(strip.left(), strip.bottom()), egui::pos2(strip.right(), strip.bottom())],
-            Stroke::new(STROKE_HAIR, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
     }
     if has_bottom {
         let max_h = chart.chart_widgets.iter()
@@ -142,7 +142,7 @@ pub(crate) fn draw_widgets(
         painter.rect_filled(strip, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 18));
         painter.line_segment(
             [egui::pos2(strip.left(), strip.top()), egui::pos2(strip.right(), strip.top())],
-            Stroke::new(STROKE_HAIR, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -223,7 +223,7 @@ pub(crate) fn draw_widgets(
                 Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 50 } else { 10 }));
             // Border
             painter.rect_stroke(card_rect, 10.0,
-                Stroke::new(0.8, color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 30 })),
+                Stroke::new(stroke_std(), color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 30 })),
                 egui::StrokeKind::Outside);
         }
 
@@ -258,7 +258,7 @@ pub(crate) fn draw_widgets(
                     painter.line_segment(
                         [egui::pos2(gr.right() - offset, gr.bottom() - 1.0),
                          egui::pos2(gr.right() - 1.0, gr.bottom() - offset)],
-                        Stroke::new(1.0, color_alpha(t.dim, ALPHA_MUTED)));
+                        Stroke::new(stroke_std(), color_alpha(t.dim, ALPHA_MUTED)));
                 }
             }
         } else {
@@ -277,12 +277,12 @@ pub(crate) fn draw_widgets(
                 Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
             painter.line_segment(
                 [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
-                Stroke::new(0.5, color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
             // Label
             painter.text(egui::pos2(hdr.left() + 8.0, hdr.center().y),
-                egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(FONT_MD), t.accent);
+                egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(font_md()), t.accent);
             painter.text(egui::pos2(hdr.left() + 24.0, hdr.center().y),
-                egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(FONT_XS), t.text);
+                egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(font_xs()), t.text);
             if w.locked {
                 painter.text(egui::pos2(hdr.left() + 24.0 + kind.label().len() as f32 * 7.0 + 6.0, hdr.center().y),
                     egui::Align2::LEFT_CENTER, "\u{1F512}", egui::FontId::proportional(8.0), t.dim.gamma_multiply(0.5));
@@ -300,10 +300,10 @@ pub(crate) fn draw_widgets(
             painter.rect_filled(ctx_rect, 5.0,
                 if ctx_hov { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 25) });
             painter.rect_stroke(ctx_rect, 5.0,
-                Stroke::new(0.5, if ctx_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
+                Stroke::new(stroke_thin(), if ctx_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
                 egui::StrokeKind::Outside);
             painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
-                "\u{22EF}", egui::FontId::proportional(16.0),
+                "\u{22EF}", egui::FontId::proportional(font_lg()),
                 if ctx_hov { t.accent } else { t.dim });
             if ctx_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             card_ctx_rect = Some(ctx_rect);
@@ -315,7 +315,7 @@ pub(crate) fn draw_widgets(
             painter.rect_filled(tog_rect, 5.0,
                 if tog_hov { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 25) });
             painter.rect_stroke(tog_rect, 5.0,
-                Stroke::new(0.5, if tog_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
+                Stroke::new(stroke_thin(), if tog_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
                 egui::StrokeKind::Outside);
             painter.text(tog_rect.center(), egui::Align2::CENTER_CENTER,
                 mode_icon, egui::FontId::proportional(14.0),

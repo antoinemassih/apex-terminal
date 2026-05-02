@@ -71,7 +71,7 @@ if watchlist.open {
             let line_y = tab_row_resp.response.rect.max.y + 1.0;
             ui.painter().line_segment(
                 [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(stroke_std(), t.toolbar_border),
+                border_stroke(t),
             );
             ui.add_space(4.0);
 
@@ -727,7 +727,7 @@ if watchlist.open {
                                             let badge_resp = ui.add(ChromeBtn::new(
                                                 egui::RichText::new(&item_option_type).monospace().size(font_sm()).strong().color(opt_color))
                                                 .fill(badge_bg).corner_radius(r_sm_cr()).stroke(egui::Stroke::NONE)
-                                                .min_size(egui::vec2(16.0, 16.0)));
+                                                .min_size(BTN_ICON_SM));
                                             let _ = badge_resp;
                                             ui.add_space(2.0);
                                             // Full option name (e.g. "SPY 560C 0DTE")

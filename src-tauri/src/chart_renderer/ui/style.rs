@@ -1510,6 +1510,29 @@ pub fn paint_chrome_tile_button(
         egui::StrokeKind::Outside);
 }
 
+// ─── Border stroke shorthands ─────────────────────────────────────────────────
+
+/// Standard 1px border stroke using `t.toolbar_border`. Covers 90% of separator / divider use.
+#[inline]
+pub fn border_stroke(t: &crate::chart_renderer::gpu::Theme) -> Stroke {
+    Stroke::new(stroke_std(), t.toolbar_border)
+}
+
+/// Hair-width border stroke for dense / compact UI regions.
+#[inline]
+pub fn border_stroke_thin(t: &crate::chart_renderer::gpu::Theme) -> Stroke {
+    Stroke::new(stroke_thin(), t.toolbar_border)
+}
+
+// ─── Icon button size tokens ──────────────────────────────────────────────────
+
+/// 16×16 — small icon button (close, delete, inline action).
+pub const BTN_ICON_SM: egui::Vec2 = egui::vec2(16.0, 16.0);
+/// 24×24 — standard icon button (toolbar action, panel header icon).
+pub const BTN_ICON_MD: egui::Vec2 = egui::vec2(24.0, 24.0);
+/// 32×24 — wide icon button (split actions, nav arrows with extra hit area).
+pub const BTN_ICON_LG: egui::Vec2 = egui::vec2(32.0, 24.0);
+
 /// Foreground color for a [`ChromeTileState`] — pair with [`paint_chrome_tile_button`].
 pub fn chrome_tile_fg(state: ChromeTileState, t: &crate::chart_renderer::gpu::Theme) -> egui::Color32 {
     match state {

@@ -323,7 +323,7 @@ fn draw_play_editor(
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t2_pct, t);
                     if ui.add(ChromeBtn::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.bear.gamma_multiply(0.6)))
-                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM)).clicked() {
                         remove_t2 = true;
                     }
                 });
@@ -350,7 +350,7 @@ fn draw_play_editor(
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t3_pct, t);
                     if ui.add(ChromeBtn::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.bear.gamma_multiply(0.6)))
-                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM)).clicked() {
                         remove_t3 = true;
                     }
                 });
@@ -550,7 +550,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
     let mut val: u32 = pct_str.parse().unwrap_or(50);
 
     if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(FONT_XS).color(t.dim))
-        .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
+        .min_size(BTN_ICON_SM).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
         val = val.saturating_sub(step).max(5);
     }
     ui.add(egui::TextEdit::singleline(pct_str)
@@ -558,7 +558,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
         .horizontal_align(egui::Align::Center));
     ui.add(super::widgets::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
     if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_XS).color(t.dim))
-        .min_size(egui::vec2(16.0, 16.0)).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
+        .min_size(BTN_ICON_SM).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
         val = (val + step).min(100);
     }
 

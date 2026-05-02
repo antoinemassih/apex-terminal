@@ -4,6 +4,20 @@
 //! Each struct wraps an existing legacy helper from `components.rs` /
 //! `components_extra.rs`. The legacy helpers still coexist — no call sites
 //! are migrated here.
+//!
+//! # Remaining call-site sweep candidates
+//! The following patterns appear 5+ times and should be migrated in a later pass:
+//!
+//! **`SectionLabel::new(…).md().color(t.accent)`** — 17+ raw
+//!   `RichText::new(…).monospace().size(font_md()).strong().color(t.accent)` usages.
+//!   Known files: `plays_panel.rs`, `options_panel.rs`, `scanner_panel.rs`,
+//!   `trade_plan_panel.rs`, `intel_panel.rs`, `risk_panel.rs`.
+//!
+//! **`CategoryHeader::new(…).color(t.dim)`** — nav/tree headers.
+//!   Known files: `watchlist_panel.rs`, `scanner_panel.rs`, `intel_panel.rs`.
+//!
+//! **`border_stroke(t)` / `border_stroke_thin(t)`** — raw `Stroke::new(stroke_std(), t.toolbar_border)`.
+//!   Known files: `watchlist_panel.rs`, `dom_action.rs`, `overlay_manager.rs`.
 
 #![allow(dead_code, unused_imports)]
 
@@ -435,6 +449,44 @@ impl<'a> DimLabel<'a> {
 impl<'a> Widget for DimLabel<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let rt = TextStyle::BodySm.as_rich(self.text, self.color);
+        let (rt, color) = self.overrides.apply(rt, self.color);
+        ui.label(rt.color(color))
+    }
+}
+
+// ─── CategoryHeader ───────────────────────────────────────────────────────────
+
+/// Builder for a nav/tree categorical section header.
+///
+/// Renders `RichText::new(text).monospace().size(font_xs()).color(color)` — the standard
+/// dim divider label used in watchlist groups, scanner categories, and tree nav headers.
+///
+/// ```ignore
+/// ui.add(CategoryHeader::new("WATCHLIST").color(t.dim));
+/// ui.add(CategoryHeader::new("TECHNICALS").color(t.accent));
+/// ```
+#[must_use = "CategoryHeader must be added with `ui.add(...)` to render"]
+pub struct CategoryHeader<'a> {
+    text: &'a str,
+    color: Color32,
+    overrides: Overrides,
+}
+
+impl<'a> CategoryHeader<'a> {
+    pub fn new(text: &'a str) -> Self {
+        Self { text, color: Color32::from_rgb(120, 120, 130), overrides: Overrides::default() }
+    }
+    pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
+    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
+    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
+    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
+    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
+    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
+}
+
+impl<'a> Widget for CategoryHeader<'a> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let rt = RichText::new(self.text).monospace().size(font_xs()).color(self.color);
         let (rt, color) = self.overrides.apply(rt, self.color);
         ui.label(rt.color(color))
     }

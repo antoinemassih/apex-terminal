@@ -36,6 +36,7 @@ use crate::chart_renderer::ui::style::{
     dialog_window_themed, dialog_header, action_btn,
     FONT_MD, FONT_SM, STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM,
+    BTN_ICON_SM, BTN_ICON_LG,
     set_toolbar_rect, tb_group_break, current as style_current,
     font_xs, font_sm, font_md,
 };
@@ -480,11 +481,11 @@ pub(crate) fn render(
                                 }
                             }
                             if ui.add(egui::Button::new(egui::RichText::new(Icon::PENCIL_LINE).size(FONT_SM).color(t.dim.gamma_multiply(0.5)))
-                                .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                .frame(false).min_size(BTN_ICON_SM)).clicked() {
                                 panes[ap].editing_indicator = Some(*eid);
                             }
                             if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(FONT_SM).color(t.bear.gamma_multiply(0.5)))
-                                .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                                .frame(false).min_size(BTN_ICON_SM)).clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 if shift || watchlist.broadcast_mode {
                                     for p in panes.iter_mut() {
@@ -776,7 +777,7 @@ pub(crate) fn render(
                         let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(FONT_SM).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
                         if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(FONT_SM).color(t.bear.gamma_multiply(0.5)))
-                            .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
+                            .frame(false).min_size(BTN_ICON_SM)).clicked() {
                             remove_idx = Some(oi);
                         }
                     });
@@ -1159,7 +1160,7 @@ pub(crate) fn render(
 
                 // Window control buttons — custom drawn for clean look
                 let win_btn = |ui: &mut egui::Ui, danger: bool| -> (egui::Response, egui::Rect) {
-                    let (r, resp) = ui.allocate_exact_size(egui::vec2(32.0, 24.0), egui::Sense::click());
+                    let (r, resp) = ui.allocate_exact_size(BTN_ICON_LG, egui::Sense::click());
                     if resp.hovered() {
                         let bg = if danger { t.bear } else { color_alpha(t.toolbar_border, 80) };
                         ui.painter().rect_filled(r, 0.0, bg);
