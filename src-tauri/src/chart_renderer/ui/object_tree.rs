@@ -14,6 +14,8 @@ use super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWi
 use super::widgets::frames::SidePanelFrame;
 use crate::ui_kit::icons::Icon;
 
+fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
+
 // Six discrete opacity levels: fully faded (readable) up to fully opaque.
 pub(crate) const OPACITY_LEVELS: [f32; 6] = [0.15, 0.30, 0.50, 0.70, 0.85, 1.0];
 
@@ -98,10 +100,10 @@ fn kind_short_label(kind: &DrawingKind) -> &'static str {
 
 /// Significance score badge color.
 fn sig_color(score: f32) -> egui::Color32 {
-    if score >= 7.0 { egui::Color32::from_rgb(224, 85, 96) }       // red — critical
-    else if score >= 5.0 { egui::Color32::from_rgb(255, 193, 37) } // gold — strong
-    else if score >= 3.0 { egui::Color32::from_rgb(81, 207, 102) } // green — moderate
-    else { egui::Color32::from_rgb(120, 120, 120) }                // gray — weak
+    if score >= 7.0 { ft().bear }                // red — critical
+    else if score >= 5.0 { COLOR_AMBER }         // gold — strong
+    else if score >= 3.0 { ft().bull }           // green — moderate
+    else { ft().dim }                            // gray — weak
 }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {

@@ -178,7 +178,7 @@ impl<'a, 'b> TextInput<'a, 'b> {
 
         let inner_margin = self.margin.unwrap_or_else(|| egui::Margin::same(gap_sm() as i8));
         let mut frame = egui::Frame::NONE
-            .stroke(Stroke::new(1.0, border_color))
+            .stroke(Stroke::new(stroke_std(), border_color))
             .inner_margin(inner_margin)
             .corner_radius(radius_sm());
         if let Some(bg) = self.background_color {

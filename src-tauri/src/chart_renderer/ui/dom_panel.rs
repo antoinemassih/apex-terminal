@@ -159,7 +159,7 @@ pub(crate) fn draw(
     let qw = half_w - 30.0;
     let qr = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(qw, r1h));
     painter.rect_filled(qr, 0.0, color_alpha(t.bg, 180));
-    painter.text(qr.center(), egui::Align2::CENTER_CENTER, &format!("{}", *order_qty), fm.clone(), egui::Color32::from_rgb(220,220,230));
+    painter.text(qr.center(), egui::Align2::CENTER_CENTER, &format!("{}", *order_qty), fm.clone(), t.text);
     cx = qr.right()+1.0;
 
     // [+]
@@ -186,7 +186,7 @@ pub(crate) fn draw(
     // [A] — armed, small (design-system SimpleBtn, red when armed)
     let armw = inner.right()-cx-1.0;
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
-    let ac = if *dom_armed { egui::Color32::from_rgb(230,70,70) } else { t.dim.gamma_multiply(0.4) };
+    let ac = if *dom_armed { t.bear } else { t.dim.gamma_multiply(0.4) };
     let resp = place_at(ui, r, |ui| {
         ui.add(SimpleBtn::new(if *dom_armed {"!"} else {"A"})
             .color(ac)
@@ -211,7 +211,7 @@ pub(crate) fn draw(
 
     // Middle: FLATTEN (top) + CANCEL (bottom)
     let mid_x = inner.left()+1.0+side_w+3.0;
-    let fc = egui::Color32::from_rgb(200,150,50);
+    let fc = COLOR_AMBER;
 
     // FLATTEN — design-system SimpleBtn (amber)
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y), egui::vec2(mid_w, mid_half_h));

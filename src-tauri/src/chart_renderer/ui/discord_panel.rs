@@ -187,7 +187,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                         ui.add_space(6.0);
                         if close_button(ui, t.dim) { watchlist.discord_open = false; }
                         if ui.add(widgets::buttons::ChromeBtn::new(
-                            egui::RichText::new("×").monospace().size(font_sm()).color(rgb(231, 76, 60)))
+                            egui::RichText::new("×").monospace().size(font_sm()).color(t.bear))
                             .fill(egui::Color32::TRANSPARENT).frameless(true)
                         ).on_hover_text("Disconnect").clicked() {
                             crate::discord::disconnect();
@@ -385,12 +385,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         } else if ch.is_text() {
                                             let name = ch.name.as_deref().unwrap_or("unknown").to_string();
                                             // ── ListRow migration: channel row ──
+                                            let ch_text = t.dim.gamma_multiply(1.3);
                                             let resp = widgets::rows::ListRow::new(22.0)
-                                                .left_icon("#", egui::Color32::from_gray(120))
+                                                .left_icon("#", t.dim)
                                                 .body({
                                                     let name = name.clone();
                                                     move |ui| {
-                                                        ui.add(widgets::text::MonospaceCode::new(&name).xs().color(egui::Color32::from_gray(160)));
+                                                        ui.add(widgets::text::MonospaceCode::new(&name).xs().color(ch_text));
                                                     }
                                                 })
                                                 .theme(t)
@@ -489,7 +490,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.horizontal(|ui| {
                                             ui.add_space(22.0); // align with text after avatar dot
                                             ui.add(egui::Label::new(
-                                                egui::RichText::new(&msg.content).monospace().size(font_sm()).color(egui::Color32::from_gray(210))
+                                                egui::RichText::new(&msg.content).monospace().size(font_sm()).color(t.text)
                                             ).wrap_mode(egui::TextWrapMode::Wrap));
                                         });
                                         prev_author = msg.author.clone();
@@ -505,7 +506,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                 ui.add_space(6.0);
                                 let input = TextInput::new(&mut watchlist.discord_input)
                                     .width(content_w - 60.0)
-                                    .text_color(egui::Color32::from_gray(220))
+                                    .text_color(t.text)
                                     .placeholder(&format!("Message {}...", watchlist.discord_channel))
                                     .theme(t)
                                     .show(ui);

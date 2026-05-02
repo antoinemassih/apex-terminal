@@ -78,7 +78,7 @@ fn section_config(ui: &mut egui::Ui, t: &Theme) {
     let token = crate::apex_data::apex_token().map(|_| "set".to_string()).unwrap_or_else(|| "none".into());
     let enabled = crate::apex_data::is_enabled();
     kv(ui, "enabled",  if enabled { "yes" } else { "no" }, t,
-       Some(if enabled { egui::Color32::from_rgb(80, 200, 120) } else { egui::Color32::from_rgb(230, 70, 70) }));
+       Some(if enabled { t.bull } else { t.bear }));
     kv(ui, "base URL", &url, t, None);
     kv(ui, "LAN IP  ", &lan, t, None);
     kv(ui, "token   ", &token, t, None);
@@ -92,15 +92,15 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
     ui.horizontal(|ui| {
         ui.add(super::widgets::text::MonospaceCode::new("WS").color(t.dim));
         pill(ui, if ws { "connected" } else { "disconnected" },
-             if ws { egui::Color32::from_rgb(80, 200, 120) } else { egui::Color32::from_rgb(230, 70, 70) });
+             if ws { t.bull } else { t.bear });
     });
     ui.horizontal(|ui| {
         ui.add(super::widgets::text::MonospaceCode::new("breaker").color(t.dim));
         if let Some(remaining) = cooldown {
-            pill(ui, "open", egui::Color32::from_rgb(230, 70, 70));
+            pill(ui, "open", t.bear);
             ui.add(super::widgets::text::MonospaceCode::new(&format!("cooldown {}s", remaining.as_secs())).color(t.dim));
         } else {
-            pill(ui, "closed", egui::Color32::from_rgb(80, 200, 120));
+            pill(ui, "closed", t.bull);
         }
         ui.add(super::widgets::text::MonospaceCode::new(&format!("fails={fails}")).color(t.dim));
     });
@@ -109,7 +109,7 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
         ui.horizontal(|ui| {
             ui.add(super::widgets::text::MonospaceCode::new("health").color(t.dim));
             pill(ui, if h.ready { "ready" } else { "not ready" },
-                 if h.ready { egui::Color32::from_rgb(80, 200, 120) } else { egui::Color32::from_rgb(240, 170, 70) });
+                 if h.ready { t.bull } else { COLOR_AMBER });
             ui.add(super::widgets::text::MonospaceCode::new(&format!("tick age {}ms, redis={} questdb={} feeds {}/{}",
                 h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total)).color(t.dim));
         });
@@ -125,10 +125,10 @@ fn section_rest_stats(ui: &mut egui::Ui, t: &Theme) {
     let pct = |n: u64| if total == 0 { 0.0 } else { 100.0 * n as f64 / total as f64 };
     ui.horizontal_wrapped(|ui| {
         kv(ui, "total",  &format!("{total}"), t, None); ui.add_space(gap_lg());
-        kv(ui, "ok",     &format!("{ok} ({:.0}%)",        pct(ok)), t, Some(egui::Color32::from_rgb(80, 200, 120))); ui.add_space(gap_lg());
-        kv(ui, "http",   &format!("{http_err} ({:.0}%)",  pct(http_err)), t, Some(egui::Color32::from_rgb(240, 170, 70))); ui.add_space(gap_lg());
-        kv(ui, "net",    &format!("{net_err} ({:.0}%)",   pct(net_err)), t, Some(egui::Color32::from_rgb(230, 70, 70))); ui.add_space(gap_lg());
-        kv(ui, "parse",  &format!("{parse_err} ({:.0}%)", pct(parse_err)), t, Some(egui::Color32::from_rgb(230, 70, 70))); ui.add_space(gap_lg());
+        kv(ui, "ok",     &format!("{ok} ({:.0}%)",        pct(ok)), t, Some(t.bull)); ui.add_space(gap_lg());
+        kv(ui, "http",   &format!("{http_err} ({:.0}%)",  pct(http_err)), t, Some(COLOR_AMBER)); ui.add_space(gap_lg());
+        kv(ui, "net",    &format!("{net_err} ({:.0}%)",   pct(net_err)), t, Some(t.bear)); ui.add_space(gap_lg());
+        kv(ui, "parse",  &format!("{parse_err} ({:.0}%)", pct(parse_err)), t, Some(t.bear)); ui.add_space(gap_lg());
         kv(ui, "skip",   &format!("{skipped} ({:.0}%)",   pct(skipped)), t, Some(t.dim));
     });
 }
@@ -154,9 +154,9 @@ fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
         ui.add(super::widgets::text::MonospaceCode::new("last update").color(t.dim.gamma_multiply(0.6)));
     });
     for (ul, rows, age_s) in summary {
-        let age_color = if age_s < 10 { egui::Color32::from_rgb(80, 200, 120) }
-                       else if age_s < 60 { egui::Color32::from_rgb(240, 170, 70) }
-                       else { egui::Color32::from_rgb(230, 70, 70) };
+        let age_color = if age_s < 10 { t.bull }
+                       else if age_s < 60 { COLOR_AMBER }
+                       else { t.bear };
         ui.horizontal(|ui| {
             ui.add(super::widgets::text::MonospaceCode::new(&ul).sm().color(t.text).strong(true));
             ui.add_space(120.0 - 10.0 * ul.len() as f32);
@@ -176,10 +176,10 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
     }
     for call in recent.iter().rev().take(25) {
         let color = match call.outcome {
-            "ok"    => egui::Color32::from_rgb(80, 200, 120),
-            "http"  => egui::Color32::from_rgb(240, 170, 70),
-            "parse" => egui::Color32::from_rgb(230, 70, 70),
-            "err"   => egui::Color32::from_rgb(230, 70, 70),
+            "ok"    => t.bull,
+            "http"  => COLOR_AMBER,
+            "parse" => t.bear,
+            "err"   => t.bear,
             _       => t.dim,
         };
         let label = match call.outcome {

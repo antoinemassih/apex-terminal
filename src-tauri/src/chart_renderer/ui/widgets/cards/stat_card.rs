@@ -10,6 +10,8 @@ use super::super::foundation::shell::CardShell;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
+fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
+
 #[must_use = "StatCard must be rendered with `.show(ui)`"]
 pub struct StatCard<'a> {
     label: &'a str,
@@ -28,10 +30,10 @@ impl<'a> StatCard<'a> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) {
-        let bull = self.theme.map(|t| t.bull).unwrap_or(Color32::from_rgb(120, 200, 130));
-        let bear = self.theme.map(|t| t.bear).unwrap_or(Color32::from_rgb(220, 100, 100));
-        let dim  = self.theme.map(|t| t.dim).unwrap_or(Color32::from_rgb(140, 140, 150));
-        let text = self.theme.map(|t| t.text).unwrap_or(Color32::from_rgb(210, 210, 220));
+        let bull = self.theme.map(|t| t.bull).unwrap_or_else(|| ft().bull);
+        let bear = self.theme.map(|t| t.bear).unwrap_or_else(|| ft().bear);
+        let dim  = self.theme.map(|t| t.dim).unwrap_or_else(|| ft().dim);
+        let text = self.theme.map(|t| t.text).unwrap_or_else(|| ft().text);
         let theme = self.theme;
         let label = self.label;
         let value = self.value;

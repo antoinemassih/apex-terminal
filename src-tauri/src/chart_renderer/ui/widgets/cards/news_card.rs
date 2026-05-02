@@ -10,6 +10,8 @@ use super::super::foundation::shell::CardShell;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
+fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
+
 #[must_use = "NewsCard must be rendered with `.show(ui)`"]
 pub struct NewsCard<'a> {
     headline:  &'a str,
@@ -29,8 +31,8 @@ impl<'a> NewsCard<'a> {
     pub fn theme(mut self, t: &'a Theme)   -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) {
-        let dim = self.theme.map(|t| t.dim).unwrap_or(Color32::from_rgb(140, 140, 150));
-        let text = self.theme.map(|t| t.text).unwrap_or(Color32::from_rgb(210, 210, 220));
+        let dim = self.theme.map(|t| t.dim).unwrap_or_else(|| ft().dim);
+        let text = self.theme.map(|t| t.text).unwrap_or_else(|| ft().text);
         let theme = self.theme;
         let headline = self.headline;
         let source = self.source;

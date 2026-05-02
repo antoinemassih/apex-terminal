@@ -290,7 +290,7 @@ if watchlist.open {
                     }
                     // Suggestion dropdown
                     if has_results {
-                        PopupFrame::new().colors(egui::Color32::from_rgb(28, 28, 34), t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
+                        PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
                             for (i, (sym, name)) in watchlist.search_results.clone().iter().enumerate() {
                                 let is_sel = i as i32 == watchlist.search_sel;
                                 let bg = if is_sel { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
@@ -731,7 +731,7 @@ if watchlist.open {
                                             let _ = badge_resp;
                                             ui.add_space(2.0);
                                             // Full option name (e.g. "SPY 560C 0DTE")
-                                            let sym_color = if is_active { t.text } else { egui::Color32::from_rgb(200, 200, 210) };
+                                            let sym_color = if is_active { t.text } else { t.dim };
                                             ui.add(MonospaceCode::new(&item_sym).size_px(10.5).strong(true).color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
@@ -1297,7 +1297,7 @@ if watchlist.open {
                         let sel_active = watchlist.chain_select_mode;
                         if ui.add(ChromeBtn::new(egui::RichText::new(if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() }).monospace().size(font_sm())
                             .color(if sel_active { t.accent } else { t.dim }))
-                            .fill(if sel_active { egui::Color32::from_rgba_unmultiplied(t.accent.r(),t.accent.g(),t.accent.b(),51) } else { t.toolbar_bg })
+                            .fill(if sel_active { color_alpha(t.accent, 51) } else { t.toolbar_bg })
                             .stroke(egui::Stroke::new(stroke_std(), if sel_active { t.accent } else { t.toolbar_border }))
                             .corner_radius(r_sm_cr())).clicked() {
                             watchlist.chain_select_mode = !watchlist.chain_select_mode;
@@ -1356,7 +1356,7 @@ if watchlist.open {
                     });
                     // Search suggestions popup
                     if !watchlist.chain_sym_input.is_empty() && !watchlist.search_results.is_empty() {
-                        PopupFrame::new().colors(egui::Color32::from_rgb(28, 28, 34), t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
+                        PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
                             for (sym, name) in watchlist.search_results.clone() {
                                 if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} {}", sym, name)).monospace().size(font_sm()).color(t.dim))
                                     .frameless(true).min_size(egui::vec2(ui.available_width(), 20.0))).clicked() {
@@ -1478,10 +1478,10 @@ if watchlist.open {
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
-                            let iv_color = if row.iv > 0.7 { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 180) }
-                                else if row.iv > 0.5 { egui::Color32::from_rgba_unmultiplied(240, 160, 40, 140) }
-                                else if row.iv > 0.3 { egui::Color32::from_rgba_unmultiplied(255, 193, 37, alpha_active()) }
-                                else { egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha_active()) };
+                            let iv_color = if row.iv > 0.7 { color_alpha(t.bear, 180) }
+                                else if row.iv > 0.5 { color_alpha(COLOR_AMBER, 140) }
+                                else if row.iv > 0.3 { color_alpha(COLOR_AMBER, alpha_active()) }
+                                else { color_alpha(t.bull, alpha_active()) };
                             painter.rect_filled(egui::Rect::from_min_size(
                                 egui::pos2(rect.left(), rect.top()), egui::vec2(3.0, rect.height())),
                                 0.0, iv_color);
@@ -1958,14 +1958,14 @@ if watchlist.open {
                                     let bar_frac = if max_pct > 0.0 { item.1.abs() / max_pct } else { 0.0 };
                                     let bar_w = bar_frac * col_w * 0.6;
                                     let bar_col = if is_up {
-                                        egui::Color32::from_rgba_unmultiplied(46, 204, 113, (25.0 + intensity * 55.0) as u8)
+                                        color_alpha(t.bull, (25.0 + intensity * 55.0) as u8)
                                     } else {
-                                        egui::Color32::from_rgba_unmultiplied(231, 76, 60, (25.0 + intensity * 55.0) as u8)
+                                        color_alpha(t.bear, (25.0 + intensity * 55.0) as u8)
                                     };
                                     painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(bar_w, cell_h - 2.0)), 2.0, bar_col);
                                     // Edge strip
                                     let edge_a = (120.0 + intensity * 135.0) as u8;
-                                    let edge_col = if is_up { egui::Color32::from_rgba_unmultiplied(46, 204, 113, edge_a) } else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, edge_a) };
+                                    let edge_col = if is_up { color_alpha(t.bull, edge_a) } else { color_alpha(t.bear, edge_a) };
                                     painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)), 0.0, edge_col);
                                     // Symbol (bright white for active, slightly dimmer for others)
                                     let sym_col = if is_active { egui::Color32::WHITE } else if is_hovered { color_alpha(t.text,230) } else { color_alpha(t.text,190) };

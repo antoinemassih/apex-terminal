@@ -256,7 +256,7 @@ pub(crate) fn render(
                 ("Beta", format!("{:.2}", portfolio_beta), t.text),
                 ("VaR (95%)", format!("${:.0}", var_95), t.bear),
                 ("Margin", format!("{:.0}%", margin_util),
-                    if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull }),
+                    if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { COLOR_AMBER } else { t.bull }),
                 ("Sharpe", format!("{:.2}", 1.45), t.accent),
             ];
 
@@ -296,7 +296,7 @@ pub(crate) fn render(
                     egui::pos2(sector_x, gauge_y), egui::vec2(gauge_w, 6.0)),
                     3.0, color_alpha(t.toolbar_border, alpha_muted()));
                 let fill_w = gauge_w * (margin_util / 100.0).min(1.0);
-                let gauge_col = if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
+                let gauge_col = if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { COLOR_AMBER } else { t.bull };
                 painter.rect_filled(egui::Rect::from_min_size(
                     egui::pos2(sector_x, gauge_y), egui::vec2(fill_w, 6.0)),
                     3.0, gauge_col);
@@ -345,9 +345,9 @@ pub(crate) fn render(
                     // Color: blue (negative) → white → red (positive)
                     let intensity = corr.abs();
                     let cell_col = if corr > 0.0 {
-                        egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), (intensity * 150.0) as u8)
+                        color_alpha(t.bear, (intensity * 150.0) as u8)
                     } else {
-                        egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), (intensity * 150.0) as u8)
+                        color_alpha(t.accent, (intensity * 150.0) as u8)
                     };
                     let cell_rect = egui::Rect::from_min_size(egui::pos2(cx, cy_pos), egui::vec2(cell_sz - 1.0, cell_sz - 1.0));
                     painter.rect_filled(cell_rect, 2.0, cell_col);
