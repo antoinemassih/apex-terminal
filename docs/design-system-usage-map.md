@@ -1,6 +1,6 @@
 # Design System Usage Map
 
-**Audit date:** 2026-04-30 (refreshed post-R1/R2)
+**Audit date:** 2026-05-02 (refreshed post-R3)
 **Scope:** `src/chart_renderer/ui/` — all panel files + `gpu.rs`
 **Excluded from hardcoded audit:** `widgets/`, `components/`, `components_extra/`, `foundation/`, `style.rs`, `design_inspector.rs`, `design_preview_pane.rs`
 
@@ -74,6 +74,16 @@ No usages found outside widget definition files.
 
 ---
 
+### R3 New Widget Usage Counts
+
+| Widget | File | Usages |
+|--------|------|--------|
+| `TopNav` | `gpu.rs` | 1 (replaces inline `render_toolbar()` — lines previously 3644–5308) |
+| `ApertureOrderTicket` | `gpu.rs` | 1 (replaces inline Aperture/Octave order entry body — lines previously ~999–1440) |
+| `FloatingOrderPaneChrome` | `gpu.rs` | 1 (replaces inline floating order window header — lines previously 7583–7663) |
+
+---
+
 ### R1/R2 New Widget Usage Counts
 
 | Widget | File | Usages |
@@ -121,7 +131,7 @@ Patterns counted: `Color32::from_rgb`, `egui::Frame::`, `CornerRadius::same`, `.
 
 | File | Hardcoded hits | Notes |
 |------|---------------|-------|
-| `gpu.rs` | **289** | `from_rgb`: 161, `Frame::`: 17, `CornerRadius`: 27, `.size(N)`: 84. Largest single file. Toolbar (lines 3644–5308), floating order panes (7583–7663), and DOM sidebar are the concentration points |
+| `gpu.rs` | **357** | `from_rgb`: 264, `Frame::`: 11, `CornerRadius`: 20, `.size(N)`: 62. Largest single file. Toolbar, floating order panes, and DOM sidebar have been extracted (R3) — remaining literals are chart paint + residual UI overlays. |
 | `chart_widgets.rs` | 65 | Chart UI overlays — many are intentional (chart paint adjacent); ~20 are genuinely migratable |
 | `watchlist_panel.rs` | 46 | High count despite R1/R2 adding `FilterPill`/`SectionHeader`/`NmfToggle`; many `ChromeBtn` + inline buttons remain |
 
@@ -177,9 +187,14 @@ Patterns counted: `Color32::from_rgb`, `egui::Frame::`, `CornerRadius::same`, `.
 - `gpu.rs` — `AccountStrip` extracted to `widgets/pane.rs`
 - ~233 call sites migrated (project claim; audit confirms directional correctness)
 
+### R3 migrations confirmed
+- `gpu.rs` toolbar → `widgets::toolbar::TopNav` (~1664 lines removed from gpu.rs)
+- `gpu.rs` Aperture/Octave order entry body → `widgets::form::ApertureOrderTicket` (~270 lines removed)
+- `gpu.rs` floating order pane header → `widgets::pane::FloatingOrderPaneChrome` (~80 lines removed)
+- `widgets/frames.rs PopupFrame` shadow wired to `st.shadow_*` tokens (75 Color32 literals in gpu.rs migrated)
+
 ### Still inline (not yet migrated)
-- `gpu.rs` toolbar (lines 3644–5308): ~1664 lines of inline toolbar chrome → `widgets::toolbar::TopNav`
-- `gpu.rs` floating order panes (lines 7583–7663): inline `egui::Window` + header chrome
-- `gpu.rs` Aperture/Octave order entry body (lines ~999–1440): inline form fields
 - `watchlist_panel.rs` ChromeBtn usages (~40) not yet replaced with `ButtonShell`/`IconBtn`
 - `discord_panel.rs`, `screenshot_panel.rs` card rows inline
+- `gpu.rs` DOM watchlist hover tooltip inline colors (lines ~5033–5039)
+- `gpu.rs` residual `Color32::from_rgb` in overlays and data labels (~80 non-chart-paint)

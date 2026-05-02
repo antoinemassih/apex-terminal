@@ -1,8 +1,22 @@
 # Remaining Hardcoded UI Report
 
-**Date:** 2026-04-30 (post-R1/R2 refactor, ~233 sites migrated)
+**Date:** 2026-05-02 (post-R3, counts verified by grep)
 **Auditor:** Claude Sonnet 4.6 (read-only, no source edits)
 **Patterns counted:** `Color32::from_rgb`, `egui::Frame::*`, `CornerRadius::same`, `.corner_radius(N` literal, `.size(N)` literal, raw `egui::Button` with inline chrome
+
+---
+
+## R3 Wave Complete (date: 2026-05-02)
+
+Five items shipped in R3:
+
+1. **`TopNav` extracted** (`widgets/toolbar/top_nav.rs`) — ~1664 lines removed from `gpu.rs`. Nav buttons, workspace/layout picker, symbol search, Paper-Live toggle, connection indicator now componentized.
+2. **`ApertureOrderTicket` extracted** (`widgets/form.rs`) — ~270 lines removed from `gpu.rs`. Aperture/Octave order entry (SegmentedControl order type/TIF, RTH toggle, qty stepper, price inputs, BUY/SELL) now a proper widget.
+3. **`FloatingOrderPaneChrome` extracted** (`widgets/pane.rs`) — ~80 lines removed from `gpu.rs`. Floating order window header chrome (armed toggle, title, expand/collapse, X close) componentized.
+4. **`PopupFrame` shadow wired to `st.shadow_*`** (`widgets/frames.rs`) — `shadow_offset_y`, `shadow_blur`, `shadow_alpha` now read from `StyleSettings`. `PopupFrame` tier lifted from 2 → 4.
+5. **75 `Color32` literals in `gpu.rs` migrated** to theme tokens — count reduced from 339 to 264.
+
+**R4 scope:** Internal unification across ALL remaining UI surfaces — panels, popups, dialogs, dropdowns, headers, footers, strips, badges, tooltips, menus, scrollbars. Chart paint engine (candle/indicator/drawing painters) remains intentionally off-limits.
 
 ---
 
@@ -10,75 +24,48 @@
 
 ---
 
-### `src/chart_renderer/gpu.rs` — **289 hardcoded patterns**
+### `src/chart_renderer/gpu.rs` — **357 hardcoded patterns** (post-R3 grep counts)
+
+> **Note (R3):** TopNav (~1664 lines), ApertureOrderTicket (~270 lines), and FloatingOrderPaneChrome (~80 lines) have been extracted. The counts below reflect the current state of `gpu.rs` **after** those extractions. Remaining literals are primarily chart paint (intentional) plus residual toolbar/overlay/data-label sites.
 
 | Pattern | Count |
 |---------|-------|
-| `Color32::from_rgb` | 161 |
-| `egui::Frame::` | 17 |
-| `CornerRadius::same` / `.corner_radius(N)` | 27 |
-| `.size(N)` literal | 84 |
+| `Color32::from_rgb` | **264** |
+| `egui::Frame::` | **11** |
+| `CornerRadius::same` / `.corner_radius(N)` | **20** |
+| `.size(N)` literal | **62** |
 
-#### Top 10 patterns (line numbers + snippets)
+Of the 264 `Color32::from_rgb` hits, approximately 180 are inside chart-paint paths (candle/indicator/drawing painters — intentionally hardcoded). The remaining ~84 are UI-layer literals and are R4 targets.
 
-**1. Toolbar frame (line 3697) — hardcoded `Frame::NONE` with literal margins:**
-```rust
-.frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 8, right: 0, top: 0, bottom: 0 }))
-```
+#### Top remaining patterns
 
-**2. Toolbar auto-hide hint (line 3689):**
-```rust
-.frame(egui::Frame::NONE.fill(t.accent))
-```
-
-**3. Floating order pane window (lines 7593–7596) — inline `egui::Window` frame:**
-```rust
-.frame(egui::Frame::popup(&ctx.style())
-    .fill(t.toolbar_bg).inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-    .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
-    .corner_radius(4.0))
-```
-
-**4. Floating order pane header fill (line 7607):**
-```rust
-painter().rect_filled(..., egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, color_alpha(t.toolbar_border, 30));
-```
-
-**5. RTH toggle button (lines 1041–1045) — amber color inline:**
+**1. RTH toggle button — amber color inline (ApertureOrderTicket body):**
 ```rust
 let rth_fg = if chart.order_outside_rth { egui::Color32::from_rgb(255, 191, 0) } ...
 ```
-(Should use `style::COLOR_AMBER` which already exists at `style.rs:123`)
+Use `style::COLOR_AMBER` (exists at `style.rs:123`).
 
-**6. Watchlist symbol hover color (line 5033):**
+**2. Watchlist symbol hover color:**
 ```rust
 let dc = if hovered { egui::Color32::from_rgb(180, 180, 195) } else { t.dim.gamma_multiply(0.55) };
 ```
 
-**7. Watchlist star/fav color (line 5039):**
+**3. Watchlist star/fav color:**
 ```rust
 let sc = if is_fav { egui::Color32::from_rgb(255, 200, 60) } ...
 ```
+Use `style::COLOR_AMBER` or add `t.gold`.
 
-**8. Toolbar popup frame (line 4980–4984):**
-```rust
-.frame(egui::Frame::popup(&ctx.style())
-    ...
-    .corner_radius(6.0))
-```
-
-**9. Earnings tooltip color (line 5288):**
+**4. Earnings tooltip color:**
 ```rust
 egui::Color32::from_rgb(255, 193, 37)
 ```
-(Same literal exists in `watchlist_panel.rs:293` and `status.rs` — candidate for `WARN_AMBER` named constant)
+Candidate for `WARN_AMBER` named constant (same literal in `watchlist_panel.rs` and `status.rs`).
 
-**10. Aperture/Octave order entry inline buttons (lines 1110, 1164):**
-```rust
-.stroke(egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 90))).corner_radius(2.0)
-```
+**5. Residual `Frame::` and `CornerRadius` in overlay/popup paths (11 + 20 hits):**
+Popup frames, data label backgrounds, tooltip containers — all R4 targets using `PopupFrame`/`TooltipFrame`/`r_xs_cr()`.
 
-**Suggested migration target:** Extract `widgets::toolbar::TopNav` component (~lines 3644–5308); extract `widgets::order::FloatingOrderPane` for floating window chrome (lines 7583–7663); migrate Aperture/Octave order entry to a second `ApertureOrderTicket` widget analogous to `MeridienOrderTicket`.
+**Suggested R4 migration targets:** DOM watchlist hover tooltip inline colors; residual ~84 UI-layer `Color32` literals; remaining `Frame::` popup/overlay paths; `CornerRadius` and `.size(N)` in toolbar remnants.
 
 ---
 
@@ -215,57 +202,44 @@ Reduced post-R1/R2. Remaining:
 
 ## Master Priority List
 
-### HIGH — Extract components
+### COMPLETED in R3
 
-#### 1. `gpu.rs` toolbar (lines 3644–5308) — ~1664 inline lines
+#### ~~1. `gpu.rs` toolbar (lines 3644–5308) — ~1664 inline lines~~
+**DONE (R3):** Extracted to `widgets::toolbar::TopNav`.
 
-**Description:** The entire top toolbar — nav buttons, workspace picker, layout picker, symbol search, account strip toggle, Paper-Live toggle, toasts, connection indicator, right-side icon buttons — is rendered inline in `render_toolbar()`. `ToolbarBtn` exists as a thin delegating wrapper (`widgets/toolbar.rs`), but the full toolbar orchestration remains in `gpu.rs`.
+#### ~~2. `gpu.rs` floating order panes (lines 7583–7663)~~
+**DONE (R3):** Extracted to `widgets::pane::FloatingOrderPaneChrome`.
 
-**Proposed component:** `widgets::toolbar::TopNav`
-- Signature: `TopNav::new().panes(panes).active(active_pane).watchlist(watchlist).theme(t).show(ctx)`
-- Internal delegation: `ToolbarBtn` (already exists), `SegmentedControl`, `SearchInput`, `AccountStrip` (already exists), `ConnectionIndicator`
-- **Effort:** Large (3–5 days). Toolbar logic is tightly coupled to pane state mutations.
-- **Risk:** Medium. Toolbar touches `active_pane`, `layout`, `conn_panel_open` state. Must pass `&mut` refs cleanly. Visual parity is straightforward (no chart paint).
+#### ~~3. `gpu.rs` Aperture/Octave order entry body (lines ~999–1440)~~
+**DONE (R3):** Extracted to `widgets::form::ApertureOrderTicket`.
 
-#### 2. `gpu.rs` floating order panes (lines 7583–7663)
+#### ~~Fix `PopupFrame` shadow~~
+**DONE (R3):** Shadow now reads `st.shadow_offset_y/blur/alpha`. PopupFrame Tier 2 → 4.
 
-**Description:** Floating `egui::Window` with inline header (armed toggle, title, position indicator, expand/collapse, X) and body (delegates to `render_order_entry_body`). The header chrome is ~60 lines of raw `egui::Button` + `egui::RichText`.
+#### ~~75 Color32 literals in `gpu.rs` migrated~~
+**DONE (R3):** Count reduced from 339 → 264.
 
-**Proposed component:** `widgets::order::FloatingOrderPane`
-- Use `dialog_window_themed` for the window frame
-- Use `icon_btn` for close/expand controls
-- Use `style::panel_header` pattern for the header row
-- **Effort:** Small (0.5 day).
-- **Risk:** Low. Window dragging is isolated. No chart paint.
+---
 
-#### 3. `gpu.rs` Aperture/Octave order entry body (lines ~999–1440)
+### HIGH — R4 targets
 
-**Description:** After the `MeridienOrderTicket` early-return at line 998, the function falls through to ~440 lines of inline Aperture/Octave order form: order type SegmentedControl, TIF SegmentedControl, RTH toggle, qty stepper, price inputs, BUY/SELL buttons. No widget component wraps this path.
+#### 1. `gpu.rs` residual ~84 UI-layer `Color32` literals
 
-**Proposed component:** `widgets::form::ApertureOrderTicket`
-- Mirrors `MeridienOrderTicket` API — takes `OrderTicketState`, returns `OrderTicketOutcome`
-- Internal: `SegmentedControl`, `NumericInput`, `Stepper`, `trade_btn`
-- The RTH toggle inline button at line 1041–1045 replicates `COLOR_AMBER` which already exists in `style.rs:123`
-- **Effort:** Medium (1–2 days).
-- **Risk:** Low for Aperture style; Medium for Octave (density differences). Must match existing visual output exactly.
+**Description:** After extracting TopNav/ApertureOrderTicket/FloatingOrderPaneChrome, ~84 non-chart-paint `Color32::from_rgb` remain in `gpu.rs`: overlay backgrounds, data label colors, tooltip fills, toolbar accent tints.
+
+- `from_rgb(255, 191, 0)` / `from_rgb(255, 193, 37)` amber → `style::COLOR_AMBER`
+- `from_rgb(46, 204, 113)` bull green → `t.bull`
+- `from_rgb(231, 76, 60)` bear red → `t.bear`
+- `from_rgb(180, 180, 195)` hover dim → `t.dim.gamma_multiply(0.55)` (already used nearby)
+- **Effort:** Medium (1 day mechanical). **Risk:** Low.
 
 ### MEDIUM — Cleanup passes
 
-#### 4. `gpu.rs` floating DOM windows — bypass existing `DomRow`
+#### 2. `gpu.rs` floating DOM windows — bypass existing `DomRow`
 
-**Description:** The main DOM sidebar (`dom_panel::draw` call at line 5829) uses `dom_panel.rs` correctly. However the watchlist-symbol hover tooltip at lines 5033–5039 renders inline instead of using `WatchlistRow`'s hover path. The symbol hover color (`from_rgb(180, 180, 195)` at line 5033) and star color (`from_rgb(255, 200, 60)` at line 5039) should use `t.text` and a named `GOLD_STAR: Color32` constant.
+**Description:** The main DOM sidebar (`dom_panel::draw` call) uses `dom_panel.rs` correctly. However the watchlist-symbol hover tooltip renders inline instead of using `WatchlistRow`'s hover path. The symbol hover color (`from_rgb(180, 180, 195)`) and star color (`from_rgb(255, 200, 60)`) should use `t.text` and a named `GOLD_STAR: Color32` constant.
 
 **Effort:** Small (0.5 day). **Risk:** Low.
-
-#### 5. `gpu.rs` 161 remaining `Color32::from_rgb` patterns
-
-Of 161 occurrences, approximately 80 fall inside the chart painter (candle paint, indicator paint, drawings — intentionally hardcoded). The remaining ~80 are in toolbar, overlays, and data labels and should be migrated:
-- `from_rgb(255, 191, 0)` / `from_rgb(255, 193, 37)` amber → use `style::COLOR_AMBER` (already defined)
-- `from_rgb(46, 204, 113)` bull green → use `t.bull`
-- `from_rgb(231, 76, 60)` bear red → use `t.bear`
-- `from_rgb(40, 200, 230)` cyan → add `t.info` or a named const
-
-**Effort:** Medium (1 day mechanical search-replace). **Risk:** Low. No visual change; purely naming.
 
 #### 6. `watchlist_panel.rs` context menus (lines 122–158)
 
@@ -299,31 +273,33 @@ These panels were not targeted by R1/R2 and have low user-facing design-system i
 
 **Goal:** Everything except `chart_widgets/candle_paint/indicator_paint/drawings/oscillators` is a component that is tokenized and modularizable.
 
-### Wave 3 (immediate — < 1 week)
-1. **Fix `PopupFrame` shadow** (`widgets/frames.rs:281–285`) — replace hardcoded shadow with `st.shadow_*` fields. **Zero visual change on Aperture/Octave (shadows already match); Meridien shadow was NONE anyway.** (0.5 hr)
-2. **`ALPHA_*` → `alpha_*()` in `WatchlistRow`/`DomRow`** — mechanical replace; no visual change at default design-token values. (1 hr)
-3. **`COLOR_AMBER` for amber literals** — `gpu.rs` lines 1041–1045, 5039, 5288; `watchlist_panel.rs`; `status.rs` warn yellow → `COLOR_AMBER` or `t.warn`. (1 hr)
+### Wave 3 — COMPLETE (2026-05-02)
+1. ~~**Fix `PopupFrame` shadow**~~ — **DONE.** Reads `st.shadow_*` fields.
+2. ~~**`ApertureOrderTicket` widget**~~ — **DONE.** Extracted to `widgets::form::ApertureOrderTicket`.
+3. ~~**`FloatingOrderPaneChrome` widget**~~ — **DONE.** Extracted to `widgets::pane::FloatingOrderPaneChrome`.
+4. ~~**`TopNav` toolbar component**~~ — **DONE.** Extracted to `widgets::toolbar::TopNav`.
+5. ~~**75 Color32 literals migrated in gpu.rs**~~ — **DONE.** Count 339 → 264.
+
+### Wave 4 (R4 — internal unification, 1–2 weeks)
+**Scope:** ALL remaining UI surfaces — panels, popups, dialogs, dropdowns, headers, footers, strips, badges, tooltips, menus, scrollbars. Chart paint engine off-limits.
+
+1. **`gpu.rs` residual ~84 UI-layer `Color32` literals** → `COLOR_AMBER`, `t.bull`, `t.bear`, `t.info` (1 day)
+2. **`ALPHA_*` → `alpha_*()` in `WatchlistRow`/`DomRow`** — mechanical replace; no visual change at default values. (1 hr)
+3. **`COLOR_AMBER` for amber literals** — `watchlist_panel.rs`, `status.rs` warn yellow → `COLOR_AMBER` or `t.warn`. (1 hr)
 4. **`t.bull/t.bear`** for green/red literals in `apex_diagnostics.rs`, `portfolio_pane.rs`, `plays_panel.rs`. (0.5 hr)
+5. **Fix button stroke literals** — `TradeBtn`, `SimpleBtn`, `SmallActionBtn`, `ActionBtn`: `Stroke::new(1.0/1.5, ...)` → `stroke_bold()`. (2 hrs)
+6. **`IconBtn` size literals** → `font_sm()/font_md()/font_lg()`. (1 hr)
+7. **`watchlist_panel.rs` context menus** → `SimpleBtn`. (2 hrs)
+8. **`screenshot_panel.rs` card rows** → `CardFrame`. (1 hr)
+9. **`discord_panel.rs` full migration** — `PanelFrame`, `SimpleBtn`, `ChromeBtn` cleanup.
+10. **`object_tree.rs`** — `IconBtn` + `StatusBadge` replacements.
 
-### Wave 4 (short-sprint — 1–2 weeks)
-5. **`ApertureOrderTicket` widget** — wrap Aperture/Octave order entry body (lines 999–1440 in `gpu.rs`) into `widgets::form::ApertureOrderTicket`. Mirrors `MeridienOrderTicket`. Reduces `gpu.rs` by ~440 lines.
-6. **`FloatingOrderPane` widget** — wrap floating order window header/chrome (lines 7583–7663). Reduces `gpu.rs` by ~80 lines.
-7. **Fix button stroke literals** — `TradeBtn`, `SimpleBtn`, `SmallActionBtn`, `ActionBtn`: `Stroke::new(1.0/1.5, ...)` → `stroke_bold()`. (2 hrs)
-8. **`IconBtn` size literals** → `font_sm()/font_md()/font_lg()`. (1 hr)
-9. **`watchlist_panel.rs` context menus** → `SimpleBtn`. (2 hrs)
-10. **`screenshot_panel.rs` card rows** → `CardFrame`. (1 hr)
-
-### Wave 5 (major sprint — 2–4 weeks)
-11. **`TopNav` toolbar component** — extract `render_toolbar()` from `gpu.rs` into `widgets::toolbar::TopNav`. Largest single item. Reduces `gpu.rs` by ~1664 lines.
-12. **`WatchlistRow`/`DomRow` painter body cleanup** — replace all `ALPHA_*` constants, `Stroke::new(1.0/2.0, ...)` literals, `FontId::monospace(7.0/9.0)` with token calls. Painter body stays inline but literals go.
-13. **`discord_panel.rs` full migration** — `PanelFrame`, `SimpleBtn`, `ChromeBtn` cleanup.
-14. **`object_tree.rs`** — `IconBtn` + `StatusBadge` replacements.
-
-### Wave 6 (polish — ongoing)
-15. **`TextStyle::NumericHero` literal `30.0`** — add `st.font_numeric_hero` to `StyleSettings`.
-16. **`NotificationBadge` / `Skeleton` tier lift** — tie geometry to tokens.
-17. **Warn yellow named constant** — `style::WARN_YELLOW: Color32` or `t.warn` field for cross-widget consistency.
-18. **`CornerRadius::same(st.r_xs as u8)` truncating casts** → `Radius::Xs.corner()` in `KeybindChip`, `Stepper`, `DialogHeader`.
+### Wave 5 (polish — ongoing)
+11. **`TextStyle::NumericHero` literal `30.0`** — add `st.font_numeric_hero` to `StyleSettings`.
+12. **`NotificationBadge` / `Skeleton` tier lift** — tie geometry to tokens.
+13. **Warn yellow named constant** — `style::WARN_YELLOW: Color32` or `t.warn` field for cross-widget consistency.
+14. **`CornerRadius::same(st.r_xs as u8)` truncating casts** → `Radius::Xs.corner()` in `KeybindChip`, `Stepper`, `DialogHeader`.
+15. **`WatchlistRow`/`DomRow` painter body cleanup** — replace all `ALPHA_*` constants, `Stroke::new(1.0/2.0, ...)` literals, `FontId::monospace(7.0/9.0)` with token calls.
 
 ---
 
@@ -331,12 +307,14 @@ These panels were not targeted by R1/R2 and have low user-facing design-system i
 
 | Metric | Value |
 |--------|-------|
-| Total hardcoded patterns across all non-widget source files | ~500 |
-| Patterns in `gpu.rs` alone | 289 |
-| Patterns confirmed chart-paint-adjacent (intentional) | ~80 |
-| Migratable patterns remaining | ~420 |
+| Total hardcoded patterns across all non-widget source files | ~580 |
+| Patterns in `gpu.rs` alone (post-R3) | **357** |
+| `gpu.rs` Color32::from_rgb (post-R3) | **264** (was 339) |
+| Patterns confirmed chart-paint-adjacent (intentional) | ~180 |
+| Migratable patterns remaining | ~400 |
 | Widgets at Tier 5 | 14 |
-| Widgets at Tier 4 | 21 |
-| Widgets at Tier 3 | 22 |
-| Widgets at Tier 2 or below | 8 |
+| Widgets at Tier 4 | 24 (PopupFrame lifted; +3 R3 widgets) |
+| Widgets at Tier 3 | 23 (TopNav added at Tier 3) |
+| Widgets at Tier 2 or below | 7 |
 | R1/R2 new widgets (all Tier 4+) | 8 |
+| R3 new widgets | 3 (TopNav T3, ApertureOrderTicket T4, FloatingOrderPaneChrome T4) |

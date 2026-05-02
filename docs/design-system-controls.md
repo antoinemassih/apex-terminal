@@ -1,6 +1,6 @@
 # Apex Terminal Design Controls — what each parameter does
 
-**Refreshed:** 2026-04-30 (post-R1/R2 refactor)  
+**Refreshed:** 2026-05-02 (post-R3)  
 **Field count:** 77 fields in `StyleSettings` (struct at `style.rs:912`)  
 **Styles:** Meridien (0), Aperture (1), Octave (2) + 7 aliases (Cadence, Chord, Lattice, Tangent, Tempo, Contour, Relay)
 
@@ -143,9 +143,9 @@ Open the Design Inspector (F12) → **Design** tab → **Style Editor** to live-
 | Field | Type | Meridien | Aperture | Octave | Visible Effect | Where to See It |
 |---|---|---|---|---|---|---|
 | `shadows_enabled` | bool | true | true | false | Drop shadows on cards and modals | Popups, card widgets |
-| `shadow_blur` | f32 | 0.0 | 24.0 | 8.0 | Blur radius of drop shadows | Cards, dialogs |
-| `shadow_offset_y` | f32 | 0.0 | 8.0 | 4.0 | Vertical offset of drop shadows | Cards, dialogs |
-| `shadow_alpha` | u8 | 0 | 40 | 20 | Opacity of drop shadows | Cards, dialogs |
+| `shadow_blur` | f32 | 0.0 | 24.0 | 8.0 | Blur radius of drop shadows | Cards, dialogs, `PopupFrame` |
+| `shadow_offset_y` | f32 | 0.0 | 8.0 | 4.0 | Vertical offset of drop shadows | Cards, dialogs, `PopupFrame` |
+| `shadow_alpha` | u8 | 0 | 40 | 20 | Opacity of drop shadows | Cards, dialogs, `PopupFrame` |
 
 ## Overlays & Toasts (2 fields)
 
@@ -199,6 +199,7 @@ Open the Design Inspector (F12) → **Design** tab → **Style Editor** to live-
 | `widgets/select.rs SegmentedControl` | `idle_outline_color`, `segmented_idle_fill`, `segmented_idle_text`, `r_sm`, `r_pill` |
 | `widgets/foundation/shell.rs ButtonShell` | `r_sm/md/lg`, `stroke_bold/thin`, `hover_bg_alpha`, `active_bg_alpha`, `button_treatment`, `tab_underline_thickness` |
 | `widgets/foundation/tokens.rs Radius` | `r_xs/sm/md/lg/pill` |
+| `widgets/frames.rs PopupFrame` | `shadow_offset_y`, `shadow_blur`, `shadow_alpha`, `shadows_enabled` |
 | `widgets/foundation/tokens.rs Size` | `button_height_px`, `row_height_px`, `tab_height`, `density` |
 
 ---

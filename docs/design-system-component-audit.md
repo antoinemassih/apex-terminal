@@ -1,5 +1,5 @@
 # Design System Component Audit
-**Date:** 2026-04-30 (refreshed post-R1/R2)
+**Date:** 2026-05-02 (refreshed post-R3)
 **Scope:** `src-tauri/src/chart_renderer/ui/widgets/`, `components/`, `components_extra/`
 **Auditor:** Claude Sonnet 4.6 (read-only, no source edits)
 
@@ -21,7 +21,9 @@
 
 **Overall widget library tier: 3.5 / 5** (post-R1/R2, up from ~2.5 pre-refactor)
 
-R1/R2 added: `FilterPill`, `SectionHeader`, `NmfToggle` (watchlist/), `ColorSwatchPicker`, `ThicknessPicker` (widgets/inputs.rs), `IndicatorParamRow`, `IndicatorParamRowF` (widgets/form.rs), `AccountStrip` (widgets/pane.rs). All new widgets are Tier 4+. The four Foundation shells (`ButtonShell`, `RowShell`, `CardShell`, `InputShell`) remain at Tier 5. The main remaining pathologies are in `WatchlistRow`/`DomRow` painter bodies (Tier 2) and the legacy button builders (Tier 3), plus `PopupFrame`'s hardcoded shadow.
+R1/R2 added: `FilterPill`, `SectionHeader`, `NmfToggle` (watchlist/), `ColorSwatchPicker`, `ThicknessPicker` (widgets/inputs.rs), `IndicatorParamRow`, `IndicatorParamRowF` (widgets/form.rs), `AccountStrip` (widgets/pane.rs). All new widgets are Tier 4+. The four Foundation shells (`ButtonShell`, `RowShell`, `CardShell`, `InputShell`) remain at Tier 5.
+
+R3 added: `TopNav` (widgets/toolbar/top_nav.rs — extracted from gpu.rs; ~1664 lines removed), `ApertureOrderTicket` (widgets/form.rs — ~270 lines removed), `FloatingOrderPaneChrome` (widgets/pane.rs — ~80 lines removed). `PopupFrame` upgraded from Tier 2 to Tier 4 (shadow now reads `st.shadow_offset_y/blur/alpha`). The main remaining pathologies are in `WatchlistRow`/`DomRow` painter bodies (Tier 2) and the legacy button builders (Tier 3).
 
 ---
 
@@ -103,7 +105,7 @@ R1/R2 added: `FilterPill`, `SectionHeader`, `NmfToggle` (watchlist/), `ColorSwat
 |-------|------|-------|
 | `PanelFrame`, `CardFrame`, `DialogFrame`, `SidePanelFrame`, `CompactPanelFrame` | **5** | All gaps, radii, strokes, shadows via tokens |
 | `TooltipFrame` | 4 | `dt_f32!(tooltip.*)` knobs — correct |
-| `PopupFrame` | **2** | **CRITICAL BUG:** shadow `offset: [0, 8]`, `blur: 24`, `spread: 1`, `alpha: 40` all hardcoded — ignores `st.shadow_*` knobs. Every other frame uses style knobs |
+| `PopupFrame` | **4** | Shadow now reads `st.shadow_offset_y`, `st.shadow_blur`, `st.shadow_alpha` (fixed R3). One minor remaining literal: `spread: 1` (non-theme-sensitive). |
 
 ---
 
@@ -172,6 +174,7 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 | `MeridienOrderTicket` | 4 | Routed through `cta_btn`, `action_btn`, `simple_btn` — all token-using |
 | **`IndicatorParamRow`** (R1/R2) | **5** | New widget; fully tokenized |
 | **`IndicatorParamRowF`** (R1/R2) | **5** | New widget; fully tokenized |
+| **`ApertureOrderTicket`** (R3) | 4 | New widget; Aperture/Octave order entry (~270 lines from gpu.rs). `SegmentedControl`, `NumericInput`, `Stepper`, `trade_btn`. One RTH amber literal pending `COLOR_AMBER` cleanup. |
 
 ---
 
@@ -185,6 +188,14 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 
 ---
 
+### `widgets/toolbar/top_nav.rs`
+
+| Widget | Tier | Notes |
+|--------|------|-------|
+| **`TopNav`** (R3) | 3 | Extracted from gpu.rs (~1664 lines). Nav buttons, workspace picker, layout picker, symbol search, Paper-Live toggle, connection indicator. Delegates to `ToolbarBtn`, `SegmentedControl`, `SearchInput`, `AccountStrip`, `ConnectionIndicator`. Remaining hardcodes: toolbar frame margins and some inline `Color32` for toolbar accents — R4 targets. |
+
+---
+
 ### `widgets/pane.rs`
 
 | Widget | Tier | Notes |
@@ -192,6 +203,7 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 | `PaneFrame` | 4 | `pane_active_indicator`, `pane_border_width` — correct |
 | `PaneSymbolBadge` | 4 | Uses `PillButton` internally |
 | **`AccountStrip`** (R1/R2) | **5** | New widget; `account_strip_height`, `font_body/caption`, `TextStyle` |
+| **`FloatingOrderPaneChrome`** (R3) | 4 | New widget (~80 lines from gpu.rs). Header chrome for floating order window: armed toggle, title, expand/collapse, X close. Uses `icon_btn`, `dialog_window_themed`. One inline stroke literal remaining. |
 
 ---
 
@@ -248,7 +260,7 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 | Buttons | `ButtonShell` | 3 | `ChromeBtn` (2), `IconBtn` (3) |
 | Pills/Chips | `ChipShell` | 3.5 | `RemovableChip` (3), `KeybindChip` (3) |
 | Text | `BodyLabel` | 4.5 | `SectionLabel` non-Sm (3) |
-| Frames | `CardFrame` | 4.5 | `PopupFrame` (2) |
+| Frames | `CardFrame` | 4.8 | `TooltipFrame` (4) |
 | Headers | `PanelHeaderWithClose` | 3 | `PanelHeader` (2), `DialogHeader` (3) |
 | Tabs | `TabBar` | 3 | Shared height literals |
 | Rows | `RowShell` | 2.5 | `WatchlistRow`/`DomRow` painter bodies (2) |
@@ -267,7 +279,7 @@ All card files (`MetricCard`, `SignalCard`, `EarningsCard`, `EventCard`, `NewsCa
 
 | # | Priority | Widget(s) | Issue | Fix |
 |---|----------|-----------|-------|-----|
-| 1 | Critical | `PopupFrame` | Shadow fully hardcoded — ignores `st.shadow_*` knobs | Replace literals with `st.shadow_offset_y/blur/alpha` |
+| 1 | ~~Critical~~ **DONE (R3)** | `PopupFrame` | Shadow was fully hardcoded | Fixed: now reads `st.shadow_offset_y/blur/alpha`. Tier 2 → 4. |
 | 2 | High | `TradeBtn`, `SimpleBtn`, `SmallActionBtn`, `ActionBtn` | All underline strokes literal `1.0` | `Stroke::new(current().stroke_bold, ...)` |
 | 3 | High | `TradeBtn`, `SimpleBtn`, `SmallActionBtn`, `ActionBtn` | Outline strokes literal `1.5` | `stroke_bold()` |
 | 4 | High | `WatchlistRow`, `NewsRow` | `ALPHA_*` constants not `alpha_*()` functions | Replace all uppercase constant uses with function calls |
