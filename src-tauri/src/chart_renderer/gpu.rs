@@ -1,4 +1,4 @@
-//! Native GPU chart renderer — winit (any_thread) + egui for all rendering.
+﻿//! Native GPU chart renderer — winit (any_thread) + egui for all rendering.
 //! egui handles UI + chart painting. winit handles window on non-main thread.
 
 use std::sync::{mpsc, Arc, Mutex};
@@ -3719,7 +3719,7 @@ fn render_toolbar(
         // Bottom border line
         ui.painter().line_segment(
             [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
-            egui::Stroke::new(1.0, t.toolbar_border),
+            egui::Stroke::new(STROKE_STD, t.toolbar_border),
         );
 
         // Paper mode indicator — green line below toolbar
@@ -3728,7 +3728,7 @@ fn render_toolbar(
             ui.painter().line_segment(
                 [egui::pos2(tb_rect.left(), paper_line_y),
                  egui::pos2(tb_rect.right(), paper_line_y)],
-                egui::Stroke::new(4.0, egui::Color32::from_rgb(46, 204, 113)));
+                egui::Stroke::new(4.0, t.bull));
         }
 
         ui.horizontal_centered(|ui| {
@@ -3741,8 +3741,8 @@ fn render_toolbar(
             lp.add(egui::Shape::line(vec![
                 egui::pos2(lc.x, lc.y - 6.0), egui::pos2(lc.x + 6.0, lc.y + 5.0),
                 egui::pos2(lc.x - 6.0, lc.y + 5.0), egui::pos2(lc.x, lc.y - 6.0),
-            ], egui::Stroke::new(1.3, t.accent)));
-            lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(1.3, t.accent));
+            ], egui::Stroke::new(STROKE_STD, t.accent)));
+            lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(STROKE_STD, t.accent));
 
             ui.add_space(4.0);
             ui.spacing_mut().item_spacing.x = 3.0;
@@ -3774,14 +3774,15 @@ fn render_toolbar(
             // ── Paper / Live — colored text, no background fill ──
             {
                 let paper = super::trading::order_manager::is_paper_mode();
+                const PAPER_ORANGE: egui::Color32 = rgb(255, 165, 0);
                 let (label, color) = if paper {
-                    ("PAPER", egui::Color32::from_rgb(255, 165, 0)) // orange
+                    ("PAPER", PAPER_ORANGE)
                 } else {
                     ("LIVE", t.dim)
                 };
                 let tip = if paper { "Switch to Live" } else { "Switch to Paper" };
                 let resp = ui.add(crate::chart_renderer::ui::widgets::buttons::ChromeBtn::new(
-                    egui::RichText::new(label).monospace().size(11.0).strong().color(color))
+                    egui::RichText::new(label).monospace().size(FONT_MD).strong().color(color))
                     .frameless(true));
                 // pointing-hand cursor already set by ChromeBtn on hover
                 if resp.on_hover_text(tip).clicked() {
@@ -3832,10 +3833,10 @@ fn render_toolbar(
             ui.add_space(4.0);
             // ── Range dropdown (sets interval + visible bars) ──
             {
-                let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(12.0).strong().color(t.dim), |ui| {
+                let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                    ui.label(egui::RichText::new("RANGE").monospace().size(8.0).color(t.dim.gamma_multiply(0.4)));
+                    ui.label(egui::RichText::new("RANGE").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
                     let presets: &[(&str, &str, u32)] = &[
                         ("1 Day",    "5m",  78),
                         ("2 Days",   "5m",  156),
@@ -3847,7 +3848,7 @@ fn render_toolbar(
                         ("1 Year",   "1d",  252),
                     ];
                     for &(label, tf, preset_vc) in presets {
-                        if ui.selectable_label(false, egui::RichText::new(label).monospace().size(9.0)).clicked() {
+                        if ui.selectable_label(false, egui::RichText::new(label).monospace().size(FONT_SM)).clicked() {
                             panes[ap].pending_timeframe_change = Some(tf.to_string());
                             panes[ap].vc = preset_vc;
                             panes[ap].vc_target = preset_vc;
@@ -3876,7 +3877,7 @@ fn render_toolbar(
                 let has_tool = !panes[ap].draw_tool.is_empty();
                 let cur_tool = panes[ap].draw_tool.clone();
                 let mut new_tool: Option<String> = None;
-                ui.menu_button(egui::RichText::new(draw_label).monospace().size(11.0).color(if has_tool { t.accent } else { t.dim }), |ui| {
+                ui.menu_button(egui::RichText::new(draw_label).monospace().size(FONT_MD).color(if has_tool { t.accent } else { t.dim }), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     let cur = cur_tool.as_str();
@@ -3898,14 +3899,14 @@ fn render_toolbar(
                     };
                     for (si, (section, tools)) in sections.iter().enumerate() {
                         if si > 0 { ui.separator(); }
-                        ui.label(egui::RichText::new(*section).monospace().size(8.0).color(t.dim));
+                        ui.label(egui::RichText::new(*section).monospace().size(FONT_SM).color(t.dim));
                         for (tool, label) in *tools {
                             let shortcut = tool_shortcut(tool);
                             let resp = ui.horizontal(|ui| {
-                                let r = ui.selectable_label(cur == *tool, egui::RichText::new(*label).monospace().size(9.0));
+                                let r = ui.selectable_label(cur == *tool, egui::RichText::new(*label).monospace().size(FONT_SM));
                                 if let Some(ref key) = shortcut {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(egui::RichText::new(key).monospace().size(9.0).color(t.dim.gamma_multiply(0.7)));
+                                        ui.label(egui::RichText::new(key).monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.7)));
                                     });
                                 }
                                 r
@@ -3917,7 +3918,7 @@ fn render_toolbar(
                     }
                     if !cur.is_empty() {
                         ui.separator();
-                        if ui.selectable_label(false, egui::RichText::new("Cancel Tool").monospace().size(9.0).color(egui::Color32::from_rgb(224,85,96))).clicked() {
+                        if ui.selectable_label(false, egui::RichText::new("Cancel Tool").monospace().size(FONT_SM).color(t.bear)).clicked() {
                             new_tool = Some(String::new());
                         }
                     }
@@ -3963,7 +3964,7 @@ fn render_toolbar(
                 CandleMode::Renko => "RNK", CandleMode::RangeBar => "RNG", CandleMode::TickBar => "TCK",
             };
             let prev_candle_mode = panes[ap].candle_mode;
-            ui.menu_button(egui::RichText::new(cm_label).monospace().size(12.0).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new(cm_label).monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 for (mode, label) in [
@@ -3975,13 +3976,13 @@ fn render_toolbar(
                     (CandleMode::TickBar, "Tick Bars"),
                 ] {
                     let active = panes[ap].candle_mode == mode;
-                    if ui.selectable_label(active, egui::RichText::new(format!("{} {}", check(active), label)).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(active, egui::RichText::new(format!("{} {}", check(active), label)).monospace().size(FONT_SM)).clicked() {
                         panes[ap].candle_mode = mode;
                     }
                 }
                 ui.separator();
                 let log = panes[ap].log_scale;
-                if ui.selectable_label(log, egui::RichText::new(format!("{} Log Scale", check(log))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(log, egui::RichText::new(format!("{} Log Scale", check(log))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !log;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.log_scale = nv; } } else { panes[ap].log_scale = nv; }
                 }
@@ -3996,7 +3997,7 @@ fn render_toolbar(
                 CandleMode::Renko => {
                     let is_auto = panes[ap].renko_brick_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(9.0).color(if is_auto { t.accent } else { t.dim }))
+                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(FONT_SM).color(if is_auto { t.accent } else { t.dim }))
                         .frame(false).min_size(egui::vec2(32.0, 16.0))).clicked() {
                         if is_auto {
                             panes[ap].renko_brick_size = Chart::auto_brick_size(&panes[ap].bars, 0.5);
@@ -4019,7 +4020,7 @@ fn render_toolbar(
                 CandleMode::RangeBar => {
                     let is_auto = panes[ap].range_bar_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(9.0).color(if is_auto { t.accent } else { t.dim }))
+                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(FONT_SM).color(if is_auto { t.accent } else { t.dim }))
                         .frame(false).min_size(egui::vec2(32.0, 16.0))).clicked() {
                         if is_auto {
                             panes[ap].range_bar_size = Chart::auto_brick_size(&panes[ap].bars, 1.0);
@@ -4052,7 +4053,7 @@ fn render_toolbar(
             }
 
             // Moving Averages dropdown (always creates new instance — supports multiple)
-            ui.menu_button(egui::RichText::new("MAs").monospace().size(12.0).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("MAs").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
@@ -4069,7 +4070,7 @@ fn render_toolbar(
                         ui.horizontal(|ui| {
                             ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, c);
                             ui.add_space(10.0);
-                            if ui.selectable_label(*evis, egui::RichText::new(label_text.trim()).monospace().size(9.0)).clicked() {
+                            if ui.selectable_label(*evis, egui::RichText::new(label_text.trim()).monospace().size(FONT_SM)).clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 let nv = !*evis;
                                 if shift || watchlist.broadcast_mode {
@@ -4080,11 +4081,11 @@ fn render_toolbar(
                                     if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
                                 }
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::PENCIL_LINE).size(9.0).color(t.dim.gamma_multiply(0.5)))
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::PENCIL_LINE).size(FONT_SM).color(t.dim.gamma_multiply(0.5)))
                                 .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
                                 panes[ap].editing_indicator = Some(*eid);
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.bear.gamma_multiply(0.5)))
+                            if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(FONT_SM).color(t.bear.gamma_multiply(0.5)))
                                 .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 if shift || watchlist.broadcast_mode {
@@ -4103,7 +4104,7 @@ fn render_toolbar(
                 }
                 // Add new MA instance
                 for (itype, label) in ma_types {
-                    if ui.selectable_label(false, egui::RichText::new(format!("{} + {}", Icon::PLUS, label)).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(false, egui::RichText::new(format!("{} + {}", Icon::PLUS, label)).monospace().size(FONT_SM)).clicked() {
                         let shift = ui.input(|i| i.modifiers.shift);
                         if shift || watchlist.broadcast_mode {
                             for p in panes.iter_mut() {
@@ -4124,7 +4125,7 @@ fn render_toolbar(
                 }
                 ui.separator();
                 let ribbon_active = panes[ap].show_ma_ribbon;
-                if ui.selectable_label(ribbon_active, egui::RichText::new(format!("{} MA Ribbon (8-89)", check(ribbon_active))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(ribbon_active, egui::RichText::new(format!("{} MA Ribbon (8-89)", check(ribbon_active))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !ribbon_active;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_ma_ribbon = nv; } } else { panes[ap].show_ma_ribbon = nv; }
@@ -4132,7 +4133,7 @@ fn render_toolbar(
             });
 
             // Oscillators dropdown (multi-select)
-            ui.menu_button(egui::RichText::new("Osc").monospace().size(12.0).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Osc").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let osc_types = [(IndicatorType::RSI, "RSI"), (IndicatorType::MACD, "MACD"),
@@ -4140,7 +4141,7 @@ fn render_toolbar(
                     (IndicatorType::WilliamsR, "Williams %R"), (IndicatorType::ADX, "ADX"), (IndicatorType::ATR, "ATR")];
                 for (itype, label) in osc_types {
                     let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
-                    if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(FONT_SM)).clicked() {
                         let shift = ui.input(|i| i.modifiers.shift);
                         if shift || watchlist.broadcast_mode {
                             for p in panes.iter_mut() {
@@ -4174,7 +4175,7 @@ fn render_toolbar(
                 }
                 ui.separator();
                 let cvd = panes[ap].show_cvd;
-                if ui.selectable_label(cvd, egui::RichText::new(format!("{} CVD", check(cvd))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(cvd, egui::RichText::new(format!("{} CVD", check(cvd))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !cvd;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_cvd = nv; } } else { panes[ap].show_cvd = nv; }
@@ -4186,36 +4187,36 @@ fn render_toolbar(
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let vol = panes[ap].show_volume;
-                if ui.selectable_label(vol, egui::RichText::new(format!("{} Volume Bars", check(vol))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(vol, egui::RichText::new(format!("{} Volume Bars", check(vol))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !vol;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_volume = nv; } } else { panes[ap].show_volume = nv; }
                 }
                 let dvol = panes[ap].show_delta_volume;
-                if ui.selectable_label(dvol, egui::RichText::new(format!("{} Delta Volume", check(dvol))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(dvol, egui::RichText::new(format!("{} Delta Volume", check(dvol))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !dvol;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_delta_volume = nv; } } else { panes[ap].show_delta_volume = nv; }
                 }
                 let rvol = panes[ap].show_rvol;
-                if ui.selectable_label(rvol, egui::RichText::new(format!("{} Relative Volume", check(rvol))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(rvol, egui::RichText::new(format!("{} Relative Volume", check(rvol))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !rvol;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_rvol = nv; } } else { panes[ap].show_rvol = nv; }
                 }
                 ui.separator();
-                ui.label(egui::RichText::new("Volume Profile").monospace().size(9.0).color(t.dim));
+                ui.label(egui::RichText::new("Volume Profile").monospace().size(FONT_SM).color(t.dim));
                 for (mode, label) in [
                     (VolumeProfileMode::Off, "Off"), (VolumeProfileMode::Classic, "Classic"),
                     (VolumeProfileMode::Heatmap, "Heatmap"), (VolumeProfileMode::Strip, "Strip"),
                     (VolumeProfileMode::Clean, "Clean (POC/VA)"),
                 ] {
                     let active = panes[ap].vp_mode == mode;
-                    if ui.selectable_label(active, egui::RichText::new(format!("{} {}", check(active), label)).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(active, egui::RichText::new(format!("{} {}", check(active), label)).monospace().size(FONT_SM)).clicked() {
                         panes[ap].vp_mode = mode; panes[ap].vp_data = None;
                     }
                 }
             });
 
             // Overlays dropdown — two-layer with categories
-            ui.menu_button(egui::RichText::new("Overlay").monospace().size(12.0).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Overlay").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(150.0);
@@ -4232,7 +4233,7 @@ fn render_toolbar(
                     ];
                     for (itype, label) in overlay_types {
                         let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
-                        if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(9.0)).clicked() {
+                        if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(FONT_SM)).clicked() {
                             if has {
                                 if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
                             } else {
@@ -4248,11 +4249,11 @@ fn render_toolbar(
                     }
                     ui.separator();
                     let vwap = panes[ap].show_vwap_bands;
-                    if ui.selectable_label(vwap, egui::RichText::new(format!("{} VWAP + Bands", check(vwap))).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(vwap, egui::RichText::new(format!("{} VWAP + Bands", check(vwap))).monospace().size(FONT_SM)).clicked() {
                         panes[ap].show_vwap_bands = !panes[ap].show_vwap_bands;
                     }
                     let sr = panes[ap].show_auto_sr;
-                    if ui.selectable_label(sr, egui::RichText::new(format!("{} Auto S/R Levels", check(sr))).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(sr, egui::RichText::new(format!("{} Auto S/R Levels", check(sr))).monospace().size(FONT_SM)).clicked() {
                         panes[ap].show_auto_sr = !panes[ap].show_auto_sr;
                     }
                 });
@@ -4263,7 +4264,7 @@ fn render_toolbar(
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
                             let v = panes[ap].$field;
-                            if ui.selectable_label(v, egui::RichText::new(format!("{} {}", check(v), $label)).monospace().size(9.0)).clicked() {
+                            if ui.selectable_label(v, egui::RichText::new(format!("{} {}", check(v), $label)).monospace().size(FONT_SM)).clicked() {
                                 panes[ap].$field = !v;
                             }
                         }
@@ -4278,7 +4279,7 @@ fn render_toolbar(
                     overlay_toggle!(show_insider_trades, "Insider Trades");
                     ui.separator();
                     let gamma = panes[ap].show_gamma;
-                    if ui.selectable_label(gamma, egui::RichText::new(format!("{} Gamma Levels (GEX)", check(gamma))).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(gamma, egui::RichText::new(format!("{} Gamma Levels (GEX)", check(gamma))).monospace().size(FONT_SM)).clicked() {
                         panes[ap].show_gamma = !panes[ap].show_gamma;
                         if panes[ap].show_gamma && panes[ap].gamma_levels.is_empty() {
                             if let Some(last_bar) = panes[ap].bars.last() {
@@ -4312,7 +4313,7 @@ fn render_toolbar(
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
                             let v = panes[ap].$field;
-                            if ui.selectable_label(v, egui::RichText::new(format!("{} {}", check(v), $label)).monospace().size(9.0)).clicked() {
+                            if ui.selectable_label(v, egui::RichText::new(format!("{} {}", check(v), $label)).monospace().size(FONT_SM)).clicked() {
                                 panes[ap].$field = !v;
                             }
                         }
@@ -4328,7 +4329,7 @@ fn render_toolbar(
                 ui.menu_button(egui::RichText::new("\u{1F4CA} Data").monospace().size(FONT_SM).color(t.dim), |ui| {
                     ui.set_min_width(200.0);
                     let events = panes[ap].show_events;
-                    if ui.selectable_label(events, egui::RichText::new(format!("{} Event Markers", check(events))).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(events, egui::RichText::new(format!("{} Event Markers", check(events))).monospace().size(FONT_SM)).clicked() {
                         panes[ap].show_events = !panes[ap].show_events;
                         if panes[ap].show_events && panes[ap].event_markers.is_empty() && !panes[ap].timestamps.is_empty() {
                             let ts = &panes[ap].timestamps;
@@ -4344,7 +4345,7 @@ fn render_toolbar(
                         }
                     }
                     let dp = panes[ap].show_darkpool;
-                    if ui.selectable_label(dp, egui::RichText::new(format!("{} Dark Pool Prints", check(dp))).monospace().size(9.0)).clicked() {
+                    if ui.selectable_label(dp, egui::RichText::new(format!("{} Dark Pool Prints", check(dp))).monospace().size(FONT_SM)).clicked() {
                         panes[ap].show_darkpool = !panes[ap].show_darkpool;
                         if panes[ap].show_darkpool && panes[ap].darkpool_prints.is_empty() {
                             if let Some(last_bar) = panes[ap].bars.last() {
@@ -4366,7 +4367,7 @@ fn render_toolbar(
 
                 ui.separator();
                 // Symbol overlays
-                ui.label(egui::RichText::new("SYMBOL OVERLAY").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("SYMBOL OVERLAY").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                 let mut remove_idx: Option<usize> = None;
                 let mut edit_idx: Option<usize> = None;
                 for (oi, ov) in panes[ap].symbol_overlays.iter().enumerate() {
@@ -4374,9 +4375,9 @@ fn render_toolbar(
                         let oc = hex_to_color(&ov.color, 1.0);
                         ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, oc);
                         ui.add_space(10.0);
-                        let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(9.0).color(oc));
+                        let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(FONT_SM).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(9.0).color(t.bear.gamma_multiply(0.5)))
+                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(FONT_SM).color(t.bear.gamma_multiply(0.5)))
                             .frame(false).min_size(egui::vec2(16.0, 16.0))).clicked() {
                             remove_idx = Some(oi);
                         }
@@ -4388,52 +4389,52 @@ fn render_toolbar(
                     panes[ap].overlay_editing_idx = Some(ei);
                     panes[ap].overlay_input = panes[ap].symbol_overlays[ei].symbol.clone();
                 }
-                if ui.selectable_label(false, egui::RichText::new(format!("{} Add Symbol Overlay", Icon::PLUS)).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(false, egui::RichText::new(format!("{} Add Symbol Overlay", Icon::PLUS)).monospace().size(FONT_SM)).clicked() {
                     watchlist.pending_overlay_add = true;
                 }
             });
 
             // Tools dropdown — display tools and cursor enhancements
-            ui.menu_button(egui::RichText::new("Tools").monospace().size(12.0).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Tools").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
-                ui.label(egui::RichText::new("DISPLAY").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("DISPLAY").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                 let ohlc = panes[ap].ohlc_tooltip;
-                if ui.selectable_label(ohlc, egui::RichText::new(format!("{} OHLC Tooltip", check(ohlc))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(ohlc, egui::RichText::new(format!("{} OHLC Tooltip", check(ohlc))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !ohlc;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.ohlc_tooltip = nv; } } else { panes[ap].ohlc_tooltip = nv; }
                 }
                 let mt = panes[ap].measure_tooltip;
-                if ui.selectable_label(mt, egui::RichText::new(format!("{} Measure Tooltip", check(mt))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(mt, egui::RichText::new(format!("{} Measure Tooltip", check(mt))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !mt;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.measure_tooltip = nv; } } else { panes[ap].measure_tooltip = nv; }
                 }
                 let pc = panes[ap].show_prev_close;
-                if ui.selectable_label(pc, egui::RichText::new(format!("{} Prev Close / Open", check(pc))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(pc, egui::RichText::new(format!("{} Prev Close / Open", check(pc))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !pc;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_prev_close = nv; } } else { panes[ap].show_prev_close = nv; }
                 }
                 let pl = panes[ap].show_pattern_labels;
-                if ui.selectable_label(pl, egui::RichText::new(format!("{} Pattern Labels", check(pl))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(pl, egui::RichText::new(format!("{} Pattern Labels", check(pl))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !pl;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_pattern_labels = nv; } } else { panes[ap].show_pattern_labels = nv; }
                 }
                 let pnl = panes[ap].show_pnl_curve;
-                if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(9.0)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
+                if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(FONT_SM)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
 
                 ui.separator();
-                ui.label(egui::RichText::new("CURSOR").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("CURSOR").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                 let fp = panes[ap].show_footprint;
-                if ui.selectable_label(fp, egui::RichText::new(format!("{} Footprint (hover)", check(fp))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(fp, egui::RichText::new(format!("{} Footprint (hover)", check(fp))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !fp;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_footprint = nv; } } else { panes[ap].show_footprint = nv; }
                 }
 
                 ui.separator();
-                ui.label(egui::RichText::new("REPLAY").monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("REPLAY").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                 let rpl = panes[ap].replay_mode;
-                if ui.selectable_label(rpl, egui::RichText::new(format!("{} Bar Replay", check(rpl))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(rpl, egui::RichText::new(format!("{} Bar Replay", check(rpl))).monospace().size(FONT_SM)).clicked() {
                     panes[ap].replay_mode = !panes[ap].replay_mode;
                     if panes[ap].replay_mode {
                         panes[ap].replay_bar_count = panes[ap].bars.len().min(50);
@@ -4450,24 +4451,24 @@ fn render_toolbar(
             }
 
             // ── Suites dropdown (advanced analysis tools) ──
-            ui.menu_button(egui::RichText::new("Suites").monospace().size(12.0).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Suites").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let sl_mode = panes[ap].swing_leg_mode;
                 let sl_active = sl_mode > 0;
                 let sl_suffix = match sl_mode { 1 => " (Vertical)", 2 => " (Diagonal)", _ => "" };
-                if ui.selectable_label(sl_active, egui::RichText::new(format!("{} SwingRange{}", check(sl_active), sl_suffix)).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(sl_active, egui::RichText::new(format!("{} SwingRange{}", check(sl_active), sl_suffix)).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = (sl_mode + 1) % 3;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.swing_leg_mode = nv; } } else { panes[ap].swing_leg_mode = nv; }
                 }
                 let afib = panes[ap].show_auto_fib;
-                if ui.selectable_label(afib, egui::RichText::new(format!("{} Auto Fibonacci", check(afib))).monospace().size(9.0)).clicked() {
+                if ui.selectable_label(afib, egui::RichText::new(format!("{} Auto Fibonacci", check(afib))).monospace().size(FONT_SM)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !afib;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_auto_fib = nv; } } else { panes[ap].show_auto_fib = nv; }
                 }
                 ui.separator();
-                ui.selectable_label(false, egui::RichText::new("  Triangulator").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
-                ui.selectable_label(false, egui::RichText::new("  Auto Target").monospace().size(9.0).color(t.dim.gamma_multiply(0.4)));
+                ui.selectable_label(false, egui::RichText::new("  Triangulator").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
+                ui.selectable_label(false, egui::RichText::new("  Auto Target").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
             });
 
             // ⚡ Hit Highlight icon toggle
@@ -4478,7 +4479,7 @@ fn render_toolbar(
             }
 
             // ── Widgets dropdown — two-layer categorized picker with mini previews ──
-            ui.menu_button(egui::RichText::new("Widgets").monospace().size(12.0).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Widgets").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(160.0);
@@ -4706,7 +4707,7 @@ fn render_toolbar(
                 let style_name_cur = style_presets.get(safe_si).map(|(_, n)| n.as_str()).unwrap_or("Meridien");
                 let mut si = safe_si;
                 let combined = format!("{}/{}", get_theme(ti).name, style_name_cur);
-                let current_label = egui::RichText::new(combined).monospace().size(12.0).strong().color(t.dim);
+                let current_label = egui::RichText::new(combined).monospace().size(FONT_MD).strong().color(t.dim);
                 ui.menu_button(current_label, |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
@@ -4714,7 +4715,7 @@ fn render_toolbar(
                         // ── THEME column ──
                         ui.vertical(|ui| {
                             ui.set_min_width(160.0);
-                            ui.label(egui::RichText::new("THEME").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new("THEME").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                             for (i, th) in THEMES.iter().enumerate() {
                                 let sel = i == ti;
                                 let row = ui.horizontal(|ui| {
@@ -4725,7 +4726,7 @@ fn render_toolbar(
                                     let text_col = if sel { th.accent } else { t.dim };
                                     let check = if sel { "\u{2713} " } else { "  " };
                                     ui.selectable_label(sel, egui::RichText::new(format!("{}{}", check, th.name))
-                                        .monospace().size(11.0).color(text_col))
+                                        .monospace().size(FONT_MD).color(text_col))
                                 });
                                 if row.inner.clicked() { ti = i; }
                             }
@@ -4735,14 +4736,14 @@ fn render_toolbar(
                         // ── STYLE column — populated from live preset list ──
                         ui.vertical(|ui| {
                             ui.set_min_width(120.0);
-                            ui.label(egui::RichText::new("STYLE").monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new("STYLE").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                             for (id, name) in &style_presets {
                                 let sel = *id as usize == si;
                                 let text_col = if sel { t.accent } else { t.dim };
                                 let check = if sel { "\u{2713} " } else { "  " };
                                 let r = ui.selectable_label(sel,
                                     egui::RichText::new(format!("{}{}", check, name))
-                                        .monospace().size(11.0).color(text_col));
+                                        .monospace().size(FONT_MD).color(text_col));
                                 if r.clicked() { si = *id as usize; }
                             }
                         });
@@ -4762,7 +4763,7 @@ fn render_toolbar(
                 let win_btn = |ui: &mut egui::Ui, danger: bool| -> (egui::Response, egui::Rect) {
                     let (r, resp) = ui.allocate_exact_size(egui::vec2(32.0, 24.0), egui::Sense::click());
                     if resp.hovered() {
-                        let bg = if danger { rgb(224, 85, 96) } else { color_alpha(t.toolbar_border, 80) };
+                        let bg = if danger { t.bear } else { color_alpha(t.toolbar_border, 80) };
                         ui.painter().rect_filled(r, 0.0, bg);
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
@@ -4776,8 +4777,8 @@ fn render_toolbar(
                     let c = r.center();
                     let s = 4.5;
                     let col = if resp.hovered() { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
-                    ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(1.0, col));
-                    ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(1.0, col));
+                    ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(STROKE_STD, col));
+                    ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(STROKE_STD, col));
                     if resp.clicked() {
                         save_state(panes, *layout, watchlist);
                         watchlist.persist();
@@ -4794,10 +4795,10 @@ fn render_toolbar(
                     if is_max {
                         // Restore icon: two overlapping squares
                         let o = 1.5;
-                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + o, c.y - s), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(1.0, col), egui::StrokeKind::Outside);
-                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s, c.y - s + o), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(1.0, col), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + o, c.y - s), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(STROKE_STD, col), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s, c.y - s + o), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(STROKE_STD, col), egui::StrokeKind::Outside);
                     } else {
-                        ui.painter().rect_stroke(egui::Rect::from_center_size(c, egui::vec2(s * 2.0, s * 2.0)), 0.5, egui::Stroke::new(1.0, col), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(egui::Rect::from_center_size(c, egui::vec2(s * 2.0, s * 2.0)), 0.5, egui::Stroke::new(STROKE_STD, col), egui::StrokeKind::Outside);
                     }
                     if resp.clicked() {
                         if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
@@ -4809,7 +4810,7 @@ fn render_toolbar(
                     let c = r.center();
                     let s = 5.0;
                     let col = if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.7) };
-                    ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(1.0, col));
+                    ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(STROKE_STD, col));
                     if resp.clicked() {
                         if let Some(w) = &win_ref { w.set_minimized(true); }
                     }
@@ -4827,9 +4828,9 @@ fn render_toolbar(
                     let connected = account_data_cached.as_ref().map_or(false, |(s, _, _)| s.connected);
                     let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                     let dot_color = if connected {
-                        egui::Color32::from_rgb(46, 204, 113)
+                        t.bull
                     } else {
-                        egui::Color32::from_rgb(230, 160, 40)
+                        rgb(230, 160, 40)
                     };
                     ui.painter().circle_filled(rect.center(), 3.0, dot_color);
                     if resp.hovered() {
@@ -4892,9 +4893,9 @@ fn render_toolbar(
                     if active_count > 0 {
                         let badge_x = signals_resp.rect.right() - 3.0;
                         let badge_y = signals_resp.rect.top() + 5.0;
-                        ui.painter().circle_filled(egui::pos2(badge_x, badge_y), 5.0, egui::Color32::from_rgb(255, 191, 0));
+                        ui.painter().circle_filled(egui::pos2(badge_x, badge_y), 5.0, t.accent);
                         ui.painter().text(egui::pos2(badge_x, badge_y), egui::Align2::CENTER_CENTER,
-                            &format!("{}", active_count), egui::FontId::monospace(7.0), egui::Color32::BLACK);
+                            &format!("{}", active_count), egui::FontId::monospace(7.0), t.bg);
                     }
                     if signals_resp.clicked() { watchlist.signals_panel_open = !watchlist.signals_panel_open; }
                 }
@@ -4924,7 +4925,6 @@ fn render_toolbar(
     });
     } // end if toolbar_visible
 
-    // ── Account summary strip (below toolbar) ──
     if watchlist.account_strip_open {
         let account_data = account_data_cached.clone();
         egui::TopBottomPanel::top("account_strip")
