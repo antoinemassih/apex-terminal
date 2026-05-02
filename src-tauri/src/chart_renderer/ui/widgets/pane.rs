@@ -696,3 +696,153 @@ impl Widget for PaneDivider {
         }
     }
 }
+
+// ─── AccountStrip ─────────────────────────────────────────────────────────────
+
+/// Top-panel account summary strip.
+///
+/// Renders connection state, NAV (hero), Daily P&L (hero, colored), Buying
+/// Power, Unrealized P&L, Margin, Excess Liquidity, Realized P&L, and two
+/// emergency action buttons (CANCEL ALL / FLATTEN).
+///
+/// The `TopBottomPanel` frame is owned by the caller (gpu.rs) so that the
+/// exact height token from `style::current().account_strip_height` is applied
+/// at the panel boundary. This widget is called from inside the panel closure.
+///
+/// ```ignore
+/// AccountStrip::new()
+///     .account_data(account_data_cached.as_ref().map(|(a,_,_)| a))
+///     .broker_url(APEXIB_URL)
+///     .theme(&t)
+///     .show(ui, || { /* cancel_all */ }, || { /* flatten */ });
+/// ```
+pub struct AccountStrip<'a> {
+    account_data: Option<&'a crate::chart_renderer::trading::AccountSummary>,
+    broker_url:   &'a str,
+    theme:        Option<&'a super::super::super::gpu::Theme>,
+}
+
+impl<'a> AccountStrip<'a> {
+    pub fn new() -> Self {
+        Self { account_data: None, broker_url: "", theme: None }
+    }
+
+    pub fn account_data(mut self, d: Option<&'a crate::chart_renderer::trading::AccountSummary>) -> Self {
+        self.account_data = d; self
+    }
+
+    pub fn broker_url(mut self, u: &'a str) -> Self {
+        self.broker_url = u; self
+    }
+
+    pub fn theme(mut self, t: &'a super::super::super::gpu::Theme) -> Self {
+        self.theme = Some(t); self
+    }
+
+    /// Render the strip inside a pre-allocated `ui` (typically the inner ui of
+    /// a `TopBottomPanel`). `on_cancel_all` and `on_flatten` fire if the
+    /// respective button is clicked.
+    pub fn show(
+        self,
+        ui: &mut Ui,
+        on_cancel_all: impl FnOnce(),
+        on_flatten:    impl FnOnce(),
+    ) -> Response {
+        let t = match self.theme {
+            Some(t) => t,
+            None => return ui.label(""),
+        };
+
+        ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
+            ui.horizontal(|ui| {
+                let avail = ui.available_width();
+                ui.spacing_mut().item_spacing.x = 16.0;
+
+                if let Some(acct) = self.account_data {
+                    if acct.connected {
+                        let content_w = 680.0_f32;
+                        let pad = ((avail - content_w) / 2.0).max(0.0);
+                        ui.add_space(pad);
+
+                        // NAV — hero number
+                        ui.label(RichText::new("NAV").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(hero_text(&format!("${:.0}", acct.nav), t.text).strong());
+
+                        ui.add(egui::Separator::default().spacing(8.0));
+
+                        // Buying Power
+                        ui.label(RichText::new("BP").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(11.0).color(t.dim));
+
+                        ui.add(egui::Separator::default().spacing(8.0));
+
+                        // Daily P&L — hero, colored
+                        let daily_color = if acct.daily_pnl >= 0.0 { t.bull } else { t.bear };
+                        ui.label(RichText::new("Day P&L").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(hero_text(&format!("{:+.0}", acct.daily_pnl), daily_color).strong());
+
+                        ui.add(egui::Separator::default().spacing(8.0));
+
+                        // Unrealized P&L
+                        let unr_color = if acct.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
+                        ui.label(RichText::new("Unr P&L").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(11.0).color(unr_color));
+
+                        ui.add(egui::Separator::default().spacing(8.0));
+
+                        // Margin
+                        ui.label(RichText::new("Margin").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(11.0).color(t.dim));
+
+                        ui.add(egui::Separator::default().spacing(8.0));
+
+                        // Excess Liquidity
+                        ui.label(RichText::new("Excess").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(11.0).color(t.dim));
+
+                        ui.add(egui::Separator::default().spacing(8.0));
+
+                        // Realized P&L
+                        let rpnl_color = if acct.realized_pnl >= 0.0 { t.bull } else { t.bear };
+                        ui.label(RichText::new("Real P&L").monospace().size(11.0).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("{:+.0}", acct.realized_pnl)).monospace().size(11.0).strong().color(rpnl_color));
+
+                        ui.add(egui::Separator::default().spacing(8.0));
+
+                        // Emergency action buttons
+                        if ui.add(
+                            egui::Button::new(RichText::new("CANCEL ALL").monospace().size(9.0).strong().color(Color32::WHITE))
+                                .fill(color_alpha(t.bear, 120))
+                                .corner_radius(3.0)
+                                .min_size(egui::vec2(0.0, 22.0))
+                                .stroke(Stroke::new(1.0, t.bear)),
+                        ).clicked() {
+                            on_cancel_all();
+                        }
+
+                        if ui.add(
+                            egui::Button::new(RichText::new("FLATTEN").monospace().size(9.0).strong().color(Color32::WHITE))
+                                .fill(color_alpha(t.bear, 180))
+                                .corner_radius(3.0)
+                                .min_size(egui::vec2(0.0, 22.0))
+                                .stroke(Stroke::new(1.0, t.bear)),
+                        ).clicked() {
+                            on_flatten();
+                        }
+                    } else {
+                        // Disconnected
+                        ui.label(RichText::new("IB Disconnected").monospace().size(9.0).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new(format!("connecting to {}...", self.broker_url)).monospace().size(9.0).color(color_alpha(t.dim, 76)));
+                    }
+                } else {
+                    // Loading
+                    ui.label(RichText::new("Loading account...").monospace().size(11.0).color(color_alpha(t.dim, 102)));
+                }
+            });
+        }).response
+    }
+}
+
+impl Default for AccountStrip<'_> {
+    fn default() -> Self { Self::new() }
+}

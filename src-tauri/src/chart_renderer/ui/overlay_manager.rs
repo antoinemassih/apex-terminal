@@ -6,6 +6,7 @@ use super::super::gpu::*;
 use super::widgets::buttons::IconBtn;
 use super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
+use super::widgets::frames::PopupFrame;
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
@@ -19,11 +20,7 @@ if panes[ap].overlay_editing {
         .resizable(false)
         .movable(true)
         .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
-            .corner_radius(r_lg_cr()))
+        .frame(PopupFrame::new().theme(t).ctx(ctx).build())
         .show(ctx, |ui| {
             let m = 8.0;
             // Header

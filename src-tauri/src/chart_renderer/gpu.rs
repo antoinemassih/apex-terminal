@@ -4926,110 +4926,40 @@ fn render_toolbar(
     } // end if toolbar_visible
 
     if watchlist.account_strip_open {
-        let account_data = account_data_cached.clone();
+        let mut do_cancel_all = false;
+        let mut do_flatten    = false;
         egui::TopBottomPanel::top("account_strip")
             .exact_height(super::ui::style::current().account_strip_height)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 2, bottom: 2 })
                 .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))))
             .show(ctx, |ui| {
-                ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                ui.horizontal(|ui| {
-                    // Calculate total width of content to center it
-                    let avail = ui.available_width();
-                    ui.spacing_mut().item_spacing.x = 16.0;
-                    if let Some((acct, _positions, _orders)) = &account_data {
-                        if acct.connected {
-                            // Estimate content width and add left padding to center
-                            let content_w = 680.0; // approximate
-                            let pad = ((avail - content_w) / 2.0).max(0.0);
-                            ui.add_space(pad);
-
-                            // NAV — rendered with hero_text so font_hero inspector slider resizes it.
-                            ui.label(egui::RichText::new("NAV").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(super::ui::style::hero_text(&format!("${:.0}", acct.nav), t.text).strong());
-
-                            ui.add(egui::Separator::default().spacing(8.0));
-
-                            // Buying Power
-                            ui.label(egui::RichText::new("BP").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(11.0)
-                                .color(t.dim));
-
-                            ui.add(egui::Separator::default().spacing(8.0));
-
-                            // Daily P&L — rendered with hero_text so font_hero slider in the
-                            // inspector visibly resizes this number (the most prominent account figure).
-                            let daily_color = if acct.daily_pnl >= 0.0 { t.bull } else { t.bear };
-                            ui.label(egui::RichText::new("Day P&L").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(super::ui::style::hero_text(&format!("{:+.0}", acct.daily_pnl), daily_color).strong());
-
-                            ui.add(egui::Separator::default().spacing(8.0));
-
-                            // Unrealized P&L
-                            let unr_color = if acct.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
-                            ui.label(egui::RichText::new("Unr P&L").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(11.0)
-                                .color(unr_color));
-
-                            ui.add(egui::Separator::default().spacing(8.0));
-
-                            // Margin
-                            ui.label(egui::RichText::new("Margin").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(11.0)
-                                .color(t.dim));
-
-                            ui.add(egui::Separator::default().spacing(8.0));
-
-                            // Excess Liquidity
-                            ui.label(egui::RichText::new("Excess").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(11.0)
-                                .color(t.dim));
-
-                            ui.add(egui::Separator::default().spacing(8.0));
-
-                            // Realized P&L
-                            let rpnl_color = if acct.realized_pnl >= 0.0 { t.bull } else { t.bear };
-                            ui.label(egui::RichText::new("Real P&L").monospace().size(11.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("{:+.0}", acct.realized_pnl)).monospace().size(11.0).strong()
-                                .color(rpnl_color));
-
-                            ui.add(egui::Separator::default().spacing(8.0));
-
-                            // Emergency action buttons
-                            if ui.add(egui::Button::new(egui::RichText::new("CANCEL ALL").monospace().size(9.0).strong().color(egui::Color32::WHITE))
-                                .fill(color_alpha(t.bear, 120)).corner_radius(3.0).min_size(egui::vec2(0.0, 22.0))
-                                .stroke(egui::Stroke::new(1.0, t.bear))).clicked() {
-                                super::trading::order_manager::cancel_all_orders("");
-                                for chart in panes.iter_mut() { chart.orders.clear(); }
-                                std::thread::spawn(|| {
-                                    let _ = reqwest::blocking::Client::new()
-                                        .delete(format!("{}/orders", APEXIB_URL))
-                                        .timeout(std::time::Duration::from_secs(5)).send();
-                                });
-                            }
-                            if ui.add(egui::Button::new(egui::RichText::new("FLATTEN").monospace().size(9.0).strong().color(egui::Color32::WHITE))
-                                .fill(color_alpha(t.bear, 180)).corner_radius(3.0).min_size(egui::vec2(0.0, 22.0))
-                                .stroke(egui::Stroke::new(1.0, t.bear))).clicked() {
-                                super::trading::order_manager::cancel_all_orders("");
-                                for chart in panes.iter_mut() { chart.orders.retain(|o| o.status == OrderStatus::Executed); }
-                                std::thread::spawn(|| {
-                                    let _ = reqwest::blocking::Client::new()
-                                        .post(format!("{}/risk/flatten", APEXIB_URL))
-                                        .timeout(std::time::Duration::from_secs(5)).send();
-                                });
-                            }
-                        } else {
-                            // Not connected
-                            ui.label(egui::RichText::new("IB Disconnected").monospace().size(9.0).color(t.dim.gamma_multiply(0.5)));
-                            ui.label(egui::RichText::new(format!("connecting to {}...", APEXIB_URL)).monospace().size(9.0).color(t.dim.gamma_multiply(0.3)));
-                        }
-                    } else {
-                        ui.label(egui::RichText::new("Loading account...").monospace().size(11.0).color(t.dim.gamma_multiply(0.4)));
-                    }
-                });
-                });
+                super::ui::widgets::pane::AccountStrip::new()
+                    .account_data(account_data_cached.as_ref().map(|(a, _, _)| a))
+                    .broker_url(APEXIB_URL)
+                    .theme(&t)
+                    .show(ui,
+                        || { do_cancel_all = true; },
+                        || { do_flatten    = true; });
             });
+        if do_cancel_all {
+            super::trading::order_manager::cancel_all_orders("");
+            for chart in panes.iter_mut() { chart.orders.clear(); }
+            std::thread::spawn(|| {
+                let _ = reqwest::blocking::Client::new()
+                    .delete(format!("{}/orders", APEXIB_URL))
+                    .timeout(std::time::Duration::from_secs(5)).send();
+            });
+        }
+        if do_flatten {
+            super::trading::order_manager::cancel_all_orders("");
+            for chart in panes.iter_mut() { chart.orders.retain(|o| o.status == OrderStatus::Executed); }
+            std::thread::spawn(|| {
+                let _ = reqwest::blocking::Client::new()
+                    .post(format!("{}/risk/flatten", APEXIB_URL))
+                    .timeout(std::time::Duration::from_secs(5)).send();
+            });
+        }
     }
 
     // NOTE: TB_BTN_CLICKED is cleared at the END of draw_chart, AFTER the

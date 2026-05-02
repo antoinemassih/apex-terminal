@@ -242,7 +242,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     };
     ui.horizontal(|ui| {
         ui.add(MonospaceCode::new("CYCLE:").xs().color(color_alpha(t.dim, alpha_heavy())));
-        ui.add(MonospaceCode::new(phase).xs().color(egui::Color32::from_rgb(56, 203, 137)));
+        ui.add(MonospaceCode::new(phase).xs().color(t.bull));
     });
 
     // Legend — compact 2-column layout

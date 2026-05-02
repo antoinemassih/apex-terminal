@@ -11,6 +11,7 @@ use super::widgets::rows::ListRow;
 use super::widgets::buttons::{IconBtn, SimpleBtn};
 use super::widgets::text::MonospaceCode;
 use super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
+use super::widgets::frames::SidePanelFrame;
 use crate::ui_kit::icons::Icon;
 
 // Six discrete opacity levels: fully faded (readable) up to fully opaque.
@@ -111,9 +112,7 @@ egui::SidePanel::left("object_tree_panel")
     .min_width(180.0)
     .max_width(320.0)
     .resizable(true)
-    .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-        .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 })
-        .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong()))))
+    .frame(SidePanelFrame::new().theme(t).build())
     .show(ctx, |ui| {
         let panel_w = ui.available_width();
         ui.set_max_width(panel_w);
@@ -252,7 +251,7 @@ egui::SidePanel::left("object_tree_panel")
                     }
                 }
                 // Bulk delete
-                if icon_btn(ui, Icon::TRASH, egui::Color32::from_rgb(224, 85, 96), FONT_MD).on_hover_text("Delete selected").clicked() {
+                if icon_btn(ui, Icon::TRASH, t.bear, FONT_MD).on_hover_text("Delete selected").clicked() {
                     let ids = chart.selected_ids.clone();
                     for id in &ids {
                         if let Some(d) = chart.drawings.iter().find(|d| d.id == *id) {
@@ -414,7 +413,7 @@ egui::SidePanel::left("object_tree_panel")
                                 })
                                 .right_actions(|ui| {
                                     ui.spacing_mut().item_spacing.x = 1.0;
-                                    if ui.add(IconBtn::new(Icon::TRASH).size(7.0).color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                                    if ui.add(IconBtn::new(Icon::TRASH).size(7.0).color(t.bear)).clicked() {
                                         delete_id = Some(ds_id_del);
                                     }
                                     let eye_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
@@ -596,7 +595,7 @@ egui::SidePanel::left("object_tree_panel")
                     })
                     .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
-                        if ui.add(IconBtn::new(Icon::TRASH).size(8.0).color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                        if ui.add(IconBtn::new(Icon::TRASH).size(8.0).color(t.bear)).clicked() {
                             del_ov = Some(oi);
                         }
                         let eye_icon = if vis { Icon::EYE } else { Icon::EYE_SLASH };
@@ -659,7 +658,7 @@ egui::SidePanel::left("object_tree_panel")
                     })
                     .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        if ui.add(IconBtn::new(Icon::TRASH).size(8.0).color(egui::Color32::from_rgb(224, 85, 96))).clicked() {
+                        if ui.add(IconBtn::new(Icon::TRASH).size(8.0).color(t.bear)).clicked() {
                             del_w = Some(wi);
                         }
                         let eye_icon = if vis { Icon::EYE } else { Icon::EYE_SLASH };

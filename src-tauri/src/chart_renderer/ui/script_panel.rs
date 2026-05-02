@@ -6,6 +6,10 @@
 use egui;
 use super::style::*;
 use super::widgets::inputs::TextInput;
+use super::widgets::frames::PopupFrame;
+use super::widgets::buttons::{ChromeBtn, ActionBtn};
+use super::widgets::text::MonospaceCode;
+use super::widgets::cards::Card;
 use super::super::gpu::{Watchlist, Theme};
 
 // ── Preset example scripts ──────────────────────────────────────────────────
@@ -122,14 +126,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 
     // ── Preset examples ─────────────────────────────────────
     ui.horizontal(|ui| {
-        ui.add(super::widgets::text::MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
+        ui.add(MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
         for (name, source) in PRESETS {
-            let btn = ui.add(egui::Button::new(
+            let btn = ui.add(ChromeBtn::new(
                 egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
                 .fill(color_alpha(t.accent, 12))
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
-                .corner_radius(r_md_cr())
-                .min_size(egui::vec2(0.0, 16.0))
             );
             if btn.clicked() { watchlist.script_source = source.to_string(); }
             if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -240,11 +242,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .resizable(true)
         .movable(true)
         .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
-            .corner_radius(r_lg_cr()))
+        .frame(PopupFrame::new().ctx(ctx).theme(t).build())
         .show(ctx, |ui| {
             let w = ui.available_width();
 
@@ -290,16 +288,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             // ── Preset examples ─────────────────────────────────────
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new("Examples:")
-                    .monospace().size(8.0).color(t.dim.gamma_multiply(0.5)));
+                ui.add(MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
                 ui.add_space(4.0);
                 for (name, source) in PRESETS {
-                    let btn = ui.add(egui::Button::new(
+                    let btn = ui.add(ChromeBtn::new(
                         egui::RichText::new(*name).monospace().size(8.0).color(t.accent.gamma_multiply(0.8)))
                         .fill(color_alpha(t.accent, 12))
                         .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
-                        .corner_radius(r_md_cr())
-                        .min_size(egui::vec2(0.0, 16.0))
                     );
                     if btn.clicked() {
                         watchlist.script_source = source.to_string();
@@ -439,9 +434,18 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
         });
     } else {
         ui.add_space(4.0);
+        let is_error = watchlist.script_output.starts_with("Error");
+        let (card_bg, card_border) = if is_error {
+            (color_alpha(t.bear, 18), color_alpha(t.bear, alpha_line()))
+        } else {
+            (color_alpha(t.toolbar_border, alpha_tint()), color_alpha(t.toolbar_border, alpha_muted()))
+        };
+        let text_color = if is_error { t.bear } else { t.dim.gamma_multiply(0.85) };
         ui.horizontal(|ui| {
             ui.add_space(m);
-            ui.add(super::widgets::text::MonospaceCode::new(&watchlist.script_output).xs().color(t.dim).gamma(0.85));
+            Card::new().colors(card_bg, card_border).show(ui, |ui| {
+                ui.add(MonospaceCode::new(&watchlist.script_output).xs().color(text_color));
+            });
         });
     }
     ui.add_space(8.0);
@@ -623,19 +627,12 @@ fn divider(ui: &mut egui::Ui, w: f32, t: &Theme) {
 
 /// Accent-colored action button for the toolbar row.
 fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme) -> egui::Response {
-    let resp = ui.add(egui::Button::new(
-        egui::RichText::new(label).monospace().size(9.0).color(color))
-        .fill(color_alpha(color, alpha_ghost()))
-        .stroke(egui::Stroke::new(stroke_thin(), color_alpha(color, alpha_line())))
-        .corner_radius(r_md_cr())
-        .min_size(egui::vec2(0.0, 20.0))
-    );
+    let resp = ui.add(ActionBtn::new(label).color(color));
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        // Paint subtle highlight
         ui.painter().rect_filled(resp.rect, r_sm_cr(), color_alpha(color, 8));
     }
-    let _ = t; // suppress unused warning (theme available for future styling)
+    let _ = t;
     resp
 }
 
@@ -646,12 +643,11 @@ fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: 
     let bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
     let border = if is_active { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_muted()) };
 
-    let resp = ui.add(egui::Button::new(
+    let resp = ui.add(ChromeBtn::new(
         egui::RichText::new(label).monospace().size(9.0).color(fg))
         .fill(bg)
         .stroke(egui::Stroke::new(stroke_thin(), border))
         .corner_radius(r_md_cr())
-        .min_size(egui::vec2(0.0, 18.0))
     );
     if resp.clicked() {
         *active = tab;

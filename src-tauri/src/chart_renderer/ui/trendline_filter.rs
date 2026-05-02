@@ -9,6 +9,7 @@ use crate::ui_kit::icons::Icon;
 use crate::monitoring::{span_begin, span_end};
 use crate::chart_renderer::DrawingKind;
 use crate::chart_renderer::LineStyle;
+use super::widgets::frames::PopupFrame;
 const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
@@ -40,7 +41,7 @@ if watchlist.trendline_filter_open {
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let type_label = format!("{} ({})", label, count);
-                    ui.add(MonospaceCode::new(&type_label).size_px(9.0).color(egui::Color32::from_rgb(200,200,210)));
+                    ui.add(MonospaceCode::new(&type_label).size_px(9.0).color(TEXT_SECONDARY));
                 });
             }
 
@@ -190,11 +191,7 @@ if chart.picker_open {
         .fixed_pos(chart.picker_pos)
         .fixed_size(egui::vec2(320.0, 420.0))
         .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())))
-            .corner_radius(r_lg_cr())
-            .inner_margin(egui::Margin::same(6)))
+        .frame(PopupFrame::new().theme(t).ctx(ctx).build())
         .show(ctx, |ui| {
             let input = super::widgets::inputs::TextInput::new(&mut chart.picker_query)
                     .placeholder("Search any stock, ETF, index...")
@@ -241,7 +238,7 @@ if chart.picker_open {
                         if chart.recent_symbols.iter().any(|(r, _)| r == s.symbol) { continue; }
                         let is_current = s.symbol == chart.symbol;
                         let resp = ui.horizontal(|ui| {
-                            let sym_col = if is_current { t.bull } else { egui::Color32::from_rgb(200,200,210) };
+                            let sym_col = if is_current { t.bull } else { TEXT_SECONDARY };
                             let r = ui.add(SimpleBtn::new(s.symbol).color(sym_col).min_width(65.0));
                             ui.add(MonospaceCode::new(s.name).size_px(9.0).color(t.dim));
                             r
@@ -259,9 +256,9 @@ if chart.picker_open {
                             let sym_col = if is_current { t.bull } else { TEXT_PRIMARY };
                             let r = ui.add(SimpleBtn::new(sym.as_str()).color(sym_col).min_width(65.0));
                             ui.vertical(|ui| {
-                                ui.add(MonospaceCode::new(name.as_str()).size_px(9.0).color(egui::Color32::from_rgb(180,180,190)));
+                                ui.add(MonospaceCode::new(name.as_str()).size_px(9.0).color(t.dim));
                                 if !tag.is_empty() {
-                                    ui.add(MonospaceCode::new(tag.as_str()).size_px(9.0).color(egui::Color32::from_rgb(100,100,120)));
+                                    ui.add(MonospaceCode::new(tag.as_str()).size_px(9.0).color(t.dim.gamma_multiply(0.6)));
                                 }
                             });
                             r
