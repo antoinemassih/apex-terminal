@@ -33,5 +33,6 @@ pub mod foundation;
 pub mod icons;
 pub mod watchlist;
 pub mod perf_hud;
+pub mod design_mode_panel;
 pub mod trading;
 pub mod drawing;

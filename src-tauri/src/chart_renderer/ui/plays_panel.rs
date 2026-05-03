@@ -416,7 +416,7 @@ fn draw_play_editor(
                     let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                     if ui.add(ChromeBtn::new(egui::RichText::new(*tag).monospace().size(font_xs()).color(fg))
                         .fill(bg).corner_radius(r_md_cr())
-                        .stroke(egui::Stroke::new(0.5, if active { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_muted()) }))
+                        .stroke(egui::Stroke::new(stroke_thin(), if active { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_muted()) }))
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
                         if active { watchlist.play_editor_tags.retain(|x| x != tag); }
                         else { watchlist.play_editor_tags.push(tag.to_string()); }
@@ -554,7 +554,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
         val = val.saturating_sub(step).max(5);
     }
     ui.add(egui::TextEdit::singleline(pct_str)
-        .desired_width(22.0).font(egui::FontId::monospace(FONT_XS))
+        .desired_width(22.0).font(egui::FontId::monospace(font_xs()))
         .horizontal_align(egui::Align::Center));
     ui.add(super::widgets::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
     if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_XS).color(t.dim))

@@ -115,13 +115,13 @@ pub(crate) fn draw(
     // [+] button
     let plus_r = egui::Rect::from_min_size(egui::pos2(xo+ord_label_w+1.0, hy+1.0), egui::vec2(10.0, 9.0));
     let plus_resp = ui.allocate_rect(plus_r, egui::Sense::click());
-    painter.text(plus_r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(8.0), if plus_resp.hovered() { t.accent } else { hc });
+    painter.text(plus_r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(font_xs()), if plus_resp.hovered() { t.accent } else { hc });
     if plus_resp.clicked() && mode < 2 { *dom_col_mode = mode + 1; }
     if plus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     // [-] button
     let minus_r = egui::Rect::from_min_size(egui::pos2(plus_r.right()+1.0, hy+1.0), egui::vec2(10.0, 9.0));
     let minus_resp = ui.allocate_rect(minus_r, egui::Sense::click());
-    painter.text(minus_r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(8.0), if minus_resp.hovered() { t.accent } else { hc });
+    painter.text(minus_r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(font_xs()), if minus_resp.hovered() { t.accent } else { hc });
     if minus_resp.clicked() && mode > 0 { *dom_col_mode = mode - 1; }
     if minus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
@@ -150,7 +150,7 @@ pub(crate) fn draw(
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
     painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_soft()) });
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(10.0), t.dim);
+    painter.text(r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(font_sm()), t.dim);
     if resp.clicked() && *order_qty > 1 { *order_qty -= 1; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     cx = r.right()+1.0;
@@ -166,7 +166,7 @@ pub(crate) fn draw(
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
     let resp = ui.allocate_rect(r, egui::Sense::click());
     painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_soft()) });
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(10.0), t.dim);
+    painter.text(r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(font_sm()), t.dim);
     if resp.clicked() { *order_qty += 1; }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     cx = r.right()+4.0;

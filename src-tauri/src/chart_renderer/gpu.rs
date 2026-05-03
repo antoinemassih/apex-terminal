@@ -4079,11 +4079,41 @@ fn render_chart_pane(
         let mut dom_cancel_all = false;
         let mut dom_cancel_order_id: Option<u32> = None;
         let mut dom_move_order: Option<(u32, f32)> = None;
-        super::ui::dom_panel::draw(ui, dom_rect, current_price, &chart.dom_levels, chart.dom_tick_size,
-            &mut chart.dom_center_price, &mut chart.dom_width,
-            &combined_orders, &mut chart.dom_selected_price, &mut chart.dom_order_type, &mut chart.order_qty,
-            &mut dom_new_order, &mut dom_cancel_all, &mut dom_cancel_order_id, &mut dom_move_order,
-            &mut chart.dom_armed, &mut chart.dom_col_mode, &mut chart.dom_dragging, t);
+        {
+            use super::ui::pane::{Pane as _, PaneContext, DomPaneAdapter};
+            let mut adapter = DomPaneAdapter {
+                dom_rect,
+                current_price,
+                levels: &chart.dom_levels,
+                tick_size: chart.dom_tick_size,
+                center_price: &mut chart.dom_center_price,
+                dom_width: &mut chart.dom_width,
+                orders: &combined_orders,
+                dom_selected_price: &mut chart.dom_selected_price,
+                dom_order_type: &mut chart.dom_order_type,
+                order_qty: &mut chart.order_qty,
+                new_order: &mut dom_new_order,
+                cancel_all: &mut dom_cancel_all,
+                cancel_order_id: &mut dom_cancel_order_id,
+                move_order: &mut dom_move_order,
+                dom_armed: &mut chart.dom_armed,
+                dom_col_mode: &mut chart.dom_col_mode,
+                dom_dragging: &mut chart.dom_dragging,
+            };
+            // DomPaneAdapter does not read PaneContext::panes; we pass an
+            // empty slice to avoid a second mutable borrow of `panes` while
+            // chart fields are already borrowed via the adapter.
+            let dummy_rects = [dom_rect];
+            let mut cx = PaneContext {
+                theme: t,
+                panes: &mut [],
+                pane_idx,
+                active_pane,
+                pane_rects: &dummy_rects,
+                watchlist,
+            };
+            adapter.render(ui, ctx, &mut cx);
+        }
 
         // Process DOM order actions through OrderManager
         if let Some((side, price, qty)) = dom_new_order {
@@ -4168,7 +4198,17 @@ fn render_chart_pane(
         }
         PaneType::Spreadsheet => {
             let body_rects = [rect];
-            super::ui::spreadsheet_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
+            use super::ui::pane::{Pane as _, PaneContext, SpreadsheetPaneAdapter};
+            let mut adapter = SpreadsheetPaneAdapter { theme_idx };
+            let mut cx = PaneContext {
+                theme: &THEMES[theme_idx],
+                panes,
+                pane_idx,
+                active_pane,
+                pane_rects: &body_rects,
+                watchlist,
+            };
+            adapter.render(ui, ctx, &mut cx);
             return;
         }
         PaneType::DesignPreview => {
@@ -14094,70 +14134,8 @@ fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usi
             }
         });
 
-        // Legacy inline simple panel — kept gated on Ctrl+Shift+D for back-compat.
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static DESIGN_PANEL_OPEN: AtomicBool = AtomicBool::new(false);
-        if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::D)) {
-            let was = DESIGN_PANEL_OPEN.load(Ordering::Relaxed);
-            DESIGN_PANEL_OPEN.store(!was, Ordering::Relaxed);
-        }
-        if DESIGN_PANEL_OPEN.load(Ordering::Relaxed) {
-            egui::SidePanel::right("design_mode_panel")
-                .min_width(300.0)
-                .max_width(450.0)
-                .default_width(340.0)
-                .frame(egui::Frame::NONE
-                    .fill(egui::Color32::from_rgb(18, 18, 24))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 42, 54)))
-                    .inner_margin(8.0))
-                .show(ctx, |ui| {
-                    ui.label(egui::RichText::new("DESIGN MODE")
-                        .monospace().size(14.0).strong()
-                        .color(egui::Color32::from_rgb(203, 166, 247)));
-                    ui.label(egui::RichText::new("Every change affects ALL widgets globally")
-                        .monospace().size(9.0)
-                        .color(egui::Color32::from_rgb(120, 120, 130)));
-                    ui.add_space(8.0);
-                    ui.separator();
-
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        // ── Global font scale ──
-                        ui.add_space(6.0);
-                        ui.label(egui::RichText::new("GLOBAL SCALE").monospace().size(11.0).strong()
-                            .color(egui::Color32::from_rgb(166, 227, 161)));
-                        ui.add_space(4.0);
-
-                        let mut pixels_per_point = ctx.pixels_per_point();
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("UI Scale").monospace().size(9.0)
-                                .color(egui::Color32::from_rgb(170, 170, 180)));
-                            if ui.add(egui::DragValue::new(&mut pixels_per_point)
-                                .range(0.5..=4.0).speed(0.01).suffix("x")).changed() {
-                                ctx.set_pixels_per_point(pixels_per_point);
-                            }
-                        });
-
-                        ui.add_space(12.0);
-                        ui.separator();
-                        ui.add_space(6.0);
-
-                        // ── egui's built-in full style editor ──
-                        // This controls: spacing, colors, rounding, stroke widths,
-                        // button padding, interaction sizes, text styles, visuals —
-                        // everything egui renders.
-                        ui.label(egui::RichText::new("EGUI STYLE EDITOR").monospace().size(11.0).strong()
-                            .color(egui::Color32::from_rgb(166, 227, 161)));
-                        ui.label(egui::RichText::new("Controls spacing, colors, rounding, padding for all widgets")
-                            .monospace().size(9.0)
-                            .color(egui::Color32::from_rgb(120, 120, 130)));
-                        ui.add_space(6.0);
-
-                        let mut style = (*ctx.style()).clone();
-                        style.ui(ui);
-                        ctx.set_style(style);
-                    });
-                });
-        }
+        // Design-mode style-editor panel (Ctrl+Shift+D) — extracted to widget.
+        super::ui::widgets::design_mode_panel::show(ctx);
     }
 
     // ── Perf HUD (Ctrl+Shift+P) ─────────────────────────────────────────────
