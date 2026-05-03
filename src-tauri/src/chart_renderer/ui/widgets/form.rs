@@ -584,12 +584,12 @@ impl MeridienOrderTicket {
             let avail = ui.available_width();
             let (rect, _) = ui.allocate_exact_size(Vec2::new(avail, 1.0), egui::Sense::hover());
             ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, border_col);
-            ui.add_space(2.0);
+            ui.add_space(gap_xs());
         };
 
         ui.set_width(panel_w);
         ui.spacing_mut().item_spacing.y = 3.0;
-        ui.add_space(4.0);
+        ui.add_space(gap_sm());
 
         // ── Section 1: Header ──────────────────────────────────────────────
         ui.horizontal(|ui| {
@@ -600,7 +600,7 @@ impl MeridienOrderTicket {
                     .color(self.text));
             });
         });
-        ui.add_space(2.0);
+        ui.add_space(gap_xs());
         hairline(ui);
 
         // ── Section 2: BID/LAST/ASK strip ─────────────────────────────────
@@ -621,12 +621,12 @@ impl MeridienOrderTicket {
                 });
             }
         });
-        ui.add_space(2.0);
+        ui.add_space(gap_xs());
         hairline(ui);
 
         // ── Section 3: BUY / SELL toggle ──────────────────────────────────
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = gap_sm();
             let half = (panel_w - 4.0) / 2.0;
             for &(label, is_this, color) in &[
                 ("BUY",  true,  self.bull),
@@ -648,13 +648,13 @@ impl MeridienOrderTicket {
                 if resp.clicked() { *s.is_buy = is_this; }
             }
         });
-        ui.add_space(2.0);
+        ui.add_space(gap_xs());
 
         // ── Section 4: TYPE ────────────────────────────────────────────────
         let order_types = ["MKT", "LMT", "STP", "STP-LMT", "TRAIL"];
         ui.horizontal(|ui| {
             section_label_txt(ui, "Type");
-            ui.add_space(6.0);
+            ui.add_space(gap_md());
             ui.spacing_mut().item_spacing.x = 0.0;
             let seg_w = (panel_w * 0.6 / order_types.len() as f32).max(24.0);
             for (i, &opt) in order_types.iter().enumerate() {
@@ -676,7 +676,7 @@ impl MeridienOrderTicket {
         let tifs = ["DAY", "GTC", "IOC"];
         ui.horizontal(|ui| {
             section_label_txt(ui, "TIF");
-            ui.add_space(6.0);
+            ui.add_space(gap_md());
             ui.spacing_mut().item_spacing.x = 0.0;
             let seg_w = (panel_w * 0.4 / tifs.len() as f32).max(24.0);
             for (i, &opt) in tifs.iter().enumerate() {
@@ -692,13 +692,13 @@ impl MeridienOrderTicket {
                 }
             }
         });
-        ui.add_space(2.0);
+        ui.add_space(gap_xs());
         hairline(ui);
 
         // ── Section 6: QUANTITY hero ───────────────────────────────────────
         section_label_txt(ui, "Quantity");
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.spacing_mut().item_spacing.x = gap_md();
             // Hero numeric — large serif
             ui.label(hero_text(&s.order_qty.to_string(), self.text)
                 .size(st.font_hero * 0.7));
@@ -710,7 +710,7 @@ impl MeridienOrderTicket {
                 *s.order_qty = s.order_qty.saturating_add(1);
             }
             // Preset chips
-            ui.add_space(4.0);
+            ui.add_space(gap_sm());
             for &preset in &[100u32, 500, 1000] {
                 let sel = *s.order_qty == preset;
                 let fg = if sel { self.accent } else { color_alpha(self.dim, alpha_strong()) };
@@ -724,13 +724,13 @@ impl MeridienOrderTicket {
                 }
             }
         });
-        ui.add_space(2.0);
+        ui.add_space(gap_xs());
 
         // ── Section 7: LIMIT PRICE ────────────────────────────────────────
         if !*s.order_market {
             section_label_txt(ui, "Limit Price");
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.spacing_mut().item_spacing.x = gap_sm();
                 ui.add_sized(Vec2::new(80.0, 18.0),
                     egui::TextEdit::singleline(s.limit_price)
                         .font(egui::FontId::monospace(font_sm()))
@@ -748,7 +748,7 @@ impl MeridienOrderTicket {
                     }
                 }
             });
-            ui.add_space(2.0);
+            ui.add_space(gap_xs());
         }
         hairline(ui);
 
@@ -766,7 +766,7 @@ impl MeridienOrderTicket {
         });
         if *s.bracket {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.spacing_mut().item_spacing.x = gap_lg();
                 ui.label(RichText::new("TP").monospace().size(font_xs()).color(self.bull));
                 ui.add_sized(Vec2::new(60.0, 16.0),
                     egui::TextEdit::singleline(s.tp_price)
@@ -779,7 +779,7 @@ impl MeridienOrderTicket {
                         .text_color(self.text));
             });
         }
-        ui.add_space(2.0);
+        ui.add_space(gap_xs());
         hairline(ui);
 
         // ── Section 9: META ROW ───────────────────────────────────────────
@@ -803,7 +803,7 @@ impl MeridienOrderTicket {
                 });
             }
         });
-        ui.add_space(4.0);
+        ui.add_space(gap_sm());
 
         // ── Section 10: REVIEW CTA ────────────────────────────────────────
         let side_str = if *s.is_buy { "BUY" } else { "SELL" };
@@ -920,7 +920,7 @@ impl<'a> IndicatorParamRow<'a> {
             if !self.presets.is_empty() {
                 ui.add_space(gap_md());
                 let prev = ui.spacing().item_spacing.x;
-                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.spacing_mut().item_spacing.x = gap_xs();
                 for &pr in self.presets {
                     let sel = *value == pr;
                     let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
@@ -1013,7 +1013,7 @@ impl<'a> IndicatorParamRowF<'a> {
             if !self.presets.is_empty() {
                 ui.add_space(gap_sm());
                 let prev = ui.spacing().item_spacing.x;
-                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.spacing_mut().item_spacing.x = gap_xs();
                 for &pr in self.presets {
                     let sel = (*value - pr).abs() < 0.01;
                     let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
@@ -1167,14 +1167,14 @@ impl ApertureOrderTicket {
                 {
                     *s.order_market = *s.order_type_idx == 0;
                 }
-                ui.add_space(8.0);
+                ui.add_space(gap_lg());
                 let tif_opts: &[(usize, &str)] = &[(0, "DAY"), (1, "GTC"), (2, "IOC")];
                 SegmentedControl::new()
                     .options(tif_opts)
                     .theme(&t_stub)
                     .show(ui, s.order_tif_idx);
-                ui.add_space(6.0);
-                let rth_amber = egui::Color32::from_rgb(255, 191, 0);
+                ui.add_space(gap_md());
+                let rth_amber = COLOR_AMBER;
                 let rth_fg = if *s.order_outside_rth { rth_amber } else { color_alpha(self.dim, 40) };
                 let rth_bg = if *s.order_outside_rth { color_alpha(rth_amber, 30) } else { egui::Color32::TRANSPARENT };
                 let rth_stroke = Stroke::new(0.5, if *s.order_outside_rth {
@@ -1184,7 +1184,7 @@ impl ApertureOrderTicket {
                 });
                 if ui.add(egui::Button::new(
                         egui::RichText::new("EXT").monospace().size(font_xs()).color(rth_fg))
-                    .fill(rth_bg).corner_radius(2.0).stroke(rth_stroke)
+                    .fill(rth_bg).corner_radius(r_xs()).stroke(rth_stroke)
                     .min_size(egui::vec2(26.0, 18.0)))
                     .on_hover_text("Trade outside regular trading hours")
                     .clicked()
@@ -1192,7 +1192,7 @@ impl ApertureOrderTicket {
                     *s.order_outside_rth = !*s.order_outside_rth;
                 }
             });
-            ui.add_space(4.0);
+            ui.add_space(gap_sm());
         }
 
         // ── QTY / $ mode ──────────────────────────────────────────────────
@@ -1204,7 +1204,7 @@ impl ApertureOrderTicket {
                 .theme(&t_stub)
                 .show(ui, s.order_notional_mode);
             if *s.order_notional_mode {
-                ui.add_space(4.0);
+                ui.add_space(gap_sm());
                 let premium = last;
                 let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
                 ui.add(egui::TextEdit::singleline(s.order_notional_amount)
@@ -1218,12 +1218,12 @@ impl ApertureOrderTicket {
                     .monospace().size(font_sm()).color(color_alpha(self.dim, 60)));
             }
         });
-        ui.add_space(2.0);
+        ui.add_space(gap_xs());
 
         // ── QTY stepper + compact price / MKT-LMT ────────────────────────
         ui.horizontal(|ui| {
             ui.add_space(pad);
-            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.spacing_mut().item_spacing.x = gap_xs();
             let step = if *s.order_qty >= 100 { 10u32 }
                        else if *s.order_qty >= 10 { 5 }
                        else { 1 };
@@ -1238,12 +1238,12 @@ impl ApertureOrderTicket {
                         .desired_width(100.0).font(egui::FontId::monospace(9.0))
                         .horizontal_align(egui::Align::Center).interactive(false));
             }
-            ui.add_space(4.0);
+            ui.add_space(gap_sm());
             let cursor = ui.cursor().min;
             ui.painter().line_segment(
                 [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
-                Stroke::new(1.0, color_alpha(self.toolbar_border, 80)));
-            ui.add_space(6.0);
+                Stroke::new(stroke_std(), color_alpha(self.toolbar_border, 80)));
+            ui.add_space(gap_md());
             if !adv {
                 if *s.order_market {
                     ui.label(egui::RichText::new(format!("{:.2}", last))
@@ -1253,13 +1253,13 @@ impl ApertureOrderTicket {
                         .desired_width(68.0).font(egui::FontId::monospace(10.0))
                         .hint_text("Price").horizontal_align(egui::Align::RIGHT));
                 }
-                ui.add_space(2.0);
+                ui.add_space(gap_xs());
                 let mkt_label = if *s.order_market { "MKT" } else { "LMT" };
                 if ui.add(egui::Button::new(
                         egui::RichText::new(mkt_label).monospace().size(font_sm()).strong()
                             .color(if *s.order_market { self.accent } else { self.dim }))
                     .fill(if *s.order_market { color_alpha(self.accent, 35) } else { self.toolbar_bg })
-                    .stroke(Stroke::new(0.5, color_alpha(self.toolbar_border, 90))).corner_radius(2.0)
+                    .stroke(Stroke::new(stroke_thin(), color_alpha(self.toolbar_border, 90))).corner_radius(r_xs())
                     .min_size(egui::vec2(30.0, 20.0)))
                     .clicked()
                 {
@@ -1277,7 +1277,7 @@ impl ApertureOrderTicket {
         // ── Advanced: per-order-type price fields ─────────────────────────
         if adv {
             let oti = *s.order_type_idx;
-            ui.add_space(2.0);
+            ui.add_space(gap_xs());
             if oti == 1 || oti == 3 {
                 FormRow::new("Limit").leading_space(pad).label_width(32.0).hint("Limit price")
                     .show(ui, &t_stub, |ui| {
@@ -1308,7 +1308,7 @@ impl ApertureOrderTicket {
 
         // ── Advanced: Bracket + TP/SL ─────────────────────────────────────
         if adv {
-            ui.add_space(2.0);
+            ui.add_space(gap_xs());
             ui.horizontal(|ui| {
                 ui.add_space(pad);
                 let brk_color = if *s.order_bracket { self.accent } else { color_alpha(self.dim, 50) };
@@ -1316,13 +1316,13 @@ impl ApertureOrderTicket {
                         egui::RichText::new("Bracket").monospace().size(font_sm()).color(brk_color))
                     .fill(if *s.order_bracket { color_alpha(self.accent, 25) } else { egui::Color32::TRANSPARENT })
                     .stroke(Stroke::new(STROKE_THIN, color_alpha(self.toolbar_border, ALPHA_DIM)))
-                    .corner_radius(2.0).min_size(egui::vec2(0.0, 18.0)))
+                    .corner_radius(r_xs()).min_size(egui::vec2(0.0, 18.0)))
                     .clicked()
                 {
                     *s.order_bracket = !*s.order_bracket;
                 }
                 if *s.order_bracket {
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
                     ui.label(egui::RichText::new("TP").monospace().size(font_sm()).color(self.bull));
                     ui.add(egui::TextEdit::singleline(s.order_tp_price)
                         .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Take")
@@ -1335,7 +1335,7 @@ impl ApertureOrderTicket {
             });
         }
 
-        ui.add_space(4.0);
+        ui.add_space(gap_sm());
 
         // ── BUY / SELL ────────────────────────────────────────────────────
         let buy_price = if *s.order_market { last + spread }
@@ -1344,7 +1344,7 @@ impl ApertureOrderTicket {
             else { s.order_limit_price.parse::<f32>().unwrap_or(last) };
         ui.horizontal(|ui| {
             ui.add_space(pad);
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = gap_sm();
             let btn_w = (panel_w - pad * 2.0 - 8.0) / 2.0;
             let is_und = adv && *s.order_type_idx == 5 && s.is_option;
             let buy_label = if is_und {
@@ -1366,7 +1366,7 @@ impl ApertureOrderTicket {
                          else      { ApertureAction::Sell { price: sell_price } };
             }
         });
-        ui.add_space(6.0);
+        ui.add_space(gap_md());
 
         ApertureOrderOutcome { action }
     }
@@ -1402,5 +1402,9 @@ fn aperture_stub_theme_full(
         rrg_weakening:      Color32::from_rgb(230, 200, 50),
         rrg_lagging:        Color32::from_rgb(224, 82, 82),
         cmd_palette:        crate::chart_renderer::gpu::CMD_PALETTE_DEFAULT,
+        pinned_row_tint:    Color32::from_rgba_premultiplied(3, 5, 9, 12),
+        text_muted:         Color32::from_rgb(180, 180, 195),
+        hud_bg:             Color32::from_rgba_premultiplied(12, 12, 18, 230),
+        hud_border:         Color32::from_rgb(50, 52, 64),
     }
 }

@@ -24,6 +24,7 @@
 use egui::{Color32, FontFamily, Response, RichText, Ui, Widget};
 use super::super::style::*;
 use super::foundation::text_style::TextStyle;
+fn ft() -> &'static super::super::super::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
 
 // Re-export size enums so callers only need to import from this module.
 pub use super::super::components::{MonoSize, NumericSize};
@@ -72,7 +73,7 @@ pub struct PaneTitle<'a> {
 
 impl<'a> PaneTitle<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(200, 200, 210), overrides: Overrides::default() }
+        Self { text, color: ft().text, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
@@ -106,7 +107,7 @@ pub struct Subheader<'a> {
 
 impl<'a> Subheader<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(150, 150, 160), overrides: Overrides::default() }
+        Self { text, color: ft().dim, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
@@ -140,7 +141,7 @@ pub struct BodyLabel<'a> {
 
 impl<'a> BodyLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(200, 200, 210), overrides: Overrides::default() }
+        Self { text, color: ft().text, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
@@ -176,7 +177,7 @@ pub struct MutedLabel<'a> {
 
 impl<'a> MutedLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, base_color: Color32::from_rgb(150, 150, 160), overrides: Overrides::default() }
+        Self { text, base_color: ft().dim, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.base_color = c; self }
     pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
@@ -213,7 +214,7 @@ pub struct CaptionLabel<'a> {
 
 impl<'a> CaptionLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, dim: Color32::from_rgb(120, 120, 130), overrides: Overrides::default() }
+        Self { text, dim: ft().dim, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.dim = c; self }
     pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
@@ -253,7 +254,7 @@ pub struct MonospaceCode<'a> {
 
 impl<'a> MonospaceCode<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(200, 200, 210), size: MonoSize::Sm, overrides: Overrides::default() }
+        Self { text, color: ft().text, size: MonoSize::Sm, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, s: MonoSize) -> Self { self.size = s; self }
@@ -305,7 +306,7 @@ pub struct NumericDisplay<'a> {
 
 impl<'a> NumericDisplay<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(200, 200, 210), size: NumericSize::Lg, overrides: Overrides::default() }
+        Self { text, color: ft().text, size: NumericSize::Lg, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, s: NumericSize) -> Self { self.size = s; self }
@@ -373,7 +374,7 @@ pub struct SectionLabel<'a> {
 
 impl<'a> SectionLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(150, 150, 160), size: SectionLabelSize::Sm, overrides: Overrides::default() }
+        Self { text, color: ft().dim, size: SectionLabelSize::Sm, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, s: SectionLabelSize) -> Self { self.size = s; self }
@@ -436,7 +437,7 @@ pub struct DimLabel<'a> {
 
 impl<'a> DimLabel<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(150, 150, 160), overrides: Overrides::default() }
+        Self { text, color: ft().dim, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
@@ -474,7 +475,7 @@ pub struct CategoryHeader<'a> {
 
 impl<'a> CategoryHeader<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: Color32::from_rgb(120, 120, 130), overrides: Overrides::default() }
+        Self { text, color: ft().dim, overrides: Overrides::default() }
     }
     pub fn color(mut self, c: Color32) -> Self { self.color = c; self }
     pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }

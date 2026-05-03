@@ -204,7 +204,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         let btn_width = {
             let galley = ui.fonts(|f| f.layout_no_wrap(
                 display_label.clone(),
-                egui::FontId::monospace(12.0),
+                egui::FontId::monospace(font_md()),
                 Color32::WHITE,
             ));
             galley.rect.width() + 16.0 // approx button padding
@@ -235,7 +235,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
                 Stroke::new(ul_thickness, active_fill));
         }
         // Place the actual button in the already-allocated rect via put().
-        let resp = ui.put(btn_rect, egui::Button::new(RichText::new(display_label).monospace().size(12.0).color(fg))
+        let resp = ui.put(btn_rect, egui::Button::new(RichText::new(display_label).monospace().size(font_md()).color(fg))
             .fill(Color32::TRANSPARENT).stroke(Stroke::new(0.0, Color32::TRANSPARENT)).corner_radius(corner_r));
         hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
         if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
@@ -245,8 +245,8 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         return resp;
     }
 
-    let resp = ui.add(egui::Button::new(RichText::new(display_label).monospace().size(12.0).color(fg))
-        .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(corner_r)
+    let resp = ui.add(egui::Button::new(RichText::new(display_label).monospace().size(font_md()).color(fg))
+        .fill(bg).stroke(Stroke::new(stroke_thin(), border)).corner_radius(corner_r)
         .min_size(egui::vec2(0.0, 24.0)));
     hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
 
@@ -297,8 +297,8 @@ pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32,
 /// Theme-aware dialog window — rich shadow when shadows_enabled, flat hairline when not (#16).
 pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, toolbar_bg: Color32, toolbar_border: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
     let st = current();
-    let border = border_color.unwrap_or(color_alpha(toolbar_border, 80));
-    let corner_r = if st.r_lg == 0 { 0.0 } else { 12.0 };
+    let border = border_color.unwrap_or(color_alpha(toolbar_border, alpha_strong()));
+    let corner_r = if st.r_lg == 0 { 0.0 } else { radius_lg() };
     let shadow = if st.shadows_enabled {
         egui::epaint::Shadow {
             offset: [0, 8],
@@ -341,9 +341,9 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
         Color32::from_rgb(bg.r().saturating_sub(darken), bg.g().saturating_sub(darken), bg.b().saturating_sub(darken))
     });
     let mut closed = false;
-    let rlg = 12u8;
+    let rlg = current().r_lg;
     egui::Frame::NONE.fill(fill)
-        .inner_margin(egui::Margin { left: 12, right: 10, top: 10, bottom: 10 })
+        .inner_margin(egui::Margin { left: gap_lg() as i8, right: gap_lg() as i8, top: gap_lg() as i8, bottom: gap_lg() as i8 })
         .corner_radius(egui::CornerRadius { nw: rlg, ne: rlg, sw: 0, se: 0 })
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -510,7 +510,7 @@ pub fn segmented_control(
         let prev_pad = ui.spacing().button_padding;
         ui.spacing_mut().button_padding = egui::vec2(seg_pad_x, prev_pad.y);
         let resp = ui.add(
-            egui::Button::new(RichText::new(*label).monospace().size(12.0).strong().color(fg))
+            egui::Button::new(RichText::new(*label).monospace().size(font_md()).strong().color(fg))
                 .fill(bg).stroke(Stroke::NONE).corner_radius(cr)
                 .min_size(egui::vec2(0.0, seg_btn_h))
         );
@@ -573,9 +573,9 @@ pub fn panel_header(ui: &mut egui::Ui, title: &str, accent: Color32, dim: Color3
 pub fn panel_header_sub(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>, accent: Color32, dim: Color32) -> bool {
     let mut closed = false;
     ui.horizontal(|ui| {
-        ui.label(RichText::new(title).monospace().size(11.0).strong().color(accent));
+        ui.label(RichText::new(title).monospace().size(font_md()).strong().color(accent));
         if let Some(sub) = subtitle {
-            ui.label(RichText::new(sub).monospace().size(9.0).color(dim));
+            ui.label(RichText::new(sub).monospace().size(font_sm()).color(dim));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if close_button(ui, dim) { closed = true; }
@@ -1365,15 +1365,15 @@ pub fn rule_stroke_for(_bg: egui::Color32, border: egui::Color32) -> egui::Strok
 /// `panel_rect` should be the full toolbar panel rect for correct top/bottom span.
 pub fn tb_group_break(ui: &mut egui::Ui, panel_rect: egui::Rect, border: egui::Color32) {
     if !current().vertical_group_dividers { return; }
-    ui.add_space(6.0);
+    ui.add_space(gap_md());
     let x = ui.cursor().left();
     // Use alpha_heavy (120) for clearly visible dividers even on dim toolbar_border colors.
     let color = color_alpha(border, alpha_heavy());
     ui.painter().line_segment(
         [egui::pos2(x, panel_rect.top() + 2.0), egui::pos2(x, panel_rect.bottom() - 2.0)],
-        egui::Stroke::new(1.0, color),
+        egui::Stroke::new(stroke_std(), color),
     );
-    ui.add_space(6.0);
+    ui.add_space(gap_md());
 }
 
 /// Returns `s` uppercased (and letter-spaced) for active styles that request it (#5, #12).
@@ -1450,10 +1450,10 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
         style.visuals.menu_corner_radius   = egui::CornerRadius::ZERO;
 
         // Denser editorial spacing
-        style.spacing.button_padding   = egui::vec2(8.0, 3.0);
-        style.spacing.menu_margin      = egui::Margin { left: 6, right: 6, top: 4, bottom: 4 };
+        style.spacing.button_padding   = egui::vec2(gap_xl(), gap_xs());
+        style.spacing.menu_margin      = egui::Margin { left: gap_md() as i8, right: gap_md() as i8, top: gap_sm() as i8, bottom: gap_sm() as i8 };
         style.spacing.interact_size.y  = 22.0;
-        style.spacing.item_spacing     = egui::vec2(4.0, 3.0);
+        style.spacing.item_spacing     = egui::vec2(gap_sm(), gap_xs());
     }
 
     // input_focus_color: override the focus-ring stroke on text inputs.

@@ -12,6 +12,7 @@ use egui::{Color32, Response, Sense, Stroke, Ui};
 use super::super::super::style::*;
 
 type Theme = crate::chart_renderer::gpu::Theme;
+fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SortDir { None, Asc, Desc }
@@ -117,11 +118,12 @@ impl<'a, T> Table<'a, T> {
             egui::vec2(avail_w, avail_h),
         );
 
-        let dim = self.theme_dim.unwrap_or(Color32::from_gray(120));
-        let fg = self.theme_fg.unwrap_or(Color32::from_gray(220));
-        let accent = self.theme_accent.unwrap_or(Color32::from_rgb(80, 160, 220));
-        let border = self.theme_border.unwrap_or(Color32::from_gray(60));
-        let bg = self.theme_bg.unwrap_or(Color32::from_gray(20));
+        let t = ft();
+        let dim = self.theme_dim.unwrap_or(t.dim);
+        let fg = self.theme_fg.unwrap_or(t.text);
+        let accent = self.theme_accent.unwrap_or(t.accent);
+        let border = self.theme_border.unwrap_or(t.toolbar_border);
+        let bg = self.theme_bg.unwrap_or(t.toolbar_bg);
 
         // Compute column x-positions.
         let select_w = if self.select_col { 22.0 } else { 0.0 };

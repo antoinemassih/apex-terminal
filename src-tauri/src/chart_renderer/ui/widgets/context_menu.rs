@@ -52,7 +52,7 @@ impl MenuTheme {
             dim: t.dim,
             bg: t.bg,
             fg: t.text,
-            danger: Color32::from_rgb(220, 80, 80),
+            danger: t.bear,
         }
     }
 }

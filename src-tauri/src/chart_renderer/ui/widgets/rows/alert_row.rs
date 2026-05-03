@@ -79,11 +79,12 @@ impl<'a> AlertRow<'a> {
     /// Returns (row_response, delete_clicked).
     pub fn show(self, ui: &mut Ui) -> (Response, bool) {
         let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let bull = self.theme_bull.unwrap_or(Color32::from_rgb(0, 200, 120));
-        let bear = self.theme_bear.unwrap_or(Color32::from_rgb(220, 80, 80));
-        let dim = self.theme_dim.unwrap_or(Color32::from_gray(120));
-        let fg = self.theme_fg.unwrap_or(Color32::from_gray(220));
-        let accent = self.theme_accent.unwrap_or(Color32::from_rgb(80, 160, 220));
+        let ft = fallback_theme();
+        let bull = self.theme_bull.unwrap_or(ft.bull);
+        let bear = self.theme_bear.unwrap_or(ft.bear);
+        let dim = self.theme_dim.unwrap_or(ft.dim);
+        let fg = self.theme_fg.unwrap_or(ft.text);
+        let accent = self.theme_accent.unwrap_or(ft.accent);
 
         let symbol = self.symbol;
         let cmp = self.cmp;

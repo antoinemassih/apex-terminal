@@ -32,9 +32,7 @@ if watchlist.open {
         .max_width(500.0)
         .resizable(true)
         .frame(
-            egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin {
-                left: 4, right: 4, top: 4, bottom: 4,
-            })
+            egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin::same(gap_sm() as i8))
         )
         .show(ctx, |ui| {
             // Force content to never exceed the panel's actual width
@@ -59,7 +57,7 @@ if watchlist.open {
                     if close_button(ui, t.dim) { watchlist.open = false; }
                     // Market session badge
                     let (session, session_col) = market_session();
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
                     let badge_bg = color_alpha(session_col, alpha_tint());
                     ui.add(ChromeBtn::new(
                         egui::RichText::new(session).monospace().size(font_xs()).strong().color(session_col))
@@ -73,7 +71,7 @@ if watchlist.open {
                 [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
                 border_stroke(t),
             );
-            ui.add_space(4.0);
+            ui.add_space(gap_sm());
 
             let mut open_option_chart: Option<(String, f32, bool, String)> = None;
             // OCC ticker for the click → routed into pending_opt_chart_contract
@@ -206,7 +204,7 @@ if watchlist.open {
                     if !wl_fetch_syms.is_empty() {
                         fetch_watchlist_prices(wl_fetch_syms);
                     }
-                    ui.add_space(2.0);
+                    ui.add_space(gap_xs());
 
                     // ── C) Search field + filter button beside it ──
                     // Use allocate_ui_with_layout to place them side by side without
@@ -314,18 +312,18 @@ if watchlist.open {
                             }
                         });
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
 
                     // Filter indicator (show active preset name if filtering)
                     if watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty() {
                         ui.horizontal(|ui| {
-                            ui.add_space(4.0);
+                            ui.add_space(gap_sm());
                             ui.add(MonospaceCode::new(&format!("{} {}", Icon::FUNNEL, watchlist.filter_preset)).size_px(8.0).color(t.accent));
                         });
                     }
                     // Column config popup
                     if watchlist.wl_columns_open {
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
                         egui::Frame::NONE
                             .fill(color_alpha(t.toolbar_border, alpha_faint()))
                             .inner_margin(egui::Margin::same(gap_sm() as i8))
@@ -355,11 +353,11 @@ if watchlist.open {
                                     });
                                 }
                             });
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
                     }
 
                     if watchlist.filter_open {
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
                         // Search
                         ui.horizontal(|ui| {
                             super::widgets::inputs::TextInput::new(&mut watchlist.filter_text)
@@ -394,7 +392,7 @@ if watchlist.open {
                         });
                         // Create custom filter (inline)
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 2.0;
+                            ui.spacing_mut().item_spacing.x = gap_xs();
                             ui.add(MonospaceCode::new("+").size_px(9.0).color(t.accent));
                             // Quick create: just type a name and min% threshold
                             thread_local! {
@@ -418,7 +416,7 @@ if watchlist.open {
                                 });
                             });
                         });
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
                     }
 
                     // Symbol list with sections and drag-and-drop
@@ -479,11 +477,11 @@ if watchlist.open {
                             let sec_rect = egui::Rect::from_min_size(sec_top, egui::vec2(full_w, section_h));
                             {
                                 let p = ui.painter();
-                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha_line()));
+                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_black_alpha(alpha_line()));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top()), egui::pos2(sec_rect.right(), sec_rect.top())],
-                                    egui::Stroke::new(stroke_std(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha_dim())));
+                                    egui::Stroke::new(stroke_std(), egui::Color32::from_black_alpha(alpha_dim())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
-                                    egui::Stroke::new(stroke_thin(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, alpha_tint())));
+                                    egui::Stroke::new(stroke_thin(), egui::Color32::from_black_alpha(alpha_tint())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
                                     egui::Stroke::new(stroke_std(), color_alpha(t.text, 10)));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
@@ -541,13 +539,13 @@ if watchlist.open {
 
                             // ── Section divider line (skip if thick options divider just drawn) ──
                             if si > 0 {
-                                ui.add_space(2.0);
+                                ui.add_space(gap_xs());
                                 let cursor_y = ui.cursor().min.y;
                                 ui.painter().line_segment(
                                     [egui::pos2(ui.min_rect().left(), cursor_y),
                                      egui::pos2(ui.min_rect().left() + full_w, cursor_y)],
                                     egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())));
-                                ui.add_space(2.0);
+                                ui.add_space(gap_xs());
                             }
 
                             // ── Track section start for continuous background ──
@@ -721,7 +719,7 @@ if watchlist.open {
                                             ui.add_space(if is_active { 8.0 } else { 4.0 });
                                             // Drag grip
                                             ui.add(MonospaceCode::new(Icon::DOTS_SIX_VERTICAL).size_px(9.0).color(t.dim).gamma(0.2));
-                                            ui.add_space(2.0);
+                                            ui.add_space(gap_xs());
                                             // C/P badge
                                             let badge_bg = color_alpha(opt_color, 35);
                                             let badge_resp = ui.add(ChromeBtn::new(
@@ -729,7 +727,7 @@ if watchlist.open {
                                                 .fill(badge_bg).corner_radius(r_sm_cr()).stroke(egui::Stroke::NONE)
                                                 .min_size(BTN_ICON_SM));
                                             let _ = badge_resp;
-                                            ui.add_space(2.0);
+                                            ui.add_space(gap_xs());
                                             // Full option name (e.g. "SPY 560C 0DTE")
                                             let sym_color = if is_active { t.text } else { t.dim };
                                             ui.add(MonospaceCode::new(&item_sym).size_px(10.5).strong(true).color(sym_color));
@@ -777,7 +775,7 @@ if watchlist.open {
                                             // Two layered tints (panel previously painted both): blend into one.
                                             // 80,120,200,12 + t.text @ alpha 4 → use the bluish tint; the t.text@4
                                             // overlay was nearly invisible. Visual parity preserved within 1 alpha.
-                                            egui::Color32::from_rgba_unmultiplied(80, 120, 200, 12)
+                                            t.pinned_row_tint
                                         } else {
                                             egui::Color32::TRANSPARENT
                                         };
@@ -973,7 +971,7 @@ if watchlist.open {
                                     ui.painter().rect_filled(float_rect, 4.0, color_alpha(t.accent, alpha_muted()));
                                     ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(stroke_std(), t.accent), egui::StrokeKind::Outside);
                                     ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
-                                        drag_sym, egui::FontId::monospace(11.0), t.text);
+                                        drag_sym, egui::FontId::monospace(font_md()), t.text);
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                                 }
                             }
@@ -1008,7 +1006,7 @@ if watchlist.open {
 
                         // ── Add section button ──
                         // "+ Section" always at bottom of stocks scroll
-                        ui.add_space(6.0);
+                        ui.add_space(gap_md());
                         ui.horizontal(|ui| {
                             if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(font_sm()).color(t.dim.gamma_multiply(0.4)))
                                 .frameless(true)).clicked() {
@@ -1040,7 +1038,7 @@ if watchlist.open {
                     // ── Draggable divider + Options scroll ──
                     if show_opts {
                         // Divider bar — allocate a draggable strip, decoupled from egui interaction
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
                         let div_r = ui.available_rect_before_wrap();
                         let div_y = ui.cursor().min.y;
                         let div_rect = egui::Rect::from_min_max(
@@ -1060,7 +1058,7 @@ if watchlist.open {
                                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                             }
                         }
-                        ui.add_space(6.0);
+                        ui.add_space(gap_md());
 
                         // OPTIONS label
                         ui.horizontal(|ui| {
@@ -1072,7 +1070,7 @@ if watchlist.open {
                                 ui.add(MonospaceCode::new(&format!("({})", opt_count)).size_px(8.0).color(t.dim).gamma(0.4));
                             }
                         });
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
 
                         egui::ScrollArea::vertical().id_salt("wl_options").show(ui, |ui| {
                             let active_sym = panes[ap].symbol.clone();
@@ -1142,7 +1140,7 @@ if watchlist.open {
                                         }
                                     }
                                 });
-                                ui.add_space(2.0);
+                                ui.add_space(gap_xs());
 
                                 if !sec_collapsed {
                                     for ii in 0..sec_item_count {
@@ -1171,16 +1169,16 @@ if watchlist.open {
                                         let y_c = rect.center().y;
                                         // C/P badge
                                         painter.text(egui::pos2(rect.left() + 6.0, y_c), egui::Align2::LEFT_CENTER,
-                                            badge, egui::FontId::monospace(11.0), color);
+                                            badge, egui::FontId::monospace(font_md()), color);
                                         // Contract name
                                         painter.text(egui::pos2(rect.left() + 22.0, y_c), egui::Align2::LEFT_CENTER,
                                             &format!("{} {:.0} {}", item_underlying, item_strike, item_expiry),
-                                            egui::FontId::monospace(14.0), t.text);
+                                            egui::FontId::monospace(font_lg()), t.text);
                                         // Bid x Ask (right-aligned)
                                         if item_bid > 0.0 || item_ask > 0.0 {
                                             painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
                                                 &format!("{:.2} x {:.2}", item_bid, item_ask),
-                                                egui::FontId::monospace(14.0), color.gamma_multiply(0.7));
+                                                egui::FontId::monospace(font_lg()), color.gamma_multiply(0.7));
                                         }
                                         // Faint separator
                                         painter.line_segment(
@@ -1211,19 +1209,19 @@ if watchlist.open {
                                         ui.painter().rect_filled(block_rect, 0.0, hex_to_color(hex, 0.07));
                                     }
                                 }
-                                ui.add_space(4.0);
+                                ui.add_space(gap_sm());
                             }
 
                             // Empty state
                             if option_section_ids.is_empty() {
-                                ui.add_space(8.0);
+                                ui.add_space(gap_lg());
                                 ui.add(MonospaceCode::new("No options saved").size_px(9.0).color(t.dim).gamma(0.35));
                                 ui.add(MonospaceCode::new("Shift+click contracts in the CHAIN tab").size_px(8.0).color(t.dim).gamma(0.25));
-                                ui.add_space(8.0);
+                                ui.add_space(gap_lg());
                             }
 
                             // "+ Section" button at bottom of options area
-                            ui.add_space(6.0);
+                            ui.add_space(gap_md());
                             ui.horizontal(|ui| {
                                 if ui.add(ChromeBtn::new(egui::RichText::new(format!("{} Section", Icon::PLUS)).monospace().size(font_sm()).color(t.dim.gamma_multiply(0.4)))
                                     .frameless(true)).clicked() {
@@ -1310,7 +1308,7 @@ if watchlist.open {
                         });
                     });
 
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
 
                     // ── Symbol selector + price ──
                     ui.horizontal(|ui| {
@@ -1330,11 +1328,11 @@ if watchlist.open {
                             let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
                             let r = sym_resp.rect;
                             ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
-                                display_text, egui::FontId::monospace(14.0), t.accent);
+                                display_text, egui::FontId::monospace(font_lg()), t.accent);
                         }
                         // Price display
                         if chain_price > 0.0 {
-                            ui.add_space(6.0);
+                            ui.add_space(gap_md());
                             ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(14.0).color(TEXT_PRIMARY));
                         }
                         // Search — static immediate + ApexIB background
@@ -1372,13 +1370,13 @@ if watchlist.open {
                         });
                     }
 
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
                     // Separator before chain data
                     let sep_r = ui.available_rect_before_wrap();
                     ui.painter().line_segment(
                         [egui::pos2(sep_r.left(), ui.cursor().min.y), egui::pos2(sep_r.right(), ui.cursor().min.y)],
                         egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
 
                     // Loading indicator
                     if watchlist.chain_loading {
@@ -1455,17 +1453,17 @@ if watchlist.open {
 
                         // Strike
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.0}", row.strike), egui::FontId::monospace(14.0), t.text);
+                            &format!("{:.0}", row.strike), egui::FontId::monospace(font_lg()), t.text);
                         x += col_stk + gap;
 
                         // Bid
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.2}", row.bid), egui::FontId::monospace(14.0), color);
+                            &format!("{:.2}", row.bid), egui::FontId::monospace(font_lg()), color);
                         x += col_bid + gap;
 
                         // Ask
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.2}", row.ask), egui::FontId::monospace(14.0), t.dim);
+                            &format!("{:.2}", row.ask), egui::FontId::monospace(font_lg()), t.dim);
                         x += col_ask + gap;
 
                         // OI
@@ -1527,7 +1525,7 @@ if watchlist.open {
                             ui.add(MonospaceCode::new(&exp_label).size_px(12.0).strong(true).color(t.accent));
                             ui.add(MonospaceCode::new(&date_str).size_px(10.0).color(t.dim).gamma(0.6));
                         });
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
 
                         // Collect all unique strikes from calls + puts, sorted ascending
                         let mut all_strikes: Vec<f32> = calls.iter().chain(puts.iter())
@@ -1658,14 +1656,14 @@ if watchlist.open {
                                 format!("${:.2}", price)
                             };
                             ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER,
-                                &badge_text, egui::FontId::monospace(11.0),
+                                &badge_text, egui::FontId::monospace(font_md()),
                                 TEXT_PRIMARY);
                         }
                         ui.add_space(22.0);
 
                         // Puts (ATM at top, OTM at bottom)
                         for row in &sorted_puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }
-                        ui.add_space(4.0);
+                        ui.add_space(gap_sm());
                     };
 
                     // ── Scroll area with two expiry blocks ──
@@ -1728,12 +1726,12 @@ if watchlist.open {
                         let nmf_0 = watchlist.chain_0_nmf;
                         render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_0, off_0, sm_0, nmf_0);
 
-                        ui.add_space(6.0);
+                        ui.add_space(gap_md());
                         let sep_r = ui.available_rect_before_wrap();
                         ui.painter().line_segment(
                             [egui::pos2(sep_r.left() + 4.0, ui.cursor().min.y), egui::pos2(sep_r.right() - 4.0, ui.cursor().min.y)],
                             egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())));
-                        ui.add_space(4.0);
+                        ui.add_space(gap_sm());
 
                         // Per-chain controls: far DTE
                         ui.horizontal(|ui| {
@@ -1829,7 +1827,7 @@ if watchlist.open {
                         let sort_col = if watchlist.heat_sort != 0 { t.accent } else { t.dim };
                         if hbtn(ui, sort_label, sort_col, "Sort: gainers / losers / default") { watchlist.heat_sort = match watchlist.heat_sort { 0 => 1, 1 => -1, _ => 0 }; }
                     });
-                    ui.add_space(2.0);
+                    ui.add_space(gap_xs());
 
                     // Sector ETF mapping for S&P
                     // TODO: Fetch constituent lists from ApexIB API for live, up-to-date data.

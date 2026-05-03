@@ -80,11 +80,12 @@ impl<'a> OptionChainRow<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let accent = self.theme_accent.unwrap_or(Color32::from_rgb(80, 160, 220));
-        let bull = self.theme_bull.unwrap_or(Color32::from_rgb(0, 200, 120));
-        let bear = self.theme_bear.unwrap_or(Color32::from_rgb(220, 80, 80));
-        let dim = self.theme_dim.unwrap_or(Color32::from_gray(120));
-        let fg = self.theme_fg.unwrap_or(Color32::from_gray(220));
+        let ft = fallback_theme();
+        let accent = self.theme_accent.unwrap_or(ft.accent);
+        let bull = self.theme_bull.unwrap_or(ft.bull);
+        let bear = self.theme_bear.unwrap_or(ft.bear);
+        let dim = self.theme_dim.unwrap_or(ft.dim);
+        let fg = self.theme_fg.unwrap_or(ft.text);
         let strike = self.strike;
         let call = self.call;
         let put = self.put;

@@ -16,6 +16,7 @@ use egui::{Color32, Response, Sense, Stroke, Ui, Widget};
 use super::super::style::*;
 
 type Theme = crate::chart_renderer::gpu::Theme;
+fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
 
 pub mod alert_row;
 pub mod dom_row;
@@ -155,8 +156,8 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
         );
         let resp = ui.allocate_rect(rect, self.sense);
 
-        let border = self.theme_border.unwrap_or(Color32::from_gray(60));
-        let accent = self.theme_accent.unwrap_or(Color32::from_rgb(80, 160, 220));
+        let border = self.theme_border.unwrap_or(ft().toolbar_border);
+        let accent = self.theme_accent.unwrap_or(ft().accent);
 
         let bg = if self.selected {
             color_alpha(accent, alpha_subtle())

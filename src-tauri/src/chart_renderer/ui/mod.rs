@@ -52,3 +52,4 @@ pub mod spreadsheet_pane;
 pub mod design_preview_pane;
 pub mod research_panel;
 pub mod side_panel;
+pub mod pane;

@@ -111,6 +111,8 @@ use crate::chart_renderer::ui::style::{
     BTN_ICON_SM, BTN_ICON_LG,
     set_toolbar_rect, tb_group_break, current as style_current,
     font_xs, font_sm, font_md,
+    gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
+    stroke_std, stroke_thin, r_md_cr,
 };
 use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, OrderStatus};
@@ -165,7 +167,7 @@ pub(crate) fn render(
     // Toolbar height scaled per active style (1.40× for Meridien Bloomberg-style tall bar) (#4).
     let tb_scale = style_current().toolbar_height_scale;
     egui::TopBottomPanel::top("tb")
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: 8, right: 0, top: 0, bottom: 0 }))
+        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: gap_lg() as i8, right: 0, top: 0, bottom: 0 }))
         .exact_height((if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale)
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
@@ -203,7 +205,7 @@ pub(crate) fn render(
         }
 
         ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = gap_sm();
 
             // ── Logo ──
             let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
@@ -215,7 +217,7 @@ pub(crate) fn render(
             ], egui::Stroke::new(STROKE_STD, t.accent)));
             lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(STROKE_STD, t.accent));
 
-            ui.add_space(4.0);
+            ui.add_space(gap_sm());
             ui.spacing_mut().item_spacing.x = 3.0;
 
             // ── Account button (broker + connection state) ──
@@ -282,10 +284,10 @@ pub(crate) fn render(
             let right_width = 130.0; // window controls + Opt button
             let middle_width = (ui.available_width() - right_width).max(60.0);
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.spacing_mut().item_spacing.x = gap_xs();
 
             // ── Interval buttons — segmented control with inset trough ──
-            ui.add_space(2.0);
+            ui.add_space(gap_xs());
             {
                 const TF_OPTIONS: &[&str] = &["1m","5m","15m","30m","1h","4h","1d","1wk"];
                 const TF_SECS:    &[u32]  = &[60,  300, 900,  1800, 3600,14400,86400,604800];
@@ -301,7 +303,7 @@ pub(crate) fn render(
                     }
                 }
             }
-            ui.add_space(4.0);
+            ui.add_space(gap_sm());
             // ── Range dropdown (sets interval + visible bars) ──
             {
                 let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
@@ -540,7 +542,7 @@ pub(crate) fn render(
                         let c = hex_to_color(ecolor, 1.0);
                         ui.horizontal(|ui| {
                             ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, c);
-                            ui.add_space(10.0);
+                            ui.add_space(gap_xl());
                             if ui.selectable_label(*evis, egui::RichText::new(label_text.trim()).monospace().size(FONT_SM)).clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 let nv = !*evis;
@@ -845,7 +847,7 @@ pub(crate) fn render(
                     ui.horizontal(|ui| {
                         let oc = hex_to_color(&ov.color, 1.0);
                         ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, oc);
-                        ui.add_space(10.0);
+                        ui.add_space(gap_xl());
                         let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(FONT_SM).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
                         if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(FONT_SM).color(t.bear.gamma_multiply(0.5)))
@@ -989,7 +991,7 @@ pub(crate) fn render(
                         .color(if active_in_cat > 0 { t.accent } else { t.dim }), |ui| {
                         ui.set_min_width(280.0);
                         ui.label(egui::RichText::new(*cat_name).monospace().size(font_xs()).strong().color(t.accent));
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
 
                         for &kind in *kinds {
                             let is_active = active_kinds.contains(&kind);
@@ -1042,7 +1044,7 @@ pub(crate) fn render(
                     });
                 }
 
-                ui.add_space(4.0);
+                ui.add_space(gap_sm());
                 ui.separator();
                 if !panes[ap].chart_widgets.is_empty() {
                     if ui.selectable_label(false, egui::RichText::new("\u{1F5D1} Remove All Widgets")
@@ -1065,7 +1067,7 @@ pub(crate) fn render(
                     ui.set_min_width(200.0);
 
                     ui.label(egui::RichText::new("WORKSPACES").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.5)));
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
 
                     // Workspace list
                     for name in &ws_names {
@@ -1087,9 +1089,9 @@ pub(crate) fn render(
                         });
                     }
 
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
                     ui.separator();
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
 
                     // Save current
                     if !watchlist.active_workspace.is_empty() {
@@ -1101,7 +1103,7 @@ pub(crate) fn render(
                     }
 
                     // Save as new
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
                     ui.horizontal(|ui| {
                         ui.add(egui::TextEdit::singleline(&mut watchlist.workspace_save_name)
                             .hint_text("New workspace…")
@@ -1121,7 +1123,7 @@ pub(crate) fn render(
                     });
 
                     // Auto-save info
-                    ui.add_space(4.0);
+                    ui.add_space(gap_sm());
                     ui.label(egui::RichText::new("Auto-saves every 30s").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.3)));
                 });
             }
@@ -1151,13 +1153,13 @@ pub(crate) fn render(
                     .filter(|&&ly| watchlist.layout_favorites.iter().any(|f| f == ly.label()))
                     .collect();
                 if !fav_layouts.is_empty() {
-                    ui.add_space(2.0);
+                    ui.add_space(gap_xs());
                     let labels: Vec<&str> = fav_layouts.iter().map(|&&ly| ly.label()).collect();
                     let active_idx = fav_layouts.iter().position(|&&ly| *layout == ly).unwrap_or(0);
                     if let Some(i) = segmented_control(ui, active_idx, &labels, t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
                         switch_layout(*fav_layouts[i], panes, layout, active_pane);
                     }
-                    ui.add_space(2.0);
+                    ui.add_space(gap_xs());
                 }
                 // Dropdown caret for the full layout picker
                 let dd_btn = ui.add(ToolbarBtn::new(Icon::CARET_DOWN).active(watchlist.layout_dropdown_open).theme(t));
@@ -1291,7 +1293,7 @@ pub(crate) fn render(
                 ui.add(egui::Separator::default().spacing(4.0));
 
                 // Panel toggle buttons (right-to-left, so ordered right→left)
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.spacing_mut().item_spacing.x = gap_sm();
 
 
                 // Connection status — small painted dot, no button frame
@@ -1450,9 +1452,9 @@ pub(crate) fn render(
             .title_bar(false)
             .frame(egui::Frame::popup(&ctx.style())
                 .fill(t.toolbar_bg)
-                .inner_margin(egui::Margin::same(6))
-                .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 120)))
-                .corner_radius(6.0))
+                .inner_margin(egui::Margin::same(gap_md() as i8))
+                .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, 120)))
+                .corner_radius(r_md_cr()))
             .show(ctx, |ui| {
                 let hover_pos = ui.input(|i| i.pointer.hover_pos());
                 let mut last_section = "";
@@ -1460,18 +1462,18 @@ pub(crate) fn render(
                     let sec = ly.section();
                     if sec != last_section {
                         if !last_section.is_empty() {
-                            ui.add_space(2.0);
+                            ui.add_space(gap_xs());
                             let y = ui.cursor().min.y;
                             ui.painter().line_segment(
                                 [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                                egui::Stroke::new(0.5, color_alpha(t.toolbar_border, 50)));
-                            ui.add_space(4.0);
+                                egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
+                            ui.add_space(gap_sm());
                         }
                         ui.horizontal(|ui| {
-                            ui.add_space(6.0);
+                            ui.add_space(gap_md());
                             ui.label(egui::RichText::new(sec).monospace().size(font_xs()).strong().color(t.dim.gamma_multiply(0.5)));
                         });
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
                         last_section = sec;
                     }
                     let is_cur = *layout == ly;
@@ -1495,19 +1497,19 @@ pub(crate) fn render(
                     for mr in &mini {
                         let s = egui::Rect::from_min_max(egui::pos2(mr.left() + 0.5, mr.top() + 0.5), egui::pos2(mr.right() - 0.5, mr.bottom() - 0.5));
                         ui.painter().rect_filled(s, 1.0, color_alpha(gc, 80));
-                        ui.painter().rect_stroke(s, 1.0, egui::Stroke::new(0.5, color_alpha(gc, 150)), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(s, 1.0, egui::Stroke::new(stroke_thin(), color_alpha(gc, 150)), egui::StrokeKind::Outside);
                     }
 
                     // Label + description
                     let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
                     ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(9.0), lc);
-                    let dc = if hovered { egui::Color32::from_rgb(180, 180, 195) } else { t.dim.gamma_multiply(0.55) };
+                    let dc = if hovered { t.text_muted } else { t.dim.gamma_multiply(0.55) };
                     ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(10.0), dc);
 
                     // Star — filled, raw pointer click
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { egui::Color32::from_rgb(255, 200, 60) } else if sh { t.dim.gamma_multiply(0.5) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
+                    let sc = if is_fav { t.gold } else if sh { t.dim.gamma_multiply(0.5) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(11.0), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -1578,7 +1580,7 @@ pub(crate) fn render(
         dialog_window_themed(ctx, "group_manager", egui::pos2(200.0, 100.0), 250.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
                 if dialog_header(ui, "NEW GROUP", t.dim) { close_gm = true; }
-                ui.add_space(10.0);
+                ui.add_space(gap_xl());
                 let m = 10.0;
                 ui.horizontal(|ui| {
                     ui.add_space(m);
@@ -1586,7 +1588,7 @@ pub(crate) fn render(
                         .hint_text("Group name...").desired_width(230.0 - m * 2.0).font(egui::FontId::monospace(10.0)));
                     resp.request_focus();
                 });
-                ui.add_space(8.0);
+                ui.add_space(gap_lg());
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let can_create = !panes[ap].new_group_name.trim().is_empty();
@@ -1599,7 +1601,7 @@ pub(crate) fn render(
                         close_gm = true;
                     }
                 });
-                ui.add_space(8.0);
+                ui.add_space(gap_lg());
             });
         if close_gm { panes[ap].group_manager_open = false; }
     }
@@ -1623,7 +1625,7 @@ pub(crate) fn render(
                 .title_bar(false)
                 .frame(egui::Frame::popup(&ctx.style())
                     .fill(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (40.0 * alpha) as u8))
-                    .inner_margin(4.0))
+                    .inner_margin(gap_sm()))
                 .show(ctx, |ui| {
                     ui.label(egui::RichText::new(format!("{} {}", Icon::CHECK, msg)).monospace().size(font_sm())
                         .color(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (255.0 * alpha) as u8)));
@@ -1714,7 +1716,7 @@ pub(crate) fn render(
                         ui.label(TextStyle::Numeric.as_rich(&format!("${:.2}", tip.price), color_alpha(t.text,220)));
                         ui.label(TextStyle::Numeric.as_rich(&format!("{:+.2}%", change_pct), chg_col));
                     });
-                    ui.add_space(4.0); ui.separator(); ui.add_space(4.0);
+                    ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
                     if tip.day_high > tip.day_low {
                         ui.horizontal(|ui| {
                             ui.label(TextStyle::Caption.as_rich("Day", dim));
@@ -1745,25 +1747,25 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich(&format!("{:.0}", tip.high_52wk), dim));
                         });
                     }
-                    ui.add_space(2.0);
+                    ui.add_space(gap_xs());
                     ui.horizontal(|ui| {
                         ui.label(TextStyle::MonoSm.as_rich(&format!("ATR {:.2}", tip.atr), dim));
                         ui.label(TextStyle::MonoSm.as_rich(&format!("RVOL {:.1}x", tip.rvol),
-                            if tip.rvol > 2.0 { egui::Color32::from_rgb(240, 160, 40) } else { dim }));
+                            if tip.rvol > 2.0 { t.warn } else { dim }));
                     });
                     if change_pct.abs() > tip.avg_range * 1.5 {
                         ui.label(TextStyle::Caption.as_rich("EXTREME MOVE", chg_col));
                     }
                     if tip.earnings_days >= 0 && tip.earnings_days <= 14 {
-                        ui.add_space(2.0);
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), egui::Color32::from_rgb(255, 193, 37)));
+                        ui.add_space(gap_xs());
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), t.gold));
                     }
                     if !tip.tags.is_empty() {
-                        ui.add_space(2.0);
+                        ui.add_space(gap_xs());
                         ui.horizontal_wrapped(|ui| { for tag in &tip.tags { ui.label(TextStyle::Caption.as_rich(tag, t.accent)); } });
                     }
                     if tip.alert_triggered {
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Alert triggered", Icon::LIGHTNING), egui::Color32::from_rgb(231, 76, 60)));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Alert triggered", Icon::LIGHTNING), t.notification_red));
                     }
                 });
             });

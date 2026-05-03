@@ -196,7 +196,7 @@ impl PaneStatusStrip {
             loading: false,
             data_quality: None,
             bull: ft().bull,
-            warn: Color32::from_rgb(220, 180, 80),
+            warn: ft().warn,
             bear: ft().bear,
             dim:  ft().dim,
         }

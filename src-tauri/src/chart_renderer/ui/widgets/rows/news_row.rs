@@ -66,10 +66,12 @@ impl<'a> NewsRow<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let bull = self.theme_bull.unwrap_or(Color32::from_rgb(0, 200, 120));
-        let bear = self.theme_bear.unwrap_or(Color32::from_rgb(220, 80, 80));
-        let dim = self.theme_dim.unwrap_or(Color32::from_gray(120));
-        let accent = self.theme_accent.unwrap_or(Color32::from_rgb(80, 160, 220));
+        let ft = fallback_theme();
+        let bull = self.theme_bull.unwrap_or(ft.bull);
+        let bear = self.theme_bear.unwrap_or(ft.bear);
+        let dim = self.theme_dim.unwrap_or(ft.dim);
+        let accent = self.theme_accent.unwrap_or(ft.accent);
+        let headline_fg = theme_ref.text;
 
         let headline = self.headline;
         let timestamp = self.timestamp;
@@ -91,7 +93,7 @@ impl<'a> NewsRow<'a> {
                 let headline_pos = egui::pos2(rect.min.x + m, rect.min.y + 4.0);
                 painter.text(headline_pos, egui::Align2::LEFT_TOP,
                     headline, egui::FontId::monospace(9.0),
-                    Color32::from_gray(230));
+                    headline_fg);
 
                 let meta_y = rect.min.y + 30.0;
 

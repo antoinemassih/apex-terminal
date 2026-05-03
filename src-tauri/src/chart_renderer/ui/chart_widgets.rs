@@ -189,9 +189,9 @@ pub(crate) fn draw_widgets(
         if mode == WidgetDisplayMode::Card {
             // Shadow
             painter.rect_filled(card_rect.translate(egui::vec2(0.0, 3.0)).expand(2.0),
-                12.0, color_alpha(t.shadow_color, 20));
+                r_lg_cr(), color_alpha(t.shadow_color, 20));
             painter.rect_filled(card_rect.translate(egui::vec2(0.0, 1.5)).expand(1.0),
-                11.0, color_alpha(t.shadow_color, 10));
+                r_lg_cr(), color_alpha(t.shadow_color, 10));
 
             // Sentiment-driven background: the color reflects the data state
             let sentiment = widget_sentiment(kind, &wd);
@@ -214,15 +214,16 @@ pub(crate) fn draw_widgets(
                     _             => (t.bear.r() / 4 + t.toolbar_bg.r() * 3 / 4, t.bear.g() / 4 + t.toolbar_bg.g() * 3 / 4, t.bear.b() / 4 + t.toolbar_bg.b() * 3 / 4),
                 }
             };
-            painter.rect_filled(card_rect, 10.0, Color32::from_rgb(sr, sg, sb));
+            painter.rect_filled(card_rect, r_lg_cr(), Color32::from_rgb(sr, sg, sb));
 
             // Top bevel
+            let r_lg_u8 = r_lg_cr().nw;
             painter.rect_filled(
                 egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
-                egui::CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 },
+                egui::CornerRadius { nw: r_lg_u8, ne: r_lg_u8, sw: 0, se: 0 },
                 Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 50 } else { 10 }));
             // Border
-            painter.rect_stroke(card_rect, 10.0,
+            painter.rect_stroke(card_rect, r_lg_cr(),
                 Stroke::new(stroke_std(), color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 30 })),
                 egui::StrokeKind::Outside);
         }
@@ -235,7 +236,7 @@ pub(crate) fn draw_widgets(
             // Opacity fade: overlay bg-colored rect to dim the widget toward background
             if w.opacity < 0.999 {
                 let fade = ((1.0 - w.opacity).clamp(0.0, 1.0) * 255.0) as u8;
-                painter.rect_filled(card_rect, 10.0,
+                painter.rect_filled(card_rect, r_lg_cr(),
                     egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), fade));
             }
             if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -272,8 +273,9 @@ pub(crate) fn draw_widgets(
                 egui::pos2(card_rect.left(), card_rect.top() - hdr_h - 2.0),
                 egui::vec2(card_w, hdr_h));
             // Header background
+            let hdr_r = r_lg_cr().nw;
             painter.rect_filled(hdr,
-                egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
+                egui::CornerRadius { nw: hdr_r, ne: hdr_r, sw: 0, se: 0 },
                 Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
             painter.line_segment(
                 [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
@@ -297,9 +299,9 @@ pub(crate) fn draw_widgets(
             let ctx_rect = egui::Rect::from_center_size(
                 egui::pos2(hdr.right() - btn_w - 20.0, hdr.center().y), egui::vec2(btn_w, btn_h));
             let ctx_hov = ptr.map(|p| ctx_rect.contains(p)).unwrap_or(false);
-            painter.rect_filled(ctx_rect, 5.0,
-                if ctx_hov { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 25) });
-            painter.rect_stroke(ctx_rect, 5.0,
+            painter.rect_filled(ctx_rect, r_sm_cr(),
+                if ctx_hov { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) });
+            painter.rect_stroke(ctx_rect, r_sm_cr(),
                 Stroke::new(stroke_thin(), if ctx_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
                 egui::StrokeKind::Outside);
             painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
@@ -312,9 +314,9 @@ pub(crate) fn draw_widgets(
             let tog_rect = egui::Rect::from_center_size(
                 egui::pos2(hdr.right() - 18.0, hdr.center().y), egui::vec2(btn_w, btn_h));
             let tog_hov = ptr.map(|p| tog_rect.contains(p)).unwrap_or(false);
-            painter.rect_filled(tog_rect, 5.0,
-                if tog_hov { color_alpha(t.accent, 50) } else { color_alpha(t.toolbar_border, 25) });
-            painter.rect_stroke(tog_rect, 5.0,
+            painter.rect_filled(tog_rect, r_sm_cr(),
+                if tog_hov { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) });
+            painter.rect_stroke(tog_rect, r_sm_cr(),
                 Stroke::new(stroke_thin(), if tog_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
                 egui::StrokeKind::Outside);
             painter.text(tog_rect.center(), egui::Align2::CENTER_CENTER,
@@ -563,7 +565,7 @@ fn draw_mini_badge(p: &egui::Painter, rect: egui::Rect, kind: ChartWidgetKind,
     let lx = rect.left() + 4.0;
 
     // Faint pill background
-    p.rect_filled(rect, 4.0, Color32::from_rgba_unmultiplied(0, 0, 0, 40));
+    p.rect_filled(rect, radius_sm(), color_alpha(t.shadow_color, alpha_soft()));
 
     let (label, value, color) = mini_summary(kind, wd, t);
     p.text(egui::pos2(lx, cy), egui::Align2::LEFT_CENTER,
@@ -577,11 +579,11 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
     match kind {
         ChartWidgetKind::TrendStrength => {
             let s = if wd.trend_score > 0.0 { wd.trend_score } else { 72.0 };
-            let c = if s > 66.0 { t.bull } else if s > 33.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+            let c = if s > 66.0 { t.bull } else if s > 33.0 { t.warn } else { t.bear };
             ("TRD", format!("{:.0}", s), c)
         }
         ChartWidgetKind::Momentum => {
-            let c = if wd.rsi > 70.0 { t.bull } else if wd.rsi < 30.0 { t.bear } else { Color32::from_rgb(255, 191, 0) };
+            let c = if wd.rsi > 70.0 { t.bull } else if wd.rsi < 30.0 { t.bear } else { t.warn };
             ("RSI", format!("{:.0}", wd.rsi), c)
         }
         ChartWidgetKind::Volatility => {
@@ -604,7 +606,7 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
         ChartWidgetKind::RiskReward => ("R:R", "2.8:1".into(), t.bull),
         ChartWidgetKind::MarketBreadth => ("A/D", "1842/1156".into(), t.bull),
         ChartWidgetKind::Correlation => {
-            let c = if wd.correlation_spy > 0.5 { t.bull } else if wd.correlation_spy > 0.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+            let c = if wd.correlation_spy > 0.5 { t.bull } else if wd.correlation_spy > 0.0 { t.warn } else { t.bear };
             ("COR", format!("{:.2}", wd.correlation_spy), c)
         }
         ChartWidgetKind::DarkPool => {
@@ -626,7 +628,7 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
         ChartWidgetKind::NewsTicker => ("NEWS", "live".into(), t.accent),
         ChartWidgetKind::ExitGauge => {
             let c = match wd.exit_gauge_urgency.as_str() {
-                "exit_now" | "close" => t.bear, "partial" | "tighten" => Color32::from_rgb(255, 191, 0),
+                "exit_now" | "close" => t.bear, "partial" | "tighten" => t.warn,
                 _ => t.bull };
             ("EXIT", format!("{:.0}", wd.exit_gauge_score), c)
         }
@@ -651,24 +653,24 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
             } else { ("PAT", "—".into(), t.dim) }
         }
         ChartWidgetKind::VixMonitor => {
-            let c = if wd.vix_spot > 25.0 { t.bear } else if wd.vix_spot > 18.0 { Color32::from_rgb(255, 191, 0) } else { t.bull };
+            let c = if wd.vix_spot > 25.0 { t.bear } else if wd.vix_spot > 18.0 { t.warn } else { t.bull };
             ("VIX", format!("{:.1}", wd.vix_spot), c)
         }
         ChartWidgetKind::SignalDashboard => ("SIG", "dash".into(), t.accent),
         ChartWidgetKind::DivergenceMonitor => ("DIV", format!("{}", wd.divergence_count), t.accent),
         ChartWidgetKind::ConvictionMeter => {
             let score = compute_conviction(wd);
-            let c = if score > 70.0 { t.bull } else if score > 40.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+            let c = if score > 70.0 { t.bull } else if score > 40.0 { t.warn } else { t.bear };
             ("\u{2605}", format!("{:.0}", score), c)
         }
         ChartWidgetKind::RsiMulti => {
             let avg: f32 = wd.rsi_multi.iter().sum::<f32>() / 7.0;
-            let c = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+            let c = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { t.warn };
             ("RSI", format!("{:.0}", avg), c)
         }
         ChartWidgetKind::TrendAlign => {
             let aligned = wd.trend_grid.iter().filter(|r| r.iter().all(|&v| v)).count();
-            let c = if aligned >= 5 { t.bull } else if aligned >= 3 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+            let c = if aligned >= 5 { t.bull } else if aligned >= 3 { t.warn } else { t.bear };
             ("TRD", format!("{}/7", aligned), c)
         }
         ChartWidgetKind::VolumeShelf => ("VOL", format!("{}", wd.vol_shelves.len()), t.accent),
@@ -702,7 +704,7 @@ fn mini_summary(kind: ChartWidgetKind, wd: &WidgetData, t: &Theme) -> (&'static 
         ChartWidgetKind::CrossAssetPulse => ("MKT", "live".into(), t.accent),
         ChartWidgetKind::TapeSpeed => {
             let speed = wd.vol_ratio;
-            let c = if speed > 2.0 { t.bear } else if speed > 1.2 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
+            let c = if speed > 2.0 { t.bear } else if speed > 1.2 { t.warn } else { t.bull };
             ("SPD", format!("{:.1}x", speed), c)
         }
         ChartWidgetKind::Fundamentals => ("PE", format!("{:.1}", wd.pe_ratio), t.accent),

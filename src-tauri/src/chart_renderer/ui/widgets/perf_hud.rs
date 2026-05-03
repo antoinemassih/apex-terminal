@@ -6,14 +6,15 @@
 
 use egui::{Color32, RichText};
 use super::super::style::{font_xs, font_sm};
+fn ft() -> &'static crate::chart_renderer::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
 
 fn us_to_ms(us: u64) -> f64 { us as f64 / 1000.0 }
 
 /// Color a value: green if fast, yellow if moderate, red if slow.
 fn phase_color(us: u64, warn_us: u64, bad_us: u64) -> Color32 {
-    if us >= bad_us  { Color32::from_rgb(220, 60, 60)  }  // t.bear-ish red
-    else if us >= warn_us { Color32::from_rgb(220, 180, 40) } // t.warn amber
-    else { Color32::from_rgb(80, 200, 120) }  // t.bull-ish green
+    if us >= bad_us       { ft().bear }
+    else if us >= warn_us { ft().warn }
+    else                  { ft().bull }
 }
 
 /// Render a sparkline of frame times in a tiny painter strip.
@@ -58,19 +59,20 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
         .default_width(300.0)
         .frame(
             egui::Frame::window(&ctx.style())
-                .fill(Color32::from_rgba_premultiplied(12, 12, 18, 230))
-                .stroke(egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 64)))
+                .fill(ft().hud_bg)
+                .stroke(egui::Stroke::new(1.0, ft().hud_border))
                 .inner_margin(8.0)
                 .corner_radius(4.0),
         )
         .open(open)
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            let dim   = Color32::from_rgb(120, 120, 140);
-            let white = Color32::from_rgb(210, 210, 220);
-            let warn  = Color32::from_rgb(220, 180, 40);
-            let red   = Color32::from_rgb(220, 60, 60);
-            let green = Color32::from_rgb(80, 200, 120);
+            let t     = ft();
+            let dim   = t.dim;
+            let white = t.text;
+            let warn  = t.warn;
+            let red   = t.bear;
+            let green = t.bull;
             let label_font = egui::FontId::monospace(font_xs());
             let val_font   = egui::FontId::monospace(font_sm());
 

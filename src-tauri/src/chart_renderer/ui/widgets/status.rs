@@ -79,7 +79,7 @@ impl<'a> StatusDot<'a> {
         self.color = match self.variant {
             DotVariant::Success => t.bull,
             DotVariant::Danger  => t.bear,
-            DotVariant::Warning => Color32::from_rgb(241, 196, 15),
+            DotVariant::Warning => ft().warn,
             DotVariant::Neutral => t.dim,
             DotVariant::Custom  => self.color,
         };
@@ -505,7 +505,7 @@ impl<'a> Toast<'a> {
         self.accent = Some(match self.variant {
             ToastVariant::Info    => t.accent,
             ToastVariant::Success => t.bull,
-            ToastVariant::Warning => Color32::from_rgb(241, 196, 15),
+            ToastVariant::Warning => ft().warn,
             ToastVariant::Danger  => t.bear,
         });
         self

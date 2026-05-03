@@ -364,9 +364,9 @@ impl<'a> WatchlistRow<'a> {
                 if let Some(chg) = extreme_move {
                     if avg_daily_range > 0.0 && chg.abs() > avg_daily_range * 1.5 {
                         let tint = if chg >= 0.0 {
-                            Color32::from_rgba_unmultiplied(46, 204, 113, ALPHA_GHOST)
+                            color_alpha(bull, ALPHA_GHOST)
                         } else {
-                            Color32::from_rgba_unmultiplied(231, 76, 60, ALPHA_GHOST)
+                            color_alpha(bear, ALPHA_GHOST)
                         };
                         painter.rect_filled(rect, 0.0, tint);
                     }
@@ -382,13 +382,13 @@ impl<'a> WatchlistRow<'a> {
                 // ── RVOL left-border strip ──────────────────────────────
                 if let Some(rv) = rvol {
                     let (rcol, rw) = if rv > 3.0 {
-                        (Color32::from_rgba_unmultiplied(240, 160, 40, 220), 4.0)
+                        (color_alpha(theme_ref.gold, 220), 4.0)
                     } else if rv > 2.0 {
-                        (Color32::from_rgba_unmultiplied(240, 160, 40, 160), 3.0)
+                        (color_alpha(theme_ref.gold, 160), 3.0)
                     } else if rv > 0.8 {
-                        (Color32::from_rgba_unmultiplied(46, 204, 113, ALPHA_ACTIVE), 2.0)
+                        (color_alpha(bull, ALPHA_ACTIVE), 2.0)
                     } else {
-                        (Color32::from_rgba_unmultiplied(100, 150, 255, ALPHA_STRONG), 2.0)
+                        (color_alpha(accent, ALPHA_STRONG), 2.0)
                     };
                     painter.rect_filled(
                         egui::Rect::from_min_size(rect.min, egui::vec2(rw, rect.height())),
