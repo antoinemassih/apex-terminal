@@ -3208,7 +3208,10 @@ fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchli
         let st = super::ui::style::current();
         super::ui::style::apply_ui_style(ctx, &st, t.toolbar_border, t.toolbar_bg);
     }
-    ctx.set_pixels_per_point(watchlist.font_scale);
+    // native_dpi_scale is the floor (never render below display resolution).
+    // font_scale is the user zoom on top; on a 1x display it wins if > 1.0,
+    // on Retina (2x) the display floor takes over unless the user zooms past it.
+    ctx.set_pixels_per_point(watchlist.font_scale.max(watchlist.native_dpi_scale));
     let account_data_cached = read_account_data();
     // Reconcile OrderManager with IB backend state
     if let Some((_, _, ref ib_orders)) = account_data_cached {
@@ -14374,6 +14377,7 @@ pub(crate) struct Watchlist {
     pub(crate) hotkey_editing_id: Option<u32>,
     pub(crate) settings_open: bool,
     pub(crate) font_scale: f32,
+    pub(crate) native_dpi_scale: f32, // window.scale_factor() — 2.0 on Retina, 1.0 on 1x displays
     pub(crate) font_idx: usize, // 0=JetBrains, 1=Roboto, 2=SourceCode, 3=IBMPlex
     // Order defaults (global)
     pub(crate) default_stock_qty: u32,
@@ -14617,7 +14621,7 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
-               settings_open: false, font_scale: 1.6, font_idx: 0,
+               settings_open: false, font_scale: 1.6, native_dpi_scale: 1.0, font_idx: 0,
                default_stock_qty: 100, default_options_qty: 1, default_order_type: 0, default_tif: 0, default_outside_rth: false,
                compact_mode: false,
                pane_header_size: crate::chart_renderer::PaneHeaderSize::Compact,
@@ -15720,12 +15724,21 @@ struct GpuCtx {
     egui_ctx: egui::Context,
     egui_state: egui_winit::State,
     egui_renderer: egui_wgpu::Renderer,
+    // Set to true when window loses focus — causes a PointerGone event to be injected
+    // into the next frame so egui never stays stuck in drag state.
+    pointer_gone_needed: bool,
 }
 
 impl GpuCtx {
     fn new(window: Arc<Window>) -> Option<Self> {
         let size = window.inner_size();
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor { backends: wgpu::Backends::DX12, ..Default::default() });
+        #[cfg(target_os = "windows")]
+        let backends = wgpu::Backends::DX12;
+        #[cfg(target_os = "macos")]
+        let backends = wgpu::Backends::METAL;
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        let backends = wgpu::Backends::VULKAN;
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor { backends, ..Default::default() });
         let surface = instance.create_surface(Arc::clone(&window)).ok()?;
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false,
@@ -15770,7 +15783,7 @@ impl GpuCtx {
         let egui_state = egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, &*window, Some(window.scale_factor() as f32), None, None);
         let egui_renderer = egui_wgpu::Renderer::new(&device, fmt, None, 1, false);
 
-        Some(Self { device, queue, surface, config, egui_ctx, egui_state, egui_renderer })
+        Some(Self { device, queue, surface, config, egui_ctx, egui_state, egui_renderer, pointer_gone_needed: false })
     }
 
     fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
@@ -15786,7 +15799,12 @@ impl GpuCtx {
 
         // Phase 2: egui layout + draw_chart logic
         let t1 = std::time::Instant::now();
-        let raw_input = self.egui_state.take_egui_input(window);
+        let mut raw_input = self.egui_state.take_egui_input(window);
+        // Inject synthetic PointerGone when focus was lost so egui never stays
+        // stuck in a drag state because mouseUp was never delivered.
+        if std::mem::take(&mut self.pointer_gone_needed) {
+            raw_input.events.push(egui::Event::PointerGone);
+        }
         let full_output = self.egui_ctx.run(raw_input, |ctx| { draw_chart(ctx, panes, active_pane, layout, watchlist, toasts, conn_panel_open, rx); });
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
@@ -15856,14 +15874,52 @@ impl GpuCtx {
 
 impl App {
     fn spawn_window(&mut self, el: &ActiveEventLoop, rx: mpsc::Receiver<ChartCommand>, initial_cmd: Option<ChartCommand>) {
-        let w = match el.create_window(WindowAttributes::default()
+        // On Windows: borderless window (custom chrome drawn by egui).
+        // On macOS: DO NOT use with_decorations(false) — NSWindowStyleMask::borderless
+        //   breaks the key-window / mouse-tracking session so mouseUp is never delivered,
+        //   leaving egui permanently stuck in drag state.
+        //   Instead: keep decorations=true (NSWindowStyleMask::titled) for correct event
+        //   routing, then hide the titlebar visually with macOS platform APIs.
+        //   The result is visually identical but the window is a proper key window.
+        #[cfg(not(target_os = "macos"))]
+        let attrs = WindowAttributes::default()
             .with_title("Apex Terminal")
             .with_inner_size(PhysicalSize::new(self.iw, self.ih))
             .with_min_inner_size(PhysicalSize::new(960, 540))
             .with_decorations(false)
             .with_window_icon(make_window_icon())
             .with_active(true)
-            .with_maximized(true))
+            .with_maximized(true);
+
+        #[cfg(target_os = "macos")]
+        let attrs = {
+            use winit::platform::macos::WindowAttributesExtMacOS;
+            WindowAttributes::default()
+                .with_title("Apex Terminal")
+                .with_inner_size(PhysicalSize::new(self.iw, self.ih))
+                .with_min_inner_size(PhysicalSize::new(960, 540))
+                .with_active(true)
+                .with_maximized(true)
+                // IMPORTANT: do NOT use with_titlebar_hidden(true) — winit maps that to
+                // NSWindowStyleMask::Borderless which prevents AppKit from ever calling
+                // makeFirstResponder(contentView). Without that call, mouseUp events are
+                // not routed to the WinitView, so egui never sees releases and every click
+                // leaves the pointer permanently stuck in "pressed" state.
+                //
+                // with_titlebar_transparent(true) + fullsize_content_view achieves the same
+                // visual result (invisible titlebar, content fills the whole window) while
+                // keeping NSWindowStyleMask::Titled — AppKit then correctly sets first
+                // responder on makeKeyAndOrderFront, so all mouse events work.
+                .with_titlebar_transparent(true)
+                .with_fullsize_content_view(true)
+                .with_titlebar_buttons_hidden(true)
+                .with_title_hidden(true)
+                .with_has_shadow(true)
+                .with_accepts_first_mouse(true)
+                .with_movable_by_window_background(false)
+        };
+
+        let w = match el.create_window(attrs)
         {
             Ok(w) => {
                 // Enable rounded corners on Windows 11 (DWM)
@@ -15985,7 +16041,8 @@ impl App {
             wl.next_alert_id = wl.alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1;
         }
         let wl_syms: Vec<String> = wl.all_symbols();
-        let mut cw = ChartWindow { id, win: w, gpu, rx, panes, active_pane: 0, layout, maximized_pane: None, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false, last_save: None };
+        let mut cw = ChartWindow { id, win: Arc::clone(&w), gpu, rx, panes, active_pane: 0, layout, maximized_pane: None, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false, last_save: None };
+        cw.watchlist.native_dpi_scale = w.scale_factor() as f32;
         // Apply persisted per-symbol alerts to panes
         for p in &mut cw.panes {
             if let Some(alerts) = pane_alerts_map.get(&p.symbol) {
@@ -16016,7 +16073,21 @@ impl ApplicationHandler for App {
     }
     fn window_event(&mut self, _el: &ActiveEventLoop, wid: winit::window::WindowId, ev: WindowEvent) {
         let cw = match self.windows.iter_mut().find(|w| w.id == wid) { Some(w) => w, None => return };
-        let _ = cw.gpu.egui_state.on_window_event(&cw.win, &ev);
+
+        // Trace mouse events in debug builds — helps diagnose macOS event delivery.
+        // If you see Pressed but never Released, the OS is swallowing mouseUp.
+        #[cfg(debug_assertions)]
+        match &ev {
+            WindowEvent::MouseInput { state, button, .. } =>
+                eprintln!("[input] {:?} {:?}", button, state),
+            WindowEvent::Focused(f) => eprintln!("[input] Focused({})", f),
+            _ => {}
+        }
+
+        let egui_response = cw.gpu.egui_state.on_window_event(&cw.win, &ev);
+        if egui_response.repaint {
+            cw.win.request_redraw();
+        }
         match ev {
             WindowEvent::CloseRequested => {
                 save_state(&cw.panes, cw.layout, &cw.watchlist);
@@ -16275,7 +16346,16 @@ impl ApplicationHandler for App {
                 // Remove expired toasts (>5 seconds)
                 cw.toasts.retain(|(_, _, created, _)| created.elapsed().as_secs() < 5);
             }
-            // Don't request_redraw on every input — about_to_wait drives the frame loop
+            WindowEvent::Focused(false) => {
+                // When focus is lost the OS may swallow the pending mouseUp, leaving egui
+                // permanently stuck in drag state. Inject PointerGone into the next frame.
+                cw.gpu.pointer_gone_needed = true;
+                cw.win.request_redraw();
+            }
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                cw.watchlist.native_dpi_scale = scale_factor as f32;
+                cw.win.request_redraw();
+            }
             _ => {}
         }
     }
@@ -17706,8 +17786,13 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
 
     let handle = app_handle.clone();
     std::thread::spawn(move || {
-        use winit::platform::windows::EventLoopBuilderExtWindows;
-        let el = EventLoop::builder().with_any_thread(true).build().unwrap();
+        #[cfg(target_os = "windows")]
+        let el = {
+            use winit::platform::windows::EventLoopBuilderExtWindows;
+            EventLoop::builder().with_any_thread(true).build().unwrap()
+        };
+        #[cfg(not(target_os = "windows"))]
+        let el = EventLoop::builder().build().unwrap();
         let mut app = App {
             app_handle: handle, iw: 1920, ih: 1080,
             windows: Vec::new(), spawn_rx,
@@ -17718,6 +17803,26 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
             *lock.lock().unwrap() = None;
         }
     });
+}
+
+/// macOS requires the winit event loop on the main thread.
+/// Call this from `main()` instead of `open_window`; it blocks until all windows close.
+#[cfg(target_os = "macos")]
+pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, app_handle: Option<tauri::AppHandle>) {
+    use winit::platform::macos::EventLoopBuilderExtMacOS;
+
+    let spawn_tx_lock = SPAWN_TX.get_or_init(|| Mutex::new(None));
+    let (spawn_tx, spawn_rx) = mpsc::channel::<SpawnRequest>();
+    let _ = spawn_tx.send(SpawnRequest { rx, initial_cmd });
+    *spawn_tx_lock.lock().unwrap() = Some(spawn_tx);
+
+    let el = EventLoop::builder()
+        .with_activate_ignoring_other_apps(true)
+        .build()
+        .unwrap();
+    let mut app = App { app_handle, iw: 1920, ih: 1080, windows: Vec::new(), spawn_rx };
+    let _ = el.run_app(&mut app);
+    *spawn_tx_lock.lock().unwrap() = None;
 }
 
 #[cfg(test)]

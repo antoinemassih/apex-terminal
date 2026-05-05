@@ -83,25 +83,25 @@ fn main() {
     // Fetch initial data in background
     _scaffold_lib::chart_renderer::gpu::fetch_bars_background_pub("SPY".into(), "5m".into());
 
-    // Open the first window on the render thread.
-    // open_window spawns the render thread on first call and returns immediately.
-    // We need to keep main alive until the render thread exits.
-    _scaffold_lib::chart_renderer::gpu::open_window(rx, initial, None);
+    // macOS requires the event loop on the main thread — open_window_blocking blocks here.
+    // On other platforms open_window spawns a render thread and returns immediately,
+    // so we sleep-poll until all windows are closed.
+    #[cfg(target_os = "macos")]
+    _scaffold_lib::chart_renderer::gpu::open_window_blocking(rx, initial, None);
 
-    // Wait for the render thread to finish (it runs until all windows are closed)
-    // The SPAWN_TX in gpu.rs holds the thread handle implicitly — we just sleep-poll.
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        // Check if any windows are still open by trying to send a no-op
-        let has_senders = _scaffold_lib::NATIVE_CHART_TXS.get()
-            .and_then(|m| m.lock().ok())
-            .map(|v| !v.is_empty())
-            .unwrap_or(false);
-        if !has_senders {
-            // All senders dropped = all windows closed
-            // Give render thread a moment to clean up
-            std::thread::sleep(std::time::Duration::from_millis(200));
-            break;
+    #[cfg(not(target_os = "macos"))]
+    {
+        _scaffold_lib::chart_renderer::gpu::open_window(rx, initial, None);
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let has_senders = _scaffold_lib::NATIVE_CHART_TXS.get()
+                .and_then(|m| m.lock().ok())
+                .map(|v| !v.is_empty())
+                .unwrap_or(false);
+            if !has_senders {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                break;
+            }
         }
     }
 
