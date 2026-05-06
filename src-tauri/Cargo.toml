@@ -51,6 +51,16 @@ urlencoding = "2"
 open = "5"
 image = { version = "0.24", default-features = false, features = ["png"] }
 
+# Canonical chart state (Phase 1 of CHART_STORAGE_ARCHITECTURE.md)
+slotmap = { version = "1", features = ["serde"] }
+smallvec = { version = "1", features = ["serde", "union"] }
+arcstr = { version = "1", features = ["serde"] }
+bitflags = { version = "2", features = ["serde"] }
+thiserror = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
+rfd = "0.15"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
 

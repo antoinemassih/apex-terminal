@@ -38,10 +38,8 @@ fn main() {
         {
             Ok(pool) => {
                 eprintln!("[apex-native] PostgreSQL connected");
-                // Run schema migration
-                if let Err(e) = _scaffold_lib::drawings::ensure_schema(&pool).await {
-                    eprintln!("[apex-native] Schema migration failed: {e}");
-                }
+                // Schema is managed by `migrations/001_chart_state.sql`,
+                // applied out-of-band. Just start the drawing worker.
                 _scaffold_lib::drawing_db::init(pool);
             }
             Err(e) => eprintln!("[apex-native] PostgreSQL unavailable ({e}) — drawings won't persist"),

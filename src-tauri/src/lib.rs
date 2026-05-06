@@ -1,22 +1,28 @@
 #![recursion_limit = "512"]
 
+pub mod foundation;
 pub mod data;
-pub mod apex_data;
-pub mod drawings;
-mod ib_ws;
-pub mod chart_renderer;
+pub mod persistence;
+pub mod chart;
 pub mod ui_kit;
-pub mod bar_cache;
-pub mod drawing_db;
-pub mod monitoring;
-pub mod discord;
-pub mod crypto_feed;
-pub mod signals_feed;
-pub mod design_tokens;
-#[cfg(feature = "design-mode")]
-pub mod design_inspector;
 
-use drawings::DbPool;
+// Backward-compat re-exports so code in lib.rs body keeps working without changes
+pub use foundation::monitoring;
+pub use foundation::design_tokens;
+#[cfg(feature = "design-mode")]
+pub use foundation::design_inspector;
+pub use data::bar_cache;
+pub use data::apex_data;
+pub use data::crypto_feed;
+pub use data::signals_feed;
+pub use data::discord;
+pub use persistence::drawing_db;
+pub(crate) use data::ib_ws;
+
+// chart_state / chart_renderer backward compat aliases
+pub use chart::state as chart_state;
+pub use chart::renderer as chart_renderer;
+
 use sqlx::postgres::PgPoolOptions;
 use tauri::Manager;
 use tauri::async_runtime;
@@ -150,18 +156,11 @@ pub fn run() {
                         eprintln!("[apex] PostgreSQL unavailable ({e}) — drawings use fallback");
                         None
                     }
-                    Ok(p) => match drawings::ensure_schema(&p).await {
-                        Err(e) => {
-                            eprintln!("[apex] DB schema migration failed ({e}) — drawings use fallback");
-                            None
-                        }
-                        Ok(()) => Some(p),
-                    },
+                    Ok(p) => Some(p),
                 }
             });
             if let Some(pool) = pool_opt {
-                drawing_db::init(pool.clone());
-                app.manage(DbPool(pool));
+                drawing_db::init(pool);
             }
 
             // Redis bar cache — optional, app works without it
@@ -307,18 +306,10 @@ pub fn run() {
             native_chart_tick,
             data::get_bars,
             data::get_options_chain,
-            drawings::drawings_load_all,
-            drawings::drawings_load_symbol,
-            drawings::drawings_save,
-            drawings::drawings_update_points,
-            drawings::drawings_update_style,
-            drawings::drawings_remove,
-            drawings::drawings_clear,
-            drawings::groups_load_all,
-            drawings::groups_save,
-            drawings::groups_remove,
-            drawings::groups_update_style,
-            drawings::drawings_apply_group_style,
+            chart::state::commands::export_chart_xol,
+            chart::state::commands::import_chart_xol,
+            chart::state::commands::save_chart_to_file,
+            chart::state::commands::load_chart_from_file,
             ib_ws::ib_ws_send,
         ])
         .build(tauri::generate_context!())

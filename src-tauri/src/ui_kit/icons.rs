@@ -54,10 +54,15 @@ impl Icon {
     pub const BOOK_OPEN: &'static str = ph::BOOK_OPEN;
     pub const SHOPPING_CART: &'static str = ph::SHOPPING_CART;
     pub const CIRCLES_FOUR: &'static str = ph::CIRCLES_FOUR;
+    pub const CIRCLES_THREE_PLUS: &'static str = ph::CIRCLES_THREE_PLUS;
+    pub const LADDER: &'static str = ph::LADDER;
     pub const BROWSERS: &'static str = ph::BROWSERS;
     pub const SIDEBAR: &'static str = ph::SIDEBAR;
     pub const TAG: &'static str = ph::TAG;
     pub const CROSSHAIR: &'static str = ph::CROSSHAIR;
+    pub const MAGNET: &'static str = ph::MAGNET;
+    pub const BROADCAST: &'static str = ph::BROADCAST;
+    pub const TREE_STRUCTURE: &'static str = ph::TREE_STRUCTURE;
     pub const LOCK: &'static str = ph::LOCK;
     pub const LOCK_OPEN: &'static str = ph::LOCK_OPEN;
     pub const LIGHTNING: &'static str = ph::LIGHTNING;
