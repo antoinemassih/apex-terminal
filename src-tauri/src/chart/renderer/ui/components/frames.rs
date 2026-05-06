@@ -140,9 +140,10 @@ pub fn themed_popup_frame(
 
 // ─── Cards ────────────────────────────────────────────────────────────────────
 
-/// Order card — card with a left accent stripe (used for orders, alerts, plays).
-/// Hover background tint. Caller fills `add_contents` with the card body.
-pub fn order_card<R>(
+/// Accent card — card with a left accent stripe and explicit border color param.
+/// Returns generic R from `add_contents`. Distinct from style::order_card (which
+/// takes no border param and returns bool).
+pub fn accent_card<R>(
     ui: &mut Ui,
     accent: Color32,
     bg: Color32,
@@ -177,5 +178,5 @@ pub fn order_card<R>(
         out = Some(add_contents(ui));
     });
     let _ = resp;
-    out.expect("order_card contents")
+    out.expect("accent_card contents")
 }

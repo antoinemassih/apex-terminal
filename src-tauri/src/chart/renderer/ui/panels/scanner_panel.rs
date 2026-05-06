@@ -82,7 +82,7 @@ pub(crate) fn draw_content(
         if let Some(last) = watchlist.scanner_last_fetch {
             let elapsed = last.elapsed().as_secs();
             let remaining = if elapsed < REFRESH_INTERVAL_SECS { REFRESH_INTERVAL_SECS - elapsed } else { 0 };
-            ui.add(MonospaceCode::new(&format!("{}s", remaining)).size_px(8.0).color(t.dim).gamma(0.4));
+            ui.add(MonospaceCode::new(&format!("{}s", remaining)).size_px(font_xs()).color(t.dim).gamma(0.4));
         }
         if watchlist.scanner_fetching {
             ui.add(Spinner::new().sm().theme(t));
@@ -107,7 +107,7 @@ pub(crate) fn draw_content(
     if watchlist.scanner_builder_open {
         ui.group(|ui| {
             ui.set_width(panel_w - 6.0);
-            ui.add(MonospaceCode::new("New Scanner").size_px(9.0).strong(true).color(t.accent));
+            ui.add(MonospaceCode::new("New Scanner").size_px(font_sm_tight()).strong(true).color(t.accent));
             ui.add_space(2.0);
 
             FormRow::new("Name").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
@@ -116,7 +116,7 @@ pub(crate) fn draw_content(
             });
             FormRow::new("Min %").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_min_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
-                ui.add(MonospaceCode::new("Max %").size_px(8.0).color(t.dim));
+                ui.add(MonospaceCode::new("Max %").size_px(font_xs()).color(t.dim));
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_max_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
             });
             FormRow::new("Min Vol").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
@@ -256,7 +256,7 @@ pub(crate) fn draw_content(
 
                     if results.is_empty() {
                         ui.add_space(4.0);
-                        ui.add(MonospaceCode::new("No matches").size_px(8.0).color(t.dim).gamma(0.3));
+                        ui.add(MonospaceCode::new("No matches").size_px(font_xs()).color(t.dim).gamma(0.3));
                     }
                 }
 
@@ -266,7 +266,7 @@ pub(crate) fn draw_content(
             }
 
             ui.add_space(4.0);
-            ui.add(MonospaceCode::new(&format!("{}/{} symbols loaded", pool.len(), SCANNER_UNIVERSE.len())).size_px(7.5).color(t.dim).gamma(0.3));
+            ui.add(MonospaceCode::new(&format!("{}/{} symbols loaded", pool.len(), SCANNER_UNIVERSE.len())).size_px(font_2xs()).color(t.dim).gamma(0.3));
         });
 
     // ── Apply deferred actions ──

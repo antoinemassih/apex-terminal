@@ -6,7 +6,6 @@ use super::super::super::gpu::*;
 use super::super::widgets::buttons::{SimpleBtn, ChromeBtn};
 use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::icons::Icon;
-const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Hotkey editor: key capture (runs before dialog rendering) ──────────

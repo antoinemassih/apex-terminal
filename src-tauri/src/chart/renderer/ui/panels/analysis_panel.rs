@@ -7,6 +7,8 @@ use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::AnalysisTab;
 use super::super::widgets::text::SectionLabel;
 use super::super::widgets::buttons::ChromeBtn;
+use super::super::widgets::frames::PanelFrame;
+use super::super::widgets::headers::PanelHeaderWithClose;
 
 const ALL_TABS: &[(AnalysisTab, &str)] = &[
     (AnalysisTab::Rrg, "RRG"),
@@ -33,37 +35,26 @@ pub(crate) fn draw(
         .min_width(220.0)
         .max_width(480.0)
         .resizable(true)
-        .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
+        .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
             let panel_w = ui.available_width();
 
             // Header: title + add-section button + close
-            let header = ui.horizontal(|ui| {
-                ui.set_min_height(26.0);
-                ui.add(SectionLabel::new("ANALYSIS").color(t.accent));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if close_button(ui, t.dim) { watchlist.analysis_open = false; }
-                    // Add section button
-                    if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
-                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
-                        // Pick a tab not yet used, or default to RRG
-                        let used: Vec<AnalysisTab> = watchlist.analysis_splits.iter().map(|s| s.tab).collect();
-                        let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
-                            .map(|(tab, _)| *tab).unwrap_or(AnalysisTab::Rrg);
-                        // Halve the last section's frac for the new one
-                        if let Some(last) = watchlist.analysis_splits.last_mut() {
-                            last.frac *= 0.5;
-                        }
-                        let frac = watchlist.analysis_splits.last().map(|s| s.frac).unwrap_or(1.0);
-                        watchlist.analysis_splits.push(SplitSection::new(next, frac));
+            let closed = PanelHeaderWithClose::new("ANALYSIS").theme(t).show_with(ui, |ui| {
+                if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
+                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
+                    let used: Vec<AnalysisTab> = watchlist.analysis_splits.iter().map(|s| s.tab).collect();
+                    let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
+                        .map(|(tab, _)| *tab).unwrap_or(AnalysisTab::Rrg);
+                    if let Some(last) = watchlist.analysis_splits.last_mut() {
+                        last.frac *= 0.5;
                     }
-                });
+                    let frac = watchlist.analysis_splits.last().map(|s| s.frac).unwrap_or(1.0);
+                    watchlist.analysis_splits.push(SplitSection::new(next, frac));
+                }
             });
-            let line_y = header.response.rect.max.y;
-            ui.painter().line_segment(
-                [egui::pos2(ui.min_rect().left(), line_y),
-                 egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())));
+            if closed { watchlist.analysis_open = false; }
+            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
 
             let available_h = ui.available_height();
             let n = watchlist.analysis_splits.len();

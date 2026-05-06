@@ -10,6 +10,7 @@ use super::super::widgets::frames::PopupFrame;
 use super::super::widgets::buttons::{ChromeBtn, ActionBtn};
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::cards::Card;
+use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::{Watchlist, Theme};
 
 // ── Preset example scripts ──────────────────────────────────────────────────
@@ -247,14 +248,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             let w = ui.available_width();
 
             // ── Header ──────────────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                ui.add(super::super::widgets::text::SectionLabel::new("APEX SCRIPT").color(t.accent));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(6.0);
-                    if close_button(ui, t.dim) { close = true; }
-                });
-            });
+            if PanelHeaderWithClose::new("APEX SCRIPT").theme(t).show(ui) { close = true; }
             ui.add_space(4.0);
             divider(ui, w, t);
             ui.add_space(6.0);

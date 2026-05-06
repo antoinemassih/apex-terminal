@@ -23,6 +23,7 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 // ─── Font size tokens ─────────────────────────────────────────────────────────
 // In design-mode, these read from the global DesignTokens at runtime.
 // Without design-mode, they compile to the same constants as before (zero overhead).
+pub fn font_2xs()      -> f32 { crate::dt_f32!(font.xxs, 7.0) }
 pub fn font_xs()       -> f32 { crate::dt_f32!(font.xs, 8.0) }
 /// 9.0 — between xs and sm; used by watchlist section headers and badge overlays.
 pub fn font_sm_tight() -> f32 { crate::dt_f32!(font.sm_tight, 9.0) }
@@ -34,6 +35,7 @@ pub fn font_2xl() -> f32 { crate::dt_f32!(font.xxl, 15.0) }
 
 // Keep the old names as non-const for backwards compat with all call sites.
 // Without design-mode feature, the compiler inlines these to the literal values.
+pub const FONT_2XS: f32 = 7.0;
 pub const FONT_XS:  f32 = 8.0;
 pub const FONT_SM:  f32 = 10.0;
 pub const FONT_MD:  f32 = 11.0;
@@ -92,6 +94,7 @@ pub fn alpha_dim()    -> u8 { crate::dt_u8!(alpha.dim, 60) }
 pub fn alpha_strong() -> u8 { crate::dt_u8!(alpha.strong, 80) }
 pub fn alpha_active() -> u8 { crate::dt_u8!(alpha.active, 100) }
 pub fn alpha_heavy()  -> u8 { crate::dt_u8!(alpha.heavy, 120) }
+pub fn alpha_solid()  -> u8 { crate::dt_u8!(alpha.solid, 200) }
 
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.
 pub const ALPHA_FAINT:  u8 = 10;
@@ -105,6 +108,7 @@ pub const ALPHA_DIM:    u8 = 60;
 pub const ALPHA_STRONG: u8 = 80;
 pub const ALPHA_ACTIVE: u8 = 100;
 pub const ALPHA_HEAVY:  u8 = 120;
+pub const ALPHA_SOLID:  u8 = 200;
 
 // ─── Drop shadow tokens ───────────────────────────────────────────────────────
 pub fn shadow_offset() -> f32 { crate::dt_f32!(shadow.offset, 2.0) }
@@ -164,25 +168,6 @@ pub fn mono(text: &str, size: f32, color: Color32) -> RichText {
 #[inline]
 pub fn mono_bold(text: &str, size: f32, color: Color32) -> RichText {
     RichText::new(text).monospace().size(size).strong().color(color)
-}
-
-// ─── Panel frame helpers ──────────────────────────────────────────────────────
-
-/// Standard side-panel frame — toolbar bg + faint border (8px margin).
-/// Used by card-heavy panels: orders, alerts, DOM.
-pub fn panel_frame(toolbar_bg: Color32, toolbar_border: Color32) -> egui::Frame {
-    egui::Frame::NONE
-        .fill(toolbar_bg)
-        .inner_margin(egui::Margin { left: gap_xl() as i8, right: gap_xl() as i8, top: gap_xl() as i8, bottom: gap_lg() as i8 })
-        .stroke(Stroke::new(stroke_std(), color_alpha(toolbar_border, alpha_heavy())))
-}
-
-/// Compact panel frame — tighter margins for narrow info-dense panels (scanner, tape).
-pub fn panel_frame_compact(toolbar_bg: Color32, toolbar_border: Color32) -> egui::Frame {
-    egui::Frame::NONE
-        .fill(toolbar_bg)
-        .inner_margin(egui::Margin { left: gap_lg() as i8, right: gap_lg() as i8, top: gap_lg() as i8, bottom: gap_md() as i8 })
-        .stroke(Stroke::new(stroke_std(), color_alpha(toolbar_border, alpha_heavy())))
 }
 
 // ─── Toolbar button ───────────────────────────────────────────────────────────
@@ -477,7 +462,7 @@ pub fn section_label(ui: &mut egui::Ui, text: &str, color: Color32) {
     let st = current();
     if st.section_label_padding_top > 0.0 { ui.add_space(st.section_label_padding_top); }
     let label = style_label_case(text);
-    ui.label(RichText::new(label).monospace().size(7.0).strong().color(color));
+    ui.label(RichText::new(label).monospace().size(font_2xs()).strong().color(color));
     if st.section_label_padding_bottom > 0.0 { ui.add_space(st.section_label_padding_bottom); }
 }
 
@@ -770,7 +755,7 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
     let fg     = if enabled { color                              } else { color_alpha(color, alpha_active()) };
     let border = if enabled { color_alpha(color, alpha_active()) } else { color_alpha(color, alpha_line())   };
     let resp = ui.add_enabled(enabled,
-        egui::Button::new(RichText::new(label).monospace().size(9.0).strong().color(fg))
+        egui::Button::new(RichText::new(label).monospace().size(font_sm_tight()).strong().color(fg))
             .fill(bg).stroke(Stroke::new(0.5, border))
             .corner_radius(3.0).min_size(egui::vec2(0.0, 20.0)));
     hit(&resp.rect, "ACTION_BTN", "Buttons");
@@ -989,8 +974,19 @@ pub struct StyleSettings {
     pub show_active_tab_underline: bool,
     /// Active pane header fill multiplier (1.2 = brighter for Relay, 0.95 = near-transparent for Meridien).
     pub active_header_fill_multiply: f32,
+    /// Inactive pane header fill multiplier — applied when there are multiple
+    /// visible panes and this pane is not active. Lower = more recessed.
+    pub inactive_header_fill_multiply: f32,
     /// Paint a distinct fill for inactive pane headers.
     pub inactive_header_fill: bool,
+    /// Alpha of the hairline outer border drawn around inactive pane headers
+    /// (the contrast color is derived from theme luminance).
+    pub header_outer_border_alpha: u8,
+    /// Stroke width of the pane-header outer border.
+    pub header_outer_border_width: f32,
+    /// Alpha of the inter-section vertical divider lines inside the pane header
+    /// (between nav cluster, indicator chips, and right-side icon buttons).
+    pub header_divider_alpha: u8,
     /// Account strip panel height in logical px.
     pub account_strip_height: f32,
 
@@ -1182,7 +1178,10 @@ fn style_defaults(id: u8) -> StyleSettings {
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
-            active_header_fill_multiply: 1.2, inactive_header_fill: true,
+            active_header_fill_multiply: 1.2, inactive_header_fill_multiply: 0.85,
+            inactive_header_fill: true,
+            header_outer_border_alpha: 20, header_outer_border_width: 0.5,
+            header_divider_alpha: 25,
             account_strip_height: 26.0,
             pane_border_width: 1.0, pane_gap: 8.0,
             card_padding_y: 12.0, card_padding_x: 14.0,
@@ -1220,7 +1219,10 @@ fn style_defaults(id: u8) -> StyleSettings {
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
-            active_header_fill_multiply: 1.2, inactive_header_fill: true,
+            active_header_fill_multiply: 1.2, inactive_header_fill_multiply: 0.85,
+            inactive_header_fill: true,
+            header_outer_border_alpha: 25, header_outer_border_width: 0.5,
+            header_divider_alpha: 30,
             account_strip_height: 26.0,
             pane_border_width: 0.6, pane_gap: 2.0,
             card_padding_y: 6.0, card_padding_x: 8.0,
@@ -1258,7 +1260,10 @@ fn style_defaults(id: u8) -> StyleSettings {
             toolbar_height_scale: 1.40, header_height_scale: 1.10,
             font_hero: 36.0, vertical_group_dividers: true,
             show_active_tab_underline: true,
-            active_header_fill_multiply: 0.95, inactive_header_fill: false,
+            active_header_fill_multiply: 0.95, inactive_header_fill_multiply: 1.0,
+            inactive_header_fill: false,
+            header_outer_border_alpha: 25, header_outer_border_width: 0.5,
+            header_divider_alpha: 25,
             account_strip_height: 36.0,
             pane_border_width: 0.5, pane_gap: 0.0,
             card_padding_y: 8.0, card_padding_x: 10.0,

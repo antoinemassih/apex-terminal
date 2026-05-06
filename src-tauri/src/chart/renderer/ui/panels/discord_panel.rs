@@ -7,10 +7,9 @@ use super::super::widgets as widgets_compat;
 #[allow(unused_imports)]
 use super::super::widgets as widgets;
 use super::super::widgets::inputs::TextInput;
+use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::{Watchlist, DiscordMessage, Theme};
 use crate::ui_kit::icons::Icon;
-
-const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
 /// Drain background Discord results (textures, messages, guilds). Call before rendering.
 pub(crate) fn drain_background(ctx: &egui::Context, watchlist: &mut Watchlist) {
@@ -127,20 +126,15 @@ if watchlist.discord_open {
 /// Tab body content (no SidePanel wrapper). Used by feed_panel Discord tab.
 /// NOTE: caller must call `drain_background(ctx, watchlist)` before this each frame.
 pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
-    let discord_blurple = rgb(88, 101, 242);
+    let discord_blurple = egui::Color32::from_rgb(88, 101, 242);
     let panel_w = ui.available_width();
     {
             if !watchlist.discord_authenticated {
                 // ── Not authenticated: Connect button ──
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(6.0);
-                    ui.add(widgets::text::SectionLabel::new("DISCORD").color(discord_blurple));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(6.0);
-                        if close_button(ui, t.dim) { watchlist.discord_open = false; }
-                    });
-                });
+                if PanelHeaderWithClose::new("DISCORD").accent(discord_blurple).dim(t.dim).show(ui) {
+                    watchlist.discord_open = false;
+                }
                 let avail = ui.available_size();
                 ui.allocate_ui_with_layout(
                     egui::vec2(panel_w, avail.y),
@@ -433,9 +427,9 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.add_space(2.0);
 
                             let author_colors: &[egui::Color32] = &[
-                                rgb(74, 158, 255), rgb(46, 204, 113), rgb(243, 156, 18),
-                                rgb(155, 89, 182), rgb(231, 76, 60), rgb(26, 188, 156),
-                                rgb(241, 196, 15), rgb(52, 152, 219),
+                                egui::Color32::from_rgb(74, 158, 255), egui::Color32::from_rgb(46, 204, 113), egui::Color32::from_rgb(243, 156, 18),
+                                egui::Color32::from_rgb(155, 89, 182), egui::Color32::from_rgb(231, 76, 60), egui::Color32::from_rgb(26, 188, 156),
+                                egui::Color32::from_rgb(241, 196, 15), egui::Color32::from_rgb(52, 152, 219),
                             ];
 
                             // Messages

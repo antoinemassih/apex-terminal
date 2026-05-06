@@ -7,6 +7,7 @@ use super::super::widgets as widgets_compat;
 #[allow(unused_imports)]
 use super::super::widgets as widgets;
 use super::super::widgets::buttons::ChromeBtn;
+use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::FeedTab;
 
@@ -35,27 +36,20 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
         .show(ctx, |ui| {
-            // Header
-            let header = ui.horizontal(|ui| {
-                ui.set_min_height(26.0);
-                ui.add(widgets::text::SectionLabel::new("FEED").color(t.accent));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if close_button(ui, t.dim) { watchlist.feed_panel_open = false; }
-                    if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
-                        .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
-                        let used: Vec<FeedTab> = watchlist.feed_splits.iter().map(|s| s.tab).collect();
-                        let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
-                            .map(|(tab, _)| *tab).unwrap_or(FeedTab::News);
-                        if let Some(last) = watchlist.feed_splits.last_mut() { last.frac *= 0.5; }
-                        let frac = watchlist.feed_splits.last().map(|s| s.frac).unwrap_or(1.0);
-                        watchlist.feed_splits.push(SplitSection::new(next, frac));
-                    }
-                });
+            // Header — title + add-section button + close
+            let closed = PanelHeaderWithClose::new("FEED").theme(t).show_with(ui, |ui| {
+                if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
+                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
+                    let used: Vec<FeedTab> = watchlist.feed_splits.iter().map(|s| s.tab).collect();
+                    let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
+                        .map(|(tab, _)| *tab).unwrap_or(FeedTab::News);
+                    if let Some(last) = watchlist.feed_splits.last_mut() { last.frac *= 0.5; }
+                    let frac = watchlist.feed_splits.last().map(|s| s.frac).unwrap_or(1.0);
+                    watchlist.feed_splits.push(SplitSection::new(next, frac));
+                }
             });
-            let line_y = header.response.rect.max.y;
-            ui.painter().line_segment(
-                [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())));
+            if closed { watchlist.feed_panel_open = false; }
+            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
 
             let available_h = ui.available_height();
             let n = watchlist.feed_splits.len();

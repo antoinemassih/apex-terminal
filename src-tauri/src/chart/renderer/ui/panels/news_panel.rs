@@ -7,6 +7,7 @@ use super::super::widgets as widgets_compat;
 #[allow(unused_imports)]
 use super::super::widgets as widgets;
 use super::super::widgets::buttons::ChromeBtn;
+use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::{Watchlist, NewsItem, Theme};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
@@ -27,15 +28,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .show(ctx, |ui| {
             let w = ui.available_width();
 
-            // Header
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                ui.add(widgets::text::SectionLabel::new("NEWS").color(t.accent));
+            // Header — title + filter chip (next to title) + close
+            let closed = PanelHeaderWithClose::new("NEWS").theme(t).show_with_title_actions(ui, |ui| {
                 ui.add_space(6.0);
                 let filter_label = if watchlist.news_filter_symbol { active_symbol } else { "All" };
                 let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
                 if ui.add(ChromeBtn::new(
-                    egui::RichText::new(filter_label).monospace().size(9.0).color(filter_col))
+                    egui::RichText::new(filter_label).monospace().size(font_sm_tight()).color(filter_col))
                     .fill(color_alpha(filter_col, alpha_ghost()))
                     .corner_radius(r_md_cr())
                     .stroke(egui::Stroke::new(stroke_thin(), color_alpha(filter_col, alpha_muted())))
@@ -43,11 +42,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 ).clicked() {
                     watchlist.news_filter_symbol = !watchlist.news_filter_symbol;
                 }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(6.0);
-                    if close_button(ui, t.dim) { close_news = true; }
-                });
             });
+            if closed { close_news = true; }
             ui.add_space(4.0);
 
             let div_rect = egui::Rect::from_min_size(

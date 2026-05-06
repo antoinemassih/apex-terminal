@@ -20,7 +20,6 @@ fn fallback_theme() -> &'static Theme {
     &crate::chart_renderer::gpu::THEMES[0]
 }
 
-const fn rgb(r: u8, g: u8, b: u8) -> Color32 { Color32::from_rgb(r, g, b) }
 
 #[must_use = "NewsRow must be finalized with `.show(ui)` to render"]
 pub struct NewsRow<'a> {
@@ -98,10 +97,10 @@ impl<'a> NewsRow<'a> {
                 let meta_y = rect.min.y + 30.0;
 
                 let source_col = match source {
-                    "Reuters" => rgb(255, 140, 0),
-                    "Bloomberg" => rgb(100, 180, 255),
-                    "CNBC" => rgb(0, 180, 120),
-                    "Benzinga" => rgb(180, 100, 255),
+                    "Reuters" => Color32::from_rgb(255, 140, 0),
+                    "Bloomberg" => Color32::from_rgb(100, 180, 255),
+                    "CNBC" => Color32::from_rgb(0, 180, 120),
+                    "Benzinga" => Color32::from_rgb(180, 100, 255),
                     _ => dim,
                 };
                 let source_rect = egui::Rect::from_min_size(

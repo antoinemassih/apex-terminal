@@ -11,6 +11,7 @@ use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use super::super::widgets::status::StatusDot;
 use super::super::widgets::inputs::Slider;
+use super::super::widgets::frames::CompactPanelFrame;
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
 const SECTOR_COLORS: &[(&str, &str, (u8, u8, u8))] = &[
@@ -280,7 +281,7 @@ pub(crate) fn draw(
         .min_width(240.0)
         .max_width(500.0)
         .resizable(true)
-        .frame(panel_frame_compact(t.toolbar_bg, t.toolbar_border))
+        .frame(CompactPanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
             // Add close button at the top
             ui.horizontal(|ui| {

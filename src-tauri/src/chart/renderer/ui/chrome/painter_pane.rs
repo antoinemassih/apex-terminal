@@ -43,12 +43,230 @@
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
 
 use super::super::style::{
-    alpha_active, alpha_heavy, alpha_line, alpha_muted, alpha_subtle, color_alpha, current,
-    drawing_palette, font_md, font_sm, gap_sm, gap_xs, stroke_hair, stroke_thin,
+    alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
+    color_alpha, contrast_fg, current, drawing_palette, font_md, font_sm, gap_md, gap_sm, gap_xs,
+    radius_sm, radius_md, stroke_hair, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
 
 type Theme = super::super::super::gpu::Theme;
+
+// ─── Sizing constants ────────────────────────────────────────────────────────
+// Promoted from inline magic numbers. Grouped here so visual tuning lands in one place.
+
+/// Diameter of the link-group dot at the left edge of the header.
+const LINK_DOT_SIZE: f32 = 10.0;
+/// Square edge of the back / forward navigation buttons.
+const NAV_BTN_SIZE: f32 = 18.0;
+/// Square edge of the per-tab close `×` hit zone.
+const TAB_CLOSE_SIZE: f32 = 14.0;
+/// Width of the "+ Tab" affordance.
+const PLUS_TAB_W: f32 = 44.0;
+/// Square edge of the pane-level close button (right-anchored).
+const CLOSE_BTN_SIZE: f32 = 18.0;
+/// Width of the ORDER / DOM icon-label buttons in the right cluster.
+const ICON_BTN_W: f32 = 28.0;
+/// Maximum height for option side / DTE badges.
+const BADGE_HEIGHT_MAX: f32 = 16.0;
+/// Vertical inset reserved around badges (top + bottom combined).
+const BADGE_INSET_V: f32 = 6.0;
+/// Font size used inside option badges (C/P pill, DTE text).
+const BADGE_FONT_SIZE: f32 = 9.5;
+/// Font size for the small labels under the icon buttons (ORDER, DOM).
+const ICON_BTN_LABEL_SIZE: f32 = 5.5;
+/// Maximum height for indicator chips. Chips inset by `BADGE_INSET_V` from header.
+const CHIP_HEIGHT_MAX: f32 = 18.0;
+/// Tab-strip vertical inset (1px gap from header top, height = h - TAB_HEIGHT_INSET).
+const TAB_TOP_INSET: f32 = 1.0;
+const TAB_HEIGHT_INSET: f32 = 2.0;
+/// Active-tab underline thickness — mirrors `dt_f32!(tab.underline_thickness, 2.0)`.
+const TAB_UNDERLINE_THICKNESS: f32 = 2.0;
+/// Vertical icon position inside the icon-label buttons (fraction of rect height).
+const ICON_BTN_ICON_Y_FRAC: f32 = 0.42;
+/// Distance from button bottom to the small label baseline.
+const ICON_BTN_LABEL_BOTTOM_OFFSET: f32 = 3.5;
+/// Inset from header top/bottom for small icon buttons.
+const ICON_BTN_INSET_V: f32 = 6.0;
+
+// ─── Painter-mode helpers ────────────────────────────────────────────────────
+
+/// Foreground color for solid-fill badges (option C/P pill, DTE chip).
+/// Theme-derived so it stays readable under both light and dark presets.
+#[inline]
+fn badge_fg(theme: &Theme) -> Color32 {
+    contrast_fg(if theme.is_light() { Color32::WHITE } else { theme.bg })
+}
+
+/// Tri-state color tuple used by every painter-mode button in the header.
+/// Returns `(bg, fg, border)`. Inactive / hovered / active resolve to the same
+/// alpha tiers across +Tab, ORDER, DOM, etc. — so a style-knob change propagates.
+fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color32, Color32) {
+    if active {
+        (color_alpha(t.accent, alpha_tint()),
+         t.accent,
+         color_alpha(t.accent, alpha_active()))
+    } else if hovered {
+        (color_alpha(t.toolbar_border, alpha_subtle()),
+         t.text,
+         color_alpha(t.accent, alpha_line()))
+    } else {
+        (color_alpha(t.toolbar_border, alpha_ghost()),
+         t.dim.gamma_multiply(0.8),
+         color_alpha(t.toolbar_border, alpha_muted()))
+    }
+}
+
+/// Paint the close `×` glyph inside `rect`, with the standard hover treatment
+/// (bear color + tinted background). Used by the per-tab close, the indicator
+/// chip remove-X, and the pane-level close button.
+fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: &Theme, font_size_offset: f32) {
+    let col = if hovered { theme.bear } else { theme.dim.gamma_multiply(0.7) };
+    if hovered {
+        painter.rect_filled(rect, radius_sm(), color_alpha(theme.bear, alpha_tint()));
+    }
+    painter.text(
+        rect.center(), Align2::CENTER_CENTER,
+        "\u{00D7}", FontId::proportional(font_md() + font_size_offset), col,
+    );
+}
+
+/// Paint a C/P pill + DTE countdown badge starting at `cx` on the given vertical
+/// center. Returns the consumed horizontal width (so callers can advance their
+/// cursor). `h_avail` is the available header height used to size the badge.
+///
+/// Paints nothing if both side and expiry are empty/unrecognised.
+fn paint_option_badges(
+    painter: &egui::Painter,
+    cx: f32,
+    center_y: f32,
+    h_avail: f32,
+    side: &str,
+    expiry: &str,
+    theme: &Theme,
+) -> f32 {
+    let bh = (h_avail - BADGE_INSET_V).min(BADGE_HEIGHT_MAX);
+    let by = center_y - bh / 2.0;
+    let badge_font = FontId::monospace(BADGE_FONT_SIZE);
+    let dark_fg = badge_fg(theme);
+    let mut consumed = 0.0_f32;
+
+    if side == "C" || side == "P" {
+        let g = painter.layout_no_wrap(side.to_string(), badge_font.clone(), dark_fg);
+        let bw = g.size().x + 8.0;
+        let r = Rect::from_min_size(pos2(cx + consumed, by), Vec2::new(bw, bh));
+        let accent_color = if side == "C" { theme.bull } else { theme.bear };
+        painter.rect_filled(r, radius_sm(), color_alpha(accent_color, alpha_solid()));
+        painter.text(r.center(), Align2::CENTER_CENTER, side, badge_font.clone(), dark_fg);
+        consumed += bw + 4.0;
+    }
+    if !expiry.is_empty() {
+        use chrono::NaiveDate;
+        let today = chrono::Utc::now().date_naive();
+        let dte = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
+            .ok().map(|d| (d - today).num_days()).unwrap_or(0);
+        let lbl = if dte <= 0 { "0D".to_string() } else { format!("{}D", dte) };
+        let g = painter.layout_no_wrap(lbl.clone(), badge_font.clone(), dark_fg);
+        let bw = g.size().x + 6.0;
+        let r = Rect::from_min_size(pos2(cx + consumed, by), Vec2::new(bw, bh));
+        painter.rect_filled(r, radius_sm(), color_alpha(theme.accent, alpha_solid()));
+        painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
+        consumed += bw + 6.0;
+    }
+    consumed
+}
+
+/// Paint an icon-label button (ORDER / DOM / +Tab style). The icon is drawn in
+/// the upper portion, the label (may be empty) along the bottom edge.
+fn paint_icon_label_btn(
+    painter: &egui::Painter,
+    rect: Rect,
+    icon: &str,
+    label: &str,
+    bg: Color32,
+    fg: Color32,
+    border: Color32,
+    icon_font: FontId,
+) {
+    painter.rect_filled(rect, radius_md(), bg);
+    painter.rect_stroke(rect, radius_md(), Stroke::new(stroke_thin(), border), StrokeKind::Outside);
+    if label.is_empty() {
+        painter.text(rect.center(), Align2::CENTER_CENTER, icon, icon_font, fg);
+    } else {
+        let icon_y = rect.top() + rect.height() * ICON_BTN_ICON_Y_FRAC;
+        let label_y = rect.bottom() - ICON_BTN_LABEL_BOTTOM_OFFSET;
+        painter.text(pos2(rect.center().x, icon_y), Align2::CENTER_CENTER, icon, icon_font, fg);
+        painter.text(
+            pos2(rect.center().x, label_y), Align2::CENTER_CENTER, label,
+            FontId::monospace(ICON_BTN_LABEL_SIZE), fg,
+        );
+    }
+}
+
+// ─── Border / chrome system ──────────────────────────────────────────────────
+//
+// All pane-header chrome (background fill, outer hairline border, inter-section
+// dividers, active underline) is painted through the helpers below. They route
+// every alpha / stroke / luminance decision through `StyleSettings`, so a
+// single token change re-skins the entire header.
+
+/// Paint the pane-header background fill. Active panes get the brighter
+/// `active_header_fill_multiply` tint; inactive panes (when `visible_count > 1`
+/// AND `inactive_header_fill` is on) get the recessed `inactive_header_fill_multiply`.
+fn header_fill(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bool, visible_count: usize) {
+    let st = current();
+    if visible_count <= 1 {
+        return;
+    }
+    let mul = if is_active {
+        st.active_header_fill_multiply
+    } else if st.inactive_header_fill {
+        st.inactive_header_fill_multiply
+    } else {
+        return;
+    };
+    painter.rect_filled(rect, 0.0, theme.bg.gamma_multiply(mul));
+}
+
+/// Paint a hairline outer border around inactive pane headers. Color is
+/// derived from theme luminance via `contrast_fg`-style logic — light themes
+/// get a dark border, dark themes get a light border. Width and alpha come
+/// from `header_outer_border_width` / `header_outer_border_alpha`.
+fn header_outer_border(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bool) {
+    if is_active { return; } // Active pane is distinguished by header fill — border would be redundant.
+    let st = current();
+    let contrast = contrast_fg(theme.bg);
+    let border_col = color_alpha(contrast, st.header_outer_border_alpha);
+    painter.rect_stroke(
+        rect, 0.0,
+        Stroke::new(st.header_outer_border_width, border_col),
+        StrokeKind::Inside,
+    );
+}
+
+/// Paint a vertical hairline divider at `cx` inside the header rect. Used
+/// between section clusters (nav cluster, tab/symbol area, indicator chips,
+/// right-side icon buttons). Single source of truth for all in-header dividers
+/// — alpha + stroke width route through tokens so visual density is one knob.
+fn header_divider(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
+    if !current().vertical_group_dividers { return; }
+    let alpha = current().header_divider_alpha;
+    let col = color_alpha(theme.toolbar_border, alpha);
+    painter.line_segment(
+        [pos2(cx, rect.top() + 4.0), pos2(cx, rect.bottom() - 4.0)],
+        Stroke::new(stroke_hair(), col),
+    );
+}
+
+/// Variant of `header_divider` that ignores the `vertical_group_dividers`
+/// toggle — used between adjacent buttons that visually need a separator
+/// regardless of style preset (e.g. ORDER ↔ DOM).
+fn header_divider_inline(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
+    let col = color_alpha(theme.toolbar_border, current().header_divider_alpha);
+    painter.line_segment(
+        [pos2(cx, rect.top() + 3.0), pos2(cx, rect.bottom() - 3.0)],
+        Stroke::new(stroke_hair(), col),
+    );
+}
 
 /// Absolute-rect pane header chrome — paints a single header strip into a
 /// caller-supplied `Rect` and reports per-zone click outcomes.
@@ -196,20 +414,16 @@ impl<'a> PainterPaneHeader<'a> {
 
         let painter = ui.painter_at(rect);
 
-        // Background — active darker, inactive slightly lighter.
-        let header_bg = if self.is_active && self.visible_count > 1 {
-            t.bg.gamma_multiply(0.6)
-        } else {
-            t.bg.gamma_multiply(1.2)
-        };
-        painter.rect_filled(rect, 0.0, header_bg);
-
-        // Active underline.
+        // ── Header chrome (bg fill, outer border, active underline) ──────────
+        // All routed through the StyleSettings tokens so a single knob change
+        // restyles the entire header.
+        header_fill(&painter, rect, t, self.is_active, self.visible_count);
+        header_outer_border(&painter, rect, t, self.is_active);
         if self.is_active && self.visible_count > 1 {
             let y = rect.bottom() - 1.0;
             painter.line_segment(
                 [pos2(rect.left(), y), pos2(rect.right(), y)],
-                Stroke::new(2.0, t.accent),
+                Stroke::new(TAB_UNDERLINE_THICKNESS, t.accent),
             );
         }
 
@@ -239,46 +453,48 @@ impl<'a> PainterPaneHeader<'a> {
 
         // Link dot
         if self.show_link_dot {
-            let dot_size = 10.0_f32;
-            let center = pos2(cx + dot_size / 2.0, rect.center().y);
-            let hit = Rect::from_center_size(center, Vec2::new(dot_size + 4.0, h));
+            let center = pos2(cx + LINK_DOT_SIZE / 2.0, rect.center().y);
+            let hit = Rect::from_center_size(center, Vec2::new(LINK_DOT_SIZE + gap_sm(), h));
             let resp = ui.allocate_rect(hit, Sense::click());
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             let link_colors: [Color32; 4] = drawing_palette();
             if self.link_group > 0 && self.link_group <= 4 {
-                painter.circle_filled(center, dot_size / 2.0, link_colors[(self.link_group - 1) as usize]);
+                painter.circle_filled(center, LINK_DOT_SIZE / 2.0, link_colors[(self.link_group - 1) as usize]);
             } else {
-                painter.circle_stroke(center, dot_size / 2.0 - 0.5,
+                painter.circle_stroke(center, LINK_DOT_SIZE / 2.0 - 0.5,
                     Stroke::new(stroke_thin() * 2.0, t.dim.gamma_multiply(0.4)));
             }
             if resp.clicked() { out.clicked_link = true; }
-            cx += dot_size + gap_md_local();
+            cx += LINK_DOT_SIZE + gap_md();
         }
 
         // Back / Fwd
         if self.show_back_fwd {
-            let nav = 18.0_f32;
             // Back
             {
-                let r = Rect::from_center_size(pos2(cx + nav / 2.0, rect.center().y), Vec2::splat(nav));
+                let r = Rect::from_center_size(pos2(cx + NAV_BTN_SIZE / 2.0, rect.center().y), Vec2::splat(NAV_BTN_SIZE));
                 let resp = ui.allocate_rect(r, Sense::click());
                 let (bg, fg) = nav_colors(self.can_go_back, resp.hovered(), t, ui);
-                painter.rect_filled(r, 3.0, bg);
+                painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_LEFT,
                     FontId::proportional(font_md() + 1.0), fg);
                 if resp.clicked() && self.can_go_back { out.clicked_back = true; }
-                cx += nav + gap_xs();
+                cx += NAV_BTN_SIZE + gap_xs();
             }
             // Fwd
             {
-                let r = Rect::from_center_size(pos2(cx + nav / 2.0, rect.center().y), Vec2::splat(nav));
+                let r = Rect::from_center_size(pos2(cx + NAV_BTN_SIZE / 2.0, rect.center().y), Vec2::splat(NAV_BTN_SIZE));
                 let resp = ui.allocate_rect(r, Sense::click());
                 let (bg, fg) = nav_colors(self.can_go_fwd, resp.hovered(), t, ui);
-                painter.rect_filled(r, 3.0, bg);
+                painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_RIGHT,
                     FontId::proportional(font_md() + 1.0), fg);
                 if resp.clicked() && self.can_go_fwd { out.clicked_fwd = true; }
-                cx += nav + gap_sm();
+                cx += NAV_BTN_SIZE + gap_sm();
+            }
+            // Post-nav divider — only in simple-symbol mode (tabs delimit themselves).
+            if self.tabs.is_empty() {
+                header_divider(&painter, cx, rect, t);
             }
         }
 
@@ -287,11 +503,10 @@ impl<'a> PainterPaneHeader<'a> {
 
         if !self.tabs.is_empty() {
             // Tab bar
-            let tab_h = h - 2.0;
-            let tab_y = rect.top() + 1.0;
-            let close_w = 14.0_f32;
-            let tab_pad = gap_md_local() + 4.0;
-            let gap_between = gap_md_local();
+            let tab_h = h - TAB_HEIGHT_INSET;
+            let tab_y = rect.top() + TAB_TOP_INSET;
+            let tab_pad = gap_md() + 4.0;
+            let gap_between = gap_md();
 
             for (ti, (sym, price_text, _chg)) in self.tabs.iter().enumerate() {
                 let is_active_tab = ti == self.active_tab;
@@ -300,7 +515,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let price_galley = painter.layout_no_wrap(
                     price_text.to_string(), price_font.clone(), t.dim);
                 let tab_w = tab_pad + sym_galley.size().x + gap_between
-                    + price_galley.size().x + gap_between + close_w + tab_pad;
+                    + price_galley.size().x + gap_between + TAB_CLOSE_SIZE + tab_pad;
 
                 let tab_rect = Rect::from_min_size(pos2(cx, tab_y), Vec2::new(tab_w, tab_h));
                 let effective_sense = self.tab_sense.unwrap_or_else(Sense::click);
@@ -325,24 +540,25 @@ impl<'a> PainterPaneHeader<'a> {
                 }
 
                 // Bg — tab_hover_bg_alpha and tab_inactive_alpha knobs from StyleSettings
-                let style_st = crate::chart_renderer::ui::style::current();
+                let style_st = current();
                 let tab_bg = if is_active_tab {
                     t.bg.gamma_multiply(0.5)
                 } else if tab_resp.hovered() {
-                    crate::chart_renderer::ui::style::color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha)
+                    color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha)
                 } else {
-                    crate::chart_renderer::ui::style::color_alpha(t.bg, 0)
+                    Color32::TRANSPARENT
                 };
+                let r_md = radius_md() as u8;
                 painter.rect_filled(
                     tab_rect,
-                    egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
+                    egui::CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 },
                     tab_bg,
                 );
                 if is_active_tab {
                     painter.line_segment(
                         [pos2(tab_rect.left() + 1.0, tab_rect.bottom()),
                          pos2(tab_rect.right() - 1.0, tab_rect.bottom())],
-                        Stroke::new(2.0, t.accent),
+                        Stroke::new(TAB_UNDERLINE_THICKNESS, t.accent),
                     );
                 }
 
@@ -359,32 +575,10 @@ impl<'a> PainterPaneHeader<'a> {
                 let mut price_x = tab_rect.left() + tab_pad + sym_galley.size().x + gap_between;
                 // Option badges in tab strip (C/P pill + DTE)
                 if let Some((side, expiry)) = self.option_badges {
-                    let bh = (tab_rect.height() - 6.0).min(16.0);
-                    let by = tab_rect.center().y - bh / 2.0;
-                    let badge_font = FontId::monospace(9.5);
-                    let dark_fg = Color32::from_rgb(24, 24, 28);
-                    if side == "C" || side == "P" {
-                        let g = painter.layout_no_wrap(side.to_string(), badge_font.clone(), dark_fg);
-                        let bw = g.size().x + 8.0;
-                        let r = Rect::from_min_size(pos2(price_x, by), Vec2::new(bw, bh));
-                        let accent_color = if side == "C" { t.bull } else { t.bear };
-                        painter.rect_filled(r, 3.0, color_alpha(accent_color, 200));
-                        painter.text(r.center(), Align2::CENTER_CENTER, side, badge_font.clone(), dark_fg);
-                        price_x += bw + 4.0;
-                    }
-                    if !expiry.is_empty() {
-                        use chrono::NaiveDate;
-                        let today = chrono::Utc::now().date_naive();
-                        let dte = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
-                            .ok().map(|d| (d - today).num_days()).unwrap_or(0);
-                        let lbl = if dte <= 0 { "0D".to_string() } else { format!("{}D", dte) };
-                        let g = painter.layout_no_wrap(lbl.clone(), badge_font.clone(), dark_fg);
-                        let bw = g.size().x + 6.0;
-                        let r = Rect::from_min_size(pos2(price_x, by), Vec2::new(bw, bh));
-                        painter.rect_filled(r, 3.0, color_alpha(t.accent, 200));
-                        painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
-                        price_x += bw + 6.0;
-                    }
+                    price_x += paint_option_badges(
+                        &painter, price_x, tab_rect.center().y, tab_rect.height(),
+                        side, expiry, t,
+                    );
                 }
                 let price_color = self.price_color.unwrap_or(t.dim);
                 painter.text(
@@ -397,19 +591,13 @@ impl<'a> PainterPaneHeader<'a> {
                     && (self.hovered_tab == Some(ti) || is_active_tab);
                 if show_close_x {
                     let close_rect = Rect::from_center_size(
-                        pos2(tab_rect.right() - tab_pad - close_w / 2.0, tab_rect.center().y),
-                        Vec2::splat(close_w),
+                        pos2(tab_rect.right() - tab_pad - TAB_CLOSE_SIZE / 2.0, tab_rect.center().y),
+                        Vec2::splat(TAB_CLOSE_SIZE),
                     );
                     let resp = ui.allocate_rect(close_rect, Sense::click());
-                    let close_col = if resp.hovered() { t.bear } else { t.dim.gamma_multiply(0.6) };
-                    if resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        painter.rect_filled(close_rect, 2.0, color_alpha(t.bear, alpha_tint_local()));
-                    }
-                    painter.text(close_rect.center(), Align2::CENTER_CENTER,
-                        "\u{00D7}", FontId::proportional(font_md() + 2.0), close_col);
+                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    paint_close_glyph(&painter, close_rect, resp.hovered(), t, 2.0);
                     if resp.clicked() {
-                        // tab close — surface as clicked_tab + clicked_close pair? Use clicked_tab w/ clicked_close set.
                         out.clicked_close = true;
                         out.clicked_tab = Some(ti);
                     }
@@ -449,36 +637,11 @@ impl<'a> PainterPaneHeader<'a> {
             painter.text(pos2(p0.x + 0.5, p0.y), Align2::LEFT_CENTER, sym,
                 title_font.clone(), label_color);
             painter.text(p0, Align2::LEFT_CENTER, sym, title_font.clone(), label_color);
-            cx += sym_galley.size().x + gap_md_local() + 4.0;
+            cx += sym_galley.size().x + gap_md() + 4.0;
 
-            // Option badges: C/P pill + DTE countdown
+            // Option badges: C/P pill + DTE countdown (shared helper).
             if let Some((side, expiry)) = self.option_badges {
-                let bh = (h - 6.0).min(16.0);
-                let by = rect.center().y - bh / 2.0;
-                let badge_font = FontId::monospace(9.5);
-                let dark_fg = Color32::from_rgb(24, 24, 28);
-                if side == "C" || side == "P" {
-                    let g = painter.layout_no_wrap(side.to_string(), badge_font.clone(), dark_fg);
-                    let bw = g.size().x + 8.0;
-                    let r = Rect::from_min_size(pos2(cx, by), Vec2::new(bw, bh));
-                    let accent_color = if side == "C" { t.bull } else { t.bear };
-                    painter.rect_filled(r, 3.0, color_alpha(accent_color, 200));
-                    painter.text(r.center(), Align2::CENTER_CENTER, side, badge_font.clone(), dark_fg);
-                    cx += bw + 4.0;
-                }
-                if !expiry.is_empty() {
-                    use chrono::NaiveDate;
-                    let today = chrono::Utc::now().date_naive();
-                    let dte = NaiveDate::parse_from_str(expiry, "%Y-%m-%d")
-                        .ok().map(|d| (d - today).num_days()).unwrap_or(0);
-                    let lbl = if dte <= 0 { "0D".to_string() } else { format!("{}D", dte) };
-                    let g = painter.layout_no_wrap(lbl.clone(), badge_font.clone(), dark_fg);
-                    let bw = g.size().x + 6.0;
-                    let r = Rect::from_min_size(pos2(cx, by), Vec2::new(bw, bh));
-                    painter.rect_filled(r, 3.0, color_alpha(t.accent, 200));
-                    painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
-                    cx += bw + 6.0;
-                }
+                cx += paint_option_badges(&painter, cx, rect.center().y, h, side, expiry, t);
             }
 
             if let Some(tf) = self.timeframe {
@@ -486,7 +649,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let g = painter.layout_no_wrap(tf.to_string(), tf_font.clone(), t.dim);
                 painter.text(pos2(cx, rect.center().y), Align2::LEFT_CENTER, tf,
                     tf_font, t.dim);
-                cx += g.size().x + gap_md_local();
+                cx += g.size().x + gap_md();
             }
 
             if let (Some(price_text), price_color) = (self.price_text, self.price_color.unwrap_or(t.dim)) {
@@ -494,41 +657,31 @@ impl<'a> PainterPaneHeader<'a> {
                 let g = painter.layout_no_wrap(price_text.to_string(), price_font.clone(), price_color);
                 painter.text(pos2(cx, rect.center().y), Align2::LEFT_CENTER,
                     price_text, price_font, price_color);
-                cx += g.size().x + gap_md_local() + 4.0;
+                cx += g.size().x + gap_md() + 4.0;
             }
 
             // Surface symbol click to caller
             if sym_clicked { out.clicked_symbol = true; }
         }
 
-        // ── Helper: paint a vertical hairline divider at the current cx ──
-        let paint_divider = |cx_pos: f32| {
-            if current().vertical_group_dividers {
-                let div_col = t.text.gamma_multiply(0.25);
-                painter.line_segment(
-                    [pos2(cx_pos, rect.top() + 4.0), pos2(cx_pos, rect.bottom() - 4.0)],
-                    Stroke::new(stroke_hair(), div_col),
-                );
-            }
-        };
-
-        // Divider after symbol/tabs section (before indicator chips)
-        paint_divider(cx);
+        // Divider after symbol/tabs section (before indicator chips). Routes
+        // through the unified `header_divider` helper.
+        header_divider(&painter, cx, rect, t);
 
         // ── Indicator chips with painted ✕ ──
+        const CHIP_X_W: f32 = 12.0;
         for (i, ind) in self.indicators.iter().enumerate() {
             let chip_font = FontId::monospace(font_sm());
             let g = painter.layout_no_wrap(ind.to_string(), chip_font.clone(), t.dim);
-            let chip_pad = gap_md_local();
-            let x_w = 12.0;
-            let chip_w = chip_pad + g.size().x + gap_sm() + x_w + chip_pad;
-            let chip_h = (h - 6.0).min(18.0);
+            let chip_pad = gap_md();
+            let chip_w = chip_pad + g.size().x + gap_sm() + CHIP_X_W + chip_pad;
+            let chip_h = (h - BADGE_INSET_V).min(CHIP_HEIGHT_MAX);
             let chip_rect = Rect::from_min_size(
                 pos2(cx, rect.center().y - chip_h / 2.0),
                 Vec2::new(chip_w, chip_h),
             );
             painter.rect_stroke(
-                chip_rect, 3.0,
+                chip_rect, radius_sm(),
                 Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())),
                 StrokeKind::Inside,
             );
@@ -536,16 +689,13 @@ impl<'a> PainterPaneHeader<'a> {
                 pos2(chip_rect.left() + chip_pad, chip_rect.center().y),
                 Align2::LEFT_CENTER, ind, chip_font, t.dim,
             );
-            // ✕ hit zone
             let x_rect = Rect::from_center_size(
-                pos2(chip_rect.right() - chip_pad - x_w / 2.0, chip_rect.center().y),
-                Vec2::splat(x_w),
+                pos2(chip_rect.right() - chip_pad - CHIP_X_W / 2.0, chip_rect.center().y),
+                Vec2::splat(CHIP_X_W),
             );
             let x_resp = ui.allocate_rect(x_rect, Sense::click());
-            let x_col = if x_resp.hovered() { t.bear } else { t.dim.gamma_multiply(0.7) };
             if x_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            painter.text(x_rect.center(), Align2::CENTER_CENTER,
-                "\u{00D7}", FontId::proportional(font_md()), x_col);
+            paint_close_glyph(&painter, x_rect, x_resp.hovered(), t, 0.0);
             if x_resp.clicked() {
                 out.clicked_indicator_remove = Some(i);
             }
@@ -557,105 +707,84 @@ impl<'a> PainterPaneHeader<'a> {
 
         // ── +Tab: left-aligned immediately after the last tab ──
         if self.show_plus_tab {
-            let plus_w = 44.0;
-            let plus_h = h - 6.0;
+            let plus_h = h - ICON_BTN_INSET_V;
             let plus_rect = Rect::from_min_size(
                 pos2(cx, rect.center().y - plus_h / 2.0),
-                Vec2::new(plus_w, plus_h),
+                Vec2::new(PLUS_TAB_W, plus_h),
             );
             let resp = ui.allocate_rect(plus_rect, Sense::click());
-            let (bg, fg, border) = if resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                (color_alpha(t.toolbar_border, alpha_subtle()),
-                 t.text,
-                 color_alpha(t.accent, alpha_line()))
-            } else {
-                (color_alpha(t.toolbar_border, 18),
-                 t.dim.gamma_multiply(0.8),
-                 color_alpha(t.toolbar_border, alpha_muted()))
-            };
-            painter.rect_filled(plus_rect, 4.0, bg);
-            painter.rect_stroke(plus_rect, 4.0,
+            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            let (bg, fg, border) = painter_btn_colors(t, resp.hovered(), false);
+            // +Tab uses a single-line label (no icon glyph above) — paint inline
+            // rather than via paint_icon_label_btn since the layout differs.
+            painter.rect_filled(plus_rect, radius_md(), bg);
+            painter.rect_stroke(plus_rect, radius_md(),
                 Stroke::new(stroke_thin(), border), StrokeKind::Outside);
             painter.text(plus_rect.center(), Align2::CENTER_CENTER,
                 "+ Tab",
                 FontId::monospace((self.title_font_size - 2.0).max(font_sm())), fg);
             if resp.clicked() { out.clicked_plus = true; }
-            cx += plus_w + gap_sm();
+            cx += PLUS_TAB_W + gap_sm();
         }
 
         // ── Right cluster: Order | DOM | Close (right-anchored) ──────────────
-        let close_size = 18.0_f32;
-        let close_total = if self.show_close { gap_md_local() + close_size + gap_md_local() } else { gap_sm() };
-        let icon_btn_w = 22.0_f32;
-        let icon_btn_gap = 3.0_f32;
+        let close_total = if self.show_close { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
         let order_dom_total = {
             let mut w = 0.0f32;
-            if self.show_order_btn { w += icon_btn_w + icon_btn_gap; }
-            if self.show_dom_btn   { w += icon_btn_w + icon_btn_gap; }
+            if self.show_order_btn { w += ICON_BTN_W; }
+            if self.show_dom_btn   { w += ICON_BTN_W; }
             w
         };
 
         // Divider before right icon cluster
-        paint_divider(rect.right() - close_total - order_dom_total);
+        header_divider(&painter, rect.right() - close_total - order_dom_total, rect, t);
 
         // ── Order + DOM icon buttons ──────────────────────────────────────────
         {
-            let icon_h = h - 6.0;
+            let icon_h = h - ICON_BTN_INSET_V;
             // Icons here render bigger than the title text — these are the
             // primary affordances on the right cluster.
             let icon_font = FontId::proportional(self.title_font_size + 4.0);
-            let mut paint_icon_btn = |rx: f32, icon: &str, is_active: bool| -> bool {
+            let mut rx = rect.right() - close_total - order_dom_total;
+            let mut paint_btn = |ui: &mut Ui, rx: f32, icon: &str, label: &str, is_active: bool| -> bool {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(icon_btn_w, icon_h),
+                    Vec2::new(ICON_BTN_W, icon_h),
                 );
                 let resp = ui.allocate_rect(r, Sense::click());
-                let (bg, fg, border) = if is_active {
-                    (color_alpha(t.accent, 38), t.accent, color_alpha(t.accent, alpha_active()))
-                } else if resp.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    (color_alpha(t.toolbar_border, alpha_subtle()), t.text, color_alpha(t.accent, alpha_line()))
-                } else {
-                    (color_alpha(t.toolbar_border, 18), t.dim.gamma_multiply(0.8), color_alpha(t.toolbar_border, alpha_muted()))
-                };
-                painter.rect_filled(r, 4.0, bg);
-                painter.rect_stroke(r, 4.0, Stroke::new(stroke_thin(), border), StrokeKind::Outside);
-                painter.text(r.center(), Align2::CENTER_CENTER, icon, icon_font.clone(), fg);
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let (bg, fg, border) = painter_btn_colors(t, resp.hovered(), is_active);
+                paint_icon_label_btn(&painter, r, icon, label, bg, fg, border, icon_font.clone());
                 resp.clicked()
             };
 
-            let mut rx = rect.right() - close_total - order_dom_total;
             if self.show_order_btn {
-                if paint_icon_btn(rx, crate::ui_kit::icons::Icon::CURRENCY_DOLLAR, self.order_btn_active) {
+                if paint_btn(ui, rx, Icon::CURRENCY_DOLLAR, "ORDER", self.order_btn_active) {
                     out.clicked_order = true;
                 }
-                rx += icon_btn_w + icon_btn_gap;
+                rx += ICON_BTN_W;
+                // Divider between ORDER and DOM buttons (always shown — these
+                // buttons need a separator regardless of style preset).
+                if self.show_dom_btn {
+                    header_divider_inline(&painter, rx, rect, t);
+                }
             }
             if self.show_dom_btn {
-                if paint_icon_btn(rx, crate::ui_kit::icons::Icon::LADDER, self.dom_btn_active) {
+                if paint_btn(ui, rx, Icon::LADDER, "DOM", self.dom_btn_active) {
                     out.clicked_dom = true;
                 }
-                let _ = rx;
             }
         }
 
         // ── Close button (right-anchored) ──
         if self.show_close {
             let close_rect = Rect::from_center_size(
-                pos2(rect.right() - gap_md_local() - close_size / 2.0, rect.center().y),
-                Vec2::splat(close_size),
+                pos2(rect.right() - gap_md() - CLOSE_BTN_SIZE / 2.0, rect.center().y),
+                Vec2::splat(CLOSE_BTN_SIZE),
             );
             let resp = ui.allocate_rect(close_rect, Sense::click());
-            let col = if resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                t.bear
-            } else { t.dim.gamma_multiply(0.7) };
-            if resp.hovered() {
-                painter.rect_filled(close_rect, 3.0, color_alpha(t.bear, alpha_tint_local()));
-            }
-            painter.text(close_rect.center(), Align2::CENTER_CENTER,
-                "\u{00D7}", FontId::proportional(font_md() + 2.0), col);
+            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            paint_close_glyph(&painter, close_rect, resp.hovered(), t, 2.0);
             if resp.clicked() && out.clicked_tab.is_none() {
                 out.clicked_close = true;
             }
@@ -703,14 +832,12 @@ pub struct PainterPaneHeaderResponse {
 
 // ─── Local helpers ──────────────────────────────────────────────────────────
 
-fn gap_md_local() -> f32 { super::super::style::gap_md() }
-fn alpha_tint_local() -> u8 { super::super::style::alpha_tint() }
-
 fn nav_colors(enabled: bool, hovered: bool, t: &Theme, ui: &mut Ui) -> (Color32, Color32) {
+    use super::super::style::alpha_dim;
     if enabled {
         if hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            (color_alpha(t.toolbar_border, 60), t.text)
+            (color_alpha(t.toolbar_border, alpha_dim()), t.text)
         } else {
             (Color32::TRANSPARENT, t.dim.gamma_multiply(0.8))
         }

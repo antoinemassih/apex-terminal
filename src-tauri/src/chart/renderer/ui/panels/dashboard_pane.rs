@@ -4,8 +4,10 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::layout::EmptyState;
+use super::super::widgets::headers::PaneHeader;
 
 const TILE_GAP: f32 = 6.0;
+const HEADER_H: f32 = 28.0;
 
 pub(crate) fn render(
     ui: &mut egui::Ui, _ctx: &egui::Context,
@@ -26,6 +28,21 @@ pub(crate) fn render(
         }
     }
 
+    // Header (chrome widget) — matches heatmap_pane / portfolio_pane.
+    let header_rect = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), HEADER_H));
+    {
+        let mut header_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(header_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        header_ui.add(PaneHeader::new("Dashboard").theme(t));
+    }
+    let body_rect = egui::Rect::from_min_max(
+        egui::pos2(rect.left(), rect.top() + HEADER_H),
+        rect.max,
+    );
+
     // Count visible widgets
     let widget_count = panes[pane_idx].chart_widgets.iter().filter(|w| w.visible).count();
 
@@ -35,7 +52,7 @@ pub(crate) fn render(
         // correctly within the dashboard.
         let mut child = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(rect)
+                .max_rect(body_rect)
                 .layout(egui::Layout::top_down(egui::Align::Center)),
         );
         EmptyState::new("\u{2637}", "No widgets", "Add widgets from the Widgets menu")
@@ -50,8 +67,8 @@ pub(crate) fn render(
 
     // Force widgets into a grid layout by overriding their positions
     let content = egui::Rect::from_min_max(
-        egui::pos2(rect.left() + TILE_GAP, rect.top() + TILE_GAP),
-        egui::pos2(rect.right() - TILE_GAP, rect.bottom() - TILE_GAP));
+        egui::pos2(body_rect.left() + TILE_GAP, body_rect.top() + TILE_GAP),
+        egui::pos2(body_rect.right() - TILE_GAP, body_rect.bottom() - TILE_GAP));
     let avail_w = content.width();
     let n = widget_count;
     let cols = if avail_w > 600.0 && n >= 6 { 4 }

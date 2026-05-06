@@ -106,11 +106,11 @@ use crate::chart_renderer::gpu::{
 use crate::chart_renderer::ui::style::{
     color_alpha, hex_to_color, segmented_control,
     dialog_window_themed, dialog_header, action_btn,
-    FONT_MD, FONT_SM, STROKE_STD, STROKE_THIN,
+    FONT_MD, FONT_SM, FONT_2XS, STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM,
     BTN_ICON_SM, BTN_ICON_LG,
     set_toolbar_rect, tb_group_break, current as style_current,
-    font_xs, font_sm, font_md,
+    font_xs, font_sm, font_md, alpha_muted,
     gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
     stroke_std, stroke_thin, r_md_cr,
 };
@@ -288,9 +288,9 @@ pub(crate) fn render(
                 let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
                 const PAPER_ORANGE: egui::Color32 = rgb(255, 165, 0);
                 let (label, color) = if paper {
-                    ("PAPER", PAPER_ORANGE)
+                    ("\u{00A2}", PAPER_ORANGE)  // ¢ = struck-through dollar, orange for paper
                 } else {
-                    ("LIVE", t.dim)
+                    ("$", t.dim)
                 };
                 let tip = if paper { "Switch to Live" } else { "Switch to Paper" };
                 let resp = ui.add(crate::chart::renderer::ui::inputs::buttons::ChromeBtn::new(
@@ -302,19 +302,6 @@ pub(crate) fn render(
                 }
             }
 
-            // ── Orders book ──
-            if ui.add(ToolbarBtn::new("ORDERS").active(watchlist.orders_panel_open).theme(t)).on_hover_text("Orders").clicked() {
-                watchlist.orders_panel_open = !watchlist.orders_panel_open;
-            }
-
-            // ── DOM sidebar ──
-            if ui.add(ToolbarBtn::new("DOM").active(panes[ap].dom_sidebar_open).theme(t)).on_hover_text("DOM Sidebar").clicked() {
-                panes[ap].dom_sidebar_open = !panes[ap].dom_sidebar_open;
-            }
-            // ── Order Entry ──
-            if ui.add(ToolbarBtn::new("ORDER").active(watchlist.order_entry_open).theme(t)).on_hover_text("Order Entry").clicked() {
-                watchlist.order_entry_open = !watchlist.order_entry_open;
-            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -364,7 +351,18 @@ pub(crate) fn render(
             ui.add_space(gap_sm());
             // ── Range dropdown (sets interval + visible bars) ──
             {
-                let range_resp = ui.menu_button(egui::RichText::new("Range").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+                let range_label = {
+                    let presets: &[(&str, &str, u32)] = &[
+                        ("1D", "5m", 78), ("2D", "5m", 156), ("3D", "5m", 234),
+                        ("5D", "15m", 130), ("2W", "30m", 130), ("1M", "1h", 130),
+                        ("3M", "1d", 63), ("1Y", "1d", 252),
+                    ];
+                    presets.iter()
+                        .find(|&&(_, tf, vc)| tf == panes[ap].timeframe && vc == panes[ap].vc)
+                        .map(|&(label, _, _)| label)
+                        .unwrap_or(panes[ap].timeframe.as_str())
+                };
+                let range_resp = ui.menu_button(egui::RichText::new(range_label).monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.label(egui::RichText::new("RANGE").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
@@ -1006,13 +1004,6 @@ pub(crate) fn render(
                 ui.selectable_label(false, egui::RichText::new("  Auto Target").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
             });
 
-            // ⚡ Hit Highlight icon toggle
-            {
-                let hh = panes[ap].hit_highlight;
-                let hh_resp = ui.add(ToolbarBtn::new("SIGNALS").active(hh).theme(t)).on_hover_text("Hit Highlight");
-                if hh_resp.clicked() { panes[ap].hit_highlight = !hh; }
-            }
-
             // ── Widgets dropdown — two-layer categorized picker with mini previews ──
             ui.menu_button(egui::RichText::new("Widgets").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
@@ -1116,6 +1107,23 @@ pub(crate) fn render(
                     }
                 }
             });
+
+            // Hit-highlight toggle — trendline/swing hit detection flash
+            {
+                let hh_resp = ui.add(ToolbarBtn::new(Icon::LINE_SEGMENT)
+                    .active(panes[ap].hit_highlight)
+                    .theme(t))
+                    .on_hover_text("Trendline Hit Detection");
+                if hh_resp.clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let nv = !panes[ap].hit_highlight;
+                    if shift || watchlist.broadcast_mode {
+                        for p in panes.iter_mut() { p.hit_highlight = nv; }
+                    } else {
+                        panes[ap].hit_highlight = nv;
+                    }
+                }
+            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -1406,31 +1414,48 @@ pub(crate) fn render(
 
                 ui.add(egui::Separator::default().spacing(4.0));
 
-                // Feed pane (News + Discord + Screenshots)
-                if ui.add(ToolbarBtn::new(&nav_label(Icon::NEWSPAPER, "Feed")).active(watchlist.feed_panel_open).theme(t)).on_hover_text("Feed (News, Discord, Screenshots)").clicked() {
-                    watchlist.feed_panel_open = !watchlist.feed_panel_open;
+                // ── Right nav panel toggles — zero item spacing, hairline dividers between each ──
+                let prev_spacing = ui.spacing().item_spacing.x;
+                ui.spacing_mut().item_spacing.x = 0.0;
+
+                // Divider drawn at the left edge of the just-drawn button's rect (RTL layout).
+                macro_rules! nav_divider {
+                    ($ui:expr, $resp:expr) => {{
+                        let x = $resp.rect.left() - 0.5;
+                        let col = color_alpha(t.toolbar_border, alpha_muted());
+                        $ui.painter().line_segment(
+                            [egui::pos2(x, tb_rect.top() + 4.0), egui::pos2(x, tb_rect.bottom() - 4.0)],
+                            egui::Stroke::new(0.5, col),
+                        );
+                    }};
                 }
-                tb_group_break(ui, tb_rect, t.toolbar_border);
+
+                // Feed pane (News + Discord + Screenshots)
+                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::NEWSPAPER, "Feed")).active(watchlist.feed_panel_open).theme(t)).on_hover_text("Feed (News, Discord, Screenshots)");
+                if resp.clicked() { watchlist.feed_panel_open = !watchlist.feed_panel_open; }
+                nav_divider!(ui, resp);
 
                 // Playbook
-                if ui.add(ToolbarBtn::new(&nav_label(Icon::STAR, "Playbook")).active(watchlist.playbook_panel_open).theme(t)).on_hover_text("Playbook (Trade Ideas)").clicked() {
-                    watchlist.playbook_panel_open = !watchlist.playbook_panel_open;
-                }
-                tb_group_break(ui, tb_rect, t.toolbar_border);
+                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::STAR, "Playbook")).active(watchlist.playbook_panel_open).theme(t)).on_hover_text("Playbook (Trade Ideas)");
+                if resp.clicked() { watchlist.playbook_panel_open = !watchlist.playbook_panel_open; }
+                nav_divider!(ui, resp);
 
                 // Watchlist toggle
-                if ui.add(ToolbarBtn::new(&nav_label(Icon::LIST, "Watchlist")).active(watchlist.open).theme(t)).on_hover_text("Watchlist").clicked() {
-                    watchlist.open = !watchlist.open;
-                }
-                tb_group_break(ui, tb_rect, t.toolbar_border);
+                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::LIST, "Watchlist")).active(watchlist.open).theme(t)).on_hover_text("Watchlist");
+                if resp.clicked() { watchlist.open = !watchlist.open; }
+                nav_divider!(ui, resp);
 
-                // Analysis sidebar toggle (unified RRG / T&S / Scanner / Scripts)
-                if ui.add(ToolbarBtn::new(&nav_label(Icon::CHART_LINE, "Analysis")).active(watchlist.analysis_open).theme(t)).on_hover_text("Analysis Sidebar").clicked() {
-                    watchlist.analysis_open = !watchlist.analysis_open;
-                }
-                tb_group_break(ui, tb_rect, t.toolbar_border);
+                // Orders panel
+                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::CURRENCY_DOLLAR, "Orders")).active(watchlist.orders_panel_open).theme(t)).on_hover_text("Orders Panel");
+                if resp.clicked() { watchlist.orders_panel_open = !watchlist.orders_panel_open; }
+                nav_divider!(ui, resp);
 
-                // Signals pane (Alerts + Signals)
+                // Analysis sidebar toggle
+                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::CHART_LINE, "Analysis")).active(watchlist.analysis_open).theme(t)).on_hover_text("Analysis Sidebar");
+                if resp.clicked() { watchlist.analysis_open = !watchlist.analysis_open; }
+                nav_divider!(ui, resp);
+
+                // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
                 {
                     let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
                         + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
@@ -1440,11 +1465,12 @@ pub(crate) fn render(
                         let badge_y = signals_resp.rect.top() + 5.0;
                         ui.painter().circle_filled(egui::pos2(badge_x, badge_y), 5.0, t.accent);
                         ui.painter().text(egui::pos2(badge_x, badge_y), egui::Align2::CENTER_CENTER,
-                            &format!("{}", active_count), egui::FontId::monospace(7.0), t.bg);
+                            &format!("{}", active_count), egui::FontId::monospace(FONT_2XS), t.bg);
                     }
                     if signals_resp.clicked() { watchlist.signals_panel_open = !watchlist.signals_panel_open; }
                 }
-                tb_group_break(ui, tb_rect, t.toolbar_border);
+
+                ui.spacing_mut().item_spacing.x = prev_spacing;
 
                 // New window — single icon button.
                 if ui.add(ToolbarBtn::new(Icon::CIRCLES_THREE_PLUS).active(false).theme(t)).on_hover_text("New chart window").clicked() {

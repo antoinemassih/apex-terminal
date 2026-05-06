@@ -6,8 +6,8 @@ use super::super::super::gpu::{Watchlist, TapeRow, Theme};
 use super::super::widgets::frames::CompactPanelFrame;
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::rows::ListRow;
+use super::super::widgets::headers::PanelHeaderWithClose;
 
-const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
 /// Draw the T&S content into `ui` (used by analysis_panel as a tab).
 pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
@@ -48,7 +48,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
 
             let col_w = (panel_w - 12.0) / 3.0;
             for entry in entries.iter().rev().take(200).collect::<Vec<_>>().into_iter().rev() {
-                let side_color = if entry.is_buy { rgb(46, 204, 113) } else { rgb(231, 76, 60) };
+                let side_color = if entry.is_buy { egui::Color32::from_rgb(46, 204, 113) } else { egui::Color32::from_rgb(231, 76, 60) };
 
                 // Build strings before the closure to avoid borrow issues.
                 let secs = entry.time / 1000;
@@ -110,7 +110,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .resizable(true)
         .frame(CompactPanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
-            if panel_header_sub(ui, "TIME & SALES", Some(active_symbol), t.accent, t.dim) {
+            if PanelHeaderWithClose::new("TIME & SALES").subtitle(active_symbol).theme(t).show(ui) {
                 watchlist.tape_open = false;
             }
             ui.add_space(2.0);

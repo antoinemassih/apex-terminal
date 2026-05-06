@@ -7,6 +7,7 @@ use super::super::widgets::text::{MonospaceCode, SectionLabel};
 use super::super::widgets::buttons::{SimpleBtn, IconBtn, TradeBtn};
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::cards::metric_card::MetricCard;
+use super::super::widgets::headers::PanelHeaderWithClose;
 
 // ─── Data Structures ────────────────────────────────────────────────────────
 
@@ -241,15 +242,17 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .show(ctx, |ui| {
             let w = ui.available_width();
 
-            // ── Header ──
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                ui.add(MonospaceCode::new("SPREAD BUILDER").size_px(10.0).strong(true).color(t.accent));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(6.0);
-                    if close_button(ui, t.dim) { close = true; }
-                });
-            });
+            // ── Header — monospace 10px title with edge padding for the zero-margin popup frame ──
+            if PanelHeaderWithClose::new("SPREAD BUILDER")
+                .title_monospace(true)
+                .title_size_px(10.0)
+                .leading_space(8.0)
+                .trailing_space(6.0)
+                .theme(t)
+                .show(ui)
+            {
+                close = true;
+            }
             ui.add_space(4.0);
             // Divider
             let div_rect = egui::Rect::from_min_size(
@@ -280,7 +283,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     if !active_symbol.is_empty() && active_symbol != watchlist.spread_state.symbol {
                         ui.add_space(4.0);
                         if ui.add(egui::Button::new(
-                            egui::RichText::new(active_symbol).monospace().size(8.0).color(t.accent))
+                            egui::RichText::new(active_symbol).monospace().size(font_xs()).color(t.accent))
                             .fill(color_alpha(t.accent, alpha_ghost()))
                             .corner_radius(r_md_cr())
                             .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_muted())))

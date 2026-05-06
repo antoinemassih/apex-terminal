@@ -3,8 +3,9 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::text::{BodyLabel, SectionLabel};
+use super::super::widgets::text::{BodyLabel, SectionLabel, SectionLabelSize};
 use super::super::widgets::buttons::SimpleBtn;
+use super::super::widgets::headers::PanelHeaderWithClose;
 
 /// A single screenshot entry with chart state for replay.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -117,14 +118,19 @@ pub(crate) fn draw(
             .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
             .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong()))))
         .show(ctx, |ui| {
-            // Header
-            ui.horizontal(|ui| {
-                ui.add(SectionLabel::new("SCREENSHOTS").tiny().size_px(9.0).strong(true).color(t.accent));
-                ui.add(BodyLabel::new(&format!("({})", watchlist.screenshot_entries.len())).size(font_sm()).monospace(true).color(t.dim));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if close_button(ui, t.dim) { watchlist.screenshot_open = false; }
-                });
-            });
+            // Header — tiny 9px title + count badge + close
+            let count = watchlist.screenshot_entries.len();
+            let dim = t.dim;
+            if PanelHeaderWithClose::new("SCREENSHOTS")
+                .title_size(SectionLabelSize::Tiny)
+                .title_size_px(9.0)
+                .theme(t)
+                .show_with_title_actions(ui, |ui| {
+                    ui.add(BodyLabel::new(&format!("({})", count)).size(font_sm()).monospace(true).color(dim));
+                })
+            {
+                watchlist.screenshot_open = false;
+            }
             ui.add_space(4.0);
             draw_content(ui, watchlist, t, panes, active_pane);
         });

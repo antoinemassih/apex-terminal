@@ -91,8 +91,9 @@ pub fn colored_direction_badge(
 
 // ─── Buttons ──────────────────────────────────────────────────────────────────
 
-/// Small action button — minimal, text-only, monospace; used in tight header rows.
-pub fn small_action_btn(ui: &mut Ui, text: &str, color: Color32) -> Response {
+/// Small action button — minimal, text-only, monospace; frameless, returns Response.
+/// Used in tight header rows. Distinct from style::small_action_btn (which returns bool).
+pub fn text_action_btn(ui: &mut Ui, text: &str, color: Color32) -> Response {
     let resp = ui.add(
         egui::Button::new(
             RichText::new(text)
@@ -110,8 +111,9 @@ pub fn small_action_btn(ui: &mut Ui, text: &str, color: Color32) -> Response {
     resp
 }
 
-/// Icon-only button — frame-less, hover changes cursor.
-pub fn icon_btn(ui: &mut Ui, icon: &str, color: Color32, size: f32) -> Response {
+/// Icon-only button — frameless, smaller, hover changes cursor, returns Response.
+/// Distinct from style::icon_btn (which has different sizing behavior).
+pub fn inline_icon_btn(ui: &mut Ui, icon: &str, color: Color32, size: f32) -> Response {
     let resp = ui.add(
         egui::Button::new(RichText::new(icon).size(size).color(color))
             .frame(false)

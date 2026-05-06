@@ -10,7 +10,6 @@ use crate::monitoring::{span_begin, span_end};
 use crate::chart_renderer::DrawingKind;
 use crate::chart_renderer::LineStyle;
 use super::super::widgets::frames::PopupFrame;
-const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Trendline filter dropdown ────────────────────────────────────────────

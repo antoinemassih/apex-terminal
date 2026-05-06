@@ -7,6 +7,8 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
+use super::super::widgets::headers::PanelHeaderWithClose;
+use super::super::widgets::text::SectionLabelSize;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     if !watchlist.apex_diag_open { return; }
@@ -21,13 +23,15 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .title_bar(false)
         .frame(super::super::widgets::frames::PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build())
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.add(super::super::widgets::text::SectionLabel::new("APEX DATA DIAGNOSTICS").md().color(t.accent));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("close").clicked() { watchlist.apex_diag_open = false; }
-                    if ui.small_button("reset breaker").clicked() { crate::apex_data::rest::reset_breaker(); }
+            let closed = PanelHeaderWithClose::new("APEX DATA DIAGNOSTICS")
+                .title_size(SectionLabelSize::Md)
+                .theme(t)
+                .show_with(ui, |ui| {
+                    if ui.small_button("reset breaker").clicked() {
+                        crate::apex_data::rest::reset_breaker();
+                    }
                 });
-            });
+            if closed { watchlist.apex_diag_open = false; }
             ui.separator();
 
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {

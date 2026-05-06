@@ -3657,22 +3657,12 @@ fn render_chart_pane(
                     [pane_rect.right_top(), pane_rect.right_bottom()],
                     rule_col,
                 );
-                // Active pane: accent top line inset by 1 px
-                if is_active {
-                    let accent_col = t.accent.gamma_multiply(0.55);
-                    painter.line_segment(
-                        [egui::pos2(pane_rect.left() + 1.0, pane_rect.top() + 1.0),
-                         egui::pos2(pane_rect.right() - 1.0, pane_rect.top() + 1.0)],
-                        egui::Stroke::new(st.stroke_std, accent_col),
-                    );
-                }
             }
         } else if visible_count > 1 {
-            // Legacy: colored rect stroke — width driven by pane_border_width.
+            // Legacy: uniform dim hairline — no active/inactive distinction.
             let bw = st.pane_border_width;
-            let border_color = if is_active { t.bull.gamma_multiply(0.8) } else { t.dim.gamma_multiply(0.3) };
-            let border_width = if is_active { bw.max(1.0) } else { bw * 0.5 };
-            ui.painter().rect_stroke(pane_rect, 0.0, egui::Stroke::new(border_width, border_color), egui::StrokeKind::Inside);
+            let border_color = t.dim.gamma_multiply(0.3);
+            ui.painter().rect_stroke(pane_rect, 0.0, egui::Stroke::new(bw * 0.5, border_color), egui::StrokeKind::Inside);
         }
     }
 
@@ -3704,7 +3694,6 @@ fn render_chart_pane(
     } else {
         pane_header_h(watchlist)
     };
-    let style = style_id(watchlist);
     let title_font_size = watchlist.pane_header_size.title_font();
     let show_header = true;
     if show_header {
@@ -3715,62 +3704,11 @@ fn render_chart_pane(
             [header_rect.min.x, header_rect.min.y, header_rect.width(), header_rect.height()],
             "PANE_HEADER", "Pane Header");
 
-        // ── Style-aware header background + active underline (painted before
-        //    widget so widget's bg is drawn on top — kept here for Meridien
-        //    active_header_fill_multiply and show_active_tab_underline knobs).
-        {
-            let st = super::ui::style::current();
-            let hp = ui.painter_at(header_rect);
-            // pane_active_indicator: 0=none, 1=top-border line only, 2=header fill, 3=both.
-            let draw_fill   = is_active && visible_count > 1 && (st.pane_active_indicator == 2 || st.pane_active_indicator == 3);
-            let draw_topbar = is_active && visible_count > 1 && (st.pane_active_indicator == 1 || st.pane_active_indicator == 3);
-            if draw_fill {
-                hp.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(st.active_header_fill_multiply));
-            } else if st.inactive_header_fill {
-                hp.rect_filled(header_rect, 0.0, t.bg.gamma_multiply(1.2));
-            }
-            if draw_topbar {
-                hp.line_segment(
-                    [egui::pos2(header_rect.left(), header_rect.top()),
-                     egui::pos2(header_rect.right(), header_rect.top())],
-                    egui::Stroke::new(2.0, t.accent),
-                );
-            }
-            if is_active && visible_count > 1 && st.show_active_tab_underline {
-                let uw = if st.tab_underline_thickness > 0.0 {
-                    st.tab_underline_thickness
-                } else if style == 1 { 2.0 } else { 3.0 };
-                let ucol = if style == 1 { color_alpha(t.accent, 140) } else { t.accent };
-                let underline_y = if st.tab_underline_under_text {
-                    // Under text: position at roughly text baseline inside header
-                    header_rect.top() + header_rect.height() * 0.82
-                } else {
-                    header_rect.bottom() - 1.0
-                };
-                hp.line_segment(
-                    [egui::pos2(header_rect.left(), underline_y),
-                     egui::pos2(header_rect.right(), underline_y)],
-                    egui::Stroke::new(uw, ucol),
-                );
-            }
-            // Meridien: hairline divider between nav buttons and symbol area
-            // (simple-label mode only; tab mode has its own tab separators).
-            if !has_tabs && st.hairline_borders {
-                // approximate div_x: link(14) + gap(6) + navbtn(18) + gap(2) + navbtn(18) + gap(4) = ~62 + left
-                let div_x = header_rect.left() + 62.0;
-                let div_col = super::ui::style::color_alpha(t.toolbar_border, super::ui::style::alpha_ghost() as u8);
-                hp.line_segment(
-                    [egui::pos2(div_x, header_rect.top() + 2.0),
-                     egui::pos2(div_x, header_rect.bottom() - 2.0)],
-                    egui::Stroke::new(1.0, div_col),
-                );
-            }
-            // Meridien: draw a hairline border around just the header strip (#d).
-            if st.hairline_borders {
-                let rule_col = egui::Stroke::new(0.5, t.text.gamma_multiply(0.3));
-                hp.rect_stroke(header_rect, 0.0, rule_col, egui::StrokeKind::Inside);
-            }
-        }
+        // Header chrome (bg fill, outer border, post-nav divider) is fully owned
+        // by `PainterPaneHeader` — every pane-header style knob lives in
+        // `StyleSettings` (`active_header_fill_multiply`,
+        // `inactive_header_fill_multiply`, `header_outer_border_alpha`,
+        // `header_outer_border_width`, `header_divider_alpha`).
 
         // ── Build tab slice for widget ─────────────────────────────────────
         let can_go_back = chart.symbol_history_idx > 0;

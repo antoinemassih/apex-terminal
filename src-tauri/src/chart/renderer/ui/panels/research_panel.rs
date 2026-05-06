@@ -173,7 +173,7 @@ pub(crate) fn draw_content(
         });
         ui.horizontal(|ui| {
             ui.add_space(gap_sm() + 14.0);
-            ui.label(egui::RichText::new(&trade.name).monospace().size(7.0).color(t.dim.gamma_multiply(0.5)));
+            ui.label(egui::RichText::new(&trade.name).monospace().size(font_2xs()).color(t.dim.gamma_multiply(0.5)));
         });
         ui.add_space(gap_xs());
     }
@@ -188,7 +188,7 @@ pub(crate) fn draw_content(
     for event in &chart.econ_calendar {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
         let days = ((event.time - now) as f64 / 86400.0).ceil() as i32;
-        let imp_col = match event.importance { 3 => t.bear, 2 => egui::Color32::from_rgb(255, 191, 0), _ => t.dim };
+        let imp_col = match event.importance { 3 => t.bear, 2 => COLOR_AMBER, _ => t.dim };
         ui.horizontal(|ui| {
             ui.add_space(gap_sm());
             let dot_pos = egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0);
@@ -202,7 +202,7 @@ pub(crate) fn draw_content(
         ui.horizontal(|ui| {
             ui.add_space(gap_sm() + 14.0);
             ui.label(egui::RichText::new(format!("Forecast: {:.1}  Prev: {:.1}", event.forecast, event.previous))
-                .monospace().size(7.0).color(t.dim.gamma_multiply(0.4)));
+                .monospace().size(font_2xs()).color(t.dim.gamma_multiply(0.4)));
         });
         ui.add_space(gap_xs());
     }

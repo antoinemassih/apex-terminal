@@ -7,7 +7,6 @@ use super::super::widgets::buttons::IconBtn;
 use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
 use super::super::widgets::frames::PopupFrame;
-const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Overlay management pane ─────────────────────────────────────────────
@@ -42,7 +41,7 @@ if panes[ap].overlay_editing {
                     ui.add_space(12.0);
                     let status = if ov_loading { " ..." } else if ov_empty { " (no data)" } else { "" };
                     let ov_label = format!("{}{}", ov_sym, status);
-                    ui.add(MonospaceCode::new(&ov_label).size_px(10.0).color(oc));
+                    ui.add(MonospaceCode::new(&ov_label).size_px(font_sm()).color(oc));
                     // Color cycle (click to cycle through colors)
                     let (cr, cresp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
                     ui.painter().circle_filled(cr.center(), 5.0, oc);
@@ -55,11 +54,11 @@ if panes[ap].overlay_editing {
                     // Candle toggle
                     let candle_icon = if ov_candles { Icon::CHART_BAR } else { Icon::CHART_LINE };
                     let candle_col = if ov_candles { t.accent } else { t.dim.gamma_multiply(0.5) };
-                    if ui.add(IconBtn::new(candle_icon).size(10.0).color(candle_col)).clicked() {
+                    if ui.add(IconBtn::new(candle_icon).size(font_sm()).color(candle_col)).clicked() {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
                     // Delete
-                    if ui.add(IconBtn::new(Icon::X).size(10.0).color(t.bear.gamma_multiply(0.5))).clicked() {
+                    if ui.add(IconBtn::new(Icon::X).size(font_sm()).color(t.bear.gamma_multiply(0.5))).clicked() {
                         delete_idx = Some(oi);
                     }
                 });

@@ -5,6 +5,8 @@ use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme, JournalEntry};
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use super::super::widgets::layout::EmptyState;
+use super::super::widgets::frames::PanelFrame;
+use super::super::widgets::headers::PanelHeaderWithClose;
 
 /// Inline content for the Book tab's Journal section.
 pub(crate) fn draw_content(
@@ -41,19 +43,12 @@ pub(crate) fn draw(
         .min_width(260.0)
         .max_width(460.0)
         .resizable(true)
-        .frame(panel_frame(t.toolbar_bg, t.toolbar_border))
+        .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
-            let header = ui.horizontal(|ui| {
-                ui.set_min_height(26.0);
-                ui.add(SectionLabel::new("TRADE JOURNAL").color(t.accent));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if close_button(ui, t.dim) { watchlist.journal_panel_open = false; }
-                });
-            });
-            let line_y = header.response.rect.max.y;
-            ui.painter().line_segment(
-                [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())));
+            if PanelHeaderWithClose::new("TRADE JOURNAL").theme(t).show(ui) {
+                watchlist.journal_panel_open = false;
+            }
+            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
             ui.add_space(gap_sm());
 
             let entries = &watchlist.journal_entries;

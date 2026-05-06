@@ -12,6 +12,7 @@ use super::super::widgets as widgets_compat;
 use super::super::widgets as widgets;
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::rows::alert_row::{AlertRow, AlertCmp};
+use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;
@@ -33,7 +34,8 @@ pub(crate) fn draw(
         .max_width(300.0)
         .frame(widgets::frames::PanelFrame::new(cx.toolbar_bg, cx.toolbar_border).theme(&cx).build())
         .show(ctx, |ui| {
-            if panel_header(ui, &format!("{} ALERTS", Icon::BELL), cx.accent, cx.dim) {
+            let title = format!("{} ALERTS", Icon::BELL);
+            if PanelHeaderWithClose::new(&title).accent(cx.accent).dim(cx.dim).show(ui) {
                 watchlist.alerts_panel_open = false;
             }
             ui.add_space(4.0);
@@ -96,7 +98,7 @@ fn draw_content_cx(
             let above_color = cx.bull;
             if ui.add(widgets::buttons::ChromeBtn::new(
                 egui::RichText::new(format!("{} Above {:.2}", Icon::ARROW_FAT_UP, input_price))
-                    .monospace().size(9.0).color(above_color))
+                    .monospace().size(font_sm_tight()).color(above_color))
                 .fill(color_alpha(above_color, alpha_ghost()))
                 .corner_radius(r_md_cr())
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(above_color, alpha_line())))
@@ -108,7 +110,7 @@ fn draw_content_cx(
             let below_color = cx.bear;
             if ui.add(widgets::buttons::ChromeBtn::new(
                 egui::RichText::new(format!("{} Below {:.2}", Icon::ARROW_FAT_DOWN, input_price))
-                    .monospace().size(9.0).color(below_color))
+                    .monospace().size(font_sm_tight()).color(below_color))
                 .fill(color_alpha(below_color, alpha_ghost()))
                 .corner_radius(r_md_cr())
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(below_color, alpha_line())))

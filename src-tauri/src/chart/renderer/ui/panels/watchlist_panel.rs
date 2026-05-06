@@ -17,11 +17,7 @@ use super::super::widgets::buttons::ChromeBtn;
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::frames::PopupFrame;
 use super::super::widgets::watchlist::{FilterPill, SectionHeader, NmfToggle};
-
-/// Danger red used in delete context-menu items throughout the panel.
-const COLOR_DANGER: egui::Color32 = egui::Color32::from_rgb(231, 76, 60);
-
-const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
+use super::super::widgets::headers::PanelHeaderWithTabs;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Watchlist side panel ───────────────────────────────────────────────────
@@ -45,32 +41,25 @@ if watchlist.open {
             let mut wl_delete_idx: Option<usize> = None;
             let mut wl_dup_idx: Option<usize> = None;
 
-            // ── A) Tabs at the very top with X button ──
-            let tab_row_resp = ui.horizontal(|ui| {
-                ui.set_min_height(22.0);
-                TabBar::new(&mut watchlist.tab, &[
-                    (WatchlistTab::Stocks, "LIST"),
-                    (WatchlistTab::Chain, "CHAIN"),
-                    (WatchlistTab::Heat, "HEAT"),
-                ]).accent(t.accent).dim(t.dim).show(ui);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if close_button(ui, t.dim) { watchlist.open = false; }
-                    // Market session badge
-                    let (session, session_col) = market_session();
-                    ui.add_space(gap_sm());
-                    let badge_bg = color_alpha(session_col, alpha_tint());
-                    ui.add(ChromeBtn::new(
-                        egui::RichText::new(session).monospace().size(font_xs()).strong().color(session_col))
-                        .fill(badge_bg).corner_radius(r_sm_cr()).stroke(egui::Stroke::NONE)
-                        .min_size(egui::vec2(34.0, 14.0)));
-                });
+            // ── A) Tab-driven header (LIST / CHAIN / HEAT) + market-session badge + close ──
+            let closed = PanelHeaderWithTabs::new(&mut watchlist.tab, &[
+                (WatchlistTab::Stocks, "LIST"),
+                (WatchlistTab::Chain, "CHAIN"),
+                (WatchlistTab::Heat, "HEAT"),
+            ])
+            .theme(t)
+            .min_height(22.0)
+            .show_with(ui, |ui| {
+                let (session, session_col) = market_session();
+                ui.add_space(gap_sm());
+                let badge_bg = color_alpha(session_col, alpha_tint());
+                ui.add(ChromeBtn::new(
+                    egui::RichText::new(session).monospace().size(font_xs()).strong().color(session_col))
+                    .fill(badge_bg).corner_radius(r_sm_cr()).stroke(egui::Stroke::NONE)
+                    .min_size(egui::vec2(34.0, 14.0)));
             });
-            // 1px line below tabs
-            let line_y = tab_row_resp.response.rect.max.y + 1.0;
-            ui.painter().line_segment(
-                [egui::pos2(ui.min_rect().left(), line_y), egui::pos2(ui.min_rect().right(), line_y)],
-                border_stroke(t),
-            );
+            if closed { watchlist.open = false; }
+            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
             ui.add_space(gap_sm());
 
             let mut open_option_chart: Option<(String, f32, bool, String)> = None;
@@ -128,7 +117,7 @@ if watchlist.open {
                                     if wl_count > 1 {
                                         ui.separator();
                                         if ui.button(egui::RichText::new("Delete").monospace().size(font_sm())
-                                            .color(COLOR_DANGER)).clicked() {
+                                            .color(status_error())).clicked() {
                                             wl_delete_idx = Some(i);
                                             ui.close_menu();
                                         }
@@ -154,7 +143,7 @@ if watchlist.open {
                                 if wl_count > 1 {
                                     ui.separator();
                                     if ui.button(egui::RichText::new("Delete").monospace().size(font_sm())
-                                        .color(COLOR_DANGER)).clicked() {
+                                        .color(status_error())).clicked() {
                                         wl_delete_idx = Some(active_idx);
                                         ui.close_menu();
                                     }
@@ -226,6 +215,7 @@ if watchlist.open {
                     let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
                     let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.4) };
                     let btn_rect = egui::Rect::from_min_size(egui::pos2(full_rect.right() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
+                    let filter_btn_rect = btn_rect; // capture for popup anchor
                     ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(11.0), icon_col);
                     let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
                     if btn_resp.clicked() { watchlist.filter_open = !watchlist.filter_open; }
@@ -318,7 +308,7 @@ if watchlist.open {
                     if watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty() {
                         ui.horizontal(|ui| {
                             ui.add_space(gap_sm());
-                            ui.add(MonospaceCode::new(&format!("{} {}", Icon::FUNNEL, watchlist.filter_preset)).size_px(8.0).color(t.accent));
+                            ui.add(MonospaceCode::new(&format!("{} {}", Icon::FUNNEL, watchlist.filter_preset)).size_px(font_xs()).color(t.accent));
                         });
                     }
                     // Column config popup
@@ -329,7 +319,7 @@ if watchlist.open {
                             .inner_margin(egui::Margin::same(gap_sm() as i8))
                             .corner_radius(r_sm_cr())
                             .show(ui, |ui| {
-                                ui.add(MonospaceCode::new("COLUMNS").size_px(7.0).color(t.accent).gamma(0.6));
+                                ui.add(MonospaceCode::new("COLUMNS").size_px(font_2xs()).color(t.accent).gamma(0.6));
                                 ui.add_space(gap_xs());
                                 for (label, flag) in [
                                     ("Sparkline", &mut watchlist.wl_col_sparkline),
@@ -357,66 +347,65 @@ if watchlist.open {
                     }
 
                     if watchlist.filter_open {
-                        ui.add_space(gap_xs());
-                        // Search
-                        ui.horizontal(|ui| {
-                            super::super::widgets::inputs::TextInput::new(&mut watchlist.filter_text)
-                                .placeholder("Search...").width((ui.available_width() - 30.0).max(40.0)).font_size(9.0).show(ui);
-                            if !watchlist.filter_text.is_empty() {
-                                if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(font_xs()).color(t.dim)).frameless(true)).clicked() {
-                                    watchlist.filter_text.clear();
-                                }
-                            }
-                        });
-                        // Preset buttons
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = gap_xs();
-                            let presets: Vec<(&str, f32, f32)> = {
-                                let mut p = vec![
-                                    ("All", -999.0_f32, 999.0_f32),
-                                    ("+2%", 2.0, 999.0), ("-2%", -999.0, -2.0),
-                                    ("+5%", 5.0, 999.0), ("-5%", -999.0, -5.0),
-                                    ("Big", 3.0, 999.0),
-                                ];
-                                for cf in &watchlist.custom_filters { p.push((&cf.0, cf.1, cf.2)); }
-                                p
-                            };
-                            for (name, min_chg, max_chg) in &presets {
-                                let active = watchlist.filter_preset == *name;
-                                if ui.add(FilterPill::new(name).active(active).theme(t)).clicked() {
-                                    watchlist.filter_preset = name.to_string();
-                                    watchlist.filter_min_change = *min_chg;
-                                    watchlist.filter_max_change = *max_chg;
-                                }
-                            }
-                        });
-                        // Create custom filter (inline)
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = gap_xs();
-                            ui.add(MonospaceCode::new("+").size_px(9.0).color(t.accent));
-                            // Quick create: just type a name and min% threshold
-                            thread_local! {
-                                static NEW_FILTER_NAME: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
-                                static NEW_FILTER_MIN: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
-                            }
-                            NEW_FILTER_NAME.with(|name_cell| {
-                                NEW_FILTER_MIN.with(|min_cell| {
-                                    TextInput::new(&mut *name_cell.borrow_mut()).placeholder("name").width(50.0).font_size(8.0).theme(t).show(ui);
-                                    ui.add(MonospaceCode::new(">").size_px(8.0).color(t.dim));
-                                    TextInput::new(&mut *min_cell.borrow_mut()).placeholder("%").width(30.0).font_size(8.0).theme(t).show(ui);
-                                    if ui.add(ChromeBtn::new(egui::RichText::new(Icon::CHECK).size(font_xs()).color(t.accent)).frameless(true)).clicked() {
-                                        let name = name_cell.borrow().trim().to_string();
-                                        let min_val: f32 = min_cell.borrow().parse().unwrap_or(0.0);
-                                        if !name.is_empty() {
-                                            watchlist.custom_filters.push((name, min_val, 999.0));
-                                            name_cell.borrow_mut().clear();
-                                            min_cell.borrow_mut().clear();
+                        let popup_id = egui::Id::new("wl_filter_popup");
+                        let popup_pos = egui::pos2(filter_btn_rect.left(), filter_btn_rect.bottom() + 2.0);
+                        egui::Area::new(popup_id)
+                            .fixed_pos(popup_pos)
+                            .order(egui::Order::Foreground)
+                            .show(ui.ctx(), |ui| {
+                                let frame = egui::Frame::NONE
+                                    .fill(t.toolbar_bg)
+                                    .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())))
+                                    .inner_margin(gap_md())
+                                    .corner_radius(radius_sm());
+                                frame.show(ui, |ui| {
+                                    ui.set_min_width(180.0);
+                                    // Search
+                                    ui.horizontal(|ui| {
+                                        super::super::widgets::inputs::TextInput::new(&mut watchlist.filter_text)
+                                            .placeholder("Search...").width((180.0_f32 - 30.0).max(40.0)).font_size(9.0).show(ui);
+                                        if !watchlist.filter_text.is_empty() {
+                                            if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(font_xs()).color(t.dim)).frameless(true)).clicked() {
+                                                watchlist.filter_text.clear();
+                                            }
                                         }
-                                    }
+                                    });
+                                    ui.add_space(gap_xs());
+                                    // Preset pills
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.spacing_mut().item_spacing.x = gap_xs();
+                                        let presets: Vec<(&str, f32, f32)> = {
+                                            let mut p = vec![
+                                                ("All", -999.0_f32, 999.0_f32),
+                                                ("+2%", 2.0, 999.0), ("-2%", -999.0, -2.0),
+                                                ("+5%", 5.0, 999.0), ("-5%", -999.0, -5.0),
+                                                ("Big", 3.0, 999.0),
+                                            ];
+                                            for cf in &watchlist.custom_filters { p.push((&cf.0, cf.1, cf.2)); }
+                                            p
+                                        };
+                                        for (name, min_chg, max_chg) in &presets {
+                                            let active = watchlist.filter_preset == *name;
+                                            if ui.add(FilterPill::new(name).active(active).theme(t)).clicked() {
+                                                watchlist.filter_preset = name.to_string();
+                                                watchlist.filter_min_change = *min_chg;
+                                                watchlist.filter_max_change = *max_chg;
+                                                watchlist.filter_open = false;
+                                            }
+                                        }
+                                    });
                                 });
                             });
-                        });
-                        ui.add_space(gap_xs());
+                        // Close popup when clicking outside
+                        if ui.ctx().input(|i| i.pointer.any_click()) {
+                            let popup_area = egui::Rect::from_min_size(
+                                popup_pos,
+                                egui::vec2(200.0, 200.0), // approximate — close on any outside click
+                            );
+                            if !popup_area.contains(ui.ctx().input(|i| i.pointer.interact_pos().unwrap_or(egui::Pos2::ZERO))) {
+                                watchlist.filter_open = false;
+                            }
+                        }
                     }
 
                     // Symbol list with sections and drag-and-drop
@@ -576,7 +565,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     // Color presets
-                                    ui.add(MonospaceCode::new("Color").size_px(9.0).color(t.dim));
+                                    ui.add(MonospaceCode::new("Color").size_px(font_sm_tight()).color(t.dim));
                                     for row in color_presets.chunks(8) {
                                         ui.horizontal(|ui| {
                                             for hex in row {
@@ -600,7 +589,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     if sec_item_count == 0 {
-                                        if ui.button(egui::RichText::new("Delete section").monospace().size(font_sm()).color(COLOR_DANGER)).clicked() {
+                                        if ui.button(egui::RichText::new("Delete section").monospace().size(font_sm()).color(status_error())).clicked() {
                                             remove_section = Some(si);
                                             ui.close_menu();
                                         }
@@ -718,7 +707,7 @@ if watchlist.open {
                                             }
                                             ui.add_space(if is_active { 8.0 } else { 4.0 });
                                             // Drag grip
-                                            ui.add(MonospaceCode::new(Icon::DOTS_SIX_VERTICAL).size_px(9.0).color(t.dim).gamma(0.2));
+                                            ui.add(MonospaceCode::new(Icon::DOTS_SIX_VERTICAL).size_px(font_sm_tight()).color(t.dim).gamma(0.2));
                                             ui.add_space(gap_xs());
                                             // C/P badge
                                             let badge_bg = color_alpha(opt_color, 35);
@@ -730,14 +719,14 @@ if watchlist.open {
                                             ui.add_space(gap_xs());
                                             // Full option name (e.g. "SPY 560C 0DTE")
                                             let sym_color = if is_active { t.text } else { t.dim };
-                                            ui.add(MonospaceCode::new(&item_sym).size_px(10.5).strong(true).color(sym_color));
+                                            ui.add(MonospaceCode::new(&item_sym).size_px(font_sm()).strong(true).color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
                                                 if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(font_sm()).color(t.dim.gamma_multiply(0.3))).frameless(true)).clicked() {
                                                     remove_sym = Some(item_sym.clone());
                                                 }
                                                 // Bid x Ask (or price fallback)
-                                                ui.add(MonospaceCode::new(&price_str).size_px(10.0).color(opt_color));
+                                                ui.add(MonospaceCode::new(&price_str).size_px(font_sm()).color(opt_color));
                                             });
                                         });
 
@@ -1062,12 +1051,12 @@ if watchlist.open {
 
                         // OPTIONS label
                         ui.horizontal(|ui| {
-                            ui.add(MonospaceCode::new("OPTIONS").size_px(9.0).strong(true).color(t.accent).gamma(0.7));
+                            ui.add(MonospaceCode::new("OPTIONS").size_px(font_sm_tight()).strong(true).color(t.accent).gamma(0.7));
                             let opt_count: usize = watchlist.sections.iter()
                                 .filter(|s| s.title.contains("Options"))
                                 .map(|s| s.items.len()).sum();
                             if opt_count > 0 {
-                                ui.add(MonospaceCode::new(&format!("({})", opt_count)).size_px(8.0).color(t.dim).gamma(0.4));
+                                ui.add(MonospaceCode::new(&format!("({})", opt_count)).size_px(font_xs()).color(t.dim).gamma(0.4));
                             }
                         });
                         ui.add_space(gap_xs());
@@ -1110,7 +1099,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     // Color presets
-                                    ui.add(MonospaceCode::new("Color").size_px(9.0).color(t.dim));
+                                    ui.add(MonospaceCode::new("Color").size_px(font_sm_tight()).color(t.dim));
                                     for row in color_presets.chunks(8) {
                                         ui.horizontal(|ui| {
                                             for hex in row {
@@ -1134,7 +1123,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     if sec_item_count == 0 {
-                                        if ui.button(egui::RichText::new("Delete section").monospace().size(font_sm()).color(COLOR_DANGER)).clicked() {
+                                        if ui.button(egui::RichText::new("Delete section").monospace().size(font_sm()).color(status_error())).clicked() {
                                             opt_remove_section = Some(si);
                                             ui.close_menu();
                                         }
@@ -1215,8 +1204,8 @@ if watchlist.open {
                             // Empty state
                             if option_section_ids.is_empty() {
                                 ui.add_space(gap_lg());
-                                ui.add(MonospaceCode::new("No options saved").size_px(9.0).color(t.dim).gamma(0.35));
-                                ui.add(MonospaceCode::new("Shift+click contracts in the CHAIN tab").size_px(8.0).color(t.dim).gamma(0.25));
+                                ui.add(MonospaceCode::new("No options saved").size_px(font_sm_tight()).color(t.dim).gamma(0.35));
+                                ui.add(MonospaceCode::new("Shift+click contracts in the CHAIN tab").size_px(font_xs()).color(t.dim).gamma(0.25));
                                 ui.add_space(gap_lg());
                             }
 
@@ -1333,7 +1322,7 @@ if watchlist.open {
                         // Price display
                         if chain_price > 0.0 {
                             ui.add_space(gap_md());
-                            ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(14.0).color(TEXT_PRIMARY));
+                            ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(font_lg()).color(TEXT_PRIMARY));
                         }
                         // Search — static immediate + ApexIB background
                         if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
@@ -1382,7 +1371,7 @@ if watchlist.open {
                     if watchlist.chain_loading {
                         ui.horizontal(|ui| {
                             ui.spinner();
-                            ui.add(MonospaceCode::new("Loading chain...").size_px(9.0).color(t.dim));
+                            ui.add(MonospaceCode::new("Loading chain...").size_px(font_sm_tight()).color(t.dim));
                         });
                     }
 
@@ -1523,7 +1512,7 @@ if watchlist.open {
                         ui.horizontal(|ui| {
                             // min_width removed — was preventing sidebar resize
                             ui.add(MonospaceCode::new(&exp_label).size_px(12.0).strong(true).color(t.accent));
-                            ui.add(MonospaceCode::new(&date_str).size_px(10.0).color(t.dim).gamma(0.6));
+                            ui.add(MonospaceCode::new(&date_str).size_px(font_sm()).color(t.dim).gamma(0.6));
                         });
                         ui.add_space(gap_xs());
 
@@ -1541,7 +1530,7 @@ if watchlist.open {
                         // The offset shifts the center. The price badge always shows real price.
                         // We select num_strikes above the shifted center and num_strikes below.
                         if all_strikes.is_empty() {
-                            ui.add(MonospaceCode::new("No strikes available").size_px(9.0).color(t.dim).gamma(0.4));
+                            ui.add(MonospaceCode::new("No strikes available").size_px(font_sm_tight()).color(t.dim).gamma(0.4));
                             return;
                         }
 
@@ -1705,7 +1694,7 @@ if watchlist.open {
                             }
                             // Count ± (always visible)
                             if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(font_sm())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
-                            ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_0_num_strikes)).size_px(8.0).color(t.dim));
+                            ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_0_num_strikes)).size_px(font_xs()).color(t.dim));
                             if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(font_sm())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes += 1; }
                             // Near / Mid / Far toggles
                             NmfToggle::new(&mut watchlist.chain_0_nmf).theme(t).show(ui);
@@ -1758,7 +1747,7 @@ if watchlist.open {
                                     .show(ui, &mut watchlist.chain_far_strike_mode);
                             }
                             if ui.add(ChromeBtn::new(egui::RichText::new("-").monospace().size(font_sm())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
-                            ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(8.0).color(t.dim));
+                            ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(font_xs()).color(t.dim));
                             if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(font_sm())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
                             NmfToggle::new(&mut watchlist.chain_far_nmf).theme(t).show(ui);
                             let fr_col = if watchlist.chain_far_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
@@ -1887,7 +1876,7 @@ if watchlist.open {
 
                     if heat_items.is_empty() {
                         ui.add_space(24.0);
-                        ui.add(MonospaceCode::new("No data — add symbols to watchlist").size_px(9.0).color(t.dim));
+                        ui.add(MonospaceCode::new("No data — add symbols to watchlist").size_px(font_sm_tight()).color(t.dim));
                     } else {
                         let mut heat_click_sym_outer: Option<String> = None;
                         egui::ScrollArea::vertical().show(ui, |ui| {
