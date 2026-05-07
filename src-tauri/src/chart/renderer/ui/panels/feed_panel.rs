@@ -6,7 +6,8 @@ use super::super::widgets as widgets_compat;
 // widgets alias
 #[allow(unused_imports)]
 use super::super::widgets as widgets;
-use super::super::widgets::buttons::ChromeBtn;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::FeedTab;
@@ -38,8 +39,7 @@ pub(crate) fn draw(
         .show(ctx, |ui| {
             // Header — title + add-section button + close
             let closed = PanelHeaderWithClose::new("FEED").theme(t).show_with(ui, |ui| {
-                if ui.add(ChromeBtn::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
-                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
+                if ui.add(Button::new("+").variant(Variant::Chrome).fill(egui::Color32::TRANSPARENT).fg(t.dim).min_size(egui::vec2(20.0, 20.0)).frameless(true)).clicked() {
                     let used: Vec<FeedTab> = watchlist.feed_splits.iter().map(|s| s.tab).collect();
                     let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
                         .map(|(tab, _)| *tab).unwrap_or(FeedTab::News);
@@ -75,21 +75,22 @@ pub(crate) fn draw(
 
                 ui.horizontal(|ui| {
                     ui.set_min_height(26.0);
-                    let mut sel_tab = tab;
-                    widgets::tabs::TabBar::new(&mut sel_tab, ALL_TABS)
-                        .accent(t.accent)
-                        .dim(t.dim.gamma_multiply(0.5))
-                        .font_size(FONT_XS)
-                        .underline(false)
-                        .min_height(22.0)
-                        .show(ui);
-                    if sel_tab != tab {
-                        watchlist.feed_splits[i].tab = sel_tab;
+                    let labels: Vec<&str> = ALL_TABS.iter().map(|(_, l)| *l).collect();
+                    let mut active_idx: usize = ALL_TABS.iter().position(|(tv, _)| *tv == tab).unwrap_or(0);
+                    let prev_idx = active_idx;
+                    crate::ui_kit::widgets::Tabs::new(&mut active_idx, &labels)
+                        .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                        .show(ui, t);
+                    if active_idx != prev_idx {
+                        watchlist.feed_splits[i].tab = ALL_TABS[active_idx].0;
                     }
                     if can_close {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(ChromeBtn::new(egui::RichText::new("\u{00D7}").size(FONT_SM).color(t.dim.gamma_multiply(0.4)))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+                            if ui.add(Button::new("\u{00D7}").variant(Variant::Chrome)
+                                .fill(egui::Color32::TRANSPARENT)
+                                .fg(t.dim.gamma_multiply(0.4))
+                                .min_size(egui::vec2(18.0, 18.0))
+                                .frameless(true)).clicked() {
                                 remove_idx = Some(i);
                             }
                         });

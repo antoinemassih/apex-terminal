@@ -8,7 +8,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::text::MonospaceCode;
-use super::super::widgets::buttons::ChromeBtn;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use crate::ui_kit::icons::Icon;
 
 // ── Heat index dropdown options ────────────────────────────────────────────
@@ -67,8 +68,11 @@ pub(crate) fn render_heat_panel(
         }
         // Expand / Collapse / Columns / Sort — all with hover cursor
         let hbtn = |ui: &mut egui::Ui, label: &str, col: egui::Color32, tip: &str| -> bool {
-            let resp = ui.add(ChromeBtn::new(egui::RichText::new(label).monospace().size(font_sm()).color(col))
-                .min_size(egui::vec2(20.0, 18.0)).corner_radius(r_md_cr()));
+            let resp = ui.add(Button::new(label).variant(Variant::Chrome)
+                .fg(col)
+                .min_size(egui::vec2(20.0, 18.0))
+                .corner_radius(current().r_md as f32)
+                .frameless(true));
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             resp.on_hover_text(tip).clicked()
         };
@@ -241,9 +245,12 @@ pub(crate) fn render_heat_panel(
                     // Colored sector header — single clickable button
                     let caret = if is_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
                     let header_text = format!("{} {}  ({})  {:+.2}%", caret, sector, items.len(), avg_chg);
-                    let header_btn = ui.add(ChromeBtn::new(
-                        egui::RichText::new(&header_text).monospace().size(font_sm()).color(sector_col)
-                    ).fill(color_alpha(sector_col, alpha_faint())).corner_radius(r_md_cr()).min_size(egui::vec2(ui.available_width(), 22.0)));
+                    let header_btn = ui.add(Button::new(header_text.as_str()).variant(Variant::Chrome)
+                        .fg(sector_col)
+                        .fill(color_alpha(sector_col, alpha_faint()))
+                        .corner_radius(current().r_md as f32)
+                        .min_size(egui::vec2(ui.available_width(), 22.0))
+                        .frameless(true));
                     if header_btn.clicked() {
                         if is_collapsed { watchlist.heat_collapsed.remove(sector); }
                         else { watchlist.heat_collapsed.insert(sector.clone()); }

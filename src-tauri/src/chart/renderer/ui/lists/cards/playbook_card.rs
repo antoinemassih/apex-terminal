@@ -11,7 +11,8 @@ use egui::{Color32, Margin, RichText, Ui};
 use super::super::super::style::*;
 use crate::chart::renderer::ui::foundation::shell::CardShell;
 use crate::chart::renderer::ui::foundation::text_style::TextStyle;
-use crate::chart::renderer::ui::components::PillButton;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -54,10 +55,9 @@ impl<'a> PlaybookCard<'a> {
                     ui.add_space(gap_xs());
                     ui.horizontal_wrapped(|ui| {
                         for tag in &tags {
-                            let mut pill = PillButton::new(tag);
-                            if let Some(t) = theme { pill = pill.theme(t); }
-                            ui.add(pill);
+                            ui.add(Button::new(*tag).variant(Variant::Secondary).size(Size::Sm));
                         }
+                        let _ = theme;
                     });
                 }
             })

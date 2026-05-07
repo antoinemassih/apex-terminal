@@ -4570,6 +4570,9 @@ impl GpuCtx {
         if std::mem::take(&mut self.pointer_gone_needed) {
             raw_input.events.push(egui::Event::PointerGone);
         }
+        // Feed the profiler the input-event count so is_idle() can detect
+        // genuinely quiet frames (no clicks, drags, key presses, scrolls).
+        crate::foundation::frame_profiler::note_input_events(raw_input.events.len() as u32);
         let full_output = self.egui_ctx.run(raw_input, |ctx| { draw_chart(ctx, panes, active_pane, layout, watchlist, toasts, conn_panel_open, rx); });
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
@@ -4852,6 +4855,11 @@ impl ApplicationHandler for App {
 
         let egui_response = cw.gpu.egui_state.on_window_event(&cw.win, &ev);
         if egui_response.repaint {
+            // Egui-driven redraw: hover, drag, animation in flight, etc.
+            // Mostly user/animation-driven — keep it immediate.
+            crate::foundation::frame_profiler::note_repaint(
+                concat!(file!(), ":", line!(), " egui_response"),
+            );
             cw.win.request_redraw();
         }
         match ev {
@@ -4864,7 +4872,12 @@ impl ApplicationHandler for App {
                 if s.width>0&&s.height>0 {
                     cw.gpu.config.width=s.width; cw.gpu.config.height=s.height;
                     cw.gpu.surface.configure(&cw.gpu.device, &cw.gpu.config);
-                    cw.win.request_redraw(); // immediate redraw on resize
+                    // User-driven (window resize) — must be immediate so the
+                    // surface reconfigure is reflected before the next paint.
+                    crate::foundation::frame_profiler::note_repaint(
+                        concat!(file!(), ":", line!(), " resize"),
+                    );
+                    cw.win.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -5116,10 +5129,18 @@ impl ApplicationHandler for App {
                 // When focus is lost the OS may swallow the pending mouseUp, leaving egui
                 // permanently stuck in drag state. Inject PointerGone into the next frame.
                 cw.gpu.pointer_gone_needed = true;
+                // User-driven (focus loss) — inject PointerGone next frame.
+                crate::foundation::frame_profiler::note_repaint(
+                    concat!(file!(), ":", line!(), " focus_lost"),
+                );
                 cw.win.request_redraw();
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 cw.watchlist.native_dpi_scale = scale_factor as f32;
+                // OS-driven (DPI change) — must be immediate.
+                crate::foundation::frame_profiler::note_repaint(
+                    concat!(file!(), ":", line!(), " dpi_change"),
+                );
                 cw.win.request_redraw();
             }
             _ => {}
@@ -5264,14 +5285,31 @@ impl ApplicationHandler for App {
                 }
             }
 
-            // Request redraw — Fifo vsync naturally caps at display refresh rate
+            // Request redraw — Fifo vsync naturally caps at display refresh rate.
+            // Data-driven path: collapses to a single paint per ~16 ms window
+            // because winit coalesces redundant `request_redraw` calls until
+            // RedrawRequested fires.
+            crate::foundation::frame_profiler::note_repaint(
+                concat!(file!(), ":", line!(), " about_to_wait_tick"),
+            );
             cw.win.request_redraw();
         }
 
-        // Poll mode so about_to_wait fires again immediately after each frame.
-        // Fifo present mode blocks in get_current_texture() until vsync,
-        // so this won't spin — it gives us: about_to_wait → redraw → vsync wait → repeat.
-        el.set_control_flow(winit::event_loop::ControlFlow::Poll);
+        // Frame-pacing control flow:
+        //   • When idle (no input + no animations for ≥30 frames) we drop to
+        //     WaitUntil(now + 16ms) so background-driven repaints (data ticks,
+        //     drawing-db saves) collapse to ≤60 Hz instead of spinning the
+        //     event loop. winit will still wake immediately on any input event
+        //     or explicit request_redraw, so latency for user actions is
+        //     unaffected.
+        //   • Otherwise: Poll, exactly as before — Fifo present blocks in
+        //     get_current_texture() so the loop is naturally vsync-bounded.
+        if crate::foundation::frame_profiler::is_idle() {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(16);
+            el.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(deadline));
+        } else {
+            el.set_control_flow(winit::event_loop::ControlFlow::Poll);
+        }
     }
 }
 

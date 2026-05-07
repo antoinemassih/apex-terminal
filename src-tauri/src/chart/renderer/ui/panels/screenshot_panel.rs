@@ -4,7 +4,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::text::{BodyLabel, SectionLabel, SectionLabelSize};
-use super::super::widgets::buttons::SimpleBtn;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::headers::PanelHeaderWithClose;
 
 /// A single screenshot entry with chart state for replay.
@@ -190,7 +191,7 @@ pub(crate) fn draw_content(
                 }
 
                 // View button — navigates to the chart state
-                if ui.add(SimpleBtn::new("View").color(t.accent).min_width(50.0)).on_hover_text("Navigate to this chart state").clicked() {
+                if ui.add(Button::new("View").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(50.0, 0.0))).on_hover_text("Navigate to this chart state").clicked() {
                     navigate_entry = Some((entry.symbol.clone(), entry.timeframe.clone(), entry.vs, entry.vc));
                 }
             });

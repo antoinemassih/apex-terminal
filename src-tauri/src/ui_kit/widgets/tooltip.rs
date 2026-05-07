@@ -22,9 +22,11 @@ use egui::{Color32, Id, Pos2, Rect, Response, Stroke, Ui, Vec2};
 use super::motion;
 use super::placement::{compute as compute_placement, Placement, Side};
 use super::theme::ComponentTheme;
+use super::PolishedLabel;
+use super::tokens::Size as KitSize;
 
 use crate::chart_renderer::ui::style::{
-    alpha_line, alpha_strong, color_alpha, font_xs, gap_sm, gap_xs, radius_sm, stroke_thin,
+    alpha_line, alpha_strong, color_alpha, gap_sm, gap_xs, radius_sm, stroke_thin,
 };
 
 const DEFAULT_DELAY_MS: u64 = 400;
@@ -166,9 +168,10 @@ impl<'a> Tooltip<'a> {
                     ui.set_max_width(MAX_WIDTH);
                     match self.content {
                         Content::Text(s) => {
-                            ui.label(
-                                egui::RichText::new(s).size(font_xs()).color(fg),
-                            );
+                            PolishedLabel::new(s)
+                                .size(KitSize::Xs)
+                                .color(fg)
+                                .show(ui, theme);
                         }
                         Content::Rich(f) => {
                             f(ui, theme);

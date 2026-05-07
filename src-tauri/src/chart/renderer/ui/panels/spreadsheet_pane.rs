@@ -15,7 +15,8 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::buttons::SimpleBtn;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::inputs::TextInput;
 
@@ -471,7 +472,7 @@ pub(crate) fn render(
     let mut do_save = false;
     toolbar_ui.horizontal_centered(|ui| {
         let btn = |ui: &mut egui::Ui, label: &str| -> bool {
-            ui.add(SimpleBtn::new(label).color(t.dim)).clicked()
+            ui.add(Button::new(label).variant(Variant::Secondary).simple_treatment(true).fg(t.dim)).clicked()
         };
         if btn(ui, "+ Row") {
             let cols = chart.spreadsheet_cols.max(1);
@@ -786,7 +787,7 @@ pub(crate) fn render(
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.set_min_width(160.0);
                 let mut item = |ui: &mut egui::Ui, label: &str, key: &'static str| {
-                    if ui.add(SimpleBtn::new(label).color(t.dim)).clicked() {
+                    if ui.add(Button::new(label).variant(Variant::Secondary).simple_treatment(true).fg(t.dim)).clicked() {
                         ctx_action = Some(key);
                         close = true;
                     }

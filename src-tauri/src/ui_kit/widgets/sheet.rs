@@ -34,6 +34,7 @@ use egui::{Color32, Id, Key, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 use super::motion;
 use super::theme::ComponentTheme;
 use super::Button;
+use super::{PolishedLabel, PolishedFontWeight};
 use super::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::icons::Icon;
 use crate::chart::renderer::ui::style::{gap_md, stroke_thin};
@@ -305,7 +306,10 @@ impl<'a> Sheet<'a> {
                             }
                             ui.add_space(gap_md() * 0.5);
                         }
-                        super::Label::heading(t_str.clone()).show(ui, theme);
+                        PolishedLabel::new(t_str.clone())
+                            .size(KitSize::Lg)
+                            .weight(PolishedFontWeight::Semibold)
+                            .show(ui, theme);
                         if !close_first {
                             // Push close button to far edge.
                             ui.with_layout(
