@@ -168,6 +168,33 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
         .show(ui, theme);
     ui.label("Developer-only — every ui_kit::widgets widget with sample variants for visual QA.");
 
+    // 0. Subpixel AA A/B
+    section(ui, theme, "0. Subpixel AA A/B");
+    ui.label("Same text, two render paths. Subpixel runs through the custom wgpu pipeline; grayscale through egui's bilinear sampler.");
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            Label::subheading("Grayscale (default egui path)").show(ui, theme);
+            for size in [KitSize::Xs, KitSize::Sm, KitSize::Md, KitSize::Lg] {
+                PolishedLabel::new("The quick brown fox jumps over the lazy dog 0123456789 => != >=")
+                    .size(size)
+                    .weight(PolishedFontWeight::Medium)
+                    .show(ui, theme);
+            }
+        });
+        ui.add_space(24.0);
+        ui.vertical(|ui| {
+            Label::subheading("Subpixel AA (custom wgpu pipeline)").show(ui, theme);
+            for size in [KitSize::Xs, KitSize::Sm, KitSize::Md, KitSize::Lg] {
+                PolishedLabel::new("The quick brown fox jumps over the lazy dog 0123456789 => != >=")
+                    .size(size)
+                    .weight(PolishedFontWeight::Medium)
+                    .subpixel(true)
+                    .show(ui, theme);
+            }
+        });
+    });
+
     // 1. Buttons
     section(ui, theme, "1. Buttons");
     crate::ui_kit::widgets::show_button_gallery(ui, theme);
