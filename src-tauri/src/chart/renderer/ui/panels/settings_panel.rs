@@ -204,8 +204,11 @@ SettingsTab::Appearance => {
     srow("Size", m).show(ui, t, |ui| {
         let display_pct = ((watchlist.font_scale - 0.96) / 0.016).round() as i32 + 60;
         let mut dp = display_pct.clamp(60, 160);
-        if ui.add(egui::DragValue::new(&mut dp).range(60..=160).suffix("%").speed(1)
-            .custom_formatter(|v, _| format!("{}%", v as i32))).changed() {
+        if crate::ui_kit::widgets::Slider::new(&mut dp, 60..=160)
+            .step(1.0)
+            .show_value(true)
+            .show(ui, t)
+            .changed() {
             watchlist.font_scale = 0.96 + (dp - 60) as f32 * 0.016;
         }
     });
@@ -348,7 +351,11 @@ SettingsTab::Chart => {
         if chart.session_shading {
             srow("ETH Bar Opacity", m).show(ui, t, |ui| {
                 let mut pct = (chart.eth_bar_opacity * 100.0).round() as i32;
-                if ui.add(egui::DragValue::new(&mut pct).range(0..=100).suffix("%").speed(1)).changed() {
+                if crate::ui_kit::widgets::Slider::new(&mut pct, 0..=100)
+                    .step(1.0)
+                    .show_value(true)
+                    .show(ui, t)
+                    .changed() {
                     chart.eth_bar_opacity = (pct as f32 / 100.0).clamp(0.0, 1.0);
                 }
             });
@@ -370,7 +377,11 @@ SettingsTab::Chart => {
                 });
                 srow("Tint Opacity", m).show(ui, t, |ui| {
                     let mut pct = (chart.session_bg_opacity * 100.0).round() as i32;
-                    if ui.add(egui::DragValue::new(&mut pct).range(0..=100).suffix("%").speed(1)).changed() {
+                    if crate::ui_kit::widgets::Slider::new(&mut pct, 0..=100)
+                        .step(1.0)
+                        .show_value(true)
+                        .show(ui, t)
+                        .changed() {
                         chart.session_bg_opacity = (pct as f32 / 100.0).clamp(0.0, 1.0);
                     }
                 });
@@ -486,7 +497,11 @@ SettingsTab::Trading => {
         });
         srow("Max Open Orders", m).show(ui, t, |ui| {
             let mut v = limits.max_open_orders as i32;
-            if ui.add(egui::DragValue::new(&mut v).range(1..=1000).speed(1)).changed() {
+            if crate::ui_kit::widgets::Slider::new(&mut v, 1..=1000)
+                .step(1.0)
+                .show_value(true)
+                .show(ui, t)
+                .changed() {
                 limits.max_open_orders = v.max(1) as usize;
             }
         });
@@ -499,7 +514,11 @@ SettingsTab::Trading => {
         });
         srow("Dedup Cooldown", m).show(ui, t, |ui| {
             let mut v = limits.dedup_cooldown_ms as i32;
-            if ui.add(egui::DragValue::new(&mut v).range(100..=5000).speed(50).suffix("ms")).changed() {
+            if crate::ui_kit::widgets::Slider::new(&mut v, 100..=5000)
+                .step(50.0)
+                .show_value(true)
+                .show(ui, t)
+                .changed() {
                 limits.dedup_cooldown_ms = v.max(100) as u64;
             }
         });

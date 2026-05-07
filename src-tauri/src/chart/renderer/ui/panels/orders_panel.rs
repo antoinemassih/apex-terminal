@@ -185,7 +185,20 @@ if watchlist.orders_panel_open {
                 let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
                 if active_count > 0 || draft_count > 0 {
                     ui.add_space(4.0);
-                    ui.add(MonospaceCode::new(&format!("{}d {}a", draft_count, active_count - draft_count)).size_px(font_xs()).color(t.dim).gamma(0.5));
+                    use crate::ui_kit::widgets::{Badge, TagTone};
+                    // Drafts badge (warn tone) + dim "d" label, then active badge
+                    // (accent tone) + dim "a" label. Preserves the original
+                    // "{draft}d {active}a" semantics with widget-driven badges.
+                    if draft_count > 0 {
+                        Badge::count(draft_count as u32).tone(TagTone::Warn).show(ui, t);
+                        ui.add(MonospaceCode::new("d").size_px(font_xs()).color(t.dim).gamma(0.5));
+                    }
+                    let active_only = active_count.saturating_sub(draft_count);
+                    if active_only > 0 {
+                        if draft_count > 0 { ui.add_space(2.0); }
+                        Badge::count(active_only as u32).tone(TagTone::Accent).show(ui, t);
+                        ui.add(MonospaceCode::new("a").size_px(font_xs()).color(t.dim).gamma(0.5));
+                    }
                 }
             });
             ui.add_space(4.0);

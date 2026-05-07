@@ -15,6 +15,8 @@ use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use super::super::widgets::buttons::SimpleBtn;
 use super::super::widgets::form::FormRow;
 use super::super::widgets::rows::WatchlistRow;
+use crate::ui_kit::widgets::{Input, Skeleton};
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
@@ -111,8 +113,10 @@ pub(crate) fn draw_content(
             ui.add_space(4.0);
 
             FormRow::new("Name").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                super::super::widgets::inputs::TextInput::new(&mut watchlist.scanner_new_name)
-                    .width(panel_w - 60.0).font_size(9.0).show(ui);
+                Input::new(&mut watchlist.scanner_new_name)
+                    .min_width(panel_w - 60.0)
+                    .size(KitSize::Xs)
+                    .show(ui, t);
             });
             FormRow::new("Min %").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_min_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
@@ -120,8 +124,11 @@ pub(crate) fn draw_content(
                 ui.add(egui::DragValue::new(&mut watchlist.scanner_new_max_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
             });
             FormRow::new("Min Vol").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                super::super::widgets::inputs::TextInput::new(&mut watchlist.scanner_new_min_volume)
-                    .width(80.0).font_size(9.0).placeholder("e.g. 1000000").show(ui);
+                Input::new(&mut watchlist.scanner_new_min_volume)
+                    .min_width(80.0)
+                    .size(KitSize::Xs)
+                    .placeholder("e.g. 1000000")
+                    .show(ui, t);
             });
 
             ui.horizontal(|ui| {
@@ -177,6 +184,12 @@ pub(crate) fn draw_content(
                 });
                 EmptyState::new("\u{1F50D}", "Fetching quotes",
                     &format!("{} symbols in universe", SCANNER_UNIVERSE.len())).theme(t).show(ui);
+                ui.add_space(gap_sm());
+                let row_w = (panel_w - 8.0).max(80.0);
+                for _ in 0..6 {
+                    ui.add_space(2.0);
+                    Skeleton::text(row_w).show(ui, t);
+                }
                 return;
             }
 

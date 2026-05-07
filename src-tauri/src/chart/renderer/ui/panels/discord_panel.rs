@@ -442,12 +442,22 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                 .show(ui, |ui| {
                                     ui.set_min_width(content_w - 4.0);
                                     if watchlist.discord_messages_loading {
-                                        ui.add_space(20.0);
-                                        ui.horizontal(|ui| {
-                                            ui.add_space(8.0);
-                                            crate::ui_kit::widgets::Spinner::new().show(ui, t);
-                                            ui.add(widgets::text::MonospaceCode::new("Loading messages...").xs().color(t.dim));
-                                        });
+                                        ui.add_space(8.0);
+                                        let row_w = (content_w - 24.0).max(80.0);
+                                        for _ in 0..5 {
+                                            ui.add_space(4.0);
+                                            ui.horizontal(|ui| {
+                                                ui.add_space(8.0);
+                                                crate::ui_kit::widgets::Skeleton::circle(20.0).show(ui, t);
+                                                ui.add_space(8.0);
+                                                ui.vertical(|ui| {
+                                                    crate::ui_kit::widgets::Skeleton::text(row_w * 0.35).show(ui, t);
+                                                    ui.add_space(2.0);
+                                                    crate::ui_kit::widgets::Skeleton::text(row_w * 0.75).show(ui, t);
+                                                });
+                                            });
+                                            ui.add_space(4.0);
+                                        }
                                     } else if watchlist.discord_messages.is_empty() {
                                         ui.add_space(20.0);
                                         ui.horizontal(|ui| {

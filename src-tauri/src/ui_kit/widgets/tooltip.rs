@@ -187,3 +187,75 @@ impl<'a> Tooltip<'a> {
         let _ = (Pos2::ZERO, Rect::NOTHING, alpha_strong());
     }
 }
+
+// ─── Painter-mode tooltip chrome ─────────────────────────────────────────────
+//
+// `paint_tooltip_card` is a *paint-only* helper for absolute-positioned
+// tooltips that don't have an `egui::Response` to anchor to (chart-canvas
+// crosshair tooltips, measure overlays, painter-mode bubbles). It paints the
+// same chrome (shadow + bg + top bevel + hairline border) as the flow-mode
+// `Tooltip` widget, sourcing every alpha / radius / stroke from the active
+// `StyleSettings` so the visual stays in lockstep with the rest of the kit.
+//
+// Pure paint — no allocation, no animation state, no per-frame compute beyond
+// what each call site was already doing inline. Callers paint their text /
+// content on top of the card afterward.
+//
+// Performance: one `style::current()` lookup, one `contrast_fg()` call, and
+// 2-4 painter ops (shadow + bg + optional bevel + border). The crosshair
+// site that previously inlined the same operations is net-equal — the helper
+// removes ~12 LOC of inline arithmetic but doesn't add a single new draw call.
+
+pub fn paint_tooltip_card(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    theme: &dyn ComponentTheme,
+) {
+    use crate::chart_renderer::ui::style::{
+        alpha_line, contrast_fg, current, shadow_alpha, shadow_offset, stroke_thin,
+    };
+    let st = current();
+    let cr_u8 = st.r_md;
+    let cr = egui::CornerRadius::same(cr_u8);
+
+    // Drop shadow
+    if st.shadows_enabled {
+        painter.rect_filled(
+            rect.translate(egui::vec2(0.0, shadow_offset())).expand(1.0),
+            cr,
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, shadow_alpha()),
+        );
+    }
+
+    // Surface fill — theme.surface() at near-solid alpha so the chart bleeds
+    // through faintly behind text, matching the previous 240-alpha fidelity.
+    let surf = theme.surface();
+    painter.rect_filled(
+        rect,
+        cr,
+        egui::Color32::from_rgba_unmultiplied(surf.r(), surf.g(), surf.b(), 240),
+    );
+
+    // Top bevel — only when corners are visible (Meridien / Octave have
+    // cr_u8 == 0 and skip this). Color depends on theme luminance: light
+    // themes get a darker bevel, dark themes a faint white highlight.
+    if cr_u8 > 0 {
+        let dark_theme = contrast_fg(theme.bg()) == egui::Color32::WHITE;
+        let bevel_alpha = if dark_theme { 8 } else { 30 };
+        painter.rect_filled(
+            egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), rect.top() + 1.0)),
+            egui::CornerRadius { nw: cr_u8, ne: cr_u8, sw: 0, se: 0 },
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, bevel_alpha),
+        );
+    }
+
+    // Outer border — single source for stroke width and alpha.
+    let stroke_w = if st.hairline_borders { st.stroke_std } else { stroke_thin() };
+    let border_col = crate::chart_renderer::ui::style::color_alpha(theme.border(), alpha_line());
+    painter.rect_stroke(
+        rect,
+        cr,
+        egui::Stroke::new(stroke_w, border_col),
+        egui::StrokeKind::Outside,
+    );
+}

@@ -307,10 +307,32 @@ fn paint_select<'a, T: 'a>(
     let font_size = size.font_size();
     let icon_gap = st::gap_2xs();
 
+    // Measure the widest label once (used for both trigger and popup widths).
+    let label_font = FontId::proportional(font_size);
+    let mut widest_label: f32 = 0.0;
+    for i in 0..display.len() {
+        let label = display.label(i);
+        let g = ui.fonts(|f| f.layout_no_wrap(label, label_font.clone(), Color32::WHITE));
+        widest_label = widest_label.max(g.rect.width());
+    }
+    if let Some(ph) = &placeholder {
+        let g = ui.fonts(|f| f.layout_no_wrap(ph.clone(), label_font.clone(), Color32::WHITE));
+        widest_label = widest_label.max(g.rect.width());
+    }
+    let caret_w = font_size * 0.6;
+    // gap_sm (~8px) extra breathing room between the label and the caret so
+    // the trigger doesn't feel cramped at content-width.
+    let trigger_extra_pad = st::gap_sm();
+
+    // Default trigger width fits the longest option (label + caret + padding +
+    // breathing room). `full_width()` stretches to available width;
+    // `min_width(px)` acts as a floor.
     let desired_w = if full_width {
         ui.available_width()
     } else {
-        min_width.unwrap_or(160.0)
+        let natural = pad_x * 2.0 + widest_label + icon_gap + caret_w + trigger_extra_pad;
+        let floor = min_width.unwrap_or(0.0);
+        natural.max(floor)
     };
 
     let row_size = Vec2::new(desired_w, h);
@@ -481,7 +503,12 @@ fn paint_select<'a, T: 'a>(
     }
 
     // ─── Popover panel ──
-    let panel_w = desired_w.max(200.0);
+    // Popup width = widest label + per-row padding + a gap_sm cushion on each
+    // side. Floor at the trigger's width so the popup is never narrower than
+    // the trigger it dropped from. The old hard `.max(200.0)` floor created a
+    // visibly over-wide popup for compact dropdowns (Solid/Dashed/Dotted etc.).
+    let popup_pad = st::gap_sm();
+    let panel_w = (widest_label + popup_pad * 2.0 + caret_w).max(desired_w);
     let mut click_idx: Option<usize> = None;
     if mem.open {
         click_idx = render_panel(

@@ -11,6 +11,8 @@ use super::super::widgets as widgets_compat;
 #[allow(unused_imports)]
 use super::super::widgets as widgets;
 use super::super::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 use super::super::widgets::rows::alert_row::{AlertRow, AlertCmp};
 use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::*;
@@ -82,13 +84,11 @@ fn draw_content_cx(
         // Price input
         ui.horizontal(|ui| {
             ui.add(widgets::text::MonospaceCode::new("Price:").xs().color(cx.dim));
-            TextInput::new(&mut panes[ap].alert_input_price)
-                .width(80.0)
-                .font_size(font_sm())
-                .text_color(egui::Color32::WHITE)
-                .placeholder(&format!("{:.2}", current_price))
-                .theme(cx.theme)
-                .show(ui);
+            Input::new(&mut panes[ap].alert_input_price)
+                .min_width(80.0)
+                .size(KitSize::Sm)
+                .placeholder(format!("{:.2}", current_price))
+                .show(ui, cx.theme);
         });
         ui.add_space(4.0);
 

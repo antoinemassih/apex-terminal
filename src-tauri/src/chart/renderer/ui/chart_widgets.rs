@@ -3069,57 +3069,33 @@ fn draw_loading_skeleton(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         "Loading\u{2026}", egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.4));
 }
 
-/// Smooth rotating arc with a soft fade tail — a refined, understated loading indicator.
-/// The arc sweeps ~290° and rotates once every ~1.6s. Alpha fades along the tail using a
-/// gentle easing curve so the head feels bright while the tail dissolves into the background.
+/// Smooth rotating arc — a refined, understated loading indicator.
+/// Draws a faint full-circle track plus a 90° arc that completes one revolution
+/// per second. Mirrors the `Progress::circular_indeterminate` widget in ui_kit
+/// so painter-mode and flow-layout sites share one visual language.
 pub(crate) fn draw_refined_spinner(p: &egui::Painter, center: egui::Pos2, radius: f32, color: egui::Color32) {
-    // Two rounded-rect "tiles" chase each other around the perimeter of a square, stretching
-    // from a corner-square into an edge-rectangle as they travel. Second tile is offset by
-    // half the period so the pair forms a balanced, continuous motion.
-    let container = radius * 2.2;
-    let g_ratio = 35.0 / 65.0; // matches the CSS keyframes
-    let gap = container * g_ratio;
-
-    // Keyframes as (top, right, bottom, left) insets from the container rect.
-    let kf: [(f32, f32, f32, f32); 9] = [
-        (0.0,  gap,  gap,  0.0),
-        (0.0,  gap,  0.0,  0.0),
-        (gap,  gap,  0.0,  0.0),
-        (gap,  0.0,  0.0,  0.0),
-        (gap,  0.0,  0.0,  gap),
-        (0.0,  0.0,  0.0,  gap),
-        (0.0,  0.0,  gap,  gap),
-        (0.0,  0.0,  gap,  0.0),
-        (0.0,  gap,  gap,  0.0),
-    ];
-
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default().as_secs_f32();
-    let period = 2.5_f32;
-    let container_rect = egui::Rect::from_center_size(center, egui::vec2(container, container));
-    let stroke_w = (container * 0.046).max(1.5);
-    let rounding = (container * 0.08).max(2.0);
+    let stroke_w = (radius * 0.16).max(1.5);
+    let r = (radius - stroke_w * 0.5).max(2.0);
 
-    let draw_one = |phase: f32| {
-        let t = phase.rem_euclid(1.0) * 8.0;
-        let i = (t.floor() as usize).min(7);
-        let frac = t - i as f32;
-        let a = kf[i];
-        let b = kf[i + 1];
-        let top    = a.0 + (b.0 - a.0) * frac;
-        let right  = a.1 + (b.1 - a.1) * frac;
-        let bottom = a.2 + (b.2 - a.2) * frac;
-        let left   = a.3 + (b.3 - a.3) * frac;
-        let r = egui::Rect::from_min_max(
-            egui::pos2(container_rect.left() + left, container_rect.top() + top),
-            egui::pos2(container_rect.right() - right, container_rect.bottom() - bottom),
-        );
-        p.rect_stroke(r, rounding, egui::Stroke::new(stroke_w, color), egui::StrokeKind::Inside);
-    };
+    // Faint full-circle track behind the moving arc.
+    let track_col = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 48);
+    p.circle_stroke(center, r, egui::Stroke::new(stroke_w, track_col));
 
-    let phase = now / period;
-    draw_one(phase);
-    draw_one(phase + 0.5);
+    // Rotating 90° arc, 1 rev/sec wall-clock.
+    let phase = now.rem_euclid(1.0);
+    let start_deg = phase * 360.0 - 90.0;
+    let span_deg = 90.0_f32;
+    let segments = ((span_deg / 6.0) as usize).max(8);
+    let mut points = Vec::with_capacity(segments + 1);
+    for i in 0..=segments {
+        let t = i as f32 / segments as f32;
+        let deg = start_deg + span_deg * t;
+        let rad = deg.to_radians();
+        points.push(egui::pos2(center.x + rad.cos() * r, center.y + rad.sin() * r));
+    }
+    p.add(egui::Shape::line(points, egui::Stroke::new(stroke_w, color)));
 }
 
 /// Ui-level refined spinner — drop-in replacement for `ui.spinner()`.

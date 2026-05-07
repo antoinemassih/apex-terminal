@@ -7,6 +7,8 @@ use egui;
 use super::super::style::*;
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::frames::PopupFrame;
+use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 use super::super::widgets::buttons::{ChromeBtn, ActionBtn};
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::cards::Card;
@@ -114,14 +116,11 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.horizontal(|ui| {
         ui.add(super::super::widgets::text::MonospaceCode::new("\u{2728}").xs().color(t.accent));
         ui.add_space(4.0);
-        TextInput::new(&mut watchlist.script_ai_prompt)
-            .width(w - 36.0)
-            .font_size(9.5)
+        Input::new(&mut watchlist.script_ai_prompt)
+            .min_width(w - 36.0)
+            .size(KitSize::Sm)
             .placeholder("Describe your indicator or strategy...")
-            .text_color(egui::Color32::from_gray(210))
-            .margin(egui::Margin::symmetric(gap_md() as i8, gap_xs() as i8))
-            .theme(t)
-            .show(ui);
+            .show(ui, t);
     });
     ui.add_space(4.0);
 

@@ -22,6 +22,7 @@ use crate::chart::renderer::ui::foundation::{
     variants::RowVariant,
 };
 use crate::chart::renderer::ui::widgets::rows::ListRow;
+use crate::ui_kit::widgets::HoverCard;
 use super::watchlist_columns::{
     spec as col_spec, ColumnCtx, WatchlistColumnId, WatchlistItemData,
 };
@@ -610,6 +611,149 @@ impl<'a> WatchlistRow<'a> {
         }
         if resp.hovered() && !drag_confirmed && !active_flag {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+
+        // ── HoverCard — rich symbol-detail card on prolonged hover ─────────
+        // Suppressed during drag to avoid distracting the user mid-reorder.
+        if !drag_confirmed {
+            let card_symbol: String = symbol.to_string();
+            let card_price = price;
+            let card_change = change_pct;
+            let card_range_today = range_today;
+            let card_week52 = week52;
+            let card_volume = volume_v;
+            let card_market_cap = market_cap_v;
+            let card_atr = atr_v;
+            let card_rvol = rvol;
+            let card_fg = fg;
+            let card_bull = bull;
+            let card_bear = bear;
+            let card_dim = dim;
+            let card_prev_close = if change_pct.abs() > f32::EPSILON {
+                price / (1.0 + change_pct / 100.0)
+            } else {
+                price
+            };
+            let _ = HoverCard::new()
+                .delay_ms(700)
+                .show(ui, &resp, theme_ref, |ui| {
+                    ui.set_min_width(220.0);
+                    ui.set_max_width(280.0);
+
+                    // Symbol — large + bold.
+                    ui.label(
+                        egui::RichText::new(&card_symbol)
+                            .strong()
+                            .size(18.0)
+                            .color(card_fg),
+                    );
+                    ui.add_space(2.0);
+
+                    // Last price.
+                    let price_str = if card_price > 0.0 {
+                        format!("${:.2}", card_price)
+                    } else {
+                        "$---".to_string()
+                    };
+                    ui.label(
+                        egui::RichText::new(&price_str)
+                            .monospace()
+                            .size(14.0)
+                            .color(card_fg),
+                    );
+
+                    // Day change — colored bull/bear.
+                    let abs_change = card_price - card_prev_close;
+                    let chg_col = if card_change >= 0.0 { card_bull } else { card_bear };
+                    let chg_str =
+                        format!("{:+.2} ({:+.2}%)", abs_change, card_change);
+                    ui.label(
+                        egui::RichText::new(&chg_str)
+                            .monospace()
+                            .size(12.0)
+                            .color(chg_col),
+                    );
+                    ui.add_space(6.0);
+
+                    // Compact stat helper: dim label + fg value.
+                    fn stat_row(
+                        ui: &mut egui::Ui,
+                        label: &str,
+                        value: &str,
+                        label_col: egui::Color32,
+                        value_col: egui::Color32,
+                    ) {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(label)
+                                    .size(11.0)
+                                    .color(label_col),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(value)
+                                            .monospace()
+                                            .size(11.0)
+                                            .color(value_col),
+                                    );
+                                },
+                            );
+                        });
+                    }
+
+                    fn fmt_abbrev_u64(v: u64) -> String {
+                        let f = v as f64;
+                        if f >= 1.0e12 { format!("{:.2}T", f / 1.0e12) }
+                        else if f >= 1.0e9 { format!("{:.2}B", f / 1.0e9) }
+                        else if f >= 1.0e6 { format!("{:.2}M", f / 1.0e6) }
+                        else if f >= 1.0e3 { format!("{:.2}K", f / 1.0e3) }
+                        else { format!("{}", v) }
+                    }
+
+                    fn fmt_abbrev_f64(v: f64) -> String {
+                        let af = v.abs();
+                        if af >= 1.0e12 { format!("${:.2}T", v / 1.0e12) }
+                        else if af >= 1.0e9 { format!("${:.2}B", v / 1.0e9) }
+                        else if af >= 1.0e6 { format!("${:.2}M", v / 1.0e6) }
+                        else if af >= 1.0e3 { format!("${:.2}K", v / 1.0e3) }
+                        else { format!("${:.2}", v) }
+                    }
+
+                    if let Some((low, high, _last)) = card_range_today {
+                        if high > low {
+                            let s = format!("{:.2} - {:.2}", low, high);
+                            stat_row(ui, "Day Range", &s, card_dim, card_fg);
+                        }
+                    }
+                    if let Some((low_52, high_52, _last)) = card_week52 {
+                        if high_52 > low_52 {
+                            let s = format!("{:.2} - {:.2}", low_52, high_52);
+                            stat_row(ui, "52W Range", &s, card_dim, card_fg);
+                        }
+                    }
+                    if let Some(vol) = card_volume {
+                        if vol > 0 {
+                            stat_row(ui, "Volume", &fmt_abbrev_u64(vol), card_dim, card_fg);
+                        }
+                    }
+                    if let Some(mc) = card_market_cap {
+                        if mc > 0.0 {
+                            stat_row(ui, "Mkt Cap", &fmt_abbrev_f64(mc), card_dim, card_fg);
+                        }
+                    }
+                    if let Some(rv) = card_rvol {
+                        if rv > 0.0 {
+                            stat_row(ui, "RVOL", &format!("{:.2}x", rv), card_dim, card_fg);
+                        }
+                    }
+                    if let Some(atr) = card_atr {
+                        if atr > 0.0 {
+                            stat_row(ui, "ATR", &format!("{:.2}", atr), card_dim, card_fg);
+                        }
+                    }
+                });
         }
 
         crate::design_tokens::register_hit(

@@ -6,6 +6,8 @@ use super::super::super::gpu::*;
 use super::super::widgets::buttons::SimpleBtn;
 use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::Progress;
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::chart_renderer::gpu::APEXIB_URL;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, read_account_data};
 
@@ -81,6 +83,11 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         status_badge(ui, status, if *ok { t.bull } else { t.bear });
+                        // AMBER = transitional/connecting state — show indeterminate spinner.
+                        if *status == "AMBER" {
+                            ui.add_space(4.0);
+                            Progress::circular_indeterminate().size(KitSize::Xs).show(ui, t);
+                        }
                     });
                 });
                 ui.horizontal(|ui| {

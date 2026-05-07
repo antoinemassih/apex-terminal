@@ -7,6 +7,9 @@ use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use super::super::widgets::layout::EmptyState;
 use super::super::widgets::frames::PanelFrame;
 use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::ui_kit::widgets::Pagination;
+
+const TRADE_LOG_PAGE_SIZE: usize = 10;
 
 /// Inline content for the Book tab's Journal section.
 pub(crate) fn draw_content(
@@ -51,14 +54,14 @@ pub(crate) fn draw(
             separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
             ui.add_space(gap_sm());
 
-            let entries = &watchlist.journal_entries;
-            if entries.is_empty() {
+            if watchlist.journal_entries.is_empty() {
                 ui.add_space(gap_3xl());
                 EmptyState::new("\u{1F4D2}", "No trades logged", "Log a trade to see analytics").theme(t).show(ui);
                 return;
             }
 
             egui::ScrollArea::vertical().id_salt("journal_main").show(ui, |ui| {
+                let entries = &watchlist.journal_entries;
                 draw_summary(ui, entries, t);
                 ui.add_space(gap_sm());
                 separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
@@ -67,10 +70,31 @@ pub(crate) fn draw(
                 ui.add_space(gap_sm());
                 separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
                 ui.add_space(gap_sm());
-                ui.add(SectionLabel::new(&format!("TRADE LOG ({})", entries.len())).tiny().color(t.dim));
+                let total = watchlist.journal_entries.len();
+                ui.add(SectionLabel::new(&format!("TRADE LOG ({})", total)).tiny().color(t.dim));
                 ui.add_space(gap_xs());
-                for entry in entries {
-                    draw_card(ui, entry, t);
+
+                if total <= TRADE_LOG_PAGE_SIZE {
+                    for entry in &watchlist.journal_entries {
+                        draw_card(ui, entry, t);
+                    }
+                } else {
+                    let total_pages = (total + TRADE_LOG_PAGE_SIZE - 1) / TRADE_LOG_PAGE_SIZE;
+                    if watchlist.journal_page >= total_pages {
+                        watchlist.journal_page = total_pages - 1;
+                    }
+                    let page = watchlist.journal_page;
+                    let start = page * TRADE_LOG_PAGE_SIZE;
+                    let end = (start + TRADE_LOG_PAGE_SIZE).min(total);
+                    for entry in &watchlist.journal_entries[start..end] {
+                        draw_card(ui, entry, t);
+                    }
+                    ui.add_space(gap_xs());
+                    ui.horizontal(|ui| {
+                        ui.add_space(gap_sm());
+                        let _ = Pagination::new(&mut watchlist.journal_page, total_pages)
+                            .show(ui, t);
+                    });
                 }
             });
         });

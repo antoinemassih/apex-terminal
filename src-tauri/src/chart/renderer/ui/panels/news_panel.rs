@@ -9,6 +9,7 @@ use super::super::widgets as widgets;
 use super::super::widgets::buttons::ChromeBtn;
 use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::{Watchlist, NewsItem, Theme};
+use crate::ui_kit::widgets::Skeleton;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
     if !watchlist.news_open { return; }
@@ -70,10 +71,15 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                 .collect();
 
             if filtered.is_empty() {
-                ui.add_space(20.0);
-                ui.vertical_centered(|ui| {
-                    ui.add(widgets::text::MonospaceCode::new("No news for this symbol").xs().color(t.dim).gamma(0.5));
-                });
+                ui.add_space(8.0);
+                let row_w = (w - 16.0).max(80.0);
+                for _ in 0..4 {
+                    ui.add_space(4.0);
+                    Skeleton::text(row_w).show(ui, t);
+                    ui.add_space(2.0);
+                    Skeleton::text(row_w * 0.55).show(ui, t);
+                    ui.add_space(8.0);
+                }
             }
 
             for news in &filtered {

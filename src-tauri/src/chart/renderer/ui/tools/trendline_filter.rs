@@ -201,7 +201,7 @@ if chart.picker_open {
 
             if chart.picker_searching {
                 ui.horizontal(|ui| {
-                    super::super::chart_widgets::refined_spinner(ui, t.accent);
+                    crate::ui_kit::widgets::Spinner::new().show(ui, t);
                     ui.add(MonospaceCode::new("Searching...").size_px(9.0).color(t.dim));
                 });
             }

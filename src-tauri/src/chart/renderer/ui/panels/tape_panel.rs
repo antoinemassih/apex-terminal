@@ -7,6 +7,7 @@ use super::super::widgets::frames::CompactPanelFrame;
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::rows::ListRow;
 use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::ui_kit::widgets::Skeleton;
 
 
 /// Draw the T&S content into `ui` (used by analysis_panel as a tab).
@@ -39,8 +40,20 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                 .collect();
 
             if entries.is_empty() {
-                ui.add_space(20.0);
-                ui.add(MonospaceCode::new("Waiting for trades...").size_px(9.0).color(t.dim).gamma(0.4));
+                ui.add_space(8.0);
+                let cw = (panel_w - 12.0) / 3.0;
+                for _ in 0..5 {
+                    ui.add_space(2.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(2.0);
+                        Skeleton::text(cw * 0.7).show(ui, t);
+                        ui.add_space(cw - cw * 0.7);
+                        Skeleton::text(cw * 0.7).show(ui, t);
+                        ui.add_space(cw - cw * 0.7);
+                        Skeleton::text(cw * 0.6).show(ui, t);
+                    });
+                }
+                ui.add_space(8.0);
                 if !crate::data::is_crypto(active_symbol) && !crate::apex_data::is_enabled() {
                     ui.add(MonospaceCode::new("Enable ApexData in settings for stock T&S").size_px(8.0).color(t.dim).gamma(0.3));
                 }

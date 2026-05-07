@@ -152,39 +152,47 @@ pub fn show_drawing_properties_bar_ui(
             }
         }
 
-        // Thickness dropdown
-        egui::ComboBox::from_id_salt(format!("thick_{}", pane_idx))
-            .selected_text(egui::RichText::new(format!("{:.1}px", sel_draw.thickness)).monospace().size(font_sm()))
-            .width(55.0)
-            .show_ui(ui, |ui| {
-                for &thick in &[0.5_f32, 1.0, 1.5, 2.0, 3.0, 4.0] {
-                    if ui.selectable_label((sel_draw.thickness - thick).abs() < 0.05, egui::RichText::new(format!("{:.1}px", thick)).monospace().size(font_sm())).clicked() {
-                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
-                            chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
-                            chart.redo_stack.clear();
-                            d.thickness = thick;
-                            crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
-                        }
-                    }
+        // Thickness dropdown — `ui_kit::widgets::Select`.
+        {
+            const THICK_VALS: &[f32] = &[0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
+            const THICK_LABELS: &[&str] = &["0.5px", "1.0px", "1.5px", "2.0px", "3.0px", "4.0px"];
+            let mut idx: usize = THICK_VALS
+                .iter()
+                .position(|&v| (sel_draw.thickness - v).abs() < 0.05)
+                .unwrap_or(1);
+            let prev_idx = idx;
+            crate::ui_kit::widgets::Select::new(&mut idx, THICK_LABELS).show(ui, t);
+            if idx != prev_idx {
+                let new_thick = THICK_VALS[idx];
+                if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                    chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                    chart.redo_stack.clear();
+                    d.thickness = new_thick;
+                    crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
-            });
+            }
+        }
 
-        // Opacity dropdown
-        egui::ComboBox::from_id_salt(format!("opacity_{}", pane_idx))
-            .selected_text(egui::RichText::new(format!("{}%", (sel_draw.opacity * 100.0) as i32)).monospace().size(font_sm()))
-            .width(50.0)
-            .show_ui(ui, |ui| {
-                for &op in &[0.2_f32, 0.3, 0.5, 0.7, 0.85, 1.0] {
-                    if ui.selectable_label((sel_draw.opacity - op).abs() < 0.05, egui::RichText::new(format!("{}%", (op * 100.0) as i32)).monospace().size(font_sm())).clicked() {
-                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
-                            chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
-                            chart.redo_stack.clear();
-                            d.opacity = op;
-                            crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
-                        }
-                    }
+        // Opacity dropdown — `ui_kit::widgets::Select`.
+        {
+            const OP_VALS: &[f32] = &[0.2, 0.3, 0.5, 0.7, 0.85, 1.0];
+            const OP_LABELS: &[&str] = &["20%", "30%", "50%", "70%", "85%", "100%"];
+            let mut idx: usize = OP_VALS
+                .iter()
+                .position(|&v| (sel_draw.opacity - v).abs() < 0.05)
+                .unwrap_or(OP_VALS.len() - 1);
+            let prev_idx = idx;
+            crate::ui_kit::widgets::Select::new(&mut idx, OP_LABELS).show(ui, t);
+            if idx != prev_idx {
+                let new_op = OP_VALS[idx];
+                if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                    chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                    chart.redo_stack.clear();
+                    d.opacity = new_op;
+                    crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
-            });
+            }
+        }
 
         ui.add(egui::Separator::default().spacing(gap_xs()));
 

@@ -17,6 +17,8 @@ use super::super::widgets::buttons::ChromeBtn;
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::frames::PopupFrame;
 use super::super::widgets::watchlist::{FilterPill, SectionHeader, NmfToggle};
+use crate::ui_kit::widgets::{Input, Tag, TagTone};
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 use super::super::widgets::headers::PanelHeaderWithTabs;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
@@ -360,8 +362,11 @@ if watchlist.open {
                                     ui.set_min_width(180.0);
                                     // Search
                                     ui.horizontal(|ui| {
-                                        super::super::widgets::inputs::TextInput::new(&mut watchlist.filter_text)
-                                            .placeholder("Search...").width((180.0_f32 - 30.0).max(40.0)).font_size(9.0).show(ui);
+                                        Input::new(&mut watchlist.filter_text)
+                                            .placeholder("Search...")
+                                            .min_width((180.0_f32 - 30.0).max(40.0))
+                                            .size(KitSize::Xs)
+                                            .show(ui, t);
                                         if !watchlist.filter_text.is_empty() {
                                             if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(font_xs()).color(t.dim)).frameless(true)).clicked() {
                                                 watchlist.filter_text.clear();
@@ -384,7 +389,8 @@ if watchlist.open {
                                         };
                                         for (name, min_chg, max_chg) in &presets {
                                             let active = watchlist.filter_preset == *name;
-                                            if ui.add(FilterPill::new(name).active(active).theme(t)).clicked() {
+                                            let tone = if active { TagTone::Accent } else { TagTone::Neutral };
+                                            if Tag::new(*name).tone(tone).show(ui, t).response.clicked() {
                                                 watchlist.filter_preset = name.to_string();
                                                 watchlist.filter_min_change = *min_chg;
                                                 watchlist.filter_max_change = *max_chg;

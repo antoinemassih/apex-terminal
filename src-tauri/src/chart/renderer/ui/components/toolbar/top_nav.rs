@@ -470,7 +470,13 @@ pub(crate) fn render(
                 });
                 paint_nav_col_tint(ui, tb_rect, range_resp.response.rect, t,
                     range_resp.response.hovered(), false, "range");
-                range_resp.response.clone().on_hover_text("Range — quick presets (1D, 2D, 1M, …)");
+                {
+                    use crate::ui_kit::widgets::Tooltip;
+                    Tooltip::rich(|ui, theme| {
+                        ui.label(egui::RichText::new("Range").size(font_sm()).strong().color(theme.text()));
+                        ui.label(egui::RichText::new("Quick presets (1D, 2D, 1M, …)").size(font_xs()).color(theme.dim()));
+                    }).show(ui, &range_resp.response, t);
+                }
                 if range_resp.response.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
             }
 
@@ -521,7 +527,7 @@ pub(crate) fn render(
                                 let r = ui.selectable_label(cur == *tool, egui::RichText::new(*label).monospace().size(FONT_SM));
                                 if let Some(ref key) = shortcut {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(egui::RichText::new(key).monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.7)));
+                                        crate::ui_kit::widgets::Kbd::new(key.clone()).show(ui, t);
                                     });
                                 }
                                 r
@@ -540,7 +546,13 @@ pub(crate) fn render(
                 });
                 paint_nav_col_tint(ui, tb_rect, drawing_menu.response.rect, t,
                     drawing_menu.response.hovered(), has_tool, "drawing");
-                drawing_menu.response.clone().on_hover_text("Drawing tools — lines, channels, fibs, patterns");
+                {
+                    use crate::ui_kit::widgets::Tooltip;
+                    Tooltip::rich(|ui, theme| {
+                        ui.label(egui::RichText::new("Drawing Tools").size(font_sm()).strong().color(theme.text()));
+                        ui.label(egui::RichText::new("Lines, channels, fibs, patterns").size(font_xs()).color(theme.dim()));
+                    }).show(ui, &drawing_menu.response, t);
+                }
                 if let Some(tool) = new_tool {
                     panes[ap].draw_tool = tool;
                     panes[ap].pending_pt = None; panes[ap].pending_pt2 = None; panes[ap].pending_pts.clear();
@@ -611,7 +623,13 @@ pub(crate) fn render(
             });
             paint_nav_col_tint(ui, tb_rect, mode_menu.response.rect, t,
                 mode_menu.response.hovered(), false, "candle_mode");
-            mode_menu.response.clone().on_hover_text("Candle mode (Standard, Heikin Ashi, Renko, …) + log scale");
+            {
+                use crate::ui_kit::widgets::Tooltip;
+                Tooltip::rich(|ui, theme| {
+                    ui.label(egui::RichText::new("Candle Mode").size(font_sm()).strong().color(theme.text()));
+                    ui.label(egui::RichText::new("Standard, Heikin Ashi, Renko, … + log scale").size(font_xs()).color(theme.dim()));
+                }).show(ui, &mode_menu.response, t);
+            }
             // Mark alt bars dirty when candle mode changes
             if panes[ap].candle_mode != prev_candle_mode {
                 panes[ap].alt_bars_dirty = true;
@@ -1099,7 +1117,13 @@ pub(crate) fn render(
             }); // ── end Indicators outer dropdown (wraps MAs/Osc/Vol/Overlay/Tools/Suites) ──
             paint_nav_col_tint(ui, tb_rect, indicators_menu.response.rect, t,
                 indicators_menu.response.hovered(), false, "indicators");
-            indicators_menu.response.clone().on_hover_text("Indicators (MAs, Oscillators, Volume, Overlays, Tools, Suites)");
+            {
+                use crate::ui_kit::widgets::Tooltip;
+                Tooltip::rich(|ui, theme| {
+                    ui.label(egui::RichText::new("Indicators").size(font_sm()).strong().color(theme.text()));
+                    ui.label(egui::RichText::new("MAs, Oscillators, Volume, Overlays, Tools, Suites").size(font_xs()).color(theme.dim()));
+                }).show(ui, &indicators_menu.response, t);
+            }
 
             // Deferred: open overlay editor after menu closes
             if watchlist.pending_overlay_add {
@@ -1213,7 +1237,13 @@ pub(crate) fn render(
             });
             paint_nav_col_tint(ui, tb_rect, widgets_menu.response.rect, t,
                 widgets_menu.response.hovered(), false, "widgets");
-            widgets_menu.response.clone().on_hover_text("Widgets — add live data tiles to the chart");
+            {
+                use crate::ui_kit::widgets::Tooltip;
+                Tooltip::rich(|ui, theme| {
+                    ui.label(egui::RichText::new("Widgets").size(font_sm()).strong().color(theme.text()));
+                    ui.label(egui::RichText::new("Add live data tiles to the chart").size(font_xs()).color(theme.dim()));
+                }).show(ui, &widgets_menu.response, t);
+            }
 
             // Hit-highlight toggle — trendline/swing hit detection flash
             {
@@ -1304,7 +1334,14 @@ pub(crate) fn render(
                 });
                 paint_nav_col_tint(ui, tb_rect, ws_menu.response.rect, t,
                     ws_menu.response.hovered(), false, "workspace");
-                ws_menu.response.clone().on_hover_text(format!("Workspaces — active: {}", &watchlist.active_workspace));
+                {
+                    use crate::ui_kit::widgets::Tooltip;
+                    let active_ws = watchlist.active_workspace.clone();
+                    Tooltip::rich(move |ui, theme| {
+                        ui.label(egui::RichText::new("Workspaces").size(font_sm()).strong().color(theme.text()));
+                        ui.label(egui::RichText::new(format!("Active: {}", active_ws)).size(font_xs()).color(theme.dim()));
+                    }).show(ui, &ws_menu.response, t);
+                }
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -1455,11 +1492,17 @@ pub(crate) fn render(
                 }
 
                 // Search / command palette — icon-only ToolbarBtn.
-                if ui.add(ToolbarBtn::new(Icon::MAGNIFYING_GLASS).active(watchlist.cmd_palette_open).theme(t))
-                    .on_hover_text("Search & command palette (Cmd/Ctrl+K)")
-                    .clicked()
                 {
-                    watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
+                    use crate::ui_kit::widgets::{Tooltip, Kbd};
+                    let search_resp = ui.add(ToolbarBtn::new(Icon::MAGNIFYING_GLASS).active(watchlist.cmd_palette_open).theme(t));
+                    Tooltip::rich(|ui, theme| {
+                        ui.label(egui::RichText::new("Search").size(font_sm()).strong().color(theme.text()));
+                        ui.label(egui::RichText::new("Search & command palette").size(font_xs()).color(theme.dim()));
+                        ui.add(Kbd::new("Cmd+K"));
+                    }).show(ui, &search_resp, t);
+                    if search_resp.clicked() {
+                        watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
+                    }
                 }
 
                 ui.add(egui::Separator::default().spacing(4.0));
@@ -1514,11 +1557,36 @@ pub(crate) fn render(
                         + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
                     let signals_resp = ui.add(ToolbarBtn::new(&nav_label(Icon::LIGHTNING, "Signals")).active(watchlist.signals_panel_open).theme(t)).on_hover_text("Signals (Alerts + Signals)");
                     if active_count > 0 {
-                        let badge_x = signals_resp.rect.right() - 3.0;
-                        let badge_y = signals_resp.rect.top() + 5.0;
-                        ui.painter().circle_filled(egui::pos2(badge_x, badge_y), 5.0, t.accent);
-                        ui.painter().text(egui::pos2(badge_x, badge_y), egui::Align2::CENTER_CENTER,
-                            &format!("{}", active_count), egui::FontId::monospace(FONT_2XS), t.bg);
+                        // Overlay a Badge at the top-right corner of the Signals button.
+                        // Painter-mode positioning: anchor the badge so its center sits at
+                        // (rect.right() - 3, rect.top() + 5), matching the previous manual
+                        // circle/text overlay. Use `new_child(max_rect=...)` to host the
+                        // flow-layout Badge widget at that absolute position.
+                        use crate::ui_kit::widgets::{Badge, TagTone};
+                        let anchor = egui::pos2(
+                            signals_resp.rect.right() - 3.0,
+                            signals_resp.rect.top() + 5.0,
+                        );
+                        // Min badge size is 14x14; for 2+ digit counts it grows wider.
+                        // Center the badge on `anchor` by giving the child UI a max_rect
+                        // that starts at anchor - half_size. We approximate width by
+                        // digit count (each digit ≈ 6px @ 10px monospace + 10px padding).
+                        let digits = active_count.to_string().len() as f32;
+                        let badge_w = (digits * 6.0 + 10.0).max(14.0);
+                        let badge_h = 14.0_f32;
+                        let badge_rect = egui::Rect::from_center_size(
+                            anchor,
+                            egui::vec2(badge_w, badge_h),
+                        );
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(egui::Rect::from_min_size(
+                                    badge_rect.left_top(),
+                                    egui::vec2(badge_w + 4.0, badge_h + 4.0),
+                                ))
+                                .layout(egui::Layout::left_to_right(egui::Align::Min))
+                        );
+                        Badge::count(active_count as u32).max(99).tone(TagTone::Accent).show(&mut child, t);
                     }
                     if signals_resp.clicked() { watchlist.signals_panel_open = !watchlist.signals_panel_open; }
                 }

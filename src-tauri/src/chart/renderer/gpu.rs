@@ -4027,6 +4027,7 @@ pub(crate) struct Watchlist {
     // Trade Journal
     pub(crate) journal_panel_open: bool,
     pub(crate) journal_entries: Vec<JournalEntry>,
+    pub(crate) journal_page: usize,
     // Book pane tab (Positions/Orders + Journal)
     pub(crate) book_tab: crate::chart_renderer::BookTab,
 }
@@ -4160,6 +4161,7 @@ impl Watchlist {
                playbook_panel_open: false,
                journal_panel_open: false,
                journal_entries: generate_placeholder_journal(),
+               journal_page: 0,
                book_tab: crate::chart_renderer::BookTab::Book }
     }
 

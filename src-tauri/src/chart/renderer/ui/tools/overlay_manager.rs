@@ -7,6 +7,8 @@ use super::super::widgets::buttons::IconBtn;
 use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
 use super::super::widgets::frames::PopupFrame;
+use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Overlay management pane ─────────────────────────────────────────────
@@ -76,11 +78,11 @@ if panes[ap].overlay_editing {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.add_space(m);
-                super::super::widgets::inputs::TextInput::new(&mut panes[ap].overlay_input)
+                Input::new(&mut panes[ap].overlay_input)
                     .placeholder("Symbol...")
-                    .width(240.0 - m * 2.0)
-                    .font_size(font_sm())
-                    .show(ui);
+                    .min_width(240.0 - m * 2.0)
+                    .size(KitSize::Sm)
+                    .show(ui, t);
             });
             let query = panes[ap].overlay_input.trim().to_uppercase();
             if !query.is_empty() {

@@ -8,6 +8,8 @@ use super::super::widgets::buttons::{SimpleBtn, IconBtn, TradeBtn};
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::cards::metric_card::MetricCard;
 use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 // ─── Data Structures ────────────────────────────────────────────────────────
 
@@ -271,12 +273,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Symbol").size_px(9.0).color(t.dim));
                     ui.add_space(4.0);
-                    let resp = TextInput::new(&mut watchlist.spread_state.symbol)
-                        .width(80.0)
-                        .margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
-                        .theme(t)
-                        .show(ui);
-                    if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    let resp = Input::new(&mut watchlist.spread_state.symbol)
+                        .min_width(80.0)
+                        .size(KitSize::Sm)
+                        .show(ui, t);
+                    if resp.submitted {
                         watchlist.spread_state.symbol = watchlist.spread_state.symbol.to_uppercase();
                     }
                     // "Use active" chip
@@ -379,11 +380,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         }
                         // Strike
                         let mut strike_str = format!("{:.0}", leg.strike);
-                        let strike_resp = TextInput::new(&mut strike_str)
-                            .width(44.0).margin(egui::Margin::symmetric(gap_xs() as i8, 1))
-                            .theme(t)
-                            .show(ui);
-                        if strike_resp.changed() {
+                        let strike_resp = Input::new(&mut strike_str)
+                            .min_width(44.0)
+                            .size(KitSize::Xs)
+                            .show(ui, t);
+                        if strike_resp.response.changed() {
                             if let Ok(v) = strike_str.parse::<f32>() { leg.strike = v; }
                         }
                         // Expiry combo

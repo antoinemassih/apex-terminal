@@ -9,6 +9,8 @@ use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::widgets::text::SectionLabelSize;
+use crate::ui_kit::widgets::{Alert, Progress};
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     if !watchlist.apex_diag_open { return; }
@@ -100,23 +102,47 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
     });
     ui.horizontal(|ui| {
         ui.add(super::super::widgets::text::MonospaceCode::new("breaker").color(t.dim));
-        if let Some(remaining) = cooldown {
+        if cooldown.is_some() {
             pill(ui, "open", t.bear);
-            ui.add(super::super::widgets::text::MonospaceCode::new(&format!("cooldown {}s", remaining.as_secs())).color(t.dim));
         } else {
             pill(ui, "closed", t.bull);
         }
         ui.add(super::super::widgets::text::MonospaceCode::new(&format!("fails={fails}")).color(t.dim));
     });
 
+    // When breaker is open, surface it as a banner with cooldown progress.
+    // 30s is the COOLDOWN constant in apex_data::rest.
+    if let Some(remaining) = cooldown {
+        const COOLDOWN_SECS: f32 = 30.0;
+        let remaining_s = remaining.as_secs_f32();
+        let elapsed_frac = (1.0 - (remaining_s / COOLDOWN_SECS)).clamp(0.0, 1.0);
+        Alert::warn(format!(
+            "REST circuit-breaker open after {fails} consecutive failures. \
+             Probing again in {}s.",
+            remaining.as_secs()
+        ))
+        .title("Circuit Breaker Open")
+        .show(ui, t);
+        ui.add_space(gap_xs());
+        Progress::linear(elapsed_frac).size(KitSize::Sm).show(ui, t);
+    }
+
     if let Some(h) = crate::apex_data::live_state::get_health() {
-        ui.horizontal(|ui| {
-            ui.add(super::super::widgets::text::MonospaceCode::new("health").color(t.dim));
-            pill(ui, if h.ready { "ready" } else { "not ready" },
-                 if h.ready { t.bull } else { t.warn });
-            ui.add(super::super::widgets::text::MonospaceCode::new(&format!("tick age {}ms, redis={} questdb={} feeds {}/{}",
-                h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total)).color(t.dim));
-        });
+        if h.ready {
+            ui.horizontal(|ui| {
+                ui.add(super::super::widgets::text::MonospaceCode::new("health").color(t.dim));
+                pill(ui, "ready", t.bull);
+                ui.add(super::super::widgets::text::MonospaceCode::new(&format!("tick age {}ms, redis={} questdb={} feeds {}/{}",
+                    h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total)).color(t.dim));
+            });
+        } else {
+            Alert::warn(format!(
+                "tick age {}ms, redis={} questdb={} feeds {}/{}",
+                h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total
+            ))
+            .title("Health Not Ready")
+            .show(ui, t);
+        }
     } else {
         kv(ui, "health ", "(no response yet)", t, Some(t.dim));
     }
@@ -135,6 +161,14 @@ fn section_rest_stats(ui: &mut egui::Ui, t: &Theme) {
         kv(ui, "parse",  &format!("{parse_err} ({:.0}%)", pct(parse_err)), t, Some(t.bear)); ui.add_space(gap_lg());
         kv(ui, "skip",   &format!("{skipped} ({:.0}%)",   pct(skipped)), t, Some(t.dim));
     });
+    if total > 0 {
+        ui.add_space(gap_xs());
+        ui.horizontal(|ui| {
+            ui.add(super::super::widgets::text::MonospaceCode::new("ok rate").color(t.dim));
+            ui.add_space(gap_xs());
+            Progress::linear((pct(ok) / 100.0) as f32).size(KitSize::Sm).show(ui, t);
+        });
+    }
 }
 
 fn section_ws_subs(ui: &mut egui::Ui, t: &Theme) {

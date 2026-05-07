@@ -4,6 +4,9 @@
 //! Opens as a left sidebar via the toolbar button next to Magnet.
 
 use egui;
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Chart, Theme, DrawingAction, drawing_to_db};
 use super::super::super::DrawingKind;
@@ -14,6 +17,43 @@ use super::super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, Men
 use super::super::widgets::frames::SidePanelFrame;
 use super::super::widgets::headers::PanelHeaderWithClose;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{Tree, TreeNode, TreeState};
+
+// ─── Tree node for indicators / overlays sections ────────────────────────────
+//
+// We migrate the flat INDICATORS and OVERLAYS sections to the new Tree widget.
+// Each section is a depth-0 root node ("INDICATORS" / "OVERLAYS"); the actual
+// indicators / overlays are depth-1 leaves underneath. Drawings are kept on the
+// legacy paint path (2-level groups + bulk header actions + complex context
+// menus do not map cleanly onto Tree's `item_render` signature).
+#[derive(Clone)]
+enum ObjectTreeKind {
+    IndicatorRoot,
+    Indicator(u32),  // indicator.id
+    OverlayRoot,
+    Overlay(usize),  // index into chart.symbol_overlays
+}
+
+struct ObjectTreeItem {
+    id: u64,
+    depth: usize,
+    has_children: bool,
+    label: String,
+    kind: ObjectTreeKind,
+}
+
+impl TreeNode for ObjectTreeItem {
+    fn id(&self) -> u64 { self.id }
+    fn depth(&self) -> usize { self.depth }
+    fn has_children(&self) -> bool { self.has_children }
+    fn label(&self) -> &str { &self.label }
+}
+
+fn hash_str(s: &str) -> u64 {
+    let mut h = DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
 
 fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
 
@@ -530,94 +570,181 @@ egui::SidePanel::left("object_tree_panel")
         ui.add_space(4.0);
 
         // ════════════════════════════════════════════════════════════════
-        // ── INDICATORS section ──
+        // ── INDICATORS + OVERLAYS sections (migrated to ui_kit Tree) ──
         // ════════════════════════════════════════════════════════════════
-        ui.add(MonospaceCode::new("INDICATORS").size_px(font_sm()).color(t.dim));
-        ui.add_space(4.0);
-        if chart.indicators.is_empty() {
-            ui.add(MonospaceCode::new("  No indicators").size_px(font_sm()).color(t.dim.gamma_multiply(0.5)));
-        } else {
-            let mut edit_ind: Option<u32> = None;
-            for ind in chart.indicators.iter_mut() {
-                let ic = hex_to_color(&ind.color, 1.0);
-                let label = format!("{} {}", ind.kind.label(), ind.period);
-                let visible = ind.visible;
-                let label_col = if visible { egui::Color32::from_white_alpha(180) }
-                    else { t.dim.gamma_multiply(0.3) };
-                let mut toggled = false;
-                let row_resp = ListRow::new(18.0)
-                    .theme(t)
-                    .left_painter_circle(ic)
-                    .body(|ui| {
-                        ui.add(MonospaceCode::new(&label).size_px(font_sm()).color(label_col));
-                    })
-                    .right_actions(|ui| {
-                        ui.spacing_mut().item_spacing.x = 1.0;
-                        let eye_icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-                        let eye_col = if visible { t.dim } else { t.dim.gamma_multiply(0.3) };
-                        if ui.add(IconBtn::new(eye_icon).size(font_xs()).color(eye_col)).clicked() {
-                            toggled = true;
-                        }
-                    })
-                    .trailing_width(40.0)
-                    .show(ui);
-                if toggled { ind.visible = !ind.visible; }
-                if row_resp.clicked() { edit_ind = Some(ind.id); }
-            }
-            if let Some(id) = edit_ind {
-                chart.editing_indicator = Some(id);
+        //
+        // Build a flat pre-order list with two roots ("INDICATORS",
+        // "OVERLAYS") and the indicators / overlays as depth-1 leaves.
+        // TreeState is persisted in egui memory keyed off the panel ID.
+        let ind_root_id = hash_str("otree::ind_root");
+        let ov_root_id = hash_str("otree::ov_root");
+        let mut tree_items: Vec<ObjectTreeItem> = Vec::with_capacity(
+            2 + chart.indicators.len() + chart.symbol_overlays.len(),
+        );
+        tree_items.push(ObjectTreeItem {
+            id: ind_root_id,
+            depth: 0,
+            has_children: !chart.indicators.is_empty(),
+            label: format!("INDICATORS ({})", chart.indicators.len()),
+            kind: ObjectTreeKind::IndicatorRoot,
+        });
+        for ind in &chart.indicators {
+            tree_items.push(ObjectTreeItem {
+                id: hash_str(&format!("otree::ind::{}", ind.id)),
+                depth: 1,
+                has_children: false,
+                label: format!("{} {}", ind.kind.label(), ind.period),
+                kind: ObjectTreeKind::Indicator(ind.id),
+            });
+        }
+        tree_items.push(ObjectTreeItem {
+            id: ov_root_id,
+            depth: 0,
+            has_children: !chart.symbol_overlays.is_empty(),
+            label: format!("OVERLAYS ({})", chart.symbol_overlays.len()),
+            kind: ObjectTreeKind::OverlayRoot,
+        });
+        for (oi, ov) in chart.symbol_overlays.iter().enumerate() {
+            tree_items.push(ObjectTreeItem {
+                id: hash_str(&format!("otree::ov::{}::{}", oi, ov.symbol)),
+                depth: 1,
+                has_children: false,
+                label: ov.symbol.clone(),
+                kind: ObjectTreeKind::Overlay(oi),
+            });
+        }
+
+        // Per-pane TreeState in egui memory. Roots default to expanded.
+        let tree_state_id = ui.make_persistent_id(("otree_state", ap));
+        let mut tree_state: TreeState = ui.data_mut(|d| {
+            d.get_persisted::<TreeState>(tree_state_id).unwrap_or_else(|| {
+                let mut s = TreeState::default();
+                s.expand(ind_root_id);
+                s.expand(ov_root_id);
+                s
+            })
+        });
+
+        // Snapshot indicator data we need inside the closure (color +
+        // visibility) so we don't have to borrow chart.indicators while
+        // mutating via deferred actions.
+        let ind_snaps: Vec<(u32, egui::Color32, bool)> = chart.indicators.iter()
+            .map(|i| (i.id, hex_to_color(&i.color, 1.0), i.visible))
+            .collect();
+        let ov_snaps: Vec<(usize, egui::Color32, bool)> = chart.symbol_overlays.iter()
+            .enumerate()
+            .map(|(idx, o)| (idx, hex_to_color(&o.color, 1.0), o.visible))
+            .collect();
+
+        // Deferred actions emitted from the per-row item_render closure.
+        // RefCell because the closure type required by `Tree::item_render`
+        // is `Fn`, not `FnMut`.
+        let toggle_ind_id: RefCell<Option<u32>> = RefCell::new(None);
+        let edit_ind_id: RefCell<Option<u32>> = RefCell::new(None);
+        let toggle_ov_idx: RefCell<Option<usize>> = RefCell::new(None);
+        let delete_ov_idx: RefCell<Option<usize>> = RefCell::new(None);
+
+        // Capture theme colors needed inside the closure. Theme isn't Copy
+        // and we only need a handful of fields, so we destructure to plain
+        // Color32 values that can be moved into the Fn closure.
+        let theme_dim = t.dim;
+        let theme_bear = t.bear;
+        let tree_resp = Tree::new(&mut tree_state, &tree_items)
+            .row_height(20.0)
+            .indent_size(12.0)
+            .show_indent_guides(false)
+            .item_render(|ui, _theme, item, _indent_x| {
+                match &item.kind {
+                    ObjectTreeKind::IndicatorRoot | ObjectTreeKind::OverlayRoot => {
+                        ui.add(MonospaceCode::new(&item.label).size_px(font_sm()).color(theme_dim));
+                    }
+                    ObjectTreeKind::Indicator(ind_id) => {
+                        let ind_id = *ind_id;
+                        let snap = ind_snaps.iter().find(|s| s.0 == ind_id);
+                        let (color, visible) = snap.map(|s| (s.1, s.2)).unwrap_or((theme_dim, true));
+                        // colored dot
+                        let (dot_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
+                        ui.painter().circle_filled(dot_r.center(), 3.0, color);
+                        let label_col = if visible { egui::Color32::from_white_alpha(180) }
+                            else { theme_dim.gamma_multiply(0.3) };
+                        ui.add(MonospaceCode::new(&item.label).size_px(font_sm()).color(label_col));
+                        // right-aligned eye toggle
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = 1.0;
+                            let eye_icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
+                            let eye_col = if visible { theme_dim } else { theme_dim.gamma_multiply(0.3) };
+                            if ui.add(IconBtn::new(eye_icon).size(font_xs()).color(eye_col)).clicked() {
+                                *toggle_ind_id.borrow_mut() = Some(ind_id);
+                            }
+                        });
+                    }
+                    ObjectTreeKind::Overlay(oi) => {
+                        let oi = *oi;
+                        let snap = ov_snaps.iter().find(|s| s.0 == oi);
+                        let (color, visible) = snap.map(|s| (s.1, s.2)).unwrap_or((theme_dim, true));
+                        let (dot_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
+                        ui.painter().circle_filled(dot_r.center(), 3.0, color);
+                        let label_col = if visible { egui::Color32::from_white_alpha(180) }
+                            else { theme_dim.gamma_multiply(0.3) };
+                        ui.add(MonospaceCode::new(&item.label).size_px(font_sm()).color(label_col));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = 1.0;
+                            if ui.add(IconBtn::new(Icon::TRASH).size(font_xs()).color(theme_bear)).clicked() {
+                                *delete_ov_idx.borrow_mut() = Some(oi);
+                            }
+                            let eye_icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
+                            let eye_col = if visible { theme_dim } else { theme_dim.gamma_multiply(0.3) };
+                            if ui.add(IconBtn::new(eye_icon).size(font_xs()).color(eye_col)).clicked() {
+                                *toggle_ov_idx.borrow_mut() = Some(oi);
+                            }
+                        });
+                    }
+                }
+            })
+            .show(ui, t);
+
+        // Row click on an indicator opens its editor; click on an overlay
+        // is a no-op (overlay editing isn't a thing yet — selection only).
+        if let Some(clicked) = tree_resp.clicked {
+            for it in &tree_items {
+                if it.id == clicked {
+                    if let ObjectTreeKind::Indicator(id) = it.kind { *edit_ind_id.borrow_mut() = Some(id); }
+                    break;
+                }
             }
         }
 
-        ui.add_space(8.0);
-        ui.add(egui::Separator::default().spacing(2.0));
-        ui.add_space(4.0);
+        // Persist tree state.
+        ui.data_mut(|d| d.insert_persisted(tree_state_id, tree_state));
 
-        // ════════════════════════════════════════════════════════════════
-        // ── OVERLAYS section ──
-        // ════════════════════════════════════════════════════════════════
-        ui.add(MonospaceCode::new("OVERLAYS").size_px(font_sm()).color(t.dim));
-        ui.add_space(4.0);
-        if chart.symbol_overlays.is_empty() {
-            ui.add(MonospaceCode::new("  No overlays").size_px(font_sm()).color(t.dim.gamma_multiply(0.5)));
-        } else {
-            let mut del_ov: Option<usize> = None;
-            let mut toggle_ov: Option<usize> = None;
-            // Snapshot data for iteration to avoid borrow conflicts
-            let ov_snap: Vec<(String, String, bool)> = chart.symbol_overlays.iter()
-                .map(|ov| (ov.symbol.clone(), ov.color.clone(), ov.visible)).collect();
-            for (oi, (sym_ov, color, vis)) in ov_snap.iter().enumerate() {
-                let oc = hex_to_color(color, 1.0);
-                let vis = *vis;
-                let label_col = if vis { egui::Color32::from_white_alpha(180) }
-                    else { t.dim.gamma_multiply(0.3) };
-                let sym_ov_ref = sym_ov.as_str();
-                ListRow::new(18.0)
-                    .theme(t)
-                    .left_painter_circle(oc)
-                    .body(|ui| {
-                        ui.add(MonospaceCode::new(sym_ov_ref).size_px(font_sm()).color(label_col));
-                    })
-                    .right_actions(|ui| {
-                        ui.spacing_mut().item_spacing.x = 1.0;
-                        if ui.add(IconBtn::new(Icon::TRASH).size(font_xs()).color(t.bear)).clicked() {
-                            del_ov = Some(oi);
-                        }
-                        let eye_icon = if vis { Icon::EYE } else { Icon::EYE_SLASH };
-                        let eye_col = if vis { t.dim } else { t.dim.gamma_multiply(0.3) };
-                        if ui.add(IconBtn::new(eye_icon).size(font_xs()).color(eye_col)).clicked() {
-                            toggle_ov = Some(oi);
-                        }
-                    })
-                    .trailing_width(60.0)
-                    .show(ui);
+        // Apply deferred mutations.
+        if let Some(id) = toggle_ind_id.into_inner() {
+            if let Some(ind) = chart.indicators.iter_mut().find(|i| i.id == id) {
+                ind.visible = !ind.visible;
             }
-            if let Some(idx) = toggle_ov {
+        }
+        if let Some(id) = edit_ind_id.into_inner() {
+            chart.editing_indicator = Some(id);
+        }
+        if let Some(idx) = toggle_ov_idx.into_inner() {
+            if idx < chart.symbol_overlays.len() {
                 chart.symbol_overlays[idx].visible = !chart.symbol_overlays[idx].visible;
             }
-            if let Some(idx) = del_ov {
+        }
+        if let Some(idx) = delete_ov_idx.into_inner() {
+            if idx < chart.symbol_overlays.len() {
                 chart.symbol_overlays.remove(idx);
             }
+        }
+
+        // Empty-state placeholders — Tree itself shows nothing when a root
+        // has no children, so we mimic the previous "  No indicators" /
+        // "  No overlays" hint inline.
+        if chart.indicators.is_empty() {
+            ui.add(MonospaceCode::new("  No indicators").size_px(font_sm()).color(t.dim.gamma_multiply(0.5)));
+        }
+        if chart.symbol_overlays.is_empty() {
+            ui.add(MonospaceCode::new("  No overlays").size_px(font_sm()).color(t.dim.gamma_multiply(0.5)));
         }
 
         ui.add_space(8.0);

@@ -6946,12 +6946,17 @@ fn render_chart_pane(
                             else if v >= 1_000.0 { format!("Vol {:.1}K", v / 1_000.0) }
                             else { format!("Vol {:.0}", v) };
 
-                        // Build lines: compact OHLC + volume + change
+                        // Build lines: compact OHLC + volume + change.
+                        // Token alphas: text-primary uses `alpha_solid` (200) for
+                        // the OHLC rows, `alpha_heavy` (120) for secondary like
+                        // volume.
+                        let primary_text = color_alpha(t.text, style::alpha_solid());
+                        let secondary_text = color_alpha(t.text, style::alpha_heavy());
                         let mut tip_lines: Vec<(String, egui::Color32)> = vec![
-                            (format!("O {:.2}  H {:.2}", o, h), color_alpha(t.text,180)),
-                            (format!("L {:.2}  C {:.2}", l, c), color_alpha(t.text,180)),
+                            (format!("O {:.2}  H {:.2}", o, h), primary_text),
+                            (format!("L {:.2}  C {:.2}", l, c), primary_text),
                             (format!("{:+.2} ({:+.1}%)", change, pct), chg_col),
-                            (vol_str, color_alpha(t.text,140)),
+                            (vol_str, secondary_text),
                         ];
 
                         // Volume X-Ray — buy/sell split, delta, RVOL
@@ -6970,7 +6975,7 @@ fn render_chart_pane(
                             } else { v };
                             let rvol = if avg_vol > 0.0 { v / avg_vol } else { 1.0 };
 
-                            tip_lines.push(("---".into(), color_alpha(t.text, 40)));
+                            tip_lines.push(("---".into(), color_alpha(t.text, style::alpha_muted())));
 
                             // Buy/Sell bar visual as text
                             let buy_pct = (buy_ratio * 100.0) as u32;
@@ -7010,13 +7015,15 @@ fn render_chart_pane(
                             let period = ind.period;
                             let ind_color = hex_to_color(&ind.color, 1.0);
                             let is_hovered = hovered_ind_id == Some(ind.id);
-                            let alpha = if is_hovered { 255u8 } else { 160 };
+                            // Hovered indicator gets full color, others get
+                            // `alpha_solid` (200) — token-aligned.
+                            let alpha = if is_hovered { 255u8 } else { style::alpha_solid() };
                             let col = egui::Color32::from_rgba_unmultiplied(ind_color.r(), ind_color.g(), ind_color.b(), alpha);
                             match ind.kind {
                                 IndicatorType::MACD => {
                                     if let (Some(&mv), Some(&sv)) = (ind.values.get(bar_idx), ind.values2.get(bar_idx)) {
                                         if !mv.is_nan() && !sv.is_nan() {
-                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text,40))); has_ind = true; }
+                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text, style::alpha_muted()))); has_ind = true; }
                                             let prefix = if is_hovered { "\u{25B6} " } else { "" };
                                             tip_lines.push((format!("{}MACD {:.2}  S {:.2}", prefix, mv, sv), col));
                                         }
@@ -7026,7 +7033,7 @@ fn render_chart_pane(
                                 | IndicatorType::CCI | IndicatorType::WilliamsR | IndicatorType::ATR => {
                                     if let Some(&v) = ind.values.get(bar_idx) {
                                         if !v.is_nan() {
-                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text,40))); has_ind = true; }
+                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text, style::alpha_muted()))); has_ind = true; }
                                             let prefix = if is_hovered { "\u{25B6} " } else { "" };
                                             tip_lines.push((format!("{}{} {:.1}", prefix, label, v), col));
                                         }
@@ -7036,7 +7043,7 @@ fn render_chart_pane(
                                     // Overlay indicators (SMA, EMA, BB, etc.)
                                     if let Some(&v) = ind.values.get(bar_idx) {
                                         if !v.is_nan() {
-                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text,40))); has_ind = true; }
+                                            if !has_ind { tip_lines.push(("---".into(), color_alpha(t.text, style::alpha_muted()))); has_ind = true; }
                                             let prefix = if is_hovered { "\u{25B6} " } else { "" };
                                             tip_lines.push((format!("{}{}{} {:.2}", prefix, label, period, v), col));
                                         }
@@ -7045,40 +7052,33 @@ fn render_chart_pane(
                             }
                         }
 
-                        let line_h = 12.0;
-                        let tip_h = tip_lines.len() as f32 * line_h + 8.0;
-                        let tip_w = 170.0;
+                        // Layout via spacing tokens — line height = gap_md (12),
+                        // padding = gap_xs (4), label inset = gap_sm (6 ≈ ).
+                        let line_h = style::gap_md();
+                        let pad_v = style::gap_xs();
+                        let pad_label = 6.0_f32; // gap_sm is 8; 6 reads tighter
+                        let tip_h = tip_lines.len() as f32 * line_h + pad_v * 2.0;
+                        let tip_w = 170.0; // content-driven max could come later
                         let tx = if tooltip_x + tip_w > rect.left() + cw { pos.x - tip_w - 16.0 } else { tooltip_x };
                         let ty = (tooltip_y - tip_h).max(rect.top() + pt).min(rect.top() + pt + ch - tip_h);
                         let tip_rect = egui::Rect::from_min_size(egui::pos2(tx, ty), egui::vec2(tip_w, tip_h));
-                        // Rich tooltip: shadow + bevel + crisp border (style-aware)
-                        let tip_st = style::current();
-                        let tip_cr = tip_st.r_md as f32;
-                        let tip_cr_egui = egui::CornerRadius::same(tip_st.r_md);
-                        let tip_stroke_w = if tip_st.hairline_borders { tip_st.stroke_std } else { style::stroke_thin() };
-                        let tip_border_alpha = if t.is_light() { 50u8 } else { 40u8 };
-                        if tip_st.shadows_enabled {
-                            painter.rect_filled(tip_rect.translate(egui::vec2(0.0, style::shadow_offset())).expand(1.0), tip_cr,
-                                egui::Color32::from_rgba_unmultiplied(0, 0, 0, style::shadow_alpha()));
-                        }
-                        painter.rect_filled(tip_rect, tip_cr,
-                            egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 240));
-                        // Top bevel (only for non-Meridien styles that have rounded corners)
-                        if tip_st.r_md > 0 {
-                            painter.rect_filled(egui::Rect::from_min_max(tip_rect.min, egui::pos2(tip_rect.right(), tip_rect.top() + 1.0)),
-                                egui::CornerRadius { nw: tip_st.r_md, ne: tip_st.r_md, sw: 0, se: 0 },
-                                egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 30 } else { 8 }));
-                        }
-                        painter.rect_stroke(tip_rect, tip_cr_egui,
-                            egui::Stroke::new(tip_stroke_w, color_alpha(t.toolbar_border, tip_border_alpha)),
-                            egui::StrokeKind::Outside);
+                        // Tooltip chrome (shadow + surface fill + bevel + border)
+                        // owned by the ui_kit painter-mode helper.
+                        crate::ui_kit::widgets::tooltip::paint_tooltip_card(&painter, tip_rect, t);
+                        let sep_color = color_alpha(t.text, style::alpha_tint());
                         for (i, (line, col)) in tip_lines.iter().enumerate() {
                             if line == "---" {
-                                let sep_y = ty + 4.0 + i as f32 * line_h + line_h / 2.0;
-                                painter.line_segment([egui::pos2(tx + 4.0, sep_y), egui::pos2(tx + tip_w - 4.0, sep_y)],
-                                    egui::Stroke::new(0.5, color_alpha(t.text,30)));
+                                let sep_y = ty + pad_v + i as f32 * line_h + line_h / 2.0;
+                                painter.line_segment(
+                                    [egui::pos2(tx + pad_v, sep_y),
+                                     egui::pos2(tx + tip_w - pad_v, sep_y)],
+                                    egui::Stroke::new(style::stroke_thin(), sep_color),
+                                );
                             } else {
-                                painter.text(egui::pos2(tx + 6.0, ty + 4.0 + i as f32 * line_h + line_h / 2.0), egui::Align2::LEFT_CENTER, line, font.clone(), *col);
+                                painter.text(
+                                    egui::pos2(tx + pad_label, ty + pad_v + i as f32 * line_h + line_h / 2.0),
+                                    egui::Align2::LEFT_CENTER, line, font.clone(), *col,
+                                );
                             }
                         }
                     }

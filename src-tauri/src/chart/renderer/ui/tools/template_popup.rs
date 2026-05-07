@@ -5,6 +5,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, VolumeProfileMode, Indicator, IndicatorType, INDICATOR_COLORS};
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -153,11 +155,11 @@ pub(crate) fn draw(
 
                         // Save Current section
                         ui.horizontal(|ui| {
-                            super::super::widgets::inputs::TextInput::new(&mut panes[pi].template_save_name)
+                            Input::new(&mut panes[pi].template_save_name)
                                 .placeholder("Template name…")
-                                .width(160.0)
-                                .font_size(FONT_SM)
-                                .show(ui);
+                                .min_width(160.0)
+                                .size(KitSize::Sm)
+                                .show(ui, t);
                             let can_save = !panes[pi].template_save_name.trim().is_empty();
                             if can_save {
                                 if small_action_btn(ui, "Save", t.accent) {
