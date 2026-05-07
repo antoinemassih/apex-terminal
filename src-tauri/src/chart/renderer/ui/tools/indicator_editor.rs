@@ -3,7 +3,8 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::buttons::ChromeBtn;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::form::{FormRow, IndicatorParamRow, IndicatorParamRowF};
 use super::super::widgets::inputs::{ColorSwatchPicker, ThicknessPicker};
 use super::super::widgets::modal::{Modal, Anchor, FrameKind, HeaderStyle};
@@ -390,17 +391,25 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     ui.add_space(m);
                     let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
                     let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
-                    let vr = ui.add(ChromeBtn::new(egui::RichText::new(vis_icon).size(font_sm()).color(vis_fg))
+                    let vr = ui.add(Button::icon(vis_icon)
+                        .variant(Variant::Chrome)
+                        .glyph_color(vis_fg)
                         .fill(if ind.visible { color_alpha(t.toolbar_border, alpha_soft()) } else { egui::Color32::TRANSPARENT })
-                        .corner_radius(r_sm_cr()).min_size(egui::vec2(24.0, 22.0)));
+                        .corner_radius(current().r_sm as f32)
+                        .min_size(egui::vec2(24.0, 22.0))
+                        .frameless(true));
                     if vr.on_hover_text("Toggle Visibility").clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         let del_color = COLOR_DANGER;
-                        let dr = ui.add(ChromeBtn::new(egui::RichText::new(Icon::TRASH).size(font_sm()).color(del_color))
-                            .fill(color_alpha(del_color, alpha_ghost())).corner_radius(r_sm_cr())
+                        let dr = ui.add(Button::icon(Icon::TRASH)
+                            .variant(Variant::Chrome)
+                            .glyph_color(del_color)
+                            .fill(color_alpha(del_color, alpha_ghost()))
+                            .corner_radius(current().r_sm as f32)
                             .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
-                            .min_size(egui::vec2(24.0, 22.0)));
+                            .min_size(egui::vec2(24.0, 22.0))
+                            .frameless(true));
                         if dr.on_hover_text("Delete Indicator").clicked() {
                             delete_id = Some(edit_id); close_editor = true;
                         }

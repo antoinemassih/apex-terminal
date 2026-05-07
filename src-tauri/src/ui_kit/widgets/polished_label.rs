@@ -32,9 +32,6 @@
 //! that adopt `PolishedLabel` now will pick up real subpixel AA when
 //! Phase 2 lands without source changes.
 
-use std::sync::OnceLock;
-use std::sync::Mutex;
-
 use egui::{Color32, Response, Ui};
 
 use super::label::Label;
@@ -53,7 +50,6 @@ pub enum FontWeight {
 }
 
 impl FontWeight {
-    #[allow(dead_code)] // used by Phase 2 pipeline
     fn to_cosmic(self) -> cosmic_text::Weight {
         match self {
             FontWeight::Regular => cosmic_text::Weight::NORMAL,
@@ -100,16 +96,51 @@ impl<'a> PolishedLabel<'a> {
     }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        // Phase 1: exercise the cosmic-text shaper to confirm the dep
-        // links and to keep the integration warm. The shaped width is
-        // discarded — Phase 2 will use it for layout. We swallow any
-        // panics defensively because cosmic-text's first call lazily
-        // builds a system font db which can be slow / fail on locked
-        // appdata directories.
-        let _ = shape_width_hint(&self.text, self.size.font_size(), self.weight);
+        // Phase 2: real cosmic-text path. Shape with cosmic-text +
+        // rasterize via swash, upload glyph bitmaps into a managed
+        // egui atlas, emit a `Mesh` per atlas page. See
+        // `super::text_engine` for the pipeline; v1 honesty caveat
+        // (grayscale-at-atlas-boundary) documented there and in the
+        // plan doc.
+        let size_pt = self.size.font_size();
+        let color = self.color.unwrap_or_else(|| theme.text());
+        let family = cosmic_text::Family::SansSerif;
+        let weight = self.weight.to_cosmic();
 
-        // Phase 1 fallback: paint with the standard label so the build
-        // is honest and the widget renders something usable today.
+        let mesh_result = {
+            let engine_lock = super::text_engine::engine();
+            let mut engine = match engine_lock.lock() {
+                Ok(g) => g,
+                Err(_) => return self.fallback_show(ui, theme),
+            };
+            engine.shape_and_render(
+                ui.ctx(),
+                egui::pos2(0.0, 0.0),
+                &self.text,
+                size_pt,
+                family,
+                weight,
+                color,
+            )
+        };
+
+        let (meshes, size) = match mesh_result {
+            Some(r) => r,
+            None => return self.fallback_show(ui, theme),
+        };
+
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let offset = rect.min.to_vec2();
+        for mut mesh in meshes {
+            for v in mesh.vertices.iter_mut() {
+                v.pos += offset;
+            }
+            ui.painter().add(egui::Shape::Mesh(mesh.into()));
+        }
+        response
+    }
+
+    fn fallback_show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         let mut fallback = Label::new(self.text.clone()).size(self.size);
         if let Some(c) = self.color {
             fallback = fallback.color(c);
@@ -126,45 +157,6 @@ impl<'a> egui::Widget for PolishedLabel<'a> {
         let theme = &crate::chart_renderer::gpu::THEMES[0];
         self.show(ui, theme)
     }
-}
-
-// ---------------------------------------------------------------------
-// cosmic-text plumbing (Phase 1 — measurement only)
-// ---------------------------------------------------------------------
-
-/// Lazy global `FontSystem`. cosmic-text recommends one per app; building
-/// it scans the system font directories which is expensive (10–100 ms).
-fn font_system() -> &'static Mutex<cosmic_text::FontSystem> {
-    static SYS: OnceLock<Mutex<cosmic_text::FontSystem>> = OnceLock::new();
-    SYS.get_or_init(|| {
-        // `new()` loads system fonts. Phase 2 will additionally feed
-        // our 6 shipped TTFs via `db_mut().load_font_data(...)` so we
-        // don't depend on the user having Inter installed.
-        Mutex::new(cosmic_text::FontSystem::new())
-    })
-}
-
-/// Shape `text` and return the advance width in pixels. Used in Phase 1
-/// only to prove the dep works; Phase 2 will return a full layout.
-#[allow(dead_code)]
-fn shape_width_hint(text: &str, px: f32, weight: FontWeight) -> f32 {
-    use cosmic_text::{Attrs, Buffer, Family, Metrics, Shaping};
-
-    let Ok(mut sys) = font_system().lock() else {
-        return 0.0;
-    };
-    let metrics = Metrics::new(px, px * 1.2);
-    let mut buffer = Buffer::new(&mut sys, metrics);
-    let attrs = Attrs::new()
-        .family(Family::SansSerif)
-        .weight(weight.to_cosmic());
-    buffer.set_text(&mut sys, text, attrs, Shaping::Advanced);
-    // Sum of glyph advances on line 0.
-    buffer
-        .layout_runs()
-        .next()
-        .map(|run| run.line_w)
-        .unwrap_or(0.0)
 }
 
 // ---------------------------------------------------------------------

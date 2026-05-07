@@ -9,7 +9,8 @@ use super::super::widgets::inputs::TextInput;
 use super::super::widgets::frames::PopupFrame;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
-use super::super::widgets::buttons::{ChromeBtn, ActionBtn};
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::cards::Card;
 use super::super::widgets::headers::PanelHeaderWithClose;
@@ -128,11 +129,10 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.horizontal(|ui| {
         ui.add(MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
         for (name, source) in PRESETS {
-            let btn = ui.add(ChromeBtn::new(
-                egui::RichText::new(*name).monospace().size(font_xs()).color(t.accent.gamma_multiply(0.8)))
+            let btn = Button::new(*name).variant(Variant::Chrome).size(Size::Xs).fg(t.accent.gamma_multiply(0.8))
                 .fill(color_alpha(t.accent, 12))
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
-            );
+                .show(ui, t);
             if btn.clicked() { watchlist.script_source = source.to_string(); }
             if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         }
@@ -284,11 +284,10 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                 ui.add(MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
                 ui.add_space(4.0);
                 for (name, source) in PRESETS {
-                    let btn = ui.add(ChromeBtn::new(
-                        egui::RichText::new(*name).monospace().size(font_xs()).color(t.accent.gamma_multiply(0.8)))
+                    let btn = Button::new(*name).variant(Variant::Chrome).size(Size::Xs).fg(t.accent.gamma_multiply(0.8))
                         .fill(color_alpha(t.accent, 12))
                         .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
-                    );
+                        .show(ui, t);
                     if btn.clicked() {
                         watchlist.script_source = source.to_string();
                     }
@@ -620,12 +619,11 @@ fn divider(ui: &mut egui::Ui, w: f32, t: &Theme) {
 
 /// Accent-colored action button for the toolbar row.
 fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme) -> egui::Response {
-    let resp = ui.add(ActionBtn::new(label).color(color));
+    let resp = Button::new(label).variant(Variant::Secondary).simple_treatment(true).fg(color).show(ui, t);
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         ui.painter().rect_filled(resp.rect, r_sm_cr(), color_alpha(color, 8));
     }
-    let _ = t;
     resp
 }
 
@@ -636,12 +634,11 @@ fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: 
     let bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
     let border = if is_active { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_muted()) };
 
-    let resp = ui.add(ChromeBtn::new(
-        egui::RichText::new(label).monospace().size(font_sm()).color(fg))
+    let resp = Button::new(label).variant(Variant::Chrome).size(Size::Sm).fg(fg)
         .fill(bg)
         .stroke(egui::Stroke::new(stroke_thin(), border))
-        .corner_radius(r_md_cr())
-    );
+        .corner_radius(crate::chart_renderer::ui::style::current().r_md as f32)
+        .show(ui, t);
     if resp.clicked() {
         *active = tab;
     }

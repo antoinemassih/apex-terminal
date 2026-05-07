@@ -3,9 +3,10 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::buttons::{SimpleBtn, ChromeBtn};
 use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Hotkey editor: key capture (runs before dialog rendering) ──────────
@@ -97,14 +98,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     if *is_editing {
                         ui.add(BodyLabel::new("Press a key...").size(font_sm()).monospace(true).color(t.accent));
                     } else {
-                        if ui.add(ChromeBtn::new(egui::RichText::new("Edit").monospace().size(font_xs()).color(t.dim)).frameless(true)).clicked() {
+                        if Button::new("Edit").variant(Variant::Chrome).size(Size::Xs).fg(t.dim).frameless(true).show(ui, t).clicked() {
                             watchlist.hotkey_editing_id = Some(*hk_id);
                         }
                     }
                     let key_bg = if *is_editing { color_alpha(t.accent, alpha_tint()) } else { color_alpha(t.toolbar_border, alpha_tint()) };
                     let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
-                    ui.add(ChromeBtn::new(egui::RichText::new(hk_key_name.as_str()).monospace().size(font_sm()).color(key_fg))
-                        .fill(key_bg).corner_radius(r_sm_cr()).min_size(egui::vec2(80.0, 18.0)));
+                    Button::new(hk_key_name.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(key_fg)
+                        .fill(key_bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(80.0, 18.0)).show(ui, t);
                 });
             });
         }
@@ -112,7 +113,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.add_space(gap_lg());
     ui.horizontal(|ui| {
         ui.add_space(gap_lg());
-        if ui.add(SimpleBtn::new("Reset Defaults").color(t.dim)).clicked() {
+        if Button::new("Reset Defaults").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).show(ui, t).clicked() {
             watchlist.hotkeys = default_hotkeys();
         }
     });

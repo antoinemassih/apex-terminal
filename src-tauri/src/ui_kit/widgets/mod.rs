@@ -24,6 +24,7 @@ pub mod radio;
 pub mod input;
 pub mod label;
 pub mod polished_label;
+pub mod text_engine;
 pub mod tag;
 pub mod badge;
 pub mod kbd;

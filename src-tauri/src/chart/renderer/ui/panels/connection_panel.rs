@@ -3,11 +3,10 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::buttons::SimpleBtn;
 use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::Progress;
-use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::{Button, Progress};
+use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::chart_renderer::gpu::APEXIB_URL;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, read_account_data};
 
@@ -38,7 +37,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
                 ui.add_space(m);
                 ui.add(SectionLabel::new("SERVICES").tiny().color(t.dim.gamma_multiply(0.5)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(SimpleBtn::new("diag").color(t.dim)).on_hover_text("ApexData diagnostics panel").clicked() {
+                    if ui.add(Button::new("diag").variant(Variant::Secondary).simple_treatment(true).fg(t.dim)).on_hover_text("ApexData diagnostics panel").clicked() {
                         _watchlist.apex_diag_open = true;
                     }
                 });

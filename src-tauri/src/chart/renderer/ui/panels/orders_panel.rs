@@ -4,8 +4,9 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::frames::PanelFrame;
-use super::super::widgets::buttons::ChromeBtn;
 use super::super::widgets::rows::order_row::{OrderRow, OrderSideTag};
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::headers::PanelHeaderWithTabs;
 use super::super::widgets::text::{self as wtext, MonospaceCode};
 use crate::ui_kit::icons::Icon;
@@ -84,9 +85,13 @@ if watchlist.orders_panel_open {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         // Close button
                                         let close_color = t.bear;
-                                        if ui.add(ChromeBtn::new(egui::RichText::new(Icon::X).size(9.0).color(close_color))
-                                            .fill(color_alpha(close_color, 12)).corner_radius(r_sm_cr())
-                                            .min_size(egui::vec2(18.0, 16.0))).clicked() {
+                                        if ui.add(Button::icon(Icon::X)
+                                            .variant(Variant::Chrome)
+                                            .glyph_color(close_color)
+                                            .fill(color_alpha(close_color, 12))
+                                            .corner_radius(current().r_sm as f32)
+                                            .min_size(egui::vec2(18.0, 16.0))
+                                            .frameless(true)).clicked() {
                                             // Close full position via ApexIB
                                             let sym = pos.symbol.clone();
                                             let qty = pos.qty;
@@ -106,9 +111,13 @@ if watchlist.orders_panel_open {
                                         }
                                         // Close half button
                                         if pos.qty.abs() > 1 {
-                                            if ui.add(ChromeBtn::new(egui::RichText::new("\u{00BD}").size(9.0).color(t.dim))
-                                                .fill(color_alpha(t.toolbar_border, alpha_ghost())).corner_radius(r_sm_cr())
-                                                .min_size(egui::vec2(18.0, 16.0))).clicked() {
+                                            if ui.add(Button::new("\u{00BD}")
+                                                .variant(Variant::Chrome)
+                                                .fg(t.dim)
+                                                .fill(color_alpha(t.toolbar_border, alpha_ghost()))
+                                                .corner_radius(current().r_sm as f32)
+                                                .min_size(egui::vec2(18.0, 16.0))
+                                                .frameless(true)).clicked() {
                                                 let sym = pos.symbol.clone();
                                                 let half = (pos.qty.abs() / 2).max(1);
                                                 let con_id = pos.con_id;
@@ -253,8 +262,11 @@ if watchlist.orders_panel_open {
                     ui.horizontal(|ui| {
                         let check_icon = if all_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
                         let check_color = if all_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
-                        if ui.add(ChromeBtn::new(egui::RichText::new(check_icon).size(10.0).color(check_color))
-                            .frameless(true).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                        if ui.add(Button::icon(check_icon)
+                            .variant(Variant::Chrome)
+                            .glyph_color(check_color)
+                            .frameless(true)
+                            .min_size(egui::vec2(14.0, 14.0))).clicked() {
                             if all_selected {
                                 watchlist.selected_order_ids.clear();
                             } else {

@@ -12,11 +12,10 @@ use super::super::widgets::frames::CompactPanelFrame;
 use super::super::widgets::status::Spinner;
 use super::super::widgets::layout::EmptyState;
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
-use super::super::widgets::buttons::SimpleBtn;
 use super::super::widgets::form::FormRow;
 use super::super::widgets::rows::WatchlistRow;
-use crate::ui_kit::widgets::{Input, Skeleton};
-use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::{Button, Input, Skeleton};
+use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
@@ -132,7 +131,7 @@ pub(crate) fn draw_content(
             });
 
             ui.horizontal(|ui| {
-                if ui.add(SimpleBtn::new("Create").color(t.accent).min_width(60.0)).clicked() {
+                if ui.add(Button::new("Create").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(60.0, 0.0))).clicked() {
                     let name = if watchlist.scanner_new_name.trim().is_empty() {
                         "Custom Scanner".to_string()
                     } else {
@@ -157,7 +156,7 @@ pub(crate) fn draw_content(
                     watchlist.scanner_new_min_volume.clear();
                     watchlist.scanner_builder_open = false;
                 }
-                if ui.add(SimpleBtn::new("Cancel").color(t.dim).min_width(50.0)).clicked() {
+                if ui.add(Button::new("Cancel").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(50.0, 0.0))).clicked() {
                     watchlist.scanner_builder_open = false;
                 }
             });

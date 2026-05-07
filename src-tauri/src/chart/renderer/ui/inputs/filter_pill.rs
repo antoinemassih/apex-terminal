@@ -15,7 +15,8 @@
 use egui::{Response, RichText, Widget};
 use crate::chart_renderer::ui::style::*;
 use crate::chart_renderer::gpu::Theme;
-use super::buttons::ChromeBtn;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 
 #[inline(always)]
 fn ft() -> &'static crate::chart_renderer::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
@@ -56,9 +57,9 @@ impl<'a> Widget for FilterPill<'a> {
             egui::Color32::TRANSPARENT
         };
         ui.add(
-            ChromeBtn::new(RichText::new(self.label).monospace().size(font_xs()).color(col))
+            Button::new(self.label).variant(Variant::Chrome).size(Size::Xs).fg(col)
                 .fill(bg)
-                .corner_radius(r_md_cr())
+                .corner_radius(crate::chart_renderer::ui::style::current().r_md as f32)
                 .min_size(egui::vec2(0.0, 16.0)),
         )
     }

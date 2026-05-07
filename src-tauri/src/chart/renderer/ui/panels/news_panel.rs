@@ -6,10 +6,10 @@ use super::super::widgets as widgets_compat;
 // widgets alias
 #[allow(unused_imports)]
 use super::super::widgets as widgets;
-use super::super::widgets::buttons::ChromeBtn;
 use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::{Watchlist, NewsItem, Theme};
-use crate::ui_kit::widgets::Skeleton;
+use crate::ui_kit::widgets::{Button, Skeleton};
+use crate::ui_kit::widgets::tokens::Variant;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
     if !watchlist.news_open { return; }
@@ -34,12 +34,14 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 ui.add_space(8.0);
                 let filter_label = if watchlist.news_filter_symbol { active_symbol } else { "All" };
                 let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
-                if ui.add(ChromeBtn::new(
-                    egui::RichText::new(filter_label).monospace().size(font_sm_tight()).color(filter_col))
+                if ui.add(Button::new(filter_label)
+                    .variant(Variant::Chrome)
+                    .fg(filter_col)
                     .fill(color_alpha(filter_col, alpha_ghost()))
-                    .corner_radius(r_md_cr())
+                    .corner_radius(current().r_md as f32)
                     .stroke(egui::Stroke::new(stroke_thin(), color_alpha(filter_col, alpha_muted())))
                     .min_size(egui::vec2(0.0, 16.0))
+                    .frameless(true)
                 ).clicked() {
                     watchlist.news_filter_symbol = !watchlist.news_filter_symbol;
                 }

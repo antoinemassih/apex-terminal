@@ -6,6 +6,8 @@ use super::super::super::gpu::{Watchlist, Theme, Chart, THEMES};
 use super::super::super::commands::{self, AppCommand};
 use super::super::widgets::form::{FormRow, FormRowAlign};
 use super::super::widgets::text::{BodyLabel, SectionLabel};
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 
 /// Build a FormRow pre-configured to match the legacy `setting_row` look:
 /// 190px label gutter, left-aligned label in white_alpha(180), body right-aligned
@@ -185,10 +187,9 @@ SettingsTab::Appearance => {
                     } else {
                         egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted()))
                     };
-                    if ui.add(super::super::widgets::buttons::ChromeBtn::new(
-                            egui::RichText::new(name).monospace().size(FONT_SM).strong().color(fg))
-                        .fill(bg).corner_radius(r_sm_cr()).stroke(stroke)
-                        .min_size(egui::vec2(btn_w, btn_h))).clicked() {
+                    if Button::new(name.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(fg)
+                        .fill(bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).stroke(stroke)
+                        .min_size(egui::vec2(btn_w, btn_h)).show(ui, t).clicked() {
                         commands::push(AppCommand::SetStyleIdx { idx: id_us });
                     }
                 }
@@ -218,9 +219,9 @@ SettingsTab::Appearance => {
             let active = (watchlist.font_scale - ppp).abs() < 0.05;
             let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
             let bg = if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT };
-            if ui.add(super::super::widgets::buttons::ChromeBtn::new(
-                    egui::RichText::new(format!("{}%", label)).monospace().size(FONT_SM).color(fg))
-                .fill(bg).corner_radius(r_sm_cr()).min_size(egui::vec2(34.0, 20.0))).clicked() {
+            let pct_label = format!("{}%", label);
+            if Button::new(pct_label.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(fg)
+                .fill(bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(34.0, 20.0)).show(ui, t).clicked() {
                 watchlist.font_scale = ppp;
             }
         }
@@ -368,9 +369,8 @@ SettingsTab::Chart => {
                         let c = hex_to_color(hex, 1.0);
                         let fg = if active { t.accent } else { egui::Color32::from_white_alpha(120) };
                         let bg = if active { color_alpha(c, alpha_strong()) } else { color_alpha(c, alpha_muted()) };
-                        if ui.add(super::super::widgets::buttons::ChromeBtn::new(
-                                egui::RichText::new(label).monospace().size(FONT_XS).color(fg))
-                            .fill(bg).corner_radius(r_sm_cr()).min_size(egui::vec2(38.0, 18.0))).clicked() {
+                        if Button::new(label).variant(Variant::Chrome).size(Size::Xs).fg(fg)
+                            .fill(bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(38.0, 18.0)).show(ui, t).clicked() {
                             chart.session_bg_color = hex.to_string();
                         }
                     }

@@ -11,8 +11,8 @@ use super::super::widgets as widgets_compat;
 #[allow(unused_imports)]
 use super::super::widgets as widgets;
 use super::super::widgets::inputs::TextInput;
-use crate::ui_kit::widgets::Input;
-use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::{Button, Input};
+use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use super::super::widgets::rows::alert_row::{AlertRow, AlertCmp};
 use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::super::gpu::*;
@@ -96,25 +96,29 @@ fn draw_content_cx(
 
         ui.horizontal(|ui| {
             let above_color = cx.bull;
-            if ui.add(widgets::buttons::ChromeBtn::new(
-                egui::RichText::new(format!("{} Above {:.2}", Icon::ARROW_FAT_UP, input_price))
-                    .monospace().size(font_sm_tight()).color(above_color))
+            let above_label = format!("{} Above {:.2}", Icon::ARROW_FAT_UP, input_price);
+            if ui.add(Button::new(above_label.as_str())
+                .variant(Variant::Chrome)
+                .fg(above_color)
                 .fill(color_alpha(above_color, alpha_ghost()))
-                .corner_radius(r_md_cr())
+                .corner_radius(current().r_md as f32)
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(above_color, alpha_line())))
-                .min_size(egui::vec2(0.0, 20.0))).clicked()
+                .min_size(egui::vec2(0.0, 20.0))
+                .frameless(true)).clicked()
             {
                 cx.dispatch(AppCommand::AddPriceAlert { pane: ap, price: input_price, above: true });
             }
 
             let below_color = cx.bear;
-            if ui.add(widgets::buttons::ChromeBtn::new(
-                egui::RichText::new(format!("{} Below {:.2}", Icon::ARROW_FAT_DOWN, input_price))
-                    .monospace().size(font_sm_tight()).color(below_color))
+            let below_label = format!("{} Below {:.2}", Icon::ARROW_FAT_DOWN, input_price);
+            if ui.add(Button::new(below_label.as_str())
+                .variant(Variant::Chrome)
+                .fg(below_color)
                 .fill(color_alpha(below_color, alpha_ghost()))
-                .corner_radius(r_md_cr())
+                .corner_radius(current().r_md as f32)
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(below_color, alpha_line())))
-                .min_size(egui::vec2(0.0, 20.0))).clicked()
+                .min_size(egui::vec2(0.0, 20.0))
+                .frameless(true)).clicked()
             {
                 cx.dispatch(AppCommand::AddPriceAlert { pane: ap, price: input_price, above: false });
             }

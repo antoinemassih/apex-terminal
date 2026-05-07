@@ -3,12 +3,11 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::buttons::IconBtn;
 use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
 use super::super::widgets::frames::PopupFrame;
-use crate::ui_kit::widgets::Input;
-use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::{Button, Input};
+use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Overlay management pane ─────────────────────────────────────────────
@@ -56,11 +55,11 @@ if panes[ap].overlay_editing {
                     // Candle toggle
                     let candle_icon = if ov_candles { Icon::CHART_BAR } else { Icon::CHART_LINE };
                     let candle_col = if ov_candles { t.accent } else { t.dim.gamma_multiply(0.5) };
-                    if ui.add(IconBtn::new(candle_icon).size(font_sm()).color(candle_col)).clicked() {
+                    if ui.add(Button::icon(candle_icon).variant(Variant::Ghost).glyph_color(candle_col).size(KitSize::Sm)).clicked() {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
                     // Delete
-                    if ui.add(IconBtn::new(Icon::X).size(font_sm()).color(t.bear.gamma_multiply(0.5))).clicked() {
+                    if ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(t.bear.gamma_multiply(0.5)).size(KitSize::Sm)).clicked() {
                         delete_idx = Some(oi);
                     }
                 });
@@ -92,7 +91,7 @@ if panes[ap].overlay_editing {
                     ui.horizontal(|ui| {
                         ui.add_space(m);
                         let search_label = format!("{} — {}", si.symbol, si.name);
-                        if ui.add(super::super::widgets::buttons::SimpleBtn::new(&search_label).color(t.dim).min_width(230.0)).clicked() {
+                        if ui.add(Button::new(search_label.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(230.0, 0.0))).clicked() {
                             let color = OVERLAY_COLORS[panes[ap].symbol_overlays.len() % OVERLAY_COLORS.len()].to_string();
                             panes[ap].symbol_overlays.push(SymbolOverlay {
                                 symbol: si.symbol.to_string(), color, bars: vec![], timestamps: vec![], loading: true, show_candles: false, visible: true,

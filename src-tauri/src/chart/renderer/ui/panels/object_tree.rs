@@ -11,8 +11,9 @@ use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Chart, Theme, DrawingAction, drawing_to_db};
 use super::super::super::DrawingKind;
 use super::super::widgets::rows::ListRow;
-use super::super::widgets::buttons::{IconBtn, SimpleBtn};
 use super::super::widgets::text::MonospaceCode;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 use super::super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
 use super::super::widgets::frames::SidePanelFrame;
 use super::super::widgets::headers::PanelHeaderWithClose;
@@ -184,7 +185,7 @@ egui::SidePanel::left("object_tree_panel")
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Select all button
                 if !chart.drawings.is_empty() {
-                    if ui.add(SimpleBtn::new("All").color(t.dim)).clicked() {
+                    if ui.add(Button::new("All").variant(Variant::Secondary).simple_treatment(true).fg(t.dim)).clicked() {
                         chart.selected_ids = chart.drawings.iter().map(|d| d.id.clone()).collect();
                         chart.selected_id = chart.drawings.first().map(|d| d.id.clone());
                     }
@@ -379,7 +380,7 @@ egui::SidePanel::left("object_tree_panel")
                         ui.spacing_mut().item_spacing.x = 2.0;
                         // Collapse arrow
                         let arrow = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                        if ui.add(IconBtn::new(arrow).size(font_xs()).color(t.dim)).clicked()
+                        if ui.add(Button::icon(arrow).variant(Variant::Ghost).glyph_color(t.dim).size(Size::Xs)).clicked()
                         {
                             collapsed = !collapsed;
                             ui.data_mut(|d| d.insert_persisted(collapse_id, collapsed));
@@ -401,7 +402,8 @@ egui::SidePanel::left("object_tree_panel")
                             ui.spacing_mut().item_spacing.x = 2.0;
                             let vis_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
                             let vis_col = if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim };
-                            if ui.add(IconBtn::new(vis_icon).size(font_2xs()).color(vis_col)).clicked() {
+                            // legacy font_2xs() — Size::Xs is closest available
+                            if ui.add(Button::icon(vis_icon).variant(Variant::Ghost).glyph_color(vis_col).size(Size::Xs)).clicked() {
                                 toggle_vis_group = Some(group_id_for_eye);
                             }
                             if let Some(avg) = group_avg_op {
@@ -453,17 +455,17 @@ egui::SidePanel::left("object_tree_panel")
                                         ui.painter().circle_filled(badge_r.center(), 3.0, sc);
                                     }
                                     if locked {
-                                        ui.add(IconBtn::new(Icon::LOCK).size(font_2xs()).color(t.dim.gamma_multiply(0.6)));
+                                        ui.add(Button::icon(Icon::LOCK).variant(Variant::Ghost).glyph_color(t.dim.gamma_multiply(0.6)).size(Size::Xs));
                                     }
                                 })
                                 .right_actions(|ui| {
                                     ui.spacing_mut().item_spacing.x = 1.0;
-                                    if ui.add(IconBtn::new(Icon::TRASH).size(font_2xs()).color(t.bear)).clicked() {
+                                    if ui.add(Button::icon(Icon::TRASH).variant(Variant::Ghost).glyph_color(t.bear).size(Size::Xs)).clicked() {
                                         delete_id = Some(ds_id_del);
                                     }
                                     let eye_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
                                     let eye_col = if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim };
-                                    if ui.add(IconBtn::new(eye_icon).size(font_2xs()).color(eye_col)).clicked() {
+                                    if ui.add(Button::icon(eye_icon).variant(Variant::Ghost).glyph_color(eye_col).size(Size::Xs)).clicked() {
                                         toggle_vis_group = Some(ds_id_eye);
                                     }
                                 })
@@ -673,7 +675,7 @@ egui::SidePanel::left("object_tree_panel")
                             ui.spacing_mut().item_spacing.x = 1.0;
                             let eye_icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
                             let eye_col = if visible { theme_dim } else { theme_dim.gamma_multiply(0.3) };
-                            if ui.add(IconBtn::new(eye_icon).size(font_xs()).color(eye_col)).clicked() {
+                            if ui.add(Button::icon(eye_icon).variant(Variant::Ghost).glyph_color(eye_col).size(Size::Xs)).clicked() {
                                 *toggle_ind_id.borrow_mut() = Some(ind_id);
                             }
                         });
@@ -689,12 +691,12 @@ egui::SidePanel::left("object_tree_panel")
                         ui.add(MonospaceCode::new(&item.label).size_px(font_sm()).color(label_col));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 1.0;
-                            if ui.add(IconBtn::new(Icon::TRASH).size(font_xs()).color(theme_bear)).clicked() {
+                            if ui.add(Button::icon(Icon::TRASH).variant(Variant::Ghost).glyph_color(theme_bear).size(Size::Xs)).clicked() {
                                 *delete_ov_idx.borrow_mut() = Some(oi);
                             }
                             let eye_icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
                             let eye_col = if visible { theme_dim } else { theme_dim.gamma_multiply(0.3) };
-                            if ui.add(IconBtn::new(eye_icon).size(font_xs()).color(eye_col)).clicked() {
+                            if ui.add(Button::icon(eye_icon).variant(Variant::Ghost).glyph_color(eye_col).size(Size::Xs)).clicked() {
                                 *toggle_ov_idx.borrow_mut() = Some(oi);
                             }
                         });
@@ -790,12 +792,12 @@ egui::SidePanel::left("object_tree_panel")
                     })
                     .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        if ui.add(IconBtn::new(Icon::TRASH).size(font_xs()).color(t.bear)).clicked() {
+                        if ui.add(Button::icon(Icon::TRASH).variant(Variant::Ghost).glyph_color(t.bear).size(Size::Xs)).clicked() {
                             del_w = Some(wi);
                         }
                         let eye_icon = if vis { Icon::EYE } else { Icon::EYE_SLASH };
                         let eye_col = if vis { t.dim } else { t.dim.gamma_multiply(0.3) };
-                        if ui.add(IconBtn::new(eye_icon).size(font_xs()).color(eye_col)).clicked() {
+                        if ui.add(Button::icon(eye_icon).variant(Variant::Ghost).glyph_color(eye_col).size(Size::Xs)).clicked() {
                             toggle_w = Some(wi);
                         }
                         if let Some(op) = opacity_picker(ui, opacity, t.accent, t.dim, &format!("w_{wi}")) {

@@ -897,12 +897,14 @@ impl<'a> IndicatorParamRow<'a> {
 
     /// Returns `true` if the value changed.
     pub fn show(self, ui: &mut Ui) -> bool {
-        use super::buttons::ChromeBtn;
+        use crate::ui_kit::widgets::Button;
+        use crate::ui_kit::widgets::tokens::{Variant, Size};
         let accent = self.accent.unwrap_or_else(|| ft().accent);
         let dim = self.dim.unwrap_or_else(|| ft().dim);
         let border = self.border.unwrap_or_else(|| ft().toolbar_border);
         let value = self.value;
         let mut changed = false;
+        let theme = self.theme.unwrap_or_else(|| ft());
 
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
@@ -924,11 +926,11 @@ impl<'a> IndicatorParamRow<'a> {
                 for &pr in self.presets {
                     let sel = *value == pr;
                     let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
-                    if ui.add(ChromeBtn::new(
-                            egui::RichText::new(format!("{}", pr)).monospace().size(font_xs()).color(fg))
+                    let pr_label = format!("{}", pr);
+                    if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
-                        .corner_radius(r_xs())
-                        .min_size(egui::vec2(22.0, 18.0))).clicked() && !sel
+                        .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
+                        .min_size(egui::vec2(22.0, 18.0)).show(ui, theme).clicked() && !sel
                     {
                         *value = pr;
                         changed = true;
@@ -990,7 +992,8 @@ impl<'a> IndicatorParamRowF<'a> {
 
     /// Returns `true` if the value changed.
     pub fn show(self, ui: &mut Ui) -> bool {
-        use super::buttons::ChromeBtn;
+        use crate::ui_kit::widgets::Button;
+        use crate::ui_kit::widgets::tokens::{Variant, Size};
         let accent = self.accent.unwrap_or_else(|| ft().accent);
         let dim = self.dim.unwrap_or_else(|| ft().dim);
         let d = self.decimals;
@@ -998,6 +1001,7 @@ impl<'a> IndicatorParamRowF<'a> {
         // Treat 0.0 as "use default"
         if *value <= 0.0 { *value = self.default; }
         let mut changed = false;
+        let theme = self.theme.unwrap_or_else(|| ft());
 
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
@@ -1017,11 +1021,11 @@ impl<'a> IndicatorParamRowF<'a> {
                 for &pr in self.presets {
                     let sel = (*value - pr).abs() < 0.01;
                     let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
-                    if ui.add(ChromeBtn::new(
-                            egui::RichText::new(format!("{:.prec$}", pr, prec = d)).monospace().size(font_xs()).color(fg))
+                    let pr_label = format!("{:.prec$}", pr, prec = d);
+                    if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
-                        .corner_radius(r_xs())
-                        .min_size(egui::vec2(22.0, 18.0))).clicked() && !sel
+                        .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
+                        .min_size(egui::vec2(22.0, 18.0)).show(ui, theme).clicked() && !sel
                     {
                         *value = pr;
                         changed = true;
@@ -1129,7 +1133,8 @@ impl ApertureOrderTicket {
     pub fn show(self, ui: &mut Ui, s: &mut ApertureOrderState<'_>) -> ApertureOrderOutcome {
         use super::select::SegmentedControl;
         use super::inputs::Stepper;
-        use super::buttons::TradeBtn;
+        use crate::ui_kit::widgets::Button;
+        use crate::ui_kit::widgets::tokens::Size as KitSize;
 
         let panel_w = if self.panel_w > 0.0 { self.panel_w } else { ui.available_width() };
         let pad     = 8.0_f32;
@@ -1357,11 +1362,17 @@ impl ApertureOrderTicket {
             } else {
                 format!("SELL {:.2}", sell_price)
             };
-            if ui.add(TradeBtn::new(&buy_label).color(self.bull).width(btn_w)).clicked() {
+            if Button::buy(buy_label.as_str())
+                .min_size(egui::vec2(btn_w, btn_trade_height()))
+                .size(KitSize::Md)
+                .show(ui, &t_stub).clicked() {
                 action = if is_und { ApertureAction::TriggerBuy }
                          else      { ApertureAction::Buy { price: buy_price } };
             }
-            if ui.add(TradeBtn::new(&sell_label).color(self.bear).width(btn_w)).clicked() {
+            if Button::sell(sell_label.as_str())
+                .min_size(egui::vec2(btn_w, btn_trade_height()))
+                .size(KitSize::Md)
+                .show(ui, &t_stub).clicked() {
                 action = if is_und { ApertureAction::TriggerSell }
                          else      { ApertureAction::Sell { price: sell_price } };
             }

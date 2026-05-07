@@ -13,7 +13,8 @@
 use egui::Ui;
 use crate::chart_renderer::ui::style::*;
 use crate::chart_renderer::gpu::Theme;
-use crate::chart_renderer::ui::widgets::buttons::ChromeBtn;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 
 #[inline(always)]
 fn ft() -> &'static crate::chart_renderer::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
@@ -44,14 +45,14 @@ impl<'a> NmfToggle<'a> {
             let active = *self.value == lvl;
             let col = if active { self.accent } else { self.dim.gamma_multiply(0.4) };
             if ui.add(
-                ChromeBtn::new(egui::RichText::new(label).monospace().size(font_xs()).color(col))
+                Button::new(label).variant(Variant::Chrome).size(Size::Xs).fg(col)
                     .fill(if active {
                         color_alpha(self.accent, alpha_subtle())
                     } else {
                         egui::Color32::TRANSPARENT
                     })
                     .min_size(egui::vec2(14.0, 14.0))
-                    .corner_radius(r_sm_cr()),
+                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32),
             ).clicked() {
                 *self.value = lvl;
             }
