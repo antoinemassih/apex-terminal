@@ -85,6 +85,7 @@ impl Icon {
     pub const CODE: &'static str = ph::CODE;
     pub const TERMINAL: &'static str = ph::TERMINAL;
     pub const CAMERA: &'static str = ph::CAMERA;
+    pub const CALENDAR_BLANK: &'static str = ph::CALENDAR_BLANK;
 
     // Chart
     pub const CHART_LINE: &'static str = ph::CHART_LINE;

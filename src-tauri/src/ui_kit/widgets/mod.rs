@@ -44,8 +44,12 @@ pub mod stepper;
 pub mod tree;
 pub mod sidebar;
 pub mod resizable;
+pub mod calendar;
+pub mod date_picker;
 
 pub use shadow::{ShadowSpec, paint as paint_shadow};
+pub use calendar::{Calendar, CalendarResponse};
+pub use date_picker::{DatePicker, DatePickerResponse};
 pub use select::{Select, SelectResponse};
 pub use tree::{Tree, TreeNode, TreeState, TreeResponse};
 pub use slider::Slider;

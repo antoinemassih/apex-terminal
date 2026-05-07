@@ -120,11 +120,22 @@ impl ContextMenu {
         let appear_t = motion::ease_bool(ui.ctx(), id.with("apex_ctx_anim"), true, motion::FAST);
 
         let mut out: Option<R> = None;
-        egui::Area::new(id)
+        let size_id = id.with("apex_ctx_size");
+        let prior_size: Vec2 = ui
+            .ctx()
+            .memory(|m| m.data.get_temp(size_id))
+            .unwrap_or(Vec2::new(min_width, 32.0));
+        let area_resp = egui::Area::new(id)
             .order(egui::Order::Foreground)
             .fixed_pos(pos)
             .show(ui.ctx(), |ui| {
                 ui.set_opacity(appear_t);
+                let shadow_rect = egui::Rect::from_min_size(pos, prior_size);
+                super::paint_shadow(
+                    ui.painter(),
+                    shadow_rect,
+                    super::ShadowSpec::md(),
+                );
                 let frame = PopupFrame::new()
                     .colors(theme.bg, theme.dim)
                     .ctx(ui.ctx())
@@ -138,6 +149,10 @@ impl ContextMenu {
                     out = Some(body(&mut mb));
                 });
             });
+        let measured = area_resp.response.rect.size();
+        if measured.x > 0.0 && measured.y > 0.0 {
+            ui.ctx().memory_mut(|m| m.data.insert_temp(size_id, measured));
+        }
         out
     }
 }

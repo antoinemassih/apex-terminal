@@ -20,6 +20,7 @@ use super::super::widgets::watchlist::{FilterPill, SectionHeader, NmfToggle};
 use super::super::widgets::headers::PanelHeaderWithTabs;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
+    let _z_watchlist = crate::foundation::frame_profiler::profile_zone("watchlist_panel");
 // ── Watchlist side panel ───────────────────────────────────────────────────
 if watchlist.open {
     egui::SidePanel::right("watchlist")

@@ -14,7 +14,7 @@
 
 #![allow(dead_code)]
 
-use egui::{Color32, Context, Id, Pos2, Stroke, Ui, Vec2};
+use egui::{Color32, Context, Id, Pos2, Rect, Stroke, Ui, Vec2};
 
 use super::theme::ComponentTheme;
 use super::motion;
@@ -217,6 +217,26 @@ impl<'a> Modal<'a> {
                         (screen.center().y - self.size.y * 0.5).max(40.0),
                     )
                 });
+                // Paint a soft drop shadow behind fixed-position windows.
+                // We can't easily track the rect of a movable window across
+                // frames, so the shadow only goes on pinned modals.
+                if !draggable && self.size.x > 0.0 && self.size.y > 0.0 {
+                    let shadow_rect = Rect::from_min_size(win_pos, self.size);
+                    let shadow_id = Id::new(("apex_modal_shadow", id));
+                    let _ = egui::Area::new(shadow_id)
+                        .order(egui::Order::Middle)
+                        .fixed_pos(win_pos)
+                        .interactable(false)
+                        .show(ctx, |ui| {
+                            ui.set_opacity(appear_t);
+                            super::paint_shadow(
+                                ui.painter(),
+                                shadow_rect,
+                                super::ShadowSpec::lg(),
+                            );
+                        });
+                }
+
                 let win = egui::Window::new(id.to_string())
                     .resizable(false)
                     .title_bar(false)
@@ -245,6 +265,17 @@ impl<'a> Modal<'a> {
                     .show(ctx, |ui| {
                         // Apply fade-in alpha multiplier while appearing.
                         ui.set_opacity(appear_t);
+                        // Drop shadow behind the panel — uses prior-frame rect.
+                        let prior_rect: Option<Rect> = ctx.memory(|m| {
+                            m.data.get_temp(Id::new(("apex_modal_rect", id)))
+                        });
+                        if let Some(r) = prior_rect {
+                            super::paint_shadow(
+                                ui.painter(),
+                                r,
+                                super::ShadowSpec::lg(),
+                            );
+                        }
                         let resp = frame.show(ui, |ui| {
                             if self.size.x > 0.0 { ui.set_width(self.size.x); }
                             if let Some(r) = render_cell.take() {
@@ -255,6 +286,12 @@ impl<'a> Modal<'a> {
                         });
                         popup_rect = resp.response.rect;
                     });
+
+                if popup_rect.width() > 0.0 && popup_rect.height() > 0.0 {
+                    ctx.memory_mut(|m| {
+                        m.data.insert_temp(Id::new(("apex_modal_rect", id)), popup_rect);
+                    });
+                }
 
                 if self.close_on_click_outside && !closed {
                     if ctx.input(|i| i.pointer.any_pressed()) {

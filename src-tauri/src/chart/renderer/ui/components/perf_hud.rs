@@ -179,6 +179,53 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
                 proc.cpu_percent, used_ram_gb, tot_ram_gb))
                 .font(label_font.clone()).color(cpu_col));
 
+            // ── Frame profiler zones (CPU side, in-process) ───────────────
+            ui.add_space(4.0);
+            ui.separator();
+            {
+                use crate::foundation::frame_profiler;
+                let recent = frame_profiler::recent_frames(60);
+                let zones = frame_profiler::last_frame_zones();
+                let last_total_us = recent.last().map(|f| f.total_us).unwrap_or(0);
+                let last_total_ms = us_to_ms(last_total_us);
+                let target_ms = 16.67_f64;
+                let total_col = if last_total_ms < 12.0 { green }
+                    else if last_total_ms < 20.0 { warn }
+                    else { red };
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("profiler").font(label_font.clone()).color(dim));
+                    ui.label(RichText::new(format!("{:.1}ms", last_total_ms))
+                        .font(val_font.clone()).color(total_col).strong());
+                    ui.label(RichText::new(format!("(target {:.2})", target_ms))
+                        .font(label_font.clone()).color(dim));
+                });
+
+                // Frame-time history sparkline (last 60 frames).
+                if !recent.is_empty() {
+                    let vals: Vec<f64> = recent.iter().map(|f| us_to_ms(f.total_us)).collect();
+                    sparkline(ui, &vals, 180.0, 14.0);
+                }
+
+                // Top 5 zones by duration from the last frame (depth=0 only,
+                // so we don't double-count nested time).
+                if !zones.is_empty() {
+                    let mut top: Vec<&frame_profiler::ZoneSample> =
+                        zones.iter().filter(|z| z.depth == 0).collect();
+                    top.sort_by(|a, b| b.duration_us.cmp(&a.duration_us));
+                    ui.label(RichText::new("top zones").font(label_font.clone()).color(dim));
+                    for z in top.iter().take(5) {
+                        let ms = us_to_ms(z.duration_us);
+                        let col = if ms < 4.0 { green } else if ms < 10.0 { warn } else { red };
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(format!("  {:<18}", z.name))
+                                .font(label_font.clone()).color(dim));
+                            ui.label(RichText::new(format!("{:.2} ms", ms))
+                                .font(label_font.clone()).color(col));
+                        });
+                    }
+                }
+            }
+
             // ── Jank events ────────────────────────────────────────────────
             if !snap.jank_events.is_empty() {
                 ui.add_space(4.0);

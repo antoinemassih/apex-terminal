@@ -60,6 +60,7 @@ pub(crate) fn render_toolbar(
     conn_panel_open: &mut bool,
     toasts: &[(String, f32, std::time::Instant, bool)],
 ) {
+    let _z_toolbar = crate::foundation::frame_profiler::profile_zone("toolbar");
     crate::chart_renderer::ui::widgets::toolbar::top_nav::TopNav::new()
         .panes(panes)
         .active_pane(active_pane)
@@ -95,6 +96,7 @@ fn render_chart_pane(
     account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
 ) {
     use crate::monitoring::{span_begin, span_end};
+    let _z_chart_pane = crate::foundation::frame_profiler::profile_zone("chart_pane");
     let pane_rect = if pane_idx < pane_rects.len() { pane_rects[pane_idx] } else { pane_rects[0] };
     crate::design_tokens::register_hit(
         [pane_rect.min.x, pane_rect.min.y, pane_rect.width(), pane_rect.height()],
@@ -211,6 +213,7 @@ fn render_chart_pane(
     let title_font_size = watchlist.pane_header_size.title_font();
     let show_header = true;
     if show_header {
+        let _z_pane_header = crate::foundation::frame_profiler::profile_zone("pane_header");
         use crate::chart_renderer::ui::widgets::painter_pane::PainterPaneHeader;
 
         let header_rect = egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), pane_top_offset));
@@ -10537,6 +10540,7 @@ fn handle_deferred(
 
 pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
     use crate::monitoring::{span_begin, span_end};
+    let _z_draw_chart = crate::foundation::frame_profiler::profile_zone("draw_chart");
 
     // Publish the active style id for `style::current()` so widget primitives
     // can pick the right corners / borders / serifs / button treatment.

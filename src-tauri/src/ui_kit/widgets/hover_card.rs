@@ -116,6 +116,13 @@ impl HoverCard {
             .fixed_pos(top_left)
             .show(&ctx, |ui| {
                 ui.set_opacity(appear_t);
+                // ui.set_opacity above naturally fades the shadow with appear_t.
+                let shadow_rect = Rect::from_min_size(top_left, prior_size);
+                super::paint_shadow(
+                    ui.painter(),
+                    shadow_rect,
+                    super::ShadowSpec::md(),
+                );
                 let frame = egui::Frame::popup(ui.style())
                     .fill(bg)
                     .stroke(Stroke::new(stroke_thin(), border))

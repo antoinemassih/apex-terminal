@@ -4536,6 +4536,7 @@ impl GpuCtx {
 
     fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
         crate::monitoring::frame_begin();
+        crate::foundation::frame_profiler::frame_begin();
 
         // Phase 1: Acquire surface texture
         let t0 = std::time::Instant::now();
@@ -4617,6 +4618,7 @@ impl GpuCtx {
             paint_jobs: num_paint_jobs, vertices: total_vertices, indices: total_indices,
             texture_uploads, texture_frees,
         });
+        let _frame_profile = crate::foundation::frame_profiler::frame_end();
     }
 }
 

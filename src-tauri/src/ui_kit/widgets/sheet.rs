@@ -235,6 +235,22 @@ impl<'a> Sheet<'a> {
             .fixed_pos(panel_rect.min)
             .interactable(true)
             .show(&ctx, |ui| {
+                // Drop shadow on the inner edge of the sheet (the edge that
+                // faces the rest of the app). t naturally fades it during
+                // the slide animation since alpha is multiplied here.
+                let shadow_spec = match side {
+                    SheetSide::Right => super::ShadowSpec::lg().offset(-8.0, 0.0),
+                    SheetSide::Left => super::ShadowSpec::lg().offset(8.0, 0.0),
+                    SheetSide::Top => super::ShadowSpec::lg().offset(0.0, 8.0),
+                    SheetSide::Bottom => super::ShadowSpec::lg().offset(0.0, -8.0),
+                };
+                let base_a = shadow_spec.color.a() as f32;
+                let a = (base_a * t).clamp(0.0, 255.0) as u8;
+                super::paint_shadow(
+                    ui.painter(),
+                    panel_rect,
+                    shadow_spec.color(Color32::from_black_alpha(a)),
+                );
                 // Background fill for the panel rect.
                 ui.painter().rect_filled(panel_rect, 0.0, bg);
 
