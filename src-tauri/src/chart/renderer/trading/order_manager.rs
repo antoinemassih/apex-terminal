@@ -315,16 +315,6 @@ impl OrderManager {
             .and_then(|j| j["conId"].as_i64())
     }
 
-    /// Synchronous margin check for pre-order validation of large orders.
-    fn check_margin_sync(symbol: &str, side: &str, qty: u32, order_type: &str, price: f32) -> Option<serde_json::Value> {
-        let client = reqwest::blocking::Client::new();
-        let con_id = Self::resolve_con_id(&client, symbol)?;
-        client.get(format!("{}/orders/0/margin?conId={}&side={}&quantity={}&orderType={}&limitPrice={}",
-            APEXIB_URL, con_id, side, qty, order_type, price))
-            .timeout(std::time::Duration::from_secs(3)).send().ok()
-            .and_then(|r| r.json().ok())
-    }
-
     /// Extract orderId from a JSON response.
     fn extract_order_id(json: &serde_json::Value) -> Option<String> {
         json["orderId"].as_str().map(|s| s.to_string())
@@ -463,18 +453,9 @@ impl OrderManager {
             }
         }
 
-        // ── 2.8 Margin check for large orders ──
-        let notional = intent.price * intent.qty as f32;
-        if notional > 50_000.0 && intent.order_type != ManagedOrderType::Market {
-            let side_str = match intent.side { OrderSide::Buy | OrderSide::TriggerBuy => "buy", _ => "sell" };
-            let ot = match intent.order_type { ManagedOrderType::Limit => "limit", ManagedOrderType::Stop => "stop", _ => "market" };
-            if let Some(margin) = Self::check_margin_sync(&intent.symbol, side_str, intent.qty, ot, intent.price) {
-                if let Some(err) = margin.get("error").and_then(|e| e.as_str()) {
-                    self.orders_rejected += 1;
-                    return OrderResult::Rejected(format!("Margin check: {}", err));
-                }
-            }
-        }
+        // Margin validation happens server-side at IB. The client-side
+        // pre-check used to live here but blocked the render thread on two
+        // sequential HTTP calls.
 
         // ── 3. Create managed order ──
         let id = self.next_id;
