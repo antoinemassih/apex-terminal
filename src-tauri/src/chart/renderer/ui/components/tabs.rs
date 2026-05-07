@@ -30,6 +30,7 @@ fn ft() -> &'static super::super::super::gpu::Theme { &crate::chart_renderer::gp
 ///     .dim(theme.dim)
 ///     .show(ui);
 /// ```
+#[deprecated(note = "use ui_kit::widgets::Tabs")]
 pub struct TabBar<'a, 'b, T: PartialEq + Copy> {
     current: &'b mut T,
     tabs: &'a [(T, &'a str)],
@@ -111,6 +112,7 @@ impl<'a, 'b, T: PartialEq + Copy> TabBar<'a, 'b, T> {
 ///     active = i;
 /// }
 /// ```
+#[deprecated(note = "use ui_kit::widgets::Tabs")]
 pub struct TabStrip<'a> {
     tabs: &'a [&'a str],
     active: usize,
@@ -212,6 +214,7 @@ impl<'a> TabStrip<'a> {
 ///     TabAction::None        => {}
 /// }
 /// ```
+#[deprecated(note = "use ui_kit::widgets::Tabs")]
 pub struct TabBarWithClose<'a> {
     tabs: &'a [&'a str],
     active: usize,

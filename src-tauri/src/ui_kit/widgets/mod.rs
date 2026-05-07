@@ -27,7 +27,23 @@ pub mod tag;
 pub mod badge;
 pub mod kbd;
 pub mod separator;
+pub mod sheet;
+pub mod tabs;
+pub mod slider;
+pub mod progress;
+pub mod spinner;
+pub mod skeleton;
+pub mod shadow;
+pub mod select;
 
+pub use shadow::{ShadowSpec, paint as paint_shadow};
+pub use select::{Select, SelectResponse};
+pub use slider::Slider;
+pub use progress::Progress;
+pub use spinner::Spinner;
+pub use skeleton::Skeleton;
+
+pub use tabs::{Tabs, TabsResponse, TabItem, TabTreatment, TabAlign};
 pub use button::{Button, show_button_gallery};
 pub use input::{Input, InputResponse};
 pub use modal::Modal;
@@ -45,6 +61,7 @@ pub use tag::{Tag, TagTone, TagResponse};
 pub use badge::Badge;
 pub use kbd::Kbd;
 pub use separator::Separator;
+pub use sheet::{Sheet, SheetSide, SheetSize};
 
 use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};
