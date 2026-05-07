@@ -146,7 +146,7 @@ impl<'a> Tooltip<'a> {
                 // measured size so position matches what we're about to paint.
                 // ui.set_opacity above naturally fades the shadow with appear_t.
                 let shadow_rect = Rect::from_min_size(top_left, prior_size);
-                super::paint_shadow(
+                super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
                     super::ShadowSpec::sm().color(Color32::from_black_alpha(48)),

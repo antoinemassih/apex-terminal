@@ -3,8 +3,9 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::buttons::SimpleBtn;
 use super::super::widgets::text::MonospaceCode;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use crate::ui_kit::icons::Icon;
 use crate::monitoring::{span_begin, span_end};
 use crate::chart_renderer::DrawingKind;
@@ -56,7 +57,7 @@ if watchlist.trendline_filter_open {
                 let vis_label = format!("{} {} ({})", icon, label, count);
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.add(SimpleBtn::new(&vis_label).color(fg))
+                    ui.add(Button::new(vis_label.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(fg))
                         .clicked()
                 }).inner
             };
@@ -218,7 +219,7 @@ if chart.picker_open {
                         let is_current = sym == chart.symbol;
                         let resp = ui.horizontal(|ui| {
                             let sym_col = if is_current { t.bull } else { TEXT_PRIMARY };
-                            let r = ui.add(SimpleBtn::new(&sym).color(sym_col).min_width(65.0));
+                            let r = ui.add(Button::new(sym.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(sym_col).min_size(egui::vec2(65.0, 0.0)));
                             ui.add(MonospaceCode::new(&name).size_px(9.0).color(t.dim));
                             r
                         }).inner;
@@ -238,7 +239,7 @@ if chart.picker_open {
                         let is_current = s.symbol == chart.symbol;
                         let resp = ui.horizontal(|ui| {
                             let sym_col = if is_current { t.bull } else { TEXT_SECONDARY };
-                            let r = ui.add(SimpleBtn::new(s.symbol).color(sym_col).min_width(65.0));
+                            let r = ui.add(Button::new(s.symbol).variant(Variant::Secondary).simple_treatment(true).fg(sym_col).min_size(egui::vec2(65.0, 0.0)));
                             ui.add(MonospaceCode::new(s.name).size_px(9.0).color(t.dim));
                             r
                         }).inner;
@@ -253,7 +254,7 @@ if chart.picker_open {
                         let is_current = sym == &chart.symbol;
                         let resp = ui.horizontal(|ui| {
                             let sym_col = if is_current { t.bull } else { TEXT_PRIMARY };
-                            let r = ui.add(SimpleBtn::new(sym.as_str()).color(sym_col).min_width(65.0));
+                            let r = ui.add(Button::new(sym.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(sym_col).min_size(egui::vec2(65.0, 0.0)));
                             ui.vertical(|ui| {
                                 ui.add(MonospaceCode::new(name.as_str()).size_px(9.0).color(t.dim));
                                 if !tag.is_empty() {

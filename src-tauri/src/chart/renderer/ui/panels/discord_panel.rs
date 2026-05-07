@@ -8,6 +8,8 @@ use super::super::widgets as widgets_compat;
 use super::super::widgets as widgets;
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 use super::super::super::gpu::{Watchlist, DiscordMessage, Theme};
 use crate::ui_kit::icons::Icon;
 
@@ -153,10 +155,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.add_space(4.0);
                             ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(t.dim.gamma_multiply(0.5)));
                         } else {
-                            if ui.add(widgets::buttons::ChromeBtn::new(
-                                egui::RichText::new("  Connect Discord  ").monospace().size(font_sm()).strong().color(egui::Color32::WHITE))
+                            if ui.add(Button::new("  Connect Discord  ")
+                                .variant(Variant::Chrome)
+                                .size(Size::Sm)
+                                .fg(egui::Color32::WHITE)
                                 .fill(discord_blurple)
-                                .corner_radius(r_lg_cr())
+                                .corner_radius(current().r_lg as f32)
                                 .min_size(egui::vec2(180.0, 36.0))
                             ).clicked() {
                                 watchlist.discord_connecting = true;
@@ -183,8 +187,10 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(8.0);
                         if close_button(ui, t.dim) { watchlist.discord_open = false; }
-                        if ui.add(widgets::buttons::ChromeBtn::new(
-                            egui::RichText::new("×").monospace().size(font_sm()).color(t.bear))
+                        if ui.add(Button::new("×")
+                            .variant(Variant::Chrome)
+                            .size(Size::Sm)
+                            .fg(t.bear)
                             .fill(egui::Color32::TRANSPARENT).frameless(true)
                         ).on_hover_text("Disconnect").clicked() {
                             crate::discord::disconnect();
@@ -332,10 +338,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add_space(4.0);
                                         ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(t.dim.gamma_multiply(0.5)));
                                         ui.add_space(8.0);
-                                        if ui.add(widgets::buttons::ChromeBtn::new(
-                                            egui::RichText::new("  Add Bot to Server  ").monospace().size(font_sm()).strong().color(egui::Color32::WHITE))
+                                        if ui.add(Button::new("  Add Bot to Server  ")
+                                            .variant(Variant::Chrome)
+                                            .size(Size::Sm)
+                                            .fg(egui::Color32::WHITE)
                                             .fill(discord_blurple)
-                                            .corner_radius(r_sm_cr())
+                                            .corner_radius(current().r_sm as f32)
                                             .min_size(egui::vec2(160.0, 30.0))
                                         ).clicked() {
                                             let guild_id = watchlist.discord_selected_guild.as_deref().unwrap_or("");
@@ -348,10 +356,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add_space(8.0);
                                         ui.add(widgets::text::CaptionLabel::new("Server admins can also\nadd the bot themselves").color(t.dim).gamma(0.4));
                                         ui.add_space(12.0);
-                                        if ui.add(widgets::buttons::ChromeBtn::new(
-                                            egui::RichText::new("Retry").monospace().size(font_xs()).color(t.dim))
+                                        if ui.add(Button::new("Retry")
+                                            .variant(Variant::Chrome)
+                                            .size(Size::Xs)
+                                            .fg(t.dim)
                                             .fill(color_alpha(t.toolbar_border, alpha_tint()))
-                                            .corner_radius(r_md_cr())
+                                            .corner_radius(current().r_md as f32)
                                         ).clicked() {
                                             if let Some(ref gid) = watchlist.discord_selected_guild {
                                                 watchlist.discord_channels_loading = true;
@@ -413,8 +423,10 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             // Back button + channel name
                             ui.horizontal(|ui| {
                                 ui.add_space(8.0);
-                                if ui.add(widgets::buttons::ChromeBtn::new(
-                                    egui::RichText::new(Icon::CARET_RIGHT).size(font_sm()).color(t.dim))
+                                if ui.add(Button::new(Icon::CARET_RIGHT)
+                                    .variant(Variant::Chrome)
+                                    .size(Size::Sm)
+                                    .fg(t.dim)
                                     .fill(egui::Color32::TRANSPARENT).frameless(true)
                                 ).on_hover_text("Back to channels").clicked() {
                                     watchlist.discord_selected_channel = None;
@@ -517,10 +529,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     .placeholder(&format!("Message {}...", watchlist.discord_channel))
                                     .theme(t)
                                     .show(ui);
-                                let send_clicked = ui.add(widgets::buttons::ChromeBtn::new(
-                                    egui::RichText::new("Send").monospace().size(font_sm()).color(egui::Color32::WHITE))
+                                let send_clicked = ui.add(Button::new("Send")
+                                    .variant(Variant::Chrome)
+                                    .size(Size::Sm)
+                                    .fg(egui::Color32::WHITE)
                                     .fill(discord_blurple)
-                                    .corner_radius(r_md_cr())
+                                    .corner_radius(current().r_md as f32)
                                     .min_size(egui::vec2(38.0, 22.0))
                                 ).clicked();
                                 if (send_clicked || (input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))

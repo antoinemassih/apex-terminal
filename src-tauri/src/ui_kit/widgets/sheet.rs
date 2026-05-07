@@ -246,7 +246,7 @@ impl<'a> Sheet<'a> {
                 };
                 let base_a = shadow_spec.color.a() as f32;
                 let a = (base_a * t).clamp(0.0, 255.0) as u8;
-                super::paint_shadow(
+                super::paint_shadow_gpu(
                     ui.painter(),
                     panel_rect,
                     shadow_spec.color(Color32::from_black_alpha(a)),

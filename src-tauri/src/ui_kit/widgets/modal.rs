@@ -229,7 +229,7 @@ impl<'a> Modal<'a> {
                         .interactable(false)
                         .show(ctx, |ui| {
                             ui.set_opacity(appear_t);
-                            super::paint_shadow(
+                            super::paint_shadow_gpu(
                                 ui.painter(),
                                 shadow_rect,
                                 super::ShadowSpec::lg(),
@@ -270,7 +270,7 @@ impl<'a> Modal<'a> {
                             m.data.get_temp(Id::new(("apex_modal_rect", id)))
                         });
                         if let Some(r) = prior_rect {
-                            super::paint_shadow(
+                            super::paint_shadow_gpu(
                                 ui.painter(),
                                 r,
                                 super::ShadowSpec::lg(),

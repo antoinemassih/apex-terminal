@@ -131,7 +131,7 @@ impl ContextMenu {
             .show(ui.ctx(), |ui| {
                 ui.set_opacity(appear_t);
                 let shadow_rect = egui::Rect::from_min_size(pos, prior_size);
-                super::paint_shadow(
+                super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
                     super::ShadowSpec::md(),

@@ -15,6 +15,21 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
         [r.min.x, r.min.y, r.width(), r.height()], family, category);
 }
 
+/// Press-snap helper: darkens an RGB color by `amt` (preserving alpha).
+/// Used by legacy buttons to provide instant 1-frame feedback when
+/// `is_pointer_button_down_on()`. Mirrors the helper in
+/// `ui_kit::widgets::button`.
+#[inline]
+fn press_darken(c: Color32, amt: f32) -> Color32 {
+    let f = (1.0 - amt).clamp(0.0, 1.0);
+    Color32::from_rgba_premultiplied(
+        ((c.r() as f32) * f) as u8,
+        ((c.g() as f32) * f) as u8,
+        ((c.b() as f32) * f) as u8,
+        c.a(),
+    )
+}
+
 // ─── IconBtn ──────────────────────────────────────────────────────────────────
 
 /// Builder for an icon-only button. Replaces `style::icon_btn(ui, glyph, color, size)`.
@@ -77,6 +92,11 @@ impl<'a> Widget for IconBtn<'a> {
             ui.painter().rect_stroke(resp.rect, radius_sm(),
                 egui::Stroke::new(stroke_thin(), motion::fade_in(color_alpha(color, alpha_muted()), hover_t)),
                 egui::StrokeKind::Inside);
+        }
+        // Press snap — instant darkened overlay, no animation.
+        if resp.is_pointer_button_down_on() && !inspect {
+            ui.painter().rect_filled(resp.rect, radius_sm(),
+                color_alpha(press_darken(color, 0.12), alpha_muted()));
         }
         resp
     }
@@ -156,19 +176,26 @@ impl<'a> Widget for TradeBtn<'a> {
                         (color.r() as f32 * hb).min(255.0) as u8,
                         (color.g() as f32 * hb).min(255.0) as u8,
                         (color.b() as f32 * hb).min(255.0) as u8);
-                    let bg = motion::lerp_color(dim_bg, hover_bg, hover_t);
+                    let mut bg = motion::lerp_color(dim_bg, hover_bg, hover_t);
+                    if pressed { bg = press_darken(bg, 0.12); }
                     ui.painter().rect_filled(resp.rect, radius_md(), bg);
                     ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
                         label, egui::FontId::monospace(font_lg()), Color32::WHITE);
                 }
                 ButtonTreatment::OutlineAccent => {
-                    ui.painter().rect_filled(resp.rect, current().r_md, motion::fade_in(color, hover_t));
+                    let mut fill = motion::fade_in(color, hover_t);
+                    if pressed { fill = press_darken(fill, 0.12); }
+                    ui.painter().rect_filled(resp.rect, current().r_md, fill);
                     ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
                         label, egui::FontId::monospace(font_lg()), contrast_fg(color));
                 }
                 ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => {
                     ui.painter().rect_filled(resp.rect, current().r_xs,
                         motion::fade_in(color_alpha(color, alpha_ghost()), hover_t));
+                    if pressed {
+                        ui.painter().rect_filled(resp.rect, current().r_xs,
+                            color_alpha(press_darken(color, 0.12), alpha_muted()));
+                    }
                 }
             }
         }
@@ -262,6 +289,15 @@ impl<'a> Widget for SimpleBtn<'a> {
                 _ => {}
             }
         }
+        // Press snap — instant darkened overlay.
+        if resp.is_pointer_button_down_on() && !inspect {
+            let cr = match s.button_treatment {
+                ButtonTreatment::OutlineAccent => current().r_md,
+                _ => current().r_xs,
+            };
+            ui.painter().rect_filled(resp.rect, cr,
+                color_alpha(press_darken(color, 0.12), alpha_muted()));
+        }
         if matches!(s.button_treatment, ButtonTreatment::UnderlineActive) {
             let r = resp.rect;
             ui.painter().line_segment(
@@ -344,6 +380,15 @@ impl<'a> Widget for SmallActionBtn<'a> {
                 _ => {}
             }
         }
+        // Press snap — instant darkened overlay.
+        if resp.is_pointer_button_down_on() && !inspect {
+            let cr = match s.button_treatment {
+                ButtonTreatment::OutlineAccent => current().r_md,
+                _ => current().r_xs,
+            };
+            ui.painter().rect_filled(resp.rect, cr,
+                color_alpha(press_darken(color, 0.12), alpha_muted()));
+        }
         if matches!(s.button_treatment, ButtonTreatment::UnderlineActive) {
             let r = resp.rect;
             ui.painter().line_segment(
@@ -405,10 +450,22 @@ impl Widget for ChromeBtn {
         if let Some(s) = self.min_size { btn = btn.min_size(s); }
         // padding: egui::Button has no direct margin setter; field stored for callers' reference only
         let _ = self.padding;
+        let cr = self.corner_radius;
+        let fill = self.fill;
         let resp = ui.add(btn);
         hit(&resp.rect, "CHROME_BTN", "Buttons");
         if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        // Press snap — instant darkened overlay using caller's fill or
+        // a low-alpha black wash if the button is frameless.
+        if resp.is_pointer_button_down_on() {
+            let cr = cr.unwrap_or_else(|| egui::CornerRadius::same(2));
+            let press_col = match fill {
+                Some(c) => color_alpha(press_darken(c, 0.12), alpha_muted()),
+                None => Color32::from_rgba_premultiplied(0, 0, 0, 28),
+            };
+            ui.painter().rect_filled(resp.rect, cr, press_col);
         }
         resp
     }
@@ -477,6 +534,11 @@ impl<'a> Widget for ActionBtn<'a> {
                 .corner_radius(cr).min_size(egui::vec2(0.0, btn_simple_height())));
         hit(&resp.rect, "ACTION_BTN", "Buttons");
         if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        // Press snap — instant darkened overlay (only when enabled).
+        if enabled && resp.is_pointer_button_down_on() {
+            ui.painter().rect_filled(resp.rect, cr,
+                color_alpha(press_darken(color, 0.12), alpha_muted()));
+        }
         if matches!(s.button_treatment, ButtonTreatment::UnderlineActive) && enabled {
             let r = resp.rect;
             ui.painter().line_segment(

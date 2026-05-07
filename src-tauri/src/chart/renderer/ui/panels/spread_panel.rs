@@ -4,7 +4,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::text::{MonospaceCode, SectionLabel};
-use super::super::widgets::buttons::{SimpleBtn, IconBtn, TradeBtn};
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::cards::metric_card::MetricCard;
 use super::super::widgets::headers::PanelHeaderWithClose;
@@ -354,7 +355,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         );
                         // Render an IconBtn inside the pre-allocated rect using a child UI.
                         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(x_rect));
-                        if child.add(IconBtn::new("\u{00D7}").small().color(t.dim)).clicked() {
+                        if child.add(Button::icon("\u{00D7}").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() {
                             remove_leg = Some(idx);
                         }
                     }
@@ -366,16 +367,16 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         ui.add_space(m + 4.0);
                         // Side toggle
                         let side_col = if leg.side == "BUY" { t.bull } else { t.bear };
-                        if ui.add(SimpleBtn::new(&leg.side).color(side_col).min_width(30.0).height(14.0)).clicked() {
+                        if ui.add(Button::new(leg.side.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(side_col).min_size(egui::vec2(30.0, 14.0))).clicked() {
                             leg.side = if leg.side == "BUY" { "SELL".into() } else { "BUY".into() };
                         }
                         // Qty
-                        if ui.add(IconBtn::new("-").small().color(t.dim)).clicked() && leg.qty > 1 { leg.qty -= 1; }
+                        if ui.add(Button::icon("-").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() && leg.qty > 1 { leg.qty -= 1; }
                         ui.add(MonospaceCode::new(&format!("{}", leg.qty)).size_px(9.0).color(egui::Color32::from_gray(220)));
-                        if ui.add(IconBtn::new("+").small().color(t.dim)).clicked() { leg.qty += 1; }
+                        if ui.add(Button::icon("+").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() { leg.qty += 1; }
                         // Option type toggle
                         let ot_col = if leg.option_type == "CALL" { t.bull } else { t.bear };
-                        if ui.add(SimpleBtn::new(&leg.option_type).color(ot_col).min_width(34.0).height(14.0)).clicked() {
+                        if ui.add(Button::new(leg.option_type.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(ot_col).min_size(egui::vec2(34.0, 14.0))).clicked() {
                             leg.option_type = if leg.option_type == "CALL" { "PUT".into() } else { "CALL".into() };
                         }
                         // Strike
@@ -408,7 +409,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // Add leg button
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    if ui.add(SimpleBtn::new("+ Add Leg").color(t.accent).min_width(w - m * 2.0).height(18.0)).clicked() {
+                    if ui.add(Button::new("+ Add Leg").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(w - m * 2.0, 18.0))).clicked() {
                         add_leg = true;
                     }
                 });
@@ -443,11 +444,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Qty").size_px(9.0).color(t.dim));
                     ui.add_space(8.0);
-                    if ui.add(IconBtn::new("-").color(t.dim)).clicked() && watchlist.spread_state.combo_qty > 1 {
+                    if ui.add(Button::icon("-").variant(Variant::Ghost).glyph_color(t.dim)).clicked() && watchlist.spread_state.combo_qty > 1 {
                         watchlist.spread_state.combo_qty -= 1;
                     }
                     ui.add(MonospaceCode::new(&format!("{}", watchlist.spread_state.combo_qty)).size_px(12.0).strong(true).color(egui::Color32::from_gray(240)));
-                    if ui.add(IconBtn::new("+").color(t.dim)).clicked() {
+                    if ui.add(Button::icon("+").variant(Variant::Ghost).glyph_color(t.dim)).clicked() {
                         watchlist.spread_state.combo_qty += 1;
                     }
                 });
@@ -456,7 +457,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Submit button ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    if ui.add(TradeBtn::new("SUBMIT SPREAD").color(t.accent).width(w - m * 2.0).height(30.0)).clicked() {
+                    if ui.add(Button::new("SUBMIT SPREAD").variant(Variant::Primary).tint(t.accent).min_size(egui::vec2(w - m * 2.0, 30.0))).clicked() {
                         do_submit = true;
                     }
                 });

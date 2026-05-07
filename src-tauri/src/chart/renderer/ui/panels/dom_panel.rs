@@ -5,7 +5,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::Theme;
 use super::super::widgets::rows::dom_row::{ColumnLayout, DomRow, DomRowDragCx};
-use super::super::widgets::buttons::{SimpleBtn, TradeBtn};
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
 
 /// Add a design-system widget at an absolute pixel rect inside the DOM panel.
@@ -175,10 +176,10 @@ pub(crate) fn draw(
     let mw = aw * 0.28;
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(mw, r1h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(SimpleBtn::new(if is_mkt {"MARKET"} else {"LIMIT"})
-            .color(t.accent)
-            .min_width(mw)
-            .height(r1h))
+        ui.add(Button::new(if is_mkt {"MARKET"} else {"LIMIT"})
+            .variant(Variant::Secondary).simple_treatment(true)
+            .fg(t.accent)
+            .min_size(egui::vec2(mw, r1h)))
     });
     if resp.clicked() { *dom_order_type = if is_mkt { DomOrderType::Limit } else { DomOrderType::Market }; if !is_mkt { *dom_selected_price = None; } }
     cx = r.right()+3.0;
@@ -188,10 +189,10 @@ pub(crate) fn draw(
     let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
     let ac = if *dom_armed { t.bear } else { t.dim.gamma_multiply(0.4) };
     let resp = place_at(ui, r, |ui| {
-        ui.add(SimpleBtn::new(if *dom_armed {"!"} else {"A"})
-            .color(ac)
-            .min_width(armw)
-            .height(r1h))
+        ui.add(Button::new(if *dom_armed {"!"} else {"A"})
+            .variant(Variant::Secondary).simple_treatment(true)
+            .fg(ac)
+            .min_size(egui::vec2(armw, r1h)))
     });
     if resp.clicked() { *dom_armed = !*dom_armed; }
 
@@ -205,7 +206,7 @@ pub(crate) fn draw(
     // BUY (spans full action height) — design-system TradeBtn
     let r = egui::Rect::from_min_size(egui::pos2(inner.left()+1.0, r2y), egui::vec2(side_w, action_h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(TradeBtn::new("BUY").color(t.bull).width(side_w).height(action_h))
+        ui.add(Button::buy("BUY").tint(t.bull).min_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Buy, p, *order_qty)); }
 
@@ -216,21 +217,21 @@ pub(crate) fn draw(
     // FLATTEN — design-system SimpleBtn (amber)
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y), egui::vec2(mid_w, mid_half_h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(SimpleBtn::new("FLATTEN").color(fc).min_width(mid_w).height(mid_half_h))
+        ui.add(Button::new("FLATTEN").variant(Variant::Secondary).simple_treatment(true).fg(fc).min_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
 
     // CANCEL — design-system SimpleBtn (dim)
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y+mid_half_h+2.0), egui::vec2(mid_w, mid_half_h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(SimpleBtn::new("CANCEL").color(t.dim).min_width(mid_w).height(mid_half_h))
+        ui.add(Button::new("CANCEL").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
 
     // SELL (spans full action height) — design-system TradeBtn
     let r = egui::Rect::from_min_size(egui::pos2(mid_x+mid_w+3.0, r2y), egui::vec2(side_w, action_h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(TradeBtn::new("SELL").color(t.bear).width(side_w).height(action_h))
+        ui.add(Button::sell("SELL").tint(t.bear).min_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Sell, p, *order_qty)); }
 

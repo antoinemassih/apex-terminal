@@ -4536,12 +4536,23 @@ impl GpuCtx {
         let egui_state = egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, &*window, Some(window.scale_factor() as f32), None, None);
         let egui_renderer = egui_wgpu::Renderer::new(&device, fmt, None, 1, false);
 
+        // Publish the surface format so `paint_shadow_gpu` can build its
+        // pipeline lazily on first use.
+        crate::ui_kit::widgets::shadow_pipeline::set_surface_format(fmt);
+
         Some(Self { device, queue, surface, config, egui_ctx, egui_state, egui_renderer, pointer_gone_needed: false })
     }
 
     fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
         crate::monitoring::frame_begin();
         crate::foundation::frame_profiler::frame_begin();
+        // Bump shadow pipeline frame counter for texture pool recycling.
+        crate::ui_kit::widgets::shadow_pipeline::next_frame();
+
+        // Mirror the user's font_idx into TextEngine so PolishedLabel
+        // (which passes Family::SansSerif as a sentinel) shapes with
+        // the matching primary font.
+        crate::ui_kit::widgets::text_engine::set_active_font_idx(watchlist.font_idx);
 
         // Phase 1: Acquire surface texture
         let t0 = std::time::Instant::now();

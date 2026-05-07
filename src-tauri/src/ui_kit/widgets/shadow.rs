@@ -156,6 +156,64 @@ pub fn paint(painter: &Painter, target_rect: Rect, spec: ShadowSpec) {
     }
 }
 
+/// Paint a GPU-blurred shadow when the radius is large enough to benefit
+/// from a real two-pass Gaussian; otherwise fall back to the stacked-rect
+/// path. Same call signature as `paint`.
+///
+/// Routing:
+///   - radius <= 16   →  stacked-rect (paint())
+///   - radius >  16   →  GPU two-pass blur via `egui_wgpu::CallbackTrait`
+///
+/// If the GPU pipeline isn't initialised yet (very first frame, or the
+/// chart renderer hasn't published the surface format), this also falls
+/// back to the stacked-rect path. So callers can always use this function
+/// safely.
+pub fn paint_gpu(painter: &Painter, target_rect: Rect, spec: ShadowSpec) {
+    let radius = spec.radius.clamp(2.0, 64.0);
+    if radius <= 16.0 || !crate::ui_kit::widgets::shadow_pipeline::is_available() {
+        return paint(painter, target_rect, spec);
+    }
+
+    let ppp = painter.ctx().pixels_per_point();
+    let shadow_rect_pts = target_rect.translate(spec.offset).expand(spec.spread);
+    let cb_rect_pts = shadow_rect_pts.expand(radius * 2.0);
+
+    let to_px = |r: Rect| -> [f32; 4] {
+        [
+            r.min.x * ppp,
+            r.min.y * ppp,
+            r.max.x * ppp,
+            r.max.y * ppp,
+        ]
+    };
+
+    // Sigma in physical pixels = (radius pts) * ppp / 3, per the Gaussian
+    // rule of thumb (kernel covers ~3 sigma each side).
+    let sigma_px = (radius * ppp) / 3.0;
+    // Corner radius matches the panel — pick something close to what the
+    // existing stacked path uses so visual identity is preserved.
+    let base_corner_pts = (target_rect.width().min(target_rect.height()) * 0.5).min(8.0);
+    let corner_px = base_corner_pts * ppp;
+
+    let r = spec.color.r() as f32 / 255.0;
+    let g = spec.color.g() as f32 / 255.0;
+    let b = spec.color.b() as f32 / 255.0;
+    let a = spec.color.a() as f32 / 255.0;
+
+    let cb = match crate::ui_kit::widgets::shadow_pipeline::ShadowCallback::try_new(
+        to_px(shadow_rect_pts),
+        to_px(cb_rect_pts),
+        sigma_px,
+        [r, g, b, a],
+        corner_px,
+    ) {
+        Some(c) => c,
+        None => return paint(painter, target_rect, spec),
+    };
+    let paint_cb = egui_wgpu::Callback::new_paint_callback(cb_rect_pts, cb);
+    painter.add(egui::epaint::Shape::Callback(paint_cb));
+}
+
 /// Smoke-test gallery — paints all four shadow presets behind sample
 /// rounded tiles. Drop into any panel for visual inspection.
 pub fn show_shadow_gallery(

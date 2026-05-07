@@ -115,7 +115,7 @@ impl<'a> Popover<'a> {
                 ui.set_opacity(appear_t);
                 // ui.set_opacity above naturally fades the shadow with appear_t.
                 let shadow_rect = Rect::from_min_size(top_left, prior_size);
-                super::paint_shadow(
+                super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
                     super::ShadowSpec::md(),
