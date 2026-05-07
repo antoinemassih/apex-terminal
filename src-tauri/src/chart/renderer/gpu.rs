@@ -4570,6 +4570,22 @@ impl GpuCtx {
         // the matching primary font.
         crate::ui_kit::widgets::text_engine::set_active_font_idx(watchlist.font_idx);
 
+        // Mirror the active pane's background luminance into TextEngine so
+        // theme-aware gamma can adapt glyph rendering to light/dark themes.
+        {
+            fn linearize(channel: u8) -> f32 {
+                let x = channel as f32 / 255.0;
+                if x <= 0.03928 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) }
+            }
+            fn compute_relative_luminance(c: egui::Color32) -> f32 {
+                0.2126 * linearize(c.r()) + 0.7152 * linearize(c.g()) + 0.0722 * linearize(c.b())
+            }
+            let theme_idx = panes.get(*active_pane).map(|p| p.theme_idx).unwrap_or(0);
+            let bg = get_theme(theme_idx).bg;
+            let lum = compute_relative_luminance(bg);
+            crate::ui_kit::widgets::text_engine::set_active_bg_luminance(lum);
+        }
+
         // Phase 1: Acquire surface texture
         let t0 = std::time::Instant::now();
         let output = match self.surface.get_current_texture() {

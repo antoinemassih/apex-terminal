@@ -309,6 +309,7 @@ impl<'a> Sheet<'a> {
                         PolishedLabel::new(t_str.clone())
                             .size(KitSize::Lg)
                             .weight(PolishedFontWeight::Semibold)
+                            .subpixel(true)
                             .show(ui, theme);
                         if !close_first {
                             // Push close button to far edge.

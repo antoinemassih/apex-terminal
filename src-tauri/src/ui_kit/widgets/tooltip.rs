@@ -171,6 +171,7 @@ impl<'a> Tooltip<'a> {
                             PolishedLabel::new(s)
                                 .size(KitSize::Xs)
                                 .color(fg)
+                                .subpixel(true)
                                 .show(ui, theme);
                         }
                         Content::Rich(f) => {
