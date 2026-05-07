@@ -1,0 +1,180 @@
+//! Tooltip — hover-triggered, delayed, rich-content overlay.
+//!
+//! API:
+//! ```ignore
+//!   Tooltip::new("Buy market order")
+//!       .delay_ms(400)
+//!       .placement(Placement { side: Side::Top, ..Default::default() })
+//!       .show(ui, &response, theme);
+//!
+//!   // Rich content:
+//!   Tooltip::rich(|ui, theme| { /* paint */ })
+//!       .show(ui, &response, theme);
+//! ```
+//!
+//! Default delay: 400ms. Fade-in: motion::FAST. Disappears immediately on
+//! hover-out (no fade-out — feels snappier).
+
+#![allow(dead_code)]
+
+use egui::{Color32, Id, Pos2, Rect, Response, Stroke, Ui, Vec2};
+
+use super::motion;
+use super::placement::{compute as compute_placement, Placement, Side};
+use super::theme::ComponentTheme;
+
+use crate::chart_renderer::ui::style::{
+    alpha_line, alpha_strong, color_alpha, font_xs, gap_sm, gap_xs, radius_sm, stroke_thin,
+};
+
+const DEFAULT_DELAY_MS: u64 = 400;
+const MAX_WIDTH: f32 = 280.0;
+
+type RichFn<'a> = Box<dyn FnOnce(&mut Ui, &dyn ComponentTheme) + 'a>;
+
+enum Content<'a> {
+    Text(String),
+    Rich(RichFn<'a>),
+}
+
+pub struct Tooltip<'a> {
+    content: Content<'a>,
+    delay_ms: u64,
+    placement: Placement,
+}
+
+impl<'a> Tooltip<'a> {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            content: Content::Text(text.into()),
+            delay_ms: DEFAULT_DELAY_MS,
+            placement: Placement {
+                side: Side::Top,
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn rich(content: impl FnOnce(&mut Ui, &dyn ComponentTheme) + 'a) -> Self {
+        Self {
+            content: Content::Rich(Box::new(content)),
+            delay_ms: DEFAULT_DELAY_MS,
+            placement: Placement {
+                side: Side::Top,
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn delay_ms(mut self, ms: u64) -> Self {
+        self.delay_ms = ms;
+        self
+    }
+
+    pub fn placement(mut self, p: Placement) -> Self {
+        self.placement = p;
+        self
+    }
+
+    pub fn instant(mut self) -> Self {
+        self.delay_ms = 0;
+        self
+    }
+
+    pub fn show(self, ui: &mut Ui, response: &Response, theme: &dyn ComponentTheme) {
+        let ctx = ui.ctx().clone();
+        let id = response.id.with("apex_tooltip");
+        let hover_start_id = id.with("hover_start");
+
+        // Track hover-start time in memory.
+        let now = ctx.input(|i| i.time);
+        let hovered = response.hovered();
+
+        let hover_start: Option<f64> = ctx.memory(|m| m.data.get_temp(hover_start_id));
+        let hover_start = if hovered {
+            match hover_start {
+                Some(t) => Some(t),
+                None => {
+                    ctx.memory_mut(|m| m.data.insert_temp(hover_start_id, now));
+                    Some(now)
+                }
+            }
+        } else {
+            if hover_start.is_some() {
+                ctx.memory_mut(|m| m.data.remove::<f64>(hover_start_id));
+            }
+            None
+        };
+
+        let elapsed_ms = hover_start
+            .map(|t| ((now - t) * 1000.0) as u64)
+            .unwrap_or(0);
+
+        let visible = hovered && elapsed_ms >= self.delay_ms;
+        if !visible {
+            return;
+        }
+
+        // Request continuous repaint while waiting / animating in.
+        ctx.request_repaint();
+
+        let appear_t = motion::ease_bool(&ctx, id.with("anim"), true, motion::FAST);
+
+        let bg = theme.surface();
+        let border = color_alpha(theme.border(), alpha_line());
+        let fg = theme.text();
+
+        // Pre-compute estimated size by laying the content into a probe Area
+        // off-screen — but for simplicity, position via Area + compute on the
+        // post-frame rect; egui Areas accept fixed_pos based on prior frame.
+        let placed_id = id.with("rect");
+        let prior_size: Vec2 = ctx
+            .memory(|m| m.data.get_temp(placed_id))
+            .unwrap_or(Vec2::new(80.0, 24.0));
+
+        let screen = ctx.screen_rect();
+        let (top_left, _side) =
+            compute_placement(response.rect, prior_size, self.placement, screen);
+
+        let area_resp = egui::Area::new(id)
+            .order(egui::Order::Tooltip)
+            .interactable(false)
+            .fixed_pos(top_left)
+            .show(&ctx, |ui| {
+                ui.set_opacity(appear_t);
+                let frame = egui::Frame::popup(ui.style())
+                    .fill(bg)
+                    .stroke(Stroke::new(stroke_thin(), border))
+                    .corner_radius(radius_sm())
+                    .inner_margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
+                    .shadow(egui::epaint::Shadow {
+                        offset: [0, 2],
+                        blur: 8,
+                        spread: 0,
+                        color: Color32::from_black_alpha(60),
+                    });
+                frame.show(ui, |ui| {
+                    ui.set_max_width(MAX_WIDTH);
+                    match self.content {
+                        Content::Text(s) => {
+                            ui.label(
+                                egui::RichText::new(s).size(font_xs()).color(fg),
+                            );
+                        }
+                        Content::Rich(f) => {
+                            f(ui, theme);
+                        }
+                    }
+                });
+            });
+
+        // Persist measured size for next frame.
+        let measured = area_resp.response.rect.size();
+        if measured.x.is_finite() && measured.y.is_finite() && measured.x > 0.0 {
+            ctx.memory_mut(|m| m.data.insert_temp(placed_id, measured));
+        }
+
+        // Suppress unused warnings for borrowed values.
+        let _ = (Pos2::ZERO, Rect::NOTHING, alpha_strong());
+    }
+}
