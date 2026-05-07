@@ -20,9 +20,9 @@
 use egui::{Response, Ui};
 use crate::chart_renderer::ui::style::*;
 use crate::chart_renderer::gpu::Theme;
-use crate::chart_renderer::ui::widgets::buttons::ChromeBtn;
 use crate::chart_renderer::ui::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{Button, tokens::{Variant, Size}};
 
 /// Return value from [`SectionHeader::show`].
 pub struct SectionHeaderResponse {
@@ -70,7 +70,10 @@ impl<'a> SectionHeader<'a> {
 
             let chevron = if self.collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
             if ui.add(
-                ChromeBtn::new(egui::RichText::new(chevron).size(font_sm_tight()).color(self.dim.gamma_multiply(0.6)))
+                Button::icon(chevron)
+                    .variant(Variant::Ghost)
+                    .size(Size::Sm)
+                    .glyph_color(self.dim.gamma_multiply(0.6))
                     .frameless(true),
             ).clicked() {
                 chevron_clicked = true;
@@ -96,7 +99,10 @@ impl<'a> SectionHeader<'a> {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if self.show_delete_when_empty && self.item_count == 0 {
                     if ui.add(
-                        ChromeBtn::new(egui::RichText::new(Icon::X).size(8.0).color(self.dim.gamma_multiply(0.3)))
+                        Button::icon(Icon::X)
+                            .variant(Variant::Ghost)
+                            .size(Size::Sm)
+                            .glyph_color(self.dim.gamma_multiply(0.3))
                             .frameless(true),
                     ).clicked() {
                         delete_clicked = true;

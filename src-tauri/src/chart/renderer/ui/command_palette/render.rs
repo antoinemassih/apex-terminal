@@ -7,8 +7,8 @@ use super::super::style::*;
 use super::super::components::*;
 use super::super::components_extra::*;
 use super::super::widgets::text::{BodyLabel, CaptionLabel};
-use super::super::widgets::buttons::SimpleBtn;
 use super::super::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
 use super::super::super::gpu::*;
 
 pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, pal_w: f32) {
@@ -24,7 +24,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.add_space(gap_lg());
         ui.add(BodyLabel::new("placeholder").size(font_sm()).italics(true).color(t.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(SimpleBtn::new("← back").color(t.dim)).clicked() { watchlist.cmd_palette_ai_mode = false; }
+            if ui.add(KitButton::new("← back").variant(Variant::Secondary).simple_treatment(true).fg(t.dim)).clicked() { watchlist.cmd_palette_ai_mode = false; }
         });
     });
 
@@ -52,7 +52,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.horizontal(|ui| {
         ui.add(BodyLabel::new("Gemma 4 is not wired up yet — this is a placeholder panel.").size(font_sm()).italics(true).color(t.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let _ = ui.add(ActionButton::new("Send ⏎").primary().small().disabled(true).theme(t));
+            let _ = ui.add(KitButton::new("Send ⏎").variant(Variant::Primary).size(Size::Sm).disabled(true));
         });
     });
 }

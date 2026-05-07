@@ -14,7 +14,8 @@ use egui::{Color32, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, U
 use super::super::style::*;
 use super::super::components::{pane_header_bar, pane_title, section_label_widget};
 use super::super::components::PaneHeader;
-use super::super::components::{PillButton, RemovableChip, DisplayChip, StatusBadge};
+use super::super::components::{RemovableChip, DisplayChip, StatusBadge};
+use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant};
 
 fn ft() -> &'static crate::chart_renderer::gpu::Theme {
     &crate::chart_renderer::gpu::THEMES[0]
@@ -117,11 +118,16 @@ impl<'a> Widget for PaneTimeframeBadge<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         // Render `<label> ▾` as a single pill — caret hints dropdown.
         let with_caret = format!("{}  \u{25BE}", self.label);
-        // PillButton owns a `&str`, so stash in a local with the same lifetime as the call.
-        let pill = PillButton::new(&with_caret)
-            .active(self.active)
-            .palette(self.accent, self.dim);
-        ui.add(pill)
+        // Button borrows the label, so stash in a local with the same lifetime as the call.
+        let label_ref: &str = &with_caret;
+        let fg = if self.active { self.accent } else { self.dim };
+        ui.add(
+            KitButton::new(label_ref)
+                .variant(Variant::Secondary)
+                .corner_radius(9.0)
+                .active(self.active)
+                .fg(fg),
+        )
     }
 }
 

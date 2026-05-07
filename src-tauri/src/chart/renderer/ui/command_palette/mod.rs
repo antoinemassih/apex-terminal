@@ -16,6 +16,7 @@ use super::widgets::frames::PopupFrame;
 use super::widgets::text::BodyLabel;
 use super::widgets::inputs::TextInput;
 use super::super::gpu::*;
+use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
 
 mod registry;
 mod matcher;
@@ -181,7 +182,7 @@ fn draw_normal_mode(
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(ActionButton::new("✦ Gemma 4").secondary().small().palette(Category::Ai.color(t), t.bear, t.dim)).clicked() {
+            if ui.add(KitButton::new("✦ Gemma 4").variant(Variant::Secondary).simple_treatment(true).size(Size::Sm).fg(Category::Ai.color(t))).clicked() {
                 watchlist.cmd_palette_ai_mode = true;
             }
         });
