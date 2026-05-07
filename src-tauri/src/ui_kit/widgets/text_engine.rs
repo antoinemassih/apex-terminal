@@ -24,7 +24,7 @@
 //! v1.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use cosmic_text::{Attrs, Buffer, CacheKey, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
@@ -34,11 +34,62 @@ use egui::{Color32, TextureId, TextureOptions};
 const ATLAS_SIZE: usize = 512;
 const ATLAS_PAD: u32 = 1;
 
-/// Standard sRGB → "perceptual" weight on dark bg. See `upload_mask`.
+/// Active background luminance, quantized to a u32 fixed-point
+/// (luminance * 1_000_000) for atomic storage. Defaults to 0 (black bg)
+/// to preserve the historical dark-bg correction.
+static ACTIVE_BG_LUMINANCE: AtomicU32 = AtomicU32::new(0);
+
 #[inline]
-fn correct_alpha_for_dark_bg(alpha_byte: u8) -> u8 {
+fn quantize_lum(lum: f32) -> u32 {
+    let clamped = lum.clamp(0.0, 1.0);
+    (clamped * 1_000_000.0).round() as u32
+}
+
+#[inline]
+fn dequantize_lum(q: u32) -> f32 {
+    q as f32 / 1_000_000.0
+}
+
+/// Set the active background luminance (0.0 = pure black, 1.0 = pure white).
+/// Called per frame from gpu.rs after computing the active theme. The
+/// glyph atlas applies gamma correction based on this — dark bg gets
+/// exponent ~1.43 to preserve thin-stroke weight, light bg gets ~1.0
+/// (no correction).
+///
+/// If the new luminance is materially different from the previous (delta
+/// > 0.1), the entire glyph cache is cleared so glyphs rasterized under
+/// the old bg luminance don't appear against the new one with the wrong
+/// gamma curve baked in.
+///
+/// TODO(wiring): call this from `gpu.rs` once per frame, immediately
+/// after the active theme is resolved (right next to the existing
+/// `set_active_font_idx` call), passing the theme's background
+/// luminance (e.g. compute from `theme.bg_color` via standard
+/// Rec.709 luma `0.2126*r + 0.7152*g + 0.0722*b`).
+pub fn set_active_bg_luminance(lum: f32) {
+    let new_q = quantize_lum(lum);
+    let prev_q = ACTIVE_BG_LUMINANCE.swap(new_q, Ordering::Relaxed);
+    let prev = dequantize_lum(prev_q);
+    if (lum - prev).abs() > 0.1 {
+        if let Ok(mut g) = engine().lock() {
+            g.clear_glyph_cache();
+        }
+    }
+}
+
+/// Theme-aware sRGB → perceptual alpha correction. See `upload_mask`.
+///
+/// Lerp curve: dark bg (lum=0.0) → exponent 1.43 (boosts thin strokes
+/// against black), light bg (lum=1.0) → exponent 1.0 (no correction,
+/// avoids over-bolding on white). Tuning rationale: 1.43 is the value
+/// previously hard-coded for dark mode; the +0.43 offset lerps linearly
+/// toward 1.0 as luminance → 1.0.
+#[inline]
+fn correct_alpha_for_bg(alpha_byte: u8) -> u8 {
+    let lum = dequantize_lum(ACTIVE_BG_LUMINANCE.load(Ordering::Relaxed));
+    let exponent = 1.0 + (1.0 - lum) * 0.43;
     let a = alpha_byte as f32 / 255.0;
-    let corrected = a.powf(1.0 / 1.43);
+    let corrected = a.powf(1.0 / exponent);
     (corrected * 255.0).round().clamp(0.0, 255.0) as u8
 }
 
@@ -290,7 +341,7 @@ impl TextEngine {
     ) {
         let mut rgba = Vec::with_capacity((w * h) as usize * 4);
         for &a in mask.iter() {
-            let corrected = correct_alpha_for_dark_bg(a);
+            let corrected = correct_alpha_for_bg(a);
             rgba.push(255);
             rgba.push(255);
             rgba.push(255);
@@ -370,6 +421,22 @@ impl TextEngine {
         };
         self.cache.insert(key, entry);
         entry
+    }
+
+    /// Drop every cached glyph and reset all atlas pages to empty.
+    /// Used on theme switch (bg luminance change) so glyphs rasterized
+    /// under the previous gamma curve don't bleed onto the new theme.
+    /// Pages keep their texture ids — we only reset the shelf cursor
+    /// and free-lists; existing texels become "garbage" until painted
+    /// over by re-rasterized glyphs.
+    pub fn clear_glyph_cache(&mut self) {
+        self.cache.clear();
+        for page in &mut self.pages {
+            page.cursor_x = 0;
+            page.cursor_y = 0;
+            page.row_height = 0;
+            page.free_list.clear();
+        }
     }
 
     /// Evict glyphs whose `last_used_frame` is older than
@@ -734,5 +801,55 @@ pub fn paint_polished_label_at(
             egui::FontId::proportional(size_px),
             color,
         ),
+    }
+}
+
+/// Same as `paint_polished_label_at` but routes through the custom wgpu
+/// subpixel-AA pipeline. Use for title text in hand-painted layouts
+/// (Alert title, SectionLabel, dialog headers) when ligatures + crisp
+/// horizontal edges matter.
+///
+/// Falls back silently to `paint_polished_label_at` on machines without
+/// DUAL_SOURCE_BLENDING (or whenever `text_subpixel_pipeline::is_available()`
+/// returns false, or when shaping/rasterization fails). The pipeline's
+/// own grayscale fallback is also covered by this branch.
+pub fn paint_polished_label_at_subpixel(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    text: &str,
+    size_px: f32,
+    family: Family<'_>,
+    weight: Weight,
+    color: Color32,
+) -> egui::Rect {
+    // Hardware capability gate. If dual-source blending isn't available,
+    // the pipeline can't produce true subpixel output — defer to the
+    // grayscale path via paint_polished_label_at.
+    if !super::text_subpixel_pipeline::is_available() {
+        return paint_polished_label_at(painter, pos, text, size_px, family, weight, color);
+    }
+
+    // Same lifetime laundering as paint_polished_label_at: the only
+    // Family variants we accept here carry 'static names.
+    let family_static: Family<'static> = unsafe { std::mem::transmute(family) };
+
+    let result = shape_and_render_subpixel(
+        &painter.ctx().clone(),
+        pos,
+        text,
+        size_px,
+        family_static,
+        weight,
+        color,
+    );
+
+    match result {
+        Some((paint_cb, size)) => {
+            painter.add(egui::Shape::Callback(paint_cb));
+            egui::Rect::from_min_size(pos, size)
+        }
+        // Empty text or shaping failure — fall back to the standard path
+        // so the caller still gets a sensible bounding rect.
+        None => paint_polished_label_at(painter, pos, text, size_px, family, weight, color),
     }
 }
