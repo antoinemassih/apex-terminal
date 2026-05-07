@@ -18,10 +18,6 @@ pub mod inputs {
 pub mod text {
     pub use crate::chart::renderer::ui::components::text::*;
 }
-pub mod buttons {
-    pub use crate::chart::renderer::ui::inputs::buttons::*;
-}
-
 // cards — kept in-place in widgets/cards/mod.rs (contains Card struct + redirects domain cards)
 pub mod cards;
 pub mod rows; // kept in-place; still contains ListRow. Domain rows moved to lists::rows.

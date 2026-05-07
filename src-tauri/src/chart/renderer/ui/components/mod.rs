@@ -32,7 +32,6 @@ pub mod toasts;
 pub mod context_menu;
 pub mod menus;
 pub mod layout;
-pub mod tabs;
 pub mod text;
 pub mod status;
 pub mod perf_hud;

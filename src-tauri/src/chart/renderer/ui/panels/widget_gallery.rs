@@ -15,10 +15,10 @@ use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::widgets::{
     paint_shadow, Alert, Badge, Breadcrumb, BreadcrumbItem, BreadcrumbSep, Button, Calendar,
     Checkbox, ColorPicker, Column, ContextMenu, DatePicker, HoverCard, Input, Kbd, Label, Link,
-    Modal, Pagination, Popover, Progress, Radio, Resizable, Select, Separator, ShadowSpec, Sheet,
-    SheetSide, SheetSize, Sidebar, SidebarItem, SidebarStyle, Skeleton, Slider, Spinner, Stepper,
-    Switch, TabItem, TabTreatment, Table, TableState, Tabs, Tag, TagTone, Tooltip, Tree, TreeNode,
-    TreeState,
+    Modal, Pagination, PolishedFontWeight, PolishedLabel, Popover, Progress, Radio, Resizable,
+    Select, Separator, ShadowSpec, Sheet, SheetSide, SheetSize, Sidebar, SidebarItem, SidebarStyle,
+    Skeleton, Slider, Spinner, Stepper, Switch, TabItem, TabTreatment, Table, TableState, Tabs,
+    Tag, TagTone, Tooltip, Tree, TreeNode, TreeState,
 };
 
 // ── Persistent sample state, all in egui memory ─────────────────────────
@@ -162,7 +162,10 @@ fn section(ui: &mut egui::Ui, theme: &Theme, title: &str) {
 // ── Public entry ─────────────────────────────────────────────────────────
 
 pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
-    Label::heading("Apex Widget Gallery").show(ui, theme);
+    PolishedLabel::new("Apex Widget Gallery")
+        .size(KitSize::Lg)
+        .weight(PolishedFontWeight::Semibold)
+        .show(ui, theme);
     ui.label("Developer-only — every ui_kit::widgets widget with sample variants for visual QA.");
 
     // 1. Buttons
@@ -452,7 +455,10 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
             .variant(Variant::Secondary)
             .show(ui, theme);
         HoverCard::new().show(ui, &card, theme, |ui| {
-            Label::heading("AAPL").show(ui, theme);
+            PolishedLabel::new("AAPL")
+                .size(KitSize::Lg)
+                .weight(PolishedFontWeight::Semibold)
+                .show(ui, theme);
             Label::new("Apple Inc — last $189.45 (+1.2%)").show(ui, theme);
         });
     });
@@ -493,11 +499,17 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
                     ui,
                     theme,
                     |ui| {
-                        Label::heading("Left").show(ui, theme);
+                        PolishedLabel::new("Left")
+                            .size(KitSize::Lg)
+                            .weight(PolishedFontWeight::Semibold)
+                            .show(ui, theme);
                         ui.label("Lorem ipsum dolor sit amet.");
                     },
                     |ui| {
-                        Label::heading("Right").show(ui, theme);
+                        PolishedLabel::new("Right")
+                            .size(KitSize::Lg)
+                            .weight(PolishedFontWeight::Semibold)
+                            .show(ui, theme);
                         ui.label("Consectetur adipiscing elit.");
                     },
                 );
@@ -534,7 +546,10 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
                 .anchor(pop_btn.rect)
                 .id("gallery_popover")
                 .show(ui, theme, |ui| {
-                    Label::heading("Popover").show(ui, theme);
+                    PolishedLabel::new("Popover")
+                        .size(KitSize::Lg)
+                        .weight(PolishedFontWeight::Semibold)
+                        .show(ui, theme);
                     ui.label("Anchored content. Click outside to close.");
                 });
         });

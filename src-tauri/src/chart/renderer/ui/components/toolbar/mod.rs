@@ -26,19 +26,97 @@ fn ft() -> &'static super::super::super::gpu::Theme {
 
 // ─── toolbar_btn (free function) ──────────────────────────────────────────────
 
-/// Top-application-toolbar button. Delegates to `style::tb_btn` for pixel-exact
-/// parity with the legacy renderer, and flags `gpu::TB_BTN_CLICKED` on click so
-/// the window-drag handler ignores the click on the same frame.
+/// Top-application-toolbar button. Motion-driven hover + active fades (FAST /
+/// MED) with an instant press-snap darken; flags `gpu::TB_BTN_CLICKED` on
+/// click so the window-drag handler ignores the click on the same frame.
 pub fn toolbar_btn(
     ui: &mut Ui,
     label: &str,
     active: bool,
     t: &super::super::super::gpu::Theme,
 ) -> Response {
-    let resp = super::super::style::tb_btn(
-        ui, label, active,
-        t.accent, t.dim, t.toolbar_bg, t.toolbar_border,
-    );
+    use super::super::motion;
+    use super::super::style::{
+        color_alpha, font_md, font_sm, gap_md, r_sm_cr, stroke_thin, ALPHA_GHOST,
+    };
+
+    // ── Layout ────────────────────────────────────────────────────────────
+    // Icon-only labels (Phosphor PUA glyphs) render at font_md so they read
+    // at the same visual weight as font_sm text labels next to them.
+    let is_icon_only = !label.is_empty() && label.chars().all(|c| {
+        let cp = c as u32;
+        (0xE000..=0xF8FF).contains(&cp)
+            || (0xF0000..=0x10FFFF).contains(&cp)
+            || c.is_ascii_whitespace()
+            || c.is_ascii_digit()
+    });
+    let label_size = if is_icon_only { font_md() } else { font_sm() };
+    let galley = ui.fonts(|f| {
+        f.layout_no_wrap(label.to_string(), egui::FontId::monospace(label_size), Color32::WHITE)
+    });
+    let pad_x = gap_md();
+    let height = 24.0_f32;
+    let desired = egui::vec2(galley.rect.width() + 2.0 * pad_x, height);
+    let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::click());
+
+    // ── Motion ────────────────────────────────────────────────────────────
+    let hover_id = ui.id().with(("tb_btn_free_hover", label));
+    let active_id = ui.id().with(("tb_btn_free_active", label));
+    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered(), motion::FAST);
+    let active_t = motion::ease_bool(ui.ctx(), active_id, active, motion::MED);
+
+    // ── Palettes ──────────────────────────────────────────────────────────
+    let idle_bg = Color32::TRANSPARENT;
+    let hover_bg = color_alpha(t.text, 18);
+    let active_bg = color_alpha(t.accent, ALPHA_GHOST);
+    let border_idle = Color32::TRANSPARENT;
+    let border_active = color_alpha(t.accent, ALPHA_GHOST);
+
+    // ── Compose ───────────────────────────────────────────────────────────
+    let mut bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
+    bg = motion::lerp_color(bg, active_bg, active_t);
+
+    // Press snap: instant darken on mouse-down, preserves alpha.
+    let final_bg = if resp.is_pointer_button_down_on() {
+        let darkened = motion::lerp_color(bg, Color32::BLACK, 0.12);
+        Color32::from_rgba_premultiplied(darkened.r(), darkened.g(), darkened.b(), bg.a())
+    } else {
+        bg
+    };
+
+    let border_col = motion::lerp_color(border_idle, border_active, active_t);
+
+    // ── Paint ─────────────────────────────────────────────────────────────
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter_at(rect);
+        let cr = r_sm_cr();
+        if final_bg.a() > 0 {
+            painter.rect_filled(rect, cr, final_bg);
+        }
+        if border_col.a() > 0 {
+            painter.rect_stroke(
+                rect,
+                cr,
+                Stroke::new(stroke_thin(), border_col),
+                egui::StrokeKind::Inside,
+            );
+        }
+
+        // Label fades from dim → text on hover/active.
+        let text_color = motion::lerp_color(t.dim, t.text, hover_t.max(active_t));
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::monospace(label_size),
+            text_color,
+        );
+    }
+
+    if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+
     if resp.clicked() {
         super::super::super::gpu::TB_BTN_CLICKED.with(|f| f.set(true));
     }
