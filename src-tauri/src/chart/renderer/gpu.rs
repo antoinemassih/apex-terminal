@@ -4496,8 +4496,17 @@ impl GpuCtx {
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false,
         }))?;
+        let mut required_features = wgpu::Features::empty();
+        if adapter.features().contains(wgpu::Features::DUAL_SOURCE_BLENDING) {
+            required_features |= wgpu::Features::DUAL_SOURCE_BLENDING;
+            eprintln!("[gpu] DUAL_SOURCE_BLENDING enabled — subpixel-AA text path available");
+        } else {
+            eprintln!("[gpu] DUAL_SOURCE_BLENDING not supported — text will use grayscale AA");
+        }
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("chart"), memory_hints: wgpu::MemoryHints::Performance, ..Default::default()
+            label: Some("chart"), memory_hints: wgpu::MemoryHints::Performance,
+            required_features,
+            ..Default::default()
         }, None)).ok()?;
         let caps = surface.get_capabilities(&adapter);
         let fmt = caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(caps.formats[0]);
@@ -4540,6 +4549,12 @@ impl GpuCtx {
         // pipeline lazily on first use.
         crate::ui_kit::widgets::shadow_pipeline::set_surface_format(fmt);
         crate::ui_kit::widgets::text_subpixel_pipeline::set_surface_format(fmt);
+
+        // Phase 1.5: eagerly build the subpixel text pipeline so naga validates
+        // the WGSL at startup rather than on first use. Pushes shader-syntax
+        // failures up to launch time instead of runtime regressions.
+        let _ = crate::ui_kit::widgets::text_subpixel_pipeline::TextSubpixelPipeline::get(&device, fmt);
+        eprintln!("[gpu] text_subpixel_pipeline: WGSL validated OK");
 
         Some(Self { device, queue, surface, config, egui_ctx, egui_state, egui_renderer, pointer_gone_needed: false })
     }

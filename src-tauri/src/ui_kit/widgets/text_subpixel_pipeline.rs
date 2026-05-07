@@ -709,8 +709,8 @@ fn shader_dual() -> String {
         vs = VS_COMMON,
         fs = r#"
 struct FsOut {
-    @location(0) @blend_src(0) color: vec4<f32>,
-    @location(0) @blend_src(1) mask:  vec4<f32>,
+    @location(0) color: vec4<f32>,
+    @location(0) @second_blend_source mask: vec4<f32>,
 };
 
 @fragment
