@@ -94,13 +94,13 @@ pub(crate) fn draw_content(
         // Value label above/below circle
         let label_y = if *avg >= 0.0 { tip_y - 8.0 } else { tip_y + 8.0 };
         p.text(egui::pos2(cx, label_y), egui::Align2::CENTER_CENTER,
-            &format!("{:+.1}%", avg), egui::FontId::monospace(7.0),
+            &format!("{:+.1}%", avg), egui::FontId::monospace(11.0),
             if is_current { color } else { color.gamma_multiply(0.6) });
 
         // Month label
         let month_col = if is_current { t.accent } else { t.dim.gamma_multiply(0.5) };
         p.text(egui::pos2(cx, chart_rect.bottom() - 6.0), egui::Align2::CENTER_CENTER,
-            month_labels[i], egui::FontId::monospace(7.0), month_col);
+            month_labels[i], egui::FontId::monospace(11.0), month_col);
     }
 
     ui.add_space(gap_md());

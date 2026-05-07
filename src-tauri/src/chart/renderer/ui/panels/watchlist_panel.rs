@@ -474,7 +474,7 @@ if watchlist.open {
                                     egui::Stroke::new(stroke_thin(), color_alpha(t.text, 5)));
                             }
                             // 3px top padding so rows sit at the same position as before.
-                            ui.add_space(3.0);
+                            ui.add_space(4.0);
                             // Render each pinned row via the design-system WatchlistRow widget.
                             for (si, ii, pin_sym, pin_price, pin_prev, _pin_loaded, avg_range) in &pinned_items {
                                 let is_active = *pin_sym == active_sym;
@@ -761,7 +761,7 @@ if watchlist.open {
                                             // Two layered tints (panel previously painted both): blend into one.
                                             // 80,120,200,12 + t.text @ alpha 4 → use the bluish tint; the t.text@4
                                             // overlay was nearly invisible. Visual parity preserved within 1 alpha.
-                                            t.pinned_row_tint
+                                            color_alpha(t.accent, super::super::style::ALPHA_GHOST)
                                         } else {
                                             egui::Color32::TRANSPARENT
                                         };
@@ -793,7 +793,7 @@ if watchlist.open {
                                             .drag_confirmed(drag_confirmed)
                                             .sym_font(egui::FontId::monospace(font_sz))
                                             .chg_font(egui::FontId::proportional(font_sz))
-                                            .price_font(egui::FontId::proportional(14.0))
+                                            .price_font(egui::FontId::proportional(13.0))
                                             .price_string(price_str)
                                             .price_right_inset(24.0)
                                             // Panel symbol layout: star at left+16, sym at star+10 when star
@@ -1426,7 +1426,7 @@ if watchlist.open {
                         // Check mark
                         if is_saved {
                             painter.text(egui::pos2(x + col_chk * 0.5, y_center), egui::Align2::CENTER_CENTER,
-                                Icon::CHECK, egui::FontId::proportional(12.0), t.accent);
+                                Icon::CHECK, egui::FontId::proportional(11.0), t.accent);
                         }
                         x += col_chk + gap;
 
@@ -1451,7 +1451,7 @@ if watchlist.open {
                             else { format!("{}", row.oi) };
                         let oi_x = x;
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &oi_str, egui::FontId::monospace(12.0), t.dim.gamma_multiply(0.5));
+                            &oi_str, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
@@ -1611,7 +1611,7 @@ if watchlist.open {
                         for row in &sorted_calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
 
                         // ── ATM price badge divider ──
-                        ui.add_space(3.0);
+                        ui.add_space(4.0);
                         {
                             let r = ui.available_rect_before_wrap();
                             let y = ui.cursor().min.y;
@@ -1638,7 +1638,7 @@ if watchlist.open {
                                 &badge_text, egui::FontId::monospace(font_md()),
                                 TEXT_PRIMARY);
                         }
-                        ui.add_space(22.0);
+                        ui.add_space(20.0);
 
                         // Puts (ATM at top, OTM at bottom)
                         for row in &sorted_puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }

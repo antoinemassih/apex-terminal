@@ -389,9 +389,9 @@ impl<'a> WatchlistRow<'a> {
                 // ── RVOL left-border strip ──────────────────────────────
                 if let Some(rv) = rvol {
                     let (rcol, rw) = if rv > 3.0 {
-                        (color_alpha(theme_ref.gold, 220), 4.0)
+                        (color_alpha(theme_ref.accent, 220), 4.0)
                     } else if rv > 2.0 {
-                        (color_alpha(theme_ref.gold, 160), 3.0)
+                        (color_alpha(theme_ref.accent, 160), 3.0)
                     } else if rv > 0.8 {
                         (color_alpha(bull, ALPHA_ACTIVE), 2.0)
                     } else {
@@ -407,7 +407,7 @@ impl<'a> WatchlistRow<'a> {
                 // ── Drag-handle grip ────────────────────────────────────
                 if drag_handle {
                     painter.text(egui::pos2(left + 6.0, cy), egui::Align2::LEFT_CENTER,
-                        icon_set.drag_handle, egui::FontId::proportional(9.0), dim.gamma_multiply(0.2));
+                        icon_set.drag_handle, egui::FontId::proportional(11.0), dim.gamma_multiply(0.2));
                     zones_body.borrow_mut().drag = Some(egui::Rect::from_min_size(
                         egui::pos2(left, rect.top()), egui::vec2(14.0, rect.height())));
                 }
@@ -419,12 +419,12 @@ impl<'a> WatchlistRow<'a> {
                 let star_visible_here = show_star;
                 if star_visible_here {
                     let star_col = match pin_state {
-                        PinState::Pinned => theme_ref.gold,
+                        PinState::Pinned => color_alpha(theme_ref.accent, ALPHA_HEAVY),
                         PinState::NotPinned => dim.gamma_multiply(0.3),
                     };
                     let star_x = left + 16.0 + star_x_offset;
                     painter.text(egui::pos2(star_x, cy), egui::Align2::CENTER_CENTER,
-                        icon_set.star, egui::FontId::proportional(9.0), star_col);
+                        icon_set.star, egui::FontId::proportional(11.0), star_col);
                 }
                 // Star click-zone always covers left..left+26 when pinned-or-hoverable
                 // so panel-style click partitioning works.
@@ -450,13 +450,13 @@ impl<'a> WatchlistRow<'a> {
                     if days <= 14 {
                         let e_text = format!("E:{}", days);
                         let e_galley = painter.layout_no_wrap(e_text.clone(),
-                            egui::FontId::monospace(7.0), Color32::BLACK);
+                            egui::FontId::monospace(11.0), Color32::BLACK);
                         let pw = e_galley.size().x + 6.0;
                         let pill_rect = egui::Rect::from_min_size(
                             egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0));
-                        painter.rect_filled(pill_rect, 6.0, theme_ref.gold);
+                        painter.rect_filled(pill_rect, 6.0, color_alpha(theme_ref.accent, ALPHA_HEAVY));
                         painter.text(egui::pos2(ind_x + pw / 2.0, cy), egui::Align2::CENTER_CENTER,
-                            &e_text, egui::FontId::monospace(7.0), Color32::BLACK);
+                            &e_text, egui::FontId::monospace(11.0), Color32::BLACK);
                         zones_body.borrow_mut().earnings = Some(pill_rect);
                         ind_x += pw + 3.0;
                     }
@@ -465,9 +465,9 @@ impl<'a> WatchlistRow<'a> {
                 // ── Alert bell ──────────────────────────────────────────
                 if alert_indicator {
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 5.5,
-                        theme_ref.notification_red);
+                        theme_ref.bear);
                     painter.text(egui::pos2(ind_x + 5.0, cy), egui::Align2::CENTER_CENTER,
-                        icon_set.alert, egui::FontId::proportional(7.0), Color32::WHITE);
+                        icon_set.alert, egui::FontId::proportional(11.0), Color32::WHITE);
                     zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
                         egui::pos2(ind_x + 5.0, cy), egui::vec2(12.0, 12.0)));
                     ind_x += 14.0;
@@ -570,7 +570,7 @@ impl<'a> WatchlistRow<'a> {
                             egui::pos2(rect.right() - 8.0, cy),
                             egui::Align2::CENTER_CENTER,
                             icon_set.x,
-                            egui::FontId::proportional(10.0),
+                            egui::FontId::proportional(11.0),
                             dim.gamma_multiply(0.5),
                         );
                     }

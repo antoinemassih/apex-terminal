@@ -124,14 +124,14 @@ fn render_sparkline(c: &mut ColumnCtx) {
 fn render_rvol_badge(c: &mut ColumnCtx) {
     let rv = match c.item.rvol { Some(rv) if rv > 0.0 => rv, _ => return };
     let cy = c.rect.center().y;
-    let rcol = if rv > 2.0 { c.theme.gold }
+    let rcol = if rv > 2.0 { color_alpha(c.theme.accent, ALPHA_HEAVY) }
         else if rv > 1.2 { c.bull }
         else { c.dim.gamma_multiply(0.4) };
     c.painter.text(
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
         &format!("{:.1}x", rv),
-        egui::FontId::monospace(7.0),
+        egui::FontId::monospace(11.0),
         rcol,
     );
 }
@@ -174,7 +174,7 @@ fn render_volume(c: &mut ColumnCtx) {
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
         &s,
-        egui::FontId::monospace(7.0),
+        egui::FontId::monospace(11.0),
         c.dim.gamma_multiply(0.6),
     );
 }
@@ -186,7 +186,7 @@ fn render_atr(c: &mut ColumnCtx) {
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
         &format!("{:.2}", v),
-        egui::FontId::monospace(7.0),
+        egui::FontId::monospace(11.0),
         c.dim.gamma_multiply(0.6),
     );
 }
@@ -202,7 +202,7 @@ fn render_market_cap(c: &mut ColumnCtx) {
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
         &s,
-        egui::FontId::monospace(7.0),
+        egui::FontId::monospace(11.0),
         c.dim.gamma_multiply(0.6),
     );
 }

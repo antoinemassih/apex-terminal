@@ -169,7 +169,7 @@ pub fn paint_dom_action(
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_label, text_col);
         }
         ArmedChip => {
-            let ac = if ctx.armed { t.notification_red } else { t.dim.gamma_multiply(0.4) };
+            let ac = if ctx.armed { t.bear } else { t.dim.gamma_multiply(0.4) };
             let fill = if ctx.armed { color_alpha(ac, 35) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
             painter.rect_filled(rect, r_xs, fill);
             let stroke_a = if ctx.armed { 90 } else { 30 };

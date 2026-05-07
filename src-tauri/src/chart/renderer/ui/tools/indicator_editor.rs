@@ -68,10 +68,10 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 26.0)),
                     egui::CornerRadius { nw: r_top, ne: r_top, sw: 0, se: 0 },
                     color_alpha(t.toolbar_border, alpha_tint()));
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 // Color dot — uses the editing indicator's color (pre-fetched).
                 ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, hdr_color);
-                ui.add_space(10.0);
+                ui.add_space(12.0);
                 ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(4.0);
@@ -91,7 +91,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
             if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
                 let m = 8.0;
 
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // ── Per-type parameters ──
                 let is_ma = matches!(ind.kind, IndicatorType::SMA | IndicatorType::EMA | IndicatorType::WMA | IndicatorType::DEMA | IndicatorType::TEMA);
@@ -111,7 +111,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             needs_recompute = true;
                         }
                     });
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                 }
 
                 // Band type switcher (BB ↔ Keltner)
@@ -128,7 +128,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             needs_recompute = true;
                         }
                     });
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                 }
 
                 // ── PARAMETERS section ──
@@ -305,13 +305,13 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     }
                 });
 
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // ── APPEARANCE ──
                 dialog_section(ui, "APPEARANCE", m, t.dim.gamma_multiply(0.5));
-                ui.add_space(2.0);
+                ui.add_space(4.0);
                 // Color
                 ui.horizontal(|ui| {
                     ui.add_space(m);
@@ -320,7 +320,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         .swatch_size(16.0).dot_radius(4.0)
                         .theme(t).show(ui);
                 });
-                ui.add_space(3.0);
+                ui.add_space(4.0);
                 // Width + Style on one row
                 ui.horizontal(|ui| {
                     ui.add_space(m);
@@ -338,9 +338,9 @@ if let Some(edit_id) = panes[ap].editing_indicator {
 
                 // ── BAND STYLING (BB / KC only) ──
                 if matches!(ind.kind, IndicatorType::BollingerBands | IndicatorType::KeltnerChannels) {
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                     dialog_section(ui, "BAND COLORS", m, t.dim.gamma_multiply(0.5));
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
 
                     const BAND_WIDTHS: &[f32] = &[0.5, 0.8, 1.0, 1.5, 2.0];
                     let mut band_row = |ui: &mut egui::Ui, label: &str, color_field: &mut String, thickness_field: &mut f32| {
@@ -363,7 +363,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                                 .values(BAND_WIDTHS).height(14.0).font_size(7.0).min_btn_w(22.0)
                                 .theme(t).show(ui);
                         });
-                        ui.add_space(2.0);
+                        ui.add_space(4.0);
                     };
 
                     band_row(ui, "Upper ", &mut ind.upper_color, &mut ind.upper_thickness);
@@ -381,7 +381,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     });
                 }
 
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
                 ui.add_space(4.0);
 
@@ -406,7 +406,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         }
                     });
                 });
-                ui.add_space(6.0);
+                ui.add_space(8.0);
             } else {
                 close_editor = true;
             }

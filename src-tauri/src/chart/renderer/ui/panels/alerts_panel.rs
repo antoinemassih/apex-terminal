@@ -90,7 +90,7 @@ fn draw_content_cx(
                 .theme(cx.theme)
                 .show(ui);
         });
-        ui.add_space(3.0);
+        ui.add_space(4.0);
 
         let input_price = panes[ap].alert_input_price.parse::<f32>().unwrap_or(current_price);
 
@@ -121,7 +121,7 @@ fn draw_content_cx(
         });
     }
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     separator(ui, color_alpha(cx.toolbar_border, alpha_muted()));
     ui.add_space(4.0);
 
@@ -158,7 +158,7 @@ fn draw_content_cx(
                 });
             });
         }
-        ui.add_space(6.0);
+        ui.add_space(8.0);
         separator(ui, color_alpha(cx.toolbar_border, alpha_muted()));
         ui.add_space(4.0);
     }
@@ -233,7 +233,7 @@ fn draw_content_cx(
 
     // ── Triggered section ──
     if total_triggered > 0 {
-        ui.add_space(6.0);
+        ui.add_space(8.0);
         separator(ui, color_alpha(cx.toolbar_border, alpha_muted()));
         ui.add_space(4.0);
 

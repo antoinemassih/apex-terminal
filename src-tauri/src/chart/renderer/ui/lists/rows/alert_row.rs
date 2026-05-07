@@ -114,22 +114,22 @@ impl<'a> AlertRow<'a> {
                     ("○", dim)
                 };
                 painter.text(egui::pos2(rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
-                    glyph, egui::FontId::monospace(10.0), gcol);
+                    glyph, egui::FontId::monospace(11.0), gcol);
 
                 painter.text(egui::pos2(rect.left() + 22.0, cy), egui::Align2::LEFT_CENTER,
-                    symbol, egui::FontId::monospace(10.0), fg);
+                    symbol, egui::FontId::monospace(11.0), fg);
 
                 let cmp_col = match cmp {
                     AlertCmp::Above => bull, AlertCmp::Below => bear, AlertCmp::Crosses => accent,
                 };
                 let main = format!("{} {:.2}", cmp.glyph(), target);
                 painter.text(egui::pos2(rect.left() + 80.0, cy), egui::Align2::LEFT_CENTER,
-                    &main, egui::FontId::monospace(9.5), cmp_col);
+                    &main, egui::FontId::monospace(11.0), cmp_col);
 
                 if let Some(n) = note {
                     ui.painter().text(egui::pos2(rect.center().x + 30.0, cy),
                         egui::Align2::LEFT_CENTER,
-                        n, egui::FontId::monospace(8.5), dim);
+                        n, egui::FontId::monospace(11.0), dim);
                 }
 
                 // Embedded delete button.
@@ -138,7 +138,7 @@ impl<'a> AlertRow<'a> {
                 let db_resp = ui.allocate_rect(db, egui::Sense::click());
                 let col = if db_resp.hovered() { bear } else { dim };
                 ui.painter().text(db.center(), egui::Align2::CENTER_CENTER,
-                    "×", egui::FontId::monospace(12.0), col);
+                    "×", egui::FontId::monospace(11.0), col);
                 if db_resp.clicked() { delete_ref.set(true); }
             })
             .show(ui);

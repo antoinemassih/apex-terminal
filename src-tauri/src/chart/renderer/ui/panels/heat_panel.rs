@@ -237,7 +237,7 @@ pub(crate) fn render_heat_panel(
                 let sector_col = if avg_chg >= 0.0 { t.bull } else { t.bear };
 
                 if groups.len() > 1 {
-                    ui.add_space(3.0);
+                    ui.add_space(4.0);
                     // Colored sector header — single clickable button
                     let caret = if is_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
                     let header_text = format!("{} {}  ({})  {:+.2}%", caret, sector, items.len(), avg_chg);
@@ -248,7 +248,7 @@ pub(crate) fn render_heat_panel(
                         if is_collapsed { watchlist.heat_collapsed.remove(sector); }
                         else { watchlist.heat_collapsed.insert(sector.clone()); }
                     }
-                    ui.add_space(1.0);
+                    ui.add_space(4.0);
                 }
                 if !is_collapsed {
                     render_sector_items(ui, items, t, &price_map, num_cols, heat_sort, &mut heat_click_sym_outer, active_sym);

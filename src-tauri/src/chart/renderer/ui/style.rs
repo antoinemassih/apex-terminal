@@ -20,37 +20,92 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
         [r.min.x, r.min.y, r.width(), r.height()], family, category);
 }
 
-// ─── Font size tokens ─────────────────────────────────────────────────────────
-// In design-mode, these read from the global DesignTokens at runtime.
-// Without design-mode, they compile to the same constants as before (zero overhead).
-pub fn font_2xs()      -> f32 { crate::dt_f32!(font.xxs, 7.0) }
-pub fn font_xs()       -> f32 { crate::dt_f32!(font.xs, 8.0) }
-/// 9.0 — between xs and sm; used by watchlist section headers and badge overlays.
-pub fn font_sm_tight() -> f32 { crate::dt_f32!(font.sm_tight, 9.0) }
-pub fn font_sm()       -> f32 { crate::dt_f32!(font.sm, 10.0) }
-pub fn font_md()  -> f32 { crate::dt_f32!(font.md, 11.0) }
-pub fn font_lg()  -> f32 { crate::dt_f32!(font.lg, 14.0) }
-pub fn font_xl()  -> f32 { crate::dt_f32!(font.xl, 15.0) }
-pub fn font_2xl() -> f32 { crate::dt_f32!(font.xxl, 15.0) }
+// ─── Typography scale ─────────────────────────────────────────────────────────
+// Typography scale — 4 sizes, monospace pinned for financial data.
+//
+// Inspired by Zed's typography system: a strict, opinionated scale that
+// enforces hierarchy through size + weight rather than ad-hoc px values.
+//
+// Size scale (use ONLY these 4):
+//   font_xs()  = 11.0   — secondary chrome, badges, micro-labels
+//   font_sm()  = 13.0   — default body, list rows, tab labels (DEFAULT)
+//   font_md()  = 15.0   — emphasized body, panel titles
+//   font_lg()  = 18.0   — section headers, modal titles
+//
+// Anything outside this scale is a bug. If you need 12px or 14px, you
+// probably want font_sm. If you need 9px, you almost certainly do not —
+// sub-11px is a "Bloomberg terminal" tell that hurts readability without
+// adding density.
+//
+// Weight is currently single-axis (Medium for sans, Regular for mono).
+// Multi-weight support is a future phase; for now achieve hierarchy
+// through size and color (use t.dim for secondary, t.text for primary).
+//
+// Monospace is ALWAYS JetBrains Mono regardless of the font picker.
+// Use mono_xs/sm/md/lg for prices, quantities, OCC tickers, anything
+// tabular. The font picker controls proportional UI chrome only.
 
-// Keep the old names as non-const for backwards compat with all call sites.
-// Without design-mode feature, the compiler inlines these to the literal values.
-pub const FONT_2XS: f32 = 7.0;
-pub const FONT_XS:  f32 = 8.0;
-pub const FONT_SM:  f32 = 10.0;
-pub const FONT_MD:  f32 = 11.0;
-pub const FONT_LG:  f32 = 12.0;
-pub const FONT_XL:  f32 = 13.0;
-pub const FONT_2XL: f32 = 14.0;
+/// 11.0 — secondary chrome, badges, micro-labels.
+pub fn font_xs() -> f32 { 11.0 }
+/// 13.0 — default body, list rows, tab labels.
+pub fn font_sm() -> f32 { 13.0 }
+/// 15.0 — emphasized body, panel titles.
+pub fn font_md() -> f32 { 15.0 }
+/// 18.0 — section headers, modal titles.
+pub fn font_lg() -> f32 { 18.0 }
+
+// ─── Monospace helpers (JetBrains Mono, pinned) ───────────────────────────────
+// Use these for tabular financial data: prices, quantities, OCC tickers.
+// Returns FontId so the family is explicit at the call site.
+#[inline] pub fn mono_xs() -> egui::FontId { egui::FontId::new(font_xs(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_sm() -> egui::FontId { egui::FontId::new(font_sm(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_md() -> egui::FontId { egui::FontId::new(font_md(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_lg() -> egui::FontId { egui::FontId::new(font_lg(), egui::FontFamily::Monospace) }
+
+// ─── Legacy aliases (DEPRECATED) ──────────────────────────────────────────────
+// Mapped to the new 4-step scale. Existing call sites keep compiling; new code
+// must use font_xs/sm/md/lg directly. Mappings:
+//   font_2xs / font_sm_tight → font_xs (11)  [bumps sub-readable to readable]
+//   font_xl                  → font_lg (18)  [collapses 2 sizes to 1]
+//   font_2xl                 → font_lg (18)
+#[doc(hidden)] pub fn font_2xs()      -> f32 { font_xs() }
+#[doc(hidden)] pub fn font_sm_tight() -> f32 { font_xs() }
+#[doc(hidden)] pub fn font_xl()       -> f32 { font_lg() }
+#[doc(hidden)] pub fn font_2xl()      -> f32 { font_lg() }
+
+// Const aliases — kept so any const-context call sites compile. Values match
+// the new scale (xs=11, sm=13, md=15, lg=18). Anything that needed a const
+// before now gets the new readable size.
+pub const FONT_2XS: f32 = 11.0;
+pub const FONT_XS:  f32 = 11.0;
+pub const FONT_SM:  f32 = 13.0;
+pub const FONT_MD:  f32 = 15.0;
+pub const FONT_LG:  f32 = 18.0;
+pub const FONT_XL:  f32 = 18.0;
+pub const FONT_2XL: f32 = 18.0;
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
-pub fn gap_xs()  -> f32 { crate::dt_f32!(spacing.xs, 2.0) }
-pub fn gap_sm()  -> f32 { crate::dt_f32!(spacing.sm, 4.0) }
-pub fn gap_md()  -> f32 { crate::dt_f32!(spacing.md, 6.0) }
-pub fn gap_lg()  -> f32 { crate::dt_f32!(spacing.lg, 8.0) }
-pub fn gap_xl()  -> f32 { crate::dt_f32!(spacing.xl, 10.0) }
-pub fn gap_2xl() -> f32 { crate::dt_f32!(spacing.xxl, 12.0) }
-pub fn gap_3xl() -> f32 { crate::dt_f32!(spacing.xxxl, 20.0) }
+// Spacing scale — strict 4px grid.
+//
+// Use ONLY these. Anything outside is a bug. Inspired by Zed.
+//   gap_2xs() =  4.0  — tight inline
+//   gap_xs()  =  8.0  — default inter-element gap
+//   gap_sm()  = 12.0  — section padding, list-row vertical
+//   gap_md()  = 16.0  — panel inner margin
+//   gap_lg()  = 20.0  — between sections in a panel
+//   gap_xl()  = 24.0  — between distinct panel groups
+//   gap_2xl() = 32.0  — page-level breaks (rare)
+//
+// Hierarchy comes from rhythm, not custom px values. If you find
+// yourself wanting 6px or 10px, the answer is almost always 8px.
+pub fn gap_2xs() -> f32 { 4.0 }
+pub fn gap_xs()  -> f32 { 8.0 }
+pub fn gap_sm()  -> f32 { 12.0 }
+pub fn gap_md()  -> f32 { 16.0 }
+pub fn gap_lg()  -> f32 { 20.0 }
+pub fn gap_xl()  -> f32 { 24.0 }
+pub fn gap_2xl() -> f32 { 32.0 }
+pub fn gap_3xl() -> f32 { 32.0 }
 
 pub const GAP_XS:  f32 = 1.0;
 pub const GAP_SM:  f32 = 3.0;

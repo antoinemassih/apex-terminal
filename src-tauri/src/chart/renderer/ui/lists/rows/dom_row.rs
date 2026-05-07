@@ -275,8 +275,8 @@ impl<'a> DomRow<'a> {
                 }
                 let find = |k: DomColumn| col_rects.iter().find(|(kk, _)| *kk == k).map(|(_, r)| *r);
 
-                let f_lg = egui::FontId::monospace(12.5);
-                let f_sm = egui::FontId::monospace(9.0);
+                let f_lg = egui::FontId::monospace(13.0);
+                let f_sm = egui::FontId::monospace(11.0);
                 let dark = theme_ref.overlay_text;
                 let cy = rect.center().y;
 
@@ -477,8 +477,8 @@ impl<'a> DomRow<'a> {
         let ry = rr.min.y;
         let cy = rr.center().y;
 
-        let font = egui::FontId::monospace(12.5);
-        let font_sm = egui::FontId::monospace(9.0);
+        let font = egui::FontId::monospace(13.0);
+        let font_sm = egui::FontId::monospace(11.0);
         let dark = theme_ref.overlay_text;
 
         // Backgrounds: selected / current / hovered
@@ -614,7 +614,7 @@ impl<'a> DomRow<'a> {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 let xr = Rect::from_min_size(egui::pos2(br.right() - 12.0, br.top()), egui::vec2(12.0, br.height()));
                 painter.rect_filled(xr, 1.0, color_alpha(bear, alpha_dim()));
-                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", egui::FontId::monospace(7.0), Color32::WHITE);
+                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", egui::FontId::monospace(11.0), Color32::WHITE);
                 let label_rect = Rect::from_min_max(br.min, egui::pos2(br.right() - 12.0, br.max.y));
                 draw_order_chip_label(painter, label_rect, side_ch, qty);
                 if drag_resp.clicked() {
@@ -655,8 +655,8 @@ impl<'a> DomRow<'a> {
 
 fn draw_order_chip_label(painter: &Painter, rect: Rect, side: char, qty: u32) {
     let qty_str = format!("{}", qty);
-    let side_font = egui::FontId::monospace(9.0);
-    let qty_font = egui::FontId::monospace(12.0);
+    let side_font = egui::FontId::monospace(11.0);
+    let qty_font = egui::FontId::monospace(11.0);
     let text_col = fallback_theme().overlay_text; // high-contrast label on colored chip
     let s = side.to_string();
     painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, &s, side_font, text_col);

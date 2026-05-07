@@ -1208,7 +1208,7 @@ impl ApertureOrderTicket {
                 let premium = last;
                 let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
                 ui.add(egui::TextEdit::singleline(s.order_notional_amount)
-                    .desired_width(70.0).font(egui::FontId::monospace(9.0)).hint_text("Amount"));
+                    .desired_width(70.0).font(egui::FontId::monospace(11.0)).hint_text("Amount"));
                 let notional: f32 = s.order_notional_amount.parse().unwrap_or(0.0);
                 let qty = if premium > 0.0 && mult > 0.0 {
                     (notional / (premium * mult)).floor() as i32
@@ -1235,7 +1235,7 @@ impl ApertureOrderTicket {
             } else {
                 let _ = ui.add(
                     egui::TextEdit::singleline(&mut format!("{} contracts", s.order_qty))
-                        .desired_width(100.0).font(egui::FontId::monospace(9.0))
+                        .desired_width(100.0).font(egui::FontId::monospace(11.0))
                         .horizontal_align(egui::Align::Center).interactive(false));
             }
             ui.add_space(gap_sm());
@@ -1250,7 +1250,7 @@ impl ApertureOrderTicket {
                         .monospace().size(font_md()).color(self.dim));
                 } else {
                     ui.add(egui::TextEdit::singleline(s.order_limit_price)
-                        .desired_width(68.0).font(egui::FontId::monospace(10.0))
+                        .desired_width(68.0).font(egui::FontId::monospace(11.0))
                         .hint_text("Price").horizontal_align(egui::Align::RIGHT));
                 }
                 ui.add_space(gap_xs());
@@ -1282,7 +1282,7 @@ impl ApertureOrderTicket {
                 FormRow::new("Limit").leading_space(pad).label_width(32.0).hint("Limit price")
                     .show(ui, &t_stub, |ui| {
                         ui.add(egui::TextEdit::singleline(s.order_limit_price)
-                            .desired_width(80.0).font(egui::FontId::monospace(9.0))
+                            .desired_width(80.0).font(egui::FontId::monospace(11.0))
                             .horizontal_align(egui::Align::RIGHT));
                     });
             }
@@ -1291,7 +1291,7 @@ impl ApertureOrderTicket {
                     .label_color(self.bear).hint("Stop price")
                     .show(ui, &t_stub, |ui| {
                         ui.add(egui::TextEdit::singleline(s.order_stop_price)
-                            .desired_width(80.0).font(egui::FontId::monospace(9.0))
+                            .desired_width(80.0).font(egui::FontId::monospace(11.0))
                             .horizontal_align(egui::Align::RIGHT));
                     });
             }
@@ -1300,7 +1300,7 @@ impl ApertureOrderTicket {
                     .label_color(self.accent).hint("Trail amt")
                     .show(ui, &t_stub, |ui| {
                         ui.add(egui::TextEdit::singleline(s.order_trail_amt)
-                            .desired_width(80.0).font(egui::FontId::monospace(9.0))
+                            .desired_width(80.0).font(egui::FontId::monospace(11.0))
                             .horizontal_align(egui::Align::RIGHT));
                     });
             }
@@ -1325,11 +1325,11 @@ impl ApertureOrderTicket {
                     ui.add_space(gap_sm());
                     ui.label(egui::RichText::new("TP").monospace().size(font_sm()).color(self.bull));
                     ui.add(egui::TextEdit::singleline(s.order_tp_price)
-                        .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Take")
+                        .desired_width(52.0).font(egui::FontId::monospace(11.0)).hint_text("Take")
                         .horizontal_align(egui::Align::RIGHT));
                     ui.label(egui::RichText::new("SL").monospace().size(font_sm()).color(self.bear));
                     ui.add(egui::TextEdit::singleline(s.order_sl_price)
-                        .desired_width(52.0).font(egui::FontId::monospace(10.0)).hint_text("Stop")
+                        .desired_width(52.0).font(egui::FontId::monospace(11.0)).hint_text("Stop")
                         .horizontal_align(egui::Align::RIGHT));
                 }
             });

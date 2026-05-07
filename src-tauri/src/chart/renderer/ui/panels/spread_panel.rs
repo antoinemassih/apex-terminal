@@ -260,7 +260,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 egui::vec2(w, 1.0),
             );
             ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             egui::ScrollArea::vertical().id_salt("spread_body").show(ui, |ui| {
                 ui.set_min_width(w - 4.0);
@@ -293,7 +293,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         }
                     }
                 });
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // ── Strategy selector ──
                 ui.horizontal(|ui| {
@@ -312,7 +312,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         pending_strategy = Some(cur_strat);
                     }
                 });
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // ── Legs ──
                 ui.horizontal(|ui| {
@@ -341,7 +341,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         egui::pos2(card_rect.min.x + 6.0, card_rect.center().y),
                         egui::Align2::LEFT_CENTER,
                         &leg_text,
-                        egui::FontId::monospace(9.5),
+                        egui::FontId::monospace(11.0),
                         leg_label_col,
                     );
 
@@ -358,7 +358,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         }
                     }
 
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
 
                     // Leg editor row (inline controls)
                     ui.horizontal(|ui| {
@@ -435,13 +435,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     MetricCard::new("Break Even", format!("${:.2}", break_even))
                         .theme(t).show(ui);
                 });
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // ── Qty multiplier ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Qty").size_px(9.0).color(t.dim));
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                     if ui.add(IconBtn::new("-").color(t.dim)).clicked() && watchlist.spread_state.combo_qty > 1 {
                         watchlist.spread_state.combo_qty -= 1;
                     }
@@ -459,7 +459,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         do_submit = true;
                     }
                 });
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // ── Submit result message ──
                 if let Some(ref msg) = watchlist.spread_state.submit_result {

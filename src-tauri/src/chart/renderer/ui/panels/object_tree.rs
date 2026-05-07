@@ -191,7 +191,7 @@ egui::SidePanel::left("object_tree_panel")
 
         // ── Bulk actions bar (when >1 selected) ──
         if chart.selected_ids.len() > 1 {
-            ui.add_space(2.0);
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 let sel_label = format!("{} sel", chart.selected_ids.len());
@@ -272,7 +272,7 @@ egui::SidePanel::left("object_tree_panel")
             });
         }
 
-        ui.add_space(3.0);
+        ui.add_space(4.0);
 
         if chart.drawings.is_empty() {
             ui.add(MonospaceCode::new("  No drawings").size_px(font_xs()).color(t.dim.gamma_multiply(0.5)));
@@ -487,7 +487,7 @@ egui::SidePanel::left("object_tree_panel")
                             });
                         }
                     }
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
                 }
             }); // end ScrollArea
 
@@ -525,7 +525,7 @@ egui::SidePanel::left("object_tree_panel")
             }
         }
 
-        ui.add_space(6.0);
+        ui.add_space(8.0);
         ui.add(egui::Separator::default().spacing(2.0));
         ui.add_space(4.0);
 
@@ -533,7 +533,7 @@ egui::SidePanel::left("object_tree_panel")
         // ── INDICATORS section ──
         // ════════════════════════════════════════════════════════════════
         ui.add(MonospaceCode::new("INDICATORS").size_px(font_sm_tight()).color(t.dim));
-        ui.add_space(2.0);
+        ui.add_space(4.0);
         if chart.indicators.is_empty() {
             ui.add(MonospaceCode::new("  No indicators").size_px(font_xs()).color(t.dim.gamma_multiply(0.5)));
         } else {
@@ -569,7 +569,7 @@ egui::SidePanel::left("object_tree_panel")
             }
         }
 
-        ui.add_space(6.0);
+        ui.add_space(8.0);
         ui.add(egui::Separator::default().spacing(2.0));
         ui.add_space(4.0);
 
@@ -577,7 +577,7 @@ egui::SidePanel::left("object_tree_panel")
         // ── OVERLAYS section ──
         // ════════════════════════════════════════════════════════════════
         ui.add(MonospaceCode::new("OVERLAYS").size_px(font_sm_tight()).color(t.dim));
-        ui.add_space(2.0);
+        ui.add_space(4.0);
         if chart.symbol_overlays.is_empty() {
             ui.add(MonospaceCode::new("  No overlays").size_px(font_xs()).color(t.dim.gamma_multiply(0.5)));
         } else {
@@ -620,7 +620,7 @@ egui::SidePanel::left("object_tree_panel")
             }
         }
 
-        ui.add_space(6.0);
+        ui.add_space(8.0);
         ui.add(egui::Separator::default().spacing(2.0));
         ui.add_space(4.0);
 
@@ -641,7 +641,7 @@ egui::SidePanel::left("object_tree_panel")
                 }
             });
         });
-        ui.add_space(2.0);
+        ui.add_space(4.0);
         if chart.chart_widgets.is_empty() {
             ui.add(MonospaceCode::new("  No widgets").size_px(font_xs()).color(t.dim.gamma_multiply(0.5)));
         } else {

@@ -144,7 +144,7 @@ if watchlist.orders_panel_open {
                     });
                     // Total P&L row
                     let total_color = if total_pnl >= 0.0 { t.bull } else { t.bear };
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.add(MonospaceCode::new("Total P&L").size_px(font_sm_tight()).color(t.dim));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -152,9 +152,9 @@ if watchlist.orders_panel_open {
                         });
                     });
                 } else {
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                     ui.add(MonospaceCode::new("No open positions").size_px(font_sm_tight()).color(t.dim).gamma(0.4));
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                 }
 
                 ui.add_space(4.0);
@@ -171,7 +171,7 @@ if watchlist.orders_panel_open {
                 ui.painter().rect_filled(
                     egui::Rect::from_min_max(egui::pos2(r.left(), y), egui::pos2(r.right(), y + 2.0)),
                     0.0, color_alpha(t.toolbar_border, alpha_heavy()));
-                ui.add_space(6.0);
+                ui.add_space(8.0);
             }
 
             // ══════════════════════════════════════════════════════
@@ -251,7 +251,7 @@ if watchlist.orders_panel_open {
                         }
                         ui.add(MonospaceCode::new("Select all").size_px(font_sm_tight()).color(t.dim).gamma(0.6));
                     });
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
                 }
             }
 

@@ -29,7 +29,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
         .frame_kind(FrameKind::Custom(custom_frame))
         .separator(false)
         .show(|ui| {
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             let m = 8.0;
 
             ui.horizontal(|ui| {
@@ -87,10 +87,10 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
                     ui.add_space(m + 12.0);
                     ui.add(BodyLabel::new(*detail).size(font_xs()).monospace(true).color(t.dim.gamma_multiply(0.45)));
                 });
-                ui.add_space(3.0);
+                ui.add_space(4.0);
             }
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
         });
     if resp.closed { *conn_panel_open = false; }
 }

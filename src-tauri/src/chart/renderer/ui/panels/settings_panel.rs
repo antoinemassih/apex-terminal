@@ -223,7 +223,7 @@ SettingsTab::Appearance => {
                     ui.painter().text(
                         egui::pos2(r.left() + 8.0, r.bottom() - 12.0),
                         egui::Align2::LEFT_CENTER,
-                        type_label, egui::FontId::monospace(7.0), type_col);
+                        type_label, egui::FontId::monospace(11.0), type_col);
 
                     let sample_col = if sel { TEXT_PRIMARY } else { t.dim.gamma_multiply(0.7) };
                     ui.painter().text(

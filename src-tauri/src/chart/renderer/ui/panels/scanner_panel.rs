@@ -101,14 +101,14 @@ pub(crate) fn draw_content(
         });
     });
     separator(ui, t.toolbar_border);
-    ui.add_space(2.0);
+    ui.add_space(4.0);
 
     // ── Custom scanner builder (collapsible) ──
     if watchlist.scanner_builder_open {
         ui.group(|ui| {
             ui.set_width(panel_w - 6.0);
             ui.add(MonospaceCode::new("New Scanner").size_px(font_sm_tight()).strong(true).color(t.accent));
-            ui.add_space(2.0);
+            ui.add_space(4.0);
 
             FormRow::new("Name").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
                 super::super::widgets::inputs::TextInput::new(&mut watchlist.scanner_new_name)
@@ -157,7 +157,7 @@ pub(crate) fn draw_content(
         });
         ui.add_space(4.0);
         separator(ui, t.toolbar_border);
-        ui.add_space(2.0);
+        ui.add_space(4.0);
     }
 
     // ── Scanner sections ──
@@ -240,9 +240,9 @@ pub(crate) fn draw_content(
                             .price_string(price_str)
                             .price_right_inset(4.0)
                             .sym_layout(0.0, 0.0, 4.0)
-                            .sym_font(egui::FontId::monospace(9.0))
-                            .chg_font(egui::FontId::monospace(9.0))
-                            .price_font(egui::FontId::monospace(9.0))
+                            .sym_font(egui::FontId::monospace(11.0))
+                            .chg_font(egui::FontId::monospace(11.0))
+                            .price_font(egui::FontId::monospace(11.0))
                             .fg(egui::Color32::from_gray(200))
                             .hover_overlay(color_alpha(t.accent, alpha_ghost()))
                             .show(ui);
@@ -262,7 +262,7 @@ pub(crate) fn draw_content(
 
                 ui.add_space(4.0);
                 separator(ui, color_alpha(t.toolbar_border, alpha_dim()));
-                ui.add_space(2.0);
+                ui.add_space(4.0);
             }
 
             ui.add_space(4.0);

@@ -106,22 +106,22 @@ impl<'a> OrderRow<'a> {
                     egui::vec2(14.0, 14.0));
                 painter.rect_filled(pill, 2.0, color_alpha(side_col, alpha_subtle()));
                 painter.text(pill.center(), egui::Align2::CENTER_CENTER,
-                    side_lbl, egui::FontId::monospace(9.0), side_col);
+                    side_lbl, egui::FontId::monospace(11.0), side_col);
 
                 painter.text(egui::pos2(pill.right() + 6.0, cy), egui::Align2::LEFT_CENTER,
-                    symbol, egui::FontId::monospace(10.0), fg);
+                    symbol, egui::FontId::monospace(11.0), fg);
 
                 painter.text(egui::pos2(rect.center().x, cy), egui::Align2::CENTER_CENTER,
                     &format!("{} @ {:.2}", qty, price),
-                    egui::FontId::monospace(9.5), fg);
+                    egui::FontId::monospace(11.0), fg);
 
                 painter.text(egui::pos2(rect.right() - 80.0, cy), egui::Align2::RIGHT_CENTER,
-                    status, egui::FontId::monospace(8.5), dim);
+                    status, egui::FontId::monospace(11.0), dim);
 
                 if let Some(a) = age {
                     let x = if show_cancel { rect.right() - 28.0 } else { rect.right() - 6.0 };
                     ui.painter().text(egui::pos2(x, cy), egui::Align2::RIGHT_CENTER,
-                        a, egui::FontId::monospace(8.0), dim.gamma_multiply(0.7));
+                        a, egui::FontId::monospace(11.0), dim.gamma_multiply(0.7));
                 }
 
                 // Embedded cancel button.
@@ -132,7 +132,7 @@ impl<'a> OrderRow<'a> {
                     let cb_resp = ui.allocate_rect(cb, egui::Sense::click());
                     let col = if cb_resp.hovered() { bear } else { dim };
                     ui.painter().text(cb.center(), egui::Align2::CENTER_CENTER,
-                        "×", egui::FontId::monospace(12.0), col);
+                        "×", egui::FontId::monospace(11.0), col);
                     if cb_resp.clicked() { cancel_ref.set(true); }
                 }
             })

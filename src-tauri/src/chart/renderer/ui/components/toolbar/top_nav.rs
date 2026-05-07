@@ -107,7 +107,7 @@ use crate::chart_renderer::ui::style::{
     color_alpha, hex_to_color, segmented_control,
     dialog_window_themed, dialog_header, action_btn,
     FONT_MD, FONT_SM, FONT_2XS, STROKE_STD, STROKE_THIN,
-    ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM,
+    ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
     BTN_ICON_SM, BTN_ICON_LG,
     set_toolbar_rect, tb_group_break, current as style_current,
     font_xs, font_sm, font_md, alpha_muted,
@@ -486,7 +486,7 @@ pub(crate) fn render(
             ui.add(egui::Separator::default().spacing(4.0));
 
             // ── Organized dropdown menus ──
-            let _menu_font = egui::FontId::monospace(10.0);
+            let _menu_font = egui::FontId::monospace(11.0);
             let check = |active: bool| if active { Icon::CHECK } else { "  " };
 
             // Chart Type dropdown (single-select)
@@ -1073,7 +1073,7 @@ pub(crate) fn render(
                             // Description
                             let desc = widget_description(kind);
                             p.text(egui::pos2(name_x, r.top() + 23.0), egui::Align2::LEFT_CENTER,
-                                desc, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+                                desc, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.35));
 
                             // Active checkmark
                             if is_active {
@@ -1603,7 +1603,7 @@ pub(crate) fn render(
                     // Star — toggles favorite without closing the dropdown
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { t.gold } else if sh { t.dim.gamma_multiply(0.5) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
+                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { t.dim.gamma_multiply(0.5) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(11.0), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -1710,14 +1710,14 @@ pub(crate) fn render(
 
                     // Label + description
                     let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
-                    ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(9.0), lc);
-                    let dc = if hovered { t.text_muted } else { t.dim.gamma_multiply(0.55) };
-                    ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(10.0), dc);
+                    ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(11.0), lc);
+                    let dc = if hovered { color_alpha(t.dim, ALPHA_HEAVY) } else { t.dim.gamma_multiply(0.55) };
+                    ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(11.0), dc);
 
                     // Star — filled, raw pointer click
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { t.gold } else if sh { t.dim.gamma_multiply(0.5) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
+                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { t.dim.gamma_multiply(0.5) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(11.0), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -1793,7 +1793,7 @@ pub(crate) fn render(
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].new_group_name)
-                        .hint_text("Group name...").desired_width(230.0 - m * 2.0).font(egui::FontId::monospace(10.0)));
+                        .hint_text("Group name...").desired_width(230.0 - m * 2.0).font(egui::FontId::monospace(11.0)));
                     resp.request_focus();
                 });
                 ui.add_space(gap_lg());
@@ -1966,14 +1966,14 @@ pub(crate) fn render(
                     }
                     if tip.earnings_days >= 0 && tip.earnings_days <= 14 {
                         ui.add_space(gap_xs());
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), t.gold));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), color_alpha(t.accent, ALPHA_HEAVY)));
                     }
                     if !tip.tags.is_empty() {
                         ui.add_space(gap_xs());
                         ui.horizontal_wrapped(|ui| { for tag in &tip.tags { ui.label(TextStyle::Caption.as_rich(tag, t.accent)); } });
                     }
                     if tip.alert_triggered {
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Alert triggered", Icon::LIGHTNING), t.notification_red));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Alert triggered", Icon::LIGHTNING), t.bear));
                     }
                 });
             });

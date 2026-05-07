@@ -156,7 +156,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 ui.add_sized(
                     egui::vec2(rect.width() - 12.0, editor_height - 16.0),
                     egui::TextEdit::multiline(&mut watchlist.script_source)
-                        .font(egui::FontId::monospace(10.0))
+                        .font(egui::FontId::monospace(11.0))
                         .code_editor()
                         .desired_rows(8)
                         .text_color(egui::Color32::from_gray(220))
@@ -204,12 +204,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     });
     ui.add_space(4.0);
     separator(ui, t.toolbar_border);
-    ui.add_space(2.0);
+    ui.add_space(4.0);
 
     // ── Result tabs ─────────────────────────────────────────
     ui.horizontal(|ui| {
         result_tab_btn(ui, "Output", ScriptResultTab::Output, &mut watchlist.script_result_tab, t);
-        ui.add_space(2.0);
+        ui.add_space(4.0);
         result_tab_btn(ui, "Backtest", ScriptResultTab::Backtest, &mut watchlist.script_result_tab, t);
     });
     ui.add_space(4.0);
@@ -251,7 +251,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             if PanelHeaderWithClose::new("APEX SCRIPT").theme(t).show(ui) { close = true; }
             ui.add_space(4.0);
             divider(ui, w, t);
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             // ── AI Prompt input ─────────────────────────────────────
             ui.horizontal(|ui| {
@@ -277,7 +277,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     ui.painter().rect_stroke(bg_rect, 3.0, egui::Stroke::new(stroke_std(), color_alpha(t.accent, alpha_strong())), egui::StrokeKind::Outside);
                 }
             });
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             // ── Preset examples ─────────────────────────────────────
             ui.horizontal(|ui| {
@@ -298,9 +298,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     }
                 }
             });
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             divider(ui, w, t);
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             // ── Code editor area ────────────────────────────────────
             let editor_bg = color_alpha(t.bg, 200);
@@ -308,7 +308,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
             // Dark background frame for code area
             ui.horizontal(|ui| {
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 let (rect, _) = ui.allocate_exact_size(
                     egui::vec2(w - 16.0, editor_height),
                     egui::Sense::hover(),
@@ -324,7 +324,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                             ui.add_sized(
                                 egui::vec2(rect.width() - 12.0, editor_height - 16.0),
                                 egui::TextEdit::multiline(&mut watchlist.script_source)
-                                    .font(egui::FontId::monospace(10.0))
+                                    .font(egui::FontId::monospace(11.0))
                                     .code_editor()
                                     .desired_rows(10)
                                     .text_color(egui::Color32::from_gray(220))
@@ -333,7 +333,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                         });
                 });
             });
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             // ── Button row ──────────────────────────────────────────
             ui.horizontal(|ui| {
@@ -389,7 +389,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     watchlist.script_backtest = None;
                 }
             });
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             divider(ui, w, t);
             ui.add_space(4.0);
 
@@ -397,7 +397,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
                 result_tab_btn(ui, "Output", ScriptResultTab::Output, &mut watchlist.script_result_tab, t);
-                ui.add_space(2.0);
+                ui.add_space(4.0);
                 result_tab_btn(ui, "Backtest", ScriptResultTab::Backtest, &mut watchlist.script_result_tab, t);
             });
             ui.add_space(4.0);
@@ -460,7 +460,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         }
     };
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
 
     // ── Stats row ───────────────────────────────────────────
     let stats = [
@@ -484,7 +484,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
                 egui::pos2(rect.center().x, rect.min.y + 10.0),
                 egui::Align2::CENTER_CENTER,
                 label,
-                egui::FontId::monospace(7.5),
+                egui::FontId::monospace(11.0),
                 t.dim.gamma_multiply(0.5),
             );
             // Value
@@ -492,13 +492,13 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
                 egui::pos2(rect.center().x, rect.min.y + 26.0),
                 egui::Align2::CENTER_CENTER,
                 value,
-                egui::FontId::monospace(9.0),
+                egui::FontId::monospace(11.0),
                 *color,
             );
         }
     });
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
 
     // ── Trade list header ───────────────────────────────────
     ui.horizontal(|ui| {
@@ -521,7 +521,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(ui.cursor().min.x + col_x[i], header_y + 7.0),
             egui::Align2::LEFT_CENTER,
             hdr,
-            egui::FontId::monospace(7.5),
+            egui::FontId::monospace(11.0),
             t.dim.gamma_multiply(0.4),
         );
     }
@@ -533,7 +533,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         egui::vec2(w - m * 2.0, 1.0),
     );
     ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
-    ui.add_space(2.0);
+    ui.add_space(4.0);
 
     // Trade rows
     for trade in &result.trades {
@@ -562,7 +562,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             side_rect.center(),
             egui::Align2::CENTER_CENTER,
             trade.side,
-            egui::FontId::monospace(7.0),
+            egui::FontId::monospace(11.0),
             side_col,
         );
 
@@ -571,7 +571,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[1], cy),
             egui::Align2::LEFT_CENTER,
             format!("{:.2}", trade.entry_price),
-            egui::FontId::monospace(8.5),
+            egui::FontId::monospace(11.0),
             t.dim.gamma_multiply(0.8),
         );
 
@@ -580,7 +580,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[2], cy),
             egui::Align2::LEFT_CENTER,
             format!("{:.2}", trade.exit_price),
-            egui::FontId::monospace(8.5),
+            egui::FontId::monospace(11.0),
             t.dim.gamma_multiply(0.8),
         );
 
@@ -590,7 +590,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[3], cy),
             egui::Align2::LEFT_CENTER,
             format!("{}${:.2}", pnl_sign, trade.pnl),
-            egui::FontId::monospace(8.5),
+            egui::FontId::monospace(11.0),
             pnl_color,
         );
 
@@ -599,12 +599,12 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[4], cy),
             egui::Align2::LEFT_CENTER,
             format!("{}{:.2}%", pnl_sign, trade.pnl_pct),
-            egui::FontId::monospace(8.5),
+            egui::FontId::monospace(11.0),
             pnl_color,
         );
     }
 
-    ui.add_space(10.0);
+    ui.add_space(12.0);
 }
 
 // ── Helper widgets ──────────────────────────────────────────────────────────

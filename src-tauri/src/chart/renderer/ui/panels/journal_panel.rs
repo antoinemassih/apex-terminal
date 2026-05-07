@@ -214,27 +214,27 @@ fn draw_card(ui: &mut egui::Ui, entry: &JournalEntry, t: &Theme) {
     cy += 16.0;
 
     p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &entry.setup_type, egui::FontId::monospace(7.0), t.accent.gamma_multiply(0.7));
+        &entry.setup_type, egui::FontId::monospace(11.0), t.accent.gamma_multiply(0.7));
     let dur = if entry.duration_mins >= 1440 { format!("{:.0}d", entry.duration_mins as f64 / 1440.0) }
         else if entry.duration_mins >= 60 { format!("{:.0}h", entry.duration_mins as f64 / 60.0) }
         else { format!("{}m", entry.duration_mins) };
     p.text(egui::pos2(cx + 60.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &dur, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.5));
+        &dur, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
     let r_col = if entry.r_multiple > 0.0 { t.bull } else { t.bear };
     p.text(egui::pos2(cx + 90.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &format!("{:+.1}R", entry.r_multiple), egui::FontId::monospace(7.0), r_col);
+        &format!("{:+.1}R", entry.r_multiple), egui::FontId::monospace(11.0), r_col);
     cy += 14.0;
 
     p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
         &format!("{:.2} \u{2192} {:.2}", entry.entry_price, entry.exit_price),
-        egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+        egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.4));
     p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
-        &entry.timeframe, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.4));
+        &entry.timeframe, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.4));
 
     if !entry.notes.is_empty() {
         cy += 14.0;
         p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-            &entry.notes, egui::FontId::monospace(7.0), t.dim.gamma_multiply(0.35));
+            &entry.notes, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.35));
     }
 
     ui.add_space(gap_xs());

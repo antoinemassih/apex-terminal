@@ -57,7 +57,7 @@ pub fn show(ctx: &egui::Context) {
 
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // ── Global font scale ──────────────────────────────────────
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 ui.label(
                     egui::RichText::new("GLOBAL SCALE")
                         .monospace()
@@ -90,7 +90,7 @@ pub fn show(ctx: &egui::Context) {
 
                 ui.add_space(12.0);
                 ui.separator();
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // ── egui's built-in full style editor ─────────────────────
                 // Controls: spacing, colors, rounding, stroke widths,
@@ -111,7 +111,7 @@ pub fn show(ctx: &egui::Context) {
                     .size(9.0)
                     .color(egui::Color32::from_rgb(120, 120, 130)),
                 );
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 let mut style = (*ctx.style()).clone();
                 style.ui(ui);

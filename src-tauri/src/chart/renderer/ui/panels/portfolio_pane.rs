@@ -228,7 +228,7 @@ pub(crate) fn render(
             let lx = donut_cx + (donut_r + 18.0) * mid_a.cos();
             let ly = donut_cy + (donut_r + 18.0) * mid_a.sin();
             painter.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER,
-                &format!("{} {:.0}%", label, frac * 100.0), egui::FontId::monospace(7.0), color);
+                &format!("{} {:.0}%", label, frac * 100.0), egui::FontId::monospace(11.0), color);
             angle += sweep;
         }
 
@@ -329,10 +329,10 @@ pub(crate) fn render(
             for (i, sym) in syms.iter().enumerate() {
                 painter.text(egui::pos2(grid_x + 28.0 + i as f32 * cell_sz + cell_sz * 0.5, grid_y - 2.0),
                     egui::Align2::CENTER_BOTTOM, &sym[..sym.len().min(3)],
-                    egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+                    egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
                 painter.text(egui::pos2(grid_x + 26.0, grid_y + i as f32 * cell_sz + cell_sz * 0.5),
                     egui::Align2::RIGHT_CENTER, &sym[..sym.len().min(4)],
-                    egui::FontId::monospace(6.0), t.dim.gamma_multiply(0.5));
+                    egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
             }
 
             // Cells
@@ -353,7 +353,7 @@ pub(crate) fn render(
                     painter.rect_filled(cell_rect, 2.0, cell_col);
                     if row != col && cell_sz > 14.0 {
                         painter.text(cell_rect.center(), egui::Align2::CENTER_CENTER,
-                            &format!("{:.1}", corr), egui::FontId::monospace(6.0), t.text);
+                            &format!("{:.1}", corr), egui::FontId::monospace(11.0), t.text);
                     }
                 }
             }
@@ -382,7 +382,7 @@ pub(crate) fn render(
             let impact_col = if portfolio_impact >= 0.0 { t.bull } else { t.bear };
 
             painter.text(egui::pos2(sector_x, scenario_y + 18.0), egui::Align2::LEFT_CENTER,
-                &format!("${:+.0}", portfolio_impact), egui::FontId::proportional(20.0), impact_col);
+                &format!("${:+.0}", portfolio_impact), egui::FontId::proportional(18.0), impact_col);
             painter.text(egui::pos2(sector_x, scenario_y + 36.0), egui::Align2::LEFT_CENTER,
                 &format!("{:+.1}% portfolio impact", impact_pct), egui::FontId::monospace(FONT_XS), impact_col);
 
@@ -397,7 +397,7 @@ pub(crate) fn render(
                 if imp_y + i as f32 * 12.0 > inner.bottom() { break; }
                 let c = if *imp >= 0.0 { t.bull } else { t.bear };
                 painter.text(egui::pos2(sector_x, imp_y + i as f32 * 12.0), egui::Align2::LEFT_CENTER,
-                    &format!("{}: ${:+.0}", sym, imp), egui::FontId::monospace(7.0), c);
+                    &format!("{}: ${:+.0}", sym, imp), egui::FontId::monospace(11.0), c);
             }
         }
     }

@@ -61,6 +61,7 @@ impl<'a> ChipBody<'a> {
 /// ui.add(PillButton::new("1D").active(selected == "1D").theme(&theme));
 /// ```
 #[must_use = "PillButton must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct PillButton<'a> {
     text: &'a str,
     active: bool,
@@ -145,6 +146,7 @@ impl<'a> Widget for PillButton<'a> {
 ///     .large());
 /// ```
 #[must_use = "BrandCtaButton must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct BrandCtaButton<'a> {
     label: &'a str,
     brand_color: Color32,
@@ -205,9 +207,17 @@ impl<'a> Widget for BrandCtaButton<'a> {
             .min_size(egui::vec2(0.0, height)),
         );
         ui.spacing_mut().button_padding = prev_pad;
-        if resp.hovered() && !self.disabled && !crate::design_tokens::is_inspect_mode() {
+        let inspect = crate::design_tokens::is_inspect_mode();
+        let interactive = !self.disabled && !inspect;
+        if resp.hovered() && interactive {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(resp.rect, Radius::Md.corner(), color_alpha(Color32::WHITE, 12));
+        }
+        use super::motion;
+        let hover_id = resp.id.with("brand_cta_button_hover");
+        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && interactive, motion::FAST);
+        if hover_t > 0.001 {
+            ui.painter().rect_filled(resp.rect, Radius::Md.corner(),
+                motion::fade_in(color_alpha(Color32::WHITE, 12), hover_t));
         }
         resp
     }

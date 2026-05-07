@@ -95,7 +95,7 @@ pub(crate) fn draw(
 
     // Header
     let hy = inner.top()+1.0;
-    let hf = egui::FontId::monospace(8.5);
+    let hf = egui::FontId::monospace(11.0);
     let hc = t.dim.gamma_multiply(0.45);
     if show_delta { painter.text(egui::pos2(x0+cd*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "\u{0394}", hf.clone(), hc); }
     painter.text(egui::pos2(xb+cb*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "BID", hf.clone(), t.bull.gamma_multiply(0.5));
@@ -136,8 +136,8 @@ pub(crate) fn draw(
     for i in 0..4u32 { painter.line_segment([egui::pos2(inner.left(), ctrl_top-i as f32), egui::pos2(inner.right(), ctrl_top-i as f32)], egui::Stroke::new(stroke_std(), egui::Color32::from_rgba_unmultiplied(0,0,0, 20u8.saturating_sub(i as u8*5)))); }
     painter.line_segment([egui::pos2(inner.left(), ctrl_top), egui::pos2(inner.right(), ctrl_top)], egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())));
 
-    let fs = egui::FontId::monospace(7.5);
-    let fm = egui::FontId::monospace(8.5);
+    let fs = egui::FontId::monospace(11.0);
+    let fm = egui::FontId::monospace(11.0);
     let is_mkt = *dom_order_type == DomOrderType::Market;
 
     // Row 1 (16px): [-] qty [+]  [MKT/LMT]  [A]
@@ -249,8 +249,8 @@ pub(crate) fn draw(
     let ms = mb.max(ma) as f32;
     let mv = levels.iter().map(|l| l.volume).max().unwrap_or(1).max(1);
     let ao: Vec<&OrderLevel> = orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).collect();
-    let font = egui::FontId::monospace(12.5);
-    let font_sm = egui::FontId::monospace(9.0);
+    let font = egui::FontId::monospace(13.0);
+    let font_sm = egui::FontId::monospace(11.0);
     let lp = ui.painter_at(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), body_top), egui::pos2(dom_rect.right(), body_top+body_h)));
     let _ = (font, font_sm); // retained imports above; widget owns its fonts now
 
@@ -367,8 +367,8 @@ fn fmt_size(size: u32) -> String {
 /// Draw order badge text: side letter + large bold qty, high contrast against badge bg
 fn draw_order_label(painter: &egui::Painter, rect: egui::Rect, side: &str, qty: u32, _color: egui::Color32) {
     let qty_str = format!("{}", qty);
-    let side_font = egui::FontId::monospace(9.0);
-    let qty_font = egui::FontId::monospace(12.0);
+    let side_font = egui::FontId::monospace(11.0);
+    let qty_font = egui::FontId::monospace(11.0);
     let text_col = _color; // high contrast against colored badge (caller provides)
     // Side letter on the left
     painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, side, side_font, text_col);

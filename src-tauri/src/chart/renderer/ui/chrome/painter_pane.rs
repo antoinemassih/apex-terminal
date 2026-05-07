@@ -539,26 +539,30 @@ impl<'a> PainterPaneHeader<'a> {
                     out.tab_drag_released = Some(ti);
                 }
 
-                // Bg — tab_hover_bg_alpha and tab_inactive_alpha knobs from StyleSettings
+                // Bg — tab_hover_bg_alpha and tab_inactive_alpha knobs from StyleSettings.
+                // Animated transitions: active fades over MED, inactive hover fades over FAST.
                 let style_st = current();
-                let tab_bg = if is_active_tab {
-                    t.bg.gamma_multiply(0.5)
-                } else if tab_resp.hovered() {
-                    color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha)
-                } else {
-                    Color32::TRANSPARENT
-                };
+                use crate::chart::renderer::ui::components::motion;
+                let active_id = egui::Id::new(("painter_pane_tab_active", self.pane_index, ti));
+                let hover_id  = egui::Id::new(("painter_pane_tab_hover",  self.pane_index, ti));
+                let active_t = motion::ease_bool(ui.ctx(), active_id, is_active_tab, motion::MED);
+                let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  tab_resp.hovered() && !is_active_tab, motion::FAST);
+                let idle_bg   = Color32::TRANSPARENT;
+                let hover_bg  = color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha);
+                let active_bg = t.bg.gamma_multiply(0.5);
+                let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
+                tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);
                 let r_md = radius_md() as u8;
                 painter.rect_filled(
                     tab_rect,
                     egui::CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 },
                     tab_bg,
                 );
-                if is_active_tab {
+                if active_t > 0.001 {
                     painter.line_segment(
                         [pos2(tab_rect.left() + 1.0, tab_rect.bottom()),
                          pos2(tab_rect.right() - 1.0, tab_rect.bottom())],
-                        Stroke::new(TAB_UNDERLINE_THICKNESS, t.accent),
+                        Stroke::new(TAB_UNDERLINE_THICKNESS, motion::fade_in(t.accent, active_t)),
                     );
                 }
 

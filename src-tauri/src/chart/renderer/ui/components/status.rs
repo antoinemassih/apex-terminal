@@ -432,123 +432,17 @@ impl Widget for Skeleton {
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
+//
+// Toast / ToastVariant / ToastResponse have moved to
+// `crate::ui_kit::widgets::toast`. Re-exported here for back-compat.
+#[deprecated(note = "use crate::ui_kit::widgets::Toast")]
+pub use crate::ui_kit::widgets::toast::Toast;
+#[deprecated(note = "use crate::ui_kit::widgets::toast::ToastVariant")]
+pub use crate::ui_kit::widgets::toast::ToastVariant;
+#[deprecated(note = "use crate::ui_kit::widgets::toast::ToastResponse")]
+pub use crate::ui_kit::widgets::toast::ToastResponse;
 
-/// Toast variant — affects accent / icon color.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ToastVariant { Info, Success, Warning, Danger }
-
-/// Returned from [`Toast::show`] — exposes the response plus an
-/// `auto_dismiss_due` hint that callers can compare to `ctx.input(|i| i.time)`
-/// to decide when to stop rendering. The widget itself is stateless.
-pub struct ToastResponse {
-    pub response: Response,
-    /// Suggested timestamp (seconds, matching `egui::InputState::time`) at
-    /// which the host should drop this toast. `None` = sticky.
-    pub auto_dismiss_due: Option<f64>,
-}
-
-/// Temporary notification card with a title + optional body. Stateless —
-/// the caller owns the lifecycle and consults `auto_dismiss_due` to decide
-/// when to remove it from its render list.
-///
-/// ```ignore
-/// let r = Toast::new("Saved")
-///     .body("Layout written to disk")
-///     .success()
-///     .auto_dismiss_secs(3.0)
-///     .theme(t)
-///     .show(ui);
-/// if let Some(due) = r.auto_dismiss_due {
-///     if ui.ctx().input(|i| i.time) >= due { /* drop toast */ }
-/// }
-/// ```
-#[must_use = "Toast must be shown with `.show(ui)` to render"]
-pub struct Toast<'a> {
-    title: &'a str,
-    body: Option<&'a str>,
-    variant: ToastVariant,
-    accent: Option<Color32>,
-    bg: Color32,
-    border: Color32,
-    text: Color32,
-    auto_dismiss_secs: Option<f32>,
-    width: f32,
-}
-
-impl<'a> Toast<'a> {
-    pub fn new(title: &'a str) -> Self {
-        Self {
-            title,
-            body: None,
-            variant: ToastVariant::Info,
-            accent: None,
-            bg: ft().toolbar_bg,
-            border: ft().toolbar_border,
-            text: ft().text,
-            auto_dismiss_secs: None,
-            width: 280.0,
-        }
-    }
-    pub fn body(mut self, s: &'a str) -> Self { self.body = Some(s); self }
-    pub fn variant(mut self, v: ToastVariant) -> Self { self.variant = v; self }
-    pub fn info(mut self)    -> Self { self.variant = ToastVariant::Info;    self }
-    pub fn success(mut self) -> Self { self.variant = ToastVariant::Success; self }
-    pub fn warning(mut self) -> Self { self.variant = ToastVariant::Warning; self }
-    pub fn danger(mut self)  -> Self { self.variant = ToastVariant::Danger;  self }
-    pub fn auto_dismiss_secs(mut self, s: f32) -> Self { self.auto_dismiss_secs = Some(s); self }
-    pub fn width(mut self, w: f32) -> Self { self.width = w; self }
-    pub fn accent(mut self, c: Color32) -> Self { self.accent = Some(c); self }
-    pub fn theme(mut self, t: &Theme) -> Self {
-        self.bg = t.toolbar_bg;
-        self.border = t.toolbar_border;
-        self.text = t.text;
-        self.accent = Some(match self.variant {
-            ToastVariant::Info    => t.accent,
-            ToastVariant::Success => t.bull,
-            ToastVariant::Warning => ft().warn,
-            ToastVariant::Danger  => t.bear,
-        });
-        self
-    }
-
-    pub fn show(self, ui: &mut Ui) -> ToastResponse {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let due = self.auto_dismiss_secs
-            .map(|s| ui.ctx().input(|i| i.time) + s as f64);
-
-        // toast_bg_alpha controls how opaque the toast background is (semi-transparent = glassmorphic).
-        let st_toast = crate::chart_renderer::ui::style::current();
-        let toast_fill = color_alpha(self.bg, st_toast.toast_bg_alpha);
-        let frame = egui::Frame::NONE
-            .fill(toast_fill)
-            .stroke(Stroke::new(stroke_thin(), color_alpha(self.border, alpha_strong())))
-            .corner_radius(r_md_cr())
-            .inner_margin(egui::Margin::same(gap_lg() as i8));
-
-        let inner = frame.show(ui, |ui| {
-            ui.set_width(self.width);
-            ui.horizontal(|ui| {
-                // Accent stripe / dot
-                let painter = ui.painter();
-                let cur = ui.cursor().min;
-                painter.rect_filled(
-                    Rect::from_min_size(cur, Vec2::new(3.0, font_md() + font_sm() + 6.0)),
-                    egui::CornerRadius::same(2),
-                    accent,
-                );
-                ui.add_space(8.0);
-                ui.vertical(|ui| {
-                    ui.label(RichText::new(self.title).monospace().size(font_md()).strong().color(self.text));
-                    if let Some(b) = self.body {
-                        ui.label(RichText::new(b).monospace().size(font_sm()).color(color_alpha(self.text, alpha_dim())));
-                    }
-                });
-            });
-        });
-
-        ToastResponse { response: inner.response, auto_dismiss_due: due }
-    }
-}
+// (Toast struct/impl moved to ui_kit::widgets::toast — see re-exports above.)
 
 // ─── NotificationBadge ────────────────────────────────────────────────────────
 
@@ -572,7 +466,7 @@ impl NotificationBadge {
         Self {
             count,
             max: 99,
-            color: ft().notification_red,
+            color: ft().bear,
             fg: Color32::WHITE,
             show_zero: false,
         }
@@ -605,7 +499,7 @@ impl Widget for NotificationBadge {
             rect.center(),
             egui::Align2::CENTER_CENTER,
             &label,
-            egui::FontId::monospace(7.5),
+            egui::FontId::monospace(11.0),
             self.fg,
         );
         resp

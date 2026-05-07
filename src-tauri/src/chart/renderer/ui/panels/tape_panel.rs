@@ -14,7 +14,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
     let panel_w = ui.available_width();
 
     ui.add(MonospaceCode::new(&format!("TIME & SALES  {}", active_symbol)).size_px(9.0).strong(true).color(t.accent));
-    ui.add_space(2.0);
+    ui.add_space(4.0);
 
     // Column headers
     ui.horizontal(|ui| {
@@ -78,7 +78,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                     .row_tint(side_color, 12)
                     .body(move |ui| {
                         let rect = ui.max_rect();
-                        let font = egui::FontId::monospace(8.5);
+                        let font = egui::FontId::monospace(11.0);
                         ui.painter().text(
                             egui::pos2(rect.left(), rect.center().y),
                             egui::Align2::LEFT_CENTER, &time_str, font.clone(),
@@ -113,7 +113,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             if PanelHeaderWithClose::new("TIME & SALES").subtitle(active_symbol).theme(t).show(ui) {
                 watchlist.tape_open = false;
             }
-            ui.add_space(2.0);
+            ui.add_space(4.0);
             draw_content(ui, watchlist, active_symbol, t);
         });
 }

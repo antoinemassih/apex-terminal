@@ -34,6 +34,7 @@ pub enum ActionSize { Small, Medium, Large }
 /// Defaults: `Primary` tier, `Medium` size, not disabled. You must call
 /// `.theme(t)` (or `.palette(...)`) so the button has palette colors.
 #[must_use = "ActionButton must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct ActionButton<'a> {
     label: &'a str,
     tier: ActionTier,
@@ -115,9 +116,17 @@ impl<'a> egui::Widget for ActionButton<'a> {
                 .min_size(egui::vec2(0.0, height)),
         );
         ui.spacing_mut().button_padding = prev_pad;
-        if resp.hovered() && !self.disabled && !crate::design_tokens::is_inspect_mode() {
+        let inspect = crate::design_tokens::is_inspect_mode();
+        let interactive = !self.disabled && !inspect;
+        if resp.hovered() && interactive {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(resp.rect, radius_md(), color_alpha(Color32::WHITE, 12));
+        }
+        use super::motion;
+        let hover_id = resp.id.with("action_button_hover");
+        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && interactive, motion::FAST);
+        if hover_t > 0.001 {
+            ui.painter().rect_filled(resp.rect, radius_md(),
+                motion::fade_in(color_alpha(Color32::WHITE, 12), hover_t));
         }
         let _ = self.palette_set;
         resp
@@ -158,9 +167,17 @@ pub fn big_action_btn(
             .min_size(egui::vec2(0.0, height)),
     );
     ui.spacing_mut().button_padding = prev_pad;
-    if resp.hovered() && !disabled && !crate::design_tokens::is_inspect_mode() {
+    let inspect = crate::design_tokens::is_inspect_mode();
+    let interactive = !disabled && !inspect;
+    if resp.hovered() && interactive {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        ui.painter().rect_filled(resp.rect, radius_md(), color_alpha(Color32::WHITE, 12));
+    }
+    use super::motion;
+    let hover_id = resp.id.with("big_action_btn_hover");
+    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && interactive, motion::FAST);
+    if hover_t > 0.001 {
+        ui.painter().rect_filled(resp.rect, radius_md(),
+            motion::fade_in(color_alpha(Color32::WHITE, 12), hover_t));
     }
     resp
 }
@@ -192,9 +209,16 @@ pub fn side_pane_action_btn(
             .min_size(egui::vec2(0.0, 22.0)),
     );
     ui.spacing_mut().button_padding = prev_pad;
-    if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
+    let inspect = crate::design_tokens::is_inspect_mode();
+    if resp.hovered() && !inspect {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(accent, alpha_faint()));
+    }
+    use super::motion;
+    let hover_id = resp.id.with("side_pane_action_btn_hover");
+    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !inspect, motion::FAST);
+    if hover_t > 0.001 {
+        ui.painter().rect_filled(resp.rect, radius_sm(),
+            motion::fade_in(color_alpha(accent, alpha_faint()), hover_t));
     }
     resp
 }
@@ -226,9 +250,17 @@ pub fn brand_cta_button(
             .min_size(egui::vec2(0.0, height)),
     );
     ui.spacing_mut().button_padding = prev_pad;
-    if resp.hovered() && !disabled && !crate::design_tokens::is_inspect_mode() {
+    let inspect = crate::design_tokens::is_inspect_mode();
+    let interactive = !disabled && !inspect;
+    if resp.hovered() && interactive {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        ui.painter().rect_filled(resp.rect, radius_md(), color_alpha(Color32::WHITE, 12));
+    }
+    use super::motion;
+    let hover_id = resp.id.with("brand_cta_btn_hover");
+    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && interactive, motion::FAST);
+    if hover_t > 0.001 {
+        ui.painter().rect_filled(resp.rect, radius_md(),
+            motion::fade_in(color_alpha(Color32::WHITE, 12), hover_t));
     }
     resp
 }

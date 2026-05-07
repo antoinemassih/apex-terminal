@@ -141,7 +141,14 @@ pub const FONT_NAMES: &[&str] = &[
     "Geist",            // 5 — Vercel's app font
 ];
 
-/// `font_idx` selects which of the 6 fonts to use as primary.
+/// Initialize fonts.
+///
+/// `font_idx` selects which of the 6 fonts to use as the **proportional** primary
+/// (UI chrome, labels, prose). The **monospace** family is ALWAYS pinned to
+/// JetBrains Mono regardless of the picker — financial data needs tabular digit
+/// alignment for prices, quantities, OCC tickers, and anything that has to line
+/// up in columns. This is non-negotiable; the font picker controls proportional
+/// UI chrome only.
 pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
     let mut fonts = egui::FontDefinitions::default();
 
@@ -190,12 +197,15 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
         _ => "jetbrains_mono",
     };
 
-    // Set as primary for both font families
-    if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
-        mono_keys.insert(0, primary.into());
-    }
+    // Proportional: picker font wins (user's choice for UI chrome).
     if let Some(prop_keys) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
         prop_keys.insert(0, primary.into());
+    }
+
+    // Monospace: ALWAYS JetBrains Mono, regardless of picker.
+    // Financial data needs tabular digit alignment; this is non-negotiable.
+    if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+        mono_keys.insert(0, "jetbrains_mono".into());
     }
 
     // Add Phosphor icon fonts

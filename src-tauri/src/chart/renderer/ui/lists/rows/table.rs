@@ -164,12 +164,12 @@ impl<'a, T> Table<'a, T> {
             } else {
                 egui::pos2(cell.left() + pad, cell.center().y)
             };
-            ui.painter().text(pos, align, c.label, egui::FontId::monospace(9.0), col_text);
+            ui.painter().text(pos, align, c.label, egui::FontId::monospace(11.0), col_text);
             if active {
                 let gx = if c.right_align { cell.right() - pad - (c.label.len() as f32) * 6.0 - 8.0 } else { cell.left() + pad + (c.label.len() as f32) * 6.0 + 4.0 };
                 ui.painter().text(egui::pos2(gx, cell.center().y),
                     egui::Align2::CENTER_CENTER,
-                    self.state.sort_dir.glyph(), egui::FontId::monospace(8.0), accent);
+                    self.state.sort_dir.glyph(), egui::FontId::monospace(11.0), accent);
             }
             if c.sortable && resp.clicked() {
                 if self.state.sort_col == Some(i) {
@@ -236,7 +236,7 @@ impl<'a, T> Table<'a, T> {
                                     Stroke::new(stroke_thin(), dim), egui::StrokeKind::Inside);
                                 if is_sel {
                                     ui.painter().text(cb.center(), egui::Align2::CENTER_CENTER,
-                                        "✓", egui::FontId::monospace(10.0), accent);
+                                        "✓", egui::FontId::monospace(11.0), accent);
                                 }
                             }
                             for ci in 0..columns_len {

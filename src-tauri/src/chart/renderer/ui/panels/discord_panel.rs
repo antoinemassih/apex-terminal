@@ -131,7 +131,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     {
             if !watchlist.discord_authenticated {
                 // ── Not authenticated: Connect button ──
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 if PanelHeaderWithClose::new("DISCORD").accent(discord_blurple).dim(t.dim).show(ui) {
                     watchlist.discord_open = false;
                 }
@@ -142,13 +142,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     |ui| {
                         ui.add_space(avail.y * 0.25);
                         ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(36.0).color(discord_blurple.gamma_multiply(0.5)));
-                        ui.add_space(10.0);
+                        ui.add_space(12.0);
                         if !crate::discord::is_configured() {
                             ui.add(widgets::text::MonospaceCode::new("Discord not configured").xs().color(t.dim));
                             ui.add(widgets::text::MonospaceCode::new("Add discord.env with credentials").xs().color(t.dim.gamma_multiply(0.5)));
                         } else if watchlist.discord_connecting {
                             ui.add(widgets::text::MonospaceCode::new("Waiting for authorization...").xs().color(t.dim));
-                            ui.add_space(6.0);
+                            ui.add_space(8.0);
                             super::super::chart_widgets::refined_spinner(ui, t.accent);
                             ui.add_space(4.0);
                             ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(t.dim.gamma_multiply(0.5)));
@@ -172,16 +172,16 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 let has_guilds = !watchlist.discord_guilds.is_empty();
 
                 // ── Header ──
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                     if !watchlist.discord_channel.is_empty() {
                         ui.add(widgets::text::BodyLabel::new(&watchlist.discord_channel).monospace(true).strong(true).size(font_sm()).color(egui::Color32::WHITE));
                     } else {
                         ui.add(widgets::text::SectionLabel::new("DISCORD").color(discord_blurple));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(6.0);
+                        ui.add_space(8.0);
                         if close_button(ui, t.dim) { watchlist.discord_open = false; }
                         if ui.add(widgets::buttons::ChromeBtn::new(
                             egui::RichText::new("×").monospace().size(font_sm()).color(t.bear))
@@ -215,7 +215,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 
                     egui::ScrollArea::horizontal().id_salt("guild_strip").show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.add_space(6.0);
+                            ui.add_space(8.0);
                             let guild_list: Vec<_> = watchlist.discord_guilds.clone();
                             for guild in &guild_list {
                                 let selected = watchlist.discord_selected_guild.as_ref() == Some(&guild.id);
@@ -286,7 +286,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.add_space(4.0);
                         });
                     });
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
                     // Separator
                     let sep_rect = ui.allocate_exact_size(egui::vec2(panel_w, 1.0), egui::Sense::hover()).0;
                     ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
@@ -314,7 +314,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 
                             if watchlist.discord_channels_loading {
                                 ui.horizontal(|ui| {
-                                    ui.add_space(6.0);
+                                    ui.add_space(8.0);
                                     super::super::chart_widgets::refined_spinner(ui, t.accent);
                                     ui.add(widgets::text::MonospaceCode::new("Loading channels...").xs().color(t.dim));
                                 });
@@ -327,7 +327,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     |ui| {
                                         ui.add_space(avail.y * 0.2);
                                         ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(28.0).color(t.dim.gamma_multiply(0.5)));
-                                        ui.add_space(6.0);
+                                        ui.add_space(8.0);
                                         ui.add(widgets::text::MonospaceCode::new("Bot not in this server").xs().color(t.dim));
                                         ui.add_space(4.0);
                                         ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(t.dim.gamma_multiply(0.5)));
@@ -347,7 +347,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         }
                                         ui.add_space(8.0);
                                         ui.add(widgets::text::CaptionLabel::new("Server admins can also\nadd the bot themselves").color(t.dim).gamma(0.4));
-                                        ui.add_space(10.0);
+                                        ui.add_space(12.0);
                                         if ui.add(widgets::buttons::ChromeBtn::new(
                                             egui::RichText::new("Retry").monospace().size(font_xs()).color(t.dim))
                                             .fill(color_alpha(t.toolbar_border, alpha_tint()))
@@ -370,7 +370,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     for ch in &channels {
                                         if ch.is_category() {
                                             // Category header — SectionLabel (already unified)
-                                            ui.add_space(6.0);
+                                            ui.add_space(8.0);
                                             ui.horizontal(|ui| {
                                                 ui.add_space(8.0);
                                                 let name = ch.name.as_deref().unwrap_or("UNKNOWN").to_uppercase();
@@ -378,7 +378,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                                 ui.add(widgets::text::SectionLabel::new(&name).xs().color(t.dim).gamma(0.6));
                                             });
                                             current_category = ch.id.clone();
-                                            ui.add_space(2.0);
+                                            ui.add_space(4.0);
                                         } else if ch.is_text() {
                                             let name = ch.name.as_deref().unwrap_or("unknown").to_string();
                                             // ── ListRow migration: channel row ──
@@ -408,11 +408,11 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             }
                         } else {
                             // ── Channel selected: show messages + input ──
-                            ui.add_space(2.0);
+                            ui.add_space(4.0);
 
                             // Back button + channel name
                             ui.horizontal(|ui| {
-                                ui.add_space(6.0);
+                                ui.add_space(8.0);
                                 if ui.add(widgets::buttons::ChromeBtn::new(
                                     egui::RichText::new(Icon::CARET_RIGHT).size(font_sm()).color(t.dim))
                                     .fill(egui::Color32::TRANSPARENT).frameless(true)
@@ -424,7 +424,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                 }
                                 ui.add(widgets::text::MonospaceCode::new(&watchlist.discord_channel).xs().color(t.dim));
                             });
-                            ui.add_space(2.0);
+                            ui.add_space(4.0);
 
                             let author_colors: &[egui::Color32] = &[
                                 egui::Color32::from_rgb(74, 158, 255), egui::Color32::from_rgb(46, 204, 113), egui::Color32::from_rgb(243, 156, 18),
@@ -451,7 +451,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     } else if watchlist.discord_messages.is_empty() {
                                         ui.add_space(20.0);
                                         ui.horizontal(|ui| {
-                                            ui.add_space(6.0);
+                                            ui.add_space(8.0);
                                             ui.add(widgets::text::MonospaceCode::new("No messages in this channel").xs().color(t.dim).gamma(0.5));
                                         });
                                     }
@@ -485,7 +485,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         // Message content — INLINE EXCEPTION: egui::Label required for
                                         // wrap_mode(Wrap); no widget currently supports wrapping body text.
                                         ui.horizontal(|ui| {
-                                            ui.add_space(22.0); // align with text after avatar dot
+                                            ui.add_space(20.0); // align with text after avatar dot
                                             ui.add(egui::Label::new(
                                                 egui::RichText::new(&msg.content).monospace().size(font_sm()).color(t.text)
                                             ).wrap_mode(egui::TextWrapMode::Wrap));
@@ -500,7 +500,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.add_space(6.0);
+                                ui.add_space(8.0);
                                 let input = TextInput::new(&mut watchlist.discord_input)
                                     .width(content_w - 60.0)
                                     .text_color(t.text)

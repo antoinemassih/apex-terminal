@@ -48,6 +48,7 @@ pub enum PaneTabStyle {
 ///     .on_hover_text("Open settings").clicked() { open = !open; }
 /// ```
 #[must_use = "ToolbarBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct ToolbarBtn<'a> {
     label: &'a str,
     active: bool,
@@ -100,6 +101,7 @@ impl<'a> Widget for ToolbarBtn<'a> {
 /// ui.add(TopNavBtn::new("Charts").active(true).underline().theme(t));
 /// ```
 #[must_use = "TopNavBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct TopNavBtn<'a> {
     label: &'a str,
     active: bool,
@@ -163,9 +165,16 @@ impl<'a> Widget for TopNavBtn<'a> {
                 Stroke::new(stroke_std(), self.accent),
             );
         }
-        if resp.hovered() && !self.active && !crate::design_tokens::is_inspect_mode() {
+        let inspect = crate::design_tokens::is_inspect_mode();
+        if resp.hovered() && !self.active && !inspect {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(self.accent, alpha_faint()));
+        }
+        use crate::chart::renderer::ui::components::motion;
+        let hover_id = resp.id.with("top_nav_btn_hover");
+        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !self.active && !inspect, motion::FAST);
+        if hover_t > 0.001 {
+            ui.painter().rect_filled(resp.rect, radius_sm(),
+                motion::fade_in(color_alpha(self.accent, alpha_faint()), hover_t));
         }
         resp
     }
@@ -179,6 +188,7 @@ impl<'a> Widget for TopNavBtn<'a> {
 /// ui.add(TopNavToggle::new("⚙").active(settings_open).medium().theme(t));
 /// ```
 #[must_use = "TopNavToggle must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct TopNavToggle<'a> {
     icon: &'a str,
     active: bool,
@@ -226,11 +236,16 @@ impl<'a> Widget for TopNavToggle<'a> {
                 .min_size(egui::vec2(side, side)),
         );
         ui.spacing_mut().button_padding = prev_pad;
-        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
+        let inspect = crate::design_tokens::is_inspect_mode();
+        if resp.hovered() && !inspect {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            if !self.active {
-                ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(self.accent, alpha_ghost()));
-            }
+        }
+        use crate::chart::renderer::ui::components::motion;
+        let hover_id = resp.id.with("top_nav_toggle_hover");
+        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !self.active && !inspect, motion::FAST);
+        if hover_t > 0.001 {
+            ui.painter().rect_filled(resp.rect, radius_sm(),
+                motion::fade_in(color_alpha(self.accent, alpha_ghost()), hover_t));
         }
         resp
     }
@@ -244,6 +259,7 @@ impl<'a> Widget for TopNavToggle<'a> {
 /// ui.add(PaneTabBtn::new("Orders").icon(Some("📋")).active(true).filled().theme(t));
 /// ```
 #[must_use = "PaneTabBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct PaneTabBtn<'a> {
     label: &'a str,
     icon: Option<&'a str>,

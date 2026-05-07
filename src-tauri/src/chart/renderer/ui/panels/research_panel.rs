@@ -166,7 +166,7 @@ pub(crate) fn draw_content(
             // Direction dot
             let dot_pos = egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0);
             ui.painter().circle_filled(dot_pos, 3.0, col);
-            ui.add_space(10.0);
+            ui.add_space(12.0);
             ui.add(MonospaceCode::new(&trade.transaction).xs().color(col));
             ui.add(MonospaceCode::new(&format!("{}K", trade.shares.abs() / 1000)).xs().color(t.text));
             ui.add(MonospaceCode::new(&format!("${:.0}K", trade.value / 1000.0)).xs().color(t.dim));
@@ -193,7 +193,7 @@ pub(crate) fn draw_content(
             ui.add_space(gap_sm());
             let dot_pos = egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0);
             ui.painter().circle_filled(dot_pos, 3.0, imp_col);
-            ui.add_space(10.0);
+            ui.add_space(12.0);
             ui.add(MonospaceCode::new(&event.name).xs().color(t.text));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add(MonospaceCode::new(&format!("{}d", days)).xs().color(t.dim));

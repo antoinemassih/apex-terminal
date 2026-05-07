@@ -12,7 +12,7 @@ pub fn hairline(ui: &mut Ui, color: Color32) {
         [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
         Stroke::new(st.stroke_std, color),
     );
-    ui.add_space(1.0);
+    ui.add_space(4.0);
 }
 
 /// Vertical hairline divider — for inline horizontal layouts.

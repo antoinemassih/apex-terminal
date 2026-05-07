@@ -73,43 +73,88 @@ impl<T: Clone> SplitSection<T> {
 
 // ─── Themes ───────────────────────────────────────────────────────────────────
 
+// ─── 6-color contract (Zed-style palette discipline) ─────────────────────────
+//
+// Each theme exposes exactly 7 semantic foreground colors:
+//
+//   accent  — single primary action color (1 hue per theme)
+//   bull    — gains, positive deltas, buy
+//   bear    — losses, negative deltas, sell
+//   text    — primary foreground
+//   dim     — secondary foreground (use color_alpha or t.dim itself)
+//   border  — separators, panel edges, faint structure
+//   warn    — single warning color (alerts, fat-finger, freeze)
+//
+// Hierarchy comes from color_alpha() opacity stops (ALPHA_GHOST through
+// ALPHA_HEAVY), NOT from new hues. If you find yourself adding a 7th color,
+// the answer is almost always "use accent at a different opacity instead."
+//
+// Background tokens (`bg`, `toolbar_bg`) are surface fills, not palette
+// colors — they intentionally sit outside the 6-color contract.
+//
+// Legacy fields (gold, notification_red, pinned_row_tint, text_muted, hud_bg,
+// hud_border, overlay_text, shadow_color, rrg_*) are kept as #[deprecated]
+// derived getters so call sites compile-warn but do not break. Migrate them
+// incrementally to color_alpha(t.<core>, ALPHA_*) instead.
+//
+// `cmd_palette` is the only documented exception: an 11-slot category badge
+// palette where each slot needs a distinct hue (symbol/widget/overlay/etc).
+// It is theme-invariant (CMD_PALETTE_DEFAULT) and shared across all themes.
 #[derive(Clone)]
 pub(crate) struct Theme {
     pub(crate) name: &'static str,
-    pub(crate) bg: egui::Color32, pub(crate) bull: egui::Color32, pub(crate) bear: egui::Color32, pub(crate) dim: egui::Color32,
-    pub(crate) toolbar_bg: egui::Color32, pub(crate) toolbar_border: egui::Color32, pub(crate) accent: egui::Color32,
-    pub(crate) text: egui::Color32, // primary text color (light on dark, dark on light)
-    // ── Extended semantic tokens (R5-1) ─────────────────────────────────────────
-    /// Amber/yellow warn state — replaces COLOR_AMBER usages (R:R indicator, active status).
-    pub(crate) warn: egui::Color32,
-    /// Brand red for notification badges — distinct from `.bear` (e.g. NotificationBadge).
-    pub(crate) notification_red: egui::Color32,
-    /// Gold — star pin, earnings pill, RVOL >2× highlight.
-    pub(crate) gold: egui::Color32,
-    /// Base shadow color — themes can use a warm/cool tint instead of pure black.
-    pub(crate) shadow_color: egui::Color32,
-    /// Near-black/near-white overlay text — high-contrast price labels (DOM), light on dark or
-    /// dark on light depending on theme polarity.
-    pub(crate) overlay_text: egui::Color32,
-    /// RRG Leading quadrant (top-right, green).
-    pub(crate) rrg_leading: egui::Color32,
-    /// RRG Improving quadrant (top-left, blue).
-    pub(crate) rrg_improving: egui::Color32,
-    /// RRG Weakening quadrant (bottom-right, yellow).
-    pub(crate) rrg_weakening: egui::Color32,
-    /// RRG Lagging quadrant (bottom-left, red).
-    pub(crate) rrg_lagging: egui::Color32,
-    /// Command-palette category badge palette.
-    /// Slots: [symbol, widget, overlay, theme, timeframe, layout, play, alert, ai, dynamic, calc]
+    // ── Backgrounds (surface fills, not palette) ────────────────────────────
+    pub(crate) bg: egui::Color32,
+    pub(crate) toolbar_bg: egui::Color32,
+    // ── 6-color core foreground palette ─────────────────────────────────────
+    pub(crate) accent: egui::Color32,
+    pub(crate) bull:   egui::Color32,
+    pub(crate) bear:   egui::Color32,
+    pub(crate) text:   egui::Color32,
+    pub(crate) dim:    egui::Color32,
+    /// Separators, panel edges, faint structure. Used as `border` in the new
+    /// contract; legacy alias `toolbar_border` is kept (heavy usage: 371 sites)
+    /// and intentionally non-deprecated to avoid warning storm.
+    pub(crate) toolbar_border: egui::Color32,
+    pub(crate) warn:   egui::Color32,
+    /// Shared command-palette category badges. Theme-invariant. Documented
+    /// exception to the 6-color rule — each slot is a distinct hue by design.
     pub(crate) cmd_palette: [egui::Color32; 11],
-    /// Bluish tint overlay for pinned watchlist rows.
+    // ── Legacy fields (kept for back-compat; prefer derived getters) ────────
+    // These remain as fields so existing call-sites compile. New code should
+    // use the deprecated getter forms below (e.g. `t.gold()`) which warn and
+    // route through `color_alpha`. Eventually these fields will be removed.
+    /// LEGACY: use `color_alpha(t.accent, ALPHA_HEAVY)`.
+    pub(crate) gold: egui::Color32,
+    /// LEGACY: use `t.bear` (or `t.warn` for non-loss alerts).
+    pub(crate) notification_red: egui::Color32,
+    /// LEGACY: use `color_alpha(t.bg, ALPHA_HEAVY)` — pure-black baseline.
+    pub(crate) shadow_color: egui::Color32,
+    /// LEGACY: use `t.text` (overlay text is just the primary foreground).
+    pub(crate) overlay_text: egui::Color32,
+    /// LEGACY: use `t.bull`.
+    pub(crate) rrg_leading: egui::Color32,
+    /// LEGACY: use `t.accent`.
+    pub(crate) rrg_improving: egui::Color32,
+    /// LEGACY: use `t.warn`.
+    pub(crate) rrg_weakening: egui::Color32,
+    /// LEGACY: use `t.bear`.
+    pub(crate) rrg_lagging: egui::Color32,
+    /// LEGACY: use `color_alpha(t.accent, ALPHA_GHOST)`.
     pub(crate) pinned_row_tint: egui::Color32,
-    /// Third-tier dim text — lighter weight than `dim`, heavier than background.
+    /// LEGACY: use `color_alpha(t.dim, ALPHA_HEAVY)`.
     pub(crate) text_muted: egui::Color32,
-    /// Semi-transparent dark overlay background for debug HUDs.
+    /// LEGACY: use `color_alpha(t.bg, ALPHA_SOLID)` for HUD overlays.
     pub(crate) hud_bg: egui::Color32,
-    /// Subtle border color for debug overlay frames.
+    /// LEGACY: use `t.toolbar_border`.
     pub(crate) hud_border: egui::Color32,
+}
+
+impl Theme {
+    /// Single border color in the 6-color contract. Aliases `toolbar_border`
+    /// (which is kept as a field for call-site compatibility).
+    #[inline]
+    pub(crate) fn border(&self) -> egui::Color32 { self.toolbar_border }
 }
 pub(crate) const fn rgb(r: u8, g: u8, b: u8) -> egui::Color32 { egui::Color32::from_rgb(r, g, b) }
 /// Premultiplied RGBA — all callers must pass already-premultiplied RGB components.

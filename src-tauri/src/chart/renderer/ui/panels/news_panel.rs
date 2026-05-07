@@ -30,7 +30,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
 
             // Header — title + filter chip (next to title) + close
             let closed = PanelHeaderWithClose::new("NEWS").theme(t).show_with_title_actions(ui, |ui| {
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 let filter_label = if watchlist.news_filter_symbol { active_symbol } else { "All" };
                 let filter_col = if watchlist.news_filter_symbol { t.accent } else { t.dim };
                 if ui.add(ChromeBtn::new(
@@ -51,7 +51,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 egui::vec2(w, 1.0),
             );
             ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
-            ui.add_space(5.0);
+            ui.add_space(4.0);
 
             draw_content(ui, watchlist, active_symbol, t);
         });

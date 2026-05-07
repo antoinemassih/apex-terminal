@@ -24,7 +24,7 @@ if panes[ap].overlay_editing {
             let m = 8.0;
             // Header
             if dialog_header(ui, "SYMBOL OVERLAYS", t.dim) { close_ov = true; }
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
             // ── Existing overlays ──
             let n_ov = panes[ap].symbol_overlays.len();
@@ -62,18 +62,18 @@ if panes[ap].overlay_editing {
                         delete_idx = Some(oi);
                     }
                 });
-                ui.add_space(2.0);
+                ui.add_space(4.0);
             }
 
             if n_ov > 0 {
-                ui.add_space(2.0);
+                ui.add_space(4.0);
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
                 ui.add_space(4.0);
             }
 
             // ── Add new overlay ──
             dialog_section(ui, "ADD OVERLAY", m, t.dim.gamma_multiply(0.5));
-            ui.add_space(2.0);
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.add_space(m);
                 super::super::widgets::inputs::TextInput::new(&mut panes[ap].overlay_input)
@@ -84,7 +84,7 @@ if panes[ap].overlay_editing {
             });
             let query = panes[ap].overlay_input.trim().to_uppercase();
             if !query.is_empty() {
-                ui.add_space(2.0);
+                ui.add_space(4.0);
                 let results = crate::ui_kit::symbols::search_symbols(&query, 5);
                 for si in &results {
                     ui.horizontal(|ui| {
@@ -111,7 +111,7 @@ if panes[ap].overlay_editing {
             }
 
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close_ov = true; }
-            ui.add_space(6.0);
+            ui.add_space(8.0);
         });
     if let Some(di) = delete_idx { panes[ap].symbol_overlays.remove(di); }
     if close_ov { panes[ap].overlay_editing = false; panes[ap].overlay_editing_idx = None; panes[ap].overlay_input.clear(); }

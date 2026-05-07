@@ -23,6 +23,7 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 /// ui.add(IconBtn::new("✕").medium().color(theme.dim));
 /// ```
 #[must_use = "IconBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct IconBtn<'a> {
     glyph: &'a str,
     color: Option<Color32>,
@@ -62,11 +63,20 @@ impl<'a> Widget for IconBtn<'a> {
         );
         ui.spacing_mut().button_padding = prev_pad;
         hit(&resp.rect, "ICON_BTN", "Icon Buttons");
-        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
+        let inspect = crate::design_tokens::is_inspect_mode();
+        if resp.hovered() && !inspect {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(color, alpha_ghost()));
+        }
+        // Animated hover tint + border (replaces snap-on-hover paint).
+        use super::super::components::motion;
+        let hover_id = resp.id.with("icon_btn_hover");
+        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !inspect, motion::FAST);
+        if hover_t > 0.001 {
+            ui.painter().rect_filled(resp.rect, radius_sm(),
+                motion::fade_in(color_alpha(color, alpha_ghost()), hover_t));
             ui.painter().rect_stroke(resp.rect, radius_sm(),
-                egui::Stroke::new(stroke_thin(), color_alpha(color, alpha_muted())), egui::StrokeKind::Inside);
+                egui::Stroke::new(stroke_thin(), motion::fade_in(color_alpha(color, alpha_muted()), hover_t)),
+                egui::StrokeKind::Inside);
         }
         resp
     }
@@ -80,6 +90,7 @@ impl<'a> Widget for IconBtn<'a> {
 /// if ui.add(TradeBtn::new("BUY").color(theme.bull).width(80.0)).clicked() { ... }
 /// ```
 #[must_use = "TradeBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct TradeBtn<'a> {
     label: &'a str,
     color: Color32,
@@ -128,6 +139,16 @@ impl<'a> Widget for TradeBtn<'a> {
         hit(&resp.rect, "TRADE_BTN", "Buttons");
         if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        // Animated hover overlay. Press snaps (no animation while button is held down).
+        use super::super::components::motion;
+        let pressed = resp.is_pointer_button_down_on();
+        let hover_id = resp.id.with("trade_btn_hover");
+        // While pressed, hold animation at current state (don't animate the press itself).
+        let hover_target = resp.hovered() || pressed;
+        let hover_t_raw = motion::ease_bool(ui.ctx(), hover_id, hover_target, motion::FAST);
+        let hover_t = if pressed { 1.0 } else { hover_t_raw };
+        if hover_t > 0.001 {
             match s.button_treatment {
                 ButtonTreatment::SoftPill => {
                     let hb = crate::dt_f32!(button.trade_hover_brightness, 0.7);
@@ -135,17 +156,19 @@ impl<'a> Widget for TradeBtn<'a> {
                         (color.r() as f32 * hb).min(255.0) as u8,
                         (color.g() as f32 * hb).min(255.0) as u8,
                         (color.b() as f32 * hb).min(255.0) as u8);
-                    ui.painter().rect_filled(resp.rect, radius_md(), hover_bg);
+                    let bg = motion::lerp_color(dim_bg, hover_bg, hover_t);
+                    ui.painter().rect_filled(resp.rect, radius_md(), bg);
                     ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
                         label, egui::FontId::monospace(font_lg()), Color32::WHITE);
                 }
                 ButtonTreatment::OutlineAccent => {
-                    ui.painter().rect_filled(resp.rect, current().r_md, color);
+                    ui.painter().rect_filled(resp.rect, current().r_md, motion::fade_in(color, hover_t));
                     ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
                         label, egui::FontId::monospace(font_lg()), contrast_fg(color));
                 }
                 ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => {
-                    ui.painter().rect_filled(resp.rect, current().r_xs, color_alpha(color, alpha_ghost()));
+                    ui.painter().rect_filled(resp.rect, current().r_xs,
+                        motion::fade_in(color_alpha(color, alpha_ghost()), hover_t));
                 }
             }
         }
@@ -169,6 +192,7 @@ impl<'a> Widget for TradeBtn<'a> {
 /// if ui.add(SimpleBtn::new("Cancel").color(theme.dim)).clicked() { ... }
 /// ```
 #[must_use = "SimpleBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct SimpleBtn<'a> {
     label: &'a str,
     color: Color32,
@@ -215,16 +239,25 @@ impl<'a> Widget for SimpleBtn<'a> {
             .corner_radius(cr)
             .min_size(egui::vec2(self.min_width, h)));
         hit(&resp.rect, "SIMPLE_BTN", "Buttons");
-        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
+        let inspect = crate::design_tokens::is_inspect_mode();
+        if resp.hovered() && !inspect {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        use super::super::components::motion;
+        let hover_id = resp.id.with("simple_btn_hover");
+        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !inspect, motion::FAST);
+        if hover_t > 0.001 {
             match s.button_treatment {
                 ButtonTreatment::OutlineAccent => {
-                    ui.painter().rect_filled(resp.rect, current().r_md, color_alpha(color, alpha_soft()));
+                    ui.painter().rect_filled(resp.rect, current().r_md,
+                        motion::fade_in(color_alpha(color, alpha_soft()), hover_t));
                     ui.painter().rect_stroke(resp.rect, current().r_md,
-                        Stroke::new(stroke_bold(), color), egui::StrokeKind::Inside);
+                        Stroke::new(stroke_bold(), motion::fade_in(color, hover_t)),
+                        egui::StrokeKind::Inside);
                 }
                 ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => {
-                    ui.painter().rect_filled(resp.rect, current().r_xs, color_alpha(color, alpha_ghost()));
+                    ui.painter().rect_filled(resp.rect, current().r_xs,
+                        motion::fade_in(color_alpha(color, alpha_ghost()), hover_t));
                 }
                 _ => {}
             }
@@ -248,6 +281,7 @@ impl<'a> Widget for SimpleBtn<'a> {
 /// if ui.add(SmallActionBtn::new("Clear All").color(theme.dim)).clicked() { ... }
 /// ```
 #[must_use = "SmallActionBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct SmallActionBtn<'a> {
     label: &'a str,
     color: Color32,
@@ -287,16 +321,25 @@ impl<'a> Widget for SmallActionBtn<'a> {
             .stroke(Stroke::new(stroke_w, stroke_col))
             .min_size(egui::vec2(0.0, btn_compact_height())));
         hit(&resp.rect, "SMALL_BTN", "Buttons");
-        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
+        let inspect = crate::design_tokens::is_inspect_mode();
+        if resp.hovered() && !inspect {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        use super::super::components::motion;
+        let hover_id = resp.id.with("small_action_btn_hover");
+        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !inspect, motion::FAST);
+        if hover_t > 0.001 {
             match s.button_treatment {
                 ButtonTreatment::OutlineAccent => {
-                    ui.painter().rect_filled(resp.rect, current().r_md, color_alpha(color, alpha_soft()));
+                    ui.painter().rect_filled(resp.rect, current().r_md,
+                        motion::fade_in(color_alpha(color, alpha_soft()), hover_t));
                     ui.painter().rect_stroke(resp.rect, current().r_md,
-                        Stroke::new(stroke_bold(), color), egui::StrokeKind::Inside);
+                        Stroke::new(stroke_bold(), motion::fade_in(color, hover_t)),
+                        egui::StrokeKind::Inside);
                 }
                 ButtonTreatment::UnderlineActive | ButtonTreatment::RaisedActive | ButtonTreatment::BlackFillActive => {
-                    ui.painter().rect_filled(resp.rect, current().r_xs, color_alpha(color, alpha_ghost()));
+                    ui.painter().rect_filled(resp.rect, current().r_xs,
+                        motion::fade_in(color_alpha(color, alpha_ghost()), hover_t));
                 }
                 _ => {}
             }
@@ -321,6 +364,7 @@ impl<'a> Widget for SmallActionBtn<'a> {
 /// visual is explicit. Useful for: Connect/Disconnect, Add Bot, Send,
 /// Above/Below alert pills, Paper/Live frameless toggle, etc.
 #[must_use = "ChromeBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct ChromeBtn {
     text: RichText,
     fill: Option<Color32>,
@@ -379,6 +423,7 @@ impl Widget for ChromeBtn {
 /// if ui.add(ActionBtn::new("Place").color(theme.accent).enabled(order.valid)).clicked() { ... }
 /// ```
 #[must_use = "ActionBtn must be added with `ui.add(...)` to render"]
+#[deprecated(note = "use ui_kit::widgets::Button")]
 pub struct ActionBtn<'a> {
     label: &'a str,
     color: Color32,

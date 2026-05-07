@@ -107,7 +107,7 @@ impl<'a> OptionChainRow<'a> {
 
                 let painter = ui.painter();
                 let cy = rect.center().y;
-                let f = egui::FontId::monospace(9.5);
+                let f = egui::FontId::monospace(11.0);
 
                 painter.text(egui::pos2(call_rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
                     &format!("{:.2}", call.bid), f.clone(), bull);
@@ -119,7 +119,7 @@ impl<'a> OptionChainRow<'a> {
                 let strike_x = rect.center().x;
                 painter.text(egui::pos2(strike_x, cy), egui::Align2::CENTER_CENTER,
                     &format!("{:.2}", strike),
-                    egui::FontId::monospace(10.0), accent);
+                    egui::FontId::monospace(11.0), accent);
 
                 painter.text(egui::pos2(put_rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
                     &format!("{}", put.volume), f.clone(), dim);
@@ -132,7 +132,7 @@ impl<'a> OptionChainRow<'a> {
                     painter.text(egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0),
                         egui::Align2::RIGHT_BOTTOM,
                         &format!("Δ{:+.2}", call.delta),
-                        egui::FontId::monospace(7.5), dim);
+                        egui::FontId::monospace(11.0), dim);
                 }
             })
             .show(ui);

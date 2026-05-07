@@ -1,4 +1,24 @@
 //! Reusable widgets for the chart UI.
+//!
+//! This module is the foundation for the new component library (port of
+//! longbridge/gpui-component — see `THIRD_PARTY.md`). The submodules
+//! `theme`, `tokens`, and `motion` define the contract widgets will be
+//! built against in subsequent milestones. Existing free-function
+//! helpers (color_picker, line_style_dropdown, etc.) are kept here for
+//! now and will be migrated into kit widgets over time.
+
+pub mod theme;
+pub mod tokens;
+pub mod motion;
+pub mod button;
+pub mod modal;
+pub mod toast;
+pub mod context_menu;
+
+pub use button::{Button, show_button_gallery};
+pub use modal::Modal;
+pub use toast::Toast;
+pub use context_menu::ContextMenu;
 
 use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};
