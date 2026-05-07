@@ -523,6 +523,152 @@ impl TextEngine {
     }
 }
 
+// =====================================================================
+// Subpixel render path (Phase 2 / experimental)
+// =====================================================================
+//
+// Parallel to `shape_and_render`, this function shapes via cosmic-text
+// and rasterizes each glyph through swash with `Format::Subpixel`. The
+// output is a `SubpixelTextCallback` which the caller adds to the egui
+// painter via `egui::Shape::Callback`.
+//
+// We do NOT touch the existing atlas/path here — this is fully
+// additive. Glyph caching for the subpixel path lives inside the
+// pipeline (atlas growth only, no eviction yet — Phase 2).
+
+use super::text_subpixel_pipeline::{PreparedGlyph, SubpixelTextCallback};
+
+pub fn shape_and_render_subpixel(
+    ctx: &egui::Context,
+    origin: egui::Pos2,
+    text: &str,
+    size_pt: f32,
+    family: Family<'static>,
+    weight: Weight,
+    color: Color32,
+) -> Option<(egui::PaintCallback, egui::Vec2)> {
+    if text.is_empty() {
+        return None;
+    }
+    let _ = ctx; // ctx not currently needed; kept for API symmetry.
+
+    let engine_lock = engine();
+    let mut engine = engine_lock.lock().ok()?;
+    engine.ensure_fonts();
+
+    let resolved_family = match family {
+        Family::SansSerif => family_for_idx(ACTIVE_FONT_IDX.load(Ordering::Relaxed)),
+        other => other,
+    };
+
+    let is_mono = matches!(resolved_family, Family::Monospace)
+        || matches!(resolved_family, Family::Name(n) if n.contains("Mono") || n.contains("JetBrains"));
+    let line_height_factor = if is_mono { 1.4 } else { 1.5 };
+    let metrics = Metrics::new(size_pt, size_pt * line_height_factor);
+
+    struct RunGlyph {
+        cache_key: cosmic_text::CacheKey,
+        x_off: f32,
+        y_off: f32,
+        line_y: f32,
+    }
+    let origin_frac = (origin.x - origin.x.floor(), origin.y - origin.y.floor());
+    let scale = 1.0_f32;
+    let mut shaped: Vec<RunGlyph> = Vec::new();
+    let mut max_w = 0.0_f32;
+    let mut max_y = 0.0_f32;
+    {
+        let mut buffer = Buffer::new(&mut engine.font_system, metrics);
+        let attrs = Attrs::new().family(resolved_family).weight(weight);
+        buffer.set_text(&mut engine.font_system, text, attrs, Shaping::Advanced);
+        buffer.shape_until_scroll(&mut engine.font_system, false);
+        for run in buffer.layout_runs() {
+            max_w = max_w.max(run.line_w);
+            max_y = max_y.max(run.line_y + metrics.line_height * 0.25);
+            for g in run.glyphs.iter() {
+                let pg = g.physical(origin_frac, scale);
+                shaped.push(RunGlyph {
+                    cache_key: pg.cache_key,
+                    x_off: pg.x as f32,
+                    y_off: pg.y as f32,
+                    line_y: run.line_y,
+                });
+            }
+        }
+    }
+
+    // Rasterize each glyph through swash with Format::Subpixel.
+    let mut sctx = swash::scale::ScaleContext::new();
+    let color_arr = [
+        color.r() as f32 / 255.0,
+        color.g() as f32 / 255.0,
+        color.b() as f32 / 255.0,
+        color.a() as f32 / 255.0,
+    ];
+
+    let mut prepared: Vec<PreparedGlyph> = Vec::with_capacity(shaped.len());
+    for rg in shaped {
+        let key = rg.cache_key;
+        let font = engine.font_system.get_font(key.font_id)?;
+        let font_ref = font.as_swash();
+        let mut scaler = sctx
+            .builder(font_ref)
+            .size(f32::from_bits(key.font_size_bits))
+            .hint(true)
+            .build();
+        let x_frac = match key.x_bin {
+            cosmic_text::SubpixelBin::Zero => 0.0,
+            cosmic_text::SubpixelBin::One => 0.25,
+            cosmic_text::SubpixelBin::Two => 0.5,
+            cosmic_text::SubpixelBin::Three => 0.75,
+        };
+        let y_frac = match key.y_bin {
+            cosmic_text::SubpixelBin::Zero => 0.0,
+            cosmic_text::SubpixelBin::One => 0.25,
+            cosmic_text::SubpixelBin::Two => 0.5,
+            cosmic_text::SubpixelBin::Three => 0.75,
+        };
+        let img = swash::scale::Render::new(&[
+            swash::scale::Source::ColorOutline(0),
+            swash::scale::Source::ColorBitmap(swash::scale::StrikeWith::BestFit),
+            swash::scale::Source::Outline,
+        ])
+        .format(swash::zeno::Format::Subpixel)
+        .offset(swash::zeno::Vector::new(x_frac, y_frac))
+        .render(&mut scaler, key.glyph_id);
+
+        let Some(img) = img else { continue };
+        if img.placement.width == 0 || img.placement.height == 0 {
+            continue;
+        }
+
+        let px = origin.x.floor() + rg.x_off + img.placement.left as f32;
+        let py = origin.y.floor() + rg.line_y + rg.y_off - img.placement.top as f32;
+
+        let bytes_per_pixel: u8 = match img.content {
+            swash::scale::image::Content::Mask => 1,
+            swash::scale::image::Content::SubpixelMask => 3,
+            swash::scale::image::Content::Color => 4,
+        };
+
+        prepared.push(PreparedGlyph {
+            px,
+            py,
+            w: img.placement.width,
+            h: img.placement.height,
+            bitmap: img.data,
+            bytes_per_pixel,
+            color: color_arr,
+        });
+    }
+
+    let cb = SubpixelTextCallback::try_new(prepared)?;
+    let size = egui::vec2(max_w, max_y.max(metrics.line_height));
+    let rect = egui::Rect::from_min_size(origin, size);
+    let paint_cb = egui_wgpu::Callback::new_paint_callback(rect, cb);
+    Some((paint_cb, size))
+}
+
 pub fn engine() -> &'static Mutex<TextEngine> {
     static ENGINE: OnceLock<Mutex<TextEngine>> = OnceLock::new();
     ENGINE.get_or_init(|| Mutex::new(TextEngine::new()))

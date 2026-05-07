@@ -4539,6 +4539,7 @@ impl GpuCtx {
         // Publish the surface format so `paint_shadow_gpu` can build its
         // pipeline lazily on first use.
         crate::ui_kit::widgets::shadow_pipeline::set_surface_format(fmt);
+        crate::ui_kit::widgets::text_subpixel_pipeline::set_surface_format(fmt);
 
         Some(Self { device, queue, surface, config, egui_ctx, egui_state, egui_renderer, pointer_gone_needed: false })
     }

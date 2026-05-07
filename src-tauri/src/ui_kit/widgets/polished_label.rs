@@ -66,6 +66,13 @@ pub struct PolishedLabel<'a> {
     size: Size,
     weight: FontWeight,
     color: Option<Color32>,
+    /// Opt into the experimental subpixel-AA pipeline. Default `false`.
+    /// When `true`, glyphs are rasterized via swash with `Format::Subpixel`
+    /// and composited through `text_subpixel_pipeline` (a custom wgpu
+    /// render pass) instead of egui's grayscale atlas. Falls back
+    /// silently to the grayscale path if the surface format hasn't been
+    /// published yet (very first frame) or if engine acquisition fails.
+    subpixel: bool,
     _lt: std::marker::PhantomData<&'a ()>,
 }
 
@@ -76,8 +83,18 @@ impl<'a> PolishedLabel<'a> {
             size: Size::Sm,
             weight: FontWeight::default(),
             color: None,
+            subpixel: false,
             _lt: std::marker::PhantomData,
         }
+    }
+
+    /// Opt into the experimental subpixel-AA render path. See
+    /// `text_subpixel_pipeline` for the architecture and the dual-source-
+    /// blending feature gate that determines whether output is true
+    /// per-channel subpixel or grayscale fallback.
+    pub fn subpixel(mut self, on: bool) -> Self {
+        self.subpixel = on;
+        self
     }
 
     pub fn size(mut self, s: Size) -> Self {
@@ -106,6 +123,31 @@ impl<'a> PolishedLabel<'a> {
         let color = self.color.unwrap_or_else(|| theme.text());
         let family = cosmic_text::Family::SansSerif;
         let weight = self.weight.to_cosmic();
+
+        // Subpixel path: build a wgpu PaintCallback. Falls through to
+        // the existing mesh path on any failure (engine lock, missing
+        // surface format on frame 0, etc.).
+        if self.subpixel {
+            if let Some((cb, size)) = super::text_engine::shape_and_render_subpixel(
+                ui.ctx(),
+                egui::pos2(0.0, 0.0),
+                &self.text,
+                size_pt,
+                family,
+                weight,
+                color,
+            ) {
+                let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+                // Translate the callback's rect to the allocated position.
+                let translated_rect = rect;
+                ui.painter().add(egui::Shape::Callback(egui::PaintCallback {
+                    rect: translated_rect,
+                    callback: cb.callback,
+                }));
+                return response;
+            }
+            // fall through to grayscale path
+        }
 
         let mesh_result = {
             let engine_lock = super::text_engine::engine();
@@ -198,5 +240,30 @@ pub fn polished_label_smoke(ui: &mut Ui, theme: &dyn ComponentTheme) {
             .size(Size::Xs)
             .weight(FontWeight::Regular)
             .show(ui, theme);
+
+        // Side-by-side A/B for the experimental subpixel path. The
+        // subpixel column should look subtly different from the default
+        // (crisper edges, possibly slight color fringe at stem edges).
+        // On adapters without DUAL_SOURCE_BLENDING the subpixel path
+        // currently degrades to grayscale-equivalent until the feature
+        // is requested at adapter init.
+        ui.add_space(8.0);
+        ui.label("— A/B: default vs .subpixel(true) —");
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label("default:");
+                PolishedLabel::new("Hamburgefonts 1234")
+                    .size(Size::Md)
+                    .show(ui, theme);
+            });
+            ui.add_space(24.0);
+            ui.vertical(|ui| {
+                ui.label("subpixel:");
+                PolishedLabel::new("Hamburgefonts 1234")
+                    .size(Size::Md)
+                    .subpixel(true)
+                    .show(ui, theme);
+            });
+        });
     });
 }
