@@ -254,6 +254,34 @@ pub fn get_feeds() -> Option<FeedsResponse> {
     get("/api/feeds")
 }
 
+// ── §5.5 fund holdings (ETF / index constituents) ────────────────────────
+
+/// `GET /api/holdings/:ticker` — Polygon-backed ETF/index holdings.
+/// Returns `(symbol, weight)` pairs in the order ApexData returns them
+/// (typically weight-descending). Returns `None` on any failure (breaker
+/// open, network error, missing endpoint, schema mismatch).
+pub fn fetch_holdings(ticker: &str) -> Option<Vec<(String, Option<f32>)>> {
+    #[derive(serde::Deserialize)]
+    struct HoldingRow {
+        symbol: String,
+        #[serde(default)]
+        weight: Option<f32>,
+    }
+    #[derive(serde::Deserialize)]
+    struct HoldingsResp {
+        #[serde(default)]
+        holdings: Vec<HoldingRow>,
+        #[serde(default)]
+        error: Option<String>,
+    }
+    let resp: HoldingsResp = get(&format!("/api/holdings/{ticker}"))?;
+    if let Some(e) = resp.error.as_ref() {
+        crate::apex_log!("rest.holdings", "{ticker} server error: {e}");
+        return None;
+    }
+    Some(resp.holdings.into_iter().map(|h| (h.symbol, h.weight)).collect())
+}
+
 /// Liveness — text "ok". Returns true on HTTP 200.
 pub fn is_live() -> bool {
     let url = format!("{}/api/health/live", apex_url());

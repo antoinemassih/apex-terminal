@@ -22,6 +22,9 @@ use crate::chart::renderer::ui::foundation::{
     variants::RowVariant,
 };
 use crate::chart::renderer::ui::widgets::rows::ListRow;
+use super::watchlist_columns::{
+    spec as col_spec, ColumnCtx, WatchlistColumnId, WatchlistItemData,
+};
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -59,15 +62,6 @@ impl Default for IconSet {
             alert: "!",
         }
     }
-}
-
-/// Toggles for which optional middle-section columns appear.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct OptionalCols {
-    pub sparkline: bool,
-    pub range_bar: bool,
-    pub week52: bool,
-    pub rvol_badge: bool,
 }
 
 /// Hit-tested zone within a watchlist row.
@@ -128,9 +122,12 @@ pub struct WatchlistRow<'a> {
     earnings_days: Option<u32>,
     alert_indicator: bool,
     correlation_dot: Option<f32>,
-    optional_cols: OptionalCols,
-    range_today: Option<(f32, f32, f32)>, // (low, high, last)
-    week52: Option<(f32, f32, f32)>,      // (low, high, last)
+    columns: &'a [WatchlistColumnId],
+    range_today: Option<(f32, f32, f32)>, // (low, high, last) — column data
+    week52: Option<(f32, f32, f32)>,      // (low, high, last) — column data
+    volume_v: Option<u64>,
+    atr_v: Option<f32>,
+    market_cap_v: Option<f64>,
     compact: bool,
     extreme_move: Option<f32>,            // signed change_pct vs avg_daily_range; tint applied if abs(change)>1.5*avg
     avg_daily_range: f32,
@@ -171,9 +168,12 @@ impl<'a> WatchlistRow<'a> {
             earnings_days: None,
             alert_indicator: false,
             correlation_dot: None,
-            optional_cols: OptionalCols::default(),
+            columns: &[],
             range_today: None,
             week52: None,
+            volume_v: None,
+            atr_v: None,
+            market_cap_v: None,
             compact: false,
             extreme_move: None,
             avg_daily_range: 0.0,
@@ -220,13 +220,17 @@ impl<'a> WatchlistRow<'a> {
     pub fn earnings_days(mut self, v: Option<u32>) -> Self { self.earnings_days = v; self }
     pub fn alert_indicator(mut self, v: bool) -> Self { self.alert_indicator = v; self }
     pub fn correlation_dot(mut self, v: Option<f32>) -> Self { self.correlation_dot = v; self }
-    pub fn optional_columns(mut self, c: OptionalCols) -> Self { self.optional_cols = c; self }
-    pub fn range_bar(mut self, low_today: f32, high_today: f32, last: f32) -> Self {
-        self.range_today = Some((low_today, high_today, last)); self
+    /// Specify which columns to render in the middle area, in order.
+    pub fn columns(mut self, cols: &'a [WatchlistColumnId]) -> Self { self.columns = cols; self }
+    pub fn day_range(mut self, low: f32, high: f32, last: f32) -> Self {
+        self.range_today = Some((low, high, last)); self
     }
-    pub fn week52_pos(mut self, low: f32, high: f32, last: f32) -> Self {
+    pub fn week52(mut self, low: f32, high: f32, last: f32) -> Self {
         self.week52 = Some((low, high, last)); self
     }
+    pub fn volume(mut self, v: u64) -> Self { self.volume_v = Some(v); self }
+    pub fn atr(mut self, v: f32) -> Self { self.atr_v = Some(v); self }
+    pub fn market_cap(mut self, v: f64) -> Self { self.market_cap_v = Some(v); self }
     pub fn compact(mut self, v: bool) -> Self { self.compact = v; self }
     /// Provide avg_daily_range; if `Some(change_pct)` exceeds 1.5x of it the
     /// row paints a green/red full-row tint.
@@ -289,9 +293,12 @@ impl<'a> WatchlistRow<'a> {
         let earnings_days = self.earnings_days;
         let alert_indicator = self.alert_indicator;
         let correlation_dot = self.correlation_dot;
-        let optional_cols = self.optional_cols;
+        let columns: Vec<WatchlistColumnId> = self.columns.to_vec();
         let range_today = self.range_today;
         let week52 = self.week52;
+        let volume_v = self.volume_v;
+        let atr_v = self.atr_v;
+        let market_cap_v = self.market_cap_v;
         let extreme_move = self.extreme_move;
         let avg_daily_range = self.avg_daily_range;
         let active_flag = self.active;
@@ -476,81 +483,65 @@ impl<'a> WatchlistRow<'a> {
                 }
                 let _ = ind_x;
 
-                // ── Change % (mid column) ───────────────────────────────
-                let mid_x = rect.left() + rect.width() * 0.45;
-                let chg_str = format!("{:+.2}%", change_pct);
-                painter.text(egui::pos2(mid_x, cy), egui::Align2::LEFT_CENTER,
-                    &chg_str, chg_font_id.clone(), chg_col);
-                let mut extra_x = mid_x + chg_str.len() as f32 * 8.0 + 8.0;
-
-                // ── Optional sparkline ──────────────────────────────────
-                if optional_cols.sparkline {
-                    if let Some(s) = spark {
-                        if s.len() >= 2 {
-                            let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
-                            for &v in s { if v < lo { lo = v; } if v > hi { hi = v; } }
-                            let span = (hi - lo).max(1e-6);
-                            let sw = 32.0;
-                            let sh = 12.0;
-                            let sy = cy - sh * 0.5;
-                            let n = s.len();
-                            for j in 1..n {
-                                let x0 = extra_x + (j - 1) as f32 * sw / (n - 1) as f32;
-                                let y0 = sy + sh - (s[j - 1] - lo) / span * sh;
-                                let x1 = extra_x + j as f32 * sw / (n - 1) as f32;
-                                let y1 = sy + sh - (s[j] - lo) / span * sh;
-                                painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)],
-                                    Stroke::new(stroke_std(), color_alpha(chg_col, 120)));
-                            }
-                            extra_x += sw + 6.0;
+                // ── Column-spec dispatch ────────────────────────────────
+                // Build the per-row item-data view from row-level fields, then
+                // allocate x-slices across the middle area (left = end of
+                // indicator strip, right = price column inset).
+                let item_data = WatchlistItemData {
+                    symbol,
+                    price,
+                    change_pct,
+                    spark,
+                    rvol,
+                    range_today,
+                    week52,
+                    volume: volume_v,
+                    atr: atr_v,
+                    market_cap: market_cap_v,
+                };
+                if !columns.is_empty() {
+                    // Middle area starts after the indicator strip; for legacy
+                    // visual parity with the old hand-tuned mid_x = 45% layout,
+                    // start at max(ind_x + gap, rect.left()+45%).
+                    let middle_left = (rect.left() + rect.width() * 0.45).max(ind_x + 4.0);
+                    let middle_right = rect.right() - price_right_inset - 60.0;
+                    let mut x = middle_left;
+                    let gap = 6.0;
+                    for cid in columns.iter().copied() {
+                        let s = col_spec(cid);
+                        if !(s.applicable)(&item_data) { continue; }
+                        let w = s.default_width;
+                        if x + w > middle_right { break; }
+                        let col_rect = egui::Rect::from_min_max(
+                            egui::pos2(x, rect.top()),
+                            egui::pos2(x + w, rect.bottom()),
+                        );
+                        let mut cctx = ColumnCtx {
+                            painter,
+                            rect: col_rect,
+                            theme: theme_ref,
+                            fg, bull, bear, dim, border,
+                            item: &item_data,
+                            font_size: font_sz,
+                        };
+                        // ChangePct uses the row's chg_font_id for parity with
+                        // the legacy renderer; override by re-painting here so
+                        // proportional/monospace font is honored.
+                        if matches!(cid, WatchlistColumnId::ChangePct) {
+                            let chg_str = format!("{:+.2}%", change_pct);
+                            painter.text(
+                                egui::pos2(col_rect.left(), col_rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                &chg_str,
+                                chg_font_id.clone(),
+                                chg_col,
+                            );
+                        } else {
+                            (s.render)(&mut cctx);
                         }
+                        x += w + gap;
                     }
                 }
-
-                // ── Optional RVOL badge ─────────────────────────────────
-                if optional_cols.rvol_badge {
-                    if let Some(rv) = rvol {
-                        if rv > 0.0 {
-                            let rcol = if rv > 2.0 { theme_ref.gold }
-                                else if rv > 1.2 { bull }
-                                else { dim.gamma_multiply(0.4) };
-                            painter.text(egui::pos2(extra_x, cy), egui::Align2::LEFT_CENTER,
-                                &format!("{:.1}x", rv), egui::FontId::monospace(7.0), rcol);
-                            extra_x += 26.0;
-                        }
-                    }
-                }
-
-                // ── Optional intraday range bar ─────────────────────────
-                if optional_cols.range_bar {
-                    if let Some((lo, hi, last)) = range_today {
-                        if hi > lo {
-                            let rw = 24.0;
-                            let pos = ((last - lo) / (hi - lo)).clamp(0.0, 1.0);
-                            painter.line_segment(
-                                [egui::pos2(extra_x, cy), egui::pos2(extra_x + rw, cy)],
-                                Stroke::new(stroke_thick(), color_alpha(border, ALPHA_MUTED)));
-                            painter.circle_filled(egui::pos2(extra_x + rw * pos, cy), 2.5, chg_col);
-                            extra_x += rw + 6.0;
-                        }
-                    }
-                }
-
-                // ── Optional 52-week position dot ───────────────────────
-                if optional_cols.week52 {
-                    if let Some((lo, hi, last)) = week52 {
-                        if hi > lo {
-                            let rw = 24.0;
-                            let pos = ((last - lo) / (hi - lo)).clamp(0.0, 1.0);
-                            painter.line_segment(
-                                [egui::pos2(extra_x, cy), egui::pos2(extra_x + rw, cy)],
-                                Stroke::new(stroke_thick(), color_alpha(border, ALPHA_MUTED)));
-                            painter.circle_filled(egui::pos2(extra_x + rw * pos, cy), 2.5, fg);
-                            extra_x += rw + 6.0;
-                        }
-                    }
-                }
-                let _ = extra_x;
 
                 // ── Price (right-aligned) ───────────────────────────────
                 let price_str = price_str_override

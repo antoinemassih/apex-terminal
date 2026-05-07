@@ -40,7 +40,8 @@ fn main() {
                 eprintln!("[apex-native] PostgreSQL connected");
                 // Schema is managed by `migrations/001_chart_state.sql`,
                 // applied out-of-band. Just start the drawing worker.
-                _scaffold_lib::drawing_db::init(pool);
+                _scaffold_lib::drawing_db::init(pool.clone());
+                _scaffold_lib::watchlist_db::init(pool);
             }
             Err(e) => eprintln!("[apex-native] PostgreSQL unavailable ({e}) — drawings won't persist"),
         }

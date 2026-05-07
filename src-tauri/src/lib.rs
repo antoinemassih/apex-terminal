@@ -5,6 +5,7 @@ pub mod data;
 pub mod persistence;
 pub mod chart;
 pub mod ui_kit;
+pub mod watchlist;
 
 // Backward-compat re-exports so code in lib.rs body keeps working without changes
 pub use foundation::monitoring;
@@ -17,6 +18,7 @@ pub use data::crypto_feed;
 pub use data::signals_feed;
 pub use data::discord;
 pub use persistence::drawing_db;
+pub use persistence::watchlist_db;
 pub(crate) use data::ib_ws;
 
 // chart_state / chart_renderer backward compat aliases
@@ -160,7 +162,12 @@ pub fn run() {
                 }
             });
             if let Some(pool) = pool_opt {
-                drawing_db::init(pool);
+                drawing_db::init(pool.clone());
+                crate::persistence::watchlist_db::init(pool);
+                // Phase (d): refresh Polygon-backed ETF/index holdings into
+                // symbol_universes on a background thread. Cold-start cache
+                // is primed from the DB inside the same job.
+                crate::watchlist::refresh::refresh_universes_in_background();
             }
 
             // Redis bar cache — optional, app works without it

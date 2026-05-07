@@ -6,8 +6,8 @@ use super::super::super::gpu::*;
 use super::super::widgets::tabs::TabBar;
 use super::super::widgets::rows::{
     WatchlistRow, WatchlistRowZone, WatchlistIconSet, WatchlistPinState,
-    watchlist_row::OptionalCols as WatchlistOptionalCols,
 };
+use super::super::lists::rows::watchlist_columns::{BUILTIN as WL_COLUMNS_BUILTIN};
 use super::super::super::{Drawing, DrawingKind, ChartCommand};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::gpu::{fetch_chain_background, fetch_search_background, fetch_watchlist_prices, set_pending_wl_tooltip, WlTooltipData};
@@ -321,25 +321,22 @@ if watchlist.open {
                             .show(ui, |ui| {
                                 ui.add(MonospaceCode::new("COLUMNS").size_px(font_2xs()).color(t.accent).gamma(0.6));
                                 ui.add_space(gap_xs());
-                                for (label, flag) in [
-                                    ("Sparkline", &mut watchlist.wl_col_sparkline),
-                                    ("Volume", &mut watchlist.wl_col_volume),
-                                    ("RVOL", &mut watchlist.wl_col_rvol),
-                                    ("ATR", &mut watchlist.wl_col_atr),
-                                    ("52W Range", &mut watchlist.wl_col_52w_range),
-                                    ("Day Range", &mut watchlist.wl_col_day_range),
-                                    ("Earnings", &mut watchlist.wl_col_earnings),
-                                    ("Market Cap", &mut watchlist.wl_col_market_cap),
-                                ] {
+                                for s in WL_COLUMNS_BUILTIN.iter() {
+                                    let visible = watchlist.wl_columns.contains(&s.id);
                                     ui.horizontal(|ui| {
-                                        let icon = if *flag { Icon::EYE } else { Icon::EYE_SLASH };
-                                        let col = if *flag { t.accent } else { t.dim.gamma_multiply(0.3) };
+                                        let icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
+                                        let col = if visible { t.accent } else { t.dim.gamma_multiply(0.3) };
                                         if ui.add(ChromeBtn::new(egui::RichText::new(icon).size(FONT_SM).color(col))
                                             .frameless(true).min_size(egui::vec2(18.0, 16.0))).clicked() {
-                                            *flag = !*flag;
+                                            if visible {
+                                                watchlist.wl_columns.retain(|c| *c != s.id);
+                                            } else {
+                                                // Append, preserving order of remaining columns.
+                                                watchlist.wl_columns.push(s.id);
+                                            }
                                         }
-                                        let lbl_col = if *flag { t.text } else { t.dim.gamma_multiply(0.4) };
-                                        ui.add(MonospaceCode::new(label).size_px(FONT_XS).color(lbl_col));
+                                        let lbl_col = if visible { t.text } else { t.dim.gamma_multiply(0.4) };
+                                        ui.add(MonospaceCode::new(s.label).size_px(FONT_XS).color(lbl_col));
                                     });
                                 }
                             });
@@ -776,13 +773,6 @@ if watchlist.open {
                                             x: Icon::X,
                                             alert: Icon::LIGHTNING,
                                         };
-                                        let opt_cols = WatchlistOptionalCols {
-                                            sparkline: watchlist.wl_col_sparkline && _item_price_history.len() > 3,
-                                            rvol_badge: watchlist.wl_col_rvol,
-                                            range_bar: watchlist.wl_col_day_range && item_day_high > item_day_low,
-                                            week52: false,
-                                        };
-
                                         let mut row_b = WatchlistRow::new(&item_sym, item_price, change_pct)
                                             .theme(t)
                                             .height(row_h)
@@ -792,7 +782,7 @@ if watchlist.open {
                                             .show_star_on_hover(true)
                                             .alert_indicator(item_alert_triggered)
                                             .rvol(if item_rvol > 0.0 { Some(item_rvol) } else { None })
-                                            .optional_columns(opt_cols)
+                                            .columns(&watchlist.wl_columns)
                                             .extreme_move_tint(if item_prev_close > 0.0 { Some(item_avg_daily_range) } else { None })
                                             .icon_set(icons)
                                             .sense(egui::Sense::click_and_drag())
@@ -818,11 +808,11 @@ if watchlist.open {
                                             // simplest: leave the widget to paint formatted change_pct (0.00%).
                                             // Visual delta: pre-load shows "+0.00%" briefly. Acceptable.
                                         }
-                                        if watchlist.wl_col_sparkline && _item_price_history.len() > 3 {
+                                        if _item_price_history.len() > 3 {
                                             row_b = row_b.spark(_item_price_history.as_slice());
                                         }
-                                        if watchlist.wl_col_day_range && item_day_high > item_day_low {
-                                            row_b = row_b.range_bar(item_day_low, item_day_high, item_price);
+                                        if item_day_high > item_day_low {
+                                            row_b = row_b.day_range(item_day_low, item_day_high, item_price);
                                         }
 
                                         let wresp = row_b.show(ui);
@@ -1781,236 +1771,14 @@ if watchlist.open {
 
                 // ── HEAT TAB ─────────────────────────────────────────────────
                 WatchlistTab::Heat => {
-                    // Index preset dropdown + expand/collapse
-                    ui.horizontal(|ui| {
-                        {
-                            const HEAT_OPTS: &[(&str, &str)] = &[
-                                ("Watchlist", "Watchlist"),
-                                ("S&P 500", "S&P 500"),
-                                ("Dow 30", "Dow 30"),
-                                ("Nasdaq 100", "Nasdaq 100"),
-                            ];
-                            let mut cur: &'static str = HEAT_OPTS.iter().map(|&(v, _)| v).find(|&s| s == watchlist.heat_index.as_str()).unwrap_or("Watchlist");
-                            if super::super::widgets::select::Dropdown::new("heat_idx")
-                                .options(HEAT_OPTS)
-                                .width(100.0)
-                                .theme(t)
-                                .show(ui, &mut cur)
-                            {
-                                watchlist.heat_index = cur.to_string();
-                                watchlist.heat_collapsed.clear();
-                            }
-                        }
-                        // Expand / Collapse / Columns / Sort — all with hover cursor
-                        let hbtn = |ui: &mut egui::Ui, label: &str, col: egui::Color32, tip: &str| -> bool {
-                            let resp = ui.add(ChromeBtn::new(egui::RichText::new(label).monospace().size(font_sm()).color(col))
-                                .min_size(egui::vec2(20.0, 18.0)).corner_radius(r_md_cr()));
-                            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                            resp.on_hover_text(tip).clicked()
-                        };
-                        if hbtn(ui, Icon::PLUS, t.dim, "Expand all") { watchlist.heat_collapsed.clear(); }
-                        if hbtn(ui, Icon::MINUS, t.dim, "Collapse all") { watchlist.heat_collapsed.insert("__collapse_all__".into()); }
-                        let col_label = format!("{}c", watchlist.heat_cols);
-                        if hbtn(ui, &col_label, t.dim, "Toggle 1/2/3 columns") { watchlist.heat_cols = match watchlist.heat_cols { 1 => 2, 2 => 3, _ => 1 }; }
-                        let sort_label = match watchlist.heat_sort { 1 => Icon::ARROW_FAT_UP, -1 => Icon::ARROW_FAT_DOWN, _ => Icon::DOTS_THREE };
-                        let sort_col = if watchlist.heat_sort != 0 { t.accent } else { t.dim };
-                        if hbtn(ui, sort_label, sort_col, "Sort: gainers / losers / default") { watchlist.heat_sort = match watchlist.heat_sort { 0 => 1, 1 => -1, _ => 0 }; }
-                    });
-                    ui.add_space(gap_xs());
-
-                    // Sector ETF mapping for S&P
-                    // TODO: Fetch constituent lists from ApexIB API for live, up-to-date data.
-                    // These are static approximations of index holdings as of early 2025.
-                    let sp500_sectors: &[(&str, &[&str])] = &[
-                        ("XLK Technology", &["AAPL","MSFT","NVDA","AVGO","CRM","ADBE","AMD","INTC","CSCO","ORCL","ACN","IBM","NOW","QCOM","TXN","AMAT","INTU","ADI","LRCX","MU","SNPS","CDNS","KLAC","MCHP","FTNT","MSI","ANSS","NXPI","KEYS","GEN"]),
-                        ("XLF Financials", &["BRK.B","JPM","V","MA","BAC","WFC","GS","MS","AXP","BLK","SCHW","SPGI","C","CB","MMC","PGR","ICE","CME","AON","MET","AIG","TFC","USB","PNC","MCO","MSCI","AJG","AFL","FIS","TROW"]),
-                        ("XLV Healthcare", &["UNH","JNJ","LLY","PFE","ABT","TMO","MRK","ABBV","DHR","BMY","AMGN","MDT","ELV","CI","ISRG","SYK","GILD","VRTX","REGN","ZTS","BDX","BSX","HCA","IDXX","IQV","EW","A","DXCM","MTD","ALGN"]),
-                        ("XLY Consumer Disc.", &["AMZN","TSLA","HD","MCD","NKE","SBUX","LOW","TJX","BKNG","CMG","ORLY","AZO","ROST","MAR","HLT","DHI","LEN","GM","F","EBAY","POOL","ULTA","GPC","DRI","BBY","MGM","WYNN","LVS","YUM","DPZ"]),
-                        ("XLC Communication", &["META","GOOGL","GOOG","DIS","NFLX","CMCSA","T","VZ","TMUS","CHTR","EA","TTWO","WBD","PARA","OMC","IPG","MTCH","LYV","FOXA","FOX","NWSA","NWS","LUMN","DISH"]),
-                        ("XLI Industrials", &["GE","CAT","UNP","HON","UPS","RTX","BA","LMT","DE","MMM","ETN","ITW","EMR","WM","RSG","CSX","NSC","FDX","GD","NOC","TDG","CARR","OTIS","JCI","PCAR","CTAS","ROK","FAST","GWW","IR"]),
-                        ("XLE Energy", &["XOM","CVX","COP","SLB","EOG","MPC","PSX","VLO","OXY","HES","WMB","KMI","DVN","HAL","FANG","BKR","TRGP","MRO","APA","CTRA","OVV","EQT","MTDR","PR","DINO"]),
-                        ("XLP Consumer Staples", &["PG","KO","PEP","COST","WMT","PM","MO","CL","MDLZ","KHC","GIS","SYY","STZ","KMB","HSY","K","MKC","TSN","HRL","CAG","SJM","CLX","CHD","TAP","CPB","BG","ADM","EL","KDP","MNST"]),
-                        ("XLU Utilities", &["NEE","DUK","SO","D","AEP","SRE","EXC","XEL","ED","WEC","ES","AWK","DTE","CMS","FE","AES","ATO","NI","PNW","LNT","EVRG","CNP","PPL","NRG","CEG"]),
-                        ("XLRE Real Estate", &["PLD","AMT","CCI","EQIX","PSA","SPG","O","WELL","DLR","AVB","EQR","VTR","ARE","MAA","UDR","PEAK","ESS","CPT","REG","HST","KIM","BXP","SLG","VNO","CBRE","IRM","WY","INVH","SUI","ELS"]),
-                        ("XLB Materials", &["LIN","APD","SHW","ECL","FCX","NEM","NUE","DOW","DD","VMC","MLM","PPG","CE","CF","IFF","ALB","BALL","PKG","IP","EMN","AVY","FMC","MOS","SEE","WRK"]),
-                    ];
-                    let dow30: &[&str] = &["AAPL","AMGN","AXP","BA","CAT","CRM","CSCO","CVX","DIS","DOW","GS","HD","HON","IBM","INTC","JNJ","JPM","KO","MCD","MMM","MRK","MSFT","NKE","PG","TRV","UNH","V","VZ","WBA","WMT"];
-                    let qqq100: &[&str] = &[
-                        "AAPL","ABNB","ADBE","ADI","ADP","ADSK","AEP","AMAT","AMGN","AMZN",
-                        "ANSS","ARM","ASML","AVGO","AZN","BIIB","BKNG","BKR","CDNS","CDW",
-                        "CEG","CHTR","CMCSA","COST","CPRT","CRWD","CSCO","CSGP","CSX","CTAS",
-                        "CTSH","DASH","DDOG","DLTR","DXCM","EA","EXC","FANG","FAST","FTNT",
-                        "GEHC","GFS","GILD","GOOG","GOOGL","HON","IDXX","ILMN","INTC","INTU",
-                        "ISRG","KDP","KHC","KLAC","LRCX","LULU","MAR","MCHP","MDB","MDLZ",
-                        "MELI","META","MNST","MRNA","MRVL","MSFT","MU","NFLX","NVDA","NXPI",
-                        "ODFL","ON","ORLY","PANW","PAYX","PCAR","PDD","PEP","PYPL","QCOM",
-                        "REGN","RIVN","ROST","SBUX","SNPS","SPLK","TEAM","TMUS","TSLA","TTD",
-                        "TTWO","TXN","VRSK","VRTX","WBA","WBD","WDAY","XEL","ZM","ZS",
-                    ];
-
-                    // Pre-build price lookup from watchlist
-                    type HeatItem = (String, f32, String); // (symbol, change%, sector)
-                    let price_map: std::collections::HashMap<String, f32> = watchlist.sections.iter()
-                        .flat_map(|sec| sec.items.iter())
-                        .filter(|i| i.price > 0.0 && i.prev_close > 0.0)
-                        .map(|i| (i.symbol.clone(), (i.price / i.prev_close - 1.0) * 100.0))
-                        .collect();
-                    let lookup = |s: &str| -> f32 { price_map.get(s).copied().unwrap_or(0.0) };
-
-                    let heat_items: Vec<HeatItem> = if watchlist.heat_index == "S&P 500" {
-                        sp500_sectors.iter().flat_map(|(sector, syms)| {
-                            syms.iter().map(|s| (s.to_string(), lookup(s), sector.to_string())).collect::<Vec<_>>()
-                        }).collect()
-                    } else if watchlist.heat_index == "Dow 30" {
-                        dow30.iter().map(|s| (s.to_string(), lookup(s), "Dow".into())).collect()
-                    } else if watchlist.heat_index == "Nasdaq 100" {
-                        qqq100.iter().map(|s| (s.to_string(), lookup(s), "QQQ".into())).collect()
-                    } else {
-                        watchlist.sections.iter().flat_map(|sec| sec.items.iter())
-                            .filter(|i| !i.is_option && i.loaded && i.price > 0.0)
-                            .map(|i| {
-                                let chg = if i.prev_close > 0.0 { (i.price / i.prev_close - 1.0) * 100.0 } else { 0.0 };
-                                (i.symbol.clone(), chg, "Watchlist".into())
-                            }).collect()
-                    };
-
-                    if heat_items.is_empty() {
-                        ui.add_space(24.0);
-                        ui.add(MonospaceCode::new("No data — add symbols to watchlist").size_px(font_sm_tight()).color(t.dim));
-                    } else {
-                        let mut heat_click_sym_outer: Option<String> = None;
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-
-                            // Group by sector and render with dividers
-                            let mut current_sector = String::new();
-                            let mut tile_idx = 0;
-                            let mut sector_items: Vec<&HeatItem> = vec![];
-
-                            // Configurable N-column layout with click-to-chart
-                            let num_cols = watchlist.heat_cols.max(1) as usize;
-                            let heat_sort = watchlist.heat_sort;
-                            let active_sym = panes[ap].symbol.clone();
-                            let render_sector_items = |ui: &mut egui::Ui, items_unsorted: &[&HeatItem], t: &Theme, _pm: &std::collections::HashMap<String, f32>, num_cols: usize, sort: i8, click_sym: &mut Option<String>, active_sym: &str| {
-                                let mut items: Vec<&HeatItem> = items_unsorted.to_vec();
-                                if sort == 1 { items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)); }
-                                else if sort == -1 { items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)); }
-                                let avail_w = ui.available_width();
-                                let gap = 3.0;
-                                let col_w = (avail_w - gap * (num_cols - 1) as f32) / num_cols as f32;
-                                let cell_h = if num_cols == 1 { 26.0 } else { 28.0 };
-                                let font_sz = if num_cols >= 3 { 10.0 } else { 12.0 };
-                                let max_pct = items.iter().map(|i| i.1.abs()).fold(1.0_f32, f32::max);
-                                let rows = (items.len() + num_cols - 1) / num_cols;
-                                let total_h = rows as f32 * cell_h;
-                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(avail_w, total_h), egui::Sense::click());
-                                let painter = ui.painter();
-                                // Hover detection — find which cell the mouse is over
-                                let hover_idx: Option<usize> = ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
-                                    if !rect.contains(pos) { return None; }
-                                    let col = ((pos.x - rect.left()) / (col_w + gap)).floor() as usize;
-                                    let row = ((pos.y - rect.top()) / cell_h).floor() as usize;
-                                    let idx = row * num_cols + col;
-                                    if idx < items.len() { Some(idx) } else { None }
-                                });
-                                if hover_idx.is_some() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                                // Click detection
-                                if resp.clicked() {
-                                    if let Some(pos) = resp.interact_pointer_pos() {
-                                        let col = ((pos.x - rect.left()) / (col_w + gap)).floor() as usize;
-                                        let row = ((pos.y - rect.top()) / cell_h).floor() as usize;
-                                        let idx = row * num_cols + col;
-                                        if let Some(item) = items.get(idx) { *click_sym = Some(item.0.clone()); }
-                                    }
-                                }
-                                for (i, item) in items.iter().enumerate() {
-                                    let col = i % num_cols;
-                                    let row = i / num_cols;
-                                    let cx = rect.left() + col as f32 * (col_w + gap);
-                                    let cy = rect.top() + row as f32 * cell_h;
-                                    let intensity = (item.1.abs() / 5.0).min(1.0);
-                                    let is_up = item.1 >= 0.0;
-                                    let is_active = item.0 == active_sym;
-                                    let is_hovered = hover_idx == Some(i);
-                                    // Hover highlight
-                                    if is_hovered {
-                                        painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(col_w, cell_h)),
-                                            2.0, color_alpha(t.text,12));
-                                    }
-                                    // Active symbol border
-                                    if is_active {
-                                        painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(col_w, cell_h - 2.0)),
-                                            2.0, egui::Stroke::new(stroke_bold(), t.accent), egui::StrokeKind::Outside);
-                                    }
-                                    // Background bar
-                                    let bar_frac = if max_pct > 0.0 { item.1.abs() / max_pct } else { 0.0 };
-                                    let bar_w = bar_frac * col_w * 0.6;
-                                    let bar_col = if is_up {
-                                        color_alpha(t.bull, (25.0 + intensity * 55.0) as u8)
-                                    } else {
-                                        color_alpha(t.bear, (25.0 + intensity * 55.0) as u8)
-                                    };
-                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(bar_w, cell_h - 2.0)), 2.0, bar_col);
-                                    // Edge strip
-                                    let edge_a = (120.0 + intensity * 135.0) as u8;
-                                    let edge_col = if is_up { color_alpha(t.bull, edge_a) } else { color_alpha(t.bear, edge_a) };
-                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)), 0.0, edge_col);
-                                    // Symbol (bright white for active, slightly dimmer for others)
-                                    let sym_col = if is_active { egui::Color32::WHITE } else if is_hovered { color_alpha(t.text,230) } else { color_alpha(t.text,190) };
-                                    painter.text(egui::pos2(cx + 7.0, cy + cell_h / 2.0), egui::Align2::LEFT_CENTER,
-                                        &item.0, egui::FontId::monospace(font_sz), sym_col);
-                                    // Change%
-                                    let chg_col = if is_up { t.bull } else { t.bear };
-                                    painter.text(egui::pos2(cx + col_w - 3.0, cy + cell_h / 2.0), egui::Align2::RIGHT_CENTER,
-                                        &format!("{:+.1}%", item.1), egui::FontId::monospace(font_sz), chg_col);
-                                }
-                            };
-
-                            // Render grouped by sector
-                            let mut groups: Vec<(String, Vec<&HeatItem>)> = vec![];
-                            for item in &heat_items {
-                                if groups.last().map_or(true, |(s, _)| *s != item.2) {
-                                    groups.push((item.2.clone(), vec![]));
-                                }
-                                groups.last_mut().unwrap().1.push(item);
-                            }
-                            // Handle collapse-all
-                            if watchlist.heat_collapsed.contains("__collapse_all__") {
-                                watchlist.heat_collapsed.remove("__collapse_all__");
-                                for (s, _) in &groups { watchlist.heat_collapsed.insert(s.clone()); }
-                            }
-                            for (sector, items) in &groups {
-                                let is_collapsed = watchlist.heat_collapsed.contains(sector);
-                                // Sector avg change
-                                let avg_chg: f32 = if items.is_empty() { 0.0 } else {
-                                    items.iter().map(|i| i.1).sum::<f32>() / items.len() as f32
-                                };
-                                let sector_col = if avg_chg >= 0.0 { t.bull } else { t.bear };
-
-                                if groups.len() > 1 {
-                                    ui.add_space(3.0);
-                                    // Colored sector header — single clickable button
-                                    let caret = if is_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                    let header_text = format!("{} {}  ({})  {:+.2}%", caret, sector, items.len(), avg_chg);
-                                    let header_btn = ui.add(ChromeBtn::new(
-                                        egui::RichText::new(&header_text).monospace().size(font_sm()).color(sector_col)
-                                    ).fill(color_alpha(sector_col, alpha_faint())).corner_radius(r_md_cr()).min_size(egui::vec2(ui.available_width(), 22.0)));
-                                    if header_btn.clicked() {
-                                        if is_collapsed { watchlist.heat_collapsed.remove(sector); }
-                                        else { watchlist.heat_collapsed.insert(sector.clone()); }
-                                    }
-                                    ui.add_space(1.0);
-                                }
-                                if !is_collapsed {
-                                    render_sector_items(ui, items, t, &price_map, num_cols, heat_sort, &mut heat_click_sym_outer, &active_sym);
-                                }
-                            }
-                        });
-                        // Handle click-to-chart
-                        if let Some(sym) = heat_click_sym_outer {
-                            panes[ap].pending_symbol_change = Some(sym);
-                        }
+                    let active_sym = panes[ap].symbol.clone();
+                    let mut pending_symbol: Option<String> = None;
+                    super::heat_panel::render_heat_panel(ui, watchlist, t, &active_sym, &mut pending_symbol);
+                    if let Some(sym) = pending_symbol {
+                        panes[ap].pending_symbol_change = Some(sym);
                     }
                 }
+
 
             }
 
