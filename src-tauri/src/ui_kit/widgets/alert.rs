@@ -129,7 +129,22 @@ impl Alert {
             let text_x = rect.left() + content_left_offset;
             let mut y = rect.top() + pad;
             if let Some(g) = title_galley {
-                painter.galley(Pos2::new(text_x, y), g, text_color);
+                // Keep the egui galley for height measurement (drives
+                // `title_h` and the body_y advance), but paint the
+                // glyphs via cosmic-text for shaping quality.
+                if let Some(title_text) = self.title.as_ref() {
+                    crate::ui_kit::widgets::text_engine::paint_polished_label_at(
+                        &painter,
+                        Pos2::new(text_x, y),
+                        title_text,
+                        st::font_sm(),
+                        cosmic_text::Family::SansSerif,
+                        cosmic_text::Weight::SEMIBOLD,
+                        text_color,
+                    );
+                } else {
+                    painter.galley(Pos2::new(text_x, y), g, text_color);
+                }
                 y += title_h + title_gap;
             }
             painter.galley(Pos2::new(text_x, y), body_galley, dim_color);

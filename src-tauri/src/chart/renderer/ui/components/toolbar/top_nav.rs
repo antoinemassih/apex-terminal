@@ -117,7 +117,7 @@ use crate::chart_renderer::ui::style::{
 use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, OrderStatus};
 use crate::chart_renderer::{ChartCommand, ChartWidgetKind, ChartWidget, DrawingGroup};
-use super::ToolbarBtn;
+use super::toolbar_btn;
 
 /// Paint a full-toolbar-height column tint behind a `menu_button` (or any
 /// other widget) when hovered or active. Mirrors the column-fill hover/active
@@ -311,7 +311,7 @@ pub(crate) fn render(
                 let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
                 let acct_label = if connected { "IBKR ●" } else { "IBKR ○" };
                 let acct_active = watchlist.account_strip_open;
-                let acct_resp = ui.add(ToolbarBtn::new(acct_label).active(acct_active).theme(t))
+                let acct_resp = toolbar_btn(ui, acct_label, acct_active, t)
                     .on_hover_text("Account Summary");
                 if style_current().vertical_group_dividers && acct_resp.hovered() {
                     let col = color_alpha(t.toolbar_border, 80);
@@ -345,7 +345,7 @@ pub(crate) fn render(
                     "PAPER — practice mode (no real orders). Click to switch to Live."
                 };
                 let resp = ui.add(
-                    crate::chart::renderer::ui::inputs::buttons::ChromeBtn::new(
+                    egui::Button::new(
                         egui::RichText::new("$").monospace().size(font_md()).strong().color(fg),
                     )
                     .fill(fill)
@@ -425,7 +425,7 @@ pub(crate) fn render(
                     ui.add_space(gap_xs());
                 }
                 // Dropdown caret — opens the full timeframe picker with star-favorite toggles.
-                let tf_dd_btn = ui.add(ToolbarBtn::new(Icon::CARET_DOWN).active(watchlist.timeframe_dropdown_open).theme(t));
+                let tf_dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.timeframe_dropdown_open, t);
                 if tf_dd_btn.clicked() {
                     watchlist.timeframe_dropdown_open = !watchlist.timeframe_dropdown_open;
                     watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
@@ -560,7 +560,7 @@ pub(crate) fn render(
                 TB_BTN_CLICKED.with(|f| f.set(true));
             }
             // Magnet snap
-            if ui.add(ToolbarBtn::new(Icon::MAGNET).active(panes[ap].magnet).theme(t)).on_hover_text("Magnet Snap").clicked() { panes[ap].magnet = !panes[ap].magnet; }
+            if toolbar_btn(ui, Icon::MAGNET, panes[ap].magnet, t).on_hover_text("Magnet Snap").clicked() { panes[ap].magnet = !panes[ap].magnet; }
             // Object tree toggle (consolidated drawings/indicators/overlays panel)
             let draw_count = panes[ap].drawings.len();
             let list_label = if draw_count > 0 {
@@ -568,19 +568,19 @@ pub(crate) fn render(
             } else {
                 Icon::TREE_STRUCTURE.to_string()
             };
-            if ui.add(ToolbarBtn::new(&list_label).active(watchlist.object_tree_open).theme(t)).on_hover_text("Object Tree").clicked() {
+            if toolbar_btn(ui, &list_label, watchlist.object_tree_open, t).on_hover_text("Object Tree").clicked() {
                 watchlist.object_tree_open = !watchlist.object_tree_open;
             }
             // ── Broadcast — drawing section (applies to all panes) ──
             {
                 let bc = watchlist.broadcast_mode;
-                if ui.add(ToolbarBtn::new(Icon::BROADCAST).active(bc).theme(t)).on_hover_text("Broadcast — changes apply to all panes").clicked() {
+                if toolbar_btn(ui, Icon::BROADCAST, bc, t).on_hover_text("Broadcast — changes apply to all panes").clicked() {
                     watchlist.broadcast_mode = !watchlist.broadcast_mode;
                     TB_BTN_CLICKED.with(|f| f.set(true));
                 }
             }
             // ── Trendline filter — drawing section ──
-            if ui.add(ToolbarBtn::new(Icon::FUNNEL).active(watchlist.trendline_filter_open).theme(t)).on_hover_text("Trendline Filter").clicked() {
+            if toolbar_btn(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t).on_hover_text("Trendline Filter").clicked() {
                 watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
             }
 
@@ -1247,9 +1247,7 @@ pub(crate) fn render(
 
             // Hit-highlight toggle — trendline/swing hit detection flash
             {
-                let hh_resp = ui.add(ToolbarBtn::new(Icon::LINE_SEGMENT)
-                    .active(panes[ap].hit_highlight)
-                    .theme(t))
+                let hh_resp = toolbar_btn(ui, Icon::LINE_SEGMENT, panes[ap].hit_highlight, t)
                     .on_hover_text("Trendline Hit Detection");
                 if hh_resp.clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
@@ -1378,7 +1376,7 @@ pub(crate) fn render(
                     ui.add_space(gap_xs());
                 }
                 // Dropdown caret for the full layout picker
-                let dd_btn = ui.add(ToolbarBtn::new(Icon::CARET_DOWN).active(watchlist.layout_dropdown_open).theme(t));
+                let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
                 if dd_btn.clicked() {
                     watchlist.layout_dropdown_open = !watchlist.layout_dropdown_open;
                     watchlist.layout_dropdown_pos = egui::pos2(dd_btn.rect.left(), dd_btn.rect.bottom() + 2.0);
@@ -1487,14 +1485,14 @@ pub(crate) fn render(
                 };
 
                 // Settings — always icon-only.
-                if ui.add(ToolbarBtn::new(Icon::GEAR).active(watchlist.settings_open).theme(t)).on_hover_text("Settings").clicked() {
+                if toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t).on_hover_text("Settings").clicked() {
                     watchlist.settings_open = !watchlist.settings_open;
                 }
 
                 // Search / command palette — icon-only ToolbarBtn.
                 {
                     use crate::ui_kit::widgets::{Tooltip, Kbd};
-                    let search_resp = ui.add(ToolbarBtn::new(Icon::MAGNIFYING_GLASS).active(watchlist.cmd_palette_open).theme(t));
+                    let search_resp = toolbar_btn(ui, Icon::MAGNIFYING_GLASS, watchlist.cmd_palette_open, t);
                     Tooltip::rich(|ui, theme| {
                         ui.label(egui::RichText::new("Search").size(font_sm()).strong().color(theme.text()));
                         ui.label(egui::RichText::new("Search & command palette").size(font_xs()).color(theme.dim()));
@@ -1527,27 +1525,27 @@ pub(crate) fn render(
                 }
 
                 // Feed pane (News + Discord + Screenshots)
-                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::NEWSPAPER, "Feed")).active(watchlist.feed_panel_open).theme(t)).on_hover_text("Feed (News, Discord, Screenshots)");
+                let resp = toolbar_btn(ui, &nav_label(Icon::NEWSPAPER, "Feed"), watchlist.feed_panel_open, t).on_hover_text("Feed (News, Discord, Screenshots)");
                 if resp.clicked() { watchlist.feed_panel_open = !watchlist.feed_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Playbook
-                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::STAR, "Playbook")).active(watchlist.playbook_panel_open).theme(t)).on_hover_text("Playbook (Trade Ideas)");
+                let resp = toolbar_btn(ui, &nav_label(Icon::STAR, "Playbook"), watchlist.playbook_panel_open, t).on_hover_text("Playbook (Trade Ideas)");
                 if resp.clicked() { watchlist.playbook_panel_open = !watchlist.playbook_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Watchlist toggle
-                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::LIST, "Watchlist")).active(watchlist.open).theme(t)).on_hover_text("Watchlist");
+                let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t).on_hover_text("Watchlist");
                 if resp.clicked() { watchlist.open = !watchlist.open; }
                 nav_divider!(ui, resp);
 
                 // Orders panel
-                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::CURRENCY_DOLLAR, "Orders")).active(watchlist.orders_panel_open).theme(t)).on_hover_text("Orders Panel");
+                let resp = toolbar_btn(ui, &nav_label(Icon::CURRENCY_DOLLAR, "Orders"), watchlist.orders_panel_open, t).on_hover_text("Orders Panel");
                 if resp.clicked() { watchlist.orders_panel_open = !watchlist.orders_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Analysis sidebar toggle
-                let resp = ui.add(ToolbarBtn::new(&nav_label(Icon::CHART_LINE, "Analysis")).active(watchlist.analysis_open).theme(t)).on_hover_text("Analysis Sidebar");
+                let resp = toolbar_btn(ui, &nav_label(Icon::CHART_LINE, "Analysis"), watchlist.analysis_open, t).on_hover_text("Analysis Sidebar");
                 if resp.clicked() { watchlist.analysis_open = !watchlist.analysis_open; }
                 nav_divider!(ui, resp);
 
@@ -1555,7 +1553,7 @@ pub(crate) fn render(
                 {
                     let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
                         + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
-                    let signals_resp = ui.add(ToolbarBtn::new(&nav_label(Icon::LIGHTNING, "Signals")).active(watchlist.signals_panel_open).theme(t)).on_hover_text("Signals (Alerts + Signals)");
+                    let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel_open, t).on_hover_text("Signals (Alerts + Signals)");
                     if active_count > 0 {
                         // Overlay a Badge at the top-right corner of the Signals button.
                         // Painter-mode positioning: anchor the badge so its center sits at
@@ -1595,7 +1593,7 @@ pub(crate) fn render(
                 ui.spacing_mut().button_padding = prev_panel_pad;
 
                 // New window — single icon button.
-                if ui.add(ToolbarBtn::new(Icon::CIRCLES_THREE_PLUS).active(false).theme(t)).on_hover_text("New chart window").clicked() {
+                if toolbar_btn(ui, Icon::CIRCLES_THREE_PLUS, false, t).on_hover_text("New chart window").clicked() {
                     let (tx, rx) = std::sync::mpsc::channel();
                     let sym = panes[ap].symbol.clone();
                     let tf = panes[ap].timeframe.clone();

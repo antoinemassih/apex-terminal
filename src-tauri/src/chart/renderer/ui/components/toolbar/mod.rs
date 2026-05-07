@@ -1,5 +1,15 @@
-//! Builder + impl Widget primitives — toolbar family.
-//! See ui/widgets/mod.rs for the rationale.
+//! Toolbar primitives.
+//!
+//! Legacy structs (ToolbarBtn/TopNavBtn/TopNavToggle/PaneTabBtn) and their
+//! enums (TopNavTreatment/TopNavToggleSize/PaneTabStyle) were removed in the
+//! ui_kit::widgets::Button migration. The remaining items here are
+//! non-deprecated helpers used by the top-nav rendering code:
+//!
+//!  - `toolbar_btn` — thin wrapper over `style::tb_btn` that also flags the
+//!    `gpu::TB_BTN_CLICKED` thread-local on click (so the window-drag handler
+//!    ignores the same-frame click). Replaces `ToolbarBtn`.
+//!  - `TimeframeSelector` — pill-row timeframe selector.
+//!  - `PaneHeaderAction` — painter-positioned header action label.
 //!
 //! `top_nav` — the top navigation toolbar panel, extracted from `gpu.rs`.
 
@@ -14,321 +24,25 @@ fn ft() -> &'static super::super::super::gpu::Theme {
     &super::super::super::gpu::THEMES[0]
 }
 
-// Enums formerly defined in components_extra/top_nav.rs — canonical home is here.
+// ─── toolbar_btn (free function) ──────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TopNavTreatment {
-    Raised,
-    Underline,
-    SoftPill,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TopNavToggleSize {
-    Small,
-    Medium,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaneTabStyle {
-    Underline,
-    Filled,
-    Border,
-}
-
-// ─── ToolbarBtn ───────────────────────────────────────────────────────────────
-
-/// Builder + `impl Widget` for the top-application-toolbar buttons. Delegates
-/// to `style::tb_btn` for pixel-exact parity with the legacy renderer, and
-/// flags `gpu::TB_BTN_CLICKED` on click so the window-drag handler ignores
-/// the click on the same frame.
-///
-/// ```ignore
-/// if ui.add(ToolbarBtn::new("Settings").active(open).theme(t))
-///     .on_hover_text("Open settings").clicked() { open = !open; }
-/// ```
-#[must_use = "ToolbarBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
-pub struct ToolbarBtn<'a> {
-    label: &'a str,
+/// Top-application-toolbar button. Delegates to `style::tb_btn` for pixel-exact
+/// parity with the legacy renderer, and flags `gpu::TB_BTN_CLICKED` on click so
+/// the window-drag handler ignores the click on the same frame.
+pub fn toolbar_btn(
+    ui: &mut Ui,
+    label: &str,
     active: bool,
-    accent: Color32,
-    dim: Color32,
-    toolbar_bg: Color32,
-    toolbar_border: Color32,
-}
-
-impl<'a> ToolbarBtn<'a> {
-    pub fn new(label: &'a str) -> Self {
-        let f = ft();
-        Self {
-            label,
-            active: false,
-            accent: f.accent,
-            dim: f.dim,
-            toolbar_bg: f.toolbar_bg,
-            toolbar_border: f.toolbar_border,
-        }
+    t: &super::super::super::gpu::Theme,
+) -> Response {
+    let resp = super::super::style::tb_btn(
+        ui, label, active,
+        t.accent, t.dim, t.toolbar_bg, t.toolbar_border,
+    );
+    if resp.clicked() {
+        super::super::super::gpu::TB_BTN_CLICKED.with(|f| f.set(true));
     }
-    pub fn active(mut self, v: bool) -> Self { self.active = v; self }
-    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
-        self.accent = t.accent;
-        self.dim = t.dim;
-        self.toolbar_bg = t.toolbar_bg;
-        self.toolbar_border = t.toolbar_border;
-        self
-    }
-}
-
-impl<'a> Widget for ToolbarBtn<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let resp = super::super::style::tb_btn(
-            ui, self.label, self.active,
-            self.accent, self.dim, self.toolbar_bg, self.toolbar_border,
-        );
-        if resp.clicked() {
-            super::super::super::gpu::TB_BTN_CLICKED.with(|f| f.set(true));
-        }
-        resp
-    }
-}
-
-// ─── TopNavBtn ────────────────────────────────────────────────────────────────
-
-/// Builder + `impl Widget` for top-navigation tab buttons.
-///
-/// ```ignore
-/// ui.add(TopNavBtn::new("Charts").active(true).underline().theme(t));
-/// ```
-#[must_use = "TopNavBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
-pub struct TopNavBtn<'a> {
-    label: &'a str,
-    active: bool,
-    treatment: TopNavTreatment,
-    accent: Color32,
-    dim: Color32,
-}
-
-impl<'a> TopNavBtn<'a> {
-    pub fn new(label: &'a str) -> Self {
-        let f = ft();
-        Self {
-            label,
-            active: false,
-            treatment: TopNavTreatment::Raised,
-            accent: f.accent,
-            dim: f.dim,
-        }
-    }
-    pub fn active(mut self, v: bool) -> Self { self.active = v; self }
-    pub fn treatment(mut self, t: TopNavTreatment) -> Self { self.treatment = t; self }
-    pub fn raised(mut self) -> Self { self.treatment = TopNavTreatment::Raised; self }
-    pub fn underline(mut self) -> Self { self.treatment = TopNavTreatment::Underline; self }
-    pub fn soft_pill(mut self) -> Self { self.treatment = TopNavTreatment::SoftPill; self }
-    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
-        self.accent = t.accent;
-        self.dim = t.dim;
-        self
-    }
-}
-
-impl<'a> Widget for TopNavBtn<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let fg = if self.active { self.accent } else { self.dim };
-        let (bg, border) = match self.treatment {
-            TopNavTreatment::Raised => {
-                let b = if self.active { color_alpha(self.accent, alpha_tint()) } else { Color32::TRANSPARENT };
-                let s = if self.active { color_alpha(self.accent, alpha_line()) } else { Color32::TRANSPARENT };
-                (b, s)
-            }
-            TopNavTreatment::Underline => (Color32::TRANSPARENT, Color32::TRANSPARENT),
-            TopNavTreatment::SoftPill => {
-                let b = if self.active { color_alpha(self.accent, alpha_soft()) } else { Color32::TRANSPARENT };
-                (b, Color32::TRANSPARENT)
-            }
-        };
-        let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_md());
-        let resp = ui.add(
-            egui::Button::new(RichText::new(self.label).size(font_md()).strong().color(fg))
-                .fill(bg)
-                .stroke(Stroke::new(stroke_thin(), border))
-                .corner_radius(radius_sm())
-                .min_size(egui::vec2(0.0, gap_3xl())),
-        );
-        ui.spacing_mut().button_padding = prev_pad;
-        if self.active && self.treatment == TopNavTreatment::Underline {
-            let r = resp.rect;
-            ui.painter().line_segment(
-                [egui::pos2(r.left() + gap_sm(), r.bottom()), egui::pos2(r.right() - gap_sm(), r.bottom())],
-                Stroke::new(stroke_std(), self.accent),
-            );
-        }
-        let inspect = crate::design_tokens::is_inspect_mode();
-        if resp.hovered() && !self.active && !inspect {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        use crate::chart::renderer::ui::components::motion;
-        let hover_id = resp.id.with("top_nav_btn_hover");
-        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !self.active && !inspect, motion::FAST);
-        if hover_t > 0.001 {
-            ui.painter().rect_filled(resp.rect, radius_sm(),
-                motion::fade_in(color_alpha(self.accent, alpha_faint()), hover_t));
-        }
-        resp
-    }
-}
-
-// ─── TopNavToggle ─────────────────────────────────────────────────────────────
-
-/// Builder + `impl Widget` for top-navigation icon toggle buttons.
-///
-/// ```ignore
-/// ui.add(TopNavToggle::new("⚙").active(settings_open).medium().theme(t));
-/// ```
-#[must_use = "TopNavToggle must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
-pub struct TopNavToggle<'a> {
-    icon: &'a str,
-    active: bool,
-    size: TopNavToggleSize,
-    accent: Color32,
-    dim: Color32,
-}
-
-impl<'a> TopNavToggle<'a> {
-    pub fn new(icon: &'a str) -> Self {
-        let f = ft();
-        Self {
-            icon,
-            active: false,
-            size: TopNavToggleSize::Small,
-            accent: f.accent,
-            dim: f.dim,
-        }
-    }
-    pub fn active(mut self, v: bool) -> Self { self.active = v; self }
-    pub fn size(mut self, s: TopNavToggleSize) -> Self { self.size = s; self }
-    pub fn small(mut self) -> Self { self.size = TopNavToggleSize::Small; self }
-    pub fn medium(mut self) -> Self { self.size = TopNavToggleSize::Medium; self }
-    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
-        self.accent = t.accent;
-        self.dim = t.dim;
-        self
-    }
-}
-
-impl<'a> Widget for TopNavToggle<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let side = match self.size { TopNavToggleSize::Small => 22.0_f32, TopNavToggleSize::Medium => 28.0_f32 };
-        let font = match self.size { TopNavToggleSize::Small => font_md(), TopNavToggleSize::Medium => font_lg() };
-        let fg = if self.active { self.accent } else { self.dim };
-        let bg = if self.active { color_alpha(self.accent, alpha_tint()) } else { Color32::TRANSPARENT };
-        let border = if self.active { color_alpha(self.accent, alpha_muted()) } else { color_alpha(self.dim, alpha_subtle()) };
-        let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-        let resp = ui.add(
-            egui::Button::new(RichText::new(self.icon).size(font).color(fg))
-                .fill(bg)
-                .stroke(Stroke::new(stroke_thin(), border))
-                .corner_radius(radius_sm())
-                .min_size(egui::vec2(side, side)),
-        );
-        ui.spacing_mut().button_padding = prev_pad;
-        let inspect = crate::design_tokens::is_inspect_mode();
-        if resp.hovered() && !inspect {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        use crate::chart::renderer::ui::components::motion;
-        let hover_id = resp.id.with("top_nav_toggle_hover");
-        let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !self.active && !inspect, motion::FAST);
-        if hover_t > 0.001 {
-            ui.painter().rect_filled(resp.rect, radius_sm(),
-                motion::fade_in(color_alpha(self.accent, alpha_ghost()), hover_t));
-        }
-        resp
-    }
-}
-
-// ─── PaneTabBtn ───────────────────────────────────────────────────────────────
-
-/// Builder + `impl Widget` for pane-level tab buttons.
-///
-/// ```ignore
-/// ui.add(PaneTabBtn::new("Orders").icon(Some("📋")).active(true).filled().theme(t));
-/// ```
-#[must_use = "PaneTabBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
-pub struct PaneTabBtn<'a> {
-    label: &'a str,
-    icon: Option<&'a str>,
-    active: bool,
-    style: PaneTabStyle,
-    accent: Color32,
-    dim: Color32,
-}
-
-impl<'a> PaneTabBtn<'a> {
-    pub fn new(label: &'a str) -> Self {
-        let f = ft();
-        Self {
-            label,
-            icon: None,
-            active: false,
-            style: PaneTabStyle::Underline,
-            accent: f.accent,
-            dim: f.dim,
-        }
-    }
-    pub fn icon(mut self, ic: Option<&'a str>) -> Self { self.icon = ic; self }
-    pub fn active(mut self, v: bool) -> Self { self.active = v; self }
-    pub fn style(mut self, s: PaneTabStyle) -> Self { self.style = s; self }
-    pub fn underline(mut self) -> Self { self.style = PaneTabStyle::Underline; self }
-    pub fn filled(mut self) -> Self { self.style = PaneTabStyle::Filled; self }
-    pub fn border(mut self) -> Self { self.style = PaneTabStyle::Border; self }
-    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
-        self.accent = t.accent;
-        self.dim = t.dim;
-        self
-    }
-}
-
-impl<'a> Widget for PaneTabBtn<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let text = match self.icon {
-            Some(ic) => format!("{} {}", ic, self.label),
-            None => self.label.to_owned(),
-        };
-        let fg = if self.active { self.accent } else { self.dim };
-        let (bg, border) = match (self.active, self.style) {
-            (true, PaneTabStyle::Filled) => (color_alpha(self.accent, alpha_tint()), color_alpha(self.accent, alpha_active())),
-            (true, PaneTabStyle::Border) => (Color32::TRANSPARENT, color_alpha(self.accent, alpha_active())),
-            _ => (Color32::TRANSPARENT, Color32::TRANSPARENT),
-        };
-        let cr = egui::CornerRadius::same(radius_sm() as u8);
-        let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
-        let resp = ui.add(
-            egui::Button::new(RichText::new(&text).monospace().size(font_sm()).color(fg))
-                .fill(bg)
-                .stroke(Stroke::new(stroke_thin(), border))
-                .corner_radius(cr)
-                .min_size(egui::vec2(0.0, 22.0)),
-        );
-        ui.spacing_mut().button_padding = prev_pad;
-        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        if self.active && self.style == PaneTabStyle::Underline {
-            let r = resp.rect;
-            ui.painter().line_segment(
-                [egui::pos2(r.left() + 3.0, r.bottom() + 1.0), egui::pos2(r.right() - 3.0, r.bottom() + 1.0)],
-                Stroke::new(stroke_thick(), color_alpha(self.accent, alpha_strong())),
-            );
-        }
-        resp
-    }
+    resp
 }
 
 // ─── TimeframeSelector ────────────────────────────────────────────────────────

@@ -10,4 +10,3 @@ pub use super::components::header_buttons::*;
 pub use super::components::panels::*;
 pub use super::components::action_button::*;
 pub use super::components::dom_action::*;
-pub use super::components::toolbar::{TopNavTreatment, TopNavToggleSize, PaneTabStyle};

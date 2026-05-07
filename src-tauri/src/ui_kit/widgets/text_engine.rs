@@ -465,3 +465,66 @@ pub fn engine() -> &'static Mutex<TextEngine> {
     static ENGINE: OnceLock<Mutex<TextEngine>> = OnceLock::new();
     ENGINE.get_or_init(|| Mutex::new(TextEngine::new()))
 }
+
+/// Paint a polished label at an absolute position via the egui painter.
+/// Use for layouts that compute coordinates manually (e.g., Alert's
+/// hand-painted title row) and don't fit PolishedLabel's
+/// allocate-rect model.
+///
+/// The mesh is offset to `pos` (top-left of text). `color` modulates
+/// the glyph alpha. Returns the bounding rect actually painted, in
+/// case the caller needs to advance a cursor.
+///
+/// On any engine failure (lock poisoned, font load error, atlas full,
+/// etc.) this falls back to `painter.text(...)` so the text always
+/// lands somewhere sensible.
+pub fn paint_polished_label_at(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    text: &str,
+    size_px: f32,
+    family: Family<'_>,
+    weight: Weight,
+    color: Color32,
+) -> egui::Rect {
+    // 'static-ify the family: cosmic-text's Family carries a borrowed
+    // name; our engine call site requires Family<'static>. The names we
+    // accept here are all 'static (the SansSerif sentinel + the
+    // baked-in font names used by family_for_idx), so transmuting the
+    // lifetime is safe in practice. Concretely we only ever receive
+    // Family::SansSerif / Monospace / Serif / Name(&'static str) from
+    // call sites in this crate.
+    let family_static: Family<'static> = unsafe { std::mem::transmute(family) };
+
+    let result = {
+        let engine_lock = engine();
+        match engine_lock.lock() {
+            Ok(mut g) => g.shape_and_render(
+                &painter.ctx().clone(),
+                pos,
+                text,
+                size_px,
+                family_static,
+                weight,
+                color,
+            ),
+            Err(_) => None,
+        }
+    };
+
+    match result {
+        Some((meshes, size)) if !meshes.is_empty() => {
+            for mesh in meshes {
+                painter.add(egui::Shape::Mesh(mesh.into()));
+            }
+            egui::Rect::from_min_size(pos, size)
+        }
+        _ => painter.text(
+            pos,
+            egui::Align2::LEFT_TOP,
+            text,
+            egui::FontId::proportional(size_px),
+            color,
+        ),
+    }
+}
