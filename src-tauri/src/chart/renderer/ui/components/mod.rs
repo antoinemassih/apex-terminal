@@ -45,6 +45,7 @@ pub mod pills_widget;
 
 pub mod semantic_label;
 pub mod toolbar;
+pub mod motion;
 
 pub use labels::*;
 pub use pills::*;

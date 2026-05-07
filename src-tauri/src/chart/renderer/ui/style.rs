@@ -250,20 +250,28 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         // Paint column tint in Background layer so button draws on top.
         // nav_active_col_alpha controls the column tint alpha for the active nav button.
         let bg_painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("tb_btn_col_bg")));
-        let col_tint = if active {
-            color_alpha(toolbar_border, st.nav_active_col_alpha.max(alpha_ghost()))
-        } else if ui.rect_contains_pointer(btn_rect) {
-            color_alpha(dim, alpha_ghost())
-        } else {
-            Color32::TRANSPARENT
-        };
-        bg_painter.rect_filled(col_rect, 0.0, col_tint);
-        if active {
+        use crate::chart::renderer::ui::components::motion;
+        let active_target = color_alpha(toolbar_border, st.nav_active_col_alpha.max(alpha_ghost()));
+        let hover_target  = color_alpha(dim, alpha_ghost());
+        let hovered = ui.rect_contains_pointer(btn_rect);
+        // Animate active and hover tints independently so they fade in/out smoothly.
+        let active_id = ui.id().with(("tb_btn_active", label));
+        let hover_id  = ui.id().with(("tb_btn_hover", label));
+        let active_t  = motion::ease_bool(ui.ctx(), active_id, active, motion::MED);
+        let hover_t   = motion::ease_bool(ui.ctx(), hover_id,  hovered && !active, motion::FAST);
+        // Compose: start transparent, lerp in hover, then lerp toward active (active wins).
+        let mut col_tint = motion::lerp_color(Color32::TRANSPARENT, hover_target, hover_t);
+        col_tint = motion::lerp_color(col_tint, active_target, active_t);
+        if col_tint.a() > 0 {
+            bg_painter.rect_filled(col_rect, 0.0, col_tint);
+        }
+        if active_t > 0.001 {
             let ul_thickness = if st.tab_underline_thickness > 0.0 { st.tab_underline_thickness } else { st.stroke_bold };
             let underline_y = tb.bottom() - 1.0;
+            let ul_color = motion::fade_in(active_fill, active_t);
             bg_painter.line_segment(
                 [egui::pos2(btn_rect.left(), underline_y), egui::pos2(btn_rect.right(), underline_y)],
-                Stroke::new(ul_thickness, active_fill));
+                Stroke::new(ul_thickness, ul_color));
         }
         // Place the actual button in the already-allocated rect via put().
         let resp = ui.put(btn_rect, egui::Button::new(RichText::new(display_label).monospace().size(label_size).color(fg))
@@ -277,27 +285,49 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
         return resp;
     }
 
+    use crate::chart::renderer::ui::components::motion;
+    // Active fill target (what egui would have snapped to when active).
+    let active_bg_target = if st.active_fill_color.is_some() { active_fill } else { color_alpha(accent, alpha_tint()) };
+    let idle_bg = color_alpha(toolbar_border, alpha_ghost());
+    // Animate active state for the button bg.
+    let active_id = ui.id().with(("tb_btn_std_active", label));
+    let active_t = motion::ease_bool(ui.ctx(), active_id, active, motion::MED);
+    let animated_bg = motion::lerp_color(idle_bg, active_bg_target, active_t);
+    let animated_border = motion::lerp_color(
+        color_alpha(toolbar_border, alpha_muted()),
+        color_alpha(accent, alpha_active()),
+        active_t,
+    );
+    let _ = bg; let _ = border;
+
     let resp = ui.add(egui::Button::new(RichText::new(display_label).monospace().size(label_size).color(fg))
         .wrap_mode(egui::TextWrapMode::Extend)
-        .fill(bg).stroke(Stroke::new(stroke_thin(), border)).corner_radius(corner_r)
+        .fill(animated_bg).stroke(Stroke::new(stroke_thin(), animated_border)).corner_radius(corner_r)
         .min_size(egui::vec2(0.0, 24.0)));
     hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
 
-    if active {
+    // Hover bevel highlight — animate fade-in/out so it doesn't snap.
+    let hover_id = ui.id().with(("tb_btn_std_hover", label));
+    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !active, motion::FAST);
+    if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if active_t > 0.001 {
         let r = resp.rect;
         // stroke_bold drives the active-state accent underline for non-Meridien styles.
+        let ul_color = motion::fade_in(color_alpha(accent, alpha_dim()), active_t);
         ui.painter().line_segment(
             [egui::pos2(r.left() + 4.0, r.bottom() + 0.5),
              egui::pos2(r.right() - 4.0, r.bottom() + 0.5)],
-            Stroke::new(st.stroke_bold, color_alpha(accent, alpha_dim())));
-    } else if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        // Bevel highlight on top edge
+            Stroke::new(st.stroke_bold, ul_color));
+    }
+    if hover_t > 0.001 && !active {
         let r = resp.rect;
+        let bevel = motion::fade_in(Color32::from_rgba_unmultiplied(255, 255, 255, 10), hover_t);
         ui.painter().rect_filled(
             egui::Rect::from_min_max(r.min, egui::pos2(r.right(), r.top() + 1.0)),
             egui::CornerRadius { nw: corner_r as u8, ne: corner_r as u8, sw: 0, se: 0 },
-            Color32::from_rgba_unmultiplied(255, 255, 255, 10));
+            bevel);
     }
     let _ = toolbar_bg; // may be used for future hover tint
     resp

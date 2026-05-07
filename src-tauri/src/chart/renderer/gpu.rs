@@ -5829,13 +5829,14 @@ fn save_watchlists(watchlist: &Watchlist) {
 }
 
 fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
-    // DB-first: if the worker is up and returns at least one watchlist, use it.
-    let (db_wls, db_idx) = crate::persistence::watchlist_db::load_all();
-    if !db_wls.is_empty() {
-        let idx = db_idx.min(db_wls.len() - 1);
-        return (db_wls, idx);
-    }
-
+    // JSON-first on the render thread — it's local file I/O (microseconds).
+    // The DB load can take 1-3s on the first cold sqlx connection (TCP+TLS
+    // handshake to Postgres) which would white-screen the window during
+    // spawn_window. Save path writes both DB and JSON, so the JSON is a
+    // valid source of truth on the same machine. Cross-machine sync (read
+    // from DB when JSON is missing) happens via the fallback below — that
+    // path still blocks but only when there's literally no local cache,
+    // which is a one-time event per machine.
     let path = watchlists_path();
     let data = match std::fs::read_to_string(&path) {
         Ok(d) => d,

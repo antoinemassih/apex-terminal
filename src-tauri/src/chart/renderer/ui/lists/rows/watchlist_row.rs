@@ -593,10 +593,22 @@ impl<'a> WatchlistRow<'a> {
         );
 
         // ── Hover overlay (panel-specific bg tint on hover, !drag) ──────
-        if resp.hovered() && !drag_confirmed && !active_flag {
-            if let Some(ovl) = hover_overlay_col {
-                ui.painter().rect_filled(resp.rect, 0.0, ovl);
+        // Animated fade-in/out so cursor enter/leave eases instead of snapping.
+        if let Some(ovl) = hover_overlay_col {
+            use crate::chart::renderer::ui::components::motion;
+            let hover_id = ui.id().with((
+                "wl_row_hover",
+                resp.rect.min.x as i32,
+                resp.rect.min.y as i32,
+            ));
+            let want_hover = resp.hovered() && !drag_confirmed && !active_flag;
+            let hover_t = motion::ease_bool(ui.ctx(), hover_id, want_hover, motion::FAST);
+            if hover_t > 0.001 {
+                let faded = motion::fade_in(ovl, hover_t);
+                ui.painter().rect_filled(resp.rect, 0.0, faded);
             }
+        }
+        if resp.hovered() && !drag_confirmed && !active_flag {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
 
