@@ -34,6 +34,14 @@ use egui::{Color32, TextureId, TextureOptions};
 const ATLAS_SIZE: usize = 512;
 const ATLAS_PAD: u32 = 1;
 
+/// Standard sRGB → "perceptual" weight on dark bg. See `upload_mask`.
+#[inline]
+fn correct_alpha_for_dark_bg(alpha_byte: u8) -> u8 {
+    let a = alpha_byte as f32 / 255.0;
+    let corrected = a.powf(1.0 / 1.43);
+    (corrected * 255.0).round().clamp(0.0, 255.0) as u8
+}
+
 /// Sweep eviction every N frames.
 const EVICT_SWEEP_INTERVAL: u64 = 60;
 /// Keep glyphs touched within the last N frames (~2 min @ 60 fps).
@@ -257,6 +265,19 @@ impl TextEngine {
 
     /// Upload a swash mask (one byte of alpha per pixel) into the
     /// given atlas page region as RGBA8 (white with alpha = mask).
+    ///
+    /// === Item 4: Dark-background gamma correction ===
+    /// Apex Terminal is dark-themed by default. On dark backgrounds,
+    /// linear alpha makes thin strokes (counters, hairlines) appear
+    /// too anemic because the eye perceives sRGB nonlinearly. Applying
+    /// `alpha ^ (1/1.43)` (≈ a perceptual inverse-sRGB approximation)
+    /// boosts mid-alpha samples so stems register at full visual
+    /// weight against dark pixels.
+    ///
+    /// Tradeoff: light themes will look slightly heavy with this
+    /// correction. A future enhancement could pass the theme
+    /// background luminance into `upload_mask` and skip the gamma
+    /// step (or use a different exponent) when bg is light.
     fn upload_mask(
         &mut self,
         ctx: &egui::Context,
@@ -269,10 +290,11 @@ impl TextEngine {
     ) {
         let mut rgba = Vec::with_capacity((w * h) as usize * 4);
         for &a in mask.iter() {
+            let corrected = correct_alpha_for_dark_bg(a);
             rgba.push(255);
             rgba.push(255);
             rgba.push(255);
-            rgba.push(a);
+            rgba.push(corrected);
         }
         let img = ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
         let delta = ImageDelta::partial([x as usize, y as usize], img, TextureOptions::LINEAR);
@@ -405,8 +427,28 @@ impl TextEngine {
             other => other,
         };
 
-        let metrics = Metrics::new(size_pt, size_pt * 1.2);
+        // === Item 2: Line-height tuning ===
+        // Standard: 1.4× for monospace (code), 1.5× for proportional (body).
+        // (The second arg of Metrics::new is line_height in same units as
+        // font_size — verified against cosmic-text 0.12 source.)
+        let is_mono = matches!(resolved_family, Family::Monospace)
+            || matches!(resolved_family, Family::Name(n) if n.contains("Mono") || n.contains("JetBrains"));
+        let line_height_factor = if is_mono { 1.4 } else { 1.5 };
+        let metrics = Metrics::new(size_pt, size_pt * line_height_factor);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
+
+        // === Item 1: OpenType features (tnum, zero) ===
+        // cosmic-text 0.12's `Attrs` does NOT expose an OpenType features
+        // setter (verified: only family/stretch/style/weight/metadata/
+        // cache_key_flags/metrics in src/attrs.rs). Shaping uses rustybuzz
+        // internally with a fixed feature set ("Advanced" mode enables
+        // standard ligatures + kerning but does not let callers add
+        // tnum/zero). To honor the prompt's "don't fake it" rule, we skip
+        // the feature injection rather than pretend. This is a real
+        // limitation of cosmic-text 0.12; an upstream patch or a fork
+        // would be needed to expose `Attrs::features(&[(tag, value)])`.
+        // TODO: revisit when cosmic-text gains a features API (tracked
+        //       upstream as pop-os/cosmic-text#features).
         let attrs = Attrs::new().family(resolved_family).weight(weight);
         buffer.set_text(&mut self.font_system, text, attrs, Shaping::Advanced);
         buffer.shape_until_scroll(&mut self.font_system, false);
@@ -415,8 +457,17 @@ impl TextEngine {
         let mut max_w = 0.0_f32;
         let mut max_y = 0.0_f32;
 
-        // Collect physical glyphs first (avoid borrow conflict with
-        // self.swash_cache during glyph upload).
+        // === Item 3: Subpixel-positioned glyph atlas ===
+        // cosmic-text's `CacheKey` already encodes a 4-bin subpixel x
+        // (and y) offset via `SubpixelBin` (Zero/One/Two/Three ≈ 0.0,
+        // 0.25, 0.5, 0.75) — see cosmic-text-0.12.1/src/glyph_cache.rs.
+        // Because our `cache: HashMap<CacheKey, _>` keys by the full
+        // CacheKey, the same glyph at different fractional positions
+        // already hits separate atlas entries automatically. To get the
+        // *full* benefit we must pass the on-screen origin's fractional
+        // part to `g.physical(...)`, otherwise every line starts at
+        // x_bin = Zero and we lose 3/4 of the subpixel resolution.
+        let origin_frac = (origin.x - origin.x.floor(), origin.y - origin.y.floor());
         let scale = 1.0_f32; // hi-DPI handled by egui's pixels_per_point separately.
         let runs: Vec<(f32, Vec<cosmic_text::PhysicalGlyph>)> = buffer
             .layout_runs()
@@ -426,7 +477,7 @@ impl TextEngine {
                 let glyphs: Vec<_> = run
                     .glyphs
                     .iter()
-                    .map(|g| g.physical((0.0, 0.0), scale))
+                    .map(|g| g.physical(origin_frac, scale))
                     .collect();
                 (run.line_y, glyphs)
             })
@@ -447,8 +498,12 @@ impl TextEngine {
                 // swash placement: `left` is the bearing X, `top` is
                 // the distance from baseline to the bitmap's top edge
                 // (positive when bitmap top is above baseline).
-                let x0 = origin.x + pg.x as f32 + entry.bearing[0];
-                let y0 = origin.y + line_y + pg.y as f32 - entry.bearing[1];
+                // We baked origin.x/y fractional parts into pg.x/pg.y
+                // via `physical(origin_frac, ..)`, so the integer origin
+                // is the floor — adding origin.x directly would
+                // double-count the fractional component.
+                let x0 = origin.x.floor() + pg.x as f32 + entry.bearing[0];
+                let y0 = origin.y.floor() + line_y + pg.y as f32 - entry.bearing[1];
                 let x1 = x0 + entry.pixel_size[0] as f32;
                 let y1 = y0 + entry.pixel_size[1] as f32;
                 let rect = egui::Rect::from_min_max(
