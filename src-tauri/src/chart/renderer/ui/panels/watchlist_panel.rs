@@ -3,7 +3,6 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::tabs::TabBar;
 use super::super::widgets::rows::{
     WatchlistRow, WatchlistRowZone, WatchlistIconSet, WatchlistPinState,
 };

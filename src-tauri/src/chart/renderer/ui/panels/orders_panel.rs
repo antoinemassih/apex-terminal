@@ -6,7 +6,6 @@ use super::super::super::gpu::*;
 use super::super::widgets::frames::PanelFrame;
 use super::super::widgets::buttons::ChromeBtn;
 use super::super::widgets::rows::order_row::{OrderRow, OrderSideTag};
-use super::super::widgets::tabs::TabBar;
 use super::super::widgets::headers::PanelHeaderWithTabs;
 use super::super::widgets::text::{self as wtext, MonospaceCode};
 use crate::ui_kit::icons::Icon;

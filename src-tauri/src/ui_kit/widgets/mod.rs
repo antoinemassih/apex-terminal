@@ -46,6 +46,7 @@ pub mod sidebar;
 pub mod resizable;
 pub mod calendar;
 pub mod date_picker;
+pub mod color_picker;
 
 pub use shadow::{ShadowSpec, paint as paint_shadow};
 pub use calendar::{Calendar, CalendarResponse};
@@ -84,14 +85,16 @@ pub use alert::{Alert, AlertVariant, AlertResponse};
 pub use stepper::Stepper;
 pub use sidebar::{Sidebar, SidebarStyle, SidebarItem, SidebarSection};
 pub use resizable::Resizable;
+pub use self::color_picker::ColorPicker;
 
 use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};
 use super::icons::Icon;
 use crate::chart_renderer::LineStyle;
 
-/// Color picker — row of colored circles, returns selected hex color if clicked.
-pub fn color_picker(ui: &mut Ui, current: &str) -> Option<String> {
+/// Color picker (legacy) — row of colored circles, returns selected hex color if clicked.
+/// Use [`ColorPicker`] widget instead for new code.
+pub fn color_picker_row(ui: &mut Ui, current: &str) -> Option<String> {
     let mut result = None;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 3.0;

@@ -3,7 +3,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::buttons::{SimpleBtn, IconBtn};
+use super::super::widgets::buttons::SimpleBtn;
 use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
 use crate::monitoring::{span_begin, span_end};
