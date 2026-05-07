@@ -161,6 +161,7 @@ pub struct PanelHeaderWithTabs<'a, T: PartialEq + Copy> {
     tabs:       &'a [(T, &'a str)],
     accent:     Color32,
     dim:        Color32,
+    theme:      Option<&'a super::super::super::gpu::Theme>,
     min_height: f32,
 }
 
@@ -171,14 +172,18 @@ impl<'a, T: PartialEq + Copy> PanelHeaderWithTabs<'a, T> {
             tabs,
             accent:     FALLBACK_ACCENT,
             dim:        FALLBACK_DIM,
+            theme:      None,
             min_height: 24.0,
         }
     }
     pub fn accent(mut self, c: Color32) -> Self { self.accent = c; self }
     pub fn dim(mut self, c: Color32) -> Self { self.dim = c; self }
     pub fn min_height(mut self, h: f32) -> Self { self.min_height = h; self }
-    pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
-        self.accent(t.accent).dim(t.dim)
+    pub fn theme(mut self, t: &'a super::super::super::gpu::Theme) -> Self {
+        self.accent = t.accent;
+        self.dim = t.dim;
+        self.theme = Some(t);
+        self
     }
 
     /// Render the header. Returns `true` if the close button was clicked.
@@ -189,21 +194,29 @@ impl<'a, T: PartialEq + Copy> PanelHeaderWithTabs<'a, T> {
     /// Render with extra controls placed to the LEFT of the close button (RTL
     /// layout). Used for badges (e.g. watchlist's market-session indicator).
     pub fn show_with(self, ui: &mut Ui, actions: impl FnOnce(&mut Ui)) -> bool {
-        use super::tabs::TabBar;
         let mut closed = false;
-        let accent = self.accent;
         let dim = self.dim;
         let min_h = self.min_height;
         let tabs = self.tabs;
         let current = self.current;
+        // Map the typed (T, &str) pairs onto the index-based ui_kit Tabs API.
+        let mut active_idx = tabs.iter().position(|(v, _)| *v == *current).unwrap_or(0);
+        let prev_idx = active_idx;
+        let labels: Vec<&str> = tabs.iter().map(|(_, l)| *l).collect();
+        let theme = self.theme.unwrap_or_else(|| &super::super::super::gpu::THEMES[0]);
         ui.horizontal(|ui| {
             ui.set_min_height(min_h);
-            TabBar::new(current, tabs).accent(accent).dim(dim).show(ui);
+            crate::ui_kit::widgets::Tabs::new(&mut active_idx, &labels)
+                .treatment(crate::ui_kit::widgets::tabs::TabTreatment::Card)
+                .show(ui, theme);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if super::super::style::close_button(ui, dim) { closed = true; }
                 actions(ui);
             });
         });
+        if active_idx != prev_idx {
+            if let Some((v, _)) = tabs.get(active_idx) { *current = *v; }
+        }
         closed
     }
 }

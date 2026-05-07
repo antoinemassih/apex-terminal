@@ -110,7 +110,7 @@ use crate::chart_renderer::ui::style::{
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
     BTN_ICON_SM, BTN_ICON_LG,
     set_toolbar_rect, tb_group_break, current as style_current,
-    font_xs, font_sm, font_md, alpha_muted,
+    font_xs, font_sm, font_md, alpha_muted, alpha_ghost, alpha_strong,
     gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
     stroke_std, stroke_thin, r_md_cr,
 };
@@ -118,6 +118,55 @@ use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, OrderStatus};
 use crate::chart_renderer::{ChartCommand, ChartWidgetKind, ChartWidget, DrawingGroup};
 use super::ToolbarBtn;
+
+/// Paint a full-toolbar-height column tint behind a `menu_button` (or any
+/// other widget) when hovered or active. Mirrors the column-fill hover/active
+/// treatment baked into `style::tb_btn` for the right-side panel toggles, so
+/// every header element — icon buttons, dropdowns, panel toggles — shares the
+/// same hover/active pixel signature regardless of which widget primitive it
+/// uses underneath.
+fn paint_nav_col_tint(
+    ui: &egui::Ui,
+    tb_rect: egui::Rect,
+    btn_rect: egui::Rect,
+    theme: &crate::chart_renderer::gpu::Theme,
+    hovered: bool,
+    active: bool,
+    label_id: &str,
+) {
+    use crate::chart::renderer::ui::components::motion;
+    let active_id = egui::Id::new(("nav_col_active", label_id));
+    let hover_id  = egui::Id::new(("nav_col_hover",  label_id));
+    let active_t = motion::ease_bool(ui.ctx(), active_id, active, motion::MED);
+    let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  hovered && !active, motion::FAST);
+    if active_t < 0.001 && hover_t < 0.001 { return; }
+
+    let active_target = color_alpha(theme.toolbar_border, alpha_strong());
+    let hover_target  = color_alpha(theme.dim,            alpha_ghost());
+    let mut tint = motion::lerp_color(egui::Color32::TRANSPARENT, hover_target, hover_t);
+    tint = motion::lerp_color(tint, active_target, active_t);
+    if tint.a() == 0 { return; }
+
+    let col_rect = egui::Rect::from_min_max(
+        egui::pos2(btn_rect.left(),  tb_rect.top()),
+        egui::pos2(btn_rect.right(), tb_rect.bottom()),
+    );
+    let bg_painter = ui.ctx().layer_painter(
+        egui::LayerId::new(egui::Order::Background, egui::Id::new(("nav_col_bg", label_id)))
+    );
+    bg_painter.rect_filled(col_rect, 0.0, tint);
+
+    if active_t > 0.001 {
+        let st = style_current();
+        let ul_thickness = if st.tab_underline_thickness > 0.0 { st.tab_underline_thickness } else { st.stroke_bold };
+        let underline_y = tb_rect.bottom() - 1.0;
+        let ul_color = motion::fade_in(theme.accent, active_t);
+        bg_painter.line_segment(
+            [egui::pos2(btn_rect.left(),  underline_y),
+             egui::pos2(btn_rect.right(), underline_y)],
+            egui::Stroke::new(ul_thickness, ul_color));
+    }
+}
 
 /// All supported timeframes — `(label, seconds_per_bar, group)`. Group is for
 /// the dropdown's section headers ("Seconds", "Minutes", "Hours", "Days+").
@@ -206,7 +255,7 @@ pub(crate) fn render(
     // Toolbar height scaled per active style (1.40× for Meridien Bloomberg-style tall bar) (#4).
     let tb_scale = style_current().toolbar_height_scale;
     egui::TopBottomPanel::top("tb")
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: gap_lg() as i8, right: 0, top: 0, bottom: 0 }))
+        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: gap_xs() as i8, right: 0, top: 0, bottom: 0 }))
         .exact_height((if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale)
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
@@ -234,19 +283,15 @@ pub(crate) fn render(
             egui::Stroke::new(STROKE_STD, t.toolbar_border),
         );
 
-        // Paper mode indicator — green line below toolbar
-        if crate::chart_renderer::trading::order_manager::is_paper_mode() {
-            let paper_line_y = tb_rect.bottom();
-            ui.painter().line_segment(
-                [egui::pos2(tb_rect.left(), paper_line_y),
-                 egui::pos2(tb_rect.right(), paper_line_y)],
-                egui::Stroke::new(4.0, t.bull));
-        }
+        // Paper-mode bottom line removed — the $ badge in the toolbar (below)
+        // is now the canonical "live vs paper" affordance.
 
         ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_sm();
+            ui.spacing_mut().item_spacing.x = gap_xs();
 
-            // ── Logo ──
+            // ── Logo (with left edge margin so the glyph doesn't kiss the
+            //         window border) ──
+            ui.add_space(gap_sm());
             let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
             let lp = ui.painter_at(logo_rect);
             let lc = logo_rect.center();
@@ -257,7 +302,7 @@ pub(crate) fn render(
             lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(STROKE_STD, t.accent));
 
             ui.add_space(gap_sm());
-            ui.spacing_mut().item_spacing.x = 3.0;
+            ui.spacing_mut().item_spacing.x = gap_xs();
 
             // ── Account button (broker + connection state) ──
             // #7: When vertical_group_dividers active (Meridien), paint a full-column
@@ -283,20 +328,30 @@ pub(crate) fn render(
                 }
             }
 
-            // ── Paper / Live — colored text, no background fill ──
+            // ── Paper / Live — bigger badge $-button. ──
+            // LIVE  → solid green fill + dark `$` glyph (very visible "this is real money")
+            // PAPER → transparent fill + warn-colored `$` glyph (visible but neutral)
             {
                 let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
-                const PAPER_ORANGE: egui::Color32 = rgb(255, 165, 0);
-                let (label, color) = if paper {
-                    ("\u{00A2}", PAPER_ORANGE)  // ¢ = struck-through dollar, orange for paper
+                let live = !paper;
+                let (fill, fg) = if live {
+                    (t.bull, crate::chart_renderer::ui::style::contrast_fg(t.bull))
                 } else {
-                    ("$", t.dim)
+                    (egui::Color32::TRANSPARENT, t.warn)
                 };
-                let tip = if paper { "Switch to Live" } else { "Switch to Paper" };
-                let resp = ui.add(crate::chart::renderer::ui::inputs::buttons::ChromeBtn::new(
-                    egui::RichText::new(label).monospace().size(FONT_MD).strong().color(color))
-                    .frameless(true));
-                // pointing-hand cursor already set by ChromeBtn on hover
+                let tip = if live {
+                    "LIVE — real-money trading active. Click to switch to Paper."
+                } else {
+                    "PAPER — practice mode (no real orders). Click to switch to Live."
+                };
+                let resp = ui.add(
+                    crate::chart::renderer::ui::inputs::buttons::ChromeBtn::new(
+                        egui::RichText::new("$").monospace().size(font_md()).strong().color(fg),
+                    )
+                    .fill(fill)
+                    .corner_radius(r_md_cr())
+                    .min_size(egui::vec2(28.0, 22.0)),
+                );
                 if resp.on_hover_text(tip).clicked() {
                     crate::chart_renderer::trading::order_manager::set_paper_mode(!paper);
                 }
@@ -310,7 +365,35 @@ pub(crate) fn render(
             let right_width = 130.0; // window controls + Opt button
             let middle_width = (ui.available_width() - right_width).max(60.0);
             egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = gap_xs();
+            // Density-first defaults for the entire scrollable middle nav:
+            //   item_spacing.x = 0       → no auto gap between buttons; cluster
+            //                              breaks come from explicit `add_space()`.
+            //   button_padding = (12, 8) → gap_md horizontal, gap_sm vertical.
+            //                              Comfortable click targets without
+            //                              bloating the toolbar height.
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
+
+            // ── Strip the egui-default button bg / border so menu_button and
+            //    plain Button widgets paint transparently. The visible
+            //    hover/active fill comes from `paint_nav_col_tint` (full
+            //    toolbar-height column treatment, matching the right-side panel
+            //    toggles). Without this, the dropdowns paint *both* treatments.
+            {
+                let v = &mut ui.style_mut().visuals.widgets;
+                v.inactive.bg_fill        = egui::Color32::TRANSPARENT;
+                v.inactive.weak_bg_fill   = egui::Color32::TRANSPARENT;
+                v.inactive.bg_stroke      = egui::Stroke::NONE;
+                v.hovered.bg_fill         = egui::Color32::TRANSPARENT;
+                v.hovered.weak_bg_fill    = egui::Color32::TRANSPARENT;
+                v.hovered.bg_stroke       = egui::Stroke::NONE;
+                v.active.bg_fill          = egui::Color32::TRANSPARENT;
+                v.active.weak_bg_fill     = egui::Color32::TRANSPARENT;
+                v.active.bg_stroke        = egui::Stroke::NONE;
+                v.open.bg_fill            = egui::Color32::TRANSPARENT;
+                v.open.weak_bg_fill       = egui::Color32::TRANSPARENT;
+                v.open.bg_stroke          = egui::Stroke::NONE;
+            }
 
             // ── Interval buttons — favorites segmented control + dropdown caret ──
             // Favorites appear "outside" as quick-access buttons (mirrors layouts).
@@ -348,7 +431,7 @@ pub(crate) fn render(
                     watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
                 }
             }
-            ui.add_space(gap_sm());
+            ui.add_space(gap_xs());
             // ── Range dropdown (sets interval + visible bars) ──
             {
                 let range_label = {
@@ -362,7 +445,7 @@ pub(crate) fn render(
                         .map(|&(label, _, _)| label)
                         .unwrap_or(panes[ap].timeframe.as_str())
                 };
-                let range_resp = ui.menu_button(egui::RichText::new(range_label).monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+                let range_resp = ui.menu_button(egui::RichText::new(range_label).monospace().size(font_sm()).strong().color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.label(egui::RichText::new("RANGE").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
@@ -385,6 +468,9 @@ pub(crate) fn render(
                         }
                     }
                 });
+                paint_nav_col_tint(ui, tb_rect, range_resp.response.rect, t,
+                    range_resp.response.hovered(), false, "range");
+                range_resp.response.clone().on_hover_text("Range — quick presets (1D, 2D, 1M, …)");
                 if range_resp.response.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
             }
 
@@ -406,7 +492,7 @@ pub(crate) fn render(
                 let has_tool = !panes[ap].draw_tool.is_empty();
                 let cur_tool = panes[ap].draw_tool.clone();
                 let mut new_tool: Option<String> = None;
-                ui.menu_button(egui::RichText::new(draw_label).monospace().size(FONT_MD).color(if has_tool { t.accent } else { t.dim }), |ui| {
+                let drawing_menu = ui.menu_button(egui::RichText::new(draw_label).monospace().size(font_sm()).color(if has_tool { t.accent } else { t.dim }), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     let cur = cur_tool.as_str();
@@ -452,6 +538,9 @@ pub(crate) fn render(
                         }
                     }
                 });
+                paint_nav_col_tint(ui, tb_rect, drawing_menu.response.rect, t,
+                    drawing_menu.response.hovered(), has_tool, "drawing");
+                drawing_menu.response.clone().on_hover_text("Drawing tools — lines, channels, fibs, patterns");
                 if let Some(tool) = new_tool {
                     panes[ap].draw_tool = tool;
                     panes[ap].pending_pt = None; panes[ap].pending_pt2 = None; panes[ap].pending_pts.clear();
@@ -497,7 +586,7 @@ pub(crate) fn render(
                 CandleMode::Renko => "RNK", CandleMode::RangeBar => "RNG", CandleMode::TickBar => "TCK",
             };
             let prev_candle_mode = panes[ap].candle_mode;
-            ui.menu_button(egui::RichText::new(cm_label).monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+            let mode_menu = ui.menu_button(egui::RichText::new(cm_label).monospace().size(font_sm()).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 for (mode, label) in [
@@ -520,6 +609,9 @@ pub(crate) fn render(
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.log_scale = nv; } } else { panes[ap].log_scale = nv; }
                 }
             });
+            paint_nav_col_tint(ui, tb_rect, mode_menu.response.rect, t,
+                mode_menu.response.hovered(), false, "candle_mode");
+            mode_menu.response.clone().on_hover_text("Candle mode (Standard, Heikin Ashi, Renko, …) + log scale");
             // Mark alt bars dirty when candle mode changes
             if panes[ap].candle_mode != prev_candle_mode {
                 panes[ap].alt_bars_dirty = true;
@@ -585,8 +677,14 @@ pub(crate) fn render(
                 _ => {}
             }
 
+            // ── Indicators dropdown — single chart-icon entry point with nested
+            //    submenus for MAs / Oscillators / Volume / Overlays / Tools / Suites.
+            let indicators_menu = ui.menu_button(egui::RichText::new(Icon::CHART_LINE).size(font_md()).color(t.dim), |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+
             // Moving Averages dropdown (always creates new instance — supports multiple)
-            ui.menu_button(egui::RichText::new("MAs").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("MAs").monospace().size(font_sm()).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
@@ -666,7 +764,7 @@ pub(crate) fn render(
             });
 
             // Oscillators dropdown (multi-select)
-            ui.menu_button(egui::RichText::new("Osc").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Osc").monospace().size(font_sm()).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let osc_types = [(IndicatorType::RSI, "RSI"), (IndicatorType::MACD, "MACD"),
@@ -716,7 +814,7 @@ pub(crate) fn render(
             });
 
             // Volume dropdown
-            ui.menu_button(egui::RichText::new("Vol").monospace().size(font_md()).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Vol").monospace().size(font_sm()).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let vol = panes[ap].show_volume;
@@ -749,7 +847,7 @@ pub(crate) fn render(
             });
 
             // Overlays dropdown — two-layer with categories
-            ui.menu_button(egui::RichText::new("Overlay").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+            ui.menu_button(egui::RichText::new("Overlay").monospace().size(font_sm()).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(150.0);
@@ -927,8 +1025,8 @@ pub(crate) fn render(
                 }
             });
 
-            // Tools dropdown — display tools and cursor enhancements
-            ui.menu_button(egui::RichText::new("Tools").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+            // Tools dropdown — display tools and cursor enhancements (now nested under Indicators)
+            ui.menu_button(egui::RichText::new("Tools").monospace().size(font_sm()).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
@@ -976,15 +1074,9 @@ pub(crate) fn render(
                     }
                 }
             });
-            // Deferred: open overlay editor after menu closes
-            if watchlist.pending_overlay_add {
-                watchlist.pending_overlay_add = false;
-                panes[ap].overlay_editing = true;
-                panes[ap].overlay_editing_idx = None;
-            }
 
-            // ── Suites dropdown (advanced analysis tools) ──
-            ui.menu_button(egui::RichText::new("Suites").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+            // ── Suites dropdown (advanced analysis tools — also nested under Indicators) ──
+            ui.menu_button(egui::RichText::new("Suites").monospace().size(font_sm()).strong().color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let sl_mode = panes[ap].swing_leg_mode;
@@ -1004,8 +1096,20 @@ pub(crate) fn render(
                 ui.selectable_label(false, egui::RichText::new("  Auto Target").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
             });
 
+            }); // ── end Indicators outer dropdown (wraps MAs/Osc/Vol/Overlay/Tools/Suites) ──
+            paint_nav_col_tint(ui, tb_rect, indicators_menu.response.rect, t,
+                indicators_menu.response.hovered(), false, "indicators");
+            indicators_menu.response.clone().on_hover_text("Indicators (MAs, Oscillators, Volume, Overlays, Tools, Suites)");
+
+            // Deferred: open overlay editor after menu closes
+            if watchlist.pending_overlay_add {
+                watchlist.pending_overlay_add = false;
+                panes[ap].overlay_editing = true;
+                panes[ap].overlay_editing_idx = None;
+            }
+
             // ── Widgets dropdown — two-layer categorized picker with mini previews ──
-            ui.menu_button(egui::RichText::new("Widgets").monospace().size(FONT_MD).strong().color(t.dim), |ui| {
+            let widgets_menu = ui.menu_button(egui::RichText::new(Icon::CIRCLES_FOUR).size(font_md()).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(160.0);
@@ -1107,6 +1211,9 @@ pub(crate) fn render(
                     }
                 }
             });
+            paint_nav_col_tint(ui, tb_rect, widgets_menu.response.rect, t,
+                widgets_menu.response.hovered(), false, "widgets");
+            widgets_menu.response.clone().on_hover_text("Widgets — add live data tiles to the chart");
 
             // Hit-highlight toggle — trendline/swing hit detection flash
             {
@@ -1127,11 +1234,10 @@ pub(crate) fn render(
 
             ui.add(egui::Separator::default().spacing(4.0));
 
-            // ── Workspace — clean dropdown (templates moved to pane header ★ button) ──
+            // ── Workspace — icon-only dropdown (active workspace shown inside the menu) ──
             {
                 let ws_names = list_workspaces();
-                let ws_label = format!("{} {}", Icon::BROWSERS, &watchlist.active_workspace);
-                ui.menu_button(egui::RichText::new(&ws_label).monospace().size(font_md()).strong().color(t.dim), |ui| {
+                let ws_menu = ui.menu_button(egui::RichText::new(Icon::BROWSERS).size(font_md()).color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.set_min_width(200.0);
@@ -1196,6 +1302,9 @@ pub(crate) fn render(
                     ui.add_space(gap_sm());
                     ui.label(egui::RichText::new("Auto-saves every 30s").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.3)));
                 });
+                paint_nav_col_tint(ui, tb_rect, ws_menu.response.rect, t,
+                    ws_menu.response.hovered(), false, "workspace");
+                ws_menu.response.clone().on_hover_text(format!("Workspaces — active: {}", &watchlist.active_workspace));
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
@@ -1240,61 +1349,7 @@ pub(crate) fn render(
             }
             // (Layout dropdown rendered after toolbar — see below)
 
-            ui.add(egui::Separator::default().spacing(4.0));
-
-            // ── Theme + Style dropdown — two columns separated by a divider ──
-            {
-                let mut ti = panes[ap].theme_idx;
-                let style_presets = crate::chart_renderer::ui::style::list_style_presets();
-                let safe_si = watchlist.style_idx.min(style_presets.len().saturating_sub(1));
-                let style_name_cur = style_presets.get(safe_si).map(|(_, n)| n.as_str()).unwrap_or("Meridien");
-                let mut si = safe_si;
-                let combined = format!("{}/{}", get_theme(ti).name, style_name_cur);
-                let current_label = egui::RichText::new(combined).monospace().size(FONT_MD).strong().color(t.dim);
-                ui.menu_button(current_label, |ui| {
-                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                    ui.horizontal_top(|ui| {
-                        // ── THEME column ──
-                        ui.vertical(|ui| {
-                            ui.set_min_width(160.0);
-                            ui.label(egui::RichText::new("THEME").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
-                            for (i, th) in THEMES.iter().enumerate() {
-                                let sel = i == ti;
-                                let row = ui.horizontal(|ui| {
-                                    let (sr, _) = ui.allocate_exact_size(egui::vec2(16.0, 14.0), egui::Sense::hover());
-                                    ui.painter().rect_filled(sr, 2.0, th.bg);
-                                    ui.painter().circle_filled(egui::pos2(sr.left() + 4.0, sr.center().y), 2.5, th.bull);
-                                    ui.painter().circle_filled(egui::pos2(sr.left() + 11.0, sr.center().y), 2.5, th.bear);
-                                    let text_col = if sel { th.accent } else { t.dim };
-                                    let check = if sel { "\u{2713} " } else { "  " };
-                                    ui.selectable_label(sel, egui::RichText::new(format!("{}{}", check, th.name))
-                                        .monospace().size(FONT_MD).color(text_col))
-                                });
-                                if row.inner.clicked() { ti = i; }
-                            }
-                        });
-                        // Vertical separator
-                        ui.add(egui::Separator::default().vertical().spacing(8.0));
-                        // ── STYLE column — populated from live preset list ──
-                        ui.vertical(|ui| {
-                            ui.set_min_width(120.0);
-                            ui.label(egui::RichText::new("STYLE").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
-                            for (id, name) in &style_presets {
-                                let sel = *id as usize == si;
-                                let text_col = if sel { t.accent } else { t.dim };
-                                let check = if sel { "\u{2713} " } else { "  " };
-                                let r = ui.selectable_label(sel,
-                                    egui::RichText::new(format!("{}{}", check, name))
-                                        .monospace().size(FONT_MD).color(text_col));
-                                if r.clicked() { si = *id as usize; }
-                            }
-                        });
-                    });
-                });
-                if ti != panes[ap].theme_idx { for p in panes.iter_mut() { p.theme_idx = ti; } }
-                if si != watchlist.style_idx { watchlist.style_idx = si; }
-            }
+            // Theme + Style picker moved to Settings → Appearance.
 
             }); // end scrollable middle
 
@@ -1399,24 +1454,22 @@ pub(crate) fn render(
                     watchlist.settings_open = !watchlist.settings_open;
                 }
 
-                // SearchPill — command palette trigger (#6)
+                // Search / command palette — icon-only ToolbarBtn.
+                if ui.add(ToolbarBtn::new(Icon::MAGNIFYING_GLASS).active(watchlist.cmd_palette_open).theme(t))
+                    .on_hover_text("Search & command palette (Cmd/Ctrl+K)")
+                    .clicked()
                 {
-                    let tb_h = tb_rect.height();
-                    if super::super::status::SearchPill::new()
-                        .height(tb_h - 14.0)
-                        .theme(t)
-                        .show(ui)
-                        .clicked()
-                    {
-                        watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
-                    }
+                    watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
                 }
 
                 ui.add(egui::Separator::default().spacing(4.0));
 
-                // ── Right nav panel toggles — zero item spacing, hairline dividers between each ──
+                // ── Right nav panel toggles — zero item spacing, second-smallest
+                //    inner button padding, hairline dividers between each. ──
                 let prev_spacing = ui.spacing().item_spacing.x;
+                let prev_panel_pad = ui.spacing().button_padding;
                 ui.spacing_mut().item_spacing.x = 0.0;
+                ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
 
                 // Divider drawn at the left edge of the just-drawn button's rect (RTL layout).
                 macro_rules! nav_divider {
@@ -1471,6 +1524,7 @@ pub(crate) fn render(
                 }
 
                 ui.spacing_mut().item_spacing.x = prev_spacing;
+                ui.spacing_mut().button_padding = prev_panel_pad;
 
                 // New window — single icon button.
                 if ui.add(ToolbarBtn::new(Icon::CIRCLES_THREE_PLUS).active(false).theme(t)).on_hover_text("New chart window").clicked() {

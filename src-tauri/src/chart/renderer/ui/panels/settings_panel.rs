@@ -40,18 +40,24 @@ egui::Window::new("settings_panel".to_string())
     .show(ctx, |ui| {
         if super::super::widgets::headers::DialogHeaderWithClose::new("SETTINGS").dim(t.dim).show(ui) { watchlist.settings_open = false; }
 
-        // ── Tab bar ──
+        // ── Tab bar — `ui_kit::widgets::Tabs` (replaces legacy TabBar). ──
+        const TAB_VARIANTS: &[SettingsTab] = &[
+            SettingsTab::Appearance,
+            SettingsTab::Chart,
+            SettingsTab::Trading,
+            SettingsTab::Shortcuts,
+        ];
+        const TAB_LABELS: &[&str] = &["Appearance", "Chart", "Trading", "Shortcuts"];
         let tab_id = egui::Id::new("settings_active_tab");
         let mut tab: SettingsTab = ui.data_mut(|d| *d.get_temp_mut_or(tab_id, SettingsTab::Appearance));
+        let mut idx = TAB_VARIANTS.iter().position(|v| *v == tab).unwrap_or(0);
         ui.horizontal(|ui| {
             ui.add_space(gap_lg());
-            super::super::widgets::tabs::TabBar::new(&mut tab, &[
-                (SettingsTab::Appearance, "Appearance"),
-                (SettingsTab::Chart,     "Chart"),
-                (SettingsTab::Trading,   "Trading"),
-                (SettingsTab::Shortcuts, "Shortcuts"),
-            ]).accent(t.accent).dim(t.dim).show(ui);
+            crate::ui_kit::widgets::Tabs::new(&mut idx, TAB_LABELS)
+                .treatment(crate::ui_kit::widgets::tabs::TabTreatment::Card)
+                .show(ui, t);
         });
+        tab = TAB_VARIANTS[idx.min(TAB_VARIANTS.len() - 1)];
         ui.data_mut(|d| d.insert_temp(tab_id, tab));
         separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
         ui.add_space(gap_sm());
@@ -150,6 +156,44 @@ SettingsTab::Appearance => {
                     if resp.clicked() { commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i }); }
                 }
             });
+        }
+    }
+    ui.add_space(gap_lg());
+
+    // ── Style preset (Aperture / Octave / Meridien / …) — wraps to the
+    //    available width so it doesn't overflow narrow dialogs. ──
+    dialog_section(ui, "STYLE", m, t.dim.gamma_multiply(0.5));
+    ui.add_space(gap_sm());
+    {
+        let presets = crate::chart_renderer::ui::style::list_style_presets();
+        let cur_si = watchlist.style_idx.min(presets.len().saturating_sub(1));
+        let btn_w: f32 = 78.0;
+        let btn_h: f32 = 26.0;
+        let row_w = (dialog_w - 2.0 * m).max(btn_w + 2.0 * m);
+        let per_row = ((row_w + gap_xs()) / (btn_w + gap_xs())).floor().max(1.0) as usize;
+        for chunk in presets.chunks(per_row) {
+            ui.horizontal(|ui| {
+                ui.add_space(m);
+                ui.spacing_mut().item_spacing.x = gap_xs();
+                for (id, name) in chunk {
+                    let id_us = *id as usize;
+                    let active = id_us == cur_si;
+                    let fg = if active { t.accent } else { t.dim };
+                    let bg = if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT };
+                    let stroke = if active {
+                        egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_active()))
+                    } else {
+                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted()))
+                    };
+                    if ui.add(super::super::widgets::buttons::ChromeBtn::new(
+                            egui::RichText::new(name).monospace().size(FONT_SM).strong().color(fg))
+                        .fill(bg).corner_radius(r_sm_cr()).stroke(stroke)
+                        .min_size(egui::vec2(btn_w, btn_h))).clicked() {
+                        commands::push(AppCommand::SetStyleIdx { idx: id_us });
+                    }
+                }
+            });
+            ui.add_space(gap_xs());
         }
     }
     ui.add_space(gap_lg());
@@ -547,12 +591,12 @@ SettingsTab::Shortcuts => {
 
 fn setting_toggle(ui: &mut egui::Ui, margin: f32, label: &str, t: &Theme, val: &mut bool) {
     srow(label, margin).show(ui, t, |ui| {
-        ui.add(egui::Checkbox::without_text(val));
+        crate::ui_kit::widgets::switch::Switch::new(val).show(ui, t);
     });
 }
 
 fn setting_toggle_with_color(ui: &mut egui::Ui, margin: f32, label: &str, t: &Theme, val: &mut bool, _color: egui::Color32) {
     srow(label, margin).show(ui, t, |ui| {
-        ui.add(egui::Checkbox::without_text(val));
+        crate::ui_kit::widgets::switch::Switch::new(val).show(ui, t);
     });
 }

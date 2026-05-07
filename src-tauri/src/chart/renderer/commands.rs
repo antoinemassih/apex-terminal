@@ -139,8 +139,13 @@ pub enum AppCommand {
     ChangeTimeframe { pane: usize, tf: String },
 
     // ── Settings (domain preference toggles) ─────────────────────────────
-    /// Switch the active theme by index into `THEMES`.
+    /// Switch the active theme by index into `THEMES`. Applies to every pane
+    /// (theme is conceptually app-wide; per-pane storage is an implementation
+    /// detail).
     SetThemeIdx { pane: usize, idx: usize },
+    /// Switch the active style preset by index. Stored on the watchlist as
+    /// `style_idx` and consumed by the renderer via `style::set_active_style`.
+    SetStyleIdx { idx: usize },
 
     // ── Watchlist (domain mutations) ────────────────────────────────────
     /// Add a symbol to the active watchlist (de-dup'd, lands in last stock section).
@@ -506,10 +511,16 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             }
         }
 
-        AppCommand::SetThemeIdx { pane, idx } => {
-            if let Some(p) = panes.get_mut(pane) {
+        AppCommand::SetThemeIdx { pane: _, idx } => {
+            // Theme is conceptually app-wide — apply to every pane so all
+            // chrome (panel headers, chart bg, watchlist rows) stays in sync.
+            for p in panes.iter_mut() {
                 p.theme_idx = idx;
             }
+        }
+
+        AppCommand::SetStyleIdx { idx } => {
+            watchlist.style_idx = idx;
         }
 
         AppCommand::WatchlistRenameActive { name } => {

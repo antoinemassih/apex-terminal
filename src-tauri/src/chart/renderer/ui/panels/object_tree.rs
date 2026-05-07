@@ -140,7 +140,7 @@ egui::SidePanel::left("object_tree_panel")
         // ════════════════════════════════════════════════════════════════
         ui.horizontal(|ui| {
             let drawings_hdr = format!("DRAWINGS ({})", chart.drawings.len());
-            ui.add(MonospaceCode::new(&drawings_hdr).size_px(font_sm_tight()).color(t.dim));
+            ui.add(MonospaceCode::new(&drawings_hdr).size_px(font_sm()).color(t.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Select all button
                 if !chart.drawings.is_empty() {
@@ -162,7 +162,7 @@ egui::SidePanel::left("object_tree_panel")
                                 .map(|d| d.opacity).unwrap_or(1.0);
                             ui.horizontal(|ui| {
                                 let type_entry = format!("{key} ({count})");
-                            ui.add(MonospaceCode::new(&type_entry).size_px(font_sm_tight()).color(t.text));
+                            ui.add(MonospaceCode::new(&type_entry).size_px(font_sm()).color(t.text));
                                 if let Some(op) = opacity_picker(ui, cur, t.accent, t.dim, &format!("type_{key}")) {
                                     let key_s = key.to_string();
                                     for d in chart.drawings.iter_mut() {
@@ -195,7 +195,7 @@ egui::SidePanel::left("object_tree_panel")
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 let sel_label = format!("{} sel", chart.selected_ids.len());
-                ui.add(MonospaceCode::new(&sel_label).size_px(font_xs()).color(t.accent));
+                ui.add(MonospaceCode::new(&sel_label).size_px(font_sm()).color(t.accent));
                 // Group assign dropdown
                 let groups_snap: Vec<(String, String)> = {
                     let mut gs = vec![("default".into(), "default".into())];
@@ -275,7 +275,7 @@ egui::SidePanel::left("object_tree_panel")
         ui.add_space(4.0);
 
         if chart.drawings.is_empty() {
-            ui.add(MonospaceCode::new("  No drawings").size_px(font_xs()).color(t.dim.gamma_multiply(0.5)));
+            ui.add(MonospaceCode::new("  No drawings").size_px(font_sm()).color(t.dim.gamma_multiply(0.5)));
         } else {
             // Build group order
             let mut groups_order: Vec<String> = vec!["default".into()];
@@ -355,7 +355,7 @@ egui::SidePanel::left("object_tree_panel")
                             row = row.left_painter_circle(gc);
                         }
                         row.body(|ui| {
-                            ui.add(MonospaceCode::new(&label_text).size_px(font_xs()).color(header_col));
+                            ui.add(MonospaceCode::new(&label_text).size_px(font_sm()).color(header_col));
                         })
                         .right_actions(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
@@ -406,7 +406,7 @@ egui::SidePanel::left("object_tree_panel")
                                 .indent(14.0)
                                 .left_painter_circle(dc)
                                 .body(|ui| {
-                                    ui.add(MonospaceCode::new(kind_label).size_px(font_sm_tight()).color(label_col));
+                                    ui.add(MonospaceCode::new(kind_label).size_px(font_sm()).color(label_col));
                                     if let Some(score) = sig_score {
                                         let sc = sig_color(score);
                                         let (badge_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
@@ -441,7 +441,7 @@ egui::SidePanel::left("object_tree_panel")
                             row_resp.context_menu(|ui| {
                                 // Per-drawing opacity
                                 ui.horizontal(|ui| {
-                                    ui.add(MonospaceCode::new("Opacity").size_px(font_sm_tight()).color(t.dim));
+                                    ui.add(MonospaceCode::new("Opacity").size_px(font_sm()).color(t.dim));
                                     let cur = chart.drawings.iter().find(|d| d.id == ds_id_for_menu)
                                         .map(|d| d.opacity).unwrap_or(1.0);
                                     if let Some(op) = opacity_picker(ui, cur, t.accent, t.dim, &format!("drw_{}", ds_id_for_menu)) {
@@ -532,10 +532,10 @@ egui::SidePanel::left("object_tree_panel")
         // ════════════════════════════════════════════════════════════════
         // ── INDICATORS section ──
         // ════════════════════════════════════════════════════════════════
-        ui.add(MonospaceCode::new("INDICATORS").size_px(font_sm_tight()).color(t.dim));
+        ui.add(MonospaceCode::new("INDICATORS").size_px(font_sm()).color(t.dim));
         ui.add_space(4.0);
         if chart.indicators.is_empty() {
-            ui.add(MonospaceCode::new("  No indicators").size_px(font_xs()).color(t.dim.gamma_multiply(0.5)));
+            ui.add(MonospaceCode::new("  No indicators").size_px(font_sm()).color(t.dim.gamma_multiply(0.5)));
         } else {
             let mut edit_ind: Option<u32> = None;
             for ind in chart.indicators.iter_mut() {
@@ -549,7 +549,7 @@ egui::SidePanel::left("object_tree_panel")
                     .theme(t)
                     .left_painter_circle(ic)
                     .body(|ui| {
-                        ui.add(MonospaceCode::new(&label).size_px(font_xs()).color(label_col));
+                        ui.add(MonospaceCode::new(&label).size_px(font_sm()).color(label_col));
                     })
                     .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
@@ -576,10 +576,10 @@ egui::SidePanel::left("object_tree_panel")
         // ════════════════════════════════════════════════════════════════
         // ── OVERLAYS section ──
         // ════════════════════════════════════════════════════════════════
-        ui.add(MonospaceCode::new("OVERLAYS").size_px(font_sm_tight()).color(t.dim));
+        ui.add(MonospaceCode::new("OVERLAYS").size_px(font_sm()).color(t.dim));
         ui.add_space(4.0);
         if chart.symbol_overlays.is_empty() {
-            ui.add(MonospaceCode::new("  No overlays").size_px(font_xs()).color(t.dim.gamma_multiply(0.5)));
+            ui.add(MonospaceCode::new("  No overlays").size_px(font_sm()).color(t.dim.gamma_multiply(0.5)));
         } else {
             let mut del_ov: Option<usize> = None;
             let mut toggle_ov: Option<usize> = None;
@@ -596,7 +596,7 @@ egui::SidePanel::left("object_tree_panel")
                     .theme(t)
                     .left_painter_circle(oc)
                     .body(|ui| {
-                        ui.add(MonospaceCode::new(sym_ov_ref).size_px(font_xs()).color(label_col));
+                        ui.add(MonospaceCode::new(sym_ov_ref).size_px(font_sm()).color(label_col));
                     })
                     .right_actions(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
@@ -629,7 +629,7 @@ egui::SidePanel::left("object_tree_panel")
         // ════════════════════════════════════════════════════════════════
         ui.horizontal(|ui| {
             let widgets_hdr = format!("WIDGETS ({})", chart.chart_widgets.len());
-            ui.add(MonospaceCode::new(&widgets_hdr).size_px(font_sm_tight()).color(t.dim));
+            ui.add(MonospaceCode::new(&widgets_hdr).size_px(font_sm()).color(t.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Global fade for all widgets
                 if !chart.chart_widgets.is_empty() {
@@ -643,7 +643,7 @@ egui::SidePanel::left("object_tree_panel")
         });
         ui.add_space(4.0);
         if chart.chart_widgets.is_empty() {
-            ui.add(MonospaceCode::new("  No widgets").size_px(font_xs()).color(t.dim.gamma_multiply(0.5)));
+            ui.add(MonospaceCode::new("  No widgets").size_px(font_sm()).color(t.dim.gamma_multiply(0.5)));
         } else {
             let mut del_w: Option<usize> = None;
             let mut toggle_w: Option<usize> = None;

@@ -3,7 +3,7 @@
 use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, DrawingAction, drawing_persist_key, drawing_to_db};
 use crate::chart_renderer::{Drawing, DrawingKind, LineStyle};
-use crate::chart_renderer::ui::style::{hex_to_color, color_alpha, COLOR_AMBER, gap_sm, gap_md, font_xs, font_sm, font_md};
+use crate::chart_renderer::ui::style::{hex_to_color, color_alpha, COLOR_AMBER, gap_xs, gap_sm, gap_md, font_xs, font_sm, font_md};
 use crate::ui_kit::icons::Icon;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -83,43 +83,74 @@ pub fn show_drawing_properties_bar_ui(
     let dim = t.dim;
 
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = gap_sm();
+        // Tight density: swatches and dropdowns sit close together; separators
+        // get the smaller gap so the bar matches the original compact look.
+        ui.spacing_mut().item_spacing.x = gap_xs();
+        ui.spacing_mut().button_padding = egui::vec2(gap_xs(), 2.0);
 
-        // Color swatches
-        for hex in &["#4a9eff","#ff6b6b","#51cf66","#ffc125","#cc5de8","#ff922b","#ffffff","#82dcb4"] {
-            let c = hex_to_color(hex, 1.0);
-            let is_cur = sel_draw.color == *hex;
-            let resp = ui.add(egui::Button::new("").fill(c).min_size(egui::vec2(18.0, 18.0)).corner_radius(3.0)
-                .stroke(if is_cur { egui::Stroke::new(1.5, egui::Color32::WHITE) } else { egui::Stroke::NONE }));
-            if resp.clicked() {
+        // ── Color swatch — single button showing the current color, opens a
+        //    grid of preset swatches in a popup. ──
+        const SWATCHES: &[&str] = &[
+            "#4a9eff", "#ff6b6b", "#51cf66", "#ffc125",
+            "#cc5de8", "#ff922b", "#ffffff", "#82dcb4",
+        ];
+        let cur_color = hex_to_color(&sel_draw.color, 1.0);
+        ui.menu_button(
+            egui::RichText::new("\u{25A0}").size(font_md() + 2.0).color(cur_color),
+            |ui| {
+                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                ui.spacing_mut().item_spacing = egui::vec2(gap_xs(), gap_xs());
+                ui.label(egui::RichText::new("COLOR").monospace().size(font_xs()).color(t.dim));
+                ui.horizontal(|ui| {
+                    for hex in SWATCHES {
+                        let c = hex_to_color(hex, 1.0);
+                        let is_cur = sel_draw.color == *hex;
+                        let resp = ui.add(egui::Button::new("")
+                            .fill(c)
+                            .min_size(egui::vec2(20.0, 20.0))
+                            .corner_radius(3.0)
+                            .stroke(if is_cur { egui::Stroke::new(1.5, egui::Color32::WHITE) } else { egui::Stroke::NONE }));
+                        if resp.clicked() {
+                            if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                                chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                                chart.redo_stack.clear();
+                                d.color = hex.to_string();
+                                crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+                            }
+                            ui.close_menu();
+                        }
+                    }
+                });
+            },
+        ).response.on_hover_text("Color");
+
+        ui.add(egui::Separator::default().spacing(gap_xs()));
+
+        // Style dropdown — `ui_kit::widgets::Select` (replaces hand-built ComboBox).
+        {
+            const STYLE_OPTS: &[&str] = &["Solid", "Dashed", "Dotted"];
+            let mut idx: usize = match sel_draw.line_style {
+                LineStyle::Solid => 0,
+                LineStyle::Dashed => 1,
+                LineStyle::Dotted => 2,
+            };
+            let prev_idx = idx;
+            crate::ui_kit::widgets::Select::new(&mut idx, STYLE_OPTS).show(ui, t);
+            if idx != prev_idx {
+                let new_style = match idx {
+                    0 => LineStyle::Solid,
+                    1 => LineStyle::Dashed,
+                    _ => LineStyle::Dotted,
+                };
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
-                    d.color = hex.to_string();
+                    d.line_style = new_style;
                     crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
             }
         }
-
-        ui.add(egui::Separator::default().spacing(gap_md()));
-
-        // Style dropdown
-        let style_label = match sel_draw.line_style { LineStyle::Solid => "Solid", LineStyle::Dashed => "Dashed", LineStyle::Dotted => "Dotted" };
-        egui::ComboBox::from_id_salt(format!("style_{}", pane_idx))
-            .selected_text(egui::RichText::new(style_label).monospace().size(font_sm()))
-            .width(65.0)
-            .show_ui(ui, |ui| {
-                for (ls, label) in [(LineStyle::Solid, "Solid"), (LineStyle::Dashed, "Dashed"), (LineStyle::Dotted, "Dotted")] {
-                    if ui.selectable_label(sel_draw.line_style == ls, egui::RichText::new(label).monospace().size(font_sm())).clicked() {
-                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
-                            chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
-                            chart.redo_stack.clear();
-                            d.line_style = ls;
-                            crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
-                        }
-                    }
-                }
-            });
 
         // Thickness dropdown
         egui::ComboBox::from_id_salt(format!("thick_{}", pane_idx))
@@ -155,7 +186,7 @@ pub fn show_drawing_properties_bar_ui(
                 }
             });
 
-        ui.add(egui::Separator::default().spacing(gap_md()));
+        ui.add(egui::Separator::default().spacing(gap_xs()));
 
         // Group dropdown
         let group_label = chart.groups.iter().find(|g| g.id == sel_draw.group_id).map_or("default".to_string(), |g| g.name.clone());
@@ -188,7 +219,7 @@ pub fn show_drawing_properties_bar_ui(
                 }
             });
 
-        ui.add(egui::Separator::default().spacing(gap_md()));
+        ui.add(egui::Separator::default().spacing(gap_xs()));
 
         // Extension toggles (lines only)
         if matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..}) {
@@ -208,7 +239,7 @@ pub fn show_drawing_properties_bar_ui(
                     crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
             }
-            ui.add(egui::Separator::default().spacing(gap_sm()));
+            ui.add(egui::Separator::default().spacing(gap_xs()));
         }
 
         // Lock
@@ -216,7 +247,7 @@ pub fn show_drawing_properties_bar_ui(
             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) { d.locked = !d.locked; }
         }
 
-        ui.add(egui::Separator::default().spacing(gap_md()));
+        ui.add(egui::Separator::default().spacing(gap_xs()));
 
         // Delete
         if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(font_md()).color(t.bear)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
@@ -230,7 +261,7 @@ pub fn show_drawing_properties_bar_ui(
         }
 
         // Alert bell toggle
-        ui.add(egui::Separator::default().spacing(gap_sm()));
+        ui.add(egui::Separator::default().spacing(gap_xs()));
         let has_alert = sel_draw.alert_enabled;
         let bell_col = if has_alert { COLOR_AMBER } else { dim };
         let bell_label = if has_alert { "\u{1F514} ON" } else { "\u{1F514}" };

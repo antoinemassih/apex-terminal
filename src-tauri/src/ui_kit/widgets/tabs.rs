@@ -47,6 +47,10 @@ pub enum TabTreatment {
     Line,
     Segmented,
     Filled,
+    /// Browser-tab look: active tab gets top + left + right hairline borders
+    /// and a subtle surface fill. No bottom border, so the tab visually merges
+    /// with the content panel below. Inactive tabs are flat/transparent.
+    Card,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -193,7 +197,10 @@ struct DragState {
 // ── Painting ───────────────────────────────────────────────────────────────────
 
 const DRAG_THRESHOLD: f32 = 8.0;
-const TAB_MIN_WIDTH: f32 = 80.0;
+// Min squeeze width — small enough that short labels (LIST, HEAT, Chart, etc.)
+// don't get ellipsized when the tab strip overflows. Long labels still get
+// truncated when there's truly not enough room.
+const TAB_MIN_WIDTH: f32 = 40.0;
 const CLOSE_HIT: f32 = 16.0;
 const CLOSE_VIS: f32 = 11.0;
 const MOD_DOT_R: f32 = 3.0;
@@ -248,15 +255,13 @@ fn paint_tabs(
     let total_natural: f32 = widths.iter().sum::<f32>()
         + if addable { row_h } else { 0.0 };
 
-    // Decide if we ellipsize (truncate per-tab to TAB_MIN_WIDTH) or scroll.
-    let must_scroll = full_width || addable;
-    let mut effective_widths = widths.clone();
-    if !must_scroll && total_natural > row_w {
-        // Squeeze: clamp per-tab width to TAB_MIN_WIDTH.
-        for w in effective_widths.iter_mut() {
-            *w = w.min(TAB_MIN_WIDTH.max(40.0));
-        }
-    }
+    // Tabs always render at their natural label width — never squeeze. If the
+    // strip overflows the available row, the parent layout (a horizontal split,
+    // panel, or scroll area) is responsible for clipping or scrolling. This
+    // preserves full readable labels at the cost of potential horizontal
+    // overflow when many tabs are present.
+    let _must_scroll = full_width || addable;
+    let effective_widths = widths.clone();
 
     // Wrap in a horizontal scroll when overflow.
     let strip_total: f32 = effective_widths.iter().sum::<f32>()
@@ -541,6 +546,44 @@ fn paint_tabs(
         }
     }
 
+    // ── Card treatment: post-loop hairline separators ──
+    // Vertical hairline between every adjacent tab pair (active included),
+    // plus a horizontal hairline below the strip — except where the active
+    // tab sits, so the active tab's "open bottom" merges with the content
+    // panel below.
+    if matches!(treatment, TabTreatment::Card) {
+        let sep_color = st::color_alpha(theme.border(), st::alpha_muted());
+        let stroke = Stroke::new(st::stroke_thin(), sep_color);
+        // Vertical separators between every adjacent tab pair.
+        for i in 1..n {
+            let r = displaced_rects[i];
+            ui.painter().line_segment(
+                [Pos2::new(r.left(), r.top() + 4.0),
+                 Pos2::new(r.left(), r.bottom() - 4.0)],
+                stroke,
+            );
+        }
+        // Bottom hairline — full width minus the active tab's footprint
+        // (the active tab's open bottom sits flush with the content panel).
+        let bottom_y = strip_rect.bottom() - 0.5;
+        let active_rect = displaced_rects.get(cur_active).copied();
+        let segments: Vec<(f32, f32)> = match active_rect {
+            Some(a) => vec![
+                (strip_rect.left(), a.left()),
+                (a.right(), strip_rect.right()),
+            ],
+            None => vec![(strip_rect.left(), strip_rect.right())],
+        };
+        for (x0, x1) in segments {
+            if x1 > x0 + 0.5 {
+                ui.painter().line_segment(
+                    [Pos2::new(x0, bottom_y), Pos2::new(x1, bottom_y)],
+                    stroke,
+                );
+            }
+        }
+    }
+
     if new_active != cur_active {
         *active = new_active;
         resp_out.changed = true;
@@ -690,6 +733,57 @@ fn paint_one_tab_painter(
                 painter.rect_filled(rect, CornerRadius::same(4), alpha(bg));
             }
         }
+        TabTreatment::Card => {
+            // Active: subtle surface fill + 2px top accent indicator + hairline
+            // borders on top, left, and right. NO bottom border so the tab
+            // visually merges with the content panel below. Inactive tabs are
+            // flat; hover paints a faint surface tint. Inter-tab vertical
+            // separators + the full-width hairline below the strip are painted
+            // post-loop in `paint_tabs`.
+            if is_active {
+                let bg = motion::fade_in(st::color_alpha(theme.surface(), 220), active_t);
+                painter.rect_filled(rect, CornerRadius::ZERO, alpha(bg));
+                let accent_col = motion::fade_in(theme.accent(), active_t);
+                painter.rect_filled(
+                    Rect::from_min_size(
+                        Pos2::new(rect.left(), rect.top()),
+                        Vec2::new(rect.width(), 2.0),
+                    ),
+                    CornerRadius::ZERO,
+                    alpha(accent_col),
+                );
+                let border = motion::fade_in(
+                    st::color_alpha(theme.border(), st::alpha_strong()),
+                    active_t,
+                );
+                let bs = Stroke::new(st::stroke_thin(), alpha(border));
+                // Top
+                painter.line_segment(
+                    [Pos2::new(rect.left(), rect.top()),
+                     Pos2::new(rect.right(), rect.top())],
+                    bs,
+                );
+                // Left
+                painter.line_segment(
+                    [Pos2::new(rect.left(), rect.top()),
+                     Pos2::new(rect.left(), rect.bottom())],
+                    bs,
+                );
+                // Right
+                painter.line_segment(
+                    [Pos2::new(rect.right(), rect.top()),
+                     Pos2::new(rect.right(), rect.bottom())],
+                    bs,
+                );
+            } else if hover_t > 0.01 {
+                let bg = motion::lerp_color(
+                    Color32::TRANSPARENT,
+                    st::color_alpha(theme.surface(), 100),
+                    hover_t,
+                );
+                painter.rect_filled(rect, CornerRadius::ZERO, alpha(bg));
+            }
+        }
     }
 
     // Text color: dim → text on hover/active.
@@ -713,11 +807,14 @@ fn paint_one_tab_painter(
         cx += w + inner_gap;
     }
 
-    // Label (with optional ellipsis).
+    // Label (with optional ellipsis). Reserve trailing space only for the
+    // bits actually present on this item — the previous `|| true` clause
+    // forced every tab to reserve close-button space even on non-closable
+    // tabs, eating ~15px and triggering false-positive ellipsis.
     let max_label_w = rect.right() - pad_x - cx
         - if item.badge.is_some() { 18.0 + inner_gap } else { 0.0 }
         - if item.modified { MOD_DOT_R * 2.0 + inner_gap } else { 0.0 }
-        - if tab_is_closable(item, false) || true { CLOSE_VIS + inner_gap } else { 0.0 };
+        - if tab_is_closable(item, false) { CLOSE_VIS + inner_gap } else { 0.0 };
     let max_label_w = max_label_w.max(8.0);
 
     let text = ellipsize(painter, &item.label, font_label, max_label_w, label_col);

@@ -8,10 +8,37 @@ static GLOBAL: _scaffold_lib::monitoring::CountingAlloc = _scaffold_lib::monitor
 
 use std::sync::Mutex;
 
+#[cfg(target_os = "macos")]
+fn set_macos_dock_icon() {
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::{MainThreadMarker, NSData};
+
+    // PNG bytes embedded at compile time so we don't depend on cwd / bundle layout.
+    const ICON_PNG: &[u8] = include_bytes!("../icons/128x128@2x.png");
+
+    let mtm = match MainThreadMarker::new() {
+        Some(m) => m,
+        None => return, // can't touch AppKit off the main thread
+    };
+    unsafe {
+        let data = NSData::with_bytes(ICON_PNG);
+        let alloc = objc2::msg_send_id![objc2::class!(NSImage), alloc];
+        let image: Option<objc2::rc::Retained<NSImage>> = NSImage::initWithData(alloc, &data);
+        if let Some(image) = image {
+            let app = NSApplication::sharedApplication(mtm);
+            app.setApplicationIconImage(Some(&image));
+        }
+    }
+}
+
 fn main() {
     eprintln!("╔══════════════════════════════════════╗");
     eprintln!("║  Apex Terminal — Native GPU Edition   ║");
     eprintln!("╚══════════════════════════════════════╝");
+
+    // Set the dock icon early so macOS picks it up before the first frame.
+    #[cfg(target_os = "macos")]
+    set_macos_dock_icon();
 
     // Initialize design-mode token store so the inspector activates.
     #[cfg(feature = "design-mode")]

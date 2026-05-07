@@ -64,6 +64,12 @@ rfd = "0.15"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
 
+# macOS-only — setting the dock icon at runtime requires AppKit FFI.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSResponder"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSString"] }
+
 # System monitoring (NVML FFI)
 libloading = "0.8"
 

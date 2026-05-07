@@ -149,7 +149,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                         } else if watchlist.discord_connecting {
                             ui.add(widgets::text::MonospaceCode::new("Waiting for authorization...").xs().color(t.dim));
                             ui.add_space(8.0);
-                            super::super::chart_widgets::refined_spinner(ui, t.accent);
+                            crate::ui_kit::widgets::Spinner::new().show(ui, t);
                             ui.add_space(4.0);
                             ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(t.dim.gamma_multiply(0.5)));
                         } else {
@@ -315,7 +315,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             if watchlist.discord_channels_loading {
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
-                                    super::super::chart_widgets::refined_spinner(ui, t.accent);
+                                    crate::ui_kit::widgets::Spinner::new().show(ui, t);
                                     ui.add(widgets::text::MonospaceCode::new("Loading channels...").xs().color(t.dim));
                                 });
                             } else if watchlist.discord_channels.is_empty() {
@@ -445,7 +445,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add_space(20.0);
                                         ui.horizontal(|ui| {
                                             ui.add_space(8.0);
-                                            super::super::chart_widgets::refined_spinner(ui, t.accent);
+                                            crate::ui_kit::widgets::Spinner::new().show(ui, t);
                                             ui.add(widgets::text::MonospaceCode::new("Loading messages...").xs().color(t.dim));
                                         });
                                     } else if watchlist.discord_messages.is_empty() {

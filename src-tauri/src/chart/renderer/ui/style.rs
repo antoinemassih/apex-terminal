@@ -23,19 +23,19 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 // ─── Typography scale ─────────────────────────────────────────────────────────
 // Typography scale — 4 sizes, monospace pinned for financial data.
 //
-// Inspired by Zed's typography system: a strict, opinionated scale that
-// enforces hierarchy through size + weight rather than ad-hoc px values.
+// Density-first scale anchored at 9px for high-density financial UIs
+// (price ladders, options chains, watchlists). Hierarchy comes through
+// size + color, not new fonts.
 //
 // Size scale (use ONLY these 4):
-//   font_xs()  = 11.0   — secondary chrome, badges, micro-labels
-//   font_sm()  = 13.0   — default body, list rows, tab labels (DEFAULT)
-//   font_md()  = 15.0   — emphasized body, panel titles
-//   font_lg()  = 18.0   — section headers, modal titles
+//   font_xs()  =  9.0   — micro-labels, dropdown items, badge text
+//   font_sm()  = 11.0   — default body, list rows, tab labels, nav buttons
+//   font_md()  = 13.0   — emphasized body, panel titles
+//   font_lg()  = 16.0   — section headers, modal titles
 //
-// Anything outside this scale is a bug. If you need 12px or 14px, you
-// probably want font_sm. If you need 9px, you almost certainly do not —
-// sub-11px is a "Bloomberg terminal" tell that hurts readability without
-// adding density.
+// Anything outside this scale is a bug. If you need 10px or 12px, you
+// probably want font_sm. If you need 14-15px, you probably want font_md
+// or font_lg.
 //
 // Weight is currently single-axis (Medium for sans, Regular for mono).
 // Multi-weight support is a future phase; for now achieve hierarchy
@@ -45,14 +45,14 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 // Use mono_xs/sm/md/lg for prices, quantities, OCC tickers, anything
 // tabular. The font picker controls proportional UI chrome only.
 
-/// 11.0 — secondary chrome, badges, micro-labels.
-pub fn font_xs() -> f32 { 11.0 }
-/// 13.0 — default body, list rows, tab labels.
-pub fn font_sm() -> f32 { 13.0 }
-/// 15.0 — emphasized body, panel titles.
-pub fn font_md() -> f32 { 15.0 }
-/// 18.0 — section headers, modal titles.
-pub fn font_lg() -> f32 { 18.0 }
+/// 9.0 — micro-labels, dropdown items, badge text.
+pub fn font_xs() -> f32 { 9.0 }
+/// 11.0 — default body, list rows, tab labels, nav buttons.
+pub fn font_sm() -> f32 { 11.0 }
+/// 13.0 — emphasized body, panel titles.
+pub fn font_md() -> f32 { 13.0 }
+/// 16.0 — section headers, modal titles.
+pub fn font_lg() -> f32 { 16.0 }
 
 // ─── Monospace helpers (JetBrains Mono, pinned) ───────────────────────────────
 // Use these for tabular financial data: prices, quantities, OCC tickers.
@@ -74,46 +74,45 @@ pub fn font_lg() -> f32 { 18.0 }
 #[doc(hidden)] pub fn font_2xl()      -> f32 { font_lg() }
 
 // Const aliases — kept so any const-context call sites compile. Values match
-// the new scale (xs=11, sm=13, md=15, lg=18). Anything that needed a const
-// before now gets the new readable size.
-pub const FONT_2XS: f32 = 11.0;
-pub const FONT_XS:  f32 = 11.0;
-pub const FONT_SM:  f32 = 13.0;
-pub const FONT_MD:  f32 = 15.0;
-pub const FONT_LG:  f32 = 18.0;
-pub const FONT_XL:  f32 = 18.0;
-pub const FONT_2XL: f32 = 18.0;
+// the active scale (xs=9, sm=11, md=13, lg=16).
+pub const FONT_2XS: f32 = 9.0;
+pub const FONT_XS:  f32 = 9.0;
+pub const FONT_SM:  f32 = 11.0;
+pub const FONT_MD:  f32 = 13.0;
+pub const FONT_LG:  f32 = 16.0;
+pub const FONT_XL:  f32 = 16.0;
+pub const FONT_2XL: f32 = 16.0;
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
-// Spacing scale — strict 4px grid.
+// Spacing scale — strict 4px grid, anchored at 4 for density-first chrome.
 //
-// Use ONLY these. Anything outside is a bug. Inspired by Zed.
-//   gap_2xs() =  4.0  — tight inline
-//   gap_xs()  =  8.0  — default inter-element gap
-//   gap_sm()  = 12.0  — section padding, list-row vertical
-//   gap_md()  = 16.0  — panel inner margin
-//   gap_lg()  = 20.0  — between sections in a panel
-//   gap_xl()  = 24.0  — between distinct panel groups
-//   gap_2xl() = 32.0  — page-level breaks (rare)
+// Use ONLY these. Anything outside is a bug.
+//   gap_2xs() =  4.0  — same as gap_xs (kept for back-compat)
+//   gap_xs()  =  4.0  — minimum (intra-cluster, between adjacent buttons)
+//   gap_sm()  =  8.0  — default inter-element gap
+//   gap_md()  = 12.0  — section padding, list-row vertical
+//   gap_lg()  = 16.0  — panel inner margin
+//   gap_xl()  = 20.0  — between sections in a panel
+//   gap_2xl() = 24.0  — between distinct panel groups
+//   gap_3xl() = 32.0  — page-level breaks (rare)
 //
-// Hierarchy comes from rhythm, not custom px values. If you find
-// yourself wanting 6px or 10px, the answer is almost always 8px.
+// If you find yourself wanting 6px or 10px, the answer is gap_sm (8) or gap_md (12).
 pub fn gap_2xs() -> f32 { 4.0 }
-pub fn gap_xs()  -> f32 { 8.0 }
-pub fn gap_sm()  -> f32 { 12.0 }
-pub fn gap_md()  -> f32 { 16.0 }
-pub fn gap_lg()  -> f32 { 20.0 }
-pub fn gap_xl()  -> f32 { 24.0 }
-pub fn gap_2xl() -> f32 { 32.0 }
+pub fn gap_xs()  -> f32 { 4.0 }
+pub fn gap_sm()  -> f32 { 8.0 }
+pub fn gap_md()  -> f32 { 12.0 }
+pub fn gap_lg()  -> f32 { 16.0 }
+pub fn gap_xl()  -> f32 { 20.0 }
+pub fn gap_2xl() -> f32 { 24.0 }
 pub fn gap_3xl() -> f32 { 32.0 }
 
-pub const GAP_XS:  f32 = 1.0;
-pub const GAP_SM:  f32 = 3.0;
-pub const GAP_MD:  f32 = 5.0;
-pub const GAP_LG:  f32 = 6.0;
-pub const GAP_XL:  f32 = 8.0;
-pub const GAP_2XL: f32 = 10.0;
-pub const GAP_3XL: f32 = 16.0;
+pub const GAP_XS:  f32 =  4.0;
+pub const GAP_SM:  f32 =  8.0;
+pub const GAP_MD:  f32 = 12.0;
+pub const GAP_LG:  f32 = 16.0;
+pub const GAP_XL:  f32 = 20.0;
+pub const GAP_2XL: f32 = 24.0;
+pub const GAP_3XL: f32 = 32.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 pub fn radius_sm() -> f32 { crate::dt_f32!(radius.sm, 3.0) }
@@ -250,8 +249,11 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
     let st = current();
     // Apply uppercase transform per active style (#5).
     let raw_label = style_label_case(label);
-    // Icon-only buttons render their glyph ~50% larger than text labels.
-    let label_size = if label_is_icon_only(label) { font_md() * 1.5 } else { font_md() };
+    // Icon-only buttons render at font_md (13) so the glyph stays visually
+    // weighted next to font_sm (11) text labels — same proportional bump as
+    // body→title text. Older code used font_md*1.5 which produced ~19.5px
+    // icons that towered over 11px nav text and felt off-scale.
+    let label_size = if label_is_icon_only(label) { font_md() } else { font_sm() };
     // Apply nav letter-spacing approximation via thin-spaces (U+2009).
     let nav_sp = st.nav_letter_spacing_px;
     let display_label = if nav_sp < 0.5 {
@@ -1263,7 +1265,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
-            active_header_fill_multiply: 1.2, inactive_header_fill_multiply: 0.85,
+            active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
             inactive_header_fill: true,
             header_outer_border_alpha: 20, header_outer_border_width: 0.5,
             header_divider_alpha: 25,
@@ -1304,7 +1306,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
-            active_header_fill_multiply: 1.2, inactive_header_fill_multiply: 0.85,
+            active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
             inactive_header_fill: true,
             header_outer_border_alpha: 25, header_outer_border_width: 0.5,
             header_divider_alpha: 30,
@@ -1345,8 +1347,8 @@ fn style_defaults(id: u8) -> StyleSettings {
             toolbar_height_scale: 1.40, header_height_scale: 1.10,
             font_hero: 36.0, vertical_group_dividers: true,
             show_active_tab_underline: true,
-            active_header_fill_multiply: 0.95, inactive_header_fill_multiply: 1.0,
-            inactive_header_fill: false,
+            active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
+            inactive_header_fill: true,
             header_outer_border_alpha: 25, header_outer_border_width: 0.5,
             header_divider_alpha: 25,
             account_strip_height: 36.0,

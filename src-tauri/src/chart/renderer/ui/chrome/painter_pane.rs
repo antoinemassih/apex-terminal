@@ -45,7 +45,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeK
 use super::super::style::{
     alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
     color_alpha, contrast_fg, current, drawing_palette, font_md, font_sm, gap_md, gap_sm, gap_xs,
-    radius_sm, radius_md, stroke_hair, stroke_thin,
+    radius_sm, radius_md, stroke_hair, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
 
@@ -231,8 +231,11 @@ fn header_fill(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bo
 /// derived from theme luminance via `contrast_fg`-style logic — light themes
 /// get a dark border, dark themes get a light border. Width and alpha come
 /// from `header_outer_border_width` / `header_outer_border_alpha`.
-fn header_outer_border(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bool) {
-    if is_active { return; } // Active pane is distinguished by header fill — border would be redundant.
+fn header_outer_border(painter: &egui::Painter, rect: Rect, theme: &Theme, _is_active: bool) {
+    // Paint the hairline border for every pane (active included). The active
+    // pane is distinguished by header fill differential, not by losing its
+    // border — losing the border made the active pane's chrome "disappear",
+    // which read as a regression vs the rest of the layout grid.
     let st = current();
     let contrast = contrast_fg(theme.bg);
     let border_col = color_alpha(contrast, st.header_outer_border_alpha);
@@ -414,18 +417,13 @@ impl<'a> PainterPaneHeader<'a> {
 
         let painter = ui.painter_at(rect);
 
-        // ── Header chrome (bg fill, outer border, active underline) ──────────
-        // All routed through the StyleSettings tokens so a single knob change
-        // restyles the entire header.
+        // ── Header chrome ────────────────────────────────────────────────────
+        // Active pane gets a darker fill differential. Outer hairline border
+        // paints on every pane (active included) so the layout grid stays
+        // consistent. NO accent underline — the active state is communicated
+        // through fill alone, matching the Zed reference.
         header_fill(&painter, rect, t, self.is_active, self.visible_count);
         header_outer_border(&painter, rect, t, self.is_active);
-        if self.is_active && self.visible_count > 1 {
-            let y = rect.bottom() - 1.0;
-            painter.line_segment(
-                [pos2(rect.left(), y), pos2(rect.right(), y)],
-                Stroke::new(TAB_UNDERLINE_THICKNESS, t.accent),
-            );
-        }
 
         let mut out = PainterPaneHeaderResponse {
             response: bg_resp,
@@ -445,6 +443,8 @@ impl<'a> PainterPaneHeader<'a> {
             clicked_symbol: false,
             clicked_order: false,
             clicked_dom: false,
+            tab_rects: Vec::new(),
+            plus_tab_rect: None,
         };
         out.hover_pos = ui.ctx().pointer_hover_pos().filter(|p| rect.contains(*p));
 
@@ -549,7 +549,9 @@ impl<'a> PainterPaneHeader<'a> {
                 let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  tab_resp.hovered() && !is_active_tab, motion::FAST);
                 let idle_bg   = Color32::TRANSPARENT;
                 let hover_bg  = color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha);
-                let active_bg = t.bg.gamma_multiply(0.5);
+                // Active tab: noticeably darker than the (now lighter) inactive
+                // pane header so the contrast reads clearly.
+                let active_bg = t.bg.gamma_multiply(0.4);
                 let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
                 tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);
                 let r_md = radius_md() as u8;
@@ -559,10 +561,50 @@ impl<'a> PainterPaneHeader<'a> {
                     tab_bg,
                 );
                 if active_t > 0.001 {
+                    // Active tab: 2px top accent + 1px hairline borders on
+                    // top / left / right. NO bottom border — the tab merges
+                    // with the pane content below (TabTreatment::Card look).
+                    let accent = motion::fade_in(t.accent, active_t);
+                    let border = motion::fade_in(
+                        color_alpha(t.toolbar_border, alpha_solid()),
+                        active_t,
+                    );
+                    let bs = Stroke::new(stroke_std(), border);
+                    // 2px top accent indicator (sits below the top hairline)
                     painter.line_segment(
-                        [pos2(tab_rect.left() + 1.0, tab_rect.bottom()),
-                         pos2(tab_rect.right() - 1.0, tab_rect.bottom())],
-                        Stroke::new(TAB_UNDERLINE_THICKNESS, motion::fade_in(t.accent, active_t)),
+                        [pos2(tab_rect.left(), tab_rect.top() + 1.5),
+                         pos2(tab_rect.right(), tab_rect.top() + 1.5)],
+                        Stroke::new(TAB_UNDERLINE_THICKNESS, accent),
+                    );
+                    // Top hairline (full 1px stroke for visibility)
+                    painter.line_segment(
+                        [pos2(tab_rect.left(), tab_rect.top()),
+                         pos2(tab_rect.right(), tab_rect.top())],
+                        bs,
+                    );
+                    // Left hairline — inset by 0.5 so it sits inside the rect
+                    let lx = tab_rect.left() + 0.5;
+                    painter.line_segment(
+                        [pos2(lx, tab_rect.top()), pos2(lx, tab_rect.bottom())],
+                        bs,
+                    );
+                    // Right hairline — inset by 0.5
+                    let rx = tab_rect.right() - 0.5;
+                    painter.line_segment(
+                        [pos2(rx, tab_rect.top()), pos2(rx, tab_rect.bottom())],
+                        bs,
+                    );
+                }
+
+                // Vertical divider between this tab and the next — paints for
+                // every adjacent pair (active included). Drawn at the right
+                // edge of the current tab inside the inter-tab gap.
+                if ti + 1 < self.tabs.len() {
+                    let div_col = color_alpha(t.toolbar_border, alpha_muted());
+                    painter.line_segment(
+                        [pos2(tab_rect.right() + 0.5, tab_rect.top() + 4.0),
+                         pos2(tab_rect.right() + 0.5, tab_rect.bottom() - 4.0)],
+                        Stroke::new(stroke_thin(), div_col),
                     );
                 }
 
@@ -610,6 +652,7 @@ impl<'a> PainterPaneHeader<'a> {
                 if tab_resp.clicked() && !out.clicked_close {
                     out.clicked_tab = Some(ti);
                 }
+                out.tab_rects.push(tab_rect);
                 cx += tab_w + 1.0;
             }
         } else if let Some(sym) = self.symbol {
@@ -728,6 +771,7 @@ impl<'a> PainterPaneHeader<'a> {
                 "+ Tab",
                 FontId::monospace((self.title_font_size - 2.0).max(font_sm())), fg);
             if resp.clicked() { out.clicked_plus = true; }
+            out.plus_tab_rect = Some(plus_rect);
             cx += PLUS_TAB_W + gap_sm();
         }
 
@@ -832,6 +876,12 @@ pub struct PainterPaneHeaderResponse {
     pub clicked_order: bool,
     /// DOM sidebar toggle button was clicked.
     pub clicked_dom: bool,
+    /// Per-tab screen rects (in tab-strip mode). Empty in simple-symbol mode.
+    /// Use these to anchor popups (the pane picker, etc.) to a specific tab.
+    pub tab_rects: Vec<Rect>,
+    /// Screen rect of the +Tab button when shown — for anchoring pickers
+    /// triggered by the plus-tab click.
+    pub plus_tab_rect: Option<Rect>,
 }
 
 // ─── Local helpers ──────────────────────────────────────────────────────────

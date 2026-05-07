@@ -204,12 +204,10 @@ fn render_chart_pane(
         }
     }
     let has_tabs = chart.tab_symbols.len() > 1;
-    // Always show header (18px min) so + tab button is accessible even in single-pane
-    let pane_top_offset = if has_tabs {
-        pane_tabs_header_h(watchlist)
-    } else {
-        pane_header_h(watchlist)
-    };
+    // Always use the taller tabs-header height so a single-pane layout has the
+    // same vertical metrics as a tabbed one — adding/removing a tab won't
+    // shift content around.
+    let pane_top_offset = pane_tabs_header_h(watchlist);
     let title_font_size = watchlist.pane_header_size.title_font();
     let show_header = true;
     if show_header {
@@ -286,12 +284,17 @@ fn render_chart_pane(
             }
         } else { String::new() };
 
-        // Tab data: (display_sym, price_text, change_pct) — widget uses (sym, price, chg)
-        let tab_price_texts: Vec<String> = if has_tabs {
+        // Tab data: (display_sym, price_text, change_pct) — widget uses (sym, price, chg).
+        // Price text is suppressed when the pane is in a non-Chart mode
+        // (Dashboard / Portfolio / Heatmap / Spreadsheet) — in those modes the
+        // tab represents the pane template, not a tradeable instrument.
+        let tab_price_texts: Vec<String> = if has_tabs && chart.pane_type == PaneType::Chart {
             (0..chart.tab_symbols.len()).map(|i| {
                 let price = if i < chart.tab_prices.len() { chart.tab_prices[i] } else { 0.0 };
                 if price > 0.0 { format!("${:.2}", price) } else { String::new() }
             }).collect()
+        } else if has_tabs {
+            vec![String::new(); chart.tab_symbols.len()]
         } else { vec![] };
 
         // For tab display symbols:
@@ -363,11 +366,15 @@ fn render_chart_pane(
         if has_tabs {
             builder = builder.tabs(&tab_refs);
         } else {
-            builder = builder
-                .symbol(sym_label_owned.as_str())
-                .price(price_text_owned.as_str(), price_col_val);
-            if chart.is_option && (!opt_side.is_empty() || !opt_expiry.is_empty()) {
-                builder = builder.option_badges(opt_side, opt_expiry);
+            builder = builder.symbol(sym_label_owned.as_str());
+            // Only show price + option badges when the pane is actually a
+            // chart — non-chart panes (Dashboard / Portfolio / Heatmap /
+            // Spreadsheet) shouldn't surface a tradeable price.
+            if chart.pane_type == PaneType::Chart {
+                builder = builder.price(price_text_owned.as_str(), price_col_val);
+                if chart.is_option && (!opt_side.is_empty() || !opt_expiry.is_empty()) {
+                    builder = builder.option_badges(opt_side, opt_expiry);
+                }
             }
         }
         // Also paint option badges in tab mode
@@ -430,63 +437,39 @@ fn render_chart_pane(
             }
         }
 
-        // Plus tab
+        // Plus tab — append a new tab and open the unified pane picker
+        // (Chart / Portfolio / Dashboard / Heatmap / Spreadsheet + symbol /
+        // template), anchored to the +Tab button so the popup drops down from
+        // it rather than the header origin or app top.
         if hdr.clicked_plus {
-            if has_tabs {
+            if !has_tabs && chart.tab_symbols.is_empty() {
+                // No-tab mode: seed tab 0 with the current symbol so the
+                // newly-appended tab becomes tab 1 (consistent with the
+                // tabbed-mode flow below).
                 chart.tab_symbols.push(chart.symbol.clone());
                 chart.tab_timeframes.push(chart.timeframe.clone());
-                chart.tab_changes.push(0.0);
-                chart.tab_prices.push(0.0);
-                chart.tab_active = chart.tab_symbols.len() - 1;
-                *active_pane = pane_idx;
-                if chart.is_option {
-                    chart.option_quick_open = true;
-                    chart.option_quick_pos = egui::pos2(header_rect.left(), header_rect.bottom() + 4.0);
-                    if !chart.underlying.is_empty() {
-                        let dte_list = [0, 1, 2, 3, 7, 14, 30, 60];
-                        let dte = dte_list[chart.option_quick_dte_idx.min(dte_list.len() - 1)];
-                        let px = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                        fetch_chain_background(chart.underlying.clone(), 15, dte, px);
-                    }
-                } else {
-                    chart.picker_open = true;
-                    chart.picker_query.clear();
-                    chart.picker_results.clear();
-                    chart.picker_last_query.clear();
-                    chart.picker_pos = egui::pos2(header_rect.left(), header_rect.bottom());
-                }
-            } else {
-                // No-tab mode: initialize tabs then add empty tab 1
-                if chart.tab_symbols.is_empty() {
-                    chart.tab_symbols.push(chart.symbol.clone());
-                    chart.tab_timeframes.push(chart.timeframe.clone());
-                    let (chg, px) = if let (Some(f), Some(l)) = (chart.bars.first(), chart.bars.last()) {
-                        let c = if f.open > 0.0 { (l.close - f.open) / f.open * 100.0 } else { 0.0 };
-                        (c, l.close)
-                    } else { (0.0, 0.0) };
-                    chart.tab_changes.push(chg);
-                    chart.tab_prices.push(px);
-                }
-                chart.tab_symbols.push("".into());
-                chart.tab_timeframes.push(chart.timeframe.clone());
-                chart.tab_changes.push(0.0);
-                chart.tab_prices.push(0.0);
-                chart.tab_active = chart.tab_symbols.len() - 1;
-                if chart.is_option {
-                    chart.option_quick_open = true;
-                    chart.option_quick_pos = egui::pos2(header_rect.left(), header_rect.bottom() + 4.0);
-                    if !chart.underlying.is_empty() {
-                        let dte_list = [0, 1, 2, 3, 7, 14, 30, 60];
-                        let dte = dte_list[chart.option_quick_dte_idx.min(dte_list.len() - 1)];
-                        let px = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                        fetch_chain_background(chart.underlying.clone(), 15, dte, px);
-                    }
-                } else {
-                    chart.picker_open = true;
-                    chart.picker_query.clear();
-                    chart.picker_results.clear();
-                }
+                let (chg, px) = if let (Some(f), Some(l)) = (chart.bars.first(), chart.bars.last()) {
+                    let c = if f.open > 0.0 { (l.close - f.open) / f.open * 100.0 } else { 0.0 };
+                    (c, l.close)
+                } else { (0.0, 0.0) };
+                chart.tab_changes.push(chg);
+                chart.tab_prices.push(px);
             }
+            // Append the new (empty) tab.
+            chart.tab_symbols.push(if has_tabs { chart.symbol.clone() } else { String::new() });
+            chart.tab_timeframes.push(chart.timeframe.clone());
+            chart.tab_changes.push(0.0);
+            chart.tab_prices.push(0.0);
+            chart.tab_active = chart.tab_symbols.len() - 1;
+            *active_pane = pane_idx;
+
+            // Open the unified pane picker, anchored to the +Tab button.
+            chart.pane_picker_open = true;
+            chart.pane_picker_query.clear();
+            chart.pane_picker_option_mode = chart.is_option;
+            let anchor_x = hdr.plus_tab_rect.map(|r| r.left())
+                .unwrap_or_else(|| header_rect.left());
+            chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + 4.0);
         }
 
         // Template button
@@ -547,11 +530,15 @@ fn render_chart_pane(
                 }
             } else {
                 // Already-active tab clicked — open the unified pane picker
-                // (mode tabs + template selector + symbol/option search).
+                // (mode tabs + template selector + symbol/option search),
+                // anchored to the clicked tab's left edge so the popup drops
+                // down from the tab itself instead of the header origin.
                 chart.pane_picker_open = true;
                 chart.pane_picker_query.clear();
                 chart.pane_picker_option_mode = chart.is_option;
-                chart.pane_picker_pos = egui::pos2(header_rect.left(), header_rect.bottom() + 4.0);
+                let anchor_x = hdr.tab_rects.get(ci).map(|r| r.left())
+                    .unwrap_or_else(|| header_rect.left());
+                chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + 4.0);
             }
         }
 
@@ -11114,4 +11101,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     }
 
     handle_deferred(ctx, panes, active_pane, layout, watchlist);
+
+    // Drain any AppCommand pushed during this frame's UI render. Theme/style
+    // pickers, alert mutations, watchlist edits, etc. all flow through here.
+    crate::chart_renderer::commands::drain_and_dispatch(panes, watchlist);
 }
