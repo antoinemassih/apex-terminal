@@ -12,10 +12,11 @@ use egui::{Color32, FontFamily, FontId, Response, Sense, Ui, Widget};
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Family {
     Proportional,
     Monospace,
+    Named(String),
 }
 
 #[must_use = "Label does nothing until `.show(ui, theme)` or `ui.add(label)` is called"]
@@ -67,6 +68,13 @@ impl<'a> Label<'a> {
     }
 
     pub fn size(mut self, s: Size) -> Self { self.size = s; self }
+    /// Override the font family by registered name (e.g. "inter_semibold",
+    /// "inter_bold") — used by `PolishedLabel`'s fallback path to render
+    /// a real heavier-weight face instead of egui's faux-bold.
+    pub fn with_text_family(mut self, name: impl Into<String>) -> Self {
+        self.family = Family::Named(name.into());
+        self
+    }
     pub fn muted(mut self) -> Self { self.muted = true; self }
     pub fn strong(mut self) -> Self { self.strong = true; self }
     pub fn color(mut self, c: Color32) -> Self { self.color = Some(c); self }
@@ -81,12 +89,26 @@ impl<'a> Label<'a> {
         } else {
             theme.text()
         };
-        let _ = self.strong; // visual weight is conveyed via size + color in our scale
-
         let font_size = self.size.font_size();
-        let family = match self.family {
-            Family::Proportional => FontFamily::Proportional,
-            Family::Monospace => FontFamily::Monospace,
+        // Resolve family. `strong` upgrades the default Proportional
+        // family to a real Inter SemiBold face (registered in
+        // `init_fonts`) instead of egui's faux-bold stretch.
+        let family = match &self.family {
+            Family::Proportional => {
+                if self.strong {
+                    FontFamily::Name("inter_semibold".into())
+                } else {
+                    FontFamily::Proportional
+                }
+            }
+            Family::Monospace => {
+                if self.strong {
+                    FontFamily::Name("jetbrains_mono_bold".into())
+                } else {
+                    FontFamily::Monospace
+                }
+            }
+            Family::Named(n) => FontFamily::Name(n.clone().into()),
         };
         let font_id = FontId::new(font_size, family);
 

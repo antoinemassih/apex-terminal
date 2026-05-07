@@ -141,6 +141,13 @@ impl TextEngine {
         db.load_font_data(include_bytes!("../Geist-Medium.ttf").to_vec());
         db.load_font_data(include_bytes!("../SourceSerif4-Regular.ttf").to_vec());
         db.load_font_data(include_bytes!("../SourceSerif4-Bold.ttf").to_vec());
+        // Multi-weight Inter + JetBrains Mono Bold. cosmic-text reads
+        // OS/2 weight metadata from each face and resolves
+        // `Attrs::weight(...)` to the correct face — no synthesis.
+        db.load_font_data(include_bytes!("../Inter-Regular.ttf").to_vec());
+        db.load_font_data(include_bytes!("../Inter-SemiBold.ttf").to_vec());
+        db.load_font_data(include_bytes!("../Inter-Bold.ttf").to_vec());
+        db.load_font_data(include_bytes!("../JetBrainsMono-Bold.ttf").to_vec());
         self.fonts_loaded = true;
     }
 

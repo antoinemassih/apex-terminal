@@ -189,6 +189,35 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
     fonts.font_data.insert("geist".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Geist-Medium.ttf")).tweak(tweak_sans)));
 
+    // Multi-weight Inter + JetBrains Mono Bold for real (non-faux) bold/semibold rendering.
+    fonts.font_data.insert("inter_regular".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Regular.ttf")).tweak(tweak_sans)));
+    fonts.font_data.insert("inter_semibold".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-SemiBold.ttf")).tweak(tweak_sans)));
+    fonts.font_data.insert("inter_bold".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Inter-Bold.ttf")).tweak(tweak_sans)));
+    fonts.font_data.insert("jetbrains_mono_bold".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("JetBrainsMono-Bold.ttf")).tweak(tweak_mono)));
+
+    // Named families so call sites can opt into a specific weight via
+    // `RichText::family(FontFamily::Name("inter_semibold".into()))`.
+    fonts.families.insert(
+        egui::FontFamily::Name("inter_regular".into()),
+        vec!["inter_regular".into()],
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("inter_semibold".into()),
+        vec!["inter_semibold".into()],
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("inter_bold".into()),
+        vec!["inter_bold".into()],
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("jetbrains_mono_bold".into()),
+        vec!["jetbrains_mono_bold".into()],
+    );
+
     let primary = match font_idx {
         1 => "inter",
         2 => "plus_jakarta",

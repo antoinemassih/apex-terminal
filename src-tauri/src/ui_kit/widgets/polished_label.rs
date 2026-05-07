@@ -145,8 +145,22 @@ impl<'a> PolishedLabel<'a> {
         if let Some(c) = self.color {
             fallback = fallback.color(c);
         }
-        if matches!(self.weight, FontWeight::Semibold | FontWeight::Bold) {
-            fallback = fallback.strong();
+        // Map the requested weight to a real registered Inter face.
+        // Medium uses the default Inter-Medium picker family (no
+        // override). Regular/Semibold/Bold pin a specific weight family
+        // so we render a true heavier glyph rather than egui's
+        // faux-bold stretch.
+        match self.weight {
+            FontWeight::Regular => {
+                fallback = fallback.with_text_family("inter_regular");
+            }
+            FontWeight::Medium => {}
+            FontWeight::Semibold => {
+                fallback = fallback.with_text_family("inter_semibold");
+            }
+            FontWeight::Bold => {
+                fallback = fallback.with_text_family("inter_bold");
+            }
         }
         fallback.show(ui, theme)
     }
