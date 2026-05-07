@@ -11100,6 +11100,29 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         PERF_HUD_OPEN.store(open, Ordering::Relaxed);
     }
 
+    // ── Widget Gallery (Ctrl+Shift+G) — developer-only visual QA panel ──────
+    {
+        if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::G)) {
+            watchlist.widget_gallery_open = !watchlist.widget_gallery_open;
+        }
+        if watchlist.widget_gallery_open {
+            let theme_idx = if !panes.is_empty() && *active_pane < panes.len() {
+                panes[*active_pane].theme_idx
+            } else { 0 };
+            let theme = get_theme(theme_idx);
+            let mut open = true;
+            egui::Window::new("Widget Gallery")
+                .open(&mut open)
+                .default_size((900.0, 700.0))
+                .resizable(true)
+                .scroll([false, true])
+                .show(ctx, |ui| {
+                    crate::chart::renderer::ui::panels::widget_gallery::show_widget_gallery(ui, &theme);
+                });
+            if !open { watchlist.widget_gallery_open = false; }
+        }
+    }
+
     handle_deferred(ctx, panes, active_pane, layout, watchlist);
 
     // Drain any AppCommand pushed during this frame's UI render. Theme/style

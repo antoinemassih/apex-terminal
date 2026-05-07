@@ -3835,6 +3835,9 @@ pub(crate) struct Watchlist {
     /// fetch key so real bars come from ApexData; pane.symbol stays the display label.
     pub(crate) pending_opt_chart_contract: Option<String>,
     pub(crate) apex_diag_open: bool,
+    /// Developer-only widget gallery panel (Ctrl+Shift+G). See
+    /// `chart::renderer::ui::panels::widget_gallery`.
+    pub widget_gallery_open: bool,
     // Watchlist filter
     pub(crate) filter_open: bool,
     // Watchlist column config — ordered list of visible columns.
@@ -4059,7 +4062,7 @@ impl Watchlist {
                trendline_filter_open: false, account_strip_open: false, object_tree_open: false, broadcast_mode: false,
                draw_favorites: vec!["trendline".into(), "magnifier".into(), "measure".into(), "hline".into(), "channel".into(), "fibonacci".into()],
                style_idx: 0,
-               pending_opt_chart: None, pending_opt_chart_contract: None, apex_diag_open: false,
+               pending_opt_chart: None, pending_opt_chart_contract: None, apex_diag_open: false, widget_gallery_open: false,
                wl_columns: crate::chart::renderer::ui::lists::rows::watchlist_columns::default_columns(),
                wl_columns_open: false,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],

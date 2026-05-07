@@ -28,6 +28,7 @@ pub mod spread_panel;
 pub mod spreadsheet_pane;
 pub mod tape_panel;
 pub mod watchlist_panel;
+pub mod widget_gallery;
 
 pub use alerts_panel::*;
 pub use analysis_panel::*;

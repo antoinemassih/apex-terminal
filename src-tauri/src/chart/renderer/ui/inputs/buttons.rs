@@ -23,7 +23,7 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 /// ui.add(IconBtn::new("✕").medium().color(theme.dim));
 /// ```
 #[must_use = "IconBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
+#[deprecated(note = "use ui_kit::widgets::Button::icon(glyph).variant(Variant::Ghost).glyph_color(c)")]
 pub struct IconBtn<'a> {
     glyph: &'a str,
     color: Option<Color32>,
@@ -90,7 +90,7 @@ impl<'a> Widget for IconBtn<'a> {
 /// if ui.add(TradeBtn::new("BUY").color(theme.bull).width(80.0)).clicked() { ... }
 /// ```
 #[must_use = "TradeBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
+#[deprecated(note = "use ui_kit::widgets::Button::buy(label) / Button::sell(label), or Variant::Primary with .tint(color)")]
 pub struct TradeBtn<'a> {
     label: &'a str,
     color: Color32,
@@ -192,7 +192,7 @@ impl<'a> Widget for TradeBtn<'a> {
 /// if ui.add(SimpleBtn::new("Cancel").color(theme.dim)).clicked() { ... }
 /// ```
 #[must_use = "SimpleBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
+#[deprecated(note = "use ui_kit::widgets::Button::new(label).variant(Variant::Secondary).simple_treatment(true).fg(c)")]
 pub struct SimpleBtn<'a> {
     label: &'a str,
     color: Color32,
@@ -281,7 +281,7 @@ impl<'a> Widget for SimpleBtn<'a> {
 /// if ui.add(SmallActionBtn::new("Clear All").color(theme.dim)).clicked() { ... }
 /// ```
 #[must_use = "SmallActionBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
+#[deprecated(note = "use ui_kit::widgets::Button::new(label).variant(Variant::Secondary).simple_treatment(true).size(Size::Sm).fg(c)")]
 pub struct SmallActionBtn<'a> {
     label: &'a str,
     color: Color32,
@@ -364,7 +364,7 @@ impl<'a> Widget for SmallActionBtn<'a> {
 /// visual is explicit. Useful for: Connect/Disconnect, Add Bot, Send,
 /// Above/Below alert pills, Paper/Live frameless toggle, etc.
 #[must_use = "ChromeBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
+#[deprecated(note = "use ui_kit::widgets::Button::new(label).variant(Variant::Chrome).fill(c).stroke(s).min_size(sz).frameless(true)")]
 pub struct ChromeBtn {
     text: RichText,
     fill: Option<Color32>,
@@ -423,7 +423,7 @@ impl Widget for ChromeBtn {
 /// if ui.add(ActionBtn::new("Place").color(theme.accent).enabled(order.valid)).clicked() { ... }
 /// ```
 #[must_use = "ActionBtn must be added with `ui.add(...)` to render"]
-#[deprecated(note = "use ui_kit::widgets::Button")]
+#[deprecated(note = "use ui_kit::widgets::Button::new(label).variant(Variant::Secondary).simple_treatment(true).fg(c).disabled(!enabled)")]
 pub struct ActionBtn<'a> {
     label: &'a str,
     color: Color32,

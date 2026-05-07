@@ -73,7 +73,7 @@ fn variant_color(variant: Variant, theme: &dyn ComponentTheme) -> Color32 {
     match variant {
         Variant::Primary => theme.accent(),
         Variant::Danger => theme.bear(),
-        Variant::Secondary | Variant::Ghost | Variant::Link => theme.accent(),
+        Variant::Secondary | Variant::Ghost | Variant::Link | Variant::Chrome => theme.accent(),
     }
 }
 

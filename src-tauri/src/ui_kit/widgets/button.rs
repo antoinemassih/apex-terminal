@@ -43,6 +43,16 @@ pub struct Button<'a> {
     corner_radius: Option<f32>,
     _marker_tint_bull: bool,
     _marker_tint_bear: bool,
+    // Escape hatches (legacy IconBtn / ChromeBtn / SimpleBtn parity).
+    fg_override: Option<Color32>,
+    glyph_color_override: Option<Color32>,
+    fill_override: Option<Color32>,
+    hover_fill_override: Option<Color32>,
+    stroke_override: Option<Stroke>,
+    min_size_override: Option<Vec2>,
+    frameless: bool,
+    honor_style_treatment: bool,
+    simple_treatment: bool,
 }
 
 impl<'a> Button<'a> {
@@ -62,6 +72,15 @@ impl<'a> Button<'a> {
             corner_radius: None,
             _marker_tint_bull: false,
             _marker_tint_bear: false,
+            fg_override: None,
+            glyph_color_override: None,
+            fill_override: None,
+            hover_fill_override: None,
+            stroke_override: None,
+            min_size_override: None,
+            frameless: false,
+            honor_style_treatment: true,
+            simple_treatment: false,
         }
     }
 
@@ -103,6 +122,39 @@ impl<'a> Button<'a> {
     pub fn trailing_icon(mut self, icon: &'a str) -> Self { self.trailing_icon = Some(icon); self }
     pub fn corner_radius(mut self, r: f32) -> Self { self.corner_radius = Some(r); self }
 
+    /// Override the icon/glyph color (Ghost variant). Useful for legacy
+    /// IconBtn parity where each icon has its own color.
+    pub fn glyph_color(mut self, c: Color32) -> Self { self.glyph_color_override = Some(c); self }
+
+    /// Override the foreground (text + icon) color regardless of variant.
+    /// Higher-priority than variant defaults.
+    pub fn fg(mut self, c: Color32) -> Self { self.fg_override = Some(c); self }
+
+    /// For Chrome variant: explicit fill color.
+    pub fn fill(mut self, c: Color32) -> Self { self.fill_override = Some(c); self }
+
+    /// Hover fill override (replaces default lighten).
+    pub fn hover_fill(mut self, c: Color32) -> Self { self.hover_fill_override = Some(c); self }
+
+    /// For Chrome variant: explicit border. Pass `Stroke::NONE` to remove.
+    pub fn stroke(mut self, s: Stroke) -> Self { self.stroke_override = Some(s); self }
+
+    /// Minimum size (replaces auto-computed from Size enum).
+    pub fn min_size(mut self, sz: Vec2) -> Self { self.min_size_override = Some(sz); self }
+
+    /// Frameless mode: paint label/icon only, no bg/border. Replaces
+    /// `egui::Button::frame(false)` for parity with ChromeBtn::frameless.
+    pub fn frameless(mut self, v: bool) -> Self { self.frameless = v; self }
+
+    /// Honor the global `button_treatment` style state. When true (default),
+    /// `Variant::Secondary` may be re-styled by the active treatment when
+    /// `simple_treatment(true)` is also set.
+    pub fn honor_style_treatment(mut self, v: bool) -> Self { self.honor_style_treatment = v; self }
+
+    /// Opt into legacy SimpleBtn-style treatment dispatch. Only meaningful
+    /// when `variant == Secondary && honor_style_treatment`.
+    pub fn simple_treatment(mut self, v: bool) -> Self { self.simple_treatment = v; self }
+
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         paint_button(ui, theme, self)
     }
@@ -131,6 +183,16 @@ impl<'a> Widget for Button<'a> {
 // ── Internal painting ──────────────────────────────────────────────────
 
 fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) -> Response {
+    // Legacy SimpleBtn parity: when caller opts into `simple_treatment(true)`
+    // and `honor_style_treatment` is on, dispatch through the global
+    // ButtonTreatment-aware painter for pixel-identical SimpleBtn output.
+    if btn.honor_style_treatment
+        && btn.simple_treatment
+        && matches!(btn.variant, Variant::Secondary)
+        && !btn.icon_only && !btn.loading && !btn.disabled
+    {
+        return paint_secondary_with_treatment(ui, theme, &btn);
+    }
     let Button {
         label,
         leading_icon,
@@ -143,6 +205,13 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         active,
         full_width,
         corner_radius,
+        fg_override,
+        glyph_color_override,
+        fill_override,
+        hover_fill_override,
+        stroke_override,
+        min_size_override,
+        frameless,
         ..
     } = btn;
     let tint = btn.resolve_tint(theme);
@@ -173,7 +242,11 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
 
     let intrinsic_w = if icon_only { h } else { content_w + 2.0 * pad_x };
     let desired_w = if full_width { ui.available_width().max(intrinsic_w) } else { intrinsic_w };
-    let desired = Vec2::new(desired_w, h);
+    let mut desired = Vec2::new(desired_w, h);
+    if let Some(ms) = min_size_override {
+        desired.x = desired.x.max(ms.x);
+        desired.y = desired.y.max(ms.y);
+    }
 
     let sense = if disabled || loading { Sense::hover() } else { Sense::click() };
     let (rect, response) = ui.allocate_exact_size(desired, sense);
@@ -187,8 +260,16 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         let active_t = motion::ease_bool(ui.ctx(), id.with("btn_active"), active, motion::MED);
 
         // Resolve colors per variant.
-        let (idle_bg, hover_bg, active_bg, fg_idle, fg_hover, border_idle, border_active) =
+        let (mut idle_bg, mut hover_bg, active_bg, fg_idle, fg_hover, border_idle, border_active) =
             resolve_palette(theme, variant, tint);
+
+        // Caller-supplied fill / hover_fill override the variant defaults.
+        if let Some(f) = fill_override {
+            idle_bg = f;
+            hover_bg = hover_fill_override.unwrap_or_else(|| lighten(f, 0.08));
+        } else if let Some(hf) = hover_fill_override {
+            hover_bg = hf;
+        }
 
         // Compose backgrounds: idle -> hover -> active.
         let mut bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
@@ -200,6 +281,7 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         }
 
         let mut fg = motion::lerp_color(fg_idle, fg_hover, hover_t);
+        if let Some(c) = fg_override { fg = c; }
         let border_col = motion::lerp_color(border_idle, border_active, active_t);
 
         // Disabled: 50% opacity on everything.
@@ -214,14 +296,22 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         let painter = ui.painter_at(rect);
 
         // Background.
-        if bg.a() > 0 {
+        if !frameless && bg.a() > 0 {
             painter.rect_filled(rect, cr, bg);
         }
-        // Border (Secondary or active state).
-        let border_w = match variant { Variant::Secondary => 1.0, _ => 0.0 };
-        if border_col.a() > 0 && (border_w > 0.0 || active_t > 0.001) {
-            let w = if border_w > 0.0 { border_w } else { 1.0 };
-            painter.rect_stroke(rect, cr, Stroke::new(w, border_col), StrokeKind::Inside);
+        // Border (Secondary, Chrome stroke override, or active state).
+        if !frameless {
+            if let Some(s) = stroke_override {
+                if s.width > 0.0 && s.color.a() > 0 {
+                    painter.rect_stroke(rect, cr, s, StrokeKind::Inside);
+                }
+            } else {
+                let border_w = match variant { Variant::Secondary => 1.0, _ => 0.0 };
+                if border_col.a() > 0 && (border_w > 0.0 || active_t > 0.001) {
+                    let w = if border_w > 0.0 { border_w } else { 1.0 };
+                    painter.rect_stroke(rect, cr, Stroke::new(w, border_col), StrokeKind::Inside);
+                }
+            }
         }
 
         // Link underline — fade in on hover only.
@@ -238,17 +328,18 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
 
         // ── Layout content (icon | label | trailing) ──
         let center = rect.center();
+        let icon_fg = glyph_color_override.unwrap_or(fg);
         if icon_only {
             // Loading replaces icon.
             if loading {
-                paint_spinner(ui, rect, fg);
+                paint_spinner(ui, rect, icon_fg);
             } else if let Some(ic) = leading_icon {
                 painter.text(
                     center,
                     egui::Align2::CENTER_CENTER,
                     ic,
                     FontId::proportional(font_size * 1.25),
-                    fg,
+                    icon_fg,
                 );
             }
         } else {
@@ -258,7 +349,7 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
             // Leading: spinner takes priority over leading icon when loading.
             if loading {
                 let spin_rect = Rect::from_center_size(Pos2::new(x + font_size * 0.55, cy), Vec2::splat(font_size * 1.1));
-                paint_spinner(ui, spin_rect, fg);
+                paint_spinner(ui, spin_rect, icon_fg);
                 x += font_size * 1.1 + icon_gap;
             } else if let Some(ic) = leading_icon {
                 painter.text(
@@ -266,7 +357,7 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
                     egui::Align2::LEFT_CENTER,
                     ic,
                     FontId::proportional(font_size * 1.1),
-                    fg,
+                    icon_fg,
                 );
                 x += font_size * 1.1 + icon_gap;
             }
@@ -286,7 +377,7 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
                     egui::Align2::RIGHT_CENTER,
                     ic,
                     FontId::proportional(font_size * 1.1),
-                    fg,
+                    icon_fg,
                 );
             }
         }
@@ -300,11 +391,112 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
     response
 }
 
+/// SimpleBtn parity: route Secondary through the active `ButtonTreatment`.
+/// Delegates to `egui::Button` with the treatment-driven fill/stroke/cr,
+/// then paints the matching hover overlay and (for UnderlineActive) the
+/// bottom underline. Mirrors `chart::renderer::ui::inputs::buttons::SimpleBtn`.
+fn paint_secondary_with_treatment(
+    ui: &mut Ui,
+    _theme: &dyn ComponentTheme,
+    btn: &Button<'_>,
+) -> Response {
+    use crate::chart::renderer::ui::components::motion as cmotion;
+    use crate::chart::renderer::ui::style::{
+        alpha_faint, alpha_ghost, alpha_muted, alpha_soft, alpha_strong,
+        btn_small_height, color_alpha, current, font_sm, r_md_cr, r_sm_cr, r_xs,
+        stroke_bold, stroke_std, stroke_thin, ButtonTreatment,
+    };
+
+    // Pick the dominant color: explicit fg/fill overrides win, then tint, then theme.text().
+    let color = btn.fg_override
+        .or(btn.fill_override)
+        .or_else(|| btn.resolve_tint(_theme))
+        .unwrap_or_else(|| _theme.text());
+
+    let s = current();
+    let (fill, fg, stroke_w, stroke_col, cr) = match s.button_treatment {
+        ButtonTreatment::SoftPill => (
+            color_alpha(color, alpha_faint()),
+            color,
+            stroke_thin(),
+            color_alpha(color, alpha_muted()),
+            r_sm_cr(),
+        ),
+        ButtonTreatment::OutlineAccent => (
+            Color32::TRANSPARENT,
+            color,
+            stroke_bold(),
+            color_alpha(color, alpha_strong()),
+            r_md_cr(),
+        ),
+        ButtonTreatment::UnderlineActive
+        | ButtonTreatment::RaisedActive
+        | ButtonTreatment::BlackFillActive => (
+            Color32::TRANSPARENT,
+            color,
+            0.0_f32,
+            Color32::TRANSPARENT,
+            r_xs(),
+        ),
+    };
+
+    let h = btn.min_size_override.map(|v| v.y).unwrap_or_else(btn_small_height);
+    let min_w = btn.min_size_override.map(|v| v.x).unwrap_or(0.0);
+    let resp = ui.add(
+        egui::Button::new(RichText::new(btn.label).monospace().size(font_sm()).color(fg))
+            .fill(fill)
+            .stroke(Stroke::new(stroke_w, stroke_col))
+            .corner_radius(cr)
+            .min_size(Vec2::new(min_w, h)),
+    );
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let hover_id = resp.id.with("ui_kit_simple_btn_hover");
+    let hover_t = cmotion::ease_bool(ui.ctx(), hover_id, resp.hovered(), cmotion::FAST);
+    if hover_t > 0.001 {
+        match s.button_treatment {
+            ButtonTreatment::OutlineAccent => {
+                ui.painter().rect_filled(
+                    resp.rect,
+                    current().r_md,
+                    cmotion::fade_in(color_alpha(color, alpha_soft()), hover_t),
+                );
+                ui.painter().rect_stroke(
+                    resp.rect,
+                    current().r_md,
+                    Stroke::new(stroke_bold(), cmotion::fade_in(color, hover_t)),
+                    StrokeKind::Inside,
+                );
+            }
+            ButtonTreatment::UnderlineActive
+            | ButtonTreatment::RaisedActive
+            | ButtonTreatment::BlackFillActive => {
+                ui.painter().rect_filled(
+                    resp.rect,
+                    current().r_xs,
+                    cmotion::fade_in(color_alpha(color, alpha_ghost()), hover_t),
+                );
+            }
+            _ => {}
+        }
+    }
+    if matches!(s.button_treatment, ButtonTreatment::UnderlineActive) {
+        let r = resp.rect;
+        ui.painter().line_segment(
+            [Pos2::new(r.left(), r.bottom() + 0.5), Pos2::new(r.right(), r.bottom() + 0.5)],
+            Stroke::new(stroke_std(), color),
+        );
+    }
+    resp
+}
+
 fn default_radius(v: Variant) -> f32 {
     match v {
         Variant::Primary | Variant::Secondary | Variant::Danger => 4.0,
         Variant::Ghost => 2.0,
         Variant::Link => 0.0,
+        Variant::Chrome => 4.0,
     }
 }
 
@@ -365,6 +557,18 @@ fn resolve_palette(
             transparent,
             theme.accent(),
             lighten(theme.accent(), 0.15),
+            transparent,
+            transparent,
+        ),
+        Variant::Chrome => (
+            // Defaults are transparent / theme.text(); caller is expected to
+            // override via `.fill()` / `.stroke()` / `.fg()`. Hover lightens
+            // the resolved fill by 8% unless overridden via `.hover_fill()`.
+            transparent,
+            transparent,
+            transparent,
+            text,
+            text,
             transparent,
             transparent,
         ),
@@ -480,5 +684,41 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
     ui.horizontal(|ui| {
         let _ = Button::new("Save").leading_icon(Icon::CHECK).variant(Variant::Primary).show(ui, theme);
         let _ = Button::new("Next").trailing_icon(Icon::CARET_RIGHT).variant(Variant::Secondary).show(ui, theme);
+    });
+
+    ui.add_space(4.0);
+    ui.label("Escape hatches (legacy parity)");
+    ui.horizontal(|ui| {
+        // IconBtn parity: Ghost + glyph_color.
+        let _ = Button::icon(Icon::GEAR)
+            .variant(Variant::Ghost)
+            .glyph_color(theme.accent())
+            .show(ui, theme);
+        // ChromeBtn parity: Chrome variant with explicit fill/stroke/min_size.
+        let _ = Button::new("Connect")
+            .variant(Variant::Chrome)
+            .fill(theme.surface())
+            .stroke(Stroke::new(1.0, theme.border()))
+            .min_size(Vec2::new(80.0, 24.0))
+            .corner_radius(4.0)
+            .fg(theme.text())
+            .show(ui, theme);
+        // ChromeBtn::frameless parity.
+        let _ = Button::new("Paper")
+            .variant(Variant::Chrome)
+            .frameless(true)
+            .fg(theme.text())
+            .show(ui, theme);
+        // SimpleBtn parity: Secondary + simple_treatment.
+        let _ = Button::new("Cancel")
+            .variant(Variant::Secondary)
+            .simple_treatment(true)
+            .show(ui, theme);
+        // hover_fill override.
+        let _ = Button::new("Custom Hover")
+            .variant(Variant::Chrome)
+            .fill(theme.surface())
+            .hover_fill(theme.accent())
+            .show(ui, theme);
     });
 }

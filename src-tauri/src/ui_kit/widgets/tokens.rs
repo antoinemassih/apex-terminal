@@ -11,6 +11,7 @@ pub enum Variant {
     Ghost,      // transparent until hover
     Danger,     // bear-colored, destructive
     Link,       // text-only, underline on hover
+    Chrome,     // fully overridable; caller sets fill/stroke/min_size/corner_radius
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]

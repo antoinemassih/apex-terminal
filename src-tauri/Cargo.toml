@@ -42,6 +42,12 @@ egui-wgpu = "0.31"
 egui-winit = "0.31"
 egui-phosphor = { version = "0.9", features = ["regular", "bold", "fill"] }
 
+# Cosmic-text spike (item 10 polish track) — see docs/COSMIC_TEXT_SWAP_PLAN.md.
+# Phase 1: stubbed widget. Phase 2 will activate the real pipeline.
+# Pinned to versions that compile against egui 0.31's transitive ahash/zerocopy.
+cosmic-text = "0.12"
+swash = "0.1"
+
 # Bar data caching
 redis = { version = "0.27", features = ["tokio-comp"] }
 dirs = "6"
