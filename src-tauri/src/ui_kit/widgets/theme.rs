@@ -21,6 +21,22 @@ pub trait ComponentTheme {
     // Surface tokens (background fills).
     fn bg(&self) -> Color32;
     fn surface(&self) -> Color32; // raised surface, e.g. toolbar_bg
+
+    // Element state alpha overlays (Zed-derived). Applied OVER an element's
+    // idle background to signal hover/active/selected/disabled without
+    // switching colors. Pre-computed in the theme preset.
+    fn element_hover(&self) -> Color32;
+    fn element_active(&self) -> Color32;
+    fn element_selected(&self) -> Color32;
+    fn element_disabled(&self) -> Color32;
+    fn ghost_hover(&self) -> Color32;
+    fn ghost_active(&self) -> Color32;
+
+    // Icon color ramp — decoupled from text hierarchy.
+    fn icon(&self) -> Color32;
+    fn icon_muted(&self) -> Color32;
+    fn icon_disabled(&self) -> Color32;
+    fn icon_accent(&self) -> Color32;
 }
 
 impl ComponentTheme for crate::chart_renderer::gpu::Theme {
@@ -33,6 +49,16 @@ impl ComponentTheme for crate::chart_renderer::gpu::Theme {
     fn warn(&self) -> Color32 { self.warn }
     fn bg(&self) -> Color32 { self.bg }
     fn surface(&self) -> Color32 { self.toolbar_bg }
+    fn element_hover(&self) -> Color32 { self.element_hover }
+    fn element_active(&self) -> Color32 { self.element_active }
+    fn element_selected(&self) -> Color32 { self.element_selected }
+    fn element_disabled(&self) -> Color32 { self.element_disabled }
+    fn ghost_hover(&self) -> Color32 { self.ghost_hover }
+    fn ghost_active(&self) -> Color32 { self.ghost_active }
+    fn icon(&self) -> Color32 { self.icon }
+    fn icon_muted(&self) -> Color32 { self.icon_muted }
+    fn icon_disabled(&self) -> Color32 { self.icon_disabled }
+    fn icon_accent(&self) -> Color32 { self.icon_accent }
 }
 
 // Blanket impl so callers can pass `&T` where T: ComponentTheme through
@@ -48,4 +74,14 @@ impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {
     fn warn(&self) -> Color32 { (**self).warn() }
     fn bg(&self) -> Color32 { (**self).bg() }
     fn surface(&self) -> Color32 { (**self).surface() }
+    fn element_hover(&self) -> Color32 { (**self).element_hover() }
+    fn element_active(&self) -> Color32 { (**self).element_active() }
+    fn element_selected(&self) -> Color32 { (**self).element_selected() }
+    fn element_disabled(&self) -> Color32 { (**self).element_disabled() }
+    fn ghost_hover(&self) -> Color32 { (**self).ghost_hover() }
+    fn ghost_active(&self) -> Color32 { (**self).ghost_active() }
+    fn icon(&self) -> Color32 { (**self).icon() }
+    fn icon_muted(&self) -> Color32 { (**self).icon_muted() }
+    fn icon_disabled(&self) -> Color32 { (**self).icon_disabled() }
+    fn icon_accent(&self) -> Color32 { (**self).icon_accent() }
 }
