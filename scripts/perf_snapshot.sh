@@ -83,4 +83,13 @@ GPU (active = first listed)
   mem used .............. $(gl apex_gpu_memory_used_bytes)
   power W ............... $(gl apex_gpu_power_watts)
   graphics MHz .......... $(gl apex_gpu_clock_graphics_mhz)
+
+Subsystems (avg us, sorted by avg desc)
+$(echo "$raw" | awk '
+  $0 ~ /^apex_subsystem_avg_us\{name=/ {
+    match($0, /name="[^"]*"/); name = substr($0, RSTART+6, RLENGTH-7);
+    avg = $2 + 0;
+    printf "%-32s %6d us\n", name, avg;
+  }
+' | sort -k2 -n -r)
 EOF
