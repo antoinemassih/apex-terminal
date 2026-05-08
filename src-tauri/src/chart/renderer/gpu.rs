@@ -3284,19 +3284,23 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         style.visuals.override_text_color = Some(t.text);
         style.interaction.tooltip_delay = 0.12;
 
-        // Popup/dropdown shadows — rich depth with soft falloff
+        // Popup/dropdown shadows — subtle, matches GPU shadow visual intent.
+        // egui's built-in feathered shadow is heavy by default; tune down so
+        // ComboBox / menu_button / response.context_menu read as "barely there
+        // but present" rather than 2010 Win32 chrome. Apex-specific dropdowns
+        // paint paint_shadow_gpu themselves on top of this.
         style.visuals.popup_shadow = egui::epaint::Shadow {
-            offset: [0, if is_light { 6 } else { 4 }],
-            blur: if is_light { 24 } else { 18 },
-            spread: if is_light { 2 } else { 1 },
-            color: egui::Color32::from_black_alpha(if is_light { 35 } else { 90 }),
+            offset: [0, 2],
+            blur: 8,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(if is_light { 28 } else { 48 }),
         };
-        // Window shadows (dialogs, popups)
+        // Window shadows (dialogs, egui::Window) — slightly stronger than popups.
         style.visuals.window_shadow = egui::epaint::Shadow {
-            offset: [0, 8],
-            blur: 28,
-            spread: 2,
-            color: egui::Color32::from_black_alpha(if is_light { 40 } else { 100 }),
+            offset: [0, 4],
+            blur: 12,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(if is_light { 36 } else { 64 }),
         };
 
         // Corner radii — reduced for dropdowns, moderate for buttons

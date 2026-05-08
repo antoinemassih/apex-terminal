@@ -143,10 +143,22 @@ pub fn show_drawing_tool_picker(
     let mut chosen: Option<String> = None;
     let mut star_toggle: Option<String> = None;
 
-    let area_resp = egui::Area::new(egui::Id::new(("draw_picker", pane_idx)))
+    let picker_id = egui::Id::new(("draw_picker", pane_idx));
+    let picker_size_id = picker_id.with("apex_size");
+    let prior_picker_size: egui::Vec2 = ctx
+        .memory(|m| m.data.get_temp(picker_size_id))
+        .unwrap_or(egui::vec2(140.0, 200.0));
+    let area_resp = egui::Area::new(picker_id)
         .order(egui::Order::Foreground)
         .fixed_pos(pos)
         .show(ctx, |ui| {
+            // GPU-blurred drop shadow behind the popup panel.
+            let shadow_rect = egui::Rect::from_min_size(pos, prior_picker_size);
+            crate::ui_kit::widgets::paint_shadow_gpu(
+                ui.painter(),
+                shadow_rect,
+                crate::ui_kit::widgets::ShadowSpec::md(),
+            );
             PopupFrame::new().theme(t).ctx(ctx).build()
                 .show(ui, |ui| {
                     ui.set_width(140.0);
@@ -240,10 +252,21 @@ pub fn show_drawing_tool_picker(
                 area_resp.response.rect.right() + 2.0,
                 chart.draw_picker_hover_cat_y - 6.0,
             );
-            let fly = egui::Area::new(egui::Id::new(("draw_picker_flyout", pane_idx)))
+            let flyout_id = egui::Id::new(("draw_picker_flyout", pane_idx));
+            let flyout_size_id = flyout_id.with("apex_size");
+            let prior_flyout_size: egui::Vec2 = ctx
+                .memory(|m| m.data.get_temp(flyout_size_id))
+                .unwrap_or(egui::vec2(180.0, 200.0));
+            let fly = egui::Area::new(flyout_id)
                 .order(egui::Order::Foreground)
                 .fixed_pos(fpos)
                 .show(ctx, |ui| {
+                    let shadow_rect = egui::Rect::from_min_size(fpos, prior_flyout_size);
+                    crate::ui_kit::widgets::paint_shadow_gpu(
+                        ui.painter(),
+                        shadow_rect,
+                        crate::ui_kit::widgets::ShadowSpec::md(),
+                    );
                     PopupFrame::new().theme(t).ctx(ctx).build()
                         .show(ui, |ui| {
                             ui.set_width(180.0);
@@ -294,7 +317,17 @@ pub fn show_drawing_tool_picker(
                         });
                 });
             flyout_rect = fly.response.rect;
+            let measured = flyout_rect.size();
+            if measured.x > 0.0 && measured.y > 0.0 {
+                ctx.memory_mut(|m| m.data.insert_temp(flyout_size_id, measured));
+            }
         }
+    }
+
+    // Persist measured picker rect so next frame's shadow tracks the panel.
+    let picker_measured = area_resp.response.rect.size();
+    if picker_measured.x > 0.0 && picker_measured.y > 0.0 {
+        ctx.memory_mut(|m| m.data.insert_temp(picker_size_id, picker_measured));
     }
 
     // Hover-cat clear logic
