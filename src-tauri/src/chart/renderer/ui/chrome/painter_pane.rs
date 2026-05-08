@@ -65,7 +65,11 @@ const PLUS_TAB_W: f32 = 44.0;
 /// Square edge of the pane-level close button (right-anchored).
 const CLOSE_BTN_SIZE: f32 = 18.0;
 /// Width of the ORDER / DOM icon-label buttons in the right cluster.
-const ICON_BTN_W: f32 = 28.0;
+/// Sized for a horizontal `[icon] LABEL` pill (icon-left-of-text), not
+/// the previous vertical icon-above-sublabel stack.
+const ICON_BTN_W: f32 = 60.0;
+/// Narrower width for the DOM button (shorter label).
+const ICON_BTN_W_DOM: f32 = 52.0;
 /// Maximum height for option side / DTE badges.
 const BADGE_HEIGHT_MAX: f32 = 16.0;
 /// Vertical inset reserved around badges (top + bottom combined).
@@ -445,11 +449,13 @@ impl<'a> PainterPaneHeader<'a> {
             painter.rect_filled(rect, 0.0, active_bg);
         }
 
-        // 2. Outer perimeter hairline (1px, slightly muted).
-        let outer_border_col = color_alpha(t.toolbar_border, 220);
+        // 2. Outer perimeter hairline — routed through `border_variant`
+        //    (bg + 10% luminance, intentionally more visible than
+        //    `toolbar_border`) at full alpha so top/bottom edges actually
+        //    bound the header rect rather than disappearing into the bg.
         painter.rect_stroke(
             rect, 0.0,
-            Stroke::new(stroke_hair(), outer_border_col),
+            Stroke::new(stroke_hair(), t.border_variant),
             StrokeKind::Inside,
         );
 
@@ -785,7 +791,7 @@ impl<'a> PainterPaneHeader<'a> {
         let order_dom_total = {
             let mut w = 0.0f32;
             if self.show_order_btn { w += ICON_BTN_W; }
-            if self.show_dom_btn   { w += ICON_BTN_W; }
+            if self.show_dom_btn   { w += ICON_BTN_W_DOM; }
             w
         };
 
@@ -800,11 +806,11 @@ impl<'a> PainterPaneHeader<'a> {
         }
 
         // ── Order + DOM icon buttons ──────────────────────────────────────────
-        // Migrated to ui_kit `Button` with `.sublabel(..).status(true).show_at(..)`.
-        // `show_at` lets us drive the absolute rects we already lay out for the
-        // right cluster, while `.sublabel()` reproduces the icon + ORDER/DOM
-        // two-line stack visually. `.status(true)` keeps the transparent /
-        // hover-only treatment that matched the previous hand-painted version.
+        // Horizontal `[icon] LABEL` pills via `.leading_icon(..)`. Replaces
+        // the prior `.sublabel(..)` vertical-stack rendering — user wants
+        // icon-left-of-text, not icon-above-text. `.status(true)` keeps the
+        // transparent / hover-only treatment matched to the rest of the
+        // right cluster.
         {
             use crate::ui_kit::widgets::Button;
             let icon_h = h - ICON_BTN_INSET_V;
@@ -815,8 +821,8 @@ impl<'a> PainterPaneHeader<'a> {
                     pos2(rx, rect.center().y - icon_h / 2.0),
                     Vec2::new(ICON_BTN_W, icon_h),
                 );
-                let resp = Button::icon(Icon::CURRENCY_DOLLAR)
-                    .sublabel("ORDER")
+                let resp = Button::new("ORDER")
+                    .leading_icon(Icon::CURRENCY_DOLLAR)
                     .status(true)
                     .active(self.order_btn_active)
                     .show_at(ui, &painter, r, t);
@@ -829,15 +835,15 @@ impl<'a> PainterPaneHeader<'a> {
             if self.show_dom_btn {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W, icon_h),
+                    Vec2::new(ICON_BTN_W_DOM, icon_h),
                 );
-                let resp = Button::icon(Icon::LADDER)
-                    .sublabel("DOM")
+                let resp = Button::new("DOM")
+                    .leading_icon(Icon::LADDER)
                     .status(true)
                     .active(self.dom_btn_active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_dom = true; }
-                rx += ICON_BTN_W;
+                rx += ICON_BTN_W_DOM;
                 // Divider between DOM and the right-anchored Close button.
                 if self.show_close {
                     header_divider_strong(&painter, rx, rect, t);
