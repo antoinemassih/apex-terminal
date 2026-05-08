@@ -1,14 +1,13 @@
-//! GPU chart pipeline — dedicated wgpu render pass replacing egui candle rendering.
+//! GPU chart pipeline — dedicated wgpu render pass replacing egui candle and
+//! indicator rendering. Runs BEFORE egui's pass so chrome composites on top.
 //!
-//! Phase 2: instanced candle rendering. The pipeline runs BEFORE egui's pass so
-//! that egui chrome (grid lines, axes, crosshair, drawings) composites on top.
+//! Phase 2: instanced candle rendering (12 verts/candle, body + wick).
+//! Phase 4a: instanced thick-line rendering for single-line MA overlays
+//!   (SMA, EMA, WMA, DEMA, TEMA, VWAP). Each segment is one instance, expanded
+//!   to a 6-vertex quad in the vertex shader with screen-space thickness.
 //!
-//! Each visible bar is one instance; the vertex shader expands it to 12 vertices
-//! (6 for the body quad, 6 for the wick quad). CPU uploads only the visible window
-//! (~200–500 instances) on each frame; the pre-allocated instance buffer holds up
-//! to 100 k bars.
-//!
-//! Phase 3+ will add indicators, drawings, and multi-pane support.
+//! Both pipelines share one ViewUniform (pan/zoom transform + theme colors)
+//! and one bind group, so frame upload writes the uniform once.
 
 use std::time::Instant;
 
@@ -26,10 +25,25 @@ pub struct CandleInstance {
     pub flags:    u32,  // bit 0: bull (close >= open)
 }
 
+/// One segment of an indicator line. 36 bytes. The CPU side splits a polyline
+/// into consecutive segments and pushes one of these per gap-free pair so NaN
+/// gaps in the indicator history skip cleanly.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct LineSegment {
+    pub start_slot: f32,
+    pub start_val:  f32,
+    pub end_slot:   f32,
+    pub end_val:    f32,
+    pub color:      [f32; 4],  // linear RGBA
+    pub thickness:  f32,       // physical pixels — full line width
+}
+
 /// Chart parameters populated by `render_chart_pane` during egui's run and
 /// consumed by `ChartPipeline::upload` before the render passes.
 pub struct ChartRenderParams {
-    pub instances:  Vec<CandleInstance>,
+    pub instances:      Vec<CandleInstance>,
+    pub line_segments:  Vec<LineSegment>,
     /// Fractional part of `chart.vs` (sub-bar pan offset, 0..1).
     pub vs_frac:    f32,
     /// `chart.vc + dynamic_pad` — total bar slots across the chart width.
@@ -52,7 +66,8 @@ pub struct ChartRenderParams {
 impl Default for ChartRenderParams {
     fn default() -> Self {
         Self {
-            instances:  Vec::new(),
+            instances:     Vec::new(),
+            line_segments: Vec::new(),
             vs_frac:    0.0,
             vc_total:   200.0,
             price_low:  0.0,
@@ -68,30 +83,43 @@ impl Default for ChartRenderParams {
 // ── Internal GPU types ───────────────────────────────────────────────────────
 
 /// Uniform block matching the WGSL `ViewUniform` struct (80 bytes, std140).
+/// Shared between candle.wgsl and line.wgsl — the line shader reads
+/// surface_w/h, the candle shader reads body_half_slot/wick_half_ndc.
 #[repr(C)]
 struct ViewUniform {
     vs_frac:        f32,
     vc_total:       f32,
     price_low:      f32,
     price_high:     f32,
-    chart_x_min:    f32,  // NDC x of chart area left
-    chart_x_max:    f32,  // NDC x of chart area right
-    chart_y_min:    f32,  // NDC y of chart area bottom (smaller value)
-    chart_y_max:    f32,  // NDC y of chart area top (larger value)
-    body_half_slot: f32,  // body half-width as fraction of one bar slot (0.35)
-    wick_half_ndc:  f32,  // 1px half-width in NDC = 1.0 / surface_width
-    _pad:           [f32; 2],
+    chart_x_min:    f32,
+    chart_x_max:    f32,
+    chart_y_min:    f32,
+    chart_y_max:    f32,
+    body_half_slot: f32,
+    wick_half_ndc:  f32,
+    surface_w:      f32,
+    surface_h:      f32,
     bull:           [f32; 4],
     bear:           [f32; 4],
 }
 
-const MAX_INSTANCES: u64 = 100_000;
+const MAX_INSTANCES:      u64 = 100_000;
+const MAX_LINE_SEGMENTS:  u64 =  20_000;
 
 fn instances_as_bytes(s: &[CandleInstance]) -> &[u8] {
     unsafe {
         std::slice::from_raw_parts(
             s.as_ptr() as *const u8,
             s.len() * std::mem::size_of::<CandleInstance>(),
+        )
+    }
+}
+
+fn segments_as_bytes(s: &[LineSegment]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            s.as_ptr() as *const u8,
+            s.len() * std::mem::size_of::<LineSegment>(),
         )
     }
 }
@@ -108,26 +136,37 @@ fn uniform_as_bytes(u: &ViewUniform) -> &[u8] {
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
 pub struct ChartPipeline {
-    pipeline:       wgpu::RenderPipeline,
-    instance_buf:   wgpu::Buffer,
-    uniform_buf:    wgpu::Buffer,
-    bind_group:     wgpu::BindGroup,
-    instance_count: u32,
+    candle_pipeline: wgpu::RenderPipeline,
+    line_pipeline:   wgpu::RenderPipeline,
+
+    instance_buf: wgpu::Buffer,  // candle instances
+    line_buf:     wgpu::Buffer,  // line segments
+    uniform_buf:  wgpu::Buffer,  // shared view uniform
+    bind_group:   wgpu::BindGroup,
+
+    instance_count:     u32,
+    line_segment_count: u32,
+
     /// Clear color for the chart render pass — set each frame from the active
     /// pane's theme bg so the GPU canvas matches the theme.
-    clear_color:    wgpu::Color,
-    /// Scissor rect (x, y, w, h) in pixels — confines candle draws to the active
-    /// pane's chart area so partial/edge bars can't bleed into adjacent panes.
-    scissor:        (u32, u32, u32, u32),
+    clear_color: wgpu::Color,
+    /// Scissor rect (x, y, w, h) in pixels — confines all chart draws to the
+    /// active pane's chart area so partial bars / line segments don't bleed.
+    scissor:     (u32, u32, u32, u32),
 }
 
 impl ChartPipeline {
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        let candle_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label:  Some("chart_pipeline.candle.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("candle.wgsl").into()),
         });
+        let line_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label:  Some("chart_pipeline.line.shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("line.wgsl").into()),
+        });
 
+        // Both pipelines bind the same single uniform — one BGL covers both.
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label:   Some("chart_pipeline.bgl"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -149,6 +188,13 @@ impl ChartPipeline {
             mapped_at_creation: false,
         });
 
+        let line_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label:              Some("chart_pipeline.line_buf"),
+            size:               MAX_LINE_SEGMENTS * std::mem::size_of::<LineSegment>() as u64,
+            usage:              wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label:              Some("chart_pipeline.uniform_buf"),
             size:               std::mem::size_of::<ViewUniform>() as u64,
@@ -165,13 +211,14 @@ impl ChartPipeline {
             }],
         });
 
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label:                Some("chart_pipeline.layout"),
             bind_group_layouts:   &[&bgl],
             push_constant_ranges: &[],
         });
 
-        let attrs = [
+        // ── Candle pipeline ──────────────────────────────────────────────────
+        let candle_attrs = [
             wgpu::VertexAttribute { offset: 0,  shader_location: 0, format: wgpu::VertexFormat::Float32 },
             wgpu::VertexAttribute { offset: 4,  shader_location: 1, format: wgpu::VertexFormat::Float32 },
             wgpu::VertexAttribute { offset: 8,  shader_location: 2, format: wgpu::VertexFormat::Float32 },
@@ -179,26 +226,25 @@ impl ChartPipeline {
             wgpu::VertexAttribute { offset: 16, shader_location: 4, format: wgpu::VertexFormat::Float32 },
             wgpu::VertexAttribute { offset: 20, shader_location: 5, format: wgpu::VertexFormat::Uint32  },
         ];
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let candle_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label:  Some("chart_pipeline.candle"),
-            layout: Some(&layout),
+            layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module:      &shader,
+                module:      &candle_shader,
                 entry_point: Some("vs_main"),
                 buffers:     &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<CandleInstance>() as u64,
                     step_mode:    wgpu::VertexStepMode::Instance,
-                    attributes:   &attrs,
+                    attributes:   &candle_attrs,
                 }],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module:      &shader,
+                module:      &candle_shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format:     surface_format,
-                    blend:      None,  // opaque — egui composites on top
+                    blend:      None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: Default::default(),
@@ -210,22 +256,63 @@ impl ChartPipeline {
             cache:        None,
         });
 
-        eprintln!("[gpu] chart_pipeline: WGSL validated OK (phase=2_candle, active=true)");
+        // ── Line pipeline ────────────────────────────────────────────────────
+        // Layout: 4 floats endpoints, vec4 color, 1 float thickness = 36 bytes.
+        let line_attrs = [
+            wgpu::VertexAttribute { offset: 0,  shader_location: 0, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 4,  shader_location: 1, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 8,  shader_location: 2, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 12, shader_location: 3, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 16, shader_location: 4, format: wgpu::VertexFormat::Float32x4 },
+            wgpu::VertexAttribute { offset: 32, shader_location: 5, format: wgpu::VertexFormat::Float32   },
+        ];
+        let line_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label:  Some("chart_pipeline.line"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module:      &line_shader,
+                entry_point: Some("vs_main"),
+                buffers:     &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<LineSegment>() as u64,
+                    step_mode:    wgpu::VertexStepMode::Instance,
+                    attributes:   &line_attrs,
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module:      &line_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format:     surface_format,
+                    // Lines blend on top of candles for sub-pixel AA at edges.
+                    blend:      Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive:    wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample:  wgpu::MultisampleState::default(),
+            multiview:    None,
+            cache:        None,
+        });
+
+        eprintln!("[gpu] chart_pipeline: WGSL validated OK (phase=4a_candle+line, active=true)");
 
         Self {
-            pipeline, instance_buf, uniform_buf, bind_group,
-            instance_count: 0,
+            candle_pipeline, line_pipeline,
+            instance_buf, line_buf, uniform_buf, bind_group,
+            instance_count: 0, line_segment_count: 0,
             clear_color: wgpu::Color::BLACK,
             scissor: (0, 0, 0, 0),
         }
     }
 
-    /// Upload the visible bar instances and view uniform for the active pane.
-    /// Must be called after `egui_ctx.run()` (params populated) and before render.
+    /// Upload visible candle instances + indicator line segments + view uniform
+    /// for the active pane. Call after egui_ctx.run(), before render.
     ///
-    /// `surface_w/h` are physical pixels (the wgpu surface size). `chart_rect`
-    /// inside `params` is in egui logical pixels — `pixels_per_point` is the
-    /// DPI scale needed to bring them onto the same scale.
+    /// `surface_w/h` are physical pixels; `chart_rect` inside `params` is in
+    /// egui logical pixels — `pixels_per_point` bridges the two.
     pub fn upload(
         &mut self,
         queue:    &wgpu::Queue,
@@ -234,25 +321,33 @@ impl ChartPipeline {
         surface_h: f32,
         pixels_per_point: f32,
     ) {
-        let count = params.instances.len().min(MAX_INSTANCES as usize) as u32;
-        self.instance_count = count;
-
-        if count > 0 {
+        // ── Candle instances ────────────────────────────────────────────────
+        let icount = params.instances.len().min(MAX_INSTANCES as usize) as u32;
+        self.instance_count = icount;
+        if icount > 0 {
             queue.write_buffer(
-                &self.instance_buf,
-                0,
-                instances_as_bytes(&params.instances[..count as usize]),
+                &self.instance_buf, 0,
+                instances_as_bytes(&params.instances[..icount as usize]),
             );
         }
 
-        // Guard against degenerate price ranges (e.g. no bars loaded yet).
+        // ── Line segments ───────────────────────────────────────────────────
+        let scount = params.line_segments.len().min(MAX_LINE_SEGMENTS as usize) as u32;
+        self.line_segment_count = scount;
+        if scount > 0 {
+            queue.write_buffer(
+                &self.line_buf, 0,
+                segments_as_bytes(&params.line_segments[..scount as usize]),
+            );
+        }
+
+        // ── View uniform ────────────────────────────────────────────────────
         let price_high = if (params.price_high - params.price_low).abs() < 1e-6 {
             params.price_low + 1.0
         } else {
             params.price_high
         };
 
-        // chart_rect is in logical pixels — scale to physical to match the surface.
         let scale = pixels_per_point.max(0.0001);
         let [cl_lp, ct_lp, cr_lp, cb_lp] = params.chart_rect;
         let cl = cl_lp * scale;
@@ -260,7 +355,6 @@ impl ChartPipeline {
         let cr = cr_lp * scale;
         let cb = cb_lp * scale;
 
-        // Pixel → NDC helpers.  NDC Y is inverted relative to pixel Y.
         let px_to_ndc_x = |px: f32| px / surface_w * 2.0 - 1.0;
         let px_to_ndc_y = |py: f32| 1.0 - py / surface_h * 2.0;
         let uniform = ViewUniform {
@@ -270,18 +364,17 @@ impl ChartPipeline {
             price_high,
             chart_x_min:    px_to_ndc_x(cl),
             chart_x_max:    px_to_ndc_x(cr),
-            chart_y_min:    px_to_ndc_y(cb),  // bottom pixel → lower NDC y
-            chart_y_max:    px_to_ndc_y(ct),  // top pixel    → higher NDC y
+            chart_y_min:    px_to_ndc_y(cb),
+            chart_y_max:    px_to_ndc_y(ct),
             body_half_slot: 0.35,
             wick_half_ndc:  1.0 / surface_w.max(1.0),
-            _pad:           [0.0; 2],
+            surface_w:      surface_w.max(1.0),
+            surface_h:      surface_h.max(1.0),
             bull:           params.bull,
             bear:           params.bear,
         };
         queue.write_buffer(&self.uniform_buf, 0, uniform_as_bytes(&uniform));
 
-        // Match the chart pass clear to the theme bg so the GPU canvas blends with
-        // the egui chrome painted on top (axes, grid, indicators, drawings).
         self.clear_color = wgpu::Color {
             r: params.bg[0] as f64,
             g: params.bg[1] as f64,
@@ -289,8 +382,6 @@ impl ChartPipeline {
             a: params.bg[3] as f64,
         };
 
-        // Scissor rect in pixels — clamped to surface bounds so wgpu validation
-        // never trips on a partially-offscreen chart_rect.
         let sw_u = surface_w.max(1.0) as u32;
         let sh_u = surface_h.max(1.0) as u32;
         let sx = (cl.max(0.0) as u32).min(sw_u);
@@ -300,13 +391,12 @@ impl ChartPipeline {
         self.scissor = (sx, sy, sw, sh);
 
         crate::monitoring::set_chart_pipeline_active(true);
-        crate::monitoring::set_chart_visible_bars(count);
+        crate::monitoring::set_chart_visible_bars(icount);
     }
 
-    /// Run the chart render pass. Uses `LoadOp::Clear(BLACK)` — must run before
-    /// egui's pass so that egui chrome composites on top (`LoadOp::Load`).
-    ///
-    /// Returns CPU-side encode+submit time in microseconds.
+    /// Run the chart render pass: clear, draw candles, draw indicator lines.
+    /// All draws share a single render pass and the same scissor rect.
+    /// Returns CPU encode + submit time in microseconds.
     pub fn render(
         &self,
         device: &wgpu::Device,
@@ -319,7 +409,7 @@ impl ChartPipeline {
         });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("chart_pass.candle"),
+                label: Some("chart_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view,
                     resolve_target: None,
@@ -333,16 +423,26 @@ impl ChartPipeline {
                 occlusion_query_set:      None,
             });
 
-            if self.instance_count > 0 && self.scissor.2 > 0 && self.scissor.3 > 0 {
-                // Scissor only applies to draws (not LoadOp::Clear), so the surface
-                // still gets cleared to bg edge-to-edge while candles are confined
-                // to the active pane's chart area.
+            let have_scissor = self.scissor.2 > 0 && self.scissor.3 > 0;
+            if have_scissor {
                 pass.set_scissor_rect(self.scissor.0, self.scissor.1, self.scissor.2, self.scissor.3);
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.bind_group, &[]);
+            }
+
+            // Bind group is shared between candle and line pipelines.
+            pass.set_bind_group(0, &self.bind_group, &[]);
+
+            if have_scissor && self.instance_count > 0 {
+                pass.set_pipeline(&self.candle_pipeline);
                 pass.set_vertex_buffer(0, self.instance_buf.slice(..));
                 // 12 vertices per instance: body (0..6) + wick (6..12)
                 pass.draw(0..12, 0..self.instance_count);
+            }
+
+            if have_scissor && self.line_segment_count > 0 {
+                pass.set_pipeline(&self.line_pipeline);
+                pass.set_vertex_buffer(0, self.line_buf.slice(..));
+                // 6 vertices per segment (one quad)
+                pass.draw(0..6, 0..self.line_segment_count);
             }
         }
         queue.submit(std::iter::once(encoder.finish()));

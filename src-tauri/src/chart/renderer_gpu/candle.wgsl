@@ -13,8 +13,8 @@ struct ViewUniform {
     chart_y_max: f32,     // NDC y of chart area top (larger value, high price)
     body_half_slot: f32,  // body half-width as fraction of one bar slot (0.35)
     wick_half_ndc: f32,   // half-width of 1px wick in NDC = 1.0 / surface_width
-    _pad0: f32,
-    _pad1: f32,
+    surface_w: f32,       // physical pixels — used by line shader
+    surface_h: f32,       // physical pixels — used by line shader
     bull: vec4<f32>,      // bull candle RGBA
     bear: vec4<f32>,      // bear candle RGBA
 }

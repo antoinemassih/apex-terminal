@@ -2063,6 +2063,9 @@ fn render_chart_pane(
         };
         chart.gpu_render_params = ChartRenderParams {
             instances,
+            // Indicator segments are pushed later in this function as the
+            // overlay loop runs. Start empty.
+            line_segments: Vec::new(),
             vs_frac:    frac,
             vc_total:   total as f32,
             price_low:  min_p,
@@ -3305,28 +3308,74 @@ fn render_chart_pane(
             }
 
             // ── Generic overlay (SMA, EMA, WMA, DEMA, TEMA, VWAP) ──
-            chart.indicator_pts_buf.clear();
-            for i in start_i..end {
-                if let Some(&v) = ind.values.get(i as usize) {
-                    if !v.is_nan() { chart.indicator_pts_buf.push(egui::pos2(bx(i as f32), py(v))); }
+            // GPU path (Phase 4a): solid lines on the active pane go to the GPU
+            // line pipeline as instanced segments. Dashed/dotted styles, multi-line
+            // indicators, and inactive panes stay on the egui mesh path.
+            let use_gpu_line: bool = {
+                #[cfg(feature = "gpu_chart_v2")]
+                { is_active && ind.line_style == LineStyle::Solid }
+                #[cfg(not(feature = "gpu_chart_v2"))]
+                { false }
+            };
+
+            if use_gpu_line {
+                #[cfg(feature = "gpu_chart_v2")]
+                {
+                    use crate::chart::renderer_gpu::LineSegment;
+                    fn srgb_to_linear(c: u8) -> f32 {
+                        let s = c as f32 / 255.0;
+                        if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+                    }
+                    let lin_color = [
+                        srgb_to_linear(color.r()),
+                        srgb_to_linear(color.g()),
+                        srgb_to_linear(color.b()),
+                        color.a() as f32 / 255.0,
+                    ];
+                    let thickness_px = ind.thickness * ctx.pixels_per_point();
+                    let vs_floor = vs.floor();
+                    let mut prev: Option<(f32, f32)> = None;
+                    for i in start_i..end {
+                        let v = ind.values.get(i as usize).copied().unwrap_or(f32::NAN);
+                        if v.is_nan() { prev = None; continue; }
+                        let slot = i as f32 - vs_floor;
+                        if let Some((p_slot, p_val)) = prev {
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: p_slot,
+                                start_val:  p_val,
+                                end_slot:   slot,
+                                end_val:    v,
+                                color:      lin_color,
+                                thickness:  thickness_px,
+                            });
+                        }
+                        prev = Some((slot, v));
+                    }
                 }
-            }
-            if chart.indicator_pts_buf.len() > 1 {
-                let stroke = egui::Stroke::new(ind.thickness, color);
-                match ind.line_style {
-                    LineStyle::Solid => { painter.add(egui::Shape::line(chart.indicator_pts_buf.clone(), stroke)); }
-                    LineStyle::Dashed | LineStyle::Dotted => {
-                        let (dash, gap) = if ind.line_style == LineStyle::Dashed { (6.0, 3.0) } else { (2.0, 2.0) };
-                        for w in chart.indicator_pts_buf.windows(2) {
-                            let a = w[0]; let b = w[1];
-                            let dir = b - a; let len = dir.length();
-                            if len < 1.0 { continue; }
-                            let norm = dir / len; let mut d = 0.0;
-                            while d < len {
-                                let p0 = a + norm * d;
-                                let p1 = a + norm * (d + dash).min(len);
-                                painter.line_segment([p0, p1], stroke);
-                                d += dash + gap;
+            } else {
+                chart.indicator_pts_buf.clear();
+                for i in start_i..end {
+                    if let Some(&v) = ind.values.get(i as usize) {
+                        if !v.is_nan() { chart.indicator_pts_buf.push(egui::pos2(bx(i as f32), py(v))); }
+                    }
+                }
+                if chart.indicator_pts_buf.len() > 1 {
+                    let stroke = egui::Stroke::new(ind.thickness, color);
+                    match ind.line_style {
+                        LineStyle::Solid => { painter.add(egui::Shape::line(chart.indicator_pts_buf.clone(), stroke)); }
+                        LineStyle::Dashed | LineStyle::Dotted => {
+                            let (dash, gap) = if ind.line_style == LineStyle::Dashed { (6.0, 3.0) } else { (2.0, 2.0) };
+                            for w in chart.indicator_pts_buf.windows(2) {
+                                let a = w[0]; let b = w[1];
+                                let dir = b - a; let len = dir.length();
+                                if len < 1.0 { continue; }
+                                let norm = dir / len; let mut d = 0.0;
+                                while d < len {
+                                    let p0 = a + norm * d;
+                                    let p1 = a + norm * (d + dash).min(len);
+                                    painter.line_segment([p0, p1], stroke);
+                                    d += dash + gap;
+                                }
                             }
                         }
                     }
