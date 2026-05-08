@@ -53,6 +53,11 @@ pub struct Button<'a> {
     frameless: bool,
     honor_style_treatment: bool,
     simple_treatment: bool,
+    /// Optional embedded keybind chip (Zed parity: "Finish Setup  Ctrl-Enter").
+    /// Rendered inline on the right of the label, no chip frame.
+    kbd: Option<String>,
+    /// Status-row mode: snap color on hover, no bg tint, smaller default size.
+    is_status: bool,
 }
 
 impl<'a> Button<'a> {
@@ -81,6 +86,8 @@ impl<'a> Button<'a> {
             frameless: false,
             honor_style_treatment: true,
             simple_treatment: false,
+            kbd: None,
+            is_status: false,
         }
     }
 
@@ -155,6 +162,31 @@ impl<'a> Button<'a> {
     /// when `variant == Secondary && honor_style_treatment`.
     pub fn simple_treatment(mut self, v: bool) -> Self { self.simple_treatment = v; self }
 
+    /// Render a keybind chip inside the button on the right side.
+    /// Pattern: "Finish Setup  Ctrl-Enter" — the kbd lives inside the
+    /// button bounds, not floating beside it. Used for primary CTAs that
+    /// teach the keyboard equivalent. Unlike the standalone `Kbd` widget,
+    /// this draws inline text (no chip frame) in muted mono_xs.
+    ///
+    /// Combined with `.icon_only(true)`, the kbd is silently dropped
+    /// (icon_only buttons have no label, so the pattern is undefined).
+    pub fn kbd(mut self, keybind: impl Into<String>) -> Self {
+        self.kbd = Some(keybind.into());
+        self
+    }
+
+    /// Mark this button as a status-row icon. Snap color on hover, no bg
+    /// tint, smaller default size. Used for footer/status bar icons,
+    /// pane header right-cluster icons.
+    pub fn status(mut self, v: bool) -> Self {
+        self.is_status = v;
+        if v {
+            self.size = Size::Sm;
+            self.variant = Variant::Ghost;
+        }
+        self
+    }
+
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         paint_button(ui, theme, self)
     }
@@ -216,10 +248,15 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
     } = btn;
     let tint = btn.resolve_tint(theme);
 
+    let is_status = btn.is_status;
+    // Keybind: only meaningful when there's a label (not icon_only).
+    let kbd_text: Option<String> = if !icon_only { btn.kbd.clone() } else { None };
+
     let h = size.height();
-    let pad_x = size.padding_x();
+    let pad_x = if is_status { st::gap_2xs() } else { size.padding_x() };
     let font_size = size.font_size();
     let icon_gap = st::gap_2xs();
+    let kbd_font = st::mono_xs();
 
     // ── Measure intrinsic width ──
     let mut content_w = 0.0f32;
@@ -237,6 +274,10 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         }
         if trailing_icon.is_some() {
             content_w += icon_gap + font_size * 1.1;
+        }
+        if let Some(kt) = kbd_text.as_ref() {
+            let g = ui.fonts(|f| f.layout_no_wrap(kt.clone(), kbd_font.clone(), Color32::WHITE));
+            content_w += st::gap_md() + g.rect.width();
         }
     }
 
@@ -256,12 +297,25 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         let hovered = response.hovered() && !disabled && !loading;
         let pressed = response.is_pointer_button_down_on() && !disabled && !loading;
 
-        let hover_t = motion::ease_bool(ui.ctx(), id.with("btn_hover"), hovered, motion::FAST);
+        // Status mode: snap (no fade) on hover.
+        let hover_t = if is_status {
+            if hovered { 1.0 } else { 0.0 }
+        } else {
+            motion::ease_bool(ui.ctx(), id.with("btn_hover"), hovered, motion::FAST)
+        };
         let active_t = motion::ease_bool(ui.ctx(), id.with("btn_active"), active, motion::MED);
 
         // Resolve colors per variant.
-        let (mut idle_bg, mut hover_bg, active_bg, fg_idle, fg_hover, border_idle, border_active) =
+        let (mut idle_bg, mut hover_bg, active_bg, mut fg_idle, mut fg_hover, border_idle, border_active) =
             resolve_palette(theme, variant, tint);
+
+        // Status overrides: no bg on idle OR hover; muted icon -> full strength on hover.
+        if is_status {
+            idle_bg = Color32::TRANSPARENT;
+            hover_bg = Color32::TRANSPARENT;
+            fg_idle = st::color_alpha(theme.text(), 178);
+            fg_hover = theme.text();
+        }
 
         // Caller-supplied fill / hover_fill override the variant defaults.
         if let Some(f) = fill_override {
@@ -362,12 +416,28 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
                 x += font_size * 1.1 + icon_gap;
             }
             if !label.is_empty() {
+                let galley = ui.fonts(|f| {
+                    f.layout_no_wrap(label.to_string(), FontId::monospace(font_size), fg)
+                });
+                let lw = galley.rect.width();
                 painter.text(
                     Pos2::new(x, cy),
                     egui::Align2::LEFT_CENTER,
                     label,
                     FontId::monospace(font_size),
                     fg,
+                );
+                x += lw;
+            }
+            if let Some(kt) = kbd_text.as_ref() {
+                x += st::gap_md();
+                let kbd_color = st::color_alpha(theme.text(), 160);
+                painter.text(
+                    Pos2::new(x, cy),
+                    egui::Align2::LEFT_CENTER,
+                    kt,
+                    kbd_font.clone(),
+                    kbd_color,
                 );
             }
             if let Some(ic) = trailing_icon {

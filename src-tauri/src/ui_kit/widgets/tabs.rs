@@ -204,6 +204,10 @@ const TAB_MIN_WIDTH: f32 = 40.0;
 const CLOSE_HIT: f32 = 16.0;
 const CLOSE_VIS: f32 = 11.0;
 const MOD_DOT_R: f32 = 3.0;
+/// Zed-style active-tab dot (small filled accent circle before the label).
+const ACTIVE_DOT_R: f32 = 2.0;
+/// Zed tab strip height: Base32 - 1px (reserves 1px for bottom hairline).
+const ZED_TAB_HEIGHT: f32 = 31.0;
 
 fn paint_tabs(
     tabs: Tabs<'_>,
@@ -234,7 +238,13 @@ fn paint_tabs(
     let n = source.len();
     let snapshot = source.snapshot();
 
-    let row_h = size.height();
+    // Zed parity: Line treatment uses a fixed 31px (Base32 - 1px) height; the
+    // remaining 1px is reserved for the bottom hairline divider.
+    let row_h = if matches!(treatment, TabTreatment::Line) {
+        ZED_TAB_HEIGHT
+    } else {
+        size.height()
+    };
     let pad_x = st::gap_sm();
     let inner_gap = st::gap_xs();
     let font_label = FontId::proportional(size.font_size());
@@ -244,9 +254,11 @@ fn paint_tabs(
     let outer_id = ui.make_persistent_id(("ui_kit_tabs", id_salt.unwrap_or("default")));
 
     // Pre-compute each tab's natural width.
+    let reserve_dot = matches!(treatment, TabTreatment::Line);
     let widths: Vec<f32> = (0..n)
         .map(|i| measure_tab_width(ui, &snapshot[i], &font_label, &font_icon,
-            tab_is_closable(&snapshot[i], closable_default), inner_gap, pad_x))
+            tab_is_closable(&snapshot[i], closable_default), inner_gap, pad_x)
+            + if reserve_dot { ACTIVE_DOT_R * 2.0 + st::gap_2xs() } else { 0.0 })
         .collect();
 
     // Allocate strip rect.
@@ -435,9 +447,15 @@ fn paint_tabs(
             let closable = tab_is_closable(item, closable_default);
             if closable {
                 let close_visible = is_active || tab_resp.hovered();
-                let close_t = motion::ease_bool(
-                    ui.ctx(), tab_id.with("close"), close_visible, motion::FAST,
-                );
+                // Zed parity for Line treatment: instant snap (no animated
+                // fade). Other treatments keep the original eased fade.
+                let close_t = if matches!(treatment, TabTreatment::Line) {
+                    if close_visible { 1.0 } else { 0.0 }
+                } else {
+                    motion::ease_bool(
+                        ui.ctx(), tab_id.with("close"), close_visible, motion::FAST,
+                    )
+                };
                 let close_center = Pos2::new(rect.right() - pad_x - CLOSE_VIS * 0.5,
                     rect.center().y);
                 let close_rect = Rect::from_center_size(close_center, Vec2::splat(CLOSE_HIT));
@@ -584,6 +602,21 @@ fn paint_tabs(
         }
     }
 
+    // ── Line treatment: 1px vertical hairline between adjacent tabs ──
+    // Zed parity. Only between tabs (not before first / after last).
+    if matches!(treatment, TabTreatment::Line) && n > 1 {
+        let sep_color = st::color_alpha(theme.dim(), 60);
+        let stroke = Stroke::new(1.0, sep_color);
+        for i in 1..n {
+            let r = displaced_rects[i];
+            ui.painter().line_segment(
+                [Pos2::new(r.left(), r.top() + 6.0),
+                 Pos2::new(r.left(), r.bottom() - 6.0)],
+                stroke,
+            );
+        }
+    }
+
     if new_active != cur_active {
         *active = new_active;
         resp_out.changed = true;
@@ -695,15 +728,10 @@ fn paint_one_tab_painter(
     // Background per treatment.
     match treatment {
         TabTreatment::Line => {
-            // Inactive: transparent. Hover: subtle dim tint.
-            if hover_t > 0.01 && !is_active {
-                let bg = motion::lerp_color(
-                    Color32::TRANSPARENT,
-                    st::color_alpha(theme.surface(), 80),
-                    hover_t,
-                );
-                painter.rect_filled(rect, CornerRadius::ZERO, alpha(bg));
-            }
+            // Zed parity: tab strip shares the content background. No fill on
+            // active or hover — the only signals are dot, label color, and the
+            // 2px accent underline on active. Reserved 1px at the bottom is
+            // intentionally left untouched for the strip's hairline baseline.
         }
         TabTreatment::Segmented => {
             if is_active {
@@ -787,10 +815,14 @@ fn paint_one_tab_painter(
     }
 
     // Text color: dim → text on hover/active.
+    // Zed parity: for Line treatment, hover snaps (no fade). Other treatments
+    // keep the existing eased lerp for visual continuity.
     let label_col = if item.disabled {
         st::color_alpha(theme.dim(), 120)
     } else if is_active {
         theme.text()
+    } else if matches!(treatment, TabTreatment::Line) {
+        if hover_t > 0.5 { theme.text() } else { theme.dim() }
     } else {
         motion::lerp_color(theme.dim(), theme.text(), hover_t)
     };
@@ -805,6 +837,22 @@ fn paint_one_tab_painter(
         let w = g.rect.width();
         painter.galley(Pos2::new(cx, cy - g.rect.height() * 0.5), g, label_col);
         cx += w + inner_gap;
+    }
+
+    // Zed-style active-tab dot — small filled accent circle before the label,
+    // Line treatment only. Inactive tabs reserve the same horizontal slot so
+    // labels don't shift on selection.
+    if matches!(treatment, TabTreatment::Line) {
+        let slot = ACTIVE_DOT_R * 2.0 + st::gap_2xs();
+        if is_active {
+            let cxd = cx + ACTIVE_DOT_R;
+            painter.circle_filled(
+                Pos2::new(cxd, cy),
+                ACTIVE_DOT_R,
+                alpha(theme.accent()),
+            );
+        }
+        cx += slot;
     }
 
     // Label (with optional ellipsis). Reserve trailing space only for the
@@ -840,19 +888,8 @@ fn paint_one_tab_painter(
         );
     }
 
-    // Optional dim underline on hover (Line treatment, inactive only).
-    if matches!(treatment, TabTreatment::Line) && !is_active && hover_t > 0.01 {
-        let col = motion::lerp_color(
-            Color32::TRANSPARENT,
-            st::color_alpha(theme.dim(), 80),
-            hover_t,
-        );
-        painter.line_segment(
-            [Pos2::new(rect.left() + pad_x, rect.bottom() - 0.5),
-             Pos2::new(rect.right() - pad_x, rect.bottom() - 0.5)],
-            Stroke::new(1.0, alpha(col)),
-        );
-    }
+    // (Zed parity: no hover underline on inactive Line tabs — the only hover
+    // signal is the snap to full-strength label color.)
 
     // Badge.
     if let Some(n) = item.badge {

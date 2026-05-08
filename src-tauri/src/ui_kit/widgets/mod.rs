@@ -54,6 +54,7 @@ pub mod date_picker;
 pub mod color_picker;
 pub mod disclosure;
 pub mod indicator;
+pub mod toggle_row;
 
 pub use shadow::{ShadowSpec, paint as paint_shadow, paint_gpu as paint_shadow_gpu};
 pub use calendar::{Calendar, CalendarResponse};
@@ -97,6 +98,7 @@ pub use scroll_area::{ScrollDirection, ThemedScrollArea};
 pub use self::color_picker::ColorPicker;
 pub use disclosure::Disclosure;
 pub use indicator::{Indicator, IndicatorStyle, IndicatorTone};
+pub use toggle_row::ToggleRow;
 
 use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};

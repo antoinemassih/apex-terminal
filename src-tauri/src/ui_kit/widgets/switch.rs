@@ -59,16 +59,18 @@ impl<'a> Widget for Switch<'a> {
     }
 }
 
-fn track_dims(size: Size) -> (f32, f32) {
+/// Returns (track_width, track_height, thumb_diameter).
+/// Zed-exact: Md = 32×20 with 12px thumb (4px vertical inset).
+fn track_dims(size: Size) -> (f32, f32, f32) {
     match size {
-        Size::Sm => (26.0, 14.0),
-        _ => (32.0, 18.0),
+        Size::Sm => (26.0, 14.0, 10.0),
+        _ => (32.0, 20.0, 12.0),
     }
 }
 
 fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Response {
     let Switch { value, label, size, disabled } = sw;
-    let (tw, th) = track_dims(size);
+    let (tw, th, thumb_d) = track_dims(size);
     let font_size = size.font_size();
     let gap = st::gap_xs();
 
@@ -110,13 +112,13 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
     let on_color = theme.accent();
     let mut track_color = motion::lerp_color(off_color, on_color, on_t);
 
-    // Thumb position animation.
-    let pad = 2.0;
-    let thumb_d = th - 2.0 * pad;
+    // Thumb position — Zed-exact: instant snap between left and right.
+    // No ease_value; flexbox-style flip. The track color animation supplies smoothness.
+    // 4px inset from each edge: thumb left edge at 4 (off) or tw - 4 - thumb_d (on).
+    let pad = 4.0;
     let x_off = track_rect.left() + pad + thumb_d * 0.5;
     let x_on = track_rect.right() - pad - thumb_d * 0.5;
-    let target_x = if on { x_on } else { x_off };
-    let thumb_x = motion::ease_value(ui.ctx(), id.with("sw_thumb"), target_x, motion::FAST);
+    let thumb_x = if on { x_on } else { x_off };
     let thumb_center = Pos2::new(thumb_x, track_rect.center().y);
 
     let mut thumb_color = Color32::WHITE;

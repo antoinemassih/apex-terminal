@@ -1401,6 +1401,7 @@ fn aperture_stub_theme_full(
         dim,
         toolbar_bg,
         toolbar_border,
+        border_variant: crate::chart_renderer::gpu::hairline_border_variant(toolbar_bg),
         accent,
         text:           Color32::from_rgb(220, 215, 205),
         warn:               crate::chart_renderer::ui::style::COLOR_AMBER,

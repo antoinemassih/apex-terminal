@@ -418,12 +418,16 @@ impl<'a> PainterPaneHeader<'a> {
         let painter = ui.painter_at(rect);
 
         // ── Header chrome ────────────────────────────────────────────────────
-        // Active pane gets a darker fill differential. Outer hairline border
-        // paints on every pane (active included) so the layout grid stays
-        // consistent. NO accent underline — the active state is communicated
-        // through fill alone, matching the Zed reference.
-        header_fill(&painter, rect, t, self.is_active, self.visible_count);
-        header_outer_border(&painter, rect, t, self.is_active);
+        // Per Zed pattern: header bg = content bg (no fill, no active darken,
+        // no outer border, no accent top stripe). Active state is communicated
+        // via the active TAB indicator alone. A single bottom hairline
+        // separates the header from the content below.
+        let hairline_col = color_alpha(t.toolbar_border, 200);
+        painter.line_segment(
+            [pos2(rect.left(), rect.bottom() - 0.5),
+             pos2(rect.right(), rect.bottom() - 0.5)],
+            Stroke::new(stroke_hair(), hairline_col),
+        );
 
         let mut out = PainterPaneHeaderResponse {
             response: bg_resp,
@@ -560,47 +564,17 @@ impl<'a> PainterPaneHeader<'a> {
                     egui::CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 },
                     tab_bg,
                 );
-                if active_t > 0.001 {
-                    // Active tab: 2px top accent + 1px hairline borders on
-                    // top / left / right. NO bottom border — the tab merges
-                    // with the pane content below (TabTreatment::Card look).
-                    let accent = motion::fade_in(t.accent, active_t);
-                    let border = motion::fade_in(
-                        color_alpha(t.toolbar_border, alpha_solid()),
-                        active_t,
-                    );
-                    let bs = Stroke::new(stroke_std(), border);
-                    // 2px top accent indicator (sits below the top hairline)
-                    painter.line_segment(
-                        [pos2(tab_rect.left(), tab_rect.top() + 1.5),
-                         pos2(tab_rect.right(), tab_rect.top() + 1.5)],
-                        Stroke::new(TAB_UNDERLINE_THICKNESS, accent),
-                    );
-                    // Top hairline (full 1px stroke for visibility)
-                    painter.line_segment(
-                        [pos2(tab_rect.left(), tab_rect.top()),
-                         pos2(tab_rect.right(), tab_rect.top())],
-                        bs,
-                    );
-                    // Left hairline — inset by 0.5 so it sits inside the rect
-                    let lx = tab_rect.left() + 0.5;
-                    painter.line_segment(
-                        [pos2(lx, tab_rect.top()), pos2(lx, tab_rect.bottom())],
-                        bs,
-                    );
-                    // Right hairline — inset by 0.5
-                    let rx = tab_rect.right() - 0.5;
-                    painter.line_segment(
-                        [pos2(rx, tab_rect.top()), pos2(rx, tab_rect.bottom())],
-                        bs,
-                    );
-                }
+                // Per Zed pattern: no accent top stripe, no top/left/right
+                // hairline borders on the active tab. Active signal lives in
+                // the active-tab-dot + bottom-edge accent line, both owned by
+                // the Tabs widget (separate agent).
+                let _ = active_t;
 
-                // Vertical divider between this tab and the next — paints for
-                // every adjacent pair (active included). Drawn at the right
-                // edge of the current tab inside the inter-tab gap.
+                // Vertical hairline divider between this tab and the next —
+                // paints for every adjacent pair (active included). Drawn at
+                // the right edge of the current tab inside the inter-tab gap.
                 if ti + 1 < self.tabs.len() {
-                    let div_col = color_alpha(t.toolbar_border, alpha_muted());
+                    let div_col = color_alpha(t.dim, 60);
                     painter.line_segment(
                         [pos2(tab_rect.right() + 0.5, tab_rect.top() + 4.0),
                          pos2(tab_rect.right() + 0.5, tab_rect.bottom() - 4.0)],
@@ -794,6 +768,7 @@ impl<'a> PainterPaneHeader<'a> {
             // primary affordances on the right cluster.
             let icon_font = FontId::proportional(self.title_font_size + 4.0);
             let mut rx = rect.right() - close_total - order_dom_total;
+            // TODO: use Button.status(true) once landed
             let mut paint_btn = |ui: &mut Ui, rx: f32, icon: &str, label: &str, is_active: bool| -> bool {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
@@ -801,8 +776,26 @@ impl<'a> PainterPaneHeader<'a> {
                 );
                 let resp = ui.allocate_rect(r, Sense::click());
                 if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                let (bg, fg, border) = painter_btn_colors(t, resp.hovered(), is_active);
-                paint_icon_label_btn(&painter, r, icon, label, bg, fg, border, icon_font.clone());
+                // Status-icon treatment: transparent bg, no border. Active state
+                // tints the foreground with accent; hover slightly brightens.
+                let fg = if is_active {
+                    t.accent
+                } else if resp.hovered() {
+                    t.text
+                } else {
+                    t.dim.gamma_multiply(0.8)
+                };
+                if label.is_empty() {
+                    painter.text(r.center(), Align2::CENTER_CENTER, icon, icon_font.clone(), fg);
+                } else {
+                    let icon_y = r.top() + r.height() * ICON_BTN_ICON_Y_FRAC;
+                    let label_y = r.bottom() - ICON_BTN_LABEL_BOTTOM_OFFSET;
+                    painter.text(pos2(r.center().x, icon_y), Align2::CENTER_CENTER, icon, icon_font.clone(), fg);
+                    painter.text(
+                        pos2(r.center().x, label_y), Align2::CENTER_CENTER, label,
+                        FontId::monospace(ICON_BTN_LABEL_SIZE), fg,
+                    );
+                }
                 resp.clicked()
             };
 
