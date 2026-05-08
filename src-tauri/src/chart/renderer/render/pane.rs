@@ -10750,6 +10750,10 @@ fn handle_deferred(
 pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
     use crate::monitoring::{span_begin, span_end};
     let _z_draw_chart = crate::foundation::frame_profiler::profile_zone("draw_chart");
+    // Captures everything from draw_chart entry up to the first nested span_begin
+    // (cmd_routing inside route_commands). Anything left over after we sum every
+    // tracked subsystem is egui-internal time inside egui_ctx.run().
+    span_begin("draw_chart.entry");
 
     // Publish the active style id for `style::current()` so widget primitives
     // can pick the right corners / borders / serifs / button treatment.
@@ -11290,6 +11294,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         }
     });
     span_end(); // chart_panes
+    // Captures everything from end of CentralPanel through end of draw_chart.
+    span_begin("draw_chart.tail");
 
     // ── Design Mode — full inspector with Style/Theme/Preview/click-to-select ──
     #[cfg(feature = "design-mode")]
@@ -11358,4 +11364,5 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     // Drain any AppCommand pushed during this frame's UI render. Theme/style
     // pickers, alert mutations, watchlist edits, etc. all flow through here.
     crate::chart_renderer::commands::drain_and_dispatch(panes, watchlist);
+    span_end(); // draw_chart.tail
 }
