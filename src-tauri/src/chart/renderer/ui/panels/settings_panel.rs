@@ -8,6 +8,7 @@ use super::super::widgets::form::{FormRow, FormRowAlign};
 use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
+use crate::ui_kit::widgets::{ToggleRow, ThemePreviewCard};
 
 /// Build a FormRow pre-configured to match the legacy `setting_row` look:
 /// 190px label gutter, left-aligned label in white_alpha(180), body right-aligned
@@ -80,86 +81,22 @@ SettingsTab::Appearance => {
     // ── Theme — big preview blocks with mini chart layout ──
     dialog_section(ui, "THEME", m, t.dim.gamma_multiply(0.5));
     ui.add_space(gap_sm());
-    {
-        let card_w = 80.0;
-        let card_h = 48.0;
-        let cols = 6;
-        for row_start in (0..THEMES.len()).step_by(cols) {
-            ui.horizontal(|ui| {
-                ui.add_space(m);
-                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-                for i in row_start..(row_start + cols).min(THEMES.len()) {
-                    let th = &THEMES[i];
-                    let sel = chart.theme_idx == i;
-                    let (r, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
-                    let p = ui.painter();
-
-                    // Background fill
-                    p.rect_filled(r, radius_md(), th.bg);
-
-                    // Mini toolbar bar at top
-                    let tb_h = 6.0;
-                    let tb_rect = egui::Rect::from_min_size(r.min, egui::vec2(card_w, tb_h));
-                    p.rect_filled(tb_rect, egui::CornerRadius { nw: radius_md() as u8, ne: radius_md() as u8, sw: 0, se: 0 },
-                        egui::Color32::from_rgb(
-                            th.bg.r().saturating_add(12),
-                            th.bg.g().saturating_add(12),
-                            th.bg.b().saturating_add(12)));
-
-                    // Mini candles
-                    let chart_top = r.top() + tb_h + 4.0;
-                    let chart_bottom = r.bottom() - 12.0;
-                    let chart_mid = (chart_top + chart_bottom) / 2.0;
-                    let bar_w = 4.0;
-                    let bar_gap = 2.0;
-                    let bar_start_x = r.left() + 8.0;
-                    let prices = [0.4, 0.6, 0.3, 0.7, 0.5, 0.8, 0.65, 0.45, 0.55, 0.7];
-                    for (bi, &pv) in prices.iter().enumerate() {
-                        let x = bar_start_x + bi as f32 * (bar_w + bar_gap);
-                        if x + bar_w > r.right() - 6.0 { break; }
-                        let is_bull = bi % 3 != 1; // pseudo pattern
-                        let color = if is_bull { th.bull } else { th.bear };
-                        let h = (chart_bottom - chart_top) * 0.6;
-                        let body_top = chart_mid - h * pv + h * 0.2;
-                        let body_bot = body_top + h * 0.35;
-                        // Wick
-                        p.line_segment(
-                            [egui::pos2(x + bar_w / 2.0, body_top - 3.0),
-                             egui::pos2(x + bar_w / 2.0, body_bot + 3.0)],
-                            egui::Stroke::new(stroke_thin(), color_alpha(color, alpha_strong())));
-                        // Body
-                        p.rect_filled(
-                            egui::Rect::from_min_max(
-                                egui::pos2(x, body_top), egui::pos2(x + bar_w, body_bot)),
-                            1.0, color);
+    ui.horizontal(|ui| {
+        ui.add_space(m);
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+            ui.horizontal_wrapped(|ui| {
+                for (i, preview_theme) in THEMES.iter().enumerate() {
+                    let resp = ThemePreviewCard::new(preview_theme.name, preview_theme)
+                        .selected(chart.theme_idx == i)
+                        .show(ui, t);
+                    if resp.clicked() {
+                        commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i });
                     }
-
-                    // Accent line (like a moving average)
-                    let accent_y = chart_mid - 2.0;
-                    p.line_segment(
-                        [egui::pos2(r.left() + 6.0, accent_y), egui::pos2(r.right() - 6.0, accent_y)],
-                        egui::Stroke::new(stroke_std(), color_alpha(th.accent, alpha_strong())));
-
-                    // Theme name at bottom
-                    p.text(
-                        egui::pos2(r.center().x, r.bottom() - 6.0),
-                        egui::Align2::CENTER_CENTER,
-                        th.name,
-                        egui::FontId::monospace(FONT_XS),
-                        if sel { th.accent } else { th.dim.gamma_multiply(0.8) });
-
-                    // Selection border
-                    if sel {
-                        p.rect_stroke(r, radius_md(), egui::Stroke::new(stroke_thick(), th.accent), egui::StrokeKind::Outside);
-                    } else if resp.hovered() {
-                        p.rect_stroke(r, radius_md(), egui::Stroke::new(stroke_std(), color_alpha(th.accent, alpha_line())), egui::StrokeKind::Outside);
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    }
-                    if resp.clicked() { commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i }); }
                 }
             });
-        }
-    }
+        });
+    });
     ui.add_space(gap_lg());
 
     // ── Style preset (Aperture / Octave / Meridien / …) — wraps to the
@@ -293,8 +230,12 @@ SettingsTab::Appearance => {
     // ── Layout ──
     dialog_section(ui, "LAYOUT", m, t.dim.gamma_multiply(0.5));
     ui.add_space(gap_sm());
-    setting_toggle(ui, m, "Compact Toolbar", t, &mut watchlist.compact_mode);
-    setting_toggle(ui, m, "Auto-Hide Toolbar", t, &mut watchlist.toolbar_auto_hide);
+    setting_toggle_described(ui, m, "Compact Toolbar",
+        Some("Trade vertical density for visual breathing room."),
+        t, &mut watchlist.compact_mode);
+    setting_toggle_described(ui, m, "Auto-Hide Toolbar",
+        Some("Hide the toolbar until the cursor approaches the top of the pane."),
+        t, &mut watchlist.toolbar_auto_hide);
     srow("Pane Headers", m).show(ui, t, |ui| {
         use crate::chart_renderer::PaneHeaderSize;
         let current = watchlist.pane_header_size;
@@ -322,18 +263,32 @@ SettingsTab::Chart => {
     // ── Axes ──
     dialog_section(ui, "AXES & GRID", m, t.dim.gamma_multiply(0.5));
     ui.add_space(gap_sm());
-    setting_toggle(ui, m, "Show X-Axis (time)", t, &mut watchlist.show_x_axis);
-    setting_toggle(ui, m, "Show Y-Axis (price)", t, &mut watchlist.show_y_axis);
-    setting_toggle(ui, m, "Shared X-Axis (multi-pane)", t, &mut watchlist.shared_x_axis);
-    setting_toggle(ui, m, "Shared Y-Axis (multi-pane)", t, &mut watchlist.shared_y_axis);
+    setting_toggle_described(ui, m, "Show X-Axis (time)",
+        Some("Render the time axis along the bottom of every chart pane."),
+        t, &mut watchlist.show_x_axis);
+    setting_toggle_described(ui, m, "Show Y-Axis (price)",
+        Some("Render the price axis along the right edge of every chart pane."),
+        t, &mut watchlist.show_y_axis);
+    setting_toggle_described(ui, m, "Shared X-Axis (multi-pane)",
+        Some("Stacked panes scroll and zoom together on the time axis."),
+        t, &mut watchlist.shared_x_axis);
+    setting_toggle_described(ui, m, "Shared Y-Axis (multi-pane)",
+        Some("Stacked panes share a synchronized price scale."),
+        t, &mut watchlist.shared_y_axis);
     ui.add_space(gap_lg());
 
     // ── Chart Behavior ──
     dialog_section(ui, "CHART BEHAVIOR", m, t.dim.gamma_multiply(0.5));
     ui.add_space(gap_sm());
-    setting_toggle(ui, m, "OHLC Tooltip", t, &mut chart.ohlc_tooltip);
-    setting_toggle(ui, m, "Magnet Snap", t, &mut chart.magnet);
-    setting_toggle(ui, m, "Log Scale", t, &mut chart.log_scale);
+    setting_toggle_described(ui, m, "OHLC Tooltip",
+        Some("Show open/high/low/close values for the bar under the cursor."),
+        t, &mut chart.ohlc_tooltip);
+    setting_toggle_described(ui, m, "Magnet Snap",
+        Some("Snap drawings and the crosshair to the nearest OHLC level."),
+        t, &mut chart.magnet);
+    setting_toggle_described(ui, m, "Log Scale",
+        Some("Use a logarithmic price axis so equal % moves render at equal heights."),
+        t, &mut chart.log_scale);
     setting_toggle(ui, m, "Show Volume", t, &mut chart.show_volume);
     setting_toggle(ui, m, "Show Oscillators", t, &mut chart.show_oscillators);
     ui.add_space(gap_lg());
@@ -348,7 +303,9 @@ SettingsTab::Chart => {
             ui.add(BodyLabel::new("N/A for crypto (24/7 market)").color(t.dim.gamma_multiply(0.5)));
         });
     } else {
-        setting_toggle(ui, m, "Session Shading", t, &mut chart.session_shading);
+        setting_toggle_described(ui, m, "Session Shading",
+            Some("Visually distinguish regular and extended trading hours on the chart."),
+            t, &mut chart.session_shading);
         if chart.session_shading {
             srow("ETH Bar Opacity", m).show(ui, t, |ui| {
                 let mut pct = (chart.eth_bar_opacity * 100.0).round() as i32;
@@ -414,7 +371,10 @@ SettingsTab::Trading => {
         let was_paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
         let mut paper = was_paper;
         let color = if paper { t.bull } else { t.bear };
-        setting_toggle_with_color(ui, m, "Paper Trading", t, &mut paper, color);
+        let _ = color;
+        setting_toggle_described(ui, m, "Paper Trading",
+            Some("Route orders to the simulated account instead of the live broker."),
+            t, &mut paper);
         if paper != was_paper {
             crate::chart_renderer::trading::order_manager::set_paper_mode(paper);
         }
@@ -532,7 +492,9 @@ SettingsTab::Trading => {
     {
         let mut enabled = crate::apex_data::is_enabled();
         let prev = enabled;
-        setting_toggle(ui, m, "Enabled", t, &mut enabled);
+        setting_toggle_described(ui, m, "Enabled",
+            Some("Stream live market data from the ApexData feed."),
+            t, &mut enabled);
         if enabled != prev {
             crate::apex_data::set_enabled(enabled);
             if enabled { crate::apex_data::ws::start(); }
@@ -609,13 +571,35 @@ SettingsTab::Shortcuts => {
 // ─── Helpers: standard setting toggles (built atop FormRow via `srow`) ────
 
 fn setting_toggle(ui: &mut egui::Ui, margin: f32, label: &str, t: &Theme, val: &mut bool) {
-    srow(label, margin).show(ui, t, |ui| {
-        crate::ui_kit::widgets::switch::Switch::new(val).show(ui, t);
-    });
+    setting_toggle_described(ui, margin, label, None, t, val);
 }
 
 fn setting_toggle_with_color(ui: &mut egui::Ui, margin: f32, label: &str, t: &Theme, val: &mut bool, _color: egui::Color32) {
-    srow(label, margin).show(ui, t, |ui| {
-        crate::ui_kit::widgets::switch::Switch::new(val).show(ui, t);
+    setting_toggle_described(ui, margin, label, None, t, val);
+}
+
+/// ToggleRow wrapper that respects the panel's left margin and trailing
+/// gap, and lets us attach a description where it clarifies intent.
+fn setting_toggle_described(
+    ui: &mut egui::Ui,
+    margin: f32,
+    label: &str,
+    description: Option<&str>,
+    t: &Theme,
+    val: &mut bool,
+) {
+    ui.horizontal(|ui| {
+        ui.add_space(margin);
+        ui.allocate_ui(
+            egui::vec2(ui.available_width() - margin, 0.0),
+            |ui| {
+                let mut row = ToggleRow::new(val).label(label);
+                if let Some(desc) = description {
+                    row = row.description(desc);
+                }
+                row.show(ui, t);
+            },
+        );
     });
+    ui.add_space(gap_xs());
 }
