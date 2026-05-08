@@ -86,3 +86,10 @@ toml = { version = "0.8", optional = true }
 default = []
 design-mode = ["dep:toml"]
 
+[dev-dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu"] }
+
+[[example]]
+name = "font_showcase"
+path = "examples/font_showcase.rs"
+
