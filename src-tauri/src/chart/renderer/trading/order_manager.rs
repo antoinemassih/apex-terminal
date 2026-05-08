@@ -365,6 +365,11 @@ impl OrderManager {
     /// Submit an order intent. Returns the result.
     pub(crate) fn submit(&mut self, intent: OrderIntent) -> OrderResult {
         let now_ms = epoch_ms();
+        // Paper mode is practice — no real money at stake, so the risk limits
+        // (notional, position size, fat-finger, oversell) don't apply. We still
+        // enforce dedup + qty-zero + max-open-orders since those are operational
+        // safety, not financial.
+        let paper = self.paper_mode;
 
         // ── 1. Dedup check ──
         let sig = OrderSignature::new(&intent.symbol, intent.side, intent.price, intent.qty);
@@ -378,7 +383,7 @@ impl OrderManager {
         self.recent_signatures.insert(sig, Instant::now());
 
         // ── 2. Risk validation ──
-        if intent.qty > self.risk_limits.max_order_qty {
+        if !paper && intent.qty > self.risk_limits.max_order_qty {
             self.orders_rejected += 1;
             return OrderResult::Rejected(format!("Qty {} exceeds max {}", intent.qty, self.risk_limits.max_order_qty));
         }
@@ -401,14 +406,14 @@ impl OrderManager {
             OrderSide::Buy | OrderSide::TriggerBuy => net_position + intent.qty as i64,
             _ => net_position - intent.qty as i64,
         };
-        if new_position.unsigned_abs() as u32 > self.risk_limits.max_position_qty {
+        if !paper && new_position.unsigned_abs() as u32 > self.risk_limits.max_position_qty {
             self.orders_rejected += 1;
             return OrderResult::Rejected(format!("Would exceed max position size {}", self.risk_limits.max_position_qty));
         }
 
         // ── 2.5 Oversell protection (can't sell more contracts than you hold) ──
         let is_sell = matches!(intent.side, OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::TriggerSell);
-        if is_sell && net_position > 0 {
+        if !paper && is_sell && net_position > 0 {
             // Selling to close — can't sell more than current long position
             let sell_qty = intent.qty as i64;
             if sell_qty > net_position {
@@ -417,7 +422,7 @@ impl OrderManager {
             }
         }
         let is_buy = matches!(intent.side, OrderSide::Buy | OrderSide::TriggerBuy);
-        if is_buy && net_position < 0 {
+        if !paper && is_buy && net_position < 0 {
             // Buying to close — can't buy more than current short position
             let buy_qty = intent.qty as i64;
             if buy_qty > net_position.abs() {
@@ -428,7 +433,7 @@ impl OrderManager {
 
         // ── 2.6 Fat-finger price check (ONLY on opening orders, not closing) ──
         let is_opening = (is_buy && net_position >= 0) || (is_sell && net_position <= 0);
-        if is_opening && self.risk_limits.fat_finger_pct > 0.0 && intent.last_price > 0.0 && intent.price > 0.0
+        if !paper && is_opening && self.risk_limits.fat_finger_pct > 0.0 && intent.last_price > 0.0 && intent.price > 0.0
             && intent.order_type != ManagedOrderType::Market
         {
             let deviation_pct = ((intent.price - intent.last_price) / intent.last_price * 100.0).abs();
@@ -442,7 +447,7 @@ impl OrderManager {
         }
 
         // ── 2.7 Max notional check ──
-        if self.risk_limits.max_notional > 0.0 {
+        if !paper && self.risk_limits.max_notional > 0.0 {
             let order_price = if intent.price > 0.0 { intent.price } else { intent.last_price };
             let notional = order_price as f64 * intent.qty as f64;
             if notional > self.risk_limits.max_notional {
@@ -1426,9 +1431,21 @@ pub(crate) fn all_order_levels_for(symbol: &str) -> Vec<OrderLevel> {
 
 /// Submit and return the new order ID (convenience for write sites that need the ID)
 pub(crate) fn submit_and_get_id(intent: OrderIntent) -> Option<u64> {
+    let side = intent.side;
+    let price = intent.price;
+    let qty = intent.qty;
     match submit_order(intent) {
         OrderResult::Accepted(id) | OrderResult::NeedsConfirmation(id) => Some(id),
-        _ => None,
+        OrderResult::Duplicate => {
+            eprintln!("[order-manager] Duplicate (silent): side={:?} price={:.2} qty={} (within {}ms cooldown)",
+                side, price, qty, with_mgr(|m| m.risk_limits.dedup_cooldown_ms));
+            None
+        }
+        OrderResult::Rejected(reason) => {
+            eprintln!("[order-manager] Rejected: side={:?} price={:.2} qty={}: {}",
+                side, price, qty, reason);
+            None
+        }
     }
 }
 

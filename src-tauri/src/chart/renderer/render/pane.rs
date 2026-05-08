@@ -9965,7 +9965,12 @@ fn render_chart_pane(
 
     // Context menu (right-click)
     resp.context_menu(|ui| {
-        let click_price = ui.input(|i| i.pointer.latest_pos()).map(|p| pos_to_price(p)).unwrap_or(0.0);
+        // Clamp the click-derived price to the visible range. Right-click
+        // positions outside the chart body (e.g. near the pane header / divider)
+        // would otherwise extrapolate beyond min_p/max_p, producing an order
+        // that places at an off-screen price and never renders.
+        let raw_click_price = ui.input(|i| i.pointer.latest_pos()).map(|p| pos_to_price(p)).unwrap_or(0.0);
+        let click_price = raw_click_price.clamp(min_p, max_p);
         let click_pos = ui.input(|i| i.pointer.latest_pos());
 
         // ── View controls (top) ──
