@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"/c/Users/USER/Documents/development/apex-terminal/src-tauri/src\" -path \"*/monitoring/*\" -name \"*.rs\" | head -10 *)",
+      "Bash(curl -s --max-time 3 http://localhost:9091/metrics)",
+      "Read(//tmp/**)",
+      "Bash(curl -sS --max-time 5 http://localhost:9091/metrics -o C:/Users/USER/AppData/Local/Temp/apex_metrics.txt)",
+      "Read(//c/Users/USER/AppData/Local/Temp/**)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\USER\\\\Documents\\\\development\\\\apex-terminal\\\\src-tauri\\\\src\\\\chart\" -Recurse -Force)",
+      "Bash(Select-Object FullName)"
+    ]
+  }
+}
