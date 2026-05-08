@@ -50,14 +50,12 @@ impl PanelFrame {
         Self { bg, border }
     }
 
-    /// Build the `egui::Frame`. Body mirrors `style::panel_frame` byte-for-byte.
+    /// Build the `egui::Frame`. Edge-only border discipline (Zed): the
+    /// SidePanel divider is provided by egui's resize handle on the touching
+    /// edge — we omit the 4-edge perimeter stroke so we don't draw a doubled
+    /// hairline against neighboring panels.
     pub fn build(self) -> egui::Frame {
-        let s = current();
-        let border = if s.hairline_borders {
-            self.border
-        } else {
-            color_alpha(self.border, alpha_heavy())
-        };
+        let _ = self.border; // kept for API symmetry; perimeter stroke dropped
         egui::Frame::NONE
             .fill(self.bg)
             .inner_margin(egui::Margin {
@@ -67,7 +65,6 @@ impl PanelFrame {
                 bottom: gap_lg() as i8,
             })
             .corner_radius(r_md_cr())
-            .stroke(Stroke::new(s.stroke_std, border))
     }
 }
 
@@ -378,18 +375,14 @@ impl<'a> SidePanelFrame<'a> {
         Self { _ctx: Some(ctx), ..self }
     }
 
-    /// Build the `egui::Frame`. Body mirrors
-    /// `components_extra::themed_side_panel_frame` byte-for-byte.
+    /// Build the `egui::Frame`. Edge-only border discipline (Zed): the
+    /// SidePanel's separator line is provided by egui's resize handle on the
+    /// dividing edge; we omit the 4-edge perimeter stroke so we don't double
+    /// up against neighboring panels.
     pub fn build(self) -> egui::Frame {
-        let st = current();
-        let stroke = if st.hairline_borders {
-            Stroke::new(st.stroke_std, self.border)
-        } else {
-            Stroke::new(st.stroke_thin, color_alpha(self.border, alpha_strong()))
-        };
+        let _ = self.border; // kept for API symmetry; perimeter stroke dropped
         egui::Frame::NONE
             .fill(self.bg)
-            .stroke(stroke)
             .corner_radius(r_md_cr())
             .inner_margin(egui::Margin::ZERO)
     }
@@ -440,15 +433,11 @@ impl CompactPanelFrame {
         Self { bg, border }
     }
 
-    /// Build the `egui::Frame`. Body mirrors `style::panel_frame_compact`
-    /// byte-for-byte.
+    /// Build the `egui::Frame`. Edge-only border discipline (Zed): SidePanel
+    /// divider provided by egui's resize handle; we drop the 4-edge perimeter
+    /// stroke to avoid double hairlines.
     pub fn build(self) -> egui::Frame {
-        let s = current();
-        let border = if s.hairline_borders {
-            self.border
-        } else {
-            color_alpha(self.border, alpha_heavy())
-        };
+        let _ = self.border; // kept for API symmetry; perimeter stroke dropped
         egui::Frame::NONE
             .fill(self.bg)
             .inner_margin(egui::Margin {
@@ -458,7 +447,6 @@ impl CompactPanelFrame {
                 bottom: gap_md() as i8,
             })
             .corner_radius(r_sm_cr())
-            .stroke(Stroke::new(s.stroke_std, border))
     }
 }
 

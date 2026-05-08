@@ -115,9 +115,9 @@ if watchlist.discord_open {
         .min_width(200.0)
         .max_width(400.0)
         .resizable(true)
+        // Edge-only border: SidePanel resize-handle provides the divider.
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong()))))
+            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 }))
         .show(ctx, |ui| {
             draw_content(ui, watchlist, t);
         });

@@ -12,17 +12,13 @@ use egui::{self, Color32, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 pub fn themed_side_panel_frame(
     _ctx: &egui::Context,
     theme_bg: Color32,
-    theme_border: Color32,
+    _theme_border: Color32,
 ) -> egui::Frame {
-    let st = current();
-    let stroke = if st.hairline_borders {
-        Stroke::new(st.stroke_std, theme_border)
-    } else {
-        Stroke::new(st.stroke_thin, color_alpha(theme_border, alpha_strong()))
-    };
+    // Edge-only border discipline (Zed): SidePanel divider is provided by
+    // egui's resize handle on the touching edge — we omit the 4-edge perimeter
+    // stroke to avoid double hairlines against neighboring panels.
     egui::Frame::NONE
         .fill(theme_bg)
-        .stroke(stroke)
         .corner_radius(r_md_cr())
         .inner_margin(egui::Margin::ZERO)
 }

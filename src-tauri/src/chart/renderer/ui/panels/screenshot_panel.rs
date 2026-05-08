@@ -115,9 +115,9 @@ pub(crate) fn draw(
         .min_width(220.0)
         .max_width(400.0)
         .resizable(true)
+        // Edge-only border: SidePanel resize-handle provides the divider.
         .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 })
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong()))))
+            .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 }))
         .show(ctx, |ui| {
             // Header — tiny 9px title + count badge + close
             let count = watchlist.screenshot_entries.len();

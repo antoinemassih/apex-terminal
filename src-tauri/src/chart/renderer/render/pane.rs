@@ -158,27 +158,19 @@ fn render_chart_pane(
                 rule_col,
             );
             if visible_count > 1 {
-                // Left hairline
+                // Left hairline only — adjacent pane provides the matching right edge (no doubling).
                 painter.line_segment(
                     [pane_rect.left_top(), pane_rect.left_bottom()],
                     rule_col,
                 );
-                // Bottom hairline
-                painter.line_segment(
-                    [pane_rect.left_bottom(), pane_rect.right_bottom()],
-                    rule_col,
-                );
-                // Right hairline
-                painter.line_segment(
-                    [pane_rect.right_top(), pane_rect.right_bottom()],
-                    rule_col,
-                );
             }
         } else if visible_count > 1 {
-            // Legacy: uniform dim hairline — no active/inactive distinction.
+            // Legacy: edge-only hairline (top+left) — no active/inactive distinction.
             let bw = st.pane_border_width;
             let border_color = t.dim.gamma_multiply(0.3);
-            ui.painter().rect_stroke(pane_rect, 0.0, egui::Stroke::new(bw * 0.5, border_color), egui::StrokeKind::Inside);
+            let stroke = egui::Stroke::new(bw * 0.5, border_color);
+            ui.painter().line_segment([pane_rect.left_top(), pane_rect.right_top()], stroke);
+            ui.painter().line_segment([pane_rect.left_top(), pane_rect.left_bottom()], stroke);
         }
     }
 

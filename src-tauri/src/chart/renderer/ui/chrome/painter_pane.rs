@@ -768,7 +768,14 @@ impl<'a> PainterPaneHeader<'a> {
             // primary affordances on the right cluster.
             let icon_font = FontId::proportional(self.title_font_size + 4.0);
             let mut rx = rect.right() - close_total - order_dom_total;
-            // TODO: use Button.status(true) once landed
+            // Status-mode parity with `ui_kit::widgets::Button::status(true)`:
+            // transparent bg, no border, muted fg → text on hover, accent on
+            // active. We can't actually call `Button::show` here because the
+            // header is absolutely-positioned (we allocate exact rects via
+            // `ui.allocate_rect(r, …)` rather than the linear cursor flow that
+            // Button assumes), and Button::icon() doesn't support the two-line
+            // glyph + sublabel ("ORDER"/"DOM") layout these icons need. The
+            // fg/bg/hover treatment below mirrors `paint_button`'s status branch.
             let mut paint_btn = |ui: &mut Ui, rx: f32, icon: &str, label: &str, is_active: bool| -> bool {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),

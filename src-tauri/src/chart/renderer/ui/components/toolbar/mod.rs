@@ -35,14 +35,11 @@ pub fn toolbar_btn(
     active: bool,
     t: &super::super::super::gpu::Theme,
 ) -> Response {
-    use super::super::motion;
-    use super::super::style::{
-        color_alpha, font_md, font_sm, gap_md, r_sm_cr, stroke_thin, ALPHA_GHOST,
-    };
+    use crate::ui_kit::widgets::Button;
 
-    // ── Layout ────────────────────────────────────────────────────────────
-    // Icon-only labels (Phosphor PUA glyphs) render at font_md so they read
-    // at the same visual weight as font_sm text labels next to them.
+    // Phosphor PUA glyphs (icon-only labels) render via Button::icon so the
+    // glyph paints at font_size * 1.25, matching the larger visual weight of
+    // the legacy `font_md` icon path. Plain text labels use Button::new.
     let is_icon_only = !label.is_empty() && label.chars().all(|c| {
         let cp = c as u32;
         (0xE000..=0xF8FF).contains(&cp)
@@ -50,68 +47,23 @@ pub fn toolbar_btn(
             || c.is_ascii_whitespace()
             || c.is_ascii_digit()
     });
-    let label_size = if is_icon_only { font_md() } else { font_sm() };
-    let galley = ui.fonts(|f| {
-        f.layout_no_wrap(label.to_string(), egui::FontId::monospace(label_size), Color32::WHITE)
-    });
-    let pad_x = gap_md();
-    let height = 24.0_f32;
-    let desired = egui::vec2(galley.rect.width() + 2.0 * pad_x, height);
-    let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::click());
 
-    // ── Motion ────────────────────────────────────────────────────────────
-    let hover_id = ui.id().with(("tb_btn_free_hover", label));
-    let active_id = ui.id().with(("tb_btn_free_active", label));
-    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered(), motion::FAST);
-    let active_t = motion::ease_bool(ui.ctx(), active_id, active, motion::MED);
-
-    // ── Palettes ──────────────────────────────────────────────────────────
-    let idle_bg = Color32::TRANSPARENT;
-    let hover_bg = color_alpha(t.text, 18);
-    let active_bg = color_alpha(t.accent, ALPHA_GHOST);
-    let border_idle = Color32::TRANSPARENT;
-    let border_active = color_alpha(t.accent, ALPHA_GHOST);
-
-    // ── Compose ───────────────────────────────────────────────────────────
-    let mut bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
-    bg = motion::lerp_color(bg, active_bg, active_t);
-
-    // Press snap: instant darken on mouse-down, preserves alpha.
-    let final_bg = if resp.is_pointer_button_down_on() {
-        let darkened = motion::lerp_color(bg, Color32::BLACK, 0.12);
-        Color32::from_rgba_premultiplied(darkened.r(), darkened.g(), darkened.b(), bg.a())
+    let mut btn = if is_icon_only {
+        Button::icon(label)
     } else {
-        bg
-    };
-
-    let border_col = motion::lerp_color(border_idle, border_active, active_t);
-
-    // ── Paint ─────────────────────────────────────────────────────────────
-    if ui.is_rect_visible(rect) {
-        let painter = ui.painter_at(rect);
-        let cr = r_sm_cr();
-        if final_bg.a() > 0 {
-            painter.rect_filled(rect, cr, final_bg);
-        }
-        if border_col.a() > 0 {
-            painter.rect_stroke(
-                rect,
-                cr,
-                Stroke::new(stroke_thin(), border_col),
-                egui::StrokeKind::Inside,
-            );
-        }
-
-        // Label fades from dim → text on hover/active.
-        let text_color = motion::lerp_color(t.dim, t.text, hover_t.max(active_t));
-        painter.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            label,
-            egui::FontId::monospace(label_size),
-            text_color,
-        );
+        Button::new(label)
     }
+    .status(true)
+    .active(active);
+
+    // Active state: tint the foreground (label/glyph) to accent. Status mode's
+    // base palette only animates bg/border on active; we override the fg so
+    // the toggled-on state reads as accent-coloured, matching legacy behaviour.
+    if active {
+        btn = btn.fg(t.accent);
+    }
+
+    let resp = btn.show(ui, t);
 
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

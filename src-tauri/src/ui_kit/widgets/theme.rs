@@ -16,6 +16,7 @@ pub trait ComponentTheme {
     fn text(&self) -> Color32;
     fn dim(&self) -> Color32;
     fn border(&self) -> Color32;
+    fn border_variant(&self) -> Color32;
     fn warn(&self) -> Color32;
 
     // Surface tokens (background fills).
@@ -46,6 +47,7 @@ impl ComponentTheme for crate::chart_renderer::gpu::Theme {
     fn text(&self) -> Color32 { self.text }
     fn dim(&self) -> Color32 { self.dim }
     fn border(&self) -> Color32 { self.toolbar_border }
+    fn border_variant(&self) -> Color32 { self.border_variant }
     fn warn(&self) -> Color32 { self.warn }
     fn bg(&self) -> Color32 { self.bg }
     fn surface(&self) -> Color32 { self.toolbar_bg }
@@ -71,6 +73,7 @@ impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {
     fn text(&self) -> Color32 { (**self).text() }
     fn dim(&self) -> Color32 { (**self).dim() }
     fn border(&self) -> Color32 { (**self).border() }
+    fn border_variant(&self) -> Color32 { (**self).border_variant() }
     fn warn(&self) -> Color32 { (**self).warn() }
     fn bg(&self) -> Color32 { (**self).bg() }
     fn surface(&self) -> Color32 { (**self).surface() }
