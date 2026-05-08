@@ -85,6 +85,10 @@ toml = { version = "0.8", optional = true }
 [features]
 default = []
 design-mode = ["dep:toml"]
+# Activates the GPU chart render pass (SPEC_GPU_CHART_REFACTOR.md).
+# Phase 1: paints a magenta debug rect over the surface.
+# When off, the egui chart path is unaffected.
+gpu_chart_v2 = []
 
 [dev-dependencies]
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu"] }

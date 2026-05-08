@@ -4581,6 +4581,11 @@ struct GpuCtx {
     // Set to true when window loses focus — causes a PointerGone event to be injected
     // into the next frame so egui never stays stuck in drag state.
     pointer_gone_needed: bool,
+    // GPU chart pipeline (SPEC_GPU_CHART_REFACTOR.md). Built at startup so the
+    // WGSL is validated on every release; rendering is gated behind the
+    // `gpu_chart_v2` feature flag.
+    #[cfg_attr(not(feature = "gpu_chart_v2"), allow(dead_code))]
+    chart_pipeline: crate::chart::renderer_gpu::ChartPipeline,
 }
 
 impl GpuCtx {
@@ -4657,7 +4662,21 @@ impl GpuCtx {
         let _ = crate::ui_kit::widgets::text_subpixel_pipeline::TextSubpixelPipeline::get(&device, fmt);
         eprintln!("[gpu] text_subpixel_pipeline: WGSL validated OK");
 
-        Some(Self { device, queue, surface, config, egui_ctx, egui_state, egui_renderer, pointer_gone_needed: false })
+        // GPU chart pipeline (SPEC_GPU_CHART_REFACTOR.md, Phase 1). Build the
+        // pipeline unconditionally so the WGSL is validated at every launch,
+        // even with the feature off. Activation is reported to monitoring so
+        // the Prometheus surface advertises which path is live.
+        let chart_pipeline = crate::chart::renderer_gpu::ChartPipeline::new(&device, fmt);
+        let chart_active = cfg!(feature = "gpu_chart_v2");
+        crate::monitoring::set_chart_pipeline_active(chart_active);
+        eprintln!("[gpu] chart_pipeline: WGSL validated OK (active={chart_active})");
+
+        Some(Self {
+            device, queue, surface, config,
+            egui_ctx, egui_state, egui_renderer,
+            pointer_gone_needed: false,
+            chart_pipeline,
+        })
     }
 
     fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
@@ -4757,6 +4776,16 @@ impl GpuCtx {
         drop(pass);
         self.queue.submit(std::iter::once(enc2.finish()));
         let render_us = t4.elapsed().as_micros() as u64;
+
+        // Phase 5b: GPU chart pass (SPEC_GPU_CHART_REFACTOR.md). Runs after
+        // egui's pass; uses LoadOp::Load so it composites on top. Phase 1
+        // paints a magenta debug rect to verify the two-pass setup; Phase 2+
+        // replaces with real candle/indicator/drawing rendering.
+        #[cfg(feature = "gpu_chart_v2")]
+        {
+            let chart_us = self.chart_pipeline.render(&self.device, &self.queue, &view);
+            crate::monitoring::set_chart_pass_us(chart_us);
+        }
 
         // Phase 6: Present
         let t5 = std::time::Instant::now();
