@@ -1966,43 +1966,57 @@ pub(crate) fn render(
     }
 
     // ── Watchlist side panel
+    span_begin("sidebar.watchlist");
     crate::chart_renderer::ui::panels::watchlist_panel::draw(ctx, watchlist, panes, ap, t);
 
     // ── Object Tree side panel
+    span_begin("sidebar.object_tree");
     crate::chart_renderer::ui::panels::object_tree::draw(ctx, watchlist, panes, ap, t);
 
     // ── Book pane (Positions/Orders + Journal tabs) ─────────────────────────
+    span_begin("sidebar.orders");
     crate::chart_renderer::ui::panels::orders_panel::draw(ctx, watchlist, panes, ap, t, account_data_cached);
 
     // ── Scanner side panel
+    span_begin("sidebar.scanner");
     crate::chart_renderer::ui::panels::scanner_panel::draw(ctx, watchlist, panes, ap, t);
 
     // ── Time & Sales side panel
+    span_begin("sidebar.tape");
     crate::chart_renderer::ui::panels::tape_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
 
     // ── RRG (Relative Rotation Graph) side panel
+    span_begin("sidebar.rrg");
     crate::chart_renderer::ui::panels::rrg_panel::draw(ctx, watchlist, t);
 
     // ── Analysis sidebar (unified RRG / T&S / Scanner / Scripts)
+    span_begin("sidebar.analysis");
     crate::chart_renderer::ui::panels::analysis_panel::draw(ctx, watchlist, panes, *active_pane, t);
 
     // ── Signals sidebar (unified Alerts + Signals)
+    span_begin("sidebar.signals");
     crate::chart_renderer::ui::panels::signals_panel::draw(ctx, watchlist, panes, ap, t);
 
     // ── Feed sidebar (unified News + Discord + Screenshots)
+    span_begin("sidebar.feed");
     crate::chart_renderer::ui::panels::feed_panel::draw(ctx, watchlist, panes, ap, t);
 
     // ── Playbook sidebar
+    span_begin("sidebar.playbook");
     crate::chart_renderer::ui::panels::playbook_panel::draw(ctx, watchlist, panes, ap, t);
 
     // ── Journal sidebar
+    span_begin("sidebar.journal");
     crate::chart_renderer::ui::panels::journal_panel::draw(ctx, watchlist, t);
 
     // ── Script / Backtesting panel
+    span_begin("sidebar.script");
     crate::chart_renderer::ui::panels::script_panel::draw(ctx, watchlist, t);
 
     // ── Spread Builder panel
+    span_begin("sidebar.spread");
     crate::chart_renderer::ui::panels::spread_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
+    span_begin("top_panel.tail");
 
     // ── Alert checking — run every frame, check if any alert prices were crossed ──
     {
