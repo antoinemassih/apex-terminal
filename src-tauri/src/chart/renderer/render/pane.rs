@@ -1336,6 +1336,19 @@ fn render_chart_pane(
     let vs_floor: f32 = vs.floor();
     #[cfg(feature = "gpu_chart_v2")]
     let drawing_ppp: f32 = ctx.pixels_per_point();
+
+    // Clear last frame's GPU geometry for the active pane. Every GPU-routing
+    // site below (volume, candle, indicators, drawings, oscillators, orders)
+    // is an *append* — without this clear, accumulated geometry would grow
+    // unbounded. The candle code below updates the value fields (vs_frac,
+    // price range, etc.) but no longer reassigns line_segments/fill_quads,
+    // so anything pushed before the candle block (e.g. volume) is preserved.
+    #[cfg(feature = "gpu_chart_v2")]
+    if is_active {
+        chart.gpu_render_params.instances.clear();
+        chart.gpu_render_params.line_segments.clear();
+        chart.gpu_render_params.fill_quads.clear();
+    }
     // sRGB → linear: surface format is Bgra8UnormSrgb, so the GPU gamma-encodes
     // shader output. Hand it linear values; egui Color32 is sRGB bytes.
     #[cfg(feature = "gpu_chart_v2")]
@@ -2125,21 +2138,20 @@ fn render_chart_pane(
             [srgb_to_linear(c.r()), srgb_to_linear(c.g()),
              srgb_to_linear(c.b()), c.a() as f32 / 255.0]
         };
-        chart.gpu_render_params = ChartRenderParams {
-            instances,
-            // Indicator segments and band fills are pushed later in this
-            // function as the overlay loop runs. Start empty.
-            line_segments: Vec::new(),
-            fill_quads:    Vec::new(),
-            vs_frac:    frac,
-            vc_total:   total as f32,
-            price_low:  min_p,
-            price_high: max_p,
-            chart_rect: [rect.left(), rect.top() + pt, rect.left() + cw, rect.top() + pt + ch],
-            bg:   c32(t.bg),
-            bull: c32(t.bull),
-            bear: c32(t.bear),
-        };
+        // Update the value/view fields. Don't reassign the whole struct —
+        // that would wipe line_segments + fill_quads which volume (pushed
+        // earlier in this function) and indicators / drawings / oscillators /
+        // orders (pushed later) accumulate into. The vecs were cleared at
+        // the top of this function for the active pane.
+        chart.gpu_render_params.instances = instances;
+        chart.gpu_render_params.vs_frac    = frac;
+        chart.gpu_render_params.vc_total   = total as f32;
+        chart.gpu_render_params.price_low  = min_p;
+        chart.gpu_render_params.price_high = max_p;
+        chart.gpu_render_params.chart_rect = [rect.left(), rect.top() + pt, rect.left() + cw, rect.top() + pt + ch];
+        chart.gpu_render_params.bg   = c32(t.bg);
+        chart.gpu_render_params.bull = c32(t.bull);
+        chart.gpu_render_params.bear = c32(t.bear);
     }
 
     } // end else if !is_alt_mode
