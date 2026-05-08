@@ -4784,32 +4784,117 @@ fn render_chart_pane(
                 }
             }
 
-            // Primary line (thicker for MACD)
+            // Primary line (thicker for MACD). For the active pane with the GPU
+            // pipeline on, we route oscillator polylines through the line buffer
+            // by mapping each value to the panel pixel y via osc_y, then to a
+            // pseudo-price via py_inv. The main shader's value→y transform then
+            // lands the line at the correct osc-panel pixel.
             let primary_thickness = if ind.kind == IndicatorType::MACD { 1.5 } else { ind.thickness };
-            let mut pts = Vec::new();
-            for i in (vs as u32)..end {
-                if let Some(&v) = ind.values.get(i as usize) {
-                    if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), osc_y(v))); }
-                }
-            }
-            if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(primary_thickness, color))); }
-
-            // Secondary line (MACD signal = orange dashed, Stochastic %D = dim)
-            if !ind.values2.is_empty() {
-                let mut pts2 = Vec::new();
-                for i in (vs as u32)..end {
-                    if let Some(&v) = ind.values2.get(i as usize) {
-                        if !v.is_nan() { pts2.push(egui::pos2(bx(i as f32), osc_y(v))); }
+            let use_gpu_osc: bool = {
+                #[cfg(feature = "gpu_chart_v2")]
+                { is_active }
+                #[cfg(not(feature = "gpu_chart_v2"))]
+                { false }
+            };
+            if use_gpu_osc {
+                #[cfg(feature = "gpu_chart_v2")]
+                {
+                    use crate::chart::renderer_gpu::LineSegment;
+                    let lc = _drawing_c32(color);
+                    let th = primary_thickness * drawing_ppp;
+                    let mut prev: Option<(f32, f32)> = None;
+                    for i in (vs as u32)..end {
+                        let v = ind.values.get(i as usize).copied().unwrap_or(f32::NAN);
+                        if v.is_nan() { prev = None; continue; }
+                        let slot = i as f32 - vs_floor;
+                        let pseudo = py_inv(osc_y(v));
+                        if let Some((ps, pv)) = prev {
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: ps, start_val: pv,
+                                end_slot:   slot, end_val: pseudo,
+                                color: lc, thickness: th,
+                            });
+                        }
+                        prev = Some((slot, pseudo));
                     }
                 }
-                if pts2.len() > 1 {
-                    if ind.kind == IndicatorType::MACD {
-                        // Signal line: solid orange, clearly visible second line
-                        let orange = egui::Color32::from_rgb(255, 152, 56);
-                        painter.add(egui::Shape::line(pts2, egui::Stroke::new(1.2, orange)));
-                    } else {
-                        let c2 = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 140);
-                        painter.add(egui::Shape::line(pts2, egui::Stroke::new(1.0, c2)));
+            } else {
+                let mut pts = Vec::new();
+                for i in (vs as u32)..end {
+                    if let Some(&v) = ind.values.get(i as usize) {
+                        if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), osc_y(v))); }
+                    }
+                }
+                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(primary_thickness, color))); }
+            }
+
+            // Secondary line (MACD signal, Stochastic %D, etc.) — same approach.
+            if !ind.values2.is_empty() {
+                let secondary_color = if ind.kind == IndicatorType::MACD {
+                    egui::Color32::from_rgb(255, 152, 56)
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 140)
+                };
+                let secondary_thickness = if ind.kind == IndicatorType::MACD { 1.2 } else { 1.0 };
+                if use_gpu_osc {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::LineSegment;
+                        let lc = _drawing_c32(secondary_color);
+                        let th = secondary_thickness * drawing_ppp;
+                        let mut prev: Option<(f32, f32)> = None;
+                        for i in (vs as u32)..end {
+                            let v = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
+                            if v.is_nan() { prev = None; continue; }
+                            let slot = i as f32 - vs_floor;
+                            let pseudo = py_inv(osc_y(v));
+                            if let Some((ps, pv)) = prev {
+                                chart.gpu_render_params.line_segments.push(LineSegment {
+                                    start_slot: ps, start_val: pv,
+                                    end_slot:   slot, end_val: pseudo,
+                                    color: lc, thickness: th,
+                                });
+                            }
+                            prev = Some((slot, pseudo));
+                        }
+                    }
+                } else {
+                    let mut pts2 = Vec::new();
+                    for i in (vs as u32)..end {
+                        if let Some(&v) = ind.values2.get(i as usize) {
+                            if !v.is_nan() { pts2.push(egui::pos2(bx(i as f32), osc_y(v))); }
+                        }
+                    }
+                    if pts2.len() > 1 {
+                        painter.add(egui::Shape::line(pts2, egui::Stroke::new(secondary_thickness, secondary_color)));
+                    }
+                }
+            }
+
+            // ADX has a third line (ind.values3 = -DI). Route through GPU too.
+            if ind.kind == IndicatorType::ADX && !ind.values3.is_empty() {
+                let third_color = egui::Color32::from_rgb(231, 76, 60);
+                if use_gpu_osc {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::LineSegment;
+                        let lc = _drawing_c32(third_color);
+                        let th = 1.0 * drawing_ppp;
+                        let mut prev: Option<(f32, f32)> = None;
+                        for i in (vs as u32)..end {
+                            let v = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
+                            if v.is_nan() { prev = None; continue; }
+                            let slot = i as f32 - vs_floor;
+                            let pseudo = py_inv(osc_y(v));
+                            if let Some((ps, pv)) = prev {
+                                chart.gpu_render_params.line_segments.push(LineSegment {
+                                    start_slot: ps, start_val: pv,
+                                    end_slot:   slot, end_val: pseudo,
+                                    color: lc, thickness: th,
+                                });
+                            }
+                            prev = Some((slot, pseudo));
+                        }
                     }
                 }
             }
