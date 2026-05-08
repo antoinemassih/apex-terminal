@@ -2063,9 +2063,10 @@ fn render_chart_pane(
         };
         chart.gpu_render_params = ChartRenderParams {
             instances,
-            // Indicator segments are pushed later in this function as the
-            // overlay loop runs. Start empty.
+            // Indicator segments and band fills are pushed later in this
+            // function as the overlay loop runs. Start empty.
             line_segments: Vec::new(),
+            fill_quads:    Vec::new(),
             vs_frac:    frac,
             vc_total:   total as f32,
             price_low:  min_p,
@@ -3159,36 +3160,100 @@ fn render_chart_pane(
 
             // ── Bollinger Bands ──
             if ind.kind == IndicatorType::BollingerBands {
-                // Resolve per-component colors (empty = inherit from main color)
                 let bb_upper_color = if ind.upper_color.is_empty() { dim_color } else { hex_to_color(&ind.upper_color, 1.0) };
                 let bb_lower_color = if ind.lower_color.is_empty() { dim_color } else { hex_to_color(&ind.lower_color, 1.0) };
                 let bb_fill = if ind.fill_color_hex.is_empty() { fill_color } else { hex_to_color(&ind.fill_color_hex, 0.12) };
                 let bb_upper_thick = if ind.upper_thickness > 0.0 { ind.upper_thickness } else { ind.thickness * 0.7 };
                 let bb_lower_thick = if ind.lower_thickness > 0.0 { ind.lower_thickness } else { ind.thickness * 0.7 };
-                // Fill between upper and lower
-                for i in start_i..end.saturating_sub(1) {
-                    let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
-                    let l0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
-                    let u1 = ind.values2.get(i as usize + 1).copied().unwrap_or(f32::NAN);
-                    let l1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
-                    if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
-                    let pts = vec![egui::pos2(bx(i as f32), py(u0)), egui::pos2(bx((i+1) as f32), py(u1)),
-                        egui::pos2(bx((i+1) as f32), py(l1)), egui::pos2(bx(i as f32), py(l0))];
-                    painter.add(egui::Shape::convex_polygon(pts, bb_fill, egui::Stroke::NONE));
+
+                let use_gpu_band: bool = {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    { is_active && ind.line_style == LineStyle::Solid }
+                    #[cfg(not(feature = "gpu_chart_v2"))]
+                    { false }
+                };
+
+                if use_gpu_band {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::{LineSegment, FillQuad};
+                        fn srgb_to_linear(c: u8) -> f32 {
+                            let s = c as f32 / 255.0;
+                            if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+                        }
+                        let c32 = |c: egui::Color32| -> [f32; 4] {
+                            [srgb_to_linear(c.r()), srgb_to_linear(c.g()),
+                             srgb_to_linear(c.b()), c.a() as f32 / 255.0]
+                        };
+                        let vs_floor = vs.floor();
+                        let ppp = ctx.pixels_per_point();
+                        let lin_mid = c32(color);
+                        let lin_upper = c32(bb_upper_color);
+                        let lin_lower = c32(bb_lower_color);
+                        let lin_fill = c32(bb_fill);
+
+                        // Fill quads between upper (values2) and lower (values3)
+                        for i in start_i..end.saturating_sub(1) {
+                            let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
+                            let l0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
+                            let u1 = ind.values2.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                            let l1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                            if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
+                            chart.gpu_render_params.fill_quads.push(FillQuad {
+                                start_slot: i as f32 - vs_floor,
+                                start_top: u0, start_bot: l0,
+                                end_slot: (i + 1) as f32 - vs_floor,
+                                end_top: u1, end_bot: l1,
+                                color: lin_fill,
+                            });
+                        }
+
+                        // Three polylines: upper (values2), middle (values), lower (values3)
+                        let push_poly = |segments: &mut Vec<LineSegment>, vals: &[f32], col: [f32; 4], thick: f32| {
+                            let mut prev: Option<(f32, f32)> = None;
+                            for i in start_i..end {
+                                let v = vals.get(i as usize).copied().unwrap_or(f32::NAN);
+                                if v.is_nan() { prev = None; continue; }
+                                let slot = i as f32 - vs_floor;
+                                if let Some((ps, pv)) = prev {
+                                    segments.push(LineSegment {
+                                        start_slot: ps, start_val: pv,
+                                        end_slot: slot, end_val: v,
+                                        color: col, thickness: thick * ppp,
+                                    });
+                                }
+                                prev = Some((slot, v));
+                            }
+                        };
+                        let segs = &mut chart.gpu_render_params.line_segments;
+                        push_poly(segs, &ind.values2, lin_upper, bb_upper_thick);
+                        push_poly(segs, &ind.values,  lin_mid,   ind.thickness);
+                        push_poly(segs, &ind.values3, lin_lower, bb_lower_thick);
+                    }
+                } else {
+                    // Fill between upper and lower
+                    for i in start_i..end.saturating_sub(1) {
+                        let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let l0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let u1 = ind.values2.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        let l1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
+                        let pts = vec![egui::pos2(bx(i as f32), py(u0)), egui::pos2(bx((i+1) as f32), py(u1)),
+                            egui::pos2(bx((i+1) as f32), py(l1)), egui::pos2(bx(i as f32), py(l0))];
+                        painter.add(egui::Shape::convex_polygon(pts, bb_fill, egui::Stroke::NONE));
+                    }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values2.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(bb_upper_thick, bb_upper_color))); }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness, color))); }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values3.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(bb_lower_thick, bb_lower_color))); }
                 }
-                // Upper band
-                let mut pts: Vec<egui::Pos2> = vec![];
-                for i in start_i..end { if let Some(&v) = ind.values2.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(bb_upper_thick, bb_upper_color))); }
-                // Middle (SMA)
-                let mut pts: Vec<egui::Pos2> = vec![];
-                for i in start_i..end { if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness, color))); }
-                // Lower band
-                let mut pts: Vec<egui::Pos2> = vec![];
-                for i in start_i..end { if let Some(&v) = ind.values3.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(bb_lower_thick, bb_lower_color))); }
-                // Value label
+
+                // Value label (always egui)
                 if let Some(&last_val) = ind.values.iter().rev().find(|v| !v.is_nan()) {
                     let label_y = py(last_val);
                     if label_y.is_finite() && label_y > rect.top() + pt && label_y < rect.top() + pt + ch {
@@ -3201,25 +3266,89 @@ fn render_chart_pane(
 
             // ── Keltner Channels ──
             if ind.kind == IndicatorType::KeltnerChannels {
-                for i in start_i..end.saturating_sub(1) {
-                    let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
-                    let l0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
-                    let u1 = ind.values2.get(i as usize + 1).copied().unwrap_or(f32::NAN);
-                    let l1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
-                    if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
-                    let pts = vec![egui::pos2(bx(i as f32), py(u0)), egui::pos2(bx((i+1) as f32), py(u1)),
-                        egui::pos2(bx((i+1) as f32), py(l1)), egui::pos2(bx(i as f32), py(l0))];
-                    painter.add(egui::Shape::convex_polygon(pts, fill_color, egui::Stroke::NONE));
+                let use_gpu_band: bool = {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    { is_active && ind.line_style == LineStyle::Solid }
+                    #[cfg(not(feature = "gpu_chart_v2"))]
+                    { false }
+                };
+
+                if use_gpu_band {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::{LineSegment, FillQuad};
+                        fn srgb_to_linear(c: u8) -> f32 {
+                            let s = c as f32 / 255.0;
+                            if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+                        }
+                        let c32 = |c: egui::Color32| -> [f32; 4] {
+                            [srgb_to_linear(c.r()), srgb_to_linear(c.g()),
+                             srgb_to_linear(c.b()), c.a() as f32 / 255.0]
+                        };
+                        let vs_floor = vs.floor();
+                        let ppp = ctx.pixels_per_point();
+                        let lin_mid = c32(color);
+                        let lin_band = c32(dim_color);
+                        let lin_fill = c32(fill_color);
+
+                        for i in start_i..end.saturating_sub(1) {
+                            let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
+                            let l0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
+                            let u1 = ind.values2.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                            let l1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                            if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
+                            chart.gpu_render_params.fill_quads.push(FillQuad {
+                                start_slot: i as f32 - vs_floor,
+                                start_top: u0, start_bot: l0,
+                                end_slot: (i + 1) as f32 - vs_floor,
+                                end_top: u1, end_bot: l1,
+                                color: lin_fill,
+                            });
+                        }
+
+                        let push_poly = |segments: &mut Vec<LineSegment>, vals: &[f32], col: [f32; 4], thick: f32| {
+                            let mut prev: Option<(f32, f32)> = None;
+                            for i in start_i..end {
+                                let v = vals.get(i as usize).copied().unwrap_or(f32::NAN);
+                                if v.is_nan() { prev = None; continue; }
+                                let slot = i as f32 - vs_floor;
+                                if let Some((ps, pv)) = prev {
+                                    segments.push(LineSegment {
+                                        start_slot: ps, start_val: pv,
+                                        end_slot: slot, end_val: v,
+                                        color: col, thickness: thick * ppp,
+                                    });
+                                }
+                                prev = Some((slot, v));
+                            }
+                        };
+                        let segs = &mut chart.gpu_render_params.line_segments;
+                        push_poly(segs, &ind.values2, lin_band, ind.thickness * 0.7);
+                        push_poly(segs, &ind.values,  lin_mid,  ind.thickness);
+                        push_poly(segs, &ind.values3, lin_band, ind.thickness * 0.7);
+                    }
+                } else {
+                    for i in start_i..end.saturating_sub(1) {
+                        let u0 = ind.values2.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let l0 = ind.values3.get(i as usize).copied().unwrap_or(f32::NAN);
+                        let u1 = ind.values2.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        let l1 = ind.values3.get(i as usize + 1).copied().unwrap_or(f32::NAN);
+                        if u0.is_nan() || l0.is_nan() || u1.is_nan() || l1.is_nan() { continue; }
+                        let pts = vec![egui::pos2(bx(i as f32), py(u0)), egui::pos2(bx((i+1) as f32), py(u1)),
+                            egui::pos2(bx((i+1) as f32), py(l1)), egui::pos2(bx(i as f32), py(l0))];
+                        painter.add(egui::Shape::convex_polygon(pts, fill_color, egui::Stroke::NONE));
+                    }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values2.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness, color))); }
+                    let mut pts: Vec<egui::Pos2> = vec![];
+                    for i in start_i..end { if let Some(&v) = ind.values3.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
                 }
-                let mut pts: Vec<egui::Pos2> = vec![];
-                for i in start_i..end { if let Some(&v) = ind.values2.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
-                let mut pts: Vec<egui::Pos2> = vec![];
-                for i in start_i..end { if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness, color))); }
-                let mut pts: Vec<egui::Pos2> = vec![];
-                for i in start_i..end { if let Some(&v) = ind.values3.get(i as usize) { if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); } } }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 0.7, dim_color))); }
+
                 if let Some(&last_val) = ind.values.iter().rev().find(|v| !v.is_nan()) {
                     let label_y = py(last_val);
                     if label_y.is_finite() && label_y > rect.top() + pt && label_y < rect.top() + pt + ch {

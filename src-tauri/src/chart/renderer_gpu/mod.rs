@@ -39,11 +39,27 @@ pub struct LineSegment {
     pub thickness:  f32,       // physical pixels — full line width
 }
 
+/// One quad of a band fill (e.g. Bollinger Bands area between upper and lower).
+/// 40 bytes. CPU pushes one per consecutive bar pair where both top and bottom
+/// values are non-NaN.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct FillQuad {
+    pub start_slot: f32,
+    pub start_top:  f32,    // upper band value at start
+    pub start_bot:  f32,    // lower band value at start
+    pub end_slot:   f32,
+    pub end_top:    f32,
+    pub end_bot:    f32,
+    pub color:      [f32; 4],  // linear RGBA (alpha-blended)
+}
+
 /// Chart parameters populated by `render_chart_pane` during egui's run and
 /// consumed by `ChartPipeline::upload` before the render passes.
 pub struct ChartRenderParams {
     pub instances:      Vec<CandleInstance>,
     pub line_segments:  Vec<LineSegment>,
+    pub fill_quads:     Vec<FillQuad>,
     /// Fractional part of `chart.vs` (sub-bar pan offset, 0..1).
     pub vs_frac:    f32,
     /// `chart.vc + dynamic_pad` — total bar slots across the chart width.
@@ -68,6 +84,7 @@ impl Default for ChartRenderParams {
         Self {
             instances:     Vec::new(),
             line_segments: Vec::new(),
+            fill_quads:    Vec::new(),
             vs_frac:    0.0,
             vc_total:   200.0,
             price_low:  0.0,
@@ -105,6 +122,7 @@ struct ViewUniform {
 
 const MAX_INSTANCES:      u64 = 100_000;
 const MAX_LINE_SEGMENTS:  u64 =  20_000;
+const MAX_FILL_QUADS:     u64 =  10_000;
 
 fn instances_as_bytes(s: &[CandleInstance]) -> &[u8] {
     unsafe {
@@ -124,6 +142,15 @@ fn segments_as_bytes(s: &[LineSegment]) -> &[u8] {
     }
 }
 
+fn fills_as_bytes(s: &[FillQuad]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            s.as_ptr() as *const u8,
+            s.len() * std::mem::size_of::<FillQuad>(),
+        )
+    }
+}
+
 fn uniform_as_bytes(u: &ViewUniform) -> &[u8] {
     unsafe {
         std::slice::from_raw_parts(
@@ -138,14 +165,17 @@ fn uniform_as_bytes(u: &ViewUniform) -> &[u8] {
 pub struct ChartPipeline {
     candle_pipeline: wgpu::RenderPipeline,
     line_pipeline:   wgpu::RenderPipeline,
+    fill_pipeline:   wgpu::RenderPipeline,
 
     instance_buf: wgpu::Buffer,  // candle instances
     line_buf:     wgpu::Buffer,  // line segments
+    fill_buf:     wgpu::Buffer,  // fill quads (band areas)
     uniform_buf:  wgpu::Buffer,  // shared view uniform
     bind_group:   wgpu::BindGroup,
 
     instance_count:     u32,
     line_segment_count: u32,
+    fill_quad_count:    u32,
 
     /// Clear color for the chart render pass — set each frame from the active
     /// pane's theme bg so the GPU canvas matches the theme.
@@ -164,6 +194,10 @@ impl ChartPipeline {
         let line_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label:  Some("chart_pipeline.line.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("line.wgsl").into()),
+        });
+        let fill_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label:  Some("chart_pipeline.fill.shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("fill.wgsl").into()),
         });
 
         // Both pipelines bind the same single uniform — one BGL covers both.
@@ -191,6 +225,13 @@ impl ChartPipeline {
         let line_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label:              Some("chart_pipeline.line_buf"),
             size:               MAX_LINE_SEGMENTS * std::mem::size_of::<LineSegment>() as u64,
+            usage:              wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let fill_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label:              Some("chart_pipeline.fill_buf"),
+            size:               MAX_FILL_QUADS * std::mem::size_of::<FillQuad>() as u64,
             usage:              wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -297,12 +338,53 @@ impl ChartPipeline {
             cache:        None,
         });
 
-        eprintln!("[gpu] chart_pipeline: WGSL validated OK (phase=4a_candle+line, active=true)");
+        // ── Fill pipeline (band areas under multi-line indicators) ──────────
+        // Layout: 6 floats endpoints + vec4 color = 40 bytes.
+        let fill_attrs = [
+            wgpu::VertexAttribute { offset: 0,  shader_location: 0, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 4,  shader_location: 1, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 8,  shader_location: 2, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 12, shader_location: 3, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 16, shader_location: 4, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 20, shader_location: 5, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 24, shader_location: 6, format: wgpu::VertexFormat::Float32x4 },
+        ];
+        let fill_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label:  Some("chart_pipeline.fill"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module:      &fill_shader,
+                entry_point: Some("vs_main"),
+                buffers:     &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<FillQuad>() as u64,
+                    step_mode:    wgpu::VertexStepMode::Instance,
+                    attributes:   &fill_attrs,
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module:      &fill_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format:     surface_format,
+                    blend:      Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive:    wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample:  wgpu::MultisampleState::default(),
+            multiview:    None,
+            cache:        None,
+        });
+
+        eprintln!("[gpu] chart_pipeline: WGSL validated OK (phase=4b_candle+line+fill, active=true)");
 
         Self {
-            candle_pipeline, line_pipeline,
-            instance_buf, line_buf, uniform_buf, bind_group,
-            instance_count: 0, line_segment_count: 0,
+            candle_pipeline, line_pipeline, fill_pipeline,
+            instance_buf, line_buf, fill_buf, uniform_buf, bind_group,
+            instance_count: 0, line_segment_count: 0, fill_quad_count: 0,
             clear_color: wgpu::Color::BLACK,
             scissor: (0, 0, 0, 0),
         }
@@ -338,6 +420,16 @@ impl ChartPipeline {
             queue.write_buffer(
                 &self.line_buf, 0,
                 segments_as_bytes(&params.line_segments[..scount as usize]),
+            );
+        }
+
+        // ── Fill quads (band areas) ─────────────────────────────────────────
+        let fcount = params.fill_quads.len().min(MAX_FILL_QUADS as usize) as u32;
+        self.fill_quad_count = fcount;
+        if fcount > 0 {
+            queue.write_buffer(
+                &self.fill_buf, 0,
+                fills_as_bytes(&params.fill_quads[..fcount as usize]),
             );
         }
 
@@ -436,6 +528,14 @@ impl ChartPipeline {
                 pass.set_vertex_buffer(0, self.instance_buf.slice(..));
                 // 12 vertices per instance: body (0..6) + wick (6..12)
                 pass.draw(0..12, 0..self.instance_count);
+            }
+
+            // Fills draw between candles and lines so band tints sit on top
+            // of candles but under indicator strokes.
+            if have_scissor && self.fill_quad_count > 0 {
+                pass.set_pipeline(&self.fill_pipeline);
+                pass.set_vertex_buffer(0, self.fill_buf.slice(..));
+                pass.draw(0..6, 0..self.fill_quad_count);
             }
 
             if have_scissor && self.line_segment_count > 0 {
