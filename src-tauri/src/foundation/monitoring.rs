@@ -64,6 +64,31 @@ fn take_profile() -> SubsystemProfile {
     })
 }
 
+// ─── GPU chart pass instrumentation (Phase 0 — values stay 0 until Phase 1+) ─
+
+/// Microseconds of the most recent GPU chart pass. Written by the GPU chart
+/// pipeline (when active), read once per frame by `frame_end_detailed`.
+static LAST_CHART_PASS_US: AtomicU64 = AtomicU64::new(0);
+/// 0 = egui-only chart path, 1 = GPU chart pass active.
+static CHART_PIPELINE_ACTIVE: AtomicU64 = AtomicU64::new(0);
+/// Bars currently rendered inside the chart canvas.
+static CHART_VISIBLE_BARS: AtomicU64 = AtomicU64::new(0);
+
+/// Record the most recent chart-pass duration (microseconds). Called from
+/// inside the GPU chart render pass; safe to call from the render thread only.
+pub fn set_chart_pass_us(us: u64) { LAST_CHART_PASS_US.store(us, Ordering::Relaxed); }
+
+/// Mark the chart pipeline as `gpu` (true) or `egui` (false). Surfaces in
+/// Prometheus as `apex_chart_pipeline_active` so before/after A-B comparisons
+/// can be filtered by which renderer was live.
+pub fn set_chart_pipeline_active(active: bool) {
+    CHART_PIPELINE_ACTIVE.store(if active { 1 } else { 0 }, Ordering::Relaxed);
+}
+
+/// Report the visible-bar count for the active chart canvas. Surfaces as
+/// `apex_chart_visible_bars` — useful for correlating chart-pass time with load.
+pub fn set_chart_visible_bars(n: u32) { CHART_VISIBLE_BARS.store(n as u64, Ordering::Relaxed); }
+
 // ─── Allocation tracker (global allocator wrapper) ───────────────────────────
 
 /// Counts every heap allocation/deallocation and bytes moved.
@@ -169,6 +194,9 @@ pub struct PhaseStats {
     pub avg_present_us: u64,
     pub max_layout_us: u64,  // Worst layout time in window (the likely jank source)
     pub max_render_us: u64,
+    /// GPU chart pass timing (Phase 0 — 0 until GPU chart pipeline lands).
+    pub avg_chart_pass_us: u64,
+    pub max_chart_pass_us: u64,
     pub avg_paint_jobs: u32,
     pub avg_vertices: u32,
     pub avg_indices: u32,
@@ -298,6 +326,7 @@ struct FrameTracker {
     upload_ring: Vec<u64>,
     render_ring: Vec<u64>,
     present_ring: Vec<u64>,
+    chart_pass_ring: Vec<u64>, // Phase 0 — populated by Phase 1+ GPU chart pipeline
     // Render stats rings
     paint_jobs_ring: Vec<u32>,
     vertices_ring: Vec<u32>,
@@ -328,6 +357,7 @@ impl FrameTracker {
             upload_ring: vec![0; RING_SIZE],
             render_ring: vec![0; RING_SIZE],
             present_ring: vec![0; RING_SIZE],
+            chart_pass_ring: vec![0; RING_SIZE],
             paint_jobs_ring: vec![0; RING_SIZE],
             vertices_ring: vec![0; RING_SIZE],
             indices_ring: vec![0; RING_SIZE],
@@ -364,6 +394,9 @@ impl FrameTracker {
         self.upload_ring[pos] = phases.upload_us;
         self.render_ring[pos] = phases.render_us;
         self.present_ring[pos] = phases.present_us;
+        // Read the chart-pass time set by the GPU chart pipeline this frame
+        // (zero when the egui-only chart path is active).
+        self.chart_pass_ring[pos] = LAST_CHART_PASS_US.swap(0, Ordering::Relaxed);
         self.paint_jobs_ring[pos] = phases.paint_jobs;
         self.vertices_ring[pos] = phases.vertices;
         self.indices_ring[pos] = phases.indices;
@@ -448,6 +481,8 @@ impl FrameTracker {
             avg_present_us: avg(&self.present_ring),
             max_layout_us: max(&self.layout_ring),
             max_render_us: max(&self.render_ring),
+            avg_chart_pass_us: avg(&self.chart_pass_ring),
+            max_chart_pass_us: max(&self.chart_pass_ring),
             avg_paint_jobs: avg_u32(&self.paint_jobs_ring),
             avg_vertices: avg_u32(&self.vertices_ring),
             avg_indices: avg_u32(&self.indices_ring),
@@ -826,6 +861,10 @@ fn format_prometheus(snap: &Snapshot) -> String {
     metric!("apex_phase_render_avg_us", "Avg render pass time", "gauge", snap.phases.avg_render_us);
     metric!("apex_phase_render_max_us", "Worst render pass in window", "gauge", snap.phases.max_render_us);
     metric!("apex_phase_present_avg_us", "Avg present/vsync time", "gauge", snap.phases.avg_present_us);
+    metric!("apex_phase_chart_pass_avg_us", "Avg GPU chart pass time (0 when egui chart path active)", "gauge", snap.phases.avg_chart_pass_us);
+    metric!("apex_phase_chart_pass_max_us", "Worst GPU chart pass in window", "gauge", snap.phases.max_chart_pass_us);
+    metric!("apex_chart_pipeline_active", "Chart pipeline: 0=egui, 1=gpu", "gauge", CHART_PIPELINE_ACTIVE.load(Ordering::Relaxed));
+    metric!("apex_chart_visible_bars", "Bars currently rendered in chart canvas", "gauge", CHART_VISIBLE_BARS.load(Ordering::Relaxed));
 
     // Render stats
     metric!("apex_render_paint_jobs", "Avg paint jobs per frame", "gauge", snap.phases.avg_paint_jobs);
