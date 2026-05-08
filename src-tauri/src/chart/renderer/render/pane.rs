@@ -539,7 +539,14 @@ fn render_chart_pane(
         }
 
         // Rest of header — click to activate pane
-        if hdr.response.clicked() { *active_pane = pane_idx; }
+        // Active-pane focus on header click — bg_resp is hover-only now to
+        // not consume button clicks, so detect click via raw input.
+        let header_rect = hdr.response.rect;
+        if ctx.input(|i| i.pointer.primary_clicked()
+            && i.pointer.interact_pos().map_or(false, |p| header_rect.contains(p)))
+        {
+            *active_pane = pane_idx;
+        }
 
         // Order-entry toggle
         if hdr.clicked_order { watchlist.order_entry_open = !watchlist.order_entry_open; }

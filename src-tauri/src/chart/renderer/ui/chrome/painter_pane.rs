@@ -437,8 +437,12 @@ impl<'a> PainterPaneHeader<'a> {
         let rect = self.rect;
         let h = rect.height();
 
-        // Reserve the whole header rect for hover (matches gpu.rs pattern).
-        let bg_resp = ui.allocate_rect(rect, Sense::click());
+        // Reserve the whole header rect for hover only. Sense::click() here
+        // would consume clicks before they reach Order/DOM/OPTIONS buttons —
+        // allocate_rect registers a widget that out-priorities later
+        // ui.interact() calls at overlapping rects. Active-pane focus on
+        // click is now detected via raw input pointer test in the caller.
+        let bg_resp = ui.allocate_rect(rect, Sense::hover());
 
         let painter = ui.painter_at(rect);
 
