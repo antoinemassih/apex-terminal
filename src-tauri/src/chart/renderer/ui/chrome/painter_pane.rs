@@ -762,65 +762,43 @@ impl<'a> PainterPaneHeader<'a> {
         header_divider(&painter, rect.right() - close_total - order_dom_total, rect, t);
 
         // ── Order + DOM icon buttons ──────────────────────────────────────────
+        // Migrated to ui_kit `Button` with `.sublabel(..).status(true).show_at(..)`.
+        // `show_at` lets us drive the absolute rects we already lay out for the
+        // right cluster, while `.sublabel()` reproduces the icon + ORDER/DOM
+        // two-line stack visually. `.status(true)` keeps the transparent /
+        // hover-only treatment that matched the previous hand-painted version.
         {
+            use crate::ui_kit::widgets::Button;
             let icon_h = h - ICON_BTN_INSET_V;
-            // Icons here render bigger than the title text — these are the
-            // primary affordances on the right cluster.
-            let icon_font = FontId::proportional(self.title_font_size + 4.0);
             let mut rx = rect.right() - close_total - order_dom_total;
-            // Status-mode parity with `ui_kit::widgets::Button::status(true)`:
-            // transparent bg, no border, muted fg → text on hover, accent on
-            // active. We can't actually call `Button::show` here because the
-            // header is absolutely-positioned (we allocate exact rects via
-            // `ui.allocate_rect(r, …)` rather than the linear cursor flow that
-            // Button assumes), and Button::icon() doesn't support the two-line
-            // glyph + sublabel ("ORDER"/"DOM") layout these icons need. The
-            // fg/bg/hover treatment below mirrors `paint_button`'s status branch.
-            let mut paint_btn = |ui: &mut Ui, rx: f32, icon: &str, label: &str, is_active: bool| -> bool {
+
+            if self.show_order_btn {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
                     Vec2::new(ICON_BTN_W, icon_h),
                 );
-                let resp = ui.allocate_rect(r, Sense::click());
-                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                // Status-icon treatment: transparent bg, no border. Active state
-                // tints the foreground with accent; hover slightly brightens.
-                let fg = if is_active {
-                    t.accent
-                } else if resp.hovered() {
-                    t.text
-                } else {
-                    t.dim.gamma_multiply(0.8)
-                };
-                if label.is_empty() {
-                    painter.text(r.center(), Align2::CENTER_CENTER, icon, icon_font.clone(), fg);
-                } else {
-                    let icon_y = r.top() + r.height() * ICON_BTN_ICON_Y_FRAC;
-                    let label_y = r.bottom() - ICON_BTN_LABEL_BOTTOM_OFFSET;
-                    painter.text(pos2(r.center().x, icon_y), Align2::CENTER_CENTER, icon, icon_font.clone(), fg);
-                    painter.text(
-                        pos2(r.center().x, label_y), Align2::CENTER_CENTER, label,
-                        FontId::monospace(ICON_BTN_LABEL_SIZE), fg,
-                    );
-                }
-                resp.clicked()
-            };
-
-            if self.show_order_btn {
-                if paint_btn(ui, rx, Icon::CURRENCY_DOLLAR, "ORDER", self.order_btn_active) {
-                    out.clicked_order = true;
-                }
+                let resp = Button::icon(Icon::CURRENCY_DOLLAR)
+                    .sublabel("ORDER")
+                    .status(true)
+                    .active(self.order_btn_active)
+                    .show_at(ui, &painter, r, t);
+                if resp.clicked() { out.clicked_order = true; }
                 rx += ICON_BTN_W;
-                // Divider between ORDER and DOM buttons (always shown — these
-                // buttons need a separator regardless of style preset).
                 if self.show_dom_btn {
                     header_divider_inline(&painter, rx, rect, t);
                 }
             }
             if self.show_dom_btn {
-                if paint_btn(ui, rx, Icon::LADDER, "DOM", self.dom_btn_active) {
-                    out.clicked_dom = true;
-                }
+                let r = Rect::from_min_size(
+                    pos2(rx, rect.center().y - icon_h / 2.0),
+                    Vec2::new(ICON_BTN_W, icon_h),
+                );
+                let resp = Button::icon(Icon::LADDER)
+                    .sublabel("DOM")
+                    .status(true)
+                    .active(self.dom_btn_active)
+                    .show_at(ui, &painter, r, t);
+                if resp.clicked() { out.clicked_dom = true; }
             }
         }
 

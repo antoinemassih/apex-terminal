@@ -5,7 +5,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button, Progress};
+use crate::ui_kit::widgets::{Button, Indicator, IndicatorTone, Progress};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::chart_renderer::gpu::APEXIB_URL;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, read_account_data};
@@ -75,9 +75,16 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
             for (name, status, ok, detail) in services {
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    let dot = if *ok { egui::Color32::from_rgb(46, 204, 113) } else { egui::Color32::from_rgb(231, 76, 60) };
-                    ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 7.0), 3.5, dot);
-                    ui.add_space(12.0);
+                    // Status indicator — pulsing for transitional AMBER, solid dot otherwise.
+                    let indicator = if *status == "AMBER" {
+                        Indicator::pulsing().tone(IndicatorTone::Warn)
+                    } else if *ok {
+                        Indicator::dot().tone(IndicatorTone::Bull)
+                    } else {
+                        Indicator::dot().tone(IndicatorTone::Bear)
+                    };
+                    indicator.show(ui, t);
+                    ui.add_space(6.0);
                     ui.add(BodyLabel::new(*name).size(font_sm_tight()).monospace(true).strong(true).color(t.text));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);

@@ -58,6 +58,9 @@ pub struct Button<'a> {
     kbd: Option<String>,
     /// Status-row mode: snap color on hover, no bg tint, smaller default size.
     is_status: bool,
+    /// Optional sublabel — when set, the button paints as a vertical
+    /// icon + label + sublabel stack. See [`Button::sublabel`].
+    sublabel: Option<String>,
 }
 
 impl<'a> Button<'a> {
@@ -88,6 +91,7 @@ impl<'a> Button<'a> {
             simple_treatment: false,
             kbd: None,
             is_status: false,
+            sublabel: None,
         }
     }
 
@@ -187,8 +191,35 @@ impl<'a> Button<'a> {
         self
     }
 
+    /// Stacks an icon + label + sublabel vertically. The icon paints
+    /// large at top; label below it (font_xs); sublabel below that
+    /// (font_2xs muted). Used for compact two-line button affordances
+    /// like the pane-header Order/DOM controls.
+    ///
+    /// Conflicts with: leading_icon, trailing_icon, kbd. The button
+    /// becomes purely vertical when sublabel is set.
+    pub fn sublabel(mut self, text: impl Into<String>) -> Self {
+        self.sublabel = Some(text.into());
+        self
+    }
+
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        paint_button(ui, theme, self)
+        paint_button(ui, theme, self, None)
+    }
+
+    /// Paint the button at an absolute rect using the provided painter.
+    /// Use when the call site has pre-allocated a rect (e.g., the pane
+    /// header's hand-laid-out right cluster). Returns a Response built
+    /// from the rect (ui.interact internally). Caller is responsible for
+    /// allocating the rect first.
+    pub fn show_at(
+        self,
+        ui: &mut Ui,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        theme: &dyn ComponentTheme,
+    ) -> Response {
+        paint_button(ui, theme, self, Some((rect, painter)))
     }
 }
 
@@ -214,7 +245,12 @@ impl<'a> Widget for Button<'a> {
 
 // ── Internal painting ──────────────────────────────────────────────────
 
-fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) -> Response {
+fn paint_button<'a>(
+    ui: &mut Ui,
+    theme: &dyn ComponentTheme,
+    btn: Button<'a>,
+    placed: Option<(Rect, &egui::Painter)>,
+) -> Response {
     // Legacy SimpleBtn parity: when caller opts into `simple_treatment(true)`
     // and `honor_style_treatment` is on, dispatch through the global
     // ButtonTreatment-aware painter for pixel-identical SimpleBtn output.
@@ -249,8 +285,10 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
     let tint = btn.resolve_tint(theme);
 
     let is_status = btn.is_status;
-    // Keybind: only meaningful when there's a label (not icon_only).
-    let kbd_text: Option<String> = if !icon_only { btn.kbd.clone() } else { None };
+    let sublabel_text: Option<String> = btn.sublabel.clone();
+    let stacked = sublabel_text.is_some();
+    // Keybind: only meaningful when there's a label (not icon_only) and not stacked.
+    let kbd_text: Option<String> = if !icon_only && !stacked { btn.kbd.clone() } else { None };
 
     let h = size.height();
     let pad_x = if is_status { st::gap_2xs() } else { size.padding_x() };
@@ -281,16 +319,46 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         }
     }
 
-    let intrinsic_w = if icon_only { h } else { content_w + 2.0 * pad_x };
+    // Stacked (sublabel) layout: vertical icon + label + sublabel.
+    // Override measurements computed above.
+    let stacked_icon_size = font_size * 1.2;
+    let stacked_label_font = FontId::monospace(st::font_xs());
+    let stacked_sub_font = FontId::monospace(st::font_2xs());
+    let mut stacked_w = 0.0f32;
+    let mut stacked_h = 0.0f32;
+    if stacked {
+        // Width: max(icon_w, label_w, sublabel_w) + side padding
+        let mut max_w = stacked_icon_size;
+        if !label.is_empty() {
+            let g = ui.fonts(|f| f.layout_no_wrap(label.to_string(), stacked_label_font.clone(), Color32::WHITE));
+            max_w = max_w.max(g.rect.width());
+        }
+        if let Some(sl) = sublabel_text.as_ref() {
+            let g = ui.fonts(|f| f.layout_no_wrap(sl.clone(), stacked_sub_font.clone(), Color32::WHITE));
+            max_w = max_w.max(g.rect.width());
+        }
+        stacked_w = max_w + 2.0 * st::gap_xs();
+        stacked_h = stacked_icon_size + st::gap_2xs() + st::font_xs() + st::gap_2xs() + st::font_2xs() + st::gap_xs();
+    }
+
+    let intrinsic_w = if stacked { stacked_w } else if icon_only { h } else { content_w + 2.0 * pad_x };
+    let desired_h = if stacked { stacked_h } else { h };
     let desired_w = if full_width { ui.available_width().max(intrinsic_w) } else { intrinsic_w };
-    let mut desired = Vec2::new(desired_w, h);
+    let mut desired = Vec2::new(desired_w, desired_h);
     if let Some(ms) = min_size_override {
         desired.x = desired.x.max(ms.x);
         desired.y = desired.y.max(ms.y);
     }
 
     let sense = if disabled || loading { Sense::hover() } else { Sense::click() };
-    let (rect, response) = ui.allocate_exact_size(desired, sense);
+    let (rect, response) = match placed {
+        Some((r, _)) => {
+            let id = ui.id().with(("ui_kit_button_show_at", r.min.x.to_bits(), r.min.y.to_bits()));
+            let resp = ui.interact(r, id, sense);
+            (r, resp)
+        }
+        None => ui.allocate_exact_size(desired, sense),
+    };
 
     if ui.is_rect_visible(rect) {
         let id = response.id;
@@ -347,7 +415,15 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         let radius = corner_radius.unwrap_or(default_radius(variant));
         let cr = CornerRadius::same(radius as u8);
 
-        let painter = ui.painter_at(rect);
+        let owned_painter = match placed {
+            Some(_) => None,
+            None => Some(ui.painter_at(rect)),
+        };
+        let painter: &egui::Painter = match (&owned_painter, placed) {
+            (Some(p), _) => p,
+            (None, Some((_, p))) => p,
+            (None, None) => unreachable!(),
+        };
 
         // Background.
         if !frameless && bg.a() > 0 {
@@ -383,7 +459,46 @@ fn paint_button<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, btn: Button<'a>) ->
         // ── Layout content (icon | label | trailing) ──
         let center = rect.center();
         let icon_fg = glyph_color_override.unwrap_or(fg);
-        if icon_only {
+        if stacked {
+            // Stacked vertical: icon (top) → label (mid) → sublabel (bot).
+            let label_color = if active { theme.accent() } else { fg };
+            let sub_color = st::color_alpha(theme.dim(), 200);
+            let icon_h = stacked_icon_size;
+            let lbl_h = st::font_xs();
+            let sub_h = st::font_2xs();
+            let total = icon_h + st::gap_2xs() + lbl_h + st::gap_2xs() + sub_h;
+            let top = rect.center().y - total / 2.0;
+            let icon_cy = top + icon_h / 2.0;
+            let lbl_cy = top + icon_h + st::gap_2xs() + lbl_h / 2.0;
+            let sub_cy = top + icon_h + st::gap_2xs() + lbl_h + st::gap_2xs() + sub_h / 2.0;
+            if let Some(ic) = leading_icon {
+                painter.text(
+                    Pos2::new(center.x, icon_cy),
+                    egui::Align2::CENTER_CENTER,
+                    ic,
+                    FontId::proportional(stacked_icon_size),
+                    icon_fg,
+                );
+            }
+            if !label.is_empty() {
+                painter.text(
+                    Pos2::new(center.x, lbl_cy),
+                    egui::Align2::CENTER_CENTER,
+                    label,
+                    stacked_label_font.clone(),
+                    label_color,
+                );
+            }
+            if let Some(sl) = sublabel_text.as_ref() {
+                painter.text(
+                    Pos2::new(center.x, sub_cy),
+                    egui::Align2::CENTER_CENTER,
+                    sl,
+                    stacked_sub_font.clone(),
+                    sub_color,
+                );
+            }
+        } else if icon_only {
             // Loading replaces icon.
             if loading {
                 paint_spinner(ui, rect, icon_fg);

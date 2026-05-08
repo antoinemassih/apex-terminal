@@ -9,6 +9,7 @@ use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::{ToggleRow, ThemePreviewCard};
+use crate::ui_kit::widgets::theme_preview_card::PreviewKind;
 
 /// Build a FormRow pre-configured to match the legacy `setting_row` look:
 /// 190px label gutter, left-aligned label in white_alpha(180), body right-aligned
@@ -89,6 +90,7 @@ SettingsTab::Appearance => {
                 for (i, preview_theme) in THEMES.iter().enumerate() {
                     let resp = ThemePreviewCard::new(preview_theme.name, preview_theme)
                         .selected(chart.theme_idx == i)
+                        .preview_kind(PreviewKind::Chart)
                         .show(ui, t);
                     if resp.clicked() {
                         commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i });
