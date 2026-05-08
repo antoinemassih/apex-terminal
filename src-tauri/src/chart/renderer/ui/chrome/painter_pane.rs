@@ -271,6 +271,18 @@ fn header_divider_inline(painter: &egui::Painter, cx: f32, rect: Rect, theme: &T
     );
 }
 
+/// Strong inter-button divider routed through the `border_variant` token —
+/// used between buttons in the right cluster (Order/DOM/+Tab) and between
+/// the tab strip and the right cluster. Higher visibility than
+/// `header_divider`/`header_divider_inline` per trading-terminal density needs.
+fn header_divider_strong(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
+    let col = color_alpha(theme.border_variant, 200);
+    painter.line_segment(
+        [pos2(cx, rect.top() + 3.0), pos2(cx, rect.bottom() - 3.0)],
+        Stroke::new(stroke_thin(), col),
+    );
+}
+
 /// Absolute-rect pane header chrome — paints a single header strip into a
 /// caller-supplied `Rect` and reports per-zone click outcomes.
 #[must_use = "PainterPaneHeader must be shown with `.show(ui)` to render"]
@@ -418,15 +430,27 @@ impl<'a> PainterPaneHeader<'a> {
         let painter = ui.painter_at(rect);
 
         // ── Header chrome ────────────────────────────────────────────────────
-        // Per Zed pattern: header bg = content bg (no fill, no active darken,
-        // no outer border, no accent top stripe). Active state is communicated
-        // via the active TAB indicator alone. A single bottom hairline
-        // separates the header from the content below.
-        let hairline_col = color_alpha(t.toolbar_border, 200);
-        painter.line_segment(
-            [pos2(rect.left(), rect.bottom() - 0.5),
-             pos2(rect.right(), rect.bottom() - 0.5)],
-            Stroke::new(stroke_hair(), hairline_col),
+        // Restored (round 2): trading-terminal density needs:
+        //   1. Active-pane bg darken when multiple panes are visible.
+        //   2. A subtle perimeter hairline around the header rect.
+        //   3. Stronger inter-tab + inter-button dividers (handled inline below
+        //      via `border_variant`-routed colors).
+        //
+        // The standalone bottom hairline previously painted here is removed —
+        // the outer border's bottom edge now does that job.
+
+        // 1. Active-pane bg darken (only meaningful with >1 pane).
+        if self.visible_count > 1 && self.is_active {
+            let active_bg = t.bg.gamma_multiply(0.7);
+            painter.rect_filled(rect, 0.0, active_bg);
+        }
+
+        // 2. Outer perimeter hairline (1px, slightly muted).
+        let outer_border_col = color_alpha(t.toolbar_border, 220);
+        painter.rect_stroke(
+            rect, 0.0,
+            Stroke::new(stroke_hair(), outer_border_col),
+            StrokeKind::Inside,
         );
 
         let mut out = PainterPaneHeaderResponse {
@@ -574,7 +598,7 @@ impl<'a> PainterPaneHeader<'a> {
                 // paints for every adjacent pair (active included). Drawn at
                 // the right edge of the current tab inside the inter-tab gap.
                 if ti + 1 < self.tabs.len() {
-                    let div_col = color_alpha(t.dim, 60);
+                    let div_col = color_alpha(t.border_variant, 200);
                     painter.line_segment(
                         [pos2(tab_rect.right() + 0.5, tab_rect.top() + 4.0),
                          pos2(tab_rect.right() + 0.5, tab_rect.bottom() - 4.0)],
@@ -728,6 +752,13 @@ impl<'a> PainterPaneHeader<'a> {
 
         // ── +Tab: left-aligned immediately after the last tab ──
         if self.show_plus_tab {
+            // Strong divider between the tab strip and the +Tab affordance —
+            // mirrors the IDE convention of separating editor tabs from the
+            // per-pane controls cluster.
+            if !self.tabs.is_empty() {
+                header_divider_strong(&painter, cx + gap_xs(), rect, t);
+                cx += gap_sm();
+            }
             let plus_h = h - ICON_BTN_INSET_V;
             let plus_rect = Rect::from_min_size(
                 pos2(cx, rect.center().y - plus_h / 2.0),
@@ -758,8 +789,15 @@ impl<'a> PainterPaneHeader<'a> {
             w
         };
 
-        // Divider before right icon cluster
-        header_divider(&painter, rect.right() - close_total - order_dom_total, rect, t);
+        // Strong divider before right icon cluster (separates tabs/+Tab area
+        // from the Order/DOM/Close button cluster).
+        if order_dom_total > 0.0 || self.show_close {
+            header_divider_strong(
+                &painter,
+                rect.right() - close_total - order_dom_total,
+                rect, t,
+            );
+        }
 
         // ── Order + DOM icon buttons ──────────────────────────────────────────
         // Migrated to ui_kit `Button` with `.sublabel(..).status(true).show_at(..)`.
@@ -785,7 +823,7 @@ impl<'a> PainterPaneHeader<'a> {
                 if resp.clicked() { out.clicked_order = true; }
                 rx += ICON_BTN_W;
                 if self.show_dom_btn {
-                    header_divider_inline(&painter, rx, rect, t);
+                    header_divider_strong(&painter, rx, rect, t);
                 }
             }
             if self.show_dom_btn {
@@ -799,6 +837,11 @@ impl<'a> PainterPaneHeader<'a> {
                     .active(self.dom_btn_active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_dom = true; }
+                rx += ICON_BTN_W;
+                // Divider between DOM and the right-anchored Close button.
+                if self.show_close {
+                    header_divider_strong(&painter, rx, rect, t);
+                }
             }
         }
 
