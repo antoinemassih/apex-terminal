@@ -111,7 +111,7 @@ use crate::chart_renderer::ui::style::{
     BTN_ICON_SM, BTN_ICON_LG,
     set_toolbar_rect, tb_group_break, current as style_current,
     font_xs, font_sm, font_md, alpha_muted, alpha_ghost, alpha_strong,
-    gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
+    gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
     stroke_std, stroke_thin, r_md_cr,
 };
 use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
@@ -560,8 +560,10 @@ pub(crate) fn render(
                 TB_BTN_CLICKED.with(|f| f.set(true));
             }
             // Magnet snap
+            ui.add_space(gap_2xs());
             if toolbar_btn(ui, Icon::MAGNET, panes[ap].magnet, t).on_hover_text("Magnet Snap").clicked() { panes[ap].magnet = !panes[ap].magnet; }
             // Object tree toggle (consolidated drawings/indicators/overlays panel)
+            ui.add_space(gap_2xs());
             let draw_count = panes[ap].drawings.len();
             let list_label = if draw_count > 0 {
                 format!("{} {}", Icon::TREE_STRUCTURE, draw_count)
@@ -572,6 +574,7 @@ pub(crate) fn render(
                 watchlist.object_tree_open = !watchlist.object_tree_open;
             }
             // ── Broadcast — drawing section (applies to all panes) ──
+            ui.add_space(gap_2xs());
             {
                 let bc = watchlist.broadcast_mode;
                 if toolbar_btn(ui, Icon::BROADCAST, bc, t).on_hover_text("Broadcast — changes apply to all panes").clicked() {
@@ -580,6 +583,7 @@ pub(crate) fn render(
                 }
             }
             // ── Trendline filter — drawing section ──
+            ui.add_space(gap_2xs());
             if toolbar_btn(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t).on_hover_text("Trendline Filter").clicked() {
                 watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
             }

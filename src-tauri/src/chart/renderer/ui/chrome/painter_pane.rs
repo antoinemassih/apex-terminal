@@ -70,6 +70,8 @@ const CLOSE_BTN_SIZE: f32 = 18.0;
 const ICON_BTN_W: f32 = 60.0;
 /// Narrower width for the DOM button (shorter label).
 const ICON_BTN_W_DOM: f32 = 52.0;
+/// Width for the OPTIONS button (longer label — 7 chars).
+const ICON_BTN_W_OPTIONS: f32 = 68.0;
 /// Maximum height for option side / DTE badges.
 const BADGE_HEIGHT_MAX: f32 = 16.0;
 /// Vertical inset reserved around badges (top + bottom combined).
@@ -332,6 +334,8 @@ pub struct PainterPaneHeader<'a> {
     order_btn_active: bool,
     /// Show DOM sidebar toggle button (top-right cluster).
     show_dom_btn: bool,
+    show_options_btn: bool,
+    options_btn_active: bool,
     /// Whether the DOM sidebar is currently open (button lit).
     dom_btn_active: bool,
     /// Sense for tab strip interactions — use `Sense::click_and_drag()` for cross-pane drag.
@@ -371,6 +375,8 @@ impl<'a> PainterPaneHeader<'a> {
             order_btn_active: false,
             show_dom_btn: false,
             dom_btn_active: false,
+            show_options_btn: false,
+            options_btn_active: false,
             tab_sense: None,
             pane_index: 0,
         }
@@ -417,6 +423,9 @@ impl<'a> PainterPaneHeader<'a> {
     /// Show DOM sidebar toggle button. `active` = DOM sidebar is currently open.
     pub fn show_dom_btn(mut self, active: bool) -> Self {
         self.show_dom_btn = true; self.dom_btn_active = active; self
+    }
+    pub fn show_options_btn(mut self, active: bool) -> Self {
+        self.show_options_btn = true; self.options_btn_active = active; self
     }
     /// Override tab `Sense` — use `Sense::click_and_drag()` for cross-pane drag support.
     pub fn tab_sense(mut self, s: Sense) -> Self { self.tab_sense = Some(s); self }
@@ -478,6 +487,7 @@ impl<'a> PainterPaneHeader<'a> {
             clicked_symbol: false,
             clicked_order: false,
             clicked_dom: false,
+            clicked_options: false,
             tab_rects: Vec::new(),
             plus_tab_rect: None,
         };
@@ -791,8 +801,9 @@ impl<'a> PainterPaneHeader<'a> {
         let close_total = if self.show_close { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
         let order_dom_total = {
             let mut w = 0.0f32;
-            if self.show_order_btn { w += ICON_BTN_W; }
-            if self.show_dom_btn   { w += ICON_BTN_W_DOM; }
+            if self.show_order_btn   { w += ICON_BTN_W; }
+            if self.show_dom_btn     { w += ICON_BTN_W_DOM; }
+            if self.show_options_btn { w += ICON_BTN_W_OPTIONS; }
             w
         };
 
@@ -845,7 +856,24 @@ impl<'a> PainterPaneHeader<'a> {
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_dom = true; }
                 rx += ICON_BTN_W_DOM;
-                // Divider between DOM and the right-anchored Close button.
+                // Divider between DOM and the next item (OPTIONS or Close).
+                if self.show_options_btn || self.show_close {
+                    header_divider_strong(&painter, rx, rect, t);
+                }
+            }
+            if self.show_options_btn {
+                let r = Rect::from_min_size(
+                    pos2(rx, rect.center().y - icon_h / 2.0),
+                    Vec2::new(ICON_BTN_W_OPTIONS, icon_h),
+                );
+                let resp = Button::new("OPTIONS")
+                    .leading_icon(Icon::CIRCLE)
+                    .status(true)
+                    .active(self.options_btn_active)
+                    .show_at(ui, &painter, r, t);
+                if resp.clicked() { out.clicked_options = true; }
+                rx += ICON_BTN_W_OPTIONS;
+                // Divider between OPTIONS and the right-anchored Close button.
                 if self.show_close {
                     header_divider_strong(&painter, rx, rect, t);
                 }
@@ -902,6 +930,7 @@ pub struct PainterPaneHeaderResponse {
     pub clicked_symbol: bool,
     /// Order-entry toggle button was clicked.
     pub clicked_order: bool,
+    pub clicked_options: bool,
     /// DOM sidebar toggle button was clicked.
     pub clicked_dom: bool,
     /// Per-tab screen rects (in tab-strip mode). Empty in simple-symbol mode.

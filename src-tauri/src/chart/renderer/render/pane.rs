@@ -348,7 +348,11 @@ fn render_chart_pane(
             .can_go_fwd(can_go_fwd)
             .show_plus_tab(true)
             .show_order_btn(watchlist.order_entry_open)
-            .show_dom_btn(chart.dom_sidebar_open)
+            .show_dom_btn(chart.dom_sidebar_open);
+        if !chart.is_option {
+            builder = builder.show_options_btn(chart.show_strikes_overlay);
+        }
+        builder = builder
             .tab_sense(egui::Sense::click_and_drag())
             .pane_index(pane_idx)
             .title_font_size(title_font_size)
@@ -541,6 +545,20 @@ fn render_chart_pane(
         if hdr.clicked_order { watchlist.order_entry_open = !watchlist.order_entry_open; }
         // DOM sidebar toggle
         if hdr.clicked_dom { chart.dom_sidebar_open = !chart.dom_sidebar_open; }
+        // Options strikes overlay toggle (moved from chart top-right circle button)
+        if hdr.clicked_options {
+            chart.show_strikes_overlay = !chart.show_strikes_overlay;
+            if chart.show_strikes_overlay && !chart.overlay_chain_loading {
+                let needs_fetch = chart.overlay_chain_symbol != chart.symbol
+                    || (chart.overlay_calls.is_empty() && chart.overlay_puts.is_empty());
+                if needs_fetch {
+                    chart.overlay_chain_loading = true;
+                    let sym = chart.symbol.clone();
+                    let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                    fetch_overlay_chain_background(sym, price);
+                }
+            }
+        }
     }
 
     // ── Pane content picker popup ────────────────────────────────────────────
@@ -2635,24 +2653,11 @@ fn render_chart_pane(
 
     // (hit flash rendered as white overlay on top of the indicator line)
 
-    // ── Strikes overlay circle button (O) on chart — EQUITY only ──
-    let ovl_chart_x = rect.left() + cw - 18.0;
-    let ovl_chart_y = rect.top() + pt + 18.0;
-    if !chart.is_option {
-        let btn_col = if chart.show_strikes_overlay { t.accent } else { t.dim.gamma_multiply(0.3) };
-        painter.circle_filled(egui::pos2(ovl_chart_x, ovl_chart_y), 9.0, color_alpha(t.toolbar_bg, 220));
-        painter.circle_stroke(egui::pos2(ovl_chart_x, ovl_chart_y), 9.0, egui::Stroke::new(1.0, btn_col));
-        if chart.overlay_chain_loading {
-            let angle = ctx.input(|i| i.time) as f32 * 4.0;
-            for k in 0..8 {
-                let a = angle + k as f32 * std::f32::consts::TAU / 8.0;
-                painter.circle_filled(egui::pos2(ovl_chart_x + a.cos() * 5.0, ovl_chart_y + a.sin() * 5.0),
-                    1.2, color_alpha(t.accent, 40 + (k as u8) * 25));
-            }
-            ctx.request_repaint();
-        } else {
-            painter.text(egui::pos2(ovl_chart_x, ovl_chart_y), egui::Align2::CENTER_CENTER, "O", egui::FontId::monospace(9.0), btn_col);
-        }
+    // ── Strikes overlay button — moved to pane header right cluster.
+    //    See painter_pane.rs OPTIONS button + click handler near hdr.clicked_options.
+    //    Loading spinner still requested below for chain fetches.
+    if chart.show_strikes_overlay && chart.overlay_chain_loading {
+        ctx.request_repaint();
     }
 
     // Auto-fetch overlay chain if on but data missing or symbol changed
@@ -7915,26 +7920,8 @@ fn render_chart_pane(
         }
     }
 
-    // ── PRIORITY 0: Strikes overlay O button click (equity only) ──
-    if !chart.is_option { if let Some(pos) = hover_pos {
-        if egui::pos2(ovl_chart_x, ovl_chart_y).distance(pos) < 12.0 {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-                chart.show_strikes_overlay = !chart.show_strikes_overlay;
-                if chart.show_strikes_overlay && !chart.overlay_chain_loading {
-                    let needs_fetch = chart.overlay_chain_symbol != chart.symbol
-                        || (chart.overlay_calls.is_empty() && chart.overlay_puts.is_empty());
-                    if needs_fetch {
-                        chart.overlay_chain_loading = true;
-                        let sym = chart.symbol.clone();
-                        let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                        fetch_overlay_chain_background(sym, price);
-                    }
-                }
-                event_consumed = true;
-            }
-        }
-    }}
+    // ── PRIORITY 0: Strikes overlay button — moved to pane header right cluster.
+    //    See `hdr.clicked_options` handler earlier in this file.
 
     // ── PRIORITY 1: Active drags (always finish, never interrupted) ──────
 
