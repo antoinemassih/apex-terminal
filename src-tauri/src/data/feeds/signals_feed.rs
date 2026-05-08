@@ -115,4 +115,5 @@ fn send_to_charts(cmd: ChartCommand) {
             guard.retain(|tx| tx.send(cmd.clone()).is_ok());
         }
     }
+    crate::wake_native_ui();
 }

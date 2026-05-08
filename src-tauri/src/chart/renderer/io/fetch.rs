@@ -728,7 +728,7 @@ pub(crate) fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32)
                     close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
                 }).collect();
                 let cmd = ChartCommand::IndicatorSourceBars { indicator_id, timeframe: tf.clone(), bars: gpu_bars, timestamps };
-                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
                 return;
             }
         }
@@ -750,7 +750,7 @@ pub(crate) fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32)
                         close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
                     }).collect();
                     let cmd = ChartCommand::IndicatorSourceBars { indicator_id, timeframe: tf, bars: gpu_bars, timestamps };
-                    for tx in &txs { let _ = tx.send(cmd.clone()); }
+                    for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
                 }
             }
         }
@@ -821,7 +821,7 @@ pub(crate) fn fetch_option_history_background(occ: String, display_sym: String, 
                 symbol: display_sym, timeframe: tf,
                 bars: vec![], timestamps: vec![],
             };
-            for tx in &txs { let _ = tx.send(cmd.clone()); }
+            for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
             return;
         }
 
@@ -845,7 +845,7 @@ pub(crate) fn fetch_option_history_background(occ: String, display_sym: String, 
                 let cmd = ChartCommand::PrependBars {
                     symbol: display_sym, timeframe: tf, bars: gpu_bars, timestamps,
                 };
-                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
             }
             _ => {
                 crate::apex_log!("option.history",
@@ -855,7 +855,7 @@ pub(crate) fn fetch_option_history_background(occ: String, display_sym: String, 
                     symbol: display_sym, timeframe: tf,
                     bars: vec![], timestamps: vec![],
                 };
-                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
             }
         }
     });
@@ -898,7 +898,7 @@ pub(crate) fn fetch_history_background(sym: String, tf: String, before_ts: i64) 
                         symbol: sym.clone(), timeframe: tf.clone(),
                         bars: gpu_bars, timestamps,
                     };
-                    for tx in &txs { let _ = tx.send(cmd.clone()); }
+                    for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
                     return;
                 }
             }
@@ -936,7 +936,7 @@ pub(crate) fn fetch_history_background(sym: String, tf: String, before_ts: i64) 
                         let cmd = ChartCommand::PrependBars {
                             symbol: sym, timeframe: tf, bars: gpu_bars, timestamps,
                         };
-                        for tx in &txs { let _ = tx.send(cmd.clone()); }
+                        for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
                         return;
                     }
                 }
@@ -948,7 +948,7 @@ pub(crate) fn fetch_history_background(sym: String, tf: String, before_ts: i64) 
         let cmd = ChartCommand::PrependBars {
             symbol: sym, timeframe: tf, bars: vec![], timestamps: vec![],
         };
-        for tx in &txs { let _ = tx.send(cmd.clone()); }
+        for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
     });
 }
 
@@ -970,7 +970,7 @@ pub(crate) fn fetch_drawings_background(sym: String) {
         let groups: Vec<DrawingGroup> = db_groups.into_iter()
             .map(|(id, name, color)| DrawingGroup { id, name, color }).collect();
         let cmd = ChartCommand::LoadDrawings { symbol: sym, drawings, groups };
-        for tx in &txs { let _ = tx.send(cmd.clone()); }
+        for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
     });
 }
 
@@ -1064,7 +1064,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                 timeframe: tf.clone(),
                 bars: gpu_bars, timestamps,
             };
-            for tx in &txs { let _ = tx.send(cmd.clone()); }
+            for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
         };
 
         // History (may be empty for a brand-new contract — first close after sub
@@ -1141,7 +1141,7 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
             let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
             eprintln!("[native-chart] {} bars for {} {} from {}", gpu_bars.len(), sym, tf, src);
             let cmd = ChartCommand::LoadBars { symbol: sym.clone(), timeframe: tf.clone(), bars: gpu_bars, timestamps };
-            for tx in &txs { let _ = tx.send(cmd.clone()); }
+            for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
             true
         };
 
@@ -1252,7 +1252,7 @@ pub(crate) fn fetch_overlay_bars_background(sym: String, tf: String) {
             let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar { open: b.open as f32, high: b.high as f32, low: b.low as f32, close: b.close as f32, volume: b.volume as f32, _pad: 0.0 }).collect();
             let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
             let cmd = ChartCommand::OverlayBars { symbol: sym.clone(), bars: gpu_bars, timestamps };
-            for tx in &txs { let _ = tx.send(cmd.clone()); }
+            for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
             return;
         }
         let yahoo_url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}", sym, yf_interval, yf_range);
@@ -1262,7 +1262,7 @@ pub(crate) fn fetch_overlay_bars_background(sym: String, tf: String) {
                     let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar { open: b.open as f32, high: b.high as f32, low: b.low as f32, close: b.close as f32, volume: b.volume as f32, _pad: 0.0 }).collect();
                     let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
                     let cmd = ChartCommand::OverlayBars { symbol: sym.clone(), bars: gpu_bars, timestamps };
-                    for tx in &txs { let _ = tx.send(cmd.clone()); }
+                    for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
                 }
             }
         }

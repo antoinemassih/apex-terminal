@@ -11156,7 +11156,13 @@ fn handle_deferred(
         *active_pane = target_pi;
     }
 
-    ctx.request_repaint();
+    // Catch-all per-frame repaint removed: the app now sleeps when nothing is
+    // changing. Background threads (data feeds, fetch jobs, async tasks) call
+    // `crate::wake_native_ui()` after sending ChartCommands so the UI wakes
+    // for live data; egui's own repaint scheduler handles animations + hover
+    // + interaction. If you find a path that updates state but doesn't
+    // re-render, add a `crate::wake_native_ui()` (or `ctx.request_repaint()`
+    // when ctx is in scope) at the producing site.
 }
 
 pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {

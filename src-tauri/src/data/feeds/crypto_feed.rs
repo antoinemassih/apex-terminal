@@ -143,6 +143,9 @@ fn send_to_charts(cmd: ChartCommand) {
             guard.retain(|tx| tx.send(cmd.clone()).is_ok());
         }
     }
+    // Wake the UI from sleep so the tick is visible. With the catch-all
+    // repaint removed, the egui loop only runs when something requests it.
+    crate::wake_native_ui();
 }
 
 #[derive(serde::Deserialize)]

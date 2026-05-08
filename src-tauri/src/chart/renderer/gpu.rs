@@ -1086,7 +1086,7 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
                 }
                 // Send via command channel
                 let cmd = super::ChartCommand::SignalDrawings { symbol, drawings_json: serde_json::to_string(&json).unwrap_or_default() };
-                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
             }
         }
     });
@@ -4640,6 +4640,11 @@ impl GpuCtx {
         surface.configure(&device, &config);
 
         let egui_ctx = egui::Context::default();
+        // Publish the Context so background threads (data feeds, fetch jobs)
+        // can call `crate::wake_native_ui()` to wake the UI from sleep when
+        // they have new data to show. Without this, removing the catch-all
+        // repaint would leave async data invisible until user input.
+        let _ = crate::NATIVE_EGUI_CTX.set(egui_ctx.clone());
         let mut visuals = egui::Visuals::dark();
         // Subtle rounded corners on all widgets
         let r3 = egui::CornerRadius::same(3);
@@ -5474,31 +5479,31 @@ impl ApplicationHandler for App {
                 }
             }
 
-            // Request redraw — Fifo vsync naturally caps at display refresh rate.
-            // Data-driven path: collapses to a single paint per ~16 ms window
-            // because winit coalesces redundant `request_redraw` calls until
-            // RedrawRequested fires.
-            crate::foundation::frame_profiler::note_repaint(
-                concat!(file!(), ":", line!(), " about_to_wait_tick"),
-            );
-            cw.win.request_redraw();
+            // Request redraw only when something actually needs to repaint.
+            // Egui tracks pending repaint requests internally (animations,
+            // input changes, explicit ctx.request_repaint() calls including
+            // wake_native_ui from background threads). Calling request_redraw
+            // unconditionally was previously what kept the app at 60 fps even
+            // when nothing was changing — burning ~5-10% CPU and battery.
+            //
+            // Now: only request a redraw if egui needs one or there's
+            // pending input we haven't drained yet.
+            let egui_wants_repaint = cw.gpu.egui_ctx.has_requested_repaint();
+            if egui_wants_repaint {
+                crate::foundation::frame_profiler::note_repaint(
+                    concat!(file!(), ":", line!(), " about_to_wait_tick"),
+                );
+                cw.win.request_redraw();
+            }
         }
 
         // Frame-pacing control flow:
-        //   • When idle (no input + no animations for ≥30 frames) we drop to
-        //     WaitUntil(now + 16ms) so background-driven repaints (data ticks,
-        //     drawing-db saves) collapse to ≤60 Hz instead of spinning the
-        //     event loop. winit will still wake immediately on any input event
-        //     or explicit request_redraw, so latency for user actions is
-        //     unaffected.
-        //   • Otherwise: Poll, exactly as before — Fifo present blocks in
-        //     get_current_texture() so the loop is naturally vsync-bounded.
-        if crate::foundation::frame_profiler::is_idle() {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(16);
-            el.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(deadline));
-        } else {
-            el.set_control_flow(winit::event_loop::ControlFlow::Poll);
-        }
+        //   • Always Wait — the loop sleeps until winit wakes it for a real
+        //     event (RedrawRequested triggered by request_redraw, input, OS
+        //     events). request_redraw is now driven by egui's repaint flags,
+        //     not unconditional, so when truly idle we sleep at 0 fps until a
+        //     tick / interaction wakes us via wake_native_ui or input.
+        el.set_control_flow(winit::event_loop::ControlFlow::Wait);
     }
 }
 

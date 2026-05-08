@@ -36,6 +36,22 @@ use std::time::Duration;
 /// Global senders for forwarding ticks/data to ALL native chart windows
 pub static NATIVE_CHART_TXS: std::sync::OnceLock<Mutex<Vec<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
 
+/// Global egui Context for cross-thread repaint requests. The native chart
+/// window installs its Context here on startup so background threads (data
+/// feeds, fetch jobs, async tasks) can wake the UI when they have data to
+/// show. egui::Context is Arc-internal and `request_repaint` is thread-safe.
+pub static NATIVE_EGUI_CTX: std::sync::OnceLock<egui::Context> = std::sync::OnceLock::new();
+
+/// Wake the native chart UI to render a frame. Safe to call from any thread.
+/// No-op until the chart window has been created (and the OnceLock filled).
+/// Call this after sending a ChartCommand or completing a background fetch
+/// that the user expects to see — without it, the UI stays asleep.
+pub fn wake_native_ui() {
+    if let Some(ctx) = NATIVE_EGUI_CTX.get() {
+        ctx.request_repaint();
+    }
+}
+
 /// Send bar data from WebView to native chart (called when WebView loads data for requested symbol)
 #[tauri::command]
 fn native_chart_data(symbol: String, timeframe: String, bars: Vec<JsBar>) {
@@ -72,6 +88,10 @@ pub fn send_to_native_chart(cmd: chart_renderer::ChartCommand) {
             guard.retain(|tx| tx.send(cmd.clone()).is_ok());
         }
     }
+    // Wake the UI loop so the new data is rendered. Required after the
+    // catch-all per-frame repaint was removed — without this, ticks/bars
+    // pile up in the mpsc queue until the user moves the mouse.
+    wake_native_ui();
 }
 
 /// Bar data passed from WebView
