@@ -1665,6 +1665,10 @@ pub(crate) struct Chart {
     pub(crate) pane_picker_query: String,          // symbol search query inside picker
     pub(crate) pane_picker_save_name: String,      // template name input in pane picker
     pub(crate) pane_picker_option_mode: bool,      // Chart-mode picker: false=ticker, true=option chain
+    /// GPU candle render params — populated each frame by render_chart_pane,
+    /// consumed by ChartPipeline::upload before the chart render pass.
+    #[cfg(feature = "gpu_chart_v2")]
+    pub(crate) gpu_render_params: crate::chart::renderer_gpu::ChartRenderParams,
 }
 
 impl Chart {
@@ -1790,6 +1794,8 @@ impl Chart {
             pane_picker_query: String::new(),
             pane_picker_save_name: String::new(),
             pane_picker_option_mode: false,
+            #[cfg(feature = "gpu_chart_v2")]
+            gpu_render_params: crate::chart::renderer_gpu::ChartRenderParams::default(),
         }
     }
     fn process(&mut self, cmd: ChartCommand) {
@@ -4729,6 +4735,19 @@ impl GpuCtx {
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
 
+        // Phase 2+: Upload chart instances + view uniform for the active pane.
+        // Must happen after egui run (params populated by render_chart_pane) and
+        // before the render passes.
+        #[cfg(feature = "gpu_chart_v2")]
+        if let Some(chart) = panes.get(*active_pane) {
+            self.chart_pipeline.upload(
+                &self.queue,
+                &chart.gpu_render_params,
+                self.config.width as f32,
+                self.config.height as f32,
+            );
+        }
+
         // Phase 3: Tessellation — optimize for crisp text
         let t2 = std::time::Instant::now();
         self.egui_ctx.tessellation_options_mut(|opts| {
@@ -4761,14 +4780,30 @@ impl GpuCtx {
         self.queue.submit(std::iter::once(enc.finish()));
         let upload_us = t3.elapsed().as_micros() as u64;
 
-        // Phase 5: Render pass
+        // Phase 5a: GPU chart pass (SPEC_GPU_CHART_REFACTOR.md Phase 2+).
+        // Runs BEFORE egui so candles are under egui chrome (grid, axes, crosshair).
+        // Uses LoadOp::Clear(BLACK) to initialise the surface; egui uses LoadOp::Load.
+        // When the feature is off the egui pass keeps its own Clear so nothing changes.
+        #[cfg(feature = "gpu_chart_v2")]
+        {
+            let chart_us = self.chart_pipeline.render(&self.device, &self.queue, &view);
+            crate::monitoring::set_chart_pass_us(chart_us);
+        }
+
+        // Phase 5b: egui render pass
         let t4 = std::time::Instant::now();
         let mut enc2 = self.device.create_command_encoder(&Default::default());
+        // When gpu_chart_v2 is active the chart pass already cleared the surface,
+        // so egui uses LoadOp::Load to composite on top. Otherwise egui clears itself.
+        #[cfg(feature = "gpu_chart_v2")]
+        let egui_load_op = wgpu::LoadOp::Load;
+        #[cfg(not(feature = "gpu_chart_v2"))]
+        let egui_load_op = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
         let mut pass = enc2.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view, resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations { load: egui_load_op, store: wgpu::StoreOp::Store },
             })],
             depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
         }).forget_lifetime();
@@ -4776,16 +4811,6 @@ impl GpuCtx {
         drop(pass);
         self.queue.submit(std::iter::once(enc2.finish()));
         let render_us = t4.elapsed().as_micros() as u64;
-
-        // Phase 5b: GPU chart pass (SPEC_GPU_CHART_REFACTOR.md). Runs after
-        // egui's pass; uses LoadOp::Load so it composites on top. Phase 1
-        // paints a magenta debug rect to verify the two-pass setup; Phase 2+
-        // replaces with real candle/indicator/drawing rendering.
-        #[cfg(feature = "gpu_chart_v2")]
-        {
-            let chart_us = self.chart_pipeline.render(&self.device, &self.queue, &view);
-            crate::monitoring::set_chart_pass_us(chart_us);
-        }
 
         // Phase 6: Present
         let t5 = std::time::Instant::now();

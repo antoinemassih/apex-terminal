@@ -1,71 +1,272 @@
-//! GPU chart pipeline — replaces egui-based chart rendering with a dedicated
-//! wgpu render pass. See `SPEC_GPU_CHART_REFACTOR.md`.
+//! GPU chart pipeline — dedicated wgpu render pass replacing egui candle rendering.
 //!
-//! Phase 1 (this commit): foundation only. The pipeline paints a magenta
-//! debug rectangle over the surface to verify a second render pass can
-//! interleave with egui's pass without breaking compositing. Pipeline build
-//! happens unconditionally (so the WGSL compiles in CI on every build);
-//! actual rendering is gated by the `gpu_chart_v2` Cargo feature.
+//! Phase 2: instanced candle rendering. The pipeline runs BEFORE egui's pass so
+//! that egui chrome (grid lines, axes, crosshair, drawings) composites on top.
 //!
-//! Phase 2+: real candle / indicator / drawing rendering. egui will draw
-//! chrome on top.
+//! Each visible bar is one instance; the vertex shader expands it to 12 vertices
+//! (6 for the body quad, 6 for the wick quad). CPU uploads only the visible window
+//! (~200–500 instances) on each frame; the pre-allocated instance buffer holds up
+//! to 100 k bars.
+//!
+//! Phase 3+ will add indicators, drawings, and multi-pane support.
 
 use std::time::Instant;
 
+// ── Public data types (used by pane.rs) ─────────────────────────────────────
+
+/// Per-bar instance data uploaded to the GPU. 24 bytes; `bar_slot` is the
+/// 0-based index within the visible window starting at `floor(chart.vs)`.
+#[repr(C)]
+pub struct CandleInstance {
+    pub bar_slot: f32,
+    pub open:     f32,
+    pub high:     f32,
+    pub low:      f32,
+    pub close:    f32,
+    pub flags:    u32,  // bit 0: bull (close >= open)
+}
+
+/// Chart parameters populated by `render_chart_pane` during egui's run and
+/// consumed by `ChartPipeline::upload` before the render passes.
+pub struct ChartRenderParams {
+    pub instances:  Vec<CandleInstance>,
+    /// Fractional part of `chart.vs` (sub-bar pan offset, 0..1).
+    pub vs_frac:    f32,
+    /// `chart.vc + dynamic_pad` — total bar slots across the chart width.
+    pub vc_total:   f32,
+    /// Visible price range bottom.
+    pub price_low:  f32,
+    /// Visible price range top.
+    pub price_high: f32,
+    /// Chart area in window pixels: `[left, top, right, bottom]`.
+    pub chart_rect: [f32; 4],
+    /// Bull candle color `[r, g, b, a]` (0..1).
+    pub bull:       [f32; 4],
+    /// Bear candle color `[r, g, b, a]` (0..1).
+    pub bear:       [f32; 4],
+}
+
+impl Default for ChartRenderParams {
+    fn default() -> Self {
+        Self {
+            instances:  Vec::new(),
+            vs_frac:    0.0,
+            vc_total:   200.0,
+            price_low:  0.0,
+            price_high: 1.0,
+            chart_rect: [0.0; 4],
+            bull: [0.0, 0.78, 0.35, 1.0],
+            bear: [0.88, 0.22, 0.22, 1.0],
+        }
+    }
+}
+
+// ── Internal GPU types ───────────────────────────────────────────────────────
+
+/// Uniform block matching the WGSL `ViewUniform` struct (80 bytes, std140).
+#[repr(C)]
+struct ViewUniform {
+    vs_frac:        f32,
+    vc_total:       f32,
+    price_low:      f32,
+    price_high:     f32,
+    chart_x_min:    f32,  // NDC x of chart area left
+    chart_x_max:    f32,  // NDC x of chart area right
+    chart_y_min:    f32,  // NDC y of chart area bottom (smaller value)
+    chart_y_max:    f32,  // NDC y of chart area top (larger value)
+    body_half_slot: f32,  // body half-width as fraction of one bar slot (0.35)
+    wick_half_ndc:  f32,  // 1px half-width in NDC = 1.0 / surface_width
+    _pad:           [f32; 2],
+    bull:           [f32; 4],
+    bear:           [f32; 4],
+}
+
+const MAX_INSTANCES: u64 = 100_000;
+
+fn instances_as_bytes(s: &[CandleInstance]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            s.as_ptr() as *const u8,
+            s.len() * std::mem::size_of::<CandleInstance>(),
+        )
+    }
+}
+
+fn uniform_as_bytes(u: &ViewUniform) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            u as *const ViewUniform as *const u8,
+            std::mem::size_of::<ViewUniform>(),
+        )
+    }
+}
+
+// ── Pipeline ─────────────────────────────────────────────────────────────────
+
 pub struct ChartPipeline {
-    pipeline: wgpu::RenderPipeline,
+    pipeline:       wgpu::RenderPipeline,
+    instance_buf:   wgpu::Buffer,
+    uniform_buf:    wgpu::Buffer,
+    bind_group:     wgpu::BindGroup,
+    instance_count: u32,
 }
 
 impl ChartPipeline {
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("chart_pipeline.debug_rect.shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("debug.wgsl").into()),
+            label:  Some("chart_pipeline.candle.shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("candle.wgsl").into()),
         });
+
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label:   Some("chart_pipeline.bgl"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding:    0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty:                 wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size:   None,
+                },
+                count: None,
+            }],
+        });
+
+        let instance_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label:              Some("chart_pipeline.instance_buf"),
+            size:               MAX_INSTANCES * std::mem::size_of::<CandleInstance>() as u64,
+            usage:              wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label:              Some("chart_pipeline.uniform_buf"),
+            size:               std::mem::size_of::<ViewUniform>() as u64,
+            usage:              wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label:   Some("chart_pipeline.bind_group"),
+            layout:  &bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding:  0,
+                resource: uniform_buf.as_entire_binding(),
+            }],
+        });
+
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("chart_pipeline.debug_rect.layout"),
-            bind_group_layouts: &[],
+            label:                Some("chart_pipeline.layout"),
+            bind_group_layouts:   &[&bgl],
             push_constant_ranges: &[],
         });
+
+        let attrs = [
+            wgpu::VertexAttribute { offset: 0,  shader_location: 0, format: wgpu::VertexFormat::Float32 },
+            wgpu::VertexAttribute { offset: 4,  shader_location: 1, format: wgpu::VertexFormat::Float32 },
+            wgpu::VertexAttribute { offset: 8,  shader_location: 2, format: wgpu::VertexFormat::Float32 },
+            wgpu::VertexAttribute { offset: 12, shader_location: 3, format: wgpu::VertexFormat::Float32 },
+            wgpu::VertexAttribute { offset: 16, shader_location: 4, format: wgpu::VertexFormat::Float32 },
+            wgpu::VertexAttribute { offset: 20, shader_location: 5, format: wgpu::VertexFormat::Uint32  },
+        ];
+
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("chart_pipeline.debug_rect"),
+            label:  Some("chart_pipeline.candle"),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
-                module: &shader,
+                module:      &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[],
+                buffers:     &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<CandleInstance>() as u64,
+                    step_mode:    wgpu::VertexStepMode::Instance,
+                    attributes:   &attrs,
+                }],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
+                module:      &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    format:     surface_format,
+                    blend:      None,  // opaque — egui composites on top
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: Default::default(),
             }),
-            primitive: wgpu::PrimitiveState::default(),
+            primitive:    wgpu::PrimitiveState::default(),
             depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
+            multisample:  wgpu::MultisampleState::default(),
+            multiview:    None,
+            cache:        None,
         });
-        Self { pipeline }
+
+        eprintln!("[gpu] chart_pipeline: WGSL validated OK (phase=2_candle, active=true)");
+
+        Self { pipeline, instance_buf, uniform_buf, bind_group, instance_count: 0 }
     }
 
-    /// Run the chart pass into the supplied surface view. Returns elapsed
-    /// microseconds (CPU-side encode + submit; does not include GPU execution).
+    /// Upload the visible bar instances and view uniform for the active pane.
+    /// Must be called after `egui_ctx.run()` (params populated) and before render.
+    pub fn upload(
+        &mut self,
+        queue:    &wgpu::Queue,
+        params:   &ChartRenderParams,
+        surface_w: f32,
+        surface_h: f32,
+    ) {
+        let count = params.instances.len().min(MAX_INSTANCES as usize) as u32;
+        self.instance_count = count;
+
+        if count > 0 {
+            queue.write_buffer(
+                &self.instance_buf,
+                0,
+                instances_as_bytes(&params.instances[..count as usize]),
+            );
+        }
+
+        // Guard against degenerate price ranges (e.g. no bars loaded yet).
+        let price_high = if (params.price_high - params.price_low).abs() < 1e-6 {
+            params.price_low + 1.0
+        } else {
+            params.price_high
+        };
+
+        // Pixel → NDC helpers.  NDC Y is inverted relative to pixel Y.
+        let px_to_ndc_x = |px: f32| px / surface_w * 2.0 - 1.0;
+        let px_to_ndc_y = |py: f32| 1.0 - py / surface_h * 2.0;
+
+        let [cl, ct, cr, cb] = params.chart_rect;
+        let uniform = ViewUniform {
+            vs_frac:        params.vs_frac,
+            vc_total:       params.vc_total.max(1.0),
+            price_low:      params.price_low,
+            price_high,
+            chart_x_min:    px_to_ndc_x(cl),
+            chart_x_max:    px_to_ndc_x(cr),
+            chart_y_min:    px_to_ndc_y(cb),  // bottom pixel → lower NDC y
+            chart_y_max:    px_to_ndc_y(ct),  // top pixel    → higher NDC y
+            body_half_slot: 0.35,
+            wick_half_ndc:  1.0 / surface_w.max(1.0),
+            _pad:           [0.0; 2],
+            bull:           params.bull,
+            bear:           params.bear,
+        };
+        queue.write_buffer(&self.uniform_buf, 0, uniform_as_bytes(&uniform));
+
+        crate::monitoring::set_chart_pipeline_active(true);
+        crate::monitoring::set_chart_visible_bars(count);
+    }
+
+    /// Run the chart render pass. Uses `LoadOp::Clear(BLACK)` — must run before
+    /// egui's pass so that egui chrome composites on top (`LoadOp::Load`).
     ///
-    /// `LoadOp::Load` is critical — egui's render pass has already drawn into
-    /// this view, and clearing here would erase it. The chart pass paints on
-    /// top of egui (Phase 1 demo); in Phase 2+ the painting order will flip.
+    /// Returns CPU-side encode+submit time in microseconds.
     pub fn render(
         &self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        view: &wgpu::TextureView,
+        queue:  &wgpu::Queue,
+        view:   &wgpu::TextureView,
     ) -> u64 {
         let t0 = Instant::now();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -73,21 +274,27 @@ impl ChartPipeline {
         });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("chart_pass.debug_rect"),
+                label: Some("chart_pass.candle"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
+                        load:  wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
+                timestamp_writes:         None,
+                occlusion_query_set:      None,
             });
-            pass.set_pipeline(&self.pipeline);
-            pass.draw(0..6, 0..1);
+
+            if self.instance_count > 0 {
+                pass.set_pipeline(&self.pipeline);
+                pass.set_bind_group(0, &self.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.instance_buf.slice(..));
+                // 12 vertices per instance: body (0..6) + wick (6..12)
+                pass.draw(0..12, 0..self.instance_count);
+            }
         }
         queue.submit(std::iter::once(encoder.finish()));
         t0.elapsed().as_micros() as u64

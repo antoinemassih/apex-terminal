@@ -1770,6 +1770,12 @@ fn render_chart_pane(
         if !alt_wick_mesh.vertices.is_empty() { painter.add(egui::Shape::mesh(alt_wick_mesh)); }
         if !alt_body_mesh.vertices.is_empty() { painter.add(egui::Shape::mesh(alt_body_mesh)); }
     } else if !is_alt_mode {
+    // Active pane candles route to the GPU pipeline when gpu_chart_v2 is on;
+    // non-active panes always use the egui mesh path so they still render.
+    let skip_egui_candles: bool;
+    #[cfg(feature = "gpu_chart_v2")] { skip_egui_candles = is_active; }
+    #[cfg(not(feature = "gpu_chart_v2"))] { skip_egui_candles = false; }
+    if !skip_egui_candles {
     // Candles — batched into meshes for fast GPU rendering
     // Build wick mesh + body mesh + session lines in a single pass
     {
@@ -2016,6 +2022,43 @@ fn render_chart_pane(
         painter.add(egui::Shape::mesh(body_mesh));
     }
     } // end candle batch block
+    } // end if !skip_egui_candles
+
+    // GPU path: build CandleInstance array for the active pane when gpu_chart_v2 is
+    // enabled. Stored in chart.gpu_render_params; uploaded in GpuCtx::render before
+    // the chart pass. Non-active panes are handled above via the egui mesh path.
+    #[cfg(feature = "gpu_chart_v2")]
+    if is_active {
+        use crate::chart::renderer_gpu::{CandleInstance, ChartRenderParams};
+        let mut instances = Vec::with_capacity((end - vs as u32) as usize);
+        for i in (vs as u32)..end {
+            if let Some(b) = chart.bars.get(i as usize) {
+                instances.push(CandleInstance {
+                    bar_slot: i as f32 - vs.floor(),
+                    open:  b.open,
+                    high:  b.high,
+                    low:   b.low,
+                    close: b.close,
+                    flags: if b.close >= b.open { 1 } else { 0 },
+                });
+            }
+        }
+        let c32 = |c: egui::Color32| -> [f32; 4] {
+            [c.r() as f32 / 255.0, c.g() as f32 / 255.0,
+             c.b() as f32 / 255.0, c.a() as f32 / 255.0]
+        };
+        chart.gpu_render_params = ChartRenderParams {
+            instances,
+            vs_frac:    frac,
+            vc_total:   total as f32,
+            price_low:  min_p,
+            price_high: max_p,
+            chart_rect: [rect.left(), rect.top() + pt, rect.left() + cw, rect.top() + pt + ch],
+            bull: c32(t.bull),
+            bear: c32(t.bear),
+        };
+    }
+
     } // end else if !is_alt_mode
 
     // ── Multi-symbol overlays ─────────────────────────────────────────────
