@@ -1770,10 +1770,14 @@ fn render_chart_pane(
         if !alt_wick_mesh.vertices.is_empty() { painter.add(egui::Shape::mesh(alt_wick_mesh)); }
         if !alt_body_mesh.vertices.is_empty() { painter.add(egui::Shape::mesh(alt_body_mesh)); }
     } else if !is_alt_mode {
-    // Active pane candles route to the GPU pipeline when gpu_chart_v2 is on;
-    // non-active panes always use the egui mesh path so they still render.
+    // Active pane candles route to the GPU pipeline when gpu_chart_v2 is on
+    // AND the candle mode is Standard (the only mode whose vertices are pure
+    // OHLC). Other modes (HeikinAshi, Line, Area, Violin variants) need the
+    // egui path so their custom geometry still renders. Non-active panes
+    // always use the egui mesh path so they still render.
+    let use_gpu_candles = matches!(chart.candle_mode, CandleMode::Standard);
     let skip_egui_candles: bool;
-    #[cfg(feature = "gpu_chart_v2")] { skip_egui_candles = is_active; }
+    #[cfg(feature = "gpu_chart_v2")] { skip_egui_candles = is_active && use_gpu_candles; }
     #[cfg(not(feature = "gpu_chart_v2"))] { skip_egui_candles = false; }
     if !skip_egui_candles {
     // Candles — batched into meshes for fast GPU rendering
@@ -2024,28 +2028,38 @@ fn render_chart_pane(
     } // end candle batch block
     } // end if !skip_egui_candles
 
-    // GPU path: build CandleInstance array for the active pane when gpu_chart_v2 is
-    // enabled. Stored in chart.gpu_render_params; uploaded in GpuCtx::render before
-    // the chart pass. Non-active panes are handled above via the egui mesh path.
+    // GPU path: always populate chart.gpu_render_params for the active pane so the
+    // chart pipeline never reads stale data from a previous frame. When use_gpu_candles
+    // is false (non-Standard mode), instances stays empty — the chart pass clears the
+    // surface and the egui path draws the candles on top.
     #[cfg(feature = "gpu_chart_v2")]
     if is_active {
         use crate::chart::renderer_gpu::{CandleInstance, ChartRenderParams};
-        let mut instances = Vec::with_capacity((end - vs as u32) as usize);
-        for i in (vs as u32)..end {
-            if let Some(b) = chart.bars.get(i as usize) {
-                instances.push(CandleInstance {
-                    bar_slot: i as f32 - vs.floor(),
-                    open:  b.open,
-                    high:  b.high,
-                    low:   b.low,
-                    close: b.close,
-                    flags: if b.close >= b.open { 1 } else { 0 },
-                });
+        let mut instances = Vec::new();
+        if use_gpu_candles {
+            instances.reserve((end - vs as u32) as usize);
+            for i in (vs as u32)..end {
+                if let Some(b) = chart.bars.get(i as usize) {
+                    instances.push(CandleInstance {
+                        bar_slot: i as f32 - vs.floor(),
+                        open:  b.open,
+                        high:  b.high,
+                        low:   b.low,
+                        close: b.close,
+                        flags: if b.close >= b.open { 1 } else { 0 },
+                    });
+                }
             }
         }
+        // Surface is sRGB-encoded — the GPU gamma-encodes shader output, so we
+        // must hand it linear values. Color32 channels are sRGB bytes; convert.
+        fn srgb_to_linear(c: u8) -> f32 {
+            let s = c as f32 / 255.0;
+            if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+        }
         let c32 = |c: egui::Color32| -> [f32; 4] {
-            [c.r() as f32 / 255.0, c.g() as f32 / 255.0,
-             c.b() as f32 / 255.0, c.a() as f32 / 255.0]
+            [srgb_to_linear(c.r()), srgb_to_linear(c.g()),
+             srgb_to_linear(c.b()), c.a() as f32 / 255.0]
         };
         chart.gpu_render_params = ChartRenderParams {
             instances,
@@ -2054,6 +2068,7 @@ fn render_chart_pane(
             price_low:  min_p,
             price_high: max_p,
             chart_rect: [rect.left(), rect.top() + pt, rect.left() + cw, rect.top() + pt + ch],
+            bg:   c32(t.bg),
             bull: c32(t.bull),
             bear: c32(t.bear),
         };
@@ -10865,7 +10880,15 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     CROSSHAIR_SYNC_TIME.with(|t| t.set(0));
 
 
-    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.bg)).show(ctx, |ui| {
+    // When the GPU chart pipeline is active it clears the surface to the theme bg
+    // before egui's pass runs, so an opaque CentralPanel fill would cover the GPU
+    // candles. Use a transparent frame in that case; otherwise keep the bg fill so
+    // egui's pass paints the canvas itself.
+    #[cfg(feature = "gpu_chart_v2")]
+    let central_frame = egui::Frame::NONE;
+    #[cfg(not(feature = "gpu_chart_v2"))]
+    let central_frame = egui::Frame::NONE.fill(t.bg);
+    egui::CentralPanel::default().frame(central_frame).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
         let actual_count = layout.max_panes().min(panes.len());
         let (visible_count, pane_rects) = if let Some(max_idx) = watchlist.maximized_pane {

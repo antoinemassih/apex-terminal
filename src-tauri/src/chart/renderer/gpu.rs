@@ -4737,7 +4737,8 @@ impl GpuCtx {
 
         // Phase 2+: Upload chart instances + view uniform for the active pane.
         // Must happen after egui run (params populated by render_chart_pane) and
-        // before the render passes.
+        // before the render passes. pixels_per_point bridges egui's logical-pixel
+        // coords to the surface's physical pixels.
         #[cfg(feature = "gpu_chart_v2")]
         if let Some(chart) = panes.get(*active_pane) {
             self.chart_pipeline.upload(
@@ -4745,6 +4746,7 @@ impl GpuCtx {
                 &chart.gpu_render_params,
                 self.config.width as f32,
                 self.config.height as f32,
+                full_output.pixels_per_point,
             );
         }
 

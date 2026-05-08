@@ -40,6 +40,9 @@ pub struct ChartRenderParams {
     pub price_high: f32,
     /// Chart area in window pixels: `[left, top, right, bottom]`.
     pub chart_rect: [f32; 4],
+    /// Theme background color `[r, g, b, a]` (0..1) — used as the chart pass clear color
+    /// so the GPU canvas matches the theme behind the candles.
+    pub bg:         [f32; 4],
     /// Bull candle color `[r, g, b, a]` (0..1).
     pub bull:       [f32; 4],
     /// Bear candle color `[r, g, b, a]` (0..1).
@@ -55,6 +58,7 @@ impl Default for ChartRenderParams {
             price_low:  0.0,
             price_high: 1.0,
             chart_rect: [0.0; 4],
+            bg:   [0.0, 0.0, 0.0, 1.0],
             bull: [0.0, 0.78, 0.35, 1.0],
             bear: [0.88, 0.22, 0.22, 1.0],
         }
@@ -109,6 +113,12 @@ pub struct ChartPipeline {
     uniform_buf:    wgpu::Buffer,
     bind_group:     wgpu::BindGroup,
     instance_count: u32,
+    /// Clear color for the chart render pass — set each frame from the active
+    /// pane's theme bg so the GPU canvas matches the theme.
+    clear_color:    wgpu::Color,
+    /// Scissor rect (x, y, w, h) in pixels — confines candle draws to the active
+    /// pane's chart area so partial/edge bars can't bleed into adjacent panes.
+    scissor:        (u32, u32, u32, u32),
 }
 
 impl ChartPipeline {
@@ -202,17 +212,27 @@ impl ChartPipeline {
 
         eprintln!("[gpu] chart_pipeline: WGSL validated OK (phase=2_candle, active=true)");
 
-        Self { pipeline, instance_buf, uniform_buf, bind_group, instance_count: 0 }
+        Self {
+            pipeline, instance_buf, uniform_buf, bind_group,
+            instance_count: 0,
+            clear_color: wgpu::Color::BLACK,
+            scissor: (0, 0, 0, 0),
+        }
     }
 
     /// Upload the visible bar instances and view uniform for the active pane.
     /// Must be called after `egui_ctx.run()` (params populated) and before render.
+    ///
+    /// `surface_w/h` are physical pixels (the wgpu surface size). `chart_rect`
+    /// inside `params` is in egui logical pixels — `pixels_per_point` is the
+    /// DPI scale needed to bring them onto the same scale.
     pub fn upload(
         &mut self,
         queue:    &wgpu::Queue,
         params:   &ChartRenderParams,
         surface_w: f32,
         surface_h: f32,
+        pixels_per_point: f32,
     ) {
         let count = params.instances.len().min(MAX_INSTANCES as usize) as u32;
         self.instance_count = count;
@@ -232,11 +252,17 @@ impl ChartPipeline {
             params.price_high
         };
 
+        // chart_rect is in logical pixels — scale to physical to match the surface.
+        let scale = pixels_per_point.max(0.0001);
+        let [cl_lp, ct_lp, cr_lp, cb_lp] = params.chart_rect;
+        let cl = cl_lp * scale;
+        let ct = ct_lp * scale;
+        let cr = cr_lp * scale;
+        let cb = cb_lp * scale;
+
         // Pixel → NDC helpers.  NDC Y is inverted relative to pixel Y.
         let px_to_ndc_x = |px: f32| px / surface_w * 2.0 - 1.0;
         let px_to_ndc_y = |py: f32| 1.0 - py / surface_h * 2.0;
-
-        let [cl, ct, cr, cb] = params.chart_rect;
         let uniform = ViewUniform {
             vs_frac:        params.vs_frac,
             vc_total:       params.vc_total.max(1.0),
@@ -253,6 +279,25 @@ impl ChartPipeline {
             bear:           params.bear,
         };
         queue.write_buffer(&self.uniform_buf, 0, uniform_as_bytes(&uniform));
+
+        // Match the chart pass clear to the theme bg so the GPU canvas blends with
+        // the egui chrome painted on top (axes, grid, indicators, drawings).
+        self.clear_color = wgpu::Color {
+            r: params.bg[0] as f64,
+            g: params.bg[1] as f64,
+            b: params.bg[2] as f64,
+            a: params.bg[3] as f64,
+        };
+
+        // Scissor rect in pixels — clamped to surface bounds so wgpu validation
+        // never trips on a partially-offscreen chart_rect.
+        let sw_u = surface_w.max(1.0) as u32;
+        let sh_u = surface_h.max(1.0) as u32;
+        let sx = (cl.max(0.0) as u32).min(sw_u);
+        let sy = (ct.max(0.0) as u32).min(sh_u);
+        let sw = ((cr.max(cl) as u32).min(sw_u)).saturating_sub(sx);
+        let sh = ((cb.max(ct) as u32).min(sh_u)).saturating_sub(sy);
+        self.scissor = (sx, sy, sw, sh);
 
         crate::monitoring::set_chart_pipeline_active(true);
         crate::monitoring::set_chart_visible_bars(count);
@@ -279,7 +324,7 @@ impl ChartPipeline {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load:  wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load:  wgpu::LoadOp::Clear(self.clear_color),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -288,7 +333,11 @@ impl ChartPipeline {
                 occlusion_query_set:      None,
             });
 
-            if self.instance_count > 0 {
+            if self.instance_count > 0 && self.scissor.2 > 0 && self.scissor.3 > 0 {
+                // Scissor only applies to draws (not LoadOp::Clear), so the surface
+                // still gets cleared to bg edge-to-edge while candles are confined
+                // to the active pane's chart area.
+                pass.set_scissor_rect(self.scissor.0, self.scissor.1, self.scissor.2, self.scissor.3);
                 pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, &self.bind_group, &[]);
                 pass.set_vertex_buffer(0, self.instance_buf.slice(..));
