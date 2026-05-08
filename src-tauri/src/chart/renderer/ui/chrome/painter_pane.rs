@@ -449,13 +449,14 @@ impl<'a> PainterPaneHeader<'a> {
             painter.rect_filled(rect, 0.0, active_bg);
         }
 
-        // 2. Outer perimeter hairline — routed through `border_variant`
-        //    (bg + 10% luminance, intentionally more visible than
-        //    `toolbar_border`) at full alpha so top/bottom edges actually
-        //    bound the header rect rather than disappearing into the bg.
+        // 2. Outer perimeter hairline — text-derived alpha for guaranteed
+        //    contrast across all themes (bg-derived `border_variant` was
+        //    perceptually invisible at 1px on darker themes). Text always
+        //    contrasts strongly with bg; alpha ~50/255 = barely-there hairline
+        //    that reliably reads as structural chrome.
         painter.rect_stroke(
             rect, 0.0,
-            Stroke::new(stroke_hair(), t.border_variant),
+            Stroke::new(stroke_hair(), color_alpha(t.text, 50)),
             StrokeKind::Inside,
         );
 

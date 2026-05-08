@@ -1591,9 +1591,9 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
         let open = &mut style.visuals.widgets.open;
         open.corner_radius = egui::CornerRadius::ZERO;
 
-        // Shadows → NONE for Meridien (#16)
-        style.visuals.popup_shadow  = egui::epaint::Shadow::NONE;
-        style.visuals.window_shadow = egui::epaint::Shadow::NONE;
+        // Shadows: keep the values applied in setup_theme — Meridien previously
+        // zeroed these (#16) but that left ComboBox/menus with no depth cue.
+        // The setup_theme values are already subtle and theme-appropriate.
         style.visuals.window_stroke = egui::Stroke::new(settings.stroke_std, toolbar_border);
         style.visuals.window_corner_radius = egui::CornerRadius::ZERO;
         style.visuals.menu_corner_radius   = egui::CornerRadius::ZERO;
