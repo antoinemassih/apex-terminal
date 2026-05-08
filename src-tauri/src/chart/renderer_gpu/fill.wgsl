@@ -38,15 +38,16 @@ struct VertOut {
 }
 
 fn slot_to_ndc_x(slot: f32) -> f32 {
+    // Exact match for egui's bx(): rect.left() + (slot - 2*frac + 0.5)*bs.
     let slot_w = (view.chart_x_max - view.chart_x_min) / view.vc_total;
-    let visible_slot = slot - view.vs_frac;
-    return view.chart_x_min + (visible_slot + 0.5) * slot_w;
+    return view.chart_x_min + (slot - 2.0 * view.vs_frac + 0.5) * slot_w;
 }
 
 fn price_to_ndc_y(price: f32) -> f32 {
     let range = view.price_high - view.price_low;
     let t = (price - view.price_low) / range;
-    return mix(view.chart_y_min, view.chart_y_max, clamp(t, 0.0, 1.0));
+    // No clamp — scissor handles off-chart clipping.
+    return mix(view.chart_y_min, view.chart_y_max, t);
 }
 
 @vertex

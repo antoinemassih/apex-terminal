@@ -38,18 +38,25 @@ struct VertOut {
 fn price_to_ndc_y(price: f32) -> f32 {
     let range = view.price_high - view.price_low;
     let t = (price - view.price_low) / range;
-    // t=0 → bottom of chart (chart_y_min), t=1 → top (chart_y_max)
-    return mix(view.chart_y_min, view.chart_y_max, clamp(t, 0.0, 1.0));
+    // t=0 → bottom of chart (chart_y_min), t=1 → top (chart_y_max).
+    // No clamp — the scissor rect clips off-chart geometry. Clamping here
+    // would "stick" line endpoints to the chart edges and skew slopes when
+    // one endpoint goes outside the visible price range.
+    return mix(view.chart_y_min, view.chart_y_max, t);
 }
 
 @vertex
 fn vs_main(@builtin(vertex_index) vid: u32, inst: InstanceIn) -> VertOut {
     let is_bull = (inst.flags & 1u) != 0u;
 
-    // Horizontal geometry
-    let slot_float = inst.bar_slot - view.vs_frac;
+    // Horizontal geometry — exact match for egui's `bx(i)` closure in pane.rs:
+    //   bx(i) = rect.left() + (i - vs)*bs + 0.5*bs - frac*bs
+    // With slot = i - floor(vs):
+    //   (i - vs)*bs = (slot - frac)*bs
+    //   bx(i) - rect.left() = (slot - 2*frac + 0.5) * bs
+    // So GPU and egui agree on every bar's pixel position, hit-test included.
     let slot_w = (view.chart_x_max - view.chart_x_min) / view.vc_total;
-    let x_center = view.chart_x_min + (slot_float + 0.5) * slot_w;
+    let x_center = view.chart_x_min + (inst.bar_slot - 2.0 * view.vs_frac + 0.5) * slot_w;
     let half_body = slot_w * view.body_half_slot;
 
     // Vertical geometry — bull: body from open (bot) to close (top)
