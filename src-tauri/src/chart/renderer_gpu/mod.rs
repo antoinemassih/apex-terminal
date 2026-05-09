@@ -22,7 +22,11 @@ pub struct CandleInstance {
     pub high:     f32,
     pub low:      f32,
     pub close:    f32,
-    pub flags:    u32,  // bit 0: bull (close >= open)
+    /// bit 0: bull (close >= open)
+    /// bit 1: extended hours (pre-market or after-hours) — body + wick get
+    ///        their alpha multiplied by `view.eth_alpha` so ETH bars render
+    ///        dimmer than regular-session candles.
+    pub flags:    u32,
 }
 
 /// One segment of an indicator line. 36 bytes. The CPU side splits a polyline
@@ -77,6 +81,9 @@ pub struct ChartRenderParams {
     pub bull:       [f32; 4],
     /// Bear candle color `[r, g, b, a]` (0..1).
     pub bear:       [f32; 4],
+    /// Multiplier for the alpha of candles flagged as extended-hours (bit 1
+    /// of `CandleInstance.flags`). 1.0 = no dim. Typical: 0.18..0.4.
+    pub eth_alpha:  f32,
 }
 
 impl Default for ChartRenderParams {
@@ -93,15 +100,15 @@ impl Default for ChartRenderParams {
             bg:   [0.0, 0.0, 0.0, 1.0],
             bull: [0.0, 0.78, 0.35, 1.0],
             bear: [0.88, 0.22, 0.22, 1.0],
+            eth_alpha: 1.0,
         }
     }
 }
 
 // ── Internal GPU types ───────────────────────────────────────────────────────
 
-/// Uniform block matching the WGSL `ViewUniform` struct (80 bytes, std140).
-/// Shared between candle.wgsl and line.wgsl — the line shader reads
-/// surface_w/h, the candle shader reads body_half_slot/wick_half_ndc.
+/// Uniform block matching the WGSL `ViewUniform` struct (96 bytes, std140).
+/// Shared between candle.wgsl, line.wgsl and fill.wgsl.
 #[repr(C)]
 struct ViewUniform {
     vs_frac:        f32,
@@ -118,6 +125,9 @@ struct ViewUniform {
     surface_h:      f32,
     bull:           [f32; 4],
     bear:           [f32; 4],
+    /// alpha multiplier for candles flagged extended-hours (1.0 = no dim).
+    eth_alpha:      f32,
+    _pad:           [f32; 3],
 }
 
 const MAX_INSTANCES:      u64 = 100_000;
@@ -285,7 +295,12 @@ impl ChartPipeline {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format:     surface_format,
-                    blend:      None,
+                    // Alpha-blended so the extended-hours dim factor (carried
+                    // through the shader as `out.color.a *= view.eth_alpha`)
+                    // actually composites against the chart bg. Was `None`
+                    // (opaque) which discarded any alpha < 1 — ETH bars
+                    // appeared full-opacity, ignoring the session shading.
+                    blend:      Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: Default::default(),
@@ -459,11 +474,19 @@ impl ChartPipeline {
             chart_y_min:    px_to_ndc_y(cb),
             chart_y_max:    px_to_ndc_y(ct),
             body_half_slot: 0.35,
-            wick_half_ndc:  1.0 / surface_w.max(1.0),
+            // Wick total width should be 1 LOGICAL pixel to match egui's
+            // hw = 0.5 (logical). On HiDPI that's pixels_per_point physical
+            // pixels — so half-width physical = ppp/2, which in NDC is
+            // (ppp/2) / (surface_w/2) = ppp / surface_w. Previously hardcoded
+            // to 1.0/surface_w which made wicks 1 physical pixel and looked
+            // ~33% thinner than egui's wicks at ppp=1.5.
+            wick_half_ndc:  scale / surface_w.max(1.0),
             surface_w:      surface_w.max(1.0),
             surface_h:      surface_h.max(1.0),
             bull:           params.bull,
             bear:           params.bear,
+            eth_alpha:      params.eth_alpha,
+            _pad:           [0.0; 3],
         };
         queue.write_buffer(&self.uniform_buf, 0, uniform_as_bytes(&uniform));
 

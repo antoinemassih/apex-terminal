@@ -1603,10 +1603,20 @@ fn render_chart_pane(
                 let bw = (bs * 0.7).max(1.0);
                 let is_bull = b.close >= b.open;
                 let rvol = if chart.show_rvol && idx < chart.rvol_data.len() { chart.rvol_data[idx] } else { 1.0_f32 };
-                let intensity = if chart.show_rvol { (rvol / 3.0_f32).min(1.0_f32) } else { 0.4_f32 };
+                // Wider RVOL gradient: floor lower, ceiling higher, with a
+                // mild gamma curve (powf 1.3) so middling values stay subtle
+                // and only the genuinely-elevated bars pop. Was a flat
+                // alpha range 40..200 (5×); now 22..235 (~10×) so the
+                // difference between a normal bar and a volume-spike bar
+                // reads at a glance.
+                let intensity = if chart.show_rvol {
+                    (rvol / 3.0_f32).min(1.0_f32).powf(1.3)
+                } else {
+                    0.4_f32
+                };
                 let base_color = if is_bull { t.bull } else { t.bear };
                 let vol_extended = chart.timestamps.get(idx).map_or(false, |&ts| is_extended_hour(ts));
-                let alpha_base = (40.0_f32 + intensity * 160.0_f32) as u8;
+                let alpha_base = (22.0_f32 + intensity * 213.0_f32) as u8;
                 let vol_dim = if chart.session_shading && !is_crypto { chart.eth_bar_opacity } else { 0.4 };
                 let alpha = if vol_extended { (alpha_base as f32 * vol_dim) as u8 } else { alpha_base };
                 let bar_color = egui::Color32::from_rgba_unmultiplied(base_color.r(), base_color.g(), base_color.b(), alpha);
@@ -2117,13 +2127,18 @@ fn render_chart_pane(
             instances.reserve((end - vs as u32) as usize);
             for i in (vs as u32)..end {
                 if let Some(b) = chart.bars.get(i as usize) {
+                    let extended = chart.timestamps.get(i as usize)
+                        .map_or(false, |&ts| is_extended_hour(ts));
+                    let mut flags: u32 = 0;
+                    if b.close >= b.open { flags |= 1; }
+                    if extended         { flags |= 2; }
                     instances.push(CandleInstance {
                         bar_slot: i as f32 - vs.floor(),
                         open:  b.open,
                         high:  b.high,
                         low:   b.low,
                         close: b.close,
-                        flags: if b.close >= b.open { 1 } else { 0 },
+                        flags,
                     });
                 }
             }
@@ -2152,6 +2167,14 @@ fn render_chart_pane(
         chart.gpu_render_params.bg   = c32(t.bg);
         chart.gpu_render_params.bull = c32(t.bull);
         chart.gpu_render_params.bear = c32(t.bear);
+        // Mirror the egui path's `eth_alpha` calculation: when session
+        // shading is on (and not crypto) use the user-tunable opacity;
+        // otherwise fall back to the historical default dim of 45/255.
+        chart.gpu_render_params.eth_alpha = if chart.session_shading && !is_crypto {
+            chart.eth_bar_opacity
+        } else {
+            45.0 / 255.0
+        };
     }
 
     } // end else if !is_alt_mode

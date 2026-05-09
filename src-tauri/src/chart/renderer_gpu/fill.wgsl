@@ -18,6 +18,10 @@ struct ViewUniform {
     surface_h: f32,
     bull: vec4<f32>,
     bear: vec4<f32>,
+    eth_alpha: f32,
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
 }
 
 @group(0) @binding(0) var<uniform> view: ViewUniform;

@@ -17,6 +17,10 @@ struct ViewUniform {
     surface_h: f32,       // physical pixels — used by line shader
     bull: vec4<f32>,      // bull candle RGBA
     bear: vec4<f32>,      // bear candle RGBA
+    eth_alpha: f32,       // multiplier for extended-hours candle alpha
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
 }
 
 @group(0) @binding(0) var<uniform> view: ViewUniform;
@@ -47,7 +51,8 @@ fn price_to_ndc_y(price: f32) -> f32 {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vid: u32, inst: InstanceIn) -> VertOut {
-    let is_bull = (inst.flags & 1u) != 0u;
+    let is_bull     = (inst.flags & 1u) != 0u;
+    let is_extended = (inst.flags & 2u) != 0u;
 
     // Horizontal geometry — exact match for egui's `bx(i)` closure in pane.rs:
     //   bx(i) = rect.left() + (i - vs)*bs + 0.5*bs - frac*bs
@@ -73,7 +78,12 @@ fn vs_main(@builtin(vertex_index) vid: u32, inst: InstanceIn) -> VertOut {
     let adj_body_top = max(body_top, body_bot + min_h);
 
     var out: VertOut;
-    out.color = select(view.bear, view.bull, is_bull);
+    var col = select(view.bear, view.bull, is_bull);
+    // Dim extended-hours bars (pre-market / after-hours) — matches the egui
+    // path's color_alpha(c, eth_alpha) treatment.
+    let alpha_mul = select(1.0, view.eth_alpha, is_extended);
+    col = vec4<f32>(col.rgb, col.a * alpha_mul);
+    out.color = col;
 
     if vid < 6u {
         // Body quad (two CW triangles covering the body rectangle)

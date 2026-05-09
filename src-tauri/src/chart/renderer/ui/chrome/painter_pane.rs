@@ -233,25 +233,6 @@ fn header_fill(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bo
     painter.rect_filled(rect, 0.0, theme.bg.gamma_multiply(mul));
 }
 
-/// Paint a hairline outer border around inactive pane headers. Color is
-/// derived from theme luminance via `contrast_fg`-style logic — light themes
-/// get a dark border, dark themes get a light border. Width and alpha come
-/// from `header_outer_border_width` / `header_outer_border_alpha`.
-fn header_outer_border(painter: &egui::Painter, rect: Rect, theme: &Theme, _is_active: bool) {
-    // Paint the hairline border for every pane (active included). The active
-    // pane is distinguished by header fill differential, not by losing its
-    // border — losing the border made the active pane's chrome "disappear",
-    // which read as a regression vs the rest of the layout grid.
-    let st = current();
-    let contrast = contrast_fg(theme.bg);
-    let border_col = color_alpha(contrast, st.header_outer_border_alpha);
-    painter.rect_stroke(
-        rect, 0.0,
-        Stroke::new(st.header_outer_border_width, border_col),
-        StrokeKind::Inside,
-    );
-}
-
 /// Paint a vertical hairline divider at `cx` inside the header rect. Used
 /// between section clusters (nav cluster, tab/symbol area, indicator chips,
 /// right-side icon buttons). Single source of truth for all in-header dividers
@@ -462,14 +443,16 @@ impl<'a> PainterPaneHeader<'a> {
             painter.rect_filled(rect, 0.0, active_bg);
         }
 
-        // 2. Outer perimeter hairline — text-derived alpha for guaranteed
-        //    contrast across all themes (bg-derived `border_variant` was
-        //    perceptually invisible at 1px on darker themes). Text always
-        //    contrasts strongly with bg; alpha ~50/255 = barely-there hairline
-        //    that reliably reads as structural chrome.
+        // 2. Outer perimeter hairline — text-derived color so it stays visible
+        //    across both light and dark themes (bg-derived `border_variant`
+        //    became invisible on darker themes). Width and alpha come from
+        //    the active style's `header_outer_border_width` and
+        //    `header_outer_border_alpha` so per-style design tokens drive the
+        //    look rather than a hardcoded value here.
+        let st = current();
         painter.rect_stroke(
             rect, 0.0,
-            Stroke::new(stroke_hair(), color_alpha(t.text, 50)),
+            Stroke::new(st.header_outer_border_width, color_alpha(t.text, st.header_outer_border_alpha)),
             StrokeKind::Inside,
         );
 

@@ -18,6 +18,10 @@ struct ViewUniform {
     surface_h: f32,
     bull: vec4<f32>,      // unused here
     bear: vec4<f32>,      // unused here
+    eth_alpha: f32,       // unused here
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
 }
 
 @group(0) @binding(0) var<uniform> view: ViewUniform;
@@ -34,6 +38,13 @@ struct LineIn {
 struct VertOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) color: vec4<f32>,
+    // Signed perpendicular distance from the line centre, in physical pixels.
+    // Used by the fragment shader to feather the outer edges for AA.
+    @location(1) dist_px: f32,
+    // The line's true half-thickness in physical pixels. Constant for an
+    // instance, passed flat so the fragment shader knows where the
+    // alpha-fall-off band starts.
+    @location(2) half_t: f32,
 }
 
 fn slot_to_ndc_x(slot: f32) -> f32 {
@@ -66,8 +77,15 @@ fn vs_main(@builtin(vertex_index) vid: u32, seg: LineIn) -> VertOut {
     let dy_px = -dy_ndc * 0.5 * view.surface_h;  // NDC Y flipped vs pixel Y
     let len_px = max(sqrt(dx_px * dx_px + dy_px * dy_px), 0.0001);
     let half_t = max(seg.thickness, 0.5) * 0.5;
+
+    // Anti-aliasing: expand the quad by AA_FEATHER pixels on each side and
+    // let the fragment shader fade alpha across the outer band. Without this,
+    // diagonal lines render as solid stair-stepped quads (egui's line
+    // tessellator does this feathering by default; we have to do it manually).
+    let aa_feather = 1.0;
+    let half_t_aa = half_t + aa_feather;
     // Perpendicular in pixel space (rotate dir by 90°): (-dy, dx)
-    let off_px = vec2<f32>(-dy_px, dx_px) * (half_t / len_px);
+    let off_px = vec2<f32>(-dy_px, dx_px) * (half_t_aa / len_px);
     // Back to NDC delta
     let off_ndc = vec2<f32>(
         off_px.x * 2.0 / view.surface_w,
@@ -75,24 +93,36 @@ fn vs_main(@builtin(vertex_index) vid: u32, seg: LineIn) -> VertOut {
     );
 
     var pos: vec2<f32>;
+    var edge_sign: f32 = 0.0;
     // 6 verts forming a quad: (p0+off, p1+off, p0-off) + (p1+off, p1-off, p0-off)
     switch vid {
-        case 0u: { pos = p0 + off_ndc; }
-        case 1u: { pos = p1 + off_ndc; }
-        case 2u: { pos = p0 - off_ndc; }
-        case 3u: { pos = p1 + off_ndc; }
-        case 4u: { pos = p1 - off_ndc; }
-        case 5u: { pos = p0 - off_ndc; }
+        case 0u: { pos = p0 + off_ndc; edge_sign =  1.0; }
+        case 1u: { pos = p1 + off_ndc; edge_sign =  1.0; }
+        case 2u: { pos = p0 - off_ndc; edge_sign = -1.0; }
+        case 3u: { pos = p1 + off_ndc; edge_sign =  1.0; }
+        case 4u: { pos = p1 - off_ndc; edge_sign = -1.0; }
+        case 5u: { pos = p0 - off_ndc; edge_sign = -1.0; }
         default: { pos = vec2<f32>(0.0, 0.0); }
     }
 
     var out: VertOut;
     out.pos = vec4<f32>(pos, 0.0, 1.0);
     out.color = seg.color;
+    // edge_sign is ±1 at the AA-expanded edge; interpolation gives 0 at centre.
+    // Multiplied by half_t_aa gives signed pixel distance from line centre.
+    out.dist_px = edge_sign * half_t_aa;
+    out.half_t = half_t;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertOut) -> @location(0) vec4<f32> {
-    return in.color;
+    // Smooth alpha falloff in the 1-pixel band outside the line's "true" edge.
+    // Inside the line proper (|d| <= half_t - 0.5): full alpha.
+    // Outside the AA band (|d| >= half_t + 0.5): zero alpha (clipped).
+    // In between: smoothstep to feather the edge so diagonal lines don't
+    // look stair-stepped.
+    let abs_d = abs(in.dist_px);
+    let alpha_mult = 1.0 - smoothstep(in.half_t - 0.5, in.half_t + 0.5, abs_d);
+    return vec4<f32>(in.color.rgb, in.color.a * alpha_mult);
 }

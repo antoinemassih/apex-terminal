@@ -137,13 +137,17 @@ pub const STROKE_BOLD:   f32 = 1.5;
 pub const STROKE_THICK:  f32 = 2.0;
 
 // ─── Semantic alpha tokens ────────────────────────────────────────────────────
+// Mid-tier values bumped 2026-05 to make hairline borders more visible at
+// a glance — subtle/tint/muted/line are the alphas most chrome borders use.
+// faint / ghost / soft kept low: those are intentional barely-there hints.
+// dim / strong / active / heavy / solid kept: those are already prominent.
 pub fn alpha_faint()  -> u8 { crate::dt_u8!(alpha.faint, 10) }
 pub fn alpha_ghost()  -> u8 { crate::dt_u8!(alpha.ghost, 15) }
 pub fn alpha_soft()   -> u8 { crate::dt_u8!(alpha.soft, 20) }
-pub fn alpha_subtle() -> u8 { crate::dt_u8!(alpha.subtle, 25) }
-pub fn alpha_tint()   -> u8 { crate::dt_u8!(alpha.tint, 30) }
-pub fn alpha_muted()  -> u8 { crate::dt_u8!(alpha.muted, 40) }
-pub fn alpha_line()   -> u8 { crate::dt_u8!(alpha.line, 50) }
+pub fn alpha_subtle() -> u8 { crate::dt_u8!(alpha.subtle, 40) }
+pub fn alpha_tint()   -> u8 { crate::dt_u8!(alpha.tint, 48) }
+pub fn alpha_muted()  -> u8 { crate::dt_u8!(alpha.muted, 60) }
+pub fn alpha_line()   -> u8 { crate::dt_u8!(alpha.line, 80) }
 pub fn alpha_dim()    -> u8 { crate::dt_u8!(alpha.dim, 60) }
 pub fn alpha_strong() -> u8 { crate::dt_u8!(alpha.strong, 80) }
 pub fn alpha_active() -> u8 { crate::dt_u8!(alpha.active, 100) }
@@ -154,10 +158,10 @@ pub fn alpha_solid()  -> u8 { crate::dt_u8!(alpha.solid, 200) }
 pub const ALPHA_FAINT:  u8 = 10;
 pub const ALPHA_GHOST:  u8 = 15;
 pub const ALPHA_SOFT:   u8 = 20;
-pub const ALPHA_SUBTLE: u8 = 25;
-pub const ALPHA_TINT:   u8 = 30;
-pub const ALPHA_MUTED:  u8 = 40;
-pub const ALPHA_LINE:   u8 = 50;
+pub const ALPHA_SUBTLE: u8 = 40;
+pub const ALPHA_TINT:   u8 = 48;
+pub const ALPHA_MUTED:  u8 = 60;
+pub const ALPHA_LINE:   u8 = 80;
 pub const ALPHA_DIM:    u8 = 60;
 pub const ALPHA_STRONG: u8 = 80;
 pub const ALPHA_ACTIVE: u8 = 100;
@@ -1267,8 +1271,8 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
             inactive_header_fill: true,
-            header_outer_border_alpha: 20, header_outer_border_width: 0.5,
-            header_divider_alpha: 25,
+            header_outer_border_alpha: 55, header_outer_border_width: 0.5,
+            header_divider_alpha: 50,
             account_strip_height: 26.0,
             pane_border_width: 1.0, pane_gap: 8.0,
             card_padding_y: 12.0, card_padding_x: 14.0,
@@ -1308,10 +1312,10 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
             inactive_header_fill: true,
-            header_outer_border_alpha: 25, header_outer_border_width: 0.5,
-            header_divider_alpha: 30,
+            header_outer_border_alpha: 55, header_outer_border_width: 0.5,
+            header_divider_alpha: 50,
             account_strip_height: 26.0,
-            pane_border_width: 0.6, pane_gap: 2.0,
+            pane_border_width: 1.0, pane_gap: 2.0,
             card_padding_y: 6.0, card_padding_x: 8.0,
             row_height_px: 20.0, button_height_px: 22.0, button_padding_x: 8.0,
             tab_height: 26.0,
@@ -1349,10 +1353,10 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
             inactive_header_fill: true,
-            header_outer_border_alpha: 25, header_outer_border_width: 0.5,
-            header_divider_alpha: 25,
+            header_outer_border_alpha: 55, header_outer_border_width: 0.5,
+            header_divider_alpha: 50,
             account_strip_height: 36.0,
-            pane_border_width: 0.5, pane_gap: 0.0,
+            pane_border_width: 1.0, pane_gap: 0.0,
             card_padding_y: 8.0, card_padding_x: 10.0,
             row_height_px: 22.0, button_height_px: 24.0, button_padding_x: 10.0,
             tab_height: 28.0,
