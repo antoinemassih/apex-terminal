@@ -11,6 +11,7 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Response, Sense, Ui, Vec2};
+use crate::ui_kit::icons::Icon;
 use super::super::style::{
     self, split_divider, gap_sm, gap_md, gap_lg, GAP_SM, GAP_MD, GAP_LG,
 };
@@ -212,7 +213,7 @@ impl<'a> Collapsible<'a> {
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<R> {
-        let chev = if *self.expanded { "▾" } else { "▸" };
+        let chev = if *self.expanded { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
         let header = format!("{}  {}", chev, self.title);
         let resp = ui.add(
             egui::Label::new(

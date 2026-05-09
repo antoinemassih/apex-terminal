@@ -1,13 +1,12 @@
-//! Icon system — Phosphor icons for consistent iconography.
+//! Icon system — Phosphor Bold icons for consistent iconography.
 //!
-//! Usage: `ui.label(Icon::PENCIL);` or `Icon::button(ui, Icon::TRASH, "Delete")`
+//! All icons use the Bold weight at 24px. Use `Icon::button` / `Icon::button_colored`.
+//! Usage: `ui.label(Icon::PENCIL_LINE);` or `Icon::button(ui, Icon::TRASH, "Delete")`
 
-use egui_phosphor::regular as ph;
-use egui_phosphor::bold as ph_bold;
+use egui_phosphor::bold as ph;
 use egui_phosphor::fill as ph_fill;
 
-/// Icon constants — all from Phosphor Regular set.
-/// Add new icons here as needed; they render via the embedded Phosphor font.
+/// Icon constants — all from Phosphor Bold set.
 pub struct Icon;
 
 impl Icon {
@@ -26,9 +25,15 @@ impl Icon {
     pub const LIST: &'static str = ph::LIST;
     pub const ARROW_FAT_UP: &'static str = ph::ARROW_FAT_UP;
     pub const ARROW_FAT_DOWN: &'static str = ph::ARROW_FAT_DOWN;
+    pub const ARROW_FAT_LINES_UP: &'static str = ph::ARROW_FAT_LINES_UP;
+    pub const ARROW_FAT_LINES_DOWN: &'static str = ph::ARROW_FAT_LINES_DOWN;
+    pub const ARROW_ELBOW_RIGHT: &'static str = ph::ARROW_ELBOW_RIGHT;
+    pub const HAND_PALM: &'static str = ph::HAND_PALM;
+    pub const BRACKETS_CURLY: &'static str = ph::BRACKETS_CURLY;
     pub const SHIELD_WARNING: &'static str = ph::SHIELD_WARNING;
     pub const RULER: &'static str = ph::RULER;
     pub const ARROWS_OUT: &'static str = ph::ARROWS_OUT;
+    pub const ARROWS_OUT_SIMPLE: &'static str = ph::ARROWS_OUT_SIMPLE;
     pub const ARROW_COUNTER_CLOCKWISE: &'static str = ph::ARROW_COUNTER_CLOCKWISE;
     pub const PLAY: &'static str = ph::PLAY;
     pub const PAUSE: &'static str = ph::PAUSE;
@@ -38,6 +43,7 @@ impl Icon {
     // UI
     pub const CARET_DOWN: &'static str = ph::CARET_DOWN;
     pub const CARET_RIGHT: &'static str = ph::CARET_RIGHT;
+    pub const CARET_LEFT: &'static str = ph::CARET_LEFT;
     pub const DOTS_SIX_VERTICAL: &'static str = ph::DOTS_SIX_VERTICAL;
     pub const CHECK: &'static str = ph::CHECK;
     pub const CHECK_SQUARE: &'static str = ph::CHECK_SQUARE;
@@ -80,6 +86,18 @@ impl Icon {
     pub const NOTEBOOK: &'static str = ph::NOTEBOOK;
     pub const STAR: &'static str = ph::STAR;
     pub const STAR_FILL: &'static str = ph_fill::STAR;
+
+    // Fill variants — for use inside dropdowns (16px)
+    pub const CHECK_FILL: &'static str = ph_fill::CHECK;
+    pub const CIRCLE_FILL: &'static str = ph_fill::CIRCLE;
+    pub const CARET_RIGHT_FILL: &'static str = ph_fill::CARET_RIGHT;
+    pub const CARET_DOWN_FILL: &'static str = ph_fill::CARET_DOWN;
+    pub const CHART_LINE_FILL: &'static str = ph_fill::CHART_LINE;
+    pub const CHART_BAR_FILL: &'static str = ph_fill::CHART_BAR;
+    pub const TREE_STRUCTURE_FILL: &'static str = ph_fill::TREE_STRUCTURE;
+    pub const BROADCAST_FILL: &'static str = ph_fill::BROADCAST;
+    pub const CHART_LINE_UP_FILL: &'static str = ph_fill::CHART_LINE_UP;
+
     pub const CHAT_DOTS: &'static str = ph::CHAT_DOTS;
     pub const NEWSPAPER: &'static str = ph::NEWSPAPER;
     pub const CODE: &'static str = ph::CODE;
@@ -93,42 +111,29 @@ impl Icon {
     pub const MAGNIFYING_GLASS: &'static str = ph::MAGNIFYING_GLASS;
     pub const MAGNIFYING_GLASS_PLUS: &'static str = ph::MAGNIFYING_GLASS_PLUS;
 
-    // Bold variants for toolbar (more visible at small sizes)
-    pub const PENCIL_LINE_BOLD: &'static str = ph_bold::PENCIL_LINE;
-    pub const LINE_SEGMENT_BOLD: &'static str = ph_bold::LINE_SEGMENT;
-    pub const MINUS_BOLD: &'static str = ph_bold::MINUS;
-    pub const RECTANGLE_BOLD: &'static str = ph_bold::RECTANGLE;
-    pub const MAP_PIN_BOLD: &'static str = ph_bold::MAP_PIN;
-    pub const TRASH_BOLD: &'static str = ph_bold::TRASH;
-    pub const PLAY_BOLD: &'static str = ph_bold::PLAY;
-    pub const X_BOLD: &'static str = ph_bold::X;
-
     // Media / Replay controls
     pub const SKIP_BACK: &'static str = ph::SKIP_BACK;
     pub const SKIP_FORWARD: &'static str = ph::SKIP_FORWARD;
-    pub const CARET_LEFT: &'static str = ph::CARET_LEFT;
     pub const FAST_FORWARD: &'static str = ph::FAST_FORWARD;
     pub const REWIND: &'static str = ph::REWIND;
 
-    /// Render an icon button at standard size (16px)
+    /// Standard icon button (24px bold)
     pub fn button(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {
-        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(16.0)).frame(false));
+        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(24.0)).frame(false));
         if !tooltip.is_empty() { btn.clone().on_hover_text(tooltip); }
         btn
     }
 
-    /// Render an icon button with color at standard size
+    /// Icon button with color (24px bold)
     pub fn button_colored(ui: &mut egui::Ui, icon: &str, color: egui::Color32, tooltip: &str) -> egui::Response {
-        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(16.0).color(color)).frame(false));
+        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(24.0).color(color)).frame(false));
         if !tooltip.is_empty() { btn.clone().on_hover_text(tooltip); }
         btn
     }
 
-    /// Render a large icon button (20px) for prominent actions
+    /// Large icon button — kept for call-site compatibility, same 24px bold
     pub fn button_large(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {
-        let btn = ui.add(egui::Button::new(egui::RichText::new(icon).size(20.0)).frame(false));
-        if !tooltip.is_empty() { btn.clone().on_hover_text(tooltip); }
-        btn
+        Self::button(ui, icon, tooltip)
     }
 }
 

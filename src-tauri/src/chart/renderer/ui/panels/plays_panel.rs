@@ -56,7 +56,7 @@ pub(crate) fn draw_content(
     if watchlist.plays.is_empty() {
         ui.add_space(gap_3xl());
         ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new(Icon::STAR).size(28.0).color(t.dim.gamma_multiply(0.2)));
+            ui.label(egui::RichText::new(Icon::STAR).size(32.0).color(t.dim.gamma_multiply(0.2)));
             ui.add_space(gap_sm());
             ui.add(super::super::widgets::text::MonospaceCode::new("No plays yet").sm().color(t.dim).gamma(0.5));
             ui.add(super::super::widgets::text::MonospaceCode::new("Create a play to share a trade idea").xs().color(t.dim).gamma(0.3));

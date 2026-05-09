@@ -54,8 +54,9 @@ type Theme = super::super::super::gpu::Theme;
 // ─── Sizing constants ────────────────────────────────────────────────────────
 // Promoted from inline magic numbers. Grouped here so visual tuning lands in one place.
 
-/// Diameter of the link-group dot at the left edge of the header.
-const LINK_DOT_SIZE: f32 = 10.0;
+/// Width reserved for the link-group Select trigger at the left edge of the header.
+/// Compact dot-only trigger — just wide enough for the icon button.
+const LINK_SELECT_W: f32 = 26.0;
 /// Square edge of the back / forward navigation buttons.
 const NAV_BTN_SIZE: f32 = 18.0;
 /// Square edge of the per-tab close `×` hit zone.
@@ -288,6 +289,8 @@ pub struct PainterPaneHeader<'a> {
 
     show_link_dot: bool,
     link_group: u8,
+    /// Resolved color for the current link group (None = unlinked/hollow).
+    link_group_color: Option<Color32>,
     show_back_fwd: bool,
     can_go_back: bool,
     can_go_fwd: bool,
@@ -323,6 +326,10 @@ pub struct PainterPaneHeader<'a> {
     tab_sense: Option<Sense>,
     /// Pane index — used to build unique egui Ids for tab interactions.
     pane_index: usize,
+    /// Show expand/collapse button in the right cluster.
+    show_expand_btn: bool,
+    /// Whether the pane is currently maximized (button lit).
+    is_maximized: bool,
 }
 
 impl<'a> PainterPaneHeader<'a> {
@@ -340,6 +347,7 @@ impl<'a> PainterPaneHeader<'a> {
             indicators: &[],
             show_link_dot: false,
             link_group: 0,
+            link_group_color: None,
             show_back_fwd: false,
             can_go_back: false,
             can_go_fwd: false,
@@ -360,6 +368,8 @@ impl<'a> PainterPaneHeader<'a> {
             options_btn_active: false,
             tab_sense: None,
             pane_index: 0,
+            show_expand_btn: false,
+            is_maximized: false,
         }
     }
 
@@ -376,6 +386,7 @@ impl<'a> PainterPaneHeader<'a> {
 
     pub fn show_link_dot(mut self, v: bool) -> Self { self.show_link_dot = v; self }
     pub fn link_group(mut self, g: u8) -> Self { self.link_group = g; self }
+    pub fn link_group_color(mut self, c: Option<Color32>) -> Self { self.link_group_color = c; self }
     pub fn show_back_fwd(mut self, v: bool) -> Self { self.show_back_fwd = v; self }
     pub fn can_go_back(mut self, v: bool) -> Self { self.can_go_back = v; self }
     pub fn can_go_fwd(mut self, v: bool) -> Self { self.can_go_fwd = v; self }
@@ -412,6 +423,10 @@ impl<'a> PainterPaneHeader<'a> {
     pub fn tab_sense(mut self, s: Sense) -> Self { self.tab_sense = Some(s); self }
     /// Pane index — used to form unique egui Ids for tabs and drag state.
     pub fn pane_index(mut self, i: usize) -> Self { self.pane_index = i; self }
+    /// Show expand button. `maximized` = pane is currently maximized (button lit).
+    pub fn show_expand_btn(mut self, maximized: bool) -> Self {
+        self.show_expand_btn = true; self.is_maximized = maximized; self
+    }
 
     pub fn show(self, ui: &mut Ui) -> PainterPaneHeaderResponse {
         let t = self.theme;
@@ -460,7 +475,6 @@ impl<'a> PainterPaneHeader<'a> {
             response: bg_resp,
             clicked_close: false,
             clicked_plus: false,
-            clicked_link: false,
             clicked_back: false,
             clicked_fwd: false,
             clicked_indicator_remove: None,
@@ -477,27 +491,20 @@ impl<'a> PainterPaneHeader<'a> {
             clicked_options: false,
             tab_rects: Vec::new(),
             plus_tab_rect: None,
+            clicked_expand: false,
+            link_dot_rect: None,
         };
         out.hover_pos = ui.ctx().pointer_hover_pos().filter(|p| rect.contains(*p));
 
         // ── Cursor x walks left → right ────────────────────────────────────
         let mut cx = rect.left() + gap_sm();
 
-        // Link dot
+        // Link group — passive region; caller places a Select widget here via link_dot_rect.
         if self.show_link_dot {
-            let center = pos2(cx + LINK_DOT_SIZE / 2.0, rect.center().y);
-            let hit = Rect::from_center_size(center, Vec2::new(LINK_DOT_SIZE + gap_sm(), h));
-            let resp = ui.allocate_rect(hit, Sense::click());
-            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let link_colors: [Color32; 4] = drawing_palette();
-            if self.link_group > 0 && self.link_group <= 4 {
-                painter.circle_filled(center, LINK_DOT_SIZE / 2.0, link_colors[(self.link_group - 1) as usize]);
-            } else {
-                painter.circle_stroke(center, LINK_DOT_SIZE / 2.0 - 0.5,
-                    Stroke::new(stroke_thin() * 2.0, t.dim.gamma_multiply(0.4)));
-            }
-            if resp.clicked() { out.clicked_link = true; }
-            cx += LINK_DOT_SIZE + gap_md();
+            let hit = Rect::from_min_size(pos2(cx, rect.top()), Vec2::new(LINK_SELECT_W, h));
+            ui.allocate_rect(hit, Sense::hover());
+            out.link_dot_rect = Some(hit);
+            cx += LINK_SELECT_W + gap_sm();
         }
 
         // Back / Fwd
@@ -524,10 +531,8 @@ impl<'a> PainterPaneHeader<'a> {
                 if resp.clicked() && self.can_go_fwd { out.clicked_fwd = true; }
                 cx += NAV_BTN_SIZE + gap_sm();
             }
-            // Post-nav divider — only in simple-symbol mode (tabs delimit themselves).
-            if self.tabs.is_empty() {
-                header_divider(&painter, cx, rect, t);
-            }
+            // Divider separating the nav/group cluster from the ticker/tab area — always visible.
+            header_divider_inline(&painter, cx, rect, t);
         }
 
         // ── Tab strip OR simple symbol label ──
@@ -784,7 +789,10 @@ impl<'a> PainterPaneHeader<'a> {
             cx += PLUS_TAB_W + gap_sm();
         }
 
-        // ── Right cluster: Order | DOM | Close (right-anchored) ──────────────
+        // ── Right cluster: [Expand] [ORDER] [DOM] [OPTIONS] [Close] (right-anchored) ──
+        // Layout walks right-to-left for sizing, then left-to-right for painting.
+        const EXPAND_BTN_W: f32 = 28.0;
+        let expand_total = if self.show_expand_btn { EXPAND_BTN_W } else { 0.0 };
         let close_total = if self.show_close { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
         let order_dom_total = {
             let mut w = 0.0f32;
@@ -794,22 +802,51 @@ impl<'a> PainterPaneHeader<'a> {
             w
         };
 
-        // Strong divider before right icon cluster (separates tabs/+Tab area
-        // from the Order/DOM/Close button cluster).
-        if order_dom_total > 0.0 || self.show_close {
+        // Strong divider before right icon cluster.
+        if order_dom_total > 0.0 || expand_total > 0.0 || self.show_close {
             header_divider_strong(
                 &painter,
-                rect.right() - close_total - order_dom_total,
+                rect.right() - close_total - order_dom_total - expand_total,
                 rect, t,
             );
         }
 
+        // ── Expand button (leftmost in right cluster) ─────────────────────────
+        if self.show_expand_btn {
+            let icon_h = h - ICON_BTN_INSET_V;
+            let expand_rect = Rect::from_min_size(
+                pos2(rect.right() - close_total - order_dom_total - EXPAND_BTN_W,
+                     rect.center().y - icon_h / 2.0),
+                Vec2::new(EXPAND_BTN_W, icon_h),
+            );
+            let resp = ui.allocate_rect(expand_rect, Sense::click());
+            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            let col = if self.is_maximized {
+                t.accent
+            } else if resp.hovered() {
+                t.text
+            } else {
+                t.dim.gamma_multiply(0.7)
+            };
+            if resp.hovered() || self.is_maximized {
+                painter.rect_filled(expand_rect, radius_sm(), color_alpha(
+                    if self.is_maximized { t.accent } else { t.toolbar_border },
+                    if self.is_maximized { alpha_tint() } else { alpha_subtle() },
+                ));
+            }
+            painter.text(
+                expand_rect.center(), Align2::CENTER_CENTER,
+                Icon::ARROWS_OUT_SIMPLE,
+                FontId::proportional(font_md() + 1.0), col,
+            );
+            if resp.clicked() { out.clicked_expand = true; }
+            // Divider between expand and ORDER/DOM cluster
+            if order_dom_total > 0.0 {
+                header_divider_strong(&painter, rect.right() - close_total - order_dom_total, rect, t);
+            }
+        }
+
         // ── Order + DOM icon buttons ──────────────────────────────────────────
-        // Horizontal `[icon] LABEL` pills via `.leading_icon(..)`. Replaces
-        // the prior `.sublabel(..)` vertical-stack rendering — user wants
-        // icon-left-of-text, not icon-above-text. `.status(true)` keeps the
-        // transparent / hover-only treatment matched to the rest of the
-        // right cluster.
         {
             use crate::ui_kit::widgets::Button;
             let icon_h = h - ICON_BTN_INSET_V;
@@ -843,7 +880,6 @@ impl<'a> PainterPaneHeader<'a> {
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_dom = true; }
                 rx += ICON_BTN_W_DOM;
-                // Divider between DOM and the next item (OPTIONS or Close).
                 if self.show_options_btn || self.show_close {
                     header_divider_strong(&painter, rx, rect, t);
                 }
@@ -860,11 +896,11 @@ impl<'a> PainterPaneHeader<'a> {
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_options = true; }
                 rx += ICON_BTN_W_OPTIONS;
-                // Divider between OPTIONS and the right-anchored Close button.
                 if self.show_close {
                     header_divider_strong(&painter, rx, rect, t);
                 }
             }
+            let _ = rx;
         }
 
         // ── Close button (right-anchored) ──
@@ -892,7 +928,6 @@ pub struct PainterPaneHeaderResponse {
     pub response: Response,
     pub clicked_close: bool,
     pub clicked_plus: bool,
-    pub clicked_link: bool,
     pub clicked_back: bool,
     pub clicked_fwd: bool,
     /// Index of an indicator chip whose ✕ was clicked.
@@ -926,6 +961,10 @@ pub struct PainterPaneHeaderResponse {
     /// Screen rect of the +Tab button when shown — for anchoring pickers
     /// triggered by the plus-tab click.
     pub plus_tab_rect: Option<Rect>,
+    /// Expand/collapse button was clicked.
+    pub clicked_expand: bool,
+    /// Screen rect of the link-group dot — for anchoring the group picker popup.
+    pub link_dot_rect: Option<Rect>,
 }
 
 // ─── Local helpers ──────────────────────────────────────────────────────────

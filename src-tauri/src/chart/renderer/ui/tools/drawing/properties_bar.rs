@@ -5,6 +5,7 @@ use crate::chart_renderer::gpu::{Theme, Chart, DrawingAction, drawing_persist_ke
 use crate::chart_renderer::{Drawing, DrawingKind, LineStyle};
 use crate::chart_renderer::ui::style::{hex_to_color, color_alpha, COLOR_AMBER, gap_xs, gap_sm, gap_md, font_xs, font_sm, font_md};
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -258,7 +259,7 @@ pub fn show_drawing_properties_bar_ui(
         ui.add(egui::Separator::default().spacing(gap_xs()));
 
         // Delete
-        if ui.add(egui::Button::new(egui::RichText::new(Icon::TRASH).size(font_md()).color(t.bear)).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+        if KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).glyph_color(t.bear).show(ui, t).clicked() {
             if let Some(d) = chart.drawings.iter().find(|d| d.id == sel_id) {
                 chart.undo_stack.push(DrawingAction::Remove(d.clone()));
             }

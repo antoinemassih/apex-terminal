@@ -10,6 +10,8 @@
 
 use egui::{Color32, RichText, Ui, Stroke};
 use crate::design_tokens::*;
+use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 use std::path::PathBuf;
 
 /// Inspector state — persists across frames.
@@ -723,12 +725,7 @@ impl Inspector {
                                 ui.label(RichText::new(fam).monospace().size(11.0).strong()
                                     .color(Color32::from_rgb(166, 227, 161)));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.add(egui::Button::new(
-                                        RichText::new("✕").monospace().size(9.0)
-                                            .color(Color32::from_rgb(150, 150, 160)))
-                                        .fill(Color32::TRANSPARENT)
-                                        .stroke(Stroke::NONE)
-                                    ).clicked() {
+                                    if KitButton::icon(Icon::X).variant(KitVariant::Ghost).show(ui, &crate::chart_renderer::gpu::THEMES[0]).clicked() {
                                         // Deselect — we can't mutate self here directly,
                                         // so we use a flag communicated via the status.
                                         // We'll handle deselect outside: set a sentinel.

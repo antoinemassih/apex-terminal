@@ -143,7 +143,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     egui::Layout::top_down(egui::Align::Center),
                     |ui| {
                         ui.add_space(avail.y * 0.25);
-                        ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(36.0).color(discord_blurple.gamma_multiply(0.5)));
+                        ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(32.0).color(discord_blurple.gamma_multiply(0.5)));
                         ui.add_space(12.0);
                         if !crate::discord::is_configured() {
                             ui.add(widgets::text::MonospaceCode::new("Discord not configured").xs().color(t.dim));
@@ -332,7 +332,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     egui::Layout::top_down(egui::Align::Center),
                                     |ui| {
                                         ui.add_space(avail.y * 0.2);
-                                        ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(28.0).color(t.dim.gamma_multiply(0.5)));
+                                        ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(32.0).color(t.dim.gamma_multiply(0.5)));
                                         ui.add_space(8.0);
                                         ui.add(widgets::text::MonospaceCode::new("Bot not in this server").xs().color(t.dim));
                                         ui.add_space(4.0);

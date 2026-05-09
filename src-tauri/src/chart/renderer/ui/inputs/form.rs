@@ -13,6 +13,7 @@
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Vec2};
 use super::super::style::*;
+use crate::ui_kit::icons::Icon;
 
 // Shorthand for the Theme type used across the codebase.
 type Theme = crate::chart_renderer::gpu::Theme;
@@ -462,7 +463,7 @@ impl egui::Widget for InlineValidation {
     fn ui(self, ui: &mut Ui) -> Response {
         let (glyph, color) = match self.state {
             ValidationState::Ok => (
-                "✓",
+                Icon::CHECK,
                 self.ok_color.unwrap_or_else(|| ft().bull),
             ),
             ValidationState::Error => (

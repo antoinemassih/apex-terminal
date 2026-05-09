@@ -10,6 +10,7 @@
 
 use egui::{Color32, Response, Sense, Stroke, Ui};
 use super::super::super::style::*;
+use crate::ui_kit::icons::Icon;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
@@ -26,7 +27,7 @@ impl SortDir {
         }
     }
     pub fn glyph(self) -> &'static str {
-        match self { SortDir::Asc => "▲", SortDir::Desc => "▼", SortDir::None => "" }
+        match self { SortDir::Asc => Icon::ARROW_FAT_UP, SortDir::Desc => Icon::ARROW_FAT_DOWN, SortDir::None => "" }
     }
 }
 
@@ -236,7 +237,7 @@ impl<'a, T> Table<'a, T> {
                                     Stroke::new(stroke_thin(), dim), egui::StrokeKind::Inside);
                                 if is_sel {
                                     ui.painter().text(cb.center(), egui::Align2::CENTER_CENTER,
-                                        "✓", egui::FontId::monospace(11.0), accent);
+                                        Icon::CHECK, egui::FontId::monospace(24.0), accent);
                                 }
                             }
                             for ci in 0..columns_len {

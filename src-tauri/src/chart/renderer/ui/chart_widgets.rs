@@ -3074,8 +3074,10 @@ fn draw_loading_skeleton(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 /// per second. Mirrors the `Progress::circular_indeterminate` widget in ui_kit
 /// so painter-mode and flow-layout sites share one visual language.
 pub(crate) fn draw_refined_spinner(p: &egui::Painter, center: egui::Pos2, radius: f32, color: egui::Color32) {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default().as_secs_f32();
+    // Use egui's time (seconds since app start, f64) — cast to f32 only for the
+    // fractional phase.  The Unix epoch approach hits f32 precision limits
+    // (~128-second steps at current timestamps) causing the arc to freeze.
+    let now = p.ctx().input(|i| i.time);
     let stroke_w = (radius * 0.16).max(1.5);
     let r = (radius - stroke_w * 0.5).max(2.0);
 
@@ -3083,10 +3085,10 @@ pub(crate) fn draw_refined_spinner(p: &egui::Painter, center: egui::Pos2, radius
     let track_col = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 48);
     p.circle_stroke(center, r, egui::Stroke::new(stroke_w, track_col));
 
-    // Rotating 90° arc, 1 rev/sec wall-clock.
-    let phase = now.rem_euclid(1.0);
-    let start_deg = phase * 360.0 - 90.0;
-    let span_deg = 90.0_f32;
+    // Rotating arc with a breathing span (60°–270°) for a Material-style feel.
+    let phase = now.rem_euclid(1.2) as f32 / 1.2; // 0..1 over 1.2 s
+    let start_deg = (now.rem_euclid(1.0) as f32) * 360.0 - 90.0;
+    let span_deg = 60.0 + 105.0 * (std::f32::consts::PI * phase).sin();
     let segments = ((span_deg / 6.0) as usize).max(8);
     let mut points = Vec::with_capacity(segments + 1);
     for i in 0..=segments {
@@ -3096,6 +3098,7 @@ pub(crate) fn draw_refined_spinner(p: &egui::Painter, center: egui::Pos2, radius
         points.push(egui::pos2(center.x + rad.cos() * r, center.y + rad.sin() * r));
     }
     p.add(egui::Shape::line(points, egui::Stroke::new(stroke_w, color)));
+    p.ctx().request_repaint();
 }
 
 /// Ui-level refined spinner — drop-in replacement for `ui.spinner()`.

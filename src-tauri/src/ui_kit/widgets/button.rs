@@ -61,6 +61,8 @@ pub struct Button<'a> {
     /// Optional sublabel — when set, the button paints as a vertical
     /// icon + label + sublabel stack. See [`Button::sublabel`].
     sublabel: Option<String>,
+    /// Override the rendered icon pixel size for icon-only buttons.
+    glyph_px: Option<f32>,
 }
 
 impl<'a> Button<'a> {
@@ -92,6 +94,7 @@ impl<'a> Button<'a> {
             kbd: None,
             is_status: false,
             sublabel: None,
+            glyph_px: None,
         }
     }
 
@@ -131,6 +134,7 @@ impl<'a> Button<'a> {
     pub fn tint(mut self, c: Color32) -> Self { self.tint = Some(c); self }
     pub fn leading_icon(mut self, icon: &'a str) -> Self { self.leading_icon = Some(icon); self }
     pub fn trailing_icon(mut self, icon: &'a str) -> Self { self.trailing_icon = Some(icon); self }
+    pub fn glyph_size(mut self, px: f32) -> Self { self.glyph_px = Some(px); self }
     pub fn corner_radius(mut self, r: f32) -> Self { self.corner_radius = Some(r); self }
 
     /// Override the icon/glyph color (Ghost variant). Useful for legacy
@@ -293,13 +297,14 @@ fn paint_button<'a>(
     let h = size.height();
     let pad_x = if is_status { st::gap_2xs() } else { size.padding_x() };
     let font_size = size.font_size();
+    let icon_px = btn.glyph_px.unwrap_or(font_size * 1.25);
     let icon_gap = st::gap_2xs();
     let kbd_font = st::mono_xs();
 
     // ── Measure intrinsic width ──
     let mut content_w = 0.0f32;
     if icon_only {
-        content_w = font_size * 1.25;
+        content_w = icon_px;
     } else {
         if leading_icon.is_some() || loading {
             content_w += font_size * 1.1 + icon_gap;
@@ -507,7 +512,7 @@ fn paint_button<'a>(
                     center,
                     egui::Align2::CENTER_CENTER,
                     ic,
-                    FontId::proportional(font_size * 1.25),
+                    FontId::proportional(icon_px),
                     icon_fg,
                 );
             }

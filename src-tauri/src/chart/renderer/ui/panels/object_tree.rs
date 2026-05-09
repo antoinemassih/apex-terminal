@@ -250,7 +250,7 @@ egui::SidePanel::left("object_tree_panel")
                 // as a local, then apply the mutation after show().
                 let mut bulk_assign_gid: Option<String> = None;
                 egui::ComboBox::from_id_salt("otree_bulk_grp")
-                    .selected_text(egui::RichText::new(Icon::FOLDER).monospace().size(font_sm()))
+                    .selected_text(egui::RichText::new(Icon::FOLDER).size(24.0))
                     .width(60.0)
                     .show_ui(ui, |ui| {
                         for (gid, gname) in &groups_snap {

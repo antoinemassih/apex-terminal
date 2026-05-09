@@ -17,6 +17,7 @@ use super::widgets::text::BodyLabel;
 use super::widgets::inputs::TextInput;
 use super::super::gpu::*;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
+use crate::ui_kit::icons::Icon;
 
 mod registry;
 mod matcher;
@@ -248,7 +249,7 @@ fn draw_normal_mode(
         let recent = watchlist.cmd_palette_recent.clone();
         for id in recent.iter().take(6) {
             let label = pretty_label_for_id(id, watchlist).unwrap_or_else(|| id.clone());
-            results.push((id.clone(), format!("↻ {label}"), Category::Recent.label().into(), 0));
+            results.push((id.clone(), format!("{} {label}", Icon::ARROW_COUNTER_CLOCKWISE), Category::Recent.label().into(), 0));
         }
 
         // Clipboard intelligence — if clipboard looks like a ticker

@@ -140,6 +140,8 @@ pub struct DomPaneAdapter<'d> {
     pub dom_armed: &'d mut bool,
     pub dom_col_mode: &'d mut u8,
     pub dom_dragging: &'d mut Option<(u32, f32)>,
+    pub dom_position: &'d mut u8,
+    pub dom_fullscreen: &'d mut bool,
 }
 
 impl<'d> Pane for DomPaneAdapter<'d> {
@@ -150,7 +152,8 @@ impl<'d> Pane for DomPaneAdapter<'d> {
             self.orders, self.dom_selected_price, self.dom_order_type,
             self.order_qty, self.new_order, self.cancel_all,
             self.cancel_order_id, self.move_order, self.dom_armed,
-            self.dom_col_mode, self.dom_dragging, cx.theme,
+            self.dom_col_mode, self.dom_dragging,
+            self.dom_position, self.dom_fullscreen, cx.theme,
         );
     }
 }

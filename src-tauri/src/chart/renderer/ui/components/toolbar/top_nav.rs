@@ -87,6 +87,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 use crate::chart_renderer::gpu::{
     Chart, Layout, Watchlist, Theme,
     CURRENT_WINDOW, CLOSE_REQUESTED, TB_BTN_CLICKED, PENDING_TOASTS, PENDING_WL_TOOLTIP,
@@ -498,7 +499,7 @@ pub(crate) fn render(
                 let has_tool = !panes[ap].draw_tool.is_empty();
                 let cur_tool = panes[ap].draw_tool.clone();
                 let mut new_tool: Option<String> = None;
-                let drawing_menu = ui.menu_button(egui::RichText::new(draw_label).monospace().size(font_sm()).color(if has_tool { t.accent } else { t.dim }), |ui| {
+                let drawing_menu = ui.menu_button(egui::RichText::new(draw_label).size(16.0).color(if has_tool { t.accent } else { t.dim }), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     let cur = cur_tool.as_str();
@@ -559,40 +560,71 @@ pub(crate) fn render(
                 }
                 TB_BTN_CLICKED.with(|f| f.set(true));
             }
-            // Magnet snap
-            ui.add_space(gap_2xs());
-            if toolbar_btn(ui, Icon::MAGNET, panes[ap].magnet, t).on_hover_text("Magnet Snap").clicked() { panes[ap].magnet = !panes[ap].magnet; }
-            // Object tree toggle (consolidated drawings/indicators/overlays panel)
-            ui.add_space(gap_2xs());
-            let draw_count = panes[ap].drawings.len();
-            let list_label = if draw_count > 0 {
-                format!("{} {}", Icon::TREE_STRUCTURE, draw_count)
-            } else {
-                Icon::TREE_STRUCTURE.to_string()
-            };
-            if toolbar_btn(ui, &list_label, watchlist.object_tree_open, t).on_hover_text("Object Tree").clicked() {
-                watchlist.object_tree_open = !watchlist.object_tree_open;
-            }
-            // ── Broadcast — drawing section (applies to all panes) ──
-            ui.add_space(gap_2xs());
+            // ── Drawing-section toggles — same padding/spacing as the rest of the toolbar ──
             {
-                let bc = watchlist.broadcast_mode;
-                if toolbar_btn(ui, Icon::BROADCAST, bc, t).on_hover_text("Broadcast — changes apply to all panes").clicked() {
-                    watchlist.broadcast_mode = !watchlist.broadcast_mode;
-                    TB_BTN_CLICKED.with(|f| f.set(true));
+                let prev_sp = ui.spacing().item_spacing.x;
+                let prev_pad = ui.spacing().button_padding;
+                ui.spacing_mut().item_spacing.x = gap_xs();
+                ui.spacing_mut().button_padding = egui::vec2(gap_sm(), gap_sm());
+
+                // Magnet snap
+                if toolbar_btn(ui, Icon::MAGNET, panes[ap].magnet, t).on_hover_text("Magnet Snap").clicked() {
+                    panes[ap].magnet = !panes[ap].magnet;
                 }
-            }
-            // ── Trendline filter — drawing section ──
-            ui.add_space(gap_2xs());
-            if toolbar_btn(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t).on_hover_text("Trendline Filter").clicked() {
-                watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
+
+                // Object tree — icon button with a count badge painted in the top-right corner
+                {
+                    let draw_count = panes[ap].drawings.len();
+                    let tree_resp = toolbar_btn(ui, Icon::TREE_STRUCTURE, watchlist.object_tree_open, t)
+                        .on_hover_text("Object Tree");
+                    if draw_count > 0 {
+                        let painter = ui.painter();
+                        let r = tree_resp.rect;
+                        let badge_center = egui::pos2(r.right() - 2.0, r.top() + 3.0);
+                        let badge_r = 5.0_f32;
+                        painter.circle_filled(badge_center, badge_r, t.accent);
+                        painter.text(
+                            badge_center,
+                            egui::Align2::CENTER_CENTER,
+                            draw_count.to_string(),
+                            egui::FontId::proportional(6.0),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                    if tree_resp.clicked() {
+                        watchlist.object_tree_open = !watchlist.object_tree_open;
+                    }
+                }
+
+                // Broadcast
+                {
+                    let bc = watchlist.broadcast_mode;
+                    if toolbar_btn(ui, Icon::BROADCAST, bc, t)
+                        .on_hover_text("Broadcast — changes apply to all panes")
+                        .clicked()
+                    {
+                        watchlist.broadcast_mode = !watchlist.broadcast_mode;
+                        TB_BTN_CLICKED.with(|f| f.set(true));
+                    }
+                }
+
+                // Trendline filter
+                if toolbar_btn(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t)
+                    .on_hover_text("Trendline Filter")
+                    .clicked()
+                {
+                    watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
+                }
+
+                ui.spacing_mut().item_spacing.x = prev_sp;
+                ui.spacing_mut().button_padding = prev_pad;
             }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
             // ── Organized dropdown menus ──
             let _menu_font = egui::FontId::monospace(11.0);
-            let check = |active: bool| if active { Icon::CHECK } else { "  " };
+            let check = |active: bool| if active { Icon::CHECK_FILL } else { "  " };
 
             // Chart Type dropdown (single-select)
             let cm_label = match panes[ap].candle_mode {
@@ -701,7 +733,7 @@ pub(crate) fn render(
 
             // ── Indicators dropdown — single chart-icon entry point with nested
             //    submenus for MAs / Oscillators / Volume / Overlays / Tools / Suites.
-            let indicators_menu = ui.menu_button(egui::RichText::new(Icon::CHART_LINE).size(font_md()).color(t.dim), |ui| {
+            let indicators_menu = ui.menu_button(egui::RichText::new(Icon::CHART_LINE).size(16.0).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
@@ -734,12 +766,10 @@ pub(crate) fn render(
                                     if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
                                 }
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::PENCIL_LINE).size(FONT_SM).color(t.dim.gamma_multiply(0.5)))
-                                .frame(false).min_size(BTN_ICON_SM)).clicked() {
+                            if KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::Ghost).glyph_color(t.dim.gamma_multiply(0.5)).show(ui, t).clicked() {
                                 panes[ap].editing_indicator = Some(*eid);
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(FONT_SM).color(t.bear.gamma_multiply(0.5)))
-                                .frame(false).min_size(BTN_ICON_SM)).clicked() {
+                            if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(t.bear.gamma_multiply(0.5)).show(ui, t).clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 if shift || watchlist.broadcast_mode {
                                     for p in panes.iter_mut() {
@@ -875,7 +905,7 @@ pub(crate) fn render(
                 ui.set_min_width(150.0);
 
                 // ── Technical Overlays (indicator-based)
-                ui.menu_button(egui::RichText::new("\u{2248} Technical").monospace().size(FONT_SM).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(format!("{} Technical", Icon::PULSE)).size(FONT_SM).color(t.dim), |ui| {
                     ui.set_min_width(200.0);
                     let overlay_types = [
                         (IndicatorType::BollingerBands, "Bollinger Bands"),
@@ -912,7 +942,7 @@ pub(crate) fn render(
                 });
 
                 // ── Structure (S/R, volume, price levels)
-                ui.menu_button(egui::RichText::new("\u{2261} Structure").monospace().size(FONT_SM).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(format!("{} Structure", Icon::TREE_STRUCTURE_FILL)).size(FONT_SM).color(t.dim), |ui| {
                     ui.set_min_width(220.0);
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
@@ -961,7 +991,7 @@ pub(crate) fn render(
                 });
 
                 // ── Regime (momentum, volatility, correlation)
-                ui.menu_button(egui::RichText::new("\u{224B} Regime").monospace().size(FONT_SM).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(format!("{} Regime", Icon::BROADCAST_FILL)).size(FONT_SM).color(t.dim), |ui| {
                     ui.set_min_width(220.0);
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
@@ -979,7 +1009,7 @@ pub(crate) fn render(
                 });
 
                 // ── Data (events, dark pool, etc.)
-                ui.menu_button(egui::RichText::new("\u{1F4CA} Data").monospace().size(FONT_SM).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(format!("{} Data", Icon::CHART_LINE_UP_FILL)).size(FONT_SM).color(t.dim), |ui| {
                     ui.set_min_width(200.0);
                     let events = panes[ap].show_events;
                     if ui.selectable_label(events, egui::RichText::new(format!("{} Event Markers", check(events))).monospace().size(FONT_SM)).clicked() {
@@ -1030,8 +1060,7 @@ pub(crate) fn render(
                         ui.add_space(gap_xl());
                         let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(FONT_SM).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(FONT_SM).color(t.bear.gamma_multiply(0.5)))
-                            .frame(false).min_size(BTN_ICON_SM)).clicked() {
+                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(t.bear.gamma_multiply(0.5)).show(ui, t).clicked() {
                             remove_idx = Some(oi);
                         }
                     });
@@ -1137,7 +1166,7 @@ pub(crate) fn render(
             }
 
             // ── Widgets dropdown — two-layer categorized picker with mini previews ──
-            let widgets_menu = ui.menu_button(egui::RichText::new(Icon::CIRCLES_FOUR).size(font_md()).color(t.dim), |ui| {
+            let widgets_menu = ui.menu_button(egui::RichText::new(Icon::CIRCLES_FOUR).size(16.0).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(160.0);
@@ -1269,7 +1298,7 @@ pub(crate) fn render(
             // ── Workspace — icon-only dropdown (active workspace shown inside the menu) ──
             {
                 let ws_names = list_workspaces();
-                let ws_menu = ui.menu_button(egui::RichText::new(Icon::BROWSERS).size(font_md()).color(t.dim), |ui| {
+                let ws_menu = ui.menu_button(egui::RichText::new(Icon::BROWSERS).size(16.0).color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.set_min_width(200.0);
@@ -1283,7 +1312,7 @@ pub(crate) fn render(
                         ui.horizontal(|ui| {
                             // Active dot
                             if is_active {
-                                ui.label(egui::RichText::new("●").size(font_xs()).color(t.accent));
+                                ui.label(egui::RichText::new(Icon::CIRCLE_FILL).size(font_xs()).color(t.accent));
                             } else {
                                 ui.label(egui::RichText::new("  ").size(font_xs()));
                             }
@@ -1367,9 +1396,17 @@ pub(crate) fn render(
             };
             // Show favorited layouts as segmented control + dropdown caret
             {
-                let fav_layouts: Vec<&Layout> = ALL_LAYOUTS.iter()
+                let mut fav_layouts: Vec<&Layout> = ALL_LAYOUTS.iter()
                     .filter(|&&ly| watchlist.layout_favorites.iter().any(|f| f == ly.label()))
                     .collect();
+                // If the active layout is not a favorite, temporarily insert it so it shows as selected
+                let current_is_fav = fav_layouts.iter().any(|&&ly| ly == *layout);
+                let transient_layout_ref: Option<&Layout> = if !current_is_fav {
+                    ALL_LAYOUTS.iter().find(|&&ly| ly == *layout)
+                } else { None };
+                if let Some(transient) = transient_layout_ref {
+                    fav_layouts.push(transient);
+                }
                 if !fav_layouts.is_empty() {
                     ui.add_space(gap_xs());
                     let labels: Vec<&str> = fav_layouts.iter().map(|&&ly| ly.label()).collect();
@@ -1825,7 +1862,7 @@ pub(crate) fn render(
                     // Mini glyph (29×19)
                     let gr = egui::Rect::from_min_size(egui::pos2(row_rect.left() + 6.0, row_rect.center().y - 9.5), egui::vec2(29.0, 19.0));
                     let gc = if is_cur { t.accent } else if hovered { t.dim } else { t.dim.gamma_multiply(0.5) };
-                    let mini = ly.pane_rects(gr, ly.max_panes(), 0.5, 0.5, 0.5, 0.5);
+                    let mini = ly.pane_rects(gr, ly.max_panes(), 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5);
                     for mr in &mini {
                         let s = egui::Rect::from_min_max(egui::pos2(mr.left() + 0.5, mr.top() + 0.5), egui::pos2(mr.right() - 0.5, mr.bottom() - 0.5));
                         ui.painter().rect_filled(s, 1.0, color_alpha(gc, 80));

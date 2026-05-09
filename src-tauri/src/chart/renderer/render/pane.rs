@@ -104,17 +104,34 @@ fn render_chart_pane(
     let chart = &mut panes[pane_idx];
 
     // Per-pane GPU: clear last frame's geometry up front, BEFORE the
-    // pane-type dispatch returns early for non-Chart panes. chart_rect is
-    // reset to the [0;4] sentinel; only Chart panes that reach the
-    // rect/pt/ch computation downstream replace it with a real area, so
-    // the GPU render loop in GpuCtx::render skips Portfolio/Dashboard/
-    // Heatmap/Spreadsheet panes and any chart that bailed early.
+    // pane-type dispatch returns early for non-Chart panes. Theme colours
+    // are also seeded NOW (using the pane's theme) so the chart pass clear
+    // matches the theme even for panes still loading bars or stuck on an
+    // early-return path. Without seeding here, default-black bg would flash
+    // for a frame before the candle block downstream replaced it.
+    //
+    // chart_rect stays at the [0;4] sentinel; only Chart panes that reach
+    // rect/pt/ch downstream replace it. The GPU render loop skips panes
+    // whose chart_rect is still the sentinel — so the colours we set here
+    // only matter for the *active pane's* clear-color fallback.
     #[cfg(feature = "gpu_chart_v2")]
     {
+        let theme_for_gpu = get_theme(chart.theme_idx);
+        fn _gpu_srgb_to_linear_early(c: u8) -> f32 {
+            let s = c as f32 / 255.0;
+            if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+        }
+        let c32_early = |c: egui::Color32| -> [f32; 4] {
+            [_gpu_srgb_to_linear_early(c.r()), _gpu_srgb_to_linear_early(c.g()),
+             _gpu_srgb_to_linear_early(c.b()), c.a() as f32 / 255.0]
+        };
         chart.gpu_render_params.instances.clear();
         chart.gpu_render_params.line_segments.clear();
         chart.gpu_render_params.fill_quads.clear();
         chart.gpu_render_params.chart_rect = [0.0; 4];
+        chart.gpu_render_params.bg   = c32_early(theme_for_gpu.bg);
+        chart.gpu_render_params.bull = c32_early(theme_for_gpu.bull);
+        chart.gpu_render_params.bear = c32_early(theme_for_gpu.bear);
     }
 
     // ── Sync orders from OrderManager (single source of truth) ──
@@ -353,16 +370,25 @@ fn render_chart_pane(
             .collect();
 
         // ── Widget call ───────────────────────────────────────────────────
+        // Resolve link group color from watchlist definitions
+        let link_group_col = if chart.link_group > 0 {
+            let idx = (chart.link_group as usize).saturating_sub(1);
+            watchlist.link_groups.get(idx).map(|g| g.color)
+        } else {
+            None
+        };
+
         let mut builder = PainterPaneHeader::new(header_rect, t)
             .is_active(is_active)
             .visible_count(visible_count)
             .show_link_dot(true)
             .link_group(chart.link_group)
+            .link_group_color(link_group_col)
             .show_back_fwd(true)
             .can_go_back(can_go_back)
             .can_go_fwd(can_go_fwd)
             .show_plus_tab(true)
-            .show_order_btn(watchlist.order_entry_open)
+            .show_order_btn(chart.floating_order_panes.iter().any(|p| p.strike == 0.0))
             .show_dom_btn(chart.dom_sidebar_open);
         if !chart.is_option {
             builder = builder.show_options_btn(chart.show_strikes_overlay);
@@ -372,7 +398,8 @@ fn render_chart_pane(
             .pane_index(pane_idx)
             .title_font_size(title_font_size)
             .active_tab(chart.tab_active)
-            .hovered_tab(chart.tab_hovered);
+            .hovered_tab(chart.tab_hovered)
+            .show_expand_btn(watchlist.maximized_pane == Some(pane_idx));
 
         if has_tabs {
             builder = builder.tabs(&tab_refs);
@@ -395,12 +422,154 @@ fn render_chart_pane(
 
         let hdr = builder.show(ui);
 
+        // ── Header drop shadow ─────────────────────────────────────────────
+        {
+            let shadow_h = 10.0_f32;
+            let shadow_top = header_rect.bottom() + 1.0;
+            let shadow_rect = egui::Rect::from_min_max(
+                egui::pos2(pane_rect.left(), shadow_top),
+                egui::pos2(pane_rect.right(), shadow_top + shadow_h),
+            );
+            let painter = ui.painter_at(shadow_rect);
+            let top_col = egui::Color32::from_black_alpha(42);
+            let bot_col = egui::Color32::TRANSPARENT;
+            let mut mesh = egui::Mesh::default();
+            let tl = shadow_rect.left_top();
+            let tr = shadow_rect.right_top();
+            let bl = shadow_rect.left_bottom();
+            let br = shadow_rect.right_bottom();
+            mesh.colored_vertex(tl, top_col);
+            mesh.colored_vertex(tr, top_col);
+            mesh.colored_vertex(br, bot_col);
+            mesh.colored_vertex(bl, bot_col);
+            mesh.add_triangle(0, 1, 2);
+            mesh.add_triangle(0, 2, 3);
+            painter.add(egui::Shape::mesh(mesh));
+        }
+
+        // ── Link group Select widget ───────────────────────────────────────
+        if let Some(dot_rect) = hdr.link_dot_rect {
+            use crate::ui_kit::widgets::{Select, SelectResponse};
+            use crate::ui_kit::widgets::tokens::Size;
+
+            // Options: "None" + each group + "New" sentinel (always
+            // last, pinned via `.sticky_last(true)` so it stays visible).
+            #[derive(Clone)]
+            enum LinkOpt { None, Group { color: egui::Color32, name: String, gid: u8 }, New }
+            let mut opts: Vec<LinkOpt> = vec![LinkOpt::None];
+            for (gi, g) in watchlist.link_groups.iter().enumerate() {
+                opts.push(LinkOpt::Group {
+                    color: g.color,
+                    name: g.name.clone(),
+                    gid: (gi + 1) as u8,
+                });
+            }
+            let new_group_sentinel = opts.len();
+            opts.push(LinkOpt::New);
+
+            let mut sel_idx = chart.link_group as usize;
+
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(dot_rect)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            );
+            child.spacing_mut().item_spacing = egui::Vec2::ZERO;
+
+            // Centered swatch helper. Group variant stamps the group number
+            // on the dot in a luminance-aware text colour.
+            fn draw_swatch(
+                ui: &mut egui::Ui,
+                theme: &dyn crate::ui_kit::widgets::theme::ComponentTheme,
+                opt: &LinkOpt, center: egui::Pos2, dot_r: f32,
+            ) {
+                match opt {
+                    LinkOpt::None => { ui.painter().circle_stroke(
+                        center, dot_r,
+                        egui::Stroke::new(1.5, egui::Color32::from_gray(120))); }
+                    LinkOpt::New => { ui.painter().text(
+                        center, egui::Align2::CENTER_CENTER, "+",
+                        egui::FontId::proportional(dot_r * 2.0), theme.text()); }
+                    LinkOpt::Group { color, gid, .. } => {
+                        ui.painter().circle_filled(center, dot_r, *color);
+                        let lum = 0.299 * color.r() as f32
+                            + 0.587 * color.g() as f32
+                            + 0.114 * color.b() as f32;
+                        let txt_col = if lum > 140.0 {
+                            egui::Color32::BLACK
+                        } else {
+                            egui::Color32::WHITE
+                        };
+                        ui.painter().text(
+                            center, egui::Align2::CENTER_CENTER, format!("{}", gid),
+                            egui::FontId::proportional(dot_r * 1.3), txt_col,
+                        );
+                    }
+                }
+            }
+
+            let res = Select::new_with(&mut sel_idx, &opts, |o: &LinkOpt| match o {
+                    LinkOpt::None => "None".into(),
+                    LinkOpt::Group { name, .. } => name.clone(),
+                    LinkOpt::New => "New".into(),
+                })
+                .size(Size::Sm)
+                .compact_trigger(true)
+                .sticky_last(true)
+                .trigger_render(|ui, theme, _idx, opt: &LinkOpt| {
+                    draw_swatch(ui, theme, opt, ui.max_rect().center(), 6.0);
+                })
+                .item_render(|ui, theme, opt: &LinkOpt, _sel| {
+                    let dot_r = 6.0_f32;
+                    let cell_w = (dot_r + 2.0) * 2.0 + 4.0;
+                    let row = ui.max_rect();
+                    let swatch_cx = row.left() + cell_w * 0.5;
+                    draw_swatch(ui, theme, opt, egui::pos2(swatch_cx, row.center().y), dot_r);
+                    ui.add_space(cell_w);
+                    let label = match opt {
+                        LinkOpt::None => "None".to_string(),
+                        LinkOpt::Group { name, .. } => name.clone(),
+                        LinkOpt::New => "New".to_string(),
+                    };
+                    ui.label(egui::RichText::new(label)
+                        .monospace().size(12.0).color(theme.text()));
+                })
+                .show(&mut child, t);
+
+            if res.changed {
+                if sel_idx == new_group_sentinel {
+                    const NEW_GROUP_COLORS: &[egui::Color32] = &[
+                        egui::Color32::from_rgb(70, 130, 255),
+                        egui::Color32::from_rgb(80, 200, 120),
+                        egui::Color32::from_rgb(255, 160, 60),
+                        egui::Color32::from_rgb(180, 100, 255),
+                        egui::Color32::from_rgb(255, 80, 100),
+                        egui::Color32::from_rgb(0, 200, 220),
+                        egui::Color32::from_rgb(255, 220, 50),
+                        egui::Color32::from_rgb(255, 130, 200),
+                    ];
+                    let n = watchlist.link_groups.len();
+                    let color = NEW_GROUP_COLORS[n % NEW_GROUP_COLORS.len()];
+                    let name = format!("Group {}", n + 1);
+                    watchlist.link_groups.push(crate::chart_renderer::gpu::LinkGroup { name, color });
+                    chart.link_group = watchlist.link_groups.len() as u8;
+                } else {
+                    chart.link_group = sel_idx as u8;
+                }
+            }
+        }
+
         // ── Wire response → chart mutations ───────────────────────────────
 
-        // Link group cycle
-        if hdr.clicked_link {
-            chart.link_group = (chart.link_group + 1) % 5;
+        // Expand / restore toggle
+        if hdr.clicked_expand {
+            if watchlist.maximized_pane == Some(pane_idx) {
+                watchlist.maximized_pane = None;
+            } else {
+                watchlist.maximized_pane = Some(pane_idx);
+            }
         }
+
 
         // Back / Fwd navigation
         if hdr.clicked_back && can_go_back {
@@ -476,6 +645,7 @@ fn render_chart_pane(
 
             // Open the unified pane picker, anchored to the +Tab button.
             chart.pane_picker_open = true;
+            ui.ctx().memory_mut(|m| m.open_popup(egui::Id::new(("pane_picker", pane_idx))));
             chart.pane_picker_query.clear();
             chart.pane_picker_option_mode = chart.is_option;
             let anchor_x = hdr.plus_tab_rect.map(|r| r.left())
@@ -545,6 +715,7 @@ fn render_chart_pane(
                 // anchored to the clicked tab's left edge so the popup drops
                 // down from the tab itself instead of the header origin.
                 chart.pane_picker_open = true;
+                ui.ctx().memory_mut(|m| m.open_popup(egui::Id::new(("pane_picker", pane_idx))));
                 chart.pane_picker_query.clear();
                 chart.pane_picker_option_mode = chart.is_option;
                 let anchor_x = hdr.tab_rects.get(ci).map(|r| r.left())
@@ -563,8 +734,16 @@ fn render_chart_pane(
             *active_pane = pane_idx;
         }
 
-        // Order-entry toggle
-        if hdr.clicked_order { watchlist.order_entry_open = !watchlist.order_entry_open; }
+        // Order button — always spawns a new floating order pane for this chart's symbol
+        if hdr.clicked_order {
+            let fid = chart.floating_order_panes.iter().map(|p| p.id).max().unwrap_or(0) + 1;
+            let sym = chart.symbol.clone();
+            chart.floating_order_panes.push(FloatingOrderPane {
+                id: fid, title: sym.clone(), symbol: sym,
+                strike: 0.0, is_call: false, qty: 1,
+                pos: egui::pos2(pane_rect.center().x - 105.0, pane_rect.center().y - 100.0),
+            });
+        }
         // DOM sidebar toggle
         if hdr.clicked_dom { chart.dom_sidebar_open = !chart.dom_sidebar_open; }
         // Options strikes overlay toggle (moved from chart top-right circle button)
@@ -584,18 +763,17 @@ fn render_chart_pane(
     }
 
     // ── Pane content picker popup ────────────────────────────────────────────
+    let popup_id = egui::Id::new(("pane_picker", pane_idx));
     if chart.pane_picker_open {
-        let popup_id = egui::Id::new(("pane_picker", pane_idx));
         let anchor = chart.pane_picker_pos;
         let mut close_picker = false;
 
-        egui::Window::new("__pane_picker")
-            .id(popup_id)
+        let area_resp = egui::Area::new(popup_id)
+            .kind(egui::UiKind::Popup)
+            .order(egui::Order::Foreground)
             .fixed_pos(anchor)
-            .title_bar(false)
-            .resizable(false)
-            .frame(egui::Frame::popup(ui.style()))
             .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.set_min_width(320.0);
                 ui.set_max_width(420.0);
 
@@ -1019,24 +1197,42 @@ fn render_chart_pane(
                 ).clicked() {
                     close_picker = true;
                 }
-            });
+                }); // Frame::popup
+            }); // Area inner
 
-        if close_picker { chart.pane_picker_open = false; }
-
-        // Close on Escape
-        if ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+        // Close on click outside — mirrors egui's popup_above_or_below_widget logic:
+        // only close if click was outside BOTH the popup area AND above the anchor
+        // (i.e. in the header/tab that triggered the open). This prevents the opening
+        // click from immediately closing the popup.
+        let click_pos = ui.ctx().input(|i| i.pointer.interact_pos());
+        let above_anchor = click_pos.map(|p| p.y < anchor.y).unwrap_or(false);
+        let click_outside = area_resp.response.clicked_elsewhere() && !above_anchor;
+        if close_picker || click_outside || ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
             chart.pane_picker_open = false;
+            ui.ctx().memory_mut(|m| m.close_popup());
         }
     }
 
-    // ── DOM Sidebar (left side of pane) ─────────────────────────────────────
-    let dom_w = if chart.dom_sidebar_open { chart.dom_width } else { 0.0 };
+    // ── DOM Sidebar — left/right/fullscreen, controlled from the panel menu.
+    let dom_w = if chart.dom_sidebar_open {
+        if chart.dom_fullscreen { pane_rect.width() } else { chart.dom_width }
+    } else { 0.0 };
     let full_rect = egui::Rect::from_min_size(
         egui::pos2(pane_rect.left(), pane_rect.top() + pane_top_offset),
         egui::vec2(pane_rect.width(), pane_rect.height() - pane_top_offset),
     );
     if chart.dom_sidebar_open {
-        let dom_rect = egui::Rect::from_min_size(full_rect.min, egui::vec2(dom_w, full_rect.height()));
+        // Position: 0 = left edge, 1 = right edge. Fullscreen anchors to left
+        // and consumes the full width regardless of position.
+        let dom_left = if chart.dom_fullscreen || chart.dom_position == 0 {
+            full_rect.left()
+        } else {
+            full_rect.right() - dom_w
+        };
+        let dom_rect = egui::Rect::from_min_size(
+            egui::pos2(dom_left, full_rect.top()),
+            egui::vec2(dom_w, full_rect.height()),
+        );
         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
         // Auto-detect tick size based on symbol
         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
@@ -1084,6 +1280,8 @@ fn render_chart_pane(
                 dom_armed: &mut chart.dom_armed,
                 dom_col_mode: &mut chart.dom_col_mode,
                 dom_dragging: &mut chart.dom_dragging,
+                dom_position: &mut chart.dom_position,
+                dom_fullscreen: &mut chart.dom_fullscreen,
             };
             // DomPaneAdapter does not read PaneContext::panes; we pass an
             // empty slice to avoid a second mutable borrow of `panes` while
@@ -1146,9 +1344,18 @@ fn render_chart_pane(
             }
         }
     }
+    // Chart canvas occupies whatever's left after the DOM strip. When the DOM
+    // is anchored to the right (or off entirely), the chart starts at the
+    // pane's left edge; when DOM is on the left, the chart shifts right by
+    // dom_w. Fullscreen DOM consumes the whole pane so the chart shrinks to
+    // zero width and the candle/indicator paths short-circuit on n==0.
+    let chart_left_offset = if chart.dom_sidebar_open && !chart.dom_fullscreen && chart.dom_position == 0 {
+        dom_w
+    } else { 0.0 };
+    let chart_w = (full_rect.width() - dom_w).max(0.0);
     let rect = egui::Rect::from_min_size(
-        egui::pos2(full_rect.left() + dom_w, full_rect.top()),
-        egui::vec2(full_rect.width() - dom_w, full_rect.height()),
+        egui::pos2(full_rect.left() + chart_left_offset, full_rect.top()),
+        egui::vec2(chart_w, full_rect.height()),
     );
 
     // ── Non-chart pane types: render their content in the body area, then return ──
@@ -1352,12 +1559,10 @@ fn render_chart_pane(
     #[cfg(feature = "gpu_chart_v2")]
     let drawing_ppp: f32 = ctx.pixels_per_point();
 
-    // The vec clear + chart_rect=[0;4] sentinel happens at the top of
-    // render_chart_pane (before pane_type dispatch). Now that we have rect /
-    // pt / ch, replace the sentinel with the actual chart area so the GPU
-    // loop will scissor any GPU draws (indicators, drawings, oscillators,
-    // orders, volume) to this pane's chart rect — even for alt-mode panes
-    // and non-Standard candle modes that don't push candle instances.
+    // chart_rect: the GPU render loop scissors to this. Theme bg/bull/bear
+    // are seeded at the very top of render_chart_pane (before any early
+    // returns) so the active pane's clear color is correct even when
+    // loading. eth_alpha needs is_crypto so it's set later — see below.
     #[cfg(feature = "gpu_chart_v2")]
     {
         chart.gpu_render_params.chart_rect =
@@ -1410,10 +1615,10 @@ fn render_chart_pane(
         painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
         if watchlist.show_y_axis {
             chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.2}", p);
-            let f = egui::FontId::monospace(11.5);
-            // poor-man's bold: 0.5px x-offset double-draw
-            painter.text(egui::pos2(rect.left()+cw+3.5,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,f.clone(),t.text);
-            painter.text(egui::pos2(rect.left()+cw+3.0,y),egui::Align2::LEFT_CENTER,&chart.fmt_buf,f,t.text);
+            let f = egui::FontId::monospace(10.0);
+            let ax = rect.left() + cw + pr - 4.0; // 4px gap from right edge
+            painter.text(egui::pos2(ax + 0.5, y), egui::Align2::RIGHT_CENTER, &chart.fmt_buf, f.clone(), t.text);
+            painter.text(egui::pos2(ax, y), egui::Align2::RIGHT_CENTER, &chart.fmt_buf, f, t.text);
         }
         p+=step;
     }
@@ -1441,7 +1646,7 @@ fn render_chart_pane(
             // Y-axis price badge (only if axis is visible) — dark text on colored fill
             if watchlist.show_y_axis {
                 let price_text = format!("{:.2}", last_price);
-                let badge_font = egui::FontId::monospace(13.0);
+                let badge_font = egui::FontId::monospace(11.0);
                 // Dark foreground derived from the price color — high contrast but tinted
                 let fg_col = egui::Color32::from_rgb(
                     (price_col.r() as f32 * 0.15) as u8,
@@ -1542,6 +1747,15 @@ fn render_chart_pane(
         let secs_in_day = ((ts % 86400) + 86400) % 86400;
         secs_in_day < rth_start_utc_secs || secs_in_day >= rth_end_utc_secs
     };
+
+    #[cfg(feature = "gpu_chart_v2")]
+    {
+        chart.gpu_render_params.eth_alpha = if chart.session_shading && !is_crypto {
+            chart.eth_bar_opacity
+        } else {
+            45.0 / 255.0
+        };
+    }
 
     // Volume + candles + indicators + oscillators + drawings
     span_begin("pane_render");
@@ -2172,18 +2386,9 @@ fn render_chart_pane(
         chart.gpu_render_params.vc_total   = total as f32;
         chart.gpu_render_params.price_low  = min_p;
         chart.gpu_render_params.price_high = max_p;
-        chart.gpu_render_params.chart_rect = [rect.left(), rect.top() + pt, rect.left() + cw, rect.top() + pt + ch];
-        chart.gpu_render_params.bg   = c32(t.bg);
-        chart.gpu_render_params.bull = c32(t.bull);
-        chart.gpu_render_params.bear = c32(t.bear);
-        // Mirror the egui path's `eth_alpha` calculation: when session
-        // shading is on (and not crypto) use the user-tunable opacity;
-        // otherwise fall back to the historical default dim of 45/255.
-        chart.gpu_render_params.eth_alpha = if chart.session_shading && !is_crypto {
-            chart.eth_bar_opacity
-        } else {
-            45.0 / 255.0
-        };
+        // chart_rect, bg/bull/bear, eth_alpha all set earlier (right after
+        // rect/pt/ch are computed) so loading-state and alt-mode panes also
+        // carry the correct values.
     }
 
     } // end else if !is_alt_mode
@@ -3015,7 +3220,7 @@ fn render_chart_pane(
             let adv = chart.order_advanced;
             let fp_panel_w = if adv { 270.0 } else { 210.0 };
 
-            egui::Window::new(format!("float_order_{}", pane.id))
+            egui::Window::new(format!("float_order_{}_{}", pane_idx, pane.id))
                 .fixed_pos(pane.pos)
                 .fixed_size(egui::vec2(fp_panel_w, 0.0))
                 .title_bar(false)
@@ -6858,34 +7063,8 @@ fn render_chart_pane(
         }
     }
 
-    // ── Order entry panel (bottom-left of pane) ─────────────────────────
-    if watchlist.order_entry_open {
-        // Auto-expand advanced mode for option charts (UND is there)
-        if chart.is_option && !chart.order_advanced {
-            chart.order_advanced = true;
-            chart.order_type_idx = 5; // default to UND for options
-        }
-        let abs_pos = if chart.order_panel_pos.y < 0.0 {
-            egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + ch + chart.order_panel_pos.y)
-        } else {
-            egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + chart.order_panel_pos.y)
-        };
-
-        crate::chart_renderer::ui::widgets::trading::show_order_entry_panel(
-            crate::chart_renderer::ui::widgets::trading::order_entry_panel::OrderEntryPanelCtx {
-                ctx,
-                t,
-                chart,
-                watchlist,
-                account_data_cached: &account_data_cached,
-                abs_pos,
-                pane_idx,
-                cw,
-                ch,
-            },
-        );
-
-        // ── Pending confirm toasts (above order entry panel) ─────────
+    // ── Pending confirm toasts ───────────────────────────────────────────
+    {
         let base_y = rect.top() + pt + ch - 120.0 - 28.0;
         crate::chart_renderer::ui::widgets::trading::show_pending_order_toasts(
             crate::chart_renderer::ui::widgets::trading::pending_order_toasts::PendingOrderToastsCtx {
@@ -8263,16 +8442,7 @@ fn render_chart_pane(
         egui::vec2(cw + pr - shrink_left - shrink_right, ch - shrink_top - shrink_bottom),
     );
     // Skip chart interaction when pointer is over a floating window (order panel, DOM, etc.)
-    let pointer_over_window = ctx.memory(|m| m.any_popup_open())
-        || (watchlist.order_entry_open && ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| {
-            let abs_pos = if chart.order_panel_pos.y < 0.0 {
-                egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + ch + chart.order_panel_pos.y)
-            } else {
-                egui::pos2(rect.left() + chart.order_panel_pos.x, rect.top() + pt + chart.order_panel_pos.y)
-            };
-            let panel_w = if chart.order_advanced { 300.0 } else { 230.0 };
-            egui::Rect::from_min_size(abs_pos, egui::vec2(panel_w, 300.0)).contains(p)
-        }));
+    let pointer_over_window = ctx.memory(|m| m.any_popup_open());
     let chart_sense = if pointer_over_window { egui::Sense::hover() } else { egui::Sense::click_and_drag() };
     let resp = ui.allocate_rect(interact_rect, chart_sense);
 
@@ -8887,7 +9057,9 @@ fn render_chart_pane(
         if resp.dragged_by(egui::PointerButton::Primary) {
             let dy = resp.drag_delta().y;
             if dy.abs() > 1.0 {
-                let f = if dy > 0.0 { 1.05_f32 } else { 0.95 };
+                // Zoom step bumped 20% (0.05 → 0.06 deviation per frame)
+                // so y-axis drag feels more responsive without wheel use.
+                let f = if dy > 0.0 { 1.06_f32 } else { 0.94 };
                 let (lo, hi) = chart.price_range();
                 let center = (lo + hi) / 2.0;
                 let half = ((hi - lo) / 2.0) * f;
@@ -9506,13 +9678,17 @@ fn render_chart_pane(
         && chart.dragging_order.is_none() && chart.axis_drag_mode == 0
         && resp.dragged_by(egui::PointerButton::Primary) {
         let d = resp.drag_delta();
+        // Pan sensitivity multiplier — bumped 30% over the raw 1px-per-px
+        // drag so feel matches the user's expectation of pixel-distance ≠
+        // bar-distance at typical zoom levels.
+        const PAN_SENS: f32 = 1.30;
         // Horizontal pan
-        chart.vs = (chart.vs - d.x/bs).max(0.0).min(n as f32 + 200.0);
+        chart.vs = (chart.vs - d.x * PAN_SENS / bs).max(0.0).min(n as f32 + 200.0);
         // Vertical pan — shift price range (only when vertical movement dominates)
         if d.y.abs() > 1.0 && d.y.abs() > d.x.abs() * 1.5 {
             let (lo, hi) = chart.price_range();
             let price_per_px = (hi - lo) / ch;
-            let shift = d.y * price_per_px;
+            let shift = d.y * PAN_SENS * price_per_px;
             chart.price_lock = Some((lo + shift, hi + shift));
         }
         chart.auto_scroll = false;
@@ -9618,7 +9794,7 @@ fn render_chart_pane(
                         chart.selected_ids.clear();
                     }
                 }
-            } else if zone == Zone::YAxis && watchlist.order_entry_open {
+            } else if zone == Zone::YAxis && !chart.floating_order_panes.is_empty() {
                 // ── Click-on-price: set limit order price from Y-axis click ──
                 let clicked_price = py_inv(pos.y);
                 chart.order_limit_price = format!("{:.2}", clicked_price);
@@ -10879,35 +11055,6 @@ fn render_chart_pane(
         }
     }
 
-    // ── Restore button (when pane is maximized) — drawn last so it's on top ──
-    if watchlist.maximized_pane.is_some() {
-        let btn_w = 28.0;
-        let btn_h = 22.0;
-        let btn_rect = egui::Rect::from_min_size(
-            egui::pos2(pane_rect.right() - btn_w - 8.0, pane_rect.top() + 4.0),
-            egui::vec2(btn_w, btn_h));
-        // Background pill
-        ui.painter().rect_filled(btn_rect, 4.0, color_alpha(t.toolbar_bg, 230));
-        ui.painter().rect_stroke(btn_rect, 4.0, egui::Stroke::new(STROKE_STD, color_alpha(t.toolbar_border, ALPHA_ACTIVE)), egui::StrokeKind::Outside);
-        // Restore icon — overlapping squares
-        let c = btn_rect.center();
-        let s = 4.0;
-        let icon_col = t.dim.gamma_multiply(0.7);
-        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + 1.5, c.y - s - 0.5), egui::vec2(s * 1.5, s * 1.5)), 1.0, egui::Stroke::new(1.2, icon_col), egui::StrokeKind::Outside);
-        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s - 0.5, c.y - s + 1.5), egui::vec2(s * 1.5, s * 1.5)), 1.0, egui::Stroke::new(1.2, icon_col), egui::StrokeKind::Outside);
-        // Click detection
-        let btn_resp = ui.allocate_rect(btn_rect, egui::Sense::click());
-        if btn_resp.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(btn_rect, 4.0, color_alpha(t.toolbar_border, ALPHA_DIM));
-            // Redraw icon brighter on hover
-            let hc = t.dim;
-            ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + 1.5, c.y - s - 0.5), egui::vec2(s * 1.5, s * 1.5)), 1.0, egui::Stroke::new(1.2, hc), egui::StrokeKind::Outside);
-            ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s - 0.5, c.y - s + 1.5), egui::vec2(s * 1.5, s * 1.5)), 1.0, egui::Stroke::new(1.2, hc), egui::StrokeKind::Outside);
-        }
-        if btn_resp.clicked() { watchlist.maximized_pane = None; }
-    }
-
     // ── Drawing-tool picker (opened by 2nd middle-click) ────────────────────
     if chart.draw_picker_open {
         let pos = chart.draw_picker_pos;
@@ -11519,10 +11666,10 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 (1, vec![full_rect])
             } else {
                 watchlist.maximized_pane = None;
-                (actual_count, layout.pane_rects(full_rect, actual_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2))
+                (actual_count, layout.pane_rects(full_rect, actual_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2, watchlist.pane_split_v3, watchlist.pane_split_v4, watchlist.pane_split_v5, watchlist.pane_split_v6))
             }
         } else {
-            (actual_count, layout.pane_rects(full_rect, actual_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2))
+            (actual_count, layout.pane_rects(full_rect, actual_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2, watchlist.pane_split_v3, watchlist.pane_split_v4, watchlist.pane_split_v5, watchlist.pane_split_v6))
         };
 
         // Compute max pane header height (tabs make headers taller)
@@ -11568,18 +11715,41 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 }
             }
             // Vertical dividers (drag left/right to adjust column widths)
+            let actual_header_h_v = pane_tabs_header_h(watchlist);
+            let v_gap = crate::chart_renderer::ui::style::current().pane_gap;
+            let v_tol = v_gap / 2.0 + 3.0;
             for (di, &div_x) in v_dividers.iter().enumerate() {
-                // Hit area: 5px left, 15px right = 20px total (smaller vertical)
-                let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(div_x - 5.0, full_rect.top() + max_header_h),
-                    egui::vec2(20.0, full_rect.height() - max_header_h));
-                let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
+                // Union of all right-side pane rects (left edge ≈ div_x + gap/2)
+                let right_x_edge = div_x + v_gap / 2.0;
+                let right_clip = pane_rects.iter().take(visible_count)
+                    .filter(|r| (r.left() - right_x_edge).abs() <= v_tol)
+                    .fold(egui::Rect::NOTHING, |acc, r| {
+                        egui::Rect::from_min_max(
+                            egui::pos2(r.left(), acc.min.y.min(r.top())),
+                            egui::pos2(r.right(), acc.max.y.max(r.bottom())),
+                        )
+                    });
+                // Fall back to full right half if filter missed (large gap styles)
+                let right_clip = if right_clip == egui::Rect::NOTHING { full_rect } else { right_clip };
+                let clip_top = right_clip.top() + actual_header_h_v;
+                let clip_bottom = right_clip.bottom();
+                // Drag area: right-side only, clipped to right pane(s)
+                let drag_rect_v = egui::Rect::from_min_max(
+                    egui::pos2(right_clip.left(), clip_top),
+                    egui::pos2(right_clip.left() + 16.0, clip_bottom));
+                // Highlight: 8px strip into the right pane
+                let highlight_rect_v = egui::Rect::from_min_max(
+                    egui::pos2(right_clip.left(), clip_top),
+                    egui::pos2(right_clip.left() + 8.0, clip_bottom));
+                let div_resp = ui.interact(drag_rect_v, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                    let alpha = if div_resp.dragged() { 30u8 } else { 15 };
-                    ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.accent, alpha));
-                    ui.painter().line_segment(
-                        [egui::pos2(div_x, full_rect.top()), egui::pos2(div_x, full_rect.bottom())],
+                    let alpha = if div_resp.dragged() { 15u8 } else { 7 };
+                    // Clip painter to the right pane rect so nothing bleeds into adjacent panes
+                    let p = ui.painter_at(right_clip);
+                    p.rect_filled(highlight_rect_v, 0.0, color_alpha(t.accent, alpha));
+                    p.line_segment(
+                        [egui::pos2(right_clip.left(), clip_top), egui::pos2(right_clip.left(), clip_bottom)],
                         egui::Stroke::new(1.0, color_alpha(t.accent, if div_resp.dragged() { 120 } else { 50 })));
                 }
                 if div_resp.dragged() {
@@ -11596,32 +11766,100 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
             }
             // Horizontal dividers (drag up/down to adjust row heights)
+            let actual_header_h = pane_tabs_header_h(watchlist);
+            let h_gap = v_gap; // same style value
+            let h_tol = h_gap / 2.0 + 3.0;
             for (di, &div_y) in h_dividers.iter().enumerate() {
-                // Hit area: nothing above, 10px below the pane header (starts below divider)
-                let div_rect = egui::Rect::from_min_size(
-                    egui::pos2(full_rect.left(), div_y + max_header_h),
-                    egui::vec2(full_rect.width(), 10.0));
-                let div_resp = ui.interact(div_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
+                // Union of all lower pane rects (top edge ≈ div_y + gap/2)
+                let below_y_edge = div_y + h_gap / 2.0;
+                let below_clip = pane_rects.iter().take(visible_count)
+                    .filter(|r| (r.top() - below_y_edge).abs() <= h_tol)
+                    .fold(egui::Rect::NOTHING, |acc, r| {
+                        egui::Rect::from_min_max(
+                            egui::pos2(acc.min.x.min(r.left()), r.top()),
+                            egui::pos2(acc.max.x.max(r.right()), r.bottom()),
+                        )
+                    });
+                let below_clip = if below_clip == egui::Rect::NOTHING { full_rect } else { below_clip };
+                // Edge = bottom of the lower pane's header
+                let edge_y = below_clip.top() + actual_header_h;
+                // Drag area: 8px above the edge to 16px below, clipped to lower pane width
+                let drag_rect = egui::Rect::from_min_max(
+                    egui::pos2(below_clip.left(), edge_y - 8.0),
+                    egui::pos2(below_clip.right(), edge_y + 16.0));
+                // Highlight: 8px strip below the edge, clipped to lower pane width
+                let highlight_rect = egui::Rect::from_min_max(
+                    egui::pos2(below_clip.left(), edge_y),
+                    egui::pos2(below_clip.right(), edge_y + 8.0));
+                let div_resp = ui.interact(drag_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
                 if div_resp.hovered() || div_resp.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                    let alpha = if div_resp.dragged() { 30u8 } else { 15 };
-                    ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.accent, alpha));
-                    ui.painter().line_segment(
-                        [egui::pos2(full_rect.left(), div_y), egui::pos2(full_rect.right(), div_y)],
+                    let alpha = if div_resp.dragged() { 15u8 } else { 7 };
+                    // Clip painter to the lower pane so nothing bleeds into adjacent panes
+                    let p = ui.painter_at(below_clip);
+                    p.rect_filled(highlight_rect, 0.0, color_alpha(t.accent, alpha));
+                    p.line_segment(
+                        [egui::pos2(below_clip.left(), edge_y), egui::pos2(below_clip.right(), edge_y)],
                         egui::Stroke::new(1.0, color_alpha(t.accent, if div_resp.dragged() { 120 } else { 50 })));
                 }
                 if div_resp.dragged() {
                     let dy = div_resp.drag_delta().y;
                     let ratio = dy / full_rect.height();
-                    // First horizontal divider → split_v, second → split_v2
-                    if di == 0 {
-                        watchlist.pane_split_v = (watchlist.pane_split_v + ratio).clamp(0.15, 0.85);
+                    // Determine which column this divider belongs to and its index within that column
+                    let is_left_col = (below_clip.left() - full_rect.left()).abs() < 20.0;
+                    // Count same-column dividers above current div_y to get col_div_idx
+                    let col_div_idx = h_dividers.iter().enumerate().filter(|&(j, &hy)| {
+                        if j == di { return false; }
+                        let other_below_edge = hy + h_gap / 2.0;
+                        let other_below_clip = pane_rects.iter().take(visible_count)
+                            .filter(|r| (r.top() - other_below_edge).abs() <= h_tol)
+                            .fold(egui::Rect::NOTHING, |acc, r| egui::Rect::from_min_max(
+                                egui::pos2(acc.min.x.min(r.left()), r.top()),
+                                egui::pos2(acc.max.x.max(r.right()), r.bottom()),
+                            ));
+                        let other_is_left = (other_below_clip.left() - full_rect.left()).abs() < 20.0;
+                        other_is_left == is_left_col && hy < div_y
+                    }).count();
+                    let is_eight_h = matches!(layout, crate::chart_renderer::gpu::Layout::EightH);
+                    if is_left_col {
+                        match col_div_idx {
+                            0 => watchlist.pane_split_v  = (watchlist.pane_split_v  + ratio).clamp(0.15, 0.85),
+                            1 => watchlist.pane_split_v2 = (watchlist.pane_split_v2 + ratio).clamp(0.15, 0.85),
+                            _ => watchlist.pane_split_v3 = (watchlist.pane_split_v3 + ratio).clamp(0.15, 0.85),
+                        }
+                    } else if is_eight_h {
+                        // EightH right col uses split_v4/v5/v6
+                        match col_div_idx {
+                            0 => watchlist.pane_split_v4 = (watchlist.pane_split_v4 + ratio).clamp(0.15, 0.85),
+                            1 => watchlist.pane_split_v5 = (watchlist.pane_split_v5 + ratio).clamp(0.15, 0.85),
+                            _ => watchlist.pane_split_v6 = (watchlist.pane_split_v6 + ratio).clamp(0.15, 0.85),
+                        }
                     } else {
-                        watchlist.pane_split_v2 = (watchlist.pane_split_v2 + ratio).clamp(0.15, 0.85);
+                        // FiveL/SixL/FourL right col uses split_v2/v3/v4
+                        match col_div_idx {
+                            0 => watchlist.pane_split_v2 = (watchlist.pane_split_v2 + ratio).clamp(0.15, 0.85),
+                            1 => watchlist.pane_split_v3 = (watchlist.pane_split_v3 + ratio).clamp(0.15, 0.85),
+                            _ => watchlist.pane_split_v4 = (watchlist.pane_split_v4 + ratio).clamp(0.15, 0.85),
+                        }
                     }
                     watchlist.pane_divider_dragging = true;
                 }
                 if div_resp.drag_stopped() { watchlist.pane_divider_dragging = false; }
+            }
+        }
+
+        // When maximized, panes that aren't rendered this frame never go through
+        // render_chart_pane, so their gpu_render_params from the previous frame
+        // persist and the GPU pass renders stale geometry at old positions.
+        // Clear them explicitly here before the visible pane(s) are rendered.
+        #[cfg(feature = "gpu_chart_v2")]
+        if let Some(max_idx) = watchlist.maximized_pane {
+            for (i, chart) in panes.iter_mut().enumerate() {
+                if i == max_idx { continue; }
+                chart.gpu_render_params.instances.clear();
+                chart.gpu_render_params.line_segments.clear();
+                chart.gpu_render_params.fill_quads.clear();
+                chart.gpu_render_params.chart_rect = [0.0; 4];
             }
         }
 

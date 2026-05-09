@@ -397,6 +397,7 @@ pub(crate) enum Layout {
     One, Two, TwoH,
     Three,      // 1 top + 2 bottom
     ThreeL,     // 1 big left + 2 stacked right
+    ThreeR,     // 2 stacked left + 1 big right
     Four,       // 2×2 grid
     FourL,      // 1 big left + 3 stacked right
     FiveC,      // 2 left + 1 big center + 2 right
@@ -413,14 +414,14 @@ pub(crate) enum Layout {
 impl Layout {
     pub(crate) fn max_panes(self) -> usize { match self {
         Layout::One=>1, Layout::Two|Layout::TwoH=>2,
-        Layout::Three|Layout::ThreeL=>3, Layout::Four|Layout::FourL=>4,
+        Layout::Three|Layout::ThreeL|Layout::ThreeR=>3, Layout::Four|Layout::FourL=>4,
         Layout::FiveC|Layout::FiveL|Layout::FiveW|Layout::FiveR=>5,
         Layout::Six|Layout::SixH|Layout::SixL=>6,
         Layout::Seven=>7, Layout::EightH=>8, Layout::Nine=>9,
     }}
     pub(crate) fn label(self) -> &'static str { match self {
         Layout::One=>"1", Layout::Two=>"2", Layout::TwoH=>"2H",
-        Layout::Three=>"3", Layout::ThreeL=>"3L",
+        Layout::Three=>"3", Layout::ThreeL=>"3L", Layout::ThreeR=>"3R",
         Layout::Four=>"4", Layout::FourL=>"4L",
         Layout::FiveC=>"5C", Layout::FiveL=>"5L", Layout::FiveW=>"5W", Layout::FiveR=>"5R",
         Layout::Six=>"6", Layout::SixH=>"6H", Layout::SixL=>"6L",
@@ -428,7 +429,7 @@ impl Layout {
     }}
     pub(crate) fn description(self) -> &'static str { match self {
         Layout::One=>"Single pane", Layout::Two=>"2 side-by-side", Layout::TwoH=>"2 stacked",
-        Layout::Three=>"1 top + 2 bottom", Layout::ThreeL=>"1 left + 2 right",
+        Layout::Three=>"1 top + 2 bottom", Layout::ThreeL=>"1 left + 2 right", Layout::ThreeR=>"2 left + 1 right",
         Layout::Four=>"2\u{00d7}2 grid", Layout::FourL=>"1 left + 3 right",
         Layout::FiveC=>"2L + 1 center + 2R", Layout::FiveL=>"2 left + 3 right",
         Layout::FiveW=>"1 wide top + 2\u{00d7}2", Layout::FiveR=>"2 + 1 + 2 rows",
@@ -441,7 +442,7 @@ impl Layout {
     pub(crate) fn section(self) -> &'static str { match self {
         Layout::One => "1 Pane",
         Layout::Two | Layout::TwoH => "2 Panes",
-        Layout::Three | Layout::ThreeL => "3 Panes",
+        Layout::Three | Layout::ThreeL | Layout::ThreeR => "3 Panes",
         Layout::Four | Layout::FourL => "4 Panes",
         Layout::FiveC | Layout::FiveL | Layout::FiveW | Layout::FiveR => "5 Panes",
         Layout::Six | Layout::SixH | Layout::SixL => "6 Panes",
@@ -449,7 +450,7 @@ impl Layout {
     }}
     /// Returns (col, row) grid dimensions for each pane in the layout, given the total rect.
     /// For Layout::Three, returns a custom arrangement: 1 full-width top (60%) + 2 bottom (40%).
-    pub(crate) fn pane_rects(self, rect: egui::Rect, count: usize, split_h: f32, split_v: f32, split_h2: f32, split_v2: f32) -> Vec<egui::Rect> {
+    pub(crate) fn pane_rects(self, rect: egui::Rect, count: usize, split_h: f32, split_v: f32, split_h2: f32, split_v2: f32, split_v3: f32, split_v4: f32, split_v5: f32, split_v6: f32) -> Vec<egui::Rect> {
         if count == 0 { return vec![]; }
         // pane_gap from StyleSettings lets the user control inter-pane spacing.
         let gap = super::ui::style::current().pane_gap;
@@ -507,6 +508,23 @@ impl Layout {
                 }
                 rects
             }
+            Layout::ThreeR if count >= 2 => {
+                // 2 stacked left + 1 big right (split_v controls left side)
+                let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
+                let right_w = rect.width() - gap - left_w;
+                let rx = rect.left() + left_w + gap;
+                let mut rects = Vec::new();
+                if count >= 3 {
+                    let h0 = (rect.height() - gap) * split_v.clamp(0.15, 0.85);
+                    let h1 = rect.height() - gap - h0;
+                    rects.push(egui::Rect::from_min_size(rect.min, egui::vec2(left_w, h0)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + h0 + gap), egui::vec2(left_w, h1)));
+                } else {
+                    rects.push(egui::Rect::from_min_size(rect.min, egui::vec2(left_w, rect.height())));
+                }
+                rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top()), egui::vec2(right_w, rect.height())));
+                rects
+            }
             Layout::FourL if count >= 2 => {
                 // 1 big left + 3 stacked right (split_v + split_v2 control right side)
                 let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
@@ -552,7 +570,7 @@ impl Layout {
                 rects
             }
             Layout::FiveL if count >= 2 => {
-                // 2 stacked left + 3 stacked right (split_v controls left, split_v2 controls right)
+                // 2 stacked left + 3 stacked right
                 let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
                 let right_w = rect.width() - gap - left_w;
                 let rx = rect.left() + left_w + gap;
@@ -562,14 +580,25 @@ impl Layout {
                 rects.push(egui::Rect::from_min_size(rect.min, egui::vec2(left_w, lh0)));
                 rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + lh0 + gap), egui::vec2(left_w, lh1)));
                 let n_right = (count - 2).min(3);
-                let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right as f32;
-                for i in 0..n_right {
-                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                if n_right == 3 {
+                    let total_rh = rect.height() - gap * 2.0;
+                    let rh0 = total_rh * (split_v2 * 0.9).clamp(0.1, 0.5);
+                    let rest = total_rh - rh0;
+                    let rh1 = rest * split_v3.clamp(0.2, 0.8);
+                    let rh2 = rest - rh1;
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top()), egui::vec2(right_w, rh0)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + rh0 + gap), egui::vec2(right_w, rh1)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + rh0 + gap + rh1 + gap), egui::vec2(right_w, rh2)));
+                } else {
+                    let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right.max(1) as f32;
+                    for i in 0..n_right {
+                        rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                    }
                 }
                 rects
             }
             Layout::SixL if count >= 2 => {
-                // 2 big stacked left + 4 stacked right (split_v controls left)
+                // 2 big stacked left + 4 stacked right
                 let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
                 let right_w = rect.width() - gap - left_w;
                 let rx = rect.left() + left_w + gap;
@@ -579,9 +608,23 @@ impl Layout {
                 rects.push(egui::Rect::from_min_size(rect.min, egui::vec2(left_w, lh0)));
                 rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + lh0 + gap), egui::vec2(left_w, lh1)));
                 let n_right = (count - 2).min(4);
-                let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right as f32;
-                for i in 0..n_right {
-                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                if n_right == 4 {
+                    let total_rh = rect.height() - gap * 3.0;
+                    let rh0 = total_rh * (split_v2 * 0.9).clamp(0.08, 0.4);
+                    let rest0 = total_rh - rh0;
+                    let rh1 = rest0 * (split_v3 * 0.9).clamp(0.1, 0.5);
+                    let rest1 = rest0 - rh1;
+                    let rh2 = rest1 * split_v4.clamp(0.2, 0.8);
+                    let rh3 = rest1 - rh2;
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top()), egui::vec2(right_w, rh0)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + rh0 + gap), egui::vec2(right_w, rh1)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + rh0 + gap + rh1 + gap), egui::vec2(right_w, rh2)));
+                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + rh0 + gap + rh1 + gap + rh2 + gap), egui::vec2(right_w, rh3)));
+                } else {
+                    let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right.max(1) as f32;
+                    for i in 0..n_right {
+                        rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                    }
                 }
                 rects
             }
@@ -590,16 +633,48 @@ impl Layout {
                 let left_w = (rect.width() - gap) * split_h.clamp(0.2, 0.8);
                 let right_w = rect.width() - gap - left_w;
                 let rx = rect.left() + left_w + gap;
-                let n_left = (count).min(4);
+                let n_left = count.min(4);
                 let n_right = count.saturating_sub(4).min(4);
                 let mut rects = Vec::new();
-                let lh = (rect.height() - gap * (n_left as f32 - 1.0).max(0.0)) / n_left as f32;
-                for i in 0..n_left {
-                    rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + i as f32 * (lh + gap)), egui::vec2(left_w, lh)));
+                // Left column: use split_v, split_v2, split_v3 for 4 panes
+                if n_left == 4 {
+                    let total_lh = rect.height() - gap * 3.0;
+                    let lh0 = total_lh * (split_v * 0.9).clamp(0.08, 0.4);
+                    let rest0 = total_lh - lh0;
+                    let lh1 = rest0 * (split_v2 * 0.9).clamp(0.1, 0.5);
+                    let rest1 = rest0 - lh1;
+                    let lh2 = rest1 * split_v3.clamp(0.2, 0.8);
+                    let lh3 = rest1 - lh2;
+                    let ys = [0.0, lh0 + gap, lh0 + gap + lh1 + gap, lh0 + gap + lh1 + gap + lh2 + gap];
+                    let hs = [lh0, lh1, lh2, lh3];
+                    for i in 0..4 {
+                        rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + ys[i]), egui::vec2(left_w, hs[i])));
+                    }
+                } else {
+                    let lh = (rect.height() - gap * (n_left as f32 - 1.0).max(0.0)) / n_left.max(1) as f32;
+                    for i in 0..n_left {
+                        rects.push(egui::Rect::from_min_size(egui::pos2(rect.left(), rect.top() + i as f32 * (lh + gap)), egui::vec2(left_w, lh)));
+                    }
                 }
-                let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right.max(1) as f32;
-                for i in 0..n_right {
-                    rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                // Right column: use split_v4, split_v5, split_v6 for 4 panes
+                if n_right == 4 {
+                    let total_rh = rect.height() - gap * 3.0;
+                    let rh0 = total_rh * (split_v4 * 0.9).clamp(0.08, 0.4);
+                    let rest0 = total_rh - rh0;
+                    let rh1 = rest0 * (split_v5 * 0.9).clamp(0.1, 0.5);
+                    let rest1 = rest0 - rh1;
+                    let rh2 = rest1 * split_v6.clamp(0.2, 0.8);
+                    let rh3 = rest1 - rh2;
+                    let ys = [0.0, rh0 + gap, rh0 + gap + rh1 + gap, rh0 + gap + rh1 + gap + rh2 + gap];
+                    let hs = [rh0, rh1, rh2, rh3];
+                    for i in 0..4 {
+                        rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + ys[i]), egui::vec2(right_w, hs[i])));
+                    }
+                } else {
+                    let rh = (rect.height() - gap * (n_right as f32 - 1.0).max(0.0)) / n_right.max(1) as f32;
+                    for i in 0..n_right {
+                        rects.push(egui::Rect::from_min_size(egui::pos2(rx, rect.top() + i as f32 * (rh + gap)), egui::vec2(right_w, rh)));
+                    }
                 }
                 rects
             }
@@ -666,7 +741,7 @@ impl Layout {
                     Layout::One => (1, 1),
                     Layout::Two => (2, 1),
                     Layout::TwoH => (1, 2),
-                    Layout::Three | Layout::ThreeL => (2, 2),
+                    Layout::Three | Layout::ThreeL | Layout::ThreeR => (2, 2),
                     Layout::Four | Layout::FourL => (2, 2),
                     Layout::FiveC | Layout::FiveL | Layout::FiveW | Layout::FiveR => (3, 2),
                     Layout::Six | Layout::SixL => (3, 2),
@@ -720,7 +795,7 @@ impl Layout {
 
 pub(crate) const ALL_LAYOUTS: &[Layout] = &[
     Layout::One, Layout::Two, Layout::TwoH,
-    Layout::Three, Layout::ThreeL,
+    Layout::Three, Layout::ThreeL, Layout::ThreeR,
     Layout::Four, Layout::FourL,
     Layout::FiveC, Layout::FiveL, Layout::FiveW, Layout::FiveR,
     Layout::Six, Layout::SixH, Layout::SixL,
@@ -1513,6 +1588,11 @@ pub(crate) struct Chart {
     pub(crate) dom_armed: bool,
     pub(crate) dom_col_mode: u8,
     pub(crate) dom_dragging: Option<(u32, f32)>,
+    /// 0 = anchored to left edge of pane, 1 = anchored to right edge.
+    pub(crate) dom_position: u8,
+    /// When true the DOM panel takes the entire chart pane area; the
+    /// candle/indicator/oscillator regions are hidden until disabled.
+    pub(crate) dom_fullscreen: bool,
     // Symbol/timeframe change request — signals the App to reload data
     pub(crate) pending_symbol_change: Option<String>,
     pub(crate) pending_timeframe_change: Option<String>,
@@ -1740,6 +1820,7 @@ impl Chart {
             measuring: false, measure_start: None, measure_active: false, dom_open: false,
             dom_sidebar_open: false, dom_levels: vec![], dom_tick_size: 0.01, dom_center_price: 0.0, dom_width: super::ui::panels::dom_panel::DOM_SIDEBAR_W,
             dom_selected_price: None, dom_order_type: super::ui::panels::dom_panel::DomOrderType::Market, dom_armed: false, dom_col_mode: 1, dom_dragging: None,
+            dom_position: 0, dom_fullscreen: false,
             pending_symbol_change: None, pending_timeframe_change: None,
             cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
@@ -3873,8 +3954,17 @@ pub(crate) struct TabDragState {
     pub current_pos: egui::Pos2,
 }
 
+/// A named, colored pane link group. Groups live on the Watchlist so all panes
+/// in the same window share the same group definitions.
+pub(crate) struct LinkGroup {
+    pub(crate) name: String,
+    pub(crate) color: egui::Color32,
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
+    /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
+    pub(crate) link_groups: Vec<LinkGroup>,
     pub(crate) tab: WatchlistTab,
     pub(crate) sections: Vec<WatchlistSection>,
     pub(crate) next_section_id: u32,
@@ -4009,6 +4099,11 @@ pub(crate) struct Watchlist {
     pub(crate) pane_split_v: f32, // primary horizontal divider ratio
     pub(crate) pane_split_h2: f32, // secondary vertical divider ratio (for 3-column layouts)
     pub(crate) pane_split_v2: f32, // secondary horizontal divider ratio (for 3-row layouts)
+    // Extra horizontal dividers for multi-pane right/left columns (FiveL, SixL, EightH)
+    pub(crate) pane_split_v3: f32,
+    pub(crate) pane_split_v4: f32,
+    pub(crate) pane_split_v5: f32,
+    pub(crate) pane_split_v6: f32,
     pub(crate) pane_divider_dragging: bool,
     // Command palette
     pub(crate) cmd_palette_open: bool,
@@ -4151,7 +4246,19 @@ impl Watchlist {
         let active = &saved_watchlists[active_idx];
         let sections = active.sections.clone();
         let next_section_id = active.next_section_id;
+        // Four predefined link groups so users have something to pick from
+        // immediately. Panes default to link_group=0 ("None" / unlinked) and
+        // `link_group_propagation` validates that a pane's group index is
+        // within `watchlist.link_groups.len()` before linking, so untouched
+        // panes never auto-link to each other through a default group.
+        let link_groups = vec![
+            LinkGroup { name: "Group 1".into(), color: egui::Color32::from_rgb(70, 130, 255) },
+            LinkGroup { name: "Group 2".into(), color: egui::Color32::from_rgb(80, 200, 120) },
+            LinkGroup { name: "Group 3".into(), color: egui::Color32::from_rgb(255, 160, 60) },
+            LinkGroup { name: "Group 4".into(), color: egui::Color32::from_rgb(180, 100, 255) },
+        ];
         Self { open: false, tab: WatchlistTab::Stocks, sections, next_section_id,
+               link_groups,
                saved_watchlists, active_watchlist_idx: active_idx,
                watchlist_name_editing: false, watchlist_name_buf: String::new(), watchlist_ctx_menu_idx: None,
                search_query: String::new(), search_results: vec![], search_sel: -1, search_refocus: false,
@@ -4182,7 +4289,9 @@ impl Watchlist {
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
-               pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5, pane_divider_dragging: false,
+               pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5,
+               pane_split_v3: 0.5, pane_split_v4: 0.5, pane_split_v5: 0.5, pane_split_v6: 0.5,
+               pane_divider_dragging: false,
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
                cmd_palette_recent: vec![], cmd_palette_freq: std::collections::HashMap::new(),
                cmd_palette_ai_mode: false, cmd_palette_ai_input: String::new(),
@@ -4804,7 +4913,14 @@ impl GpuCtx {
             let mut chart_us_total: u64 = 0;
             let mut total_visible_bars: u32 = 0;
             let mut first_pane_done = false;
-            for chart in panes.iter() {
+            // When a pane is maximized, render only that pane on the GPU.
+            // The egui pane-render loop already skips non-maximized panes,
+            // and the central panel's pre-emptive clear zeroes their GPU
+            // state — but if a frame slipped past either guard we'd ghost
+            // the previous layout. This is the final belt-and-braces gate.
+            let max_idx_opt = watchlist.maximized_pane;
+            for (i, chart) in panes.iter().enumerate() {
+                if let Some(mi) = max_idx_opt { if i != mi { continue; } }
                 // Skip panes that didn't populate a real chart_rect this
                 // frame (alt-mode bars, non-Chart pane types, n==0 loading,
                 // hidden panes). The render_chart_pane prologue resets the
@@ -5036,6 +5152,10 @@ impl App {
         wl.pane_split_v = loaded_settings.pane_split_v;
         wl.pane_split_h2 = loaded_settings.pane_split_h2;
         wl.pane_split_v2 = loaded_settings.pane_split_v2;
+        wl.pane_split_v3 = loaded_settings.pane_split_v3;
+        wl.pane_split_v4 = loaded_settings.pane_split_v4;
+        wl.pane_split_v5 = loaded_settings.pane_split_v5;
+        wl.pane_split_v6 = loaded_settings.pane_split_v6;
         // Load persisted hotkeys (override defaults)
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
@@ -5249,7 +5369,7 @@ impl ApplicationHandler for App {
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
                             let (new_panes, new_layout) = {
                                 let layout = match json.get("layout").and_then(|v| v.as_str()).unwrap_or("1") {
-                                    "2" => Layout::Two, "2H" => Layout::TwoH, "3" => Layout::Three, "3L" => Layout::ThreeL,
+                                    "2" => Layout::Two, "2H" => Layout::TwoH, "3" => Layout::Three, "3L" => Layout::ThreeL, "3R" => Layout::ThreeR,
                                     "4" => Layout::Four, "4L" => Layout::FourL,
                                     "5C" => Layout::FiveC, "5L" => Layout::FiveL, "5W" => Layout::FiveW, "5R" => Layout::FiveR,
                                     "6" => Layout::Six, "6H" => Layout::SixH, "6L" => Layout::SixL,
@@ -5492,10 +5612,17 @@ impl ApplicationHandler for App {
 
             // ── Linked pane groups: propagate symbol changes across linked panes ──
             // Detect which panes just changed symbol (had pending_symbol_change processed above)
-            // by checking which panes have empty bars + link_group > 0
+            // by checking which panes have empty bars + link_group > 0.
+            //
+            // Only treat a pane as linked when its `link_group` indexes into an
+            // existing watchlist group — otherwise stale group IDs from prior
+            // sessions (or the old click-cycle UI) would silently link panes
+            // the user never explicitly grouped.
+            let group_count = cw.watchlist.link_groups.len() as u8;
             let mut link_changes: Vec<(u8, String)> = Vec::new();
             for pane in &cw.panes {
-                if pane.link_group > 0 && pane.bars.is_empty() && !pane.symbol.is_empty() {
+                let valid_group = pane.link_group > 0 && pane.link_group <= group_count;
+                if valid_group && pane.bars.is_empty() && !pane.symbol.is_empty() {
                     let already = link_changes.iter().any(|(g, _)| *g == pane.link_group);
                     if !already {
                         link_changes.push((pane.link_group, pane.symbol.clone()));
@@ -5736,6 +5863,10 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist)
             "pane_split_v": watchlist.pane_split_v,
             "pane_split_h2": watchlist.pane_split_h2,
             "pane_split_v2": watchlist.pane_split_v2,
+            "pane_split_v3": watchlist.pane_split_v3,
+            "pane_split_v4": watchlist.pane_split_v4,
+            "pane_split_v5": watchlist.pane_split_v5,
+            "pane_split_v6": watchlist.pane_split_v6,
         },
     });
     let _ = std::fs::write(state_path(), serde_json::to_string_pretty(&state).unwrap_or_default());
@@ -5758,6 +5889,7 @@ struct LoadedSettings {
     show_x_axis: bool, show_y_axis: bool,
     shared_x_axis: bool, shared_y_axis: bool,
     pane_split_h: f32, pane_split_v: f32, pane_split_h2: f32, pane_split_v2: f32,
+    pane_split_v3: f32, pane_split_v4: f32, pane_split_v5: f32, pane_split_v6: f32,
     draw_favorites: Option<Vec<String>>,
     style_idx: usize,
 }
@@ -5768,6 +5900,7 @@ impl Default for LoadedSettings { fn default() -> Self { Self {
     show_x_axis: true, show_y_axis: true,
     shared_x_axis: false, shared_y_axis: false,
     pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5,
+    pane_split_v3: 0.5, pane_split_v4: 0.5, pane_split_v5: 0.5, pane_split_v6: 0.5,
     draw_favorites: None,
     style_idx: 0,
 }}}
@@ -5942,6 +6075,10 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
         settings.pane_split_v = s.get("pane_split_v").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
         settings.pane_split_h2 = s.get("pane_split_h2").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
         settings.pane_split_v2 = s.get("pane_split_v2").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+        settings.pane_split_v3 = s.get("pane_split_v3").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+        settings.pane_split_v4 = s.get("pane_split_v4").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+        settings.pane_split_v5 = s.get("pane_split_v5").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+        settings.pane_split_v6 = s.get("pane_split_v6").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
     }
     // Drawing-tool favorites — top-level key (added independently of settings).
     if let Some(arr) = json.get("draw_favorites").and_then(|v| v.as_array()) {

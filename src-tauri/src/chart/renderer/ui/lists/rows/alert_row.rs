@@ -8,6 +8,7 @@
 use std::cell::Cell;
 use egui::{Color32, Response, Ui};
 use super::super::super::style::*;
+use crate::ui_kit::icons::Icon;
 use crate::chart::renderer::ui::foundation::{
     interaction::InteractionState,
     shell::RowShell,
@@ -107,14 +108,14 @@ impl<'a> AlertRow<'a> {
                 let cy = rect.center().y;
 
                 let (glyph, gcol) = if triggered {
-                    ("●", accent)
+                    (Icon::CIRCLE, accent)
                 } else if armed {
-                    ("◉", bull)
+                    (Icon::CIRCLE, bull)
                 } else {
-                    ("○", dim)
+                    (Icon::DOT, dim)
                 };
                 painter.text(egui::pos2(rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
-                    glyph, egui::FontId::monospace(11.0), gcol);
+                    glyph, egui::FontId::proportional(24.0), gcol);
 
                 painter.text(egui::pos2(rect.left() + 22.0, cy), egui::Align2::LEFT_CENTER,
                     symbol, egui::FontId::monospace(11.0), fg);

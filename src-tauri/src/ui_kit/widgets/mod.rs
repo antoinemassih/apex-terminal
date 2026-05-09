@@ -168,7 +168,10 @@ pub fn tool_button(ui: &mut Ui, icon: &str, label: &str, active: bool) -> bool {
 
 /// Delete button — red X icon.
 pub fn delete_button(ui: &mut Ui) -> bool {
-    Icon::button_colored(ui, Icon::X, Color32::from_rgb(224, 85, 96), "Delete").clicked()
+    button::Button::icon(Icon::X)
+        .variant(tokens::Variant::Danger)
+        .show(ui, &crate::chart_renderer::gpu::THEMES[0])
+        .clicked()
 }
 
 /// OHLC label — colored price display for top-left of chart.

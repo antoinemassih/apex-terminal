@@ -18,6 +18,7 @@ use std::hash::Hash;
 
 use egui::{Color32, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 use super::super::style::*;
+use crate::ui_kit::icons::Icon;
 use super::inputs::{TextInput, SearchInput};
 
 #[inline(always)]
@@ -776,7 +777,7 @@ impl<'a> DropdownActions<'a> {
         let accent = self.accent.unwrap_or_else(|| ft().accent);
         let dim = self.dim.unwrap_or_else(|| ft().dim);
         let trigger = self.trigger_text.unwrap_or_else(|| {
-            RichText::new("▾").monospace().size(font_sm()).color(dim)
+            RichText::new(Icon::CARET_DOWN).size(24.0).color(dim)
         });
 
         let mut fired: Option<Box<dyn FnOnce()>> = None;

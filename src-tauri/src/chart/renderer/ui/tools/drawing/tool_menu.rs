@@ -111,7 +111,7 @@ pub fn show_template_menu(
     let mut apply_tmpl: Option<usize> = None;
 
     if !watchlist.pane_templates.is_empty() {
-        ui.menu_button(format!("{} Apply Template \u{25BA}", Icon::STAR), |ui| {
+        ui.menu_button(format!("{} Apply Template {}", Icon::STAR, Icon::CARET_RIGHT), |ui| {
             for (i, (name, _)) in watchlist.pane_templates.iter().enumerate() {
                 if ui.button(egui::RichText::new(name).monospace().size(font_sm())).clicked() {
                     apply_tmpl = Some(i);

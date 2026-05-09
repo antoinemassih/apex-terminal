@@ -65,6 +65,7 @@ impl<'a, T> Display<'a, T> {
 }
 
 type ItemRenderFn<'a, T> = Box<dyn Fn(&mut Ui, &dyn ComponentTheme, &T, bool) + 'a>;
+type TriggerRenderFn<'a, T> = Box<dyn Fn(&mut Ui, &dyn ComponentTheme, usize, &T) + 'a>;
 
 #[must_use = "Select does nothing until `.show(ui, theme)` is called"]
 pub struct Select<'a, T> {
@@ -79,6 +80,17 @@ pub struct Select<'a, T> {
     invalid: bool,
     item_render: Option<ItemRenderFn<'a, T>>,
     empty_state: Option<String>,
+    /// Compact trigger variant — square icon button, no label, no caret.
+    /// Requires either `trigger_render` (preferred — receives the index so
+    /// callers can stamp e.g. a group number on the swatch) or `item_render`.
+    compact_trigger: bool,
+    /// Optional separate renderer for the closed compact trigger. If unset
+    /// the widget falls back to `item_render` (which receives only the value,
+    /// not the index).
+    trigger_render: Option<TriggerRenderFn<'a, T>>,
+    /// When true, the last option is pinned below the scroll area with a
+    /// top divider. Useful for a "+ New …" footer that must stay visible.
+    sticky_last: bool,
 }
 
 pub struct SelectResponse {
@@ -103,6 +115,9 @@ impl<'a> Select<'a, &'a str> {
             invalid: false,
             item_render: None,
             empty_state: None,
+            compact_trigger: false,
+            trigger_render: None,
+            sticky_last: false,
         }
     }
 
@@ -119,6 +134,9 @@ impl<'a> Select<'a, &'a str> {
             invalid: false,
             item_render: None,
             empty_state: None,
+            compact_trigger: false,
+            trigger_render: None,
+            sticky_last: false,
         }
     }
 }
@@ -143,6 +161,9 @@ impl<'a, T: 'a> Select<'a, T> {
             invalid: false,
             item_render: None,
             empty_state: None,
+            compact_trigger: false,
+            trigger_render: None,
+            sticky_last: false,
         }
     }
 
@@ -165,6 +186,9 @@ impl<'a, T: 'a> Select<'a, T> {
             invalid: false,
             item_render: None,
             empty_state: None,
+            compact_trigger: false,
+            trigger_render: None,
+            sticky_last: false,
         }
     }
 
@@ -205,6 +229,31 @@ impl<'a, T: 'a> Select<'a, T> {
     }
     pub fn empty_state(mut self, text: impl Into<String>) -> Self {
         self.empty_state = Some(text.into());
+        self
+    }
+    /// Compact trigger — paint only the selected item inside a square
+    /// button, no label, no caret. Designed for icon-style pickers (color
+    /// swatch, group dot, etc.). Caller should also set either
+    /// `.trigger_render(...)` (preferred) or `.item_render(...)` so the
+    /// closed-state icon has something to paint.
+    pub fn compact_trigger(mut self, v: bool) -> Self {
+        self.compact_trigger = v;
+        self
+    }
+    /// Per-trigger renderer (closed state). Receives the selected index
+    /// alongside the value so the caller can draw an indicator (e.g. a
+    /// group number) overlaid on the swatch.
+    pub fn trigger_render(
+        mut self,
+        f: impl Fn(&mut Ui, &dyn ComponentTheme, usize, &T) + 'a,
+    ) -> Self {
+        self.trigger_render = Some(Box::new(f));
+        self
+    }
+    /// Pin the last option below the scroll area with a top divider. Use
+    /// for a static "+ New …" footer that should always remain visible.
+    pub fn sticky_last(mut self, v: bool) -> Self {
+        self.sticky_last = v;
         self
     }
 
@@ -300,6 +349,9 @@ fn paint_select<'a, T: 'a>(
         invalid,
         item_render,
         empty_state,
+        compact_trigger,
+        trigger_render,
+        sticky_last,
     } = sel;
 
     let h = size.height();
@@ -327,7 +379,10 @@ fn paint_select<'a, T: 'a>(
     // Default trigger width fits the longest option (label + caret + padding +
     // breathing room). `full_width()` stretches to available width;
     // `min_width(px)` acts as a floor.
-    let desired_w = if full_width {
+    let desired_w = if compact_trigger {
+        // Square icon button — no label, no caret.
+        h
+    } else if full_width {
         ui.available_width()
     } else {
         let natural = pad_x * 2.0 + widest_label + icon_gap + caret_w + trigger_extra_pad;
@@ -358,19 +413,26 @@ fn paint_select<'a, T: 'a>(
     let open_t = motion::ease_bool(ui.ctx(), id.with("open"), mem.open, motion::FAST);
 
     // ─── Border + bg ──
+    // Soft open state — the border barely lifts (idle → softened dim,
+    // not full dim) and the background gets a faint tint. The text colour
+    // also nudges slightly so it reads cleanly against the tinted fill.
     let border_idle = theme.border();
     let border_hover = theme.dim();
-    let border_focus = theme.accent();
+    let border_open_soft = st::color_alpha(theme.dim(), 90); // softened focus ring
     let mut border_col = motion::lerp_color(border_idle, border_hover, hover_t);
-    border_col = motion::lerp_color(border_col, border_focus, open_t);
+    border_col = motion::lerp_color(border_col, border_open_soft, open_t);
     if invalid {
         border_col = theme.bear();
     }
-    let bg_fill = if disabled {
+    let surface_bg = if disabled {
         st::color_alpha(theme.surface(), 128)
     } else {
         theme.surface()
     };
+    // Background tint on open — light enough that the trigger doesn't pop
+    // but visible enough to mark the control as active.
+    let open_tint = st::color_alpha(theme.text(), 14);
+    let bg_fill = motion::lerp_color(surface_bg, open_tint, open_t);
 
     let radius = CornerRadius::same(4);
 
@@ -385,11 +447,11 @@ fn paint_select<'a, T: 'a>(
     let mut left_x = rect.left() + pad_x;
     let right_edge = rect.right() - pad_x;
 
-    // Down/up chevron.
+    // Down/up chevron — skipped in compact_trigger variant.
     let chev_size = font_size * 1.0;
     let chev_center = Pos2::new(right_edge - chev_size * 0.5, cy);
     let chev_color = motion::lerp_color(theme.dim(), theme.accent(), open_t);
-    {
+    if !compact_trigger {
         let painter = ui.painter_at(rect);
         let glyph = if open_t > 0.5 { "\u{25B2}" } else { "\u{25BC}" };
         painter.text(
@@ -400,7 +462,7 @@ fn paint_select<'a, T: 'a>(
             chev_color,
         );
     }
-    let content_right = chev_center.x - chev_size - icon_gap;
+    let content_right = if compact_trigger { right_edge } else { chev_center.x - chev_size - icon_gap };
 
     // Render trigger label / multi tags / placeholder.
     let n = display.len();
@@ -408,7 +470,10 @@ fn paint_select<'a, T: 'a>(
     let text_col = if disabled {
         st::color_alpha(theme.text(), 128)
     } else {
-        theme.text()
+        // Text nudges toward accent on open so the label keeps clean
+        // contrast against the tinted fill — soft enough to not read as
+        // a state change, just a comfortable readability lift.
+        motion::lerp_color(theme.text(), theme.accent(), open_t * 0.35)
     };
 
     // Multi-mode chip removals: we collect indices to remove, then mutate after.
@@ -416,25 +481,49 @@ fn paint_select<'a, T: 'a>(
 
     match &mode {
         Mode::Single(v) => {
-            let painter = ui.painter_at(rect);
-            let label_pos = Pos2::new(left_x, cy);
-            if **v < n {
-                let label = display.label(**v);
-                painter.text(
-                    label_pos,
-                    egui::Align2::LEFT_CENTER,
-                    label,
-                    FontId::monospace(font_size),
-                    text_col,
-                );
-            } else if let Some(ph) = &placeholder {
-                painter.text(
-                    label_pos,
-                    egui::Align2::LEFT_CENTER,
-                    ph,
-                    FontId::monospace(font_size),
-                    muted_ph,
-                );
+            // Compact trigger — paint just the swatch (optionally with an
+            // index-aware overlay) inside the square button. Prefers the
+            // dedicated `trigger_render` closure; falls back to `item_render`
+            // when only the value renderer is set. Closure should center
+            // itself off `ui.max_rect()` — the child Ui covers the whole
+            // square rect with no internal padding.
+            if compact_trigger {
+                let idx = **v;
+                if let Display::Custom { items, .. } = &display {
+                    if idx < n {
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(rect)
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                        );
+                        if let Some(tr) = trigger_render.as_ref() {
+                            tr(&mut child, theme, idx, &items[idx]);
+                        } else if let Some(ir) = item_render.as_ref() {
+                            ir(&mut child, theme, &items[idx], false);
+                        }
+                    }
+                }
+            } else {
+                let painter = ui.painter_at(rect);
+                let label_pos = Pos2::new(left_x, cy);
+                if **v < n {
+                    let label = display.label(**v);
+                    painter.text(
+                        label_pos,
+                        egui::Align2::LEFT_CENTER,
+                        label,
+                        FontId::monospace(font_size),
+                        text_col,
+                    );
+                } else if let Some(ph) = &placeholder {
+                    painter.text(
+                        label_pos,
+                        egui::Align2::LEFT_CENTER,
+                        ph,
+                        FontId::monospace(font_size),
+                        muted_ph,
+                    );
+                }
             }
         }
         Mode::Multi(v) => {
@@ -523,6 +612,7 @@ fn paint_select<'a, T: 'a>(
             &item_render,
             empty_state.as_deref(),
             &mut mem,
+            sticky_last,
         );
     }
 
@@ -711,6 +801,7 @@ fn render_panel<'a, T>(
     item_render: &Option<ItemRenderFn<'a, T>>,
     empty_state: Option<&str>,
     mem: &mut SelectMem,
+    sticky_last: bool,
 ) -> Option<usize> {
     let placement = Placement {
         side: Side::Bottom,
@@ -806,11 +897,22 @@ fn render_panel<'a, T>(
                 return;
             }
 
+            // Split off the last visible option as a sticky footer when
+            // requested. The footer renders below the scroll area with a
+            // top divider — useful for "+ New …" actions that should stay
+            // visible regardless of scroll position.
+            let footer_idx = if sticky_last { visible.last().copied() } else { None };
+            let scroll_indices: &[usize] = if footer_idx.is_some() {
+                &visible[..visible.len() - 1]
+            } else {
+                &visible[..]
+            };
+
             let max_panel_h = 320.0;
             egui::ScrollArea::vertical()
                 .max_height(max_panel_h)
                 .show(ui, |ui| {
-                    for &i in &visible {
+                    for &i in scroll_indices {
                         let selected = is_selected(mode, i);
                         let highlighted = i == mem.highlight;
                         if render_row(
@@ -829,6 +931,32 @@ fn render_panel<'a, T>(
                         }
                     }
                 });
+
+            if let Some(i) = footer_idx {
+                ui.add_space(st::gap_2xs());
+                let div_y = ui.cursor().min.y;
+                ui.painter().line_segment(
+                    [Pos2::new(ui.min_rect().left(), div_y), Pos2::new(ui.min_rect().left() + width, div_y)],
+                    Stroke::new(1.0, st::color_alpha(theme.border(), 120)),
+                );
+                ui.add_space(st::gap_2xs());
+                let selected = is_selected(mode, i);
+                let highlighted = i == mem.highlight;
+                if render_row(
+                    ui,
+                    theme,
+                    id.with(("row", i)),
+                    display,
+                    i,
+                    selected,
+                    highlighted,
+                    mode,
+                    item_render,
+                    width,
+                ) {
+                    clicked = Some(i);
+                }
+            }
         });
 
     mem.open = open;

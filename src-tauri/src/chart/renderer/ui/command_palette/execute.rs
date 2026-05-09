@@ -51,7 +51,7 @@ pub(super) fn execute(
     if let Some(ly_id) = id.strip_prefix("layout:") {
         let ly = match ly_id {
             "1" => Layout::One, "2" => Layout::Two, "2H" => Layout::TwoH,
-            "3" => Layout::Three, "3L" => Layout::ThreeL,
+            "3" => Layout::Three, "3L" => Layout::ThreeL, "3R" => Layout::ThreeR,
             "4" => Layout::Four, "4L" => Layout::FourL,
             "5C" => Layout::FiveC, "6" => Layout::Six, "9" => Layout::Nine,
             _ => return,

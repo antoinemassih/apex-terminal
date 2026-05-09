@@ -1008,14 +1008,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 ui.add_space(gap_sm());
 
                 // Close button
-                let close_resp = ui.add(
-                    egui::Button::new(
-                        egui::RichText::new(Icon::X).size(font_xs() + 1.0).color(dim.gamma_multiply(0.5)),
-                    )
-                    .fill(Color32::TRANSPARENT)
-                    .min_size(egui::vec2(20.0, 18.0))
-                    .corner_radius(radius_sm()),
-                );
+                let close_resp = KitButton::icon(Icon::X).variant(Variant::Ghost).show(ui, &crate::chart_renderer::gpu::THEMES[0]);
                 if close_resp.clicked() { close_clicked = true; }
 
                 ui.add(egui::Separator::default().spacing(2.0));

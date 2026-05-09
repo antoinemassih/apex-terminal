@@ -49,7 +49,7 @@ pub fn toolbar_btn(
     });
 
     let mut btn = if is_icon_only {
-        Button::icon(label)
+        Button::icon(label).glyph_size(16.0)
     } else {
         Button::new(label)
     }

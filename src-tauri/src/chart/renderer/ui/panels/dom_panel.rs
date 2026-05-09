@@ -5,8 +5,9 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::Theme;
 use super::super::widgets::rows::dom_row::{ColumnLayout, DomRow, DomRowDragCx};
-use crate::ui_kit::widgets::Button;
-use crate::ui_kit::widgets::tokens::Variant;
+use crate::ui_kit::widgets::{Button, Select};
+use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
+use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
 
 /// Add a design-system widget at an absolute pixel rect inside the DOM panel.
@@ -64,19 +65,43 @@ pub(crate) fn draw(
     cancel_order_id: &mut Option<u32>, move_order: &mut Option<(u32, f32)>,
     dom_armed: &mut bool, dom_col_mode: &mut u8,
     dom_dragging: &mut Option<(u32, f32)>, // (order_id, current_y) while dragging
+    dom_position: &mut u8, dom_fullscreen: &mut bool,
     t: &Theme,
 ) {
     let painter = ui.painter_at(dom_rect);
     painter.rect_filled(dom_rect, 0.0, t.toolbar_bg);
-    painter.line_segment([egui::pos2(dom_rect.right(), dom_rect.top()), egui::pos2(dom_rect.right(), dom_rect.bottom())],
-        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())));
-
-    // Resize handle
-    let hr = egui::Rect::from_min_size(egui::pos2(dom_rect.right()-3.0, dom_rect.top()), egui::vec2(6.0, dom_rect.height()));
-    let hresp = ui.allocate_rect(hr, egui::Sense::drag());
-    if hresp.hovered() || hresp.dragged() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal); }
-    if hresp.dragged() { *dom_width = (*dom_width + hresp.drag_delta().x).clamp(DOM_MIN_W, DOM_MAX_W); }
-    if hresp.hovered() { painter.line_segment([egui::pos2(dom_rect.right()-1.0, dom_rect.top()+14.0), egui::pos2(dom_rect.right()-1.0, dom_rect.bottom())], egui::Stroke::new(stroke_thick(), color_alpha(t.accent, alpha_strong()))); }
+    // Border + resize handle live on the side that faces the chart canvas.
+    // Position 0 (left-anchored) → right edge meets the chart; position 1
+    // (right-anchored) → left edge meets the chart. Fullscreen has no chart
+    // alongside it, so the handle is hidden.
+    let on_left = *dom_position == 0;
+    let edge_x = if on_left { dom_rect.right() } else { dom_rect.left() };
+    painter.line_segment(
+        [egui::pos2(edge_x, dom_rect.top()), egui::pos2(edge_x, dom_rect.bottom())],
+        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())),
+    );
+    if !*dom_fullscreen {
+        let hr = egui::Rect::from_min_size(
+            egui::pos2(edge_x - 3.0, dom_rect.top()),
+            egui::vec2(6.0, dom_rect.height()),
+        );
+        let hresp = ui.allocate_rect(hr, egui::Sense::drag());
+        if hresp.hovered() || hresp.dragged() { ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal); }
+        if hresp.dragged() {
+            // Drag toward the chart shrinks the DOM, away widens it. The
+            // sign flips for left vs right placement so the gesture feels
+            // identical regardless of side.
+            let delta = if on_left { hresp.drag_delta().x } else { -hresp.drag_delta().x };
+            *dom_width = (*dom_width + delta).clamp(DOM_MIN_W, DOM_MAX_W);
+        }
+        if hresp.hovered() {
+            let hx = if on_left { edge_x - 1.0 } else { edge_x + 1.0 };
+            painter.line_segment(
+                [egui::pos2(hx, dom_rect.top() + 14.0), egui::pos2(hx, dom_rect.bottom())],
+                egui::Stroke::new(stroke_thick(), color_alpha(t.accent, alpha_strong())),
+            );
+        }
+    }
 
     let inner = dom_rect.shrink2(egui::vec2(3.0, 0.0));
     let aw = inner.width();
@@ -94,144 +119,320 @@ pub(crate) fn draw(
     let x0 = inner.left();
     let xb = x0+cd; let xp = xb+cb; let xa = xp+cp; let xv = xa+ca; let xo = xv+cv;
 
-    // Header
-    let hy = inner.top()+1.0;
-    let hf = egui::FontId::monospace(11.0);
-    let hc = t.dim.gamma_multiply(0.45);
-    if show_delta { painter.text(egui::pos2(x0+cd*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "\u{0394}", hf.clone(), hc); }
-    painter.text(egui::pos2(xb+cb*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "BID", hf.clone(), t.bull.gamma_multiply(0.5));
-    // PRICE header — double-click to recenter
-    let price_hdr_rect = egui::Rect::from_min_size(egui::pos2(xp, hy), egui::vec2(cp, 12.0));
+    // Header — bigger labels via the design-system tokens. Columns left of
+    // PRICE align right (DELTA, BID); columns right of PRICE align left
+    // (ASK, VOL, ORD); PRICE itself is centered. The whole header sits on
+    // top of a hairline border that separates the labels from the ladder.
+    let header_h = 24.0_f32;
+    let hy = inner.top() + 2.0;
+    let label_y = hy + header_h * 0.5;
+    let hf = egui::FontId::monospace(font_md());
+    let hc = t.dim.gamma_multiply(0.65);
+    let pad_x = gap_xs();
+    if show_delta {
+        painter.text(egui::pos2(x0 + cd - pad_x, label_y), egui::Align2::RIGHT_CENTER,
+            "\u{0394}", hf.clone(), hc);
+    }
+    painter.text(egui::pos2(xb + cb - pad_x, label_y), egui::Align2::RIGHT_CENTER,
+        "BID", hf.clone(), t.bull.gamma_multiply(0.65));
+    // PRICE header — center-aligned, double-click to recenter.
+    let price_hdr_rect = egui::Rect::from_min_size(egui::pos2(xp, hy), egui::vec2(cp, header_h));
     let price_hdr_resp = ui.allocate_rect(price_hdr_rect, egui::Sense::click());
-    painter.text(egui::pos2(xp+cp*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "PRICE", hf.clone(), hc);
+    painter.text(egui::pos2(xp + cp * 0.5, label_y), egui::Align2::CENTER_CENTER,
+        "PRICE", hf.clone(), hc);
     if price_hdr_resp.double_clicked() {
         *center_price = (current_price / tick_size).round() * tick_size;
     }
     if price_hdr_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    painter.text(egui::pos2(xa+ca*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "ASK", hf.clone(), t.bear.gamma_multiply(0.5));
-    if show_vol { painter.text(egui::pos2(xv+cv*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "VOL", hf.clone(), hc); }
-    // ORD header + column mode toggle [+/-]
-    let ord_label_w = co * 0.5;
-    painter.text(egui::pos2(xo+ord_label_w*0.5, hy+5.0), egui::Align2::CENTER_CENTER, "ORD", hf.clone(), hc);
-    // [+] button
-    let plus_r = egui::Rect::from_min_size(egui::pos2(xo+ord_label_w+1.0, hy+1.0), egui::vec2(10.0, 9.0));
-    let plus_resp = ui.allocate_rect(plus_r, egui::Sense::click());
-    painter.text(plus_r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(font_xs()), if plus_resp.hovered() { t.accent } else { hc });
-    if plus_resp.clicked() && mode < 2 { *dom_col_mode = mode + 1; }
-    if plus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    // [-] button
-    let minus_r = egui::Rect::from_min_size(egui::pos2(plus_r.right()+1.0, hy+1.0), egui::vec2(10.0, 9.0));
-    let minus_resp = ui.allocate_rect(minus_r, egui::Sense::click());
-    painter.text(minus_r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(font_xs()), if minus_resp.hovered() { t.accent } else { hc });
-    if minus_resp.clicked() && mode > 0 { *dom_col_mode = mode - 1; }
-    if minus_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    painter.text(egui::pos2(xa + pad_x, label_y), egui::Align2::LEFT_CENTER,
+        "ASK", hf.clone(), t.bear.gamma_multiply(0.65));
+    if show_vol {
+        painter.text(egui::pos2(xv + pad_x, label_y), egui::Align2::LEFT_CENTER,
+            "VOL", hf.clone(), hc);
+    }
+    // ORD label + panel menu (compact icon Select). Combines display-mode
+    // (Compact / Normal / Expanded) with placement actions (move left / move
+    // right / fullscreen) so all per-panel toggles live in one menu.
+    let mode_btn_size = 22.0_f32;
+    let ord_label_w = co - mode_btn_size - pad_x;
+    painter.text(egui::pos2(xo + pad_x, label_y), egui::Align2::LEFT_CENTER,
+        "ORD", hf.clone(), hc);
+    let mode_rect = egui::Rect::from_min_size(
+        egui::pos2(xo + ord_label_w, hy + (header_h - mode_btn_size) * 0.5),
+        egui::vec2(mode_btn_size, mode_btn_size),
+    );
+    // Subtle background tint so the trigger reads as a button even at rest.
+    painter.rect_filled(mode_rect,
+        egui::CornerRadius::same(3),
+        color_alpha(t.toolbar_border, alpha_subtle()));
+    {
+        // Action enum so item_render and trigger_render get a real value to
+        // dispatch on (plain &str labels would skip the trigger render path).
+        #[derive(Clone, Copy, PartialEq)]
+        enum DomMenuItem {
+            Compact, Normal, Expanded,
+            Move, Fullscreen,
+        }
+        // Items are dynamic — only one of "Send to left" / "Send to right"
+        // is shown depending on where the panel currently lives. The label
+        // for `Move` is computed off `dom_position` at render time.
+        let items: Vec<DomMenuItem> = vec![
+            DomMenuItem::Compact,
+            DomMenuItem::Normal,
+            DomMenuItem::Expanded,
+            DomMenuItem::Move,
+            DomMenuItem::Fullscreen,
+        ];
+        let dom_on_left = *dom_position == 0;
+        let move_label: &str = if dom_on_left { "Send to right" } else { "Send to left" };
+        // Selected index reflects display-mode only. Action items act on
+        // click without changing the persistent selection.
+        let mut sel: usize = (mode as usize).min(2);
+        let prev_sel = sel;
+        let _ = place_at(ui, mode_rect, |ui| {
+            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+            Select::new_with(&mut sel, &items, move |it: &DomMenuItem| match it {
+                    DomMenuItem::Compact => "Compact".into(),
+                    DomMenuItem::Normal => "Normal".into(),
+                    DomMenuItem::Expanded => "Expanded".into(),
+                    DomMenuItem::Move => move_label.into(),
+                    DomMenuItem::Fullscreen => "Fullscreen".into(),
+                })
+                .size(KitSize::Sm)
+                .compact_trigger(true)
+                .trigger_render(|ui, theme, _idx, _opt| {
+                    ui.painter().text(
+                        ui.max_rect().center(),
+                        egui::Align2::CENTER_CENTER,
+                        Icon::SLIDERS,
+                        egui::FontId::proportional(font_md() + 3.0),
+                        theme.text(),
+                    );
+                })
+                .show(ui, t)
+        });
+        if sel != prev_sel {
+            match items[sel] {
+                DomMenuItem::Compact  => *dom_col_mode = 0,
+                DomMenuItem::Normal   => *dom_col_mode = 1,
+                DomMenuItem::Expanded => *dom_col_mode = 2,
+                DomMenuItem::Move => {
+                    // Toggle to the opposite side; clears fullscreen since
+                    // there's no concept of "side" while fullscreen.
+                    *dom_position = if dom_on_left { 1 } else { 0 };
+                    *dom_fullscreen = false;
+                }
+                DomMenuItem::Fullscreen => { *dom_fullscreen = !*dom_fullscreen; }
+            }
+        }
+    }
 
-    let sep_y = hy+12.0;
-    painter.line_segment([egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)], egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())));
+    // Dividing border below the header — separates the labels from the
+    // ladder body so the column titles read as a header strip, not as the
+    // first row of data.
+    let sep_y = hy + header_h;
+    painter.line_segment(
+        [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
+        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())),
+    );
 
     // ── Bottom controls ──
-    let ctrl_h = 54.0;
+    // Padding tokens: gap_2xs above the row 1 (combo) and again below the
+    // action row before the panel edge. Heights chosen so the FLATTEN/CANCEL
+    // stack can grow without crowding the BUY/SELL pills.
+    // Larger bottom inset so the action row sits above the panel edge with
+    // breathing room — keeps CANCEL from kissing the bottom border.
+    let pad_top = gap_2xs();
+    let pad_bot = gap_sm();
+    let r1h = 22.0_f32;
+    // BUY/SELL pills bumped 16px taller — also drives the FLATTEN/CANCEL
+    // stack via mid_half_h, so the four action buttons read as the same
+    // total height regardless of stacking.
+    let action_h = 52.0_f32;
+    let row_gap = gap_xs();
+    let ctrl_h = pad_top + r1h + row_gap + action_h + pad_bot;
     let ctrl_top = inner.bottom() - ctrl_h;
-    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), ctrl_top), egui::pos2(dom_rect.right(), dom_rect.bottom())), 0.0, t.toolbar_bg);
-    // Inset shadow
-    for i in 0..4u32 { painter.line_segment([egui::pos2(inner.left(), ctrl_top-i as f32), egui::pos2(inner.right(), ctrl_top-i as f32)], egui::Stroke::new(stroke_std(), egui::Color32::from_rgba_unmultiplied(0,0,0, 20u8.saturating_sub(i as u8*5)))); }
-    painter.line_segment([egui::pos2(inner.left(), ctrl_top), egui::pos2(inner.right(), ctrl_top)], egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())));
+    painter.rect_filled(
+        egui::Rect::from_min_max(egui::pos2(dom_rect.left(), ctrl_top), egui::pos2(dom_rect.right(), dom_rect.bottom())),
+        0.0, t.toolbar_bg,
+    );
+    // Inset shadow above the controls so the row reads as separate from the
+    // ladder above.
+    for i in 0..4u32 {
+        painter.line_segment(
+            [egui::pos2(inner.left(), ctrl_top - i as f32), egui::pos2(inner.right(), ctrl_top - i as f32)],
+            egui::Stroke::new(stroke_std(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, 20u8.saturating_sub(i as u8 * 5))),
+        );
+    }
+    // Hairline divider between DOM ladder and the controls.
+    painter.line_segment(
+        [egui::pos2(inner.left(), ctrl_top), egui::pos2(inner.right(), ctrl_top)],
+        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())),
+    );
 
-    let fs = egui::FontId::monospace(11.0);
-    let fm = egui::FontId::monospace(11.0);
+    let fm = egui::FontId::monospace(font_md());
     let is_mkt = *dom_order_type == DomOrderType::Market;
 
-    // Row 1 (16px): [-] qty [+]  [MKT/LMT]  [A]
-    //               ← half width →  ← rest →
-    let r1y = ctrl_top+2.0; let r1h = 14.0;
+    // Row 1: [stepper: − qty +]  [MKT/LMT combo]  [A]
+    let r1y = ctrl_top + pad_top;
     let half_w = aw * 0.48;
-    let mut cx = inner.left()+1.0;
+    let mut cx = inner.left() + 1.0;
 
-    // [-]
-    let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
-    let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_soft()) });
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "-", egui::FontId::monospace(font_sm()), t.dim);
-    if resp.clicked() && *order_qty > 1 { *order_qty -= 1; }
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    cx = r.right()+1.0;
-
-    // qty
-    let qw = half_w - 30.0;
-    let qr = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(qw, r1h));
-    painter.rect_filled(qr, 0.0, color_alpha(t.bg, 180));
-    painter.text(qr.center(), egui::Align2::CENTER_CENTER, &format!("{}", *order_qty), fm.clone(), t.text);
-    cx = qr.right()+1.0;
-
+    // ── Quantity stepper — single rounded pill housing the - / qty / + cells.
+    let stepper_w = half_w;
+    let stepper_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(stepper_w, r1h));
+    let stepper_radius = egui::CornerRadius::same((r1h * 0.5) as u8);
+    painter.rect_filled(stepper_rect, stepper_radius, color_alpha(t.bg, 200));
+    painter.rect_stroke(
+        stepper_rect, stepper_radius,
+        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())),
+        egui::StrokeKind::Inside,
+    );
+    let btn_w = r1h; // square hit areas at each end
+    // [−]
+    let minus_rect = egui::Rect::from_min_size(stepper_rect.min, egui::vec2(btn_w, r1h));
+    let minus_resp = ui.allocate_rect(minus_rect, egui::Sense::click());
+    if minus_resp.hovered() {
+        painter.rect_filled(minus_rect, stepper_radius, color_alpha(t.text, alpha_subtle()));
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    painter.text(minus_rect.center(), egui::Align2::CENTER_CENTER, "−", fm.clone(),
+        if minus_resp.hovered() { t.text } else { t.dim });
+    if minus_resp.clicked() && *order_qty > 1 { *order_qty -= 1; }
+    // qty (centered)
+    painter.text(stepper_rect.center(), egui::Align2::CENTER_CENTER,
+        &format!("{}", *order_qty), fm.clone(), t.text);
     // [+]
-    let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(14.0, r1h));
-    let resp = ui.allocate_rect(r, egui::Sense::click());
-    painter.rect_filled(r, 2.0, if resp.hovered() { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_soft()) });
-    painter.text(r.center(), egui::Align2::CENTER_CENTER, "+", egui::FontId::monospace(font_sm()), t.dim);
-    if resp.clicked() { *order_qty += 1; }
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    cx = r.right()+4.0;
+    let plus_rect = egui::Rect::from_min_size(
+        egui::pos2(stepper_rect.right() - btn_w, stepper_rect.top()),
+        egui::vec2(btn_w, r1h));
+    let plus_resp = ui.allocate_rect(plus_rect, egui::Sense::click());
+    if plus_resp.hovered() {
+        painter.rect_filled(plus_rect, stepper_radius, color_alpha(t.text, alpha_subtle()));
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    painter.text(plus_rect.center(), egui::Align2::CENTER_CENTER, "+", fm.clone(),
+        if plus_resp.hovered() { t.text } else { t.dim });
+    if plus_resp.clicked() { *order_qty += 1; }
+    cx = stepper_rect.right() + 4.0;
 
-    // [MKT/LMT] — bigger (design-system SimpleBtn, accent-tinted)
-    let mw = aw * 0.28;
-    let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(mw, r1h));
-    let resp = place_at(ui, r, |ui| {
-        ui.add(Button::new(if is_mkt {"MARKET"} else {"LIMIT"})
-            .variant(Variant::Secondary).simple_treatment(true)
-            .fg(t.accent)
-            .min_size(egui::vec2(mw, r1h)))
+    // ── MKT / LMT combobox (proper Select, not a click-cycle).
+    const ORDER_TYPE_LABELS: &[&str] = &["MKT", "LMT"];
+    let mw = aw * 0.30;
+    let combo_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(mw, r1h));
+    {
+        let mut sel: usize = if is_mkt { 0 } else { 1 };
+        let prev = sel;
+        let _ = place_at(ui, combo_rect, |ui| {
+            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+            Select::new(&mut sel, ORDER_TYPE_LABELS)
+                .size(KitSize::Sm)
+                .full_width()
+                .show(ui, t)
+        });
+        if sel != prev {
+            *dom_order_type = if sel == 0 { DomOrderType::Market } else { DomOrderType::Limit };
+            if sel == 0 { *dom_selected_price = None; }
+        }
+    }
+    cx = combo_rect.right() + 3.0;
+
+    // ── Arm toggle — when armed: red bg + live PULSE icon. When disarmed:
+    // neutral Secondary with shield-style icon. Tooltip explains the state.
+    let armw = inner.right() - cx - 1.0;
+    let arm_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
+    let arm_radius = egui::CornerRadius::same(4);
+    let arm_resp = ui.allocate_rect(arm_rect, egui::Sense::click());
+    if *dom_armed {
+        // Filled red bg, white icon, subtle border.
+        painter.rect_filled(arm_rect, arm_radius, t.bear);
+        painter.rect_stroke(arm_rect, arm_radius,
+            egui::Stroke::new(stroke_thin(), color_alpha(t.bear, alpha_strong())),
+            egui::StrokeKind::Inside);
+        painter.text(arm_rect.center(), egui::Align2::CENTER_CENTER,
+            Icon::PULSE, egui::FontId::proportional(font_md() + 1.0),
+            egui::Color32::WHITE);
+    } else {
+        let bg = if arm_resp.hovered() {
+            color_alpha(t.toolbar_border, alpha_dim())
+        } else {
+            color_alpha(t.toolbar_border, alpha_subtle())
+        };
+        painter.rect_filled(arm_rect, arm_radius, bg);
+        painter.rect_stroke(arm_rect, arm_radius,
+            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())),
+            egui::StrokeKind::Inside);
+        painter.text(arm_rect.center(), egui::Align2::CENTER_CENTER,
+            Icon::PULSE, egui::FontId::proportional(font_md() + 1.0),
+            t.dim);
+    }
+    let arm_resp = arm_resp.on_hover_text(if *dom_armed {
+        "Armed — clicks on the ladder fire live orders. Click again to disarm."
+    } else {
+        "Disarmed — clicks on the ladder are inactive. Arm to enable one-click trading."
     });
-    if resp.clicked() { *dom_order_type = if is_mkt { DomOrderType::Limit } else { DomOrderType::Market }; if !is_mkt { *dom_selected_price = None; } }
-    cx = r.right()+3.0;
+    if arm_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    if arm_resp.clicked() { *dom_armed = !*dom_armed; }
 
-    // [A] — armed, small (design-system SimpleBtn, red when armed)
-    let armw = inner.right()-cx-1.0;
-    let r = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
-    let ac = if *dom_armed { t.bear } else { t.dim.gamma_multiply(0.4) };
-    let resp = place_at(ui, r, |ui| {
-        ui.add(Button::new(if *dom_armed {"!"} else {"A"})
-            .variant(Variant::Secondary).simple_treatment(true)
-            .fg(ac)
-            .min_size(egui::vec2(armw, r1h)))
-    });
-    if resp.clicked() { *dom_armed = !*dom_armed; }
-
-    // Row 2+3 (32px total): [BUY] [FLATTEN/CANCEL stacked] [SELL]
-    let r2y = r1y+r1h+2.0;
-    let action_h = 30.0;
-    let side_w = aw * 0.34;
-    let mid_w = aw - side_w*2.0 - 6.0;
+    // Row 2: [BUY] [FLATTEN/CANCEL stacked] [SELL]
+    // BUY/SELL narrower; FLATTEN/CANCEL wider so they read as the primary
+    // management actions. BUY/SELL text bumped to Md so the labels feel as
+    // weighty as the trade they fire.
+    let r2y = r1y + r1h + row_gap;
+    let side_w = aw * 0.30;
+    let mid_w = aw - side_w * 2.0 - 6.0;
     let mid_half_h = action_h * 0.5 - 1.0;
 
-    // BUY (spans full action height) — design-system TradeBtn
+    // BUY (spans full action height)
     let r = egui::Rect::from_min_size(egui::pos2(inner.left()+1.0, r2y), egui::vec2(side_w, action_h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(Button::buy("BUY").tint(t.bull).min_size(egui::vec2(side_w, action_h)))
+        ui.add(Button::buy("BUY")
+            .tint(t.bull)
+            .size(KitSize::Md)
+            .min_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Buy, p, *order_qty)); }
 
-    // Middle: FLATTEN (top) + CANCEL (bottom)
+    // Middle: FLATTEN (top) + CANCEL (bottom) — proper Secondary buttons,
+    // matching the BUY/SELL pill treatment so the row reads as a unit.
     let mid_x = inner.left()+1.0+side_w+3.0;
-    let fc = t.warn;
 
-    // FLATTEN — design-system SimpleBtn (amber)
+    // FLATTEN — neutral grey fill with black text. Reads as the structural
+    // "close all" action: high contrast, low chroma, no implied direction.
+    let flatten_fill = egui::Color32::from_gray(170);
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y), egui::vec2(mid_w, mid_half_h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(Button::new("FLATTEN").variant(Variant::Secondary).simple_treatment(true).fg(fc).min_size(egui::vec2(mid_w, mid_half_h)))
+        ui.add(Button::new("FLATTEN")
+            .variant(Variant::Secondary)
+            .size(KitSize::Md)
+            .fill(flatten_fill)
+            .fg(egui::Color32::BLACK)
+            .min_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
 
-    // CANCEL — design-system SimpleBtn (dim)
+    // CANCEL — pastel red fill so it reads as a destructive (but not alarm)
+    // action paired with FLATTEN. Centered text, dark fg for readable
+    // contrast against the soft red.
+    let cancel_fill = egui::Color32::from_rgb(232, 156, 156);
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y+mid_half_h+2.0), egui::vec2(mid_w, mid_half_h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(Button::new("CANCEL").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(mid_w, mid_half_h)))
+        ui.add(Button::new("CANCEL")
+            .variant(Variant::Secondary)
+            .size(KitSize::Md)
+            .fill(cancel_fill)
+            .fg(egui::Color32::from_rgb(70, 25, 25))
+            .min_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
 
-    // SELL (spans full action height) — design-system TradeBtn
+    // SELL (spans full action height)
     let r = egui::Rect::from_min_size(egui::pos2(mid_x+mid_w+3.0, r2y), egui::vec2(side_w, action_h));
     let resp = place_at(ui, r, |ui| {
-        ui.add(Button::sell("SELL").tint(t.bear).min_size(egui::vec2(side_w, action_h)))
+        ui.add(Button::sell("SELL")
+            .tint(t.bear)
+            .size(KitSize::Md)
+            .min_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Sell, p, *order_qty)); }
 

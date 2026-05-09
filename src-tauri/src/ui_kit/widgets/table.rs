@@ -46,6 +46,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use egui::{CursorIcon, FontFamily, FontId, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
+use crate::ui_kit::icons::Icon;
 
 use super::motion;
 use super::theme::ComponentTheme;
@@ -84,8 +85,8 @@ impl SortDir {
     }
     fn glyph(self) -> Option<&'static str> {
         match self {
-            SortDir::Asc => Some("▲"),
-            SortDir::Desc => Some("▼"),
+            SortDir::Asc => Some(Icon::ARROW_FAT_UP),
+            SortDir::Desc => Some(Icon::ARROW_FAT_DOWN),
             SortDir::None => None,
         }
     }
@@ -331,7 +332,7 @@ impl<'a, T: Clone> Table<'a, T> {
                 let glyph = if is_sorted {
                     self.state.sort_dir.glyph()
                 } else if col.sortable && resp.hovered() {
-                    Some("▾")
+                    Some(Icon::CARET_DOWN)
                 } else {
                     None
                 };

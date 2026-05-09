@@ -9,6 +9,7 @@ use crate::chart_renderer::trading::{OrderSide, OrderLevel};
 use crate::chart_renderer::ui::style::{color_alpha, dialog_header, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md};
 use crate::chart_renderer::ui::widgets::inputs::TextInput;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 
 /// Everything the dialog needs to read (no mutation — mutations come back via [`OrderEditOutput`]).
 pub struct OrderEditCtx<'a> {
@@ -174,11 +175,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
             ui.horizontal(|ui| {
                 ui.add_space(m);
                 let del_color = c.t.bear;
-                if ui.add(egui::Button::new(egui::RichText::new(format!("{} Cancel", Icon::TRASH))
-                    .monospace().size(font_sm()).color(del_color))
-                    .fill(color_alpha(del_color, 15)).corner_radius(3.0)
-                    .stroke(egui::Stroke::new(0.5, color_alpha(del_color, 60)))
-                    .min_size(egui::vec2(0.0, 20.0))).clicked() {
+                if KitButton::new("Cancel").leading_icon(Icon::TRASH).variant(KitVariant::Ghost).fg(del_color).show(ui, c.t).clicked() {
                     cancel_it = true;
                 }
             });

@@ -5,6 +5,7 @@ use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::trading::{OrderLevel, OrderStatus};
 use crate::chart_renderer::ui::style::{color_alpha, gap_xs, gap_sm, font_xs, font_sm, font_md};
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 
 pub struct PendingOrderToastsCtx<'a> {
     pub ctx: &'a Context,
@@ -37,13 +38,10 @@ pub fn show_pending_order_toasts(c: PendingOrderToastsCtx<'_>) {
                 .show(c.ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(font_sm()).color(color));
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::CHECK).size(font_md()).color(c.t.bull))
-                            .fill(egui::Color32::from_rgba_unmultiplied(c.t.bull.r(), c.t.bull.g(), c.t.bull.b(), 40))
-                            .corner_radius(2.0).min_size(egui::vec2(24.0, 20.0))).clicked() {
+                        if KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).glyph_color(c.t.bull).show(ui, c.t).clicked() {
                             confirm_ids.push(*oid);
                         }
-                        if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(font_sm()).color(c.t.bear))
-                            .corner_radius(2.0).min_size(egui::vec2(24.0, 20.0))).clicked() {
+                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(c.t.bear).show(ui, c.t).clicked() {
                             cancel_ids.push(*oid);
                         }
                     });
