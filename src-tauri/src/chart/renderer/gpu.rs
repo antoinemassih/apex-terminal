@@ -4740,20 +4740,9 @@ impl GpuCtx {
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
 
-        // Phase 2+: Upload chart instances + view uniform for the active pane.
-        // Must happen after egui run (params populated by render_chart_pane) and
-        // before the render passes. pixels_per_point bridges egui's logical-pixel
-        // coords to the surface's physical pixels.
-        #[cfg(feature = "gpu_chart_v2")]
-        if let Some(chart) = panes.get(*active_pane) {
-            self.chart_pipeline.upload(
-                &self.queue,
-                &chart.gpu_render_params,
-                self.config.width as f32,
-                self.config.height as f32,
-                full_output.pixels_per_point,
-            );
-        }
+        // The per-pane upload + render now happens inside the chart pass loop
+        // below (Phase 5a). Each visible pane writes its own ChartRenderParams
+        // and runs its own draw, so we can't upload a single pane up here.
 
         // Phase 3: Tessellation — optimize for crisp text
         let t2 = std::time::Instant::now();
@@ -4787,14 +4776,68 @@ impl GpuCtx {
         self.queue.submit(std::iter::once(enc.finish()));
         let upload_us = t3.elapsed().as_micros() as u64;
 
-        // Phase 5a: GPU chart pass (SPEC_GPU_CHART_REFACTOR.md Phase 2+).
-        // Runs BEFORE egui so candles are under egui chrome (grid, axes, crosshair).
-        // Uses LoadOp::Clear(BLACK) to initialise the surface; egui uses LoadOp::Load.
-        // When the feature is off the egui pass keeps its own Clear so nothing changes.
+        // Phase 5a: GPU chart pass (SPEC_GPU_CHART_REFACTOR.md, per-pane).
+        // Runs BEFORE egui so candles are under egui chrome (grid, axes,
+        // crosshair). The first pane in the loop uses LoadOp::Clear(bg);
+        // subsequent panes use LoadOp::Load to composite onto the same
+        // surface. Each pane has its own scissor, so panes can't overdraw
+        // each other.
+        //
+        // The bg colour for the clear comes from the active pane (multiple
+        // panes with different themes is rare; the active pane's bg covers
+        // the gaps between panes).
         #[cfg(feature = "gpu_chart_v2")]
         {
-            let chart_us = self.chart_pipeline.render(&self.device, &self.queue, &view);
-            crate::monitoring::set_chart_pass_us(chart_us);
+            let active_bg = panes.get(*active_pane)
+                .map(|c| c.gpu_render_params.bg)
+                .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+            let clear_color = wgpu::Color {
+                r: active_bg[0] as f64,
+                g: active_bg[1] as f64,
+                b: active_bg[2] as f64,
+                a: active_bg[3] as f64,
+            };
+
+            let surf_w = self.config.width as f32;
+            let surf_h = self.config.height as f32;
+            let ppp = full_output.pixels_per_point;
+            let mut chart_us_total: u64 = 0;
+            let mut total_visible_bars: u32 = 0;
+            let mut first_pane_done = false;
+            for chart in panes.iter() {
+                // Skip panes that didn't populate a real chart_rect this
+                // frame (alt-mode bars, non-Chart pane types, n==0 loading,
+                // hidden panes). The render_chart_pane prologue resets the
+                // rect to [0;4]; only the candle / volume blocks set it.
+                let cr = chart.gpu_render_params.chart_rect;
+                let has_chart = cr[2] > cr[0] && cr[3] > cr[1];
+                let has_data = !chart.gpu_render_params.instances.is_empty()
+                    || !chart.gpu_render_params.line_segments.is_empty()
+                    || !chart.gpu_render_params.fill_quads.is_empty();
+                if !has_chart || !has_data { continue; }
+
+                self.chart_pipeline.upload(&self.queue, &chart.gpu_render_params, surf_w, surf_h, ppp);
+                let load_op = if !first_pane_done {
+                    wgpu::LoadOp::Clear(clear_color)
+                } else {
+                    wgpu::LoadOp::Load
+                };
+                chart_us_total += self.chart_pipeline.render(&self.device, &self.queue, &view, load_op);
+                total_visible_bars += chart.gpu_render_params.instances.len() as u32;
+                first_pane_done = true;
+            }
+
+            // No pane had GPU content (loading, all alt-mode, etc.) — still
+            // need to initialise the surface or egui's LoadOp::Load reads
+            // garbage / stale frame.
+            if !first_pane_done {
+                self.chart_pipeline.upload(&self.queue, &Default::default(), surf_w, surf_h, ppp);
+                chart_us_total += self.chart_pipeline.render(&self.device, &self.queue, &view, wgpu::LoadOp::Clear(clear_color));
+            }
+
+            crate::monitoring::set_chart_pass_us(chart_us_total);
+            crate::monitoring::set_chart_visible_bars(total_visible_bars);
+            crate::monitoring::set_chart_pipeline_active(true);
         }
 
         // Phase 5b: egui render pass

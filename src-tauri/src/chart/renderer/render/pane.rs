@@ -102,6 +102,21 @@ fn render_chart_pane(
         [pane_rect.min.x, pane_rect.min.y, pane_rect.width(), pane_rect.height()],
         "CHART_PANE", "Chart");
     let chart = &mut panes[pane_idx];
+
+    // Per-pane GPU: clear last frame's geometry up front, BEFORE the
+    // pane-type dispatch returns early for non-Chart panes. chart_rect is
+    // reset to the [0;4] sentinel; only Chart panes that reach the
+    // rect/pt/ch computation downstream replace it with a real area, so
+    // the GPU render loop in GpuCtx::render skips Portfolio/Dashboard/
+    // Heatmap/Spreadsheet panes and any chart that bailed early.
+    #[cfg(feature = "gpu_chart_v2")]
+    {
+        chart.gpu_render_params.instances.clear();
+        chart.gpu_render_params.line_segments.clear();
+        chart.gpu_render_params.fill_quads.clear();
+        chart.gpu_render_params.chart_rect = [0.0; 4];
+    }
+
     // ── Sync orders from OrderManager (single source of truth) ──
     // Merge: OrderManager orders take precedence, keep local-only orders too
     {
@@ -1337,17 +1352,16 @@ fn render_chart_pane(
     #[cfg(feature = "gpu_chart_v2")]
     let drawing_ppp: f32 = ctx.pixels_per_point();
 
-    // Clear last frame's GPU geometry for the active pane. Every GPU-routing
-    // site below (volume, candle, indicators, drawings, oscillators, orders)
-    // is an *append* — without this clear, accumulated geometry would grow
-    // unbounded. The candle code below updates the value fields (vs_frac,
-    // price range, etc.) but no longer reassigns line_segments/fill_quads,
-    // so anything pushed before the candle block (e.g. volume) is preserved.
+    // The vec clear + chart_rect=[0;4] sentinel happens at the top of
+    // render_chart_pane (before pane_type dispatch). Now that we have rect /
+    // pt / ch, replace the sentinel with the actual chart area so the GPU
+    // loop will scissor any GPU draws (indicators, drawings, oscillators,
+    // orders, volume) to this pane's chart rect — even for alt-mode panes
+    // and non-Standard candle modes that don't push candle instances.
     #[cfg(feature = "gpu_chart_v2")]
-    if is_active {
-        chart.gpu_render_params.instances.clear();
-        chart.gpu_render_params.line_segments.clear();
-        chart.gpu_render_params.fill_quads.clear();
+    {
+        chart.gpu_render_params.chart_rect =
+            [rect.left(), rect.top() + pt, rect.left() + cw, rect.top() + pt + ch];
     }
     // sRGB → linear: surface format is Bgra8UnormSrgb, so the GPU gamma-encodes
     // shader output. Hand it linear values; egui Color32 is sRGB bytes.
@@ -1572,16 +1586,11 @@ fn render_chart_pane(
             for i in (vs as u32)..end { if let Some(b) = chart.bars.get(i as usize) { mv = mv.max(b.volume); } }
             if mv == 0.0 { mv = 1.0; }
 
-            // GPU volume path: only the active pane gets routed through the
-            // FillQuad pipeline. Volume bars draw AFTER candles in the chart
-            // pass; the translucent fill (alpha typically 40-200) lets wick
-            // pixels in the volume area show through acceptably.
-            let use_gpu_volume: bool = {
-                #[cfg(feature = "gpu_chart_v2")]
-                { is_active }
-                #[cfg(not(feature = "gpu_chart_v2"))]
-                { false }
-            };
+            // GPU volume path: every visible pane routes through the FillQuad
+            // pipeline when the feature is on. Volume bars draw AFTER candles
+            // in the chart pass; the translucent fill (alpha typically 22-235)
+            // lets wick pixels in the volume area show through.
+            let use_gpu_volume: bool = cfg!(feature = "gpu_chart_v2");
 
             // The GPU shader maps a "value" to NDC y via t = (v - price_low)/range.
             // Volume area is the bottom 20% of the chart, so:
@@ -1857,14 +1866,13 @@ fn render_chart_pane(
         if !alt_wick_mesh.vertices.is_empty() { painter.add(egui::Shape::mesh(alt_wick_mesh)); }
         if !alt_body_mesh.vertices.is_empty() { painter.add(egui::Shape::mesh(alt_body_mesh)); }
     } else if !is_alt_mode {
-    // Active pane candles route to the GPU pipeline when gpu_chart_v2 is on
-    // AND the candle mode is Standard (the only mode whose vertices are pure
-    // OHLC). Other modes (HeikinAshi, Line, Area, Violin variants) need the
-    // egui path so their custom geometry still renders. Non-active panes
-    // always use the egui mesh path so they still render.
+    // Per-pane GPU candles route through the GPU pipeline when gpu_chart_v2
+    // is on AND the candle mode is Standard (the only mode whose vertices are
+    // pure OHLC). Other modes (HeikinAshi, Line, Area, Violin variants) keep
+    // the egui path so their custom geometry still renders.
     let use_gpu_candles = matches!(chart.candle_mode, CandleMode::Standard);
     let skip_egui_candles: bool;
-    #[cfg(feature = "gpu_chart_v2")] { skip_egui_candles = is_active && use_gpu_candles; }
+    #[cfg(feature = "gpu_chart_v2")] { skip_egui_candles = use_gpu_candles; }
     #[cfg(not(feature = "gpu_chart_v2"))] { skip_egui_candles = false; }
     if !skip_egui_candles {
     // Candles — batched into meshes for fast GPU rendering
@@ -2115,12 +2123,13 @@ fn render_chart_pane(
     } // end candle batch block
     } // end if !skip_egui_candles
 
-    // GPU path: always populate chart.gpu_render_params for the active pane so the
-    // chart pipeline never reads stale data from a previous frame. When use_gpu_candles
-    // is false (non-Standard mode), instances stays empty — the chart pass clears the
-    // surface and the egui path draws the candles on top.
+    // GPU path: populate chart.gpu_render_params for THIS pane (every visible
+    // pane uploads + draws independently in the per-pane render loop). When
+    // use_gpu_candles is false (non-Standard mode), instances stays empty —
+    // the chart pass clears the surface and the egui path draws the candles
+    // on top instead.
     #[cfg(feature = "gpu_chart_v2")]
-    if is_active {
+    {
         use crate::chart::renderer_gpu::{CandleInstance, ChartRenderParams};
         let mut instances = Vec::new();
         if use_gpu_candles {
@@ -3267,7 +3276,7 @@ fn render_chart_pane(
 
                 let use_gpu_band: bool = {
                     #[cfg(feature = "gpu_chart_v2")]
-                    { is_active && ind.line_style == LineStyle::Solid }
+                    { ind.line_style == LineStyle::Solid }
                     #[cfg(not(feature = "gpu_chart_v2"))]
                     { false }
                 };
@@ -3367,7 +3376,7 @@ fn render_chart_pane(
             if ind.kind == IndicatorType::KeltnerChannels {
                 let use_gpu_band: bool = {
                     #[cfg(feature = "gpu_chart_v2")]
-                    { is_active && ind.line_style == LineStyle::Solid }
+                    { ind.line_style == LineStyle::Solid }
                     #[cfg(not(feature = "gpu_chart_v2"))]
                     { false }
                 };
@@ -3702,7 +3711,7 @@ fn render_chart_pane(
 
         let use_gpu_drawing: bool = {
             #[cfg(feature = "gpu_chart_v2")]
-            { is_active && d.line_style == LineStyle::Solid }
+            { d.line_style == LineStyle::Solid }
             #[cfg(not(feature = "gpu_chart_v2"))]
             { false }
         };
@@ -4825,12 +4834,7 @@ fn render_chart_pane(
             // pseudo-price via py_inv. The main shader's value→y transform then
             // lands the line at the correct osc-panel pixel.
             let primary_thickness = if ind.kind == IndicatorType::MACD { 1.5 } else { ind.thickness };
-            let use_gpu_osc: bool = {
-                #[cfg(feature = "gpu_chart_v2")]
-                { is_active }
-                #[cfg(not(feature = "gpu_chart_v2"))]
-                { false }
-            };
+            let use_gpu_osc: bool = cfg!(feature = "gpu_chart_v2");
             if use_gpu_osc {
                 #[cfg(feature = "gpu_chart_v2")]
                 {
@@ -6334,12 +6338,7 @@ fn render_chart_pane(
     }
 
     // ── Order lines on chart ──────────────────────────────────────────────
-    let use_gpu_orders: bool = {
-        #[cfg(feature = "gpu_chart_v2")]
-        { is_active }
-        #[cfg(not(feature = "gpu_chart_v2"))]
-        { false }
-    };
+    let use_gpu_orders: bool = cfg!(feature = "gpu_chart_v2");
     for order in &chart.orders {
         if order.status == OrderStatus::Cancelled || order.status == OrderStatus::Executed { continue; }
         let y = py(order.price);

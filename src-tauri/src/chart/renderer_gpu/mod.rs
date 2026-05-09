@@ -505,18 +505,22 @@ impl ChartPipeline {
         let sh = ((cb.max(ct) as u32).min(sh_u)).saturating_sub(sy);
         self.scissor = (sx, sy, sw, sh);
 
-        crate::monitoring::set_chart_pipeline_active(true);
-        crate::monitoring::set_chart_visible_bars(icount);
+        // Aggregated `chart_visible_bars` and `chart_pipeline_active` are
+        // updated by GpuCtx::render across all panes — setting them here
+        // would just overwrite each upload with the last pane's count.
     }
 
-    /// Run the chart render pass: clear, draw candles, draw indicator lines.
-    /// All draws share a single render pass and the same scissor rect.
+    /// Run a chart render pass for a single pane: maybe-clear, draw candles,
+    /// draw fills, draw lines. Caller controls the load op so the multi-pane
+    /// loop can clear on the first call and load on subsequent calls.
+    /// All draws use the scissor rect set by the most recent `upload`.
     /// Returns CPU encode + submit time in microseconds.
     pub fn render(
         &self,
         device: &wgpu::Device,
         queue:  &wgpu::Queue,
         view:   &wgpu::TextureView,
+        load_op: wgpu::LoadOp<wgpu::Color>,
     ) -> u64 {
         let t0 = Instant::now();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -529,7 +533,7 @@ impl ChartPipeline {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load:  wgpu::LoadOp::Clear(self.clear_color),
+                        load:  load_op,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
