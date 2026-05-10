@@ -16,6 +16,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use super::{OrderSide, OrderStatus, OrderLevel, APEXIB_URL};
+use super::{snapshot, inflight, paper};
+use super::journal::{self, JournalEvent, AttemptKind, ControlKind};
 
 // ─── Lock helper (panic-poison recovery) ────────────────────────────────────
 
@@ -23,8 +25,45 @@ fn manager() -> &'static Mutex<OrderManager> {
     ORDER_MANAGER.get_or_init(|| {
         let mut m = OrderManager::new();
         m.load_from_disk();
-        Mutex::new(m)
+        // Restore kill/halt flags from sidecar — a UI crash must not silently
+        // un-engage the local gate on restart.
+        let path = std::env::current_exe().ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("state").join("control_flags.json");
+        if let Ok(bytes) = std::fs::read(&path) {
+            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                m.kill_engaged = v["kill_engaged"].as_bool().unwrap_or(false);
+                m.halted = v["halted"].as_bool().unwrap_or(false);
+                if m.kill_engaged { eprintln!("[control] restored kill_engaged=true from disk"); }
+                if m.halted { eprintln!("[control] restored halted=true from disk"); }
+            }
+        }
+        let mgr = Mutex::new(m);
+        // Wave 6a: WAL replay & broker reconciliation. Runs ONCE at startup,
+        // AFTER load_from_disk and BEFORE the pending sweeper starts so we
+        // don't race a recovered order into Unknown.
+        // Skip when the previous run exited cleanly (Shutdown marker present).
+        if journal::last_event_was_shutdown() {
+            eprintln!("[recovery] previous run exited cleanly — skipping orphan recovery");
+        } else {
+            // Spawn the recovery work so we don't block init on HTTP. It re-acquires
+            // the manager lock when it has results to apply.
+            std::thread::spawn(replay_and_recover);
+        }
+        start_pending_sweeper();
+        start_broker_watchdog();
+        mgr
     })
+}
+
+/// Drop impl: emit a Shutdown marker so the next startup can skip orphan
+/// recovery. Best-effort — if the process is killed mid-write we fall back
+/// to the recovery path.
+impl Drop for OrderManager {
+    fn drop(&mut self) {
+        journal::append(JournalEvent::Shutdown { ts_ms: epoch_ms() });
+    }
 }
 
 /// Run a closure with mutable access to the global OrderManager.
@@ -62,6 +101,7 @@ pub(crate) enum OrderState {
     Cancelled,       // Confirmed cancelled
     Rejected,        // Rejected by backend or risk checks
     PendingModify,   // Modify request sent to backend
+    Unknown,         // Pending op timed out — broker reconcile needed
 }
 
 impl OrderState {
@@ -75,7 +115,7 @@ impl OrderState {
     pub(crate) fn to_legacy(&self) -> OrderStatus {
         match self {
             Self::Draft => OrderStatus::Draft,
-            Self::PendingSubmit | Self::Working | Self::PartialFill | Self::PendingModify => OrderStatus::Placed,
+            Self::PendingSubmit | Self::Working | Self::PartialFill | Self::PendingModify | Self::Unknown => OrderStatus::Placed,
             Self::Filled => OrderStatus::Executed,
             Self::PendingCancel | Self::Cancelled | Self::Rejected => OrderStatus::Cancelled,
         }
@@ -110,6 +150,11 @@ impl OrderSignature {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ManagedOrder {
     pub(crate) id: u64,
+    /// Stable idempotency key sent to ApexIB on every submit/cancel/modify.
+    /// Generated once at order creation; persisted; survives restarts so
+    /// retried HTTP calls never duplicate broker-side.
+    #[serde(default = "new_client_order_id")]
+    pub(crate) client_order_id: String,
     pub(crate) symbol: String,
     pub(crate) side: OrderSide,
     pub(crate) order_type: ManagedOrderType,
@@ -136,6 +181,21 @@ pub(crate) struct ManagedOrder {
     // Audit
     pub(crate) state_history: Vec<(OrderState, u64)>, // (state, timestamp_ms)
     pub(crate) rejection_reason: Option<String>,
+    // ── Wave 6c: modify serialization ──
+    /// Monotonic per-order modify counter. Each call to `modify_price` bumps
+    /// this; the spawned PUT thread captures the value at dispatch time and
+    /// only applies its result if the order's current version still matches.
+    /// Persisted with `#[serde(default)]` so old `orders.json` still loads.
+    #[serde(default)]
+    pub(crate) modify_version: u32,
+    /// True while a modify PUT is in flight to the broker. Subsequent
+    /// `modify_price` calls coalesce into `modify_pending_price` instead of
+    /// firing a second concurrent PUT.
+    #[serde(default)]
+    pub(crate) modify_inflight: bool,
+    /// Latest price queued while a modify is in flight. Drained on completion.
+    #[serde(default)]
+    pub(crate) modify_pending_price: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -155,6 +215,11 @@ pub(crate) enum OrderSource {
     Combo,          // Combo/spread order
     Conditional,    // Conditional order
     OptionsTrigger, // Options trigger order
+}
+
+/// Generate a fresh idempotency key for a new order. UUID v4 hex.
+pub(crate) fn new_client_order_id() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
 }
 
 impl ManagedOrder {
@@ -285,6 +350,16 @@ pub(crate) struct OrderManager {
     orders_filled: u64,
     orders_rejected: u64,
     duplicates_blocked: u64,
+    // ── Risk control flags (server-enforced kill / halt mirror) ──
+    pub(crate) kill_engaged: bool,
+    pub(crate) halted: bool,
+    // ── Broker-disconnect watchdog (runtime only; not persisted) ──
+    // `auto_halted_due_to_disconnect` distinguishes a halt the watchdog
+    // engaged from one the user engaged, so we only auto-resume our own.
+    // Note: OrderManager isn't serde-derived, so #[serde(default)] would
+    // fail here. These fields default in `new()` and are not persisted.
+    pub(crate) auto_halted_due_to_disconnect: bool,
+    pub(crate) last_broker_contact: Option<u64>,
 }
 
 static ORDER_MANAGER: OnceLock<Mutex<OrderManager>> = OnceLock::new();
@@ -303,7 +378,61 @@ impl OrderManager {
             orders_filled: 0,
             orders_rejected: 0,
             duplicates_blocked: 0,
+            kill_engaged: false,
+            halted: false,
+            auto_halted_due_to_disconnect: false,
+            last_broker_contact: None,
         }
+    }
+
+    /// True if any submit should be refused locally (kill or halt).
+    pub(crate) fn is_blocked(&self) -> bool { self.kill_engaged || self.halted }
+
+    /// Reason string for a halt rejection — distinguishes auto-halt-due-to-
+    /// disconnect from a user-engaged halt so the UI/journal carry context.
+    fn halt_reason(&self) -> &'static str {
+        if self.auto_halted_due_to_disconnect { "broker disconnected" } else { "trading halted" }
+    }
+
+    /// Engage the kill switch: cancel all locally + flip gate + fire broker /risk/kill.
+    pub(crate) fn engage_kill(&mut self) -> Result<(), String> {
+        self.cancel_all("");
+        self.kill_engaged = true;
+        std::thread::spawn(|| {
+            let client = reqwest::blocking::Client::new();
+            let _ = client.post(format!("{}/risk/kill", APEXIB_URL))
+                .timeout(std::time::Duration::from_secs(10)).send();
+        });
+        eprintln!("[kill] ENGAGED (local + broker)");
+        Ok(())
+    }
+
+    pub(crate) fn release_kill(&mut self) -> Result<(), String> {
+        self.kill_engaged = false;
+        eprintln!("[kill] RELEASED (local only — no broker endpoint)");
+        Ok(())
+    }
+
+    pub(crate) fn halt_inner(&mut self) -> Result<(), String> {
+        self.halted = true;
+        std::thread::spawn(|| {
+            let client = reqwest::blocking::Client::new();
+            let _ = client.post(format!("{}/risk/halt", APEXIB_URL))
+                .timeout(std::time::Duration::from_secs(5)).send();
+        });
+        eprintln!("[halt] ENGAGED (local + broker)");
+        Ok(())
+    }
+
+    pub(crate) fn resume_inner(&mut self) -> Result<(), String> {
+        self.halted = false;
+        std::thread::spawn(|| {
+            let client = reqwest::blocking::Client::new();
+            let _ = client.post(format!("{}/risk/resume", APEXIB_URL))
+                .timeout(std::time::Duration::from_secs(5)).send();
+        });
+        eprintln!("[resume] (local + broker)");
+        Ok(())
     }
 
     /// Resolve a symbol to its IB conId.
@@ -364,6 +493,8 @@ impl OrderManager {
 
     /// Submit an order intent. Returns the result.
     pub(crate) fn submit(&mut self, intent: OrderIntent) -> OrderResult {
+        if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
+        if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
         let now_ms = epoch_ms();
         // Paper mode is practice — no real money at stake, so the risk limits
         // (notional, position size, fat-finger, oversell) don't apply. We still
@@ -410,6 +541,18 @@ impl OrderManager {
             self.orders_rejected += 1;
             return OrderResult::Rejected(format!("Would exceed max position size {}", self.risk_limits.max_position_qty));
         }
+        // In-flight aggregator: working orders in same direction count toward
+        // position cap so users can't stack working orders past the limit.
+        if !paper && self.risk_limits.max_position_qty > 0 {
+            let working = inflight::working_qty_same_direction(&self.orders, &intent.symbol, intent.side);
+            if working.saturating_add(intent.qty) > self.risk_limits.max_position_qty {
+                self.orders_rejected += 1;
+                return OrderResult::Rejected(format!(
+                    "Working+new qty {} exceeds max position {}",
+                    working.saturating_add(intent.qty), self.risk_limits.max_position_qty
+                ));
+            }
+        }
 
         // ── 2.5 Oversell protection (can't sell more contracts than you hold) ──
         let is_sell = matches!(intent.side, OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::TriggerSell);
@@ -446,7 +589,7 @@ impl OrderManager {
             }
         }
 
-        // ── 2.7 Max notional check ──
+        // ── 2.7 Max notional check (per-order + working aggregate) ──
         if !paper && self.risk_limits.max_notional > 0.0 {
             let order_price = if intent.price > 0.0 { intent.price } else { intent.last_price };
             let notional = order_price as f64 * intent.qty as f64;
@@ -455,6 +598,57 @@ impl OrderManager {
                 return OrderResult::Rejected(format!(
                     "Notional ${:.0} exceeds max ${:.0}", notional, self.risk_limits.max_notional
                 ));
+            }
+            let working_notional = inflight::working_notional(&self.orders, &intent.symbol);
+            if working_notional + notional > self.risk_limits.max_notional {
+                self.orders_rejected += 1;
+                return OrderResult::Rejected(format!(
+                    "Working+new notional ${:.0} exceeds max ${:.0}",
+                    working_notional + notional, self.risk_limits.max_notional
+                ));
+            }
+        }
+
+        // ── 2.8 Pre-submit buying-power check (Wave 6b) ──
+        // Skip in paper (unlimited buying power by definition) and skip if
+        // account_data not yet loaded (poller may not have fired on first
+        // submit — log and proceed rather than fail-closed).
+        if !paper {
+            match super::read_account_data() {
+                Some((summary, _positions, _ib)) if summary.connected => {
+                    let inflight_notional = inflight::working_notional(&self.orders, &intent.symbol);
+                    let bp = summary.buying_power;
+                    let need_check = bp > 0.0;
+                    if need_check {
+                        if intent.order_type == ManagedOrderType::Market || intent.price <= 0.0 {
+                            // Market orders: no firm price to compute notional from.
+                            // Use a sanity floor — reject only when qty alone (priced
+                            // at $1) would exceed 95% of buying power. This catches
+                            // obvious fat-fingers without rejecting a legitimate
+                            // market order whose notional we genuinely don't know.
+                            // TODO: thread last-quote from chart side for a real check.
+                            let qty_floor = intent.qty as f64;
+                            if qty_floor >= 0.95 * bp {
+                                self.orders_rejected += 1;
+                                return OrderResult::Rejected(format!(
+                                    "insufficient buying power for market order: qty {} >= 95% of ${:.0}",
+                                    intent.qty, bp));
+                            }
+                        } else {
+                            let candidate_notional = (intent.qty as f64) * (intent.price as f64);
+                            let total = candidate_notional + inflight_notional;
+                            if total > bp {
+                                self.orders_rejected += 1;
+                                return OrderResult::Rejected(format!(
+                                    "insufficient buying power: need ${:.0}, have ${:.0}",
+                                    total, bp));
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!("[risk] buying-power check skipped — account_data not yet loaded");
+                }
             }
         }
 
@@ -474,6 +668,7 @@ impl OrderManager {
 
         let order = ManagedOrder {
             id,
+            client_order_id: new_client_order_id(),
             symbol: intent.symbol.clone(),
             side: intent.side,
             order_type: intent.order_type,
@@ -496,10 +691,14 @@ impl OrderManager {
             backend_order_id: None,
             state_history: vec![(initial_state, now_ms)],
             rejection_reason: None,
+            modify_version: 0,
+            modify_inflight: false,
+            modify_pending_price: None,
         };
 
         self.orders.push(order);
         self.orders_submitted += 1;
+        snapshot::publish(&self.orders);
 
         if initial_state == OrderState::PendingSubmit {
             // Submit to ApexIB backend
@@ -522,18 +721,57 @@ impl OrderManager {
             let qty = intent.qty;
             let intent_tif = intent.tif;
             let outside_rth = intent.outside_rth;
-            let idem_key = format!("apex_{}_{}_{}", id, intent.symbol, now_ms);
+            // Use the order's stable client_order_id (UUID v4) as the idempotency
+            // key. It survives retries, restarts, and double-clicks — exactly what
+            // ApexIB needs to safely dedupe a re-submitted order.
+            let cid = self.orders.iter().find(|o| o.id == id)
+                .map(|o| o.client_order_id.clone())
+                .unwrap_or_else(|| id.to_string());
+            let idem_key = cid.clone();
             let order_id_copy = id;
-            // Fire async backend submission — captures IB order ID back into the manager
-            std::thread::spawn(move || {
-                if let Some(ib_oid) = Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
-                    with_mgr(|mgr| {
-                        if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
-                            o.backend_order_id = Some(ib_oid);
-                        }
-                    });
-                }
+            // Journal the attempt before dispatch so a crash is observable.
+            journal::append(JournalEvent::Attempt {
+                client_id: cid.clone(),
+                kind: AttemptKind::Submit,
+                ts_ms: now_ms,
+                payload: serde_json::json!({
+                    "symbol": sym, "side": side_str, "qty": qty,
+                    "order_type": ot_idx, "price": price, "stop_price": stop_price,
+                }),
             });
+            if paper {
+                // Paper-mode: short-circuit live HTTP, ack synthetically.
+                let ib_oid = paper::submit_paper(&idem_key);
+                if let Some(o) = self.orders.iter_mut().find(|o| o.id == id) {
+                    o.backend_order_id = Some(ib_oid.clone());
+                }
+                journal::append(JournalEvent::Ack {
+                    client_id: cid.clone(), backend_id: Some(ib_oid), ts_ms: epoch_ms(),
+                });
+            } else {
+                // Fire async backend submission — captures IB order ID back into the manager
+                let cid_thread = cid.clone();
+                std::thread::spawn(move || {
+                    match Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
+                        Some(ib_oid) => {
+                            with_mgr(|mgr| {
+                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
+                                    o.backend_order_id = Some(ib_oid.clone());
+                                }
+                            });
+                            journal::append(JournalEvent::Ack {
+                                client_id: cid_thread, backend_id: Some(ib_oid), ts_ms: epoch_ms(),
+                            });
+                        }
+                        None => {
+                            journal::append(JournalEvent::Fail {
+                                client_id: cid_thread, reason: "submit_to_ib returned None".into(),
+                                ts_ms: epoch_ms(),
+                            });
+                        }
+                    }
+                });
+            }
             self.transition(id, OrderState::Working); // Optimistic — will reconcile from poller
             self.pending_toasts.push(format!("{} {} x{} @ {:.2}", side_str.to_uppercase(), intent.symbol, qty, price));
             OrderResult::Accepted(id)
@@ -563,7 +801,7 @@ impl OrderManager {
             let trail_percent = o.trail_percent;
             let intent_tif = o.tif;
             let outside_rth = o.outside_rth;
-            let idem_key = format!("apex_{}_{}_{}", order_id, sym, now);
+            let idem_key = o.client_order_id.clone();
             let order_id_copy = order_id;
             std::thread::spawn(move || {
                 if let Some(ib_oid) = Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
@@ -571,9 +809,13 @@ impl OrderManager {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                             o.backend_order_id = Some(ib_oid);
                         }
+                        snapshot::publish(&mgr.orders);
                     });
                 }
             });
+            // Direct state mutation bypassed `transition` — publish so the
+            // render-thread snapshot sees the Draft -> Working transition.
+            snapshot::publish(&self.orders);
             true
         } else {
             false
@@ -586,6 +828,8 @@ impl OrderManager {
     /// Creates 3 local managed orders and submits the bracket to the backend.
     /// Returns (entry_result, tp_order_id, sl_order_id).
     pub(crate) fn submit_bracket(&mut self, intent: OrderIntent, take_profit_price: f32, stop_loss_price: f32) -> (OrderResult, Option<u64>, Option<u64>) {
+        if self.kill_engaged { return (OrderResult::Rejected("kill switch engaged".into()), None, None); }
+        if self.halted { return (OrderResult::Rejected(self.halt_reason().into()), None, None); }
         let now_ms = epoch_ms();
 
         // Validate
@@ -612,7 +856,7 @@ impl OrderManager {
 
         // Entry order
         self.orders.push(ManagedOrder {
-            id: entry_id, symbol: intent.symbol.clone(), side: intent.side,
+            id: entry_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: intent.side,
             order_type: intent.order_type, price: intent.price, stop_price: intent.stop_price,
             qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
             state: initial_state, pair_id: None,
@@ -622,11 +866,12 @@ impl OrderManager {
             created_at: now_ms, updated_at: now_ms,
             backend_order_id: None, state_history: vec![(initial_state, now_ms)],
             rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
 
         // Take profit order
         self.orders.push(ManagedOrder {
-            id: tp_id, symbol: intent.symbol.clone(), side: tp_side,
+            id: tp_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: tp_side,
             order_type: ManagedOrderType::Limit, price: take_profit_price, stop_price: 0.0,
             qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
             state: initial_state, pair_id: Some(entry_id),
@@ -636,11 +881,12 @@ impl OrderManager {
             created_at: now_ms, updated_at: now_ms,
             backend_order_id: None, state_history: vec![(initial_state, now_ms)],
             rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
 
         // Stop loss order
         self.orders.push(ManagedOrder {
-            id: sl_id, symbol: intent.symbol.clone(), side: tp_side,
+            id: sl_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: tp_side,
             order_type: ManagedOrderType::Stop, price: stop_loss_price, stop_price: stop_loss_price,
             qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
             state: initial_state, pair_id: Some(entry_id),
@@ -650,6 +896,7 @@ impl OrderManager {
             created_at: now_ms, updated_at: now_ms,
             backend_order_id: None, state_history: vec![(initial_state, now_ms)],
             rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
 
         self.orders_submitted += 3;
@@ -665,7 +912,9 @@ impl OrderManager {
                 ManagedOrderType::TrailingStop => "trailing_stop",
             };
             let ot_owned = order_type.to_string();
-            let idem_key = format!("apex_bracket_{}_{}_{}", entry_id, sym, now_ms);
+            let idem_key = self.orders.iter().find(|o| o.id == entry_id)
+                .map(|o| o.client_order_id.clone())
+                .unwrap_or_else(|| format!("apex_bracket_{}_{}_{}", entry_id, sym, now_ms));
             let tp_price = take_profit_price;
             let sl_price = stop_loss_price;
             let eid = entry_id; let tid = tp_id; let sid = sl_id;
@@ -732,6 +981,8 @@ impl OrderManager {
     /// Submit an OCO (One-Cancels-Other) order group via POST /orders/oco.
     /// Creates all orders locally paired together, then submits to the backend.
     pub(crate) fn submit_oco(&mut self, orders: Vec<OrderIntent>) -> Vec<OrderResult> {
+        if self.kill_engaged { return vec![OrderResult::Rejected("kill switch engaged".into())]; }
+        if self.halted { return vec![OrderResult::Rejected(self.halt_reason().into())]; }
         let now_ms = epoch_ms();
         if orders.len() < 2 {
             return vec![OrderResult::Rejected("OCO requires at least 2 orders".into())];
@@ -753,7 +1004,7 @@ impl OrderManager {
             let initial_state = if self.armed { OrderState::PendingSubmit } else { OrderState::Draft };
 
             self.orders.push(ManagedOrder {
-                id, symbol: intent.symbol.clone(), side: intent.side,
+                id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: intent.side,
                 order_type: intent.order_type, price: intent.price, stop_price: intent.stop_price,
                 qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
                 state: initial_state, pair_id: None, // pair_ids linked after all created
@@ -763,6 +1014,7 @@ impl OrderManager {
                 created_at: now_ms, updated_at: now_ms,
                 backend_order_id: None, state_history: vec![(initial_state, now_ms)],
                 rejection_reason: None,
+                modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
             self.orders_submitted += 1;
 
@@ -782,6 +1034,9 @@ impl OrderManager {
                     o.pair_id = Some(pair);
                 }
             }
+            // Pair-id mutation bypasses `transition`; publish so the
+            // render-thread snapshot reflects the linked legs.
+            snapshot::publish(&self.orders);
         }
 
         // Submit to backend
@@ -855,6 +1110,8 @@ impl OrderManager {
     /// Submit a conditional order via POST /orders/conditional.
     /// The order executes when price conditions on watched contracts are met.
     pub(crate) fn submit_conditional(&mut self, intent: ConditionalOrderIntent) -> OrderResult {
+        if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
+        if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
         let now_ms = epoch_ms();
         let base = &intent.base;
 
@@ -869,7 +1126,7 @@ impl OrderManager {
         let initial_state = OrderState::PendingSubmit; // conditionals always go to backend immediately
 
         self.orders.push(ManagedOrder {
-            id, symbol: base.symbol.clone(), side: base.side,
+            id, client_order_id: new_client_order_id(), symbol: base.symbol.clone(), side: base.side,
             order_type: base.order_type, price: base.price, stop_price: base.stop_price,
             qty: base.qty, filled_qty: 0, avg_fill_price: 0.0,
             state: initial_state, pair_id: base.pair_with,
@@ -879,6 +1136,7 @@ impl OrderManager {
             created_at: now_ms, updated_at: now_ms,
             backend_order_id: None, state_history: vec![(initial_state, now_ms)],
             rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
         self.orders_submitted += 1;
 
@@ -894,7 +1152,9 @@ impl OrderManager {
         let conditions = intent.conditions.clone();
         let logic = intent.conditions_logic.clone();
         let cancel_order = intent.conditions_cancel_order;
-        let idem_key = format!("apex_cond_{}_{}_{}", id, sym, now_ms);
+        let idem_key = self.orders.iter().find(|o| o.id == id)
+            .map(|o| o.client_order_id.clone())
+            .unwrap_or_else(|| format!("apex_cond_{}_{}_{}", id, sym, now_ms));
         let id_copy = id;
 
         // Build toast before move
@@ -961,6 +1221,8 @@ impl OrderManager {
         qty: u32, entry_price: f32, entry_direction: &str,
         exit_price: f32, exit_direction: &str,
     ) -> OrderResult {
+        if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
+        if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
         let now_ms = epoch_ms();
         if qty == 0 {
             return OrderResult::Rejected("Qty cannot be zero".into());
@@ -970,7 +1232,7 @@ impl OrderManager {
         let initial_state = OrderState::PendingSubmit;
 
         self.orders.push(ManagedOrder {
-            id, symbol: underlying.to_string(), side: OrderSide::TriggerBuy,
+            id, client_order_id: new_client_order_id(), symbol: underlying.to_string(), side: OrderSide::TriggerBuy,
             order_type: ManagedOrderType::Market, price: entry_price, stop_price: 0.0,
             qty, filled_qty: 0, avg_fill_price: 0.0,
             state: initial_state, pair_id: None,
@@ -981,6 +1243,7 @@ impl OrderManager {
             created_at: now_ms, updated_at: now_ms,
             backend_order_id: None, state_history: vec![(initial_state, now_ms)],
             rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
         self.orders_submitted += 1;
 
@@ -989,7 +1252,9 @@ impl OrderManager {
         let exp = expiration.to_string();
         let entry_dir = entry_direction.to_string();
         let exit_dir = exit_direction.to_string();
-        let idem_key = format!("apex_opttrig_{}_{}_{}", id, underlying, now_ms);
+        let idem_key = self.orders.iter().find(|o| o.id == id)
+            .map(|o| o.client_order_id.clone())
+            .unwrap_or_else(|| format!("apex_opttrig_{}_{}_{}", id, underlying, now_ms));
         let id_copy = id;
 
         std::thread::spawn(move || {
@@ -1041,6 +1306,8 @@ impl OrderManager {
     pub(crate) fn submit_combo(&mut self, symbol: &str, legs: Vec<ComboLeg>,
         side: &str, qty: u32, order_type: &str, limit_price: Option<f32>,
     ) -> OrderResult {
+        if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
+        if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
         let now_ms = epoch_ms();
         if qty == 0 {
             return OrderResult::Rejected("Qty cannot be zero".into());
@@ -1056,7 +1323,7 @@ impl OrderManager {
         let managed_ot = if order_type == "limit" { ManagedOrderType::Limit } else { ManagedOrderType::Market };
 
         self.orders.push(ManagedOrder {
-            id, symbol: symbol.to_string(), side: order_side,
+            id, client_order_id: new_client_order_id(), symbol: symbol.to_string(), side: order_side,
             order_type: managed_ot, price: limit_price.unwrap_or(0.0), stop_price: 0.0,
             qty, filled_qty: 0, avg_fill_price: 0.0,
             state: initial_state, pair_id: None,
@@ -1067,13 +1334,16 @@ impl OrderManager {
             created_at: now_ms, updated_at: now_ms,
             backend_order_id: None, state_history: vec![(initial_state, now_ms)],
             rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
         self.orders_submitted += 1;
 
         let sym = symbol.to_string();
         let side_owned = side.to_string();
         let ot_owned = order_type.to_string();
-        let idem_key = format!("apex_combo_{}_{}_{}", id, symbol, now_ms);
+        let idem_key = self.orders.iter().find(|o| o.id == id)
+            .map(|o| o.client_order_id.clone())
+            .unwrap_or_else(|| format!("apex_combo_{}_{}_{}", id, symbol, now_ms));
         let id_copy = id;
         let num_legs = legs.len();
 
@@ -1129,15 +1399,35 @@ impl OrderManager {
 
         if !is_active { return false; }
 
+        let paper = self.paper_mode;
+        let cid = order_id.to_string();
+        journal::append(JournalEvent::Attempt {
+            client_id: cid.clone(), kind: AttemptKind::Cancel,
+            ts_ms: epoch_ms(), payload: serde_json::json!({"order_id": order_id}),
+        });
+
         self.transition(order_id, OrderState::Cancelled);
 
         // Send individual cancel to ApexIB
         if let Some(backend_id) = self.orders.iter().find(|o| o.id == order_id).and_then(|o| o.backend_order_id.clone()) {
-            std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let _ = client.delete(format!("{}/orders/{}", APEXIB_URL, backend_id))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-            });
+            if paper {
+                paper::cancel_paper(&backend_id);
+                journal::append(JournalEvent::Ack { client_id: cid.clone(), backend_id: Some(backend_id), ts_ms: epoch_ms() });
+            } else {
+                let cid_thread = cid.clone();
+                let bid = backend_id.clone();
+                std::thread::spawn(move || {
+                    let client = reqwest::blocking::Client::new();
+                    let res = client.delete(format!("{}/orders/{}", APEXIB_URL, bid))
+                        .timeout(std::time::Duration::from_secs(5)).send();
+                    match res {
+                        Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms() }),
+                        Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel http: {e}"), ts_ms: epoch_ms() }),
+                    }
+                });
+            }
+        } else {
+            journal::append(JournalEvent::Ack { client_id: cid.clone(), backend_id: None, ts_ms: epoch_ms() });
         }
 
         // Also cancel paired order
@@ -1161,12 +1451,27 @@ impl OrderManager {
     /// Cancel all active orders for a symbol (or all if symbol is empty)
     /// Also sends cancel to ApexIB backend
     pub(crate) fn cancel_all(&mut self, symbol: &str) {
-        // Send cancel-all to IB backend
-        std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            let _ = client.delete(format!("{}/orders", APEXIB_URL))
-                .timeout(std::time::Duration::from_secs(5)).send();
+        let cid = format!("cancel-all-{}", epoch_ms());
+        journal::append(JournalEvent::Attempt {
+            client_id: cid.clone(), kind: AttemptKind::CancelAll,
+            ts_ms: epoch_ms(), payload: serde_json::json!({"symbol": symbol}),
         });
+        let paper = self.paper_mode;
+        // Send cancel-all to IB backend (skip in paper)
+        if !paper {
+            let cid_thread = cid.clone();
+            std::thread::spawn(move || {
+                let client = reqwest::blocking::Client::new();
+                let res = client.delete(format!("{}/orders", APEXIB_URL))
+                    .timeout(std::time::Duration::from_secs(5)).send();
+                match res {
+                    Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: None, ts_ms: epoch_ms() }),
+                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel_all http: {e}"), ts_ms: epoch_ms() }),
+                }
+            });
+        } else {
+            journal::append(JournalEvent::Ack { client_id: cid, backend_id: None, ts_ms: epoch_ms() });
+        }
         let ids: Vec<u64> = self.orders.iter()
             .filter(|o| o.state.is_active() && (symbol.is_empty() || o.symbol == symbol))
             .map(|o| o.id)
@@ -1177,41 +1482,111 @@ impl OrderManager {
     }
 
     /// Modify an order's price (drag-to-move, etc.)
+    ///
+    /// Wave 6c: serialised — at most one PUT in flight per order. While
+    /// `modify_inflight`, subsequent calls coalesce into `modify_pending_price`
+    /// and fire after the in-flight one completes. Each PUT carries a
+    /// monotonic `modify_version` so out-of-order responses are discarded.
     pub(crate) fn modify_price(&mut self, order_id: u64, new_price: f32) -> bool {
-        if let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state.is_active()) {
-            let now = epoch_ms();
-            o.price = new_price;
-            o.updated_at = now;
-            o.state_history.push((OrderState::PendingModify, now));
-            // Send modify to ApexIB backend — use the right price field for the order type
-            if let Some(ref bid) = o.backend_order_id {
-                let bid = bid.clone();
-                let np = new_price;
-                let is_stop = matches!(o.order_type, ManagedOrderType::Stop);
-                let is_stop_limit = matches!(o.order_type, ManagedOrderType::StopLimit);
-                std::thread::spawn(move || {
-                    let client = reqwest::blocking::Client::new();
-                    let body = if is_stop {
-                        serde_json::json!({"stopPrice": np})
-                    } else if is_stop_limit {
-                        serde_json::json!({"limitPrice": np, "stopPrice": np})
-                    } else {
-                        serde_json::json!({"limitPrice": np})
-                    };
-                    let _ = client.put(format!("{}/orders/{}", APEXIB_URL, bid))
-                        .json(&body)
-                        .timeout(std::time::Duration::from_secs(5)).send();
-                });
+        let paper = self.paper_mode;
+        let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state.is_active()) else {
+            return false;
+        };
+        // If a PUT is already in flight, queue this price and return.
+        if o.modify_inflight {
+            o.modify_pending_price = Some(new_price);
+            return true;
+        }
+        let now = epoch_ms();
+        o.price = new_price;
+        o.updated_at = now;
+        o.state_history.push((OrderState::PendingModify, now));
+        o.modify_inflight = true;
+        o.modify_version = o.modify_version.wrapping_add(1);
+        let version = o.modify_version;
+        let cid = o.client_order_id.clone();
+        let backend_id = o.backend_order_id.clone();
+        let is_stop = matches!(o.order_type, ManagedOrderType::Stop);
+        let is_stop_limit = matches!(o.order_type, ManagedOrderType::StopLimit);
+
+        journal::append(JournalEvent::Attempt {
+            client_id: cid.clone(), kind: AttemptKind::Modify,
+            ts_ms: now, payload: serde_json::json!({
+                "order_id": order_id, "new_price": new_price, "modify_version": version,
+            }),
+        });
+
+        match backend_id {
+            Some(bid) => {
+                if paper {
+                    paper::modify_paper(&bid, new_price);
+                    journal::append(JournalEvent::Ack { client_id: cid, backend_id: Some(bid), ts_ms: epoch_ms() });
+                    // Apply inline for paper — we already hold &mut self so we
+                    // can't recurse through `with_mgr` (would deadlock the lock).
+                    self.apply_modify_result_inner(order_id, version);
+                } else {
+                    let cid_thread = cid.clone();
+                    let bid_thread = bid.clone();
+                    let np = new_price;
+                    std::thread::spawn(move || {
+                        let client = reqwest::blocking::Client::new();
+                        let body = if is_stop {
+                            serde_json::json!({"stopPrice": np, "modifyVersion": version})
+                        } else if is_stop_limit {
+                            serde_json::json!({"limitPrice": np, "stopPrice": np, "modifyVersion": version})
+                        } else {
+                            serde_json::json!({"limitPrice": np, "modifyVersion": version})
+                        };
+                        let res = client.put(format!("{}/orders/{}", APEXIB_URL, bid_thread))
+                            .json(&body)
+                            .timeout(std::time::Duration::from_secs(5)).send();
+                        match res {
+                            Ok(_) => journal::append(JournalEvent::Ack {
+                                client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms(),
+                            }),
+                            Err(e) => journal::append(JournalEvent::Fail {
+                                client_id: cid_thread, reason: format!("modify http: {e}"), ts_ms: epoch_ms(),
+                            }),
+                        }
+                        // Spawned thread does not hold the manager lock, so it
+                        // can re-enter via `with_mgr` safely.
+                        let pending: Option<f32> = with_mgr(|mgr| {
+                            let o = mgr.orders.iter_mut().find(|o| o.id == order_id)?;
+                            if o.modify_version != version {
+                                return None; // superseded
+                            }
+                            o.modify_inflight = false;
+                            o.modify_pending_price.take()
+                        });
+                        if let Some(p) = pending {
+                            with_mgr(|mgr| { mgr.modify_price(order_id, p); });
+                        }
+                    });
+                }
             }
-            if o.state == OrderState::Working {
-                o.state = OrderState::PendingModify;
-                // Optimistic: go back to Working after modify
-                o.state = OrderState::Working;
-                o.state_history.push((OrderState::Working, now));
+            None => {
+                journal::append(JournalEvent::Ack { client_id: cid, backend_id: None, ts_ms: epoch_ms() });
+                self.apply_modify_result_inner(order_id, version);
             }
-            true
-        } else {
-            false
+        }
+        true
+    }
+
+    /// Inline (lock-already-held) variant of the modify completion handler.
+    /// Used for paper / no-backend paths where `modify_price` hasn't released
+    /// the manager lock yet.
+    fn apply_modify_result_inner(&mut self, order_id: u64, version: u32) {
+        let pending: Option<f32> = {
+            let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id) else { return; };
+            if o.modify_version != version {
+                return; // superseded
+            }
+            o.modify_inflight = false;
+            o.modify_pending_price.take()
+        };
+        if let Some(p) = pending {
+            // Reentrant — but on the same &mut self, so safe.
+            self.modify_price(order_id, p);
         }
     }
 
@@ -1320,16 +1695,24 @@ impl OrderManager {
         if count > 0 {
             self.pending_toasts.push(format!("Restored {} open orders — verify with broker", count));
         }
+        snapshot::publish(&self.orders);
     }
 
     // ── Internal ──
 
     fn transition(&mut self, order_id: u64, new_state: OrderState) {
+        let mut chg: Option<(String, OrderState, OrderState, u64)> = None;
         if let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id) {
             let now = epoch_ms();
+            let from = o.state;
             o.state = new_state;
             o.updated_at = now;
             o.state_history.push((new_state, now));
+            chg = Some((o.id.to_string(), from, new_state, now));
+        }
+        snapshot::publish(&self.orders);
+        if let Some((cid, from, to, ts)) = chg {
+            journal::append(JournalEvent::StateChg { client_id: cid, from, to, ts_ms: ts });
         }
     }
 
@@ -1393,9 +1776,20 @@ pub(crate) fn flatten_position(symbol: &str, current_qty: i32) {
     with_mgr(|mgr| mgr.save_to_disk());
 }
 
-/// Get active orders as legacy OrderLevels for rendering
+/// Get active orders as legacy OrderLevels for rendering.
+///
+/// Render-thread read. Lock-free via the published `OrdersSnapshot` —
+/// **does not** acquire the heavy `ORDER_MANAGER` mutex. Mutations propagate
+/// via `snapshot::publish(&self.orders)` after every state change inside the
+/// manager (see `transition`, `submit`, `load_from_disk`,
+/// `reconcile_with_ib_inner`). Per-frame, per-pane render reads now scale
+/// with pane count without contending on the writer mutex.
 pub(crate) fn active_orders_for(symbol: &str) -> Vec<OrderLevel> {
-    with_mgr(|mgr| mgr.active_order_levels(symbol))
+    let snap = snapshot::current();
+    snap.orders.iter()
+        .filter(|o| o.symbol == symbol && o.state.is_active())
+        .map(|o| o.to_order_level())
+        .collect()
 }
 
 /// Set armed state
@@ -1418,15 +1812,19 @@ pub(crate) fn gc_orders() {
     with_mgr(|mgr| mgr.gc())
 }
 
-/// Get all active + recently-terminal orders as legacy OrderLevels (for chart.orders sync)
+/// Get all active + recently-terminal orders as legacy OrderLevels
+/// (for chart.orders sync).
+///
+/// Render-thread read. Lock-free via the published `OrdersSnapshot` — see
+/// `active_orders_for` for the freshness contract. Each pane calls this
+/// once per frame, so this is on the multi-pane hot path.
 pub(crate) fn all_order_levels_for(symbol: &str) -> Vec<OrderLevel> {
-    with_mgr(|mgr| {
-        let cutoff = epoch_ms().saturating_sub(60_000); // keep terminal orders for 60s
-        mgr.orders.iter()
-            .filter(|o| o.symbol == symbol && (o.state.is_active() || o.updated_at > cutoff))
-            .map(|o| o.to_order_level())
-            .collect()
-    })
+    let cutoff = epoch_ms().saturating_sub(60_000); // keep terminal orders for 60s
+    let snap = snapshot::current();
+    snap.orders.iter()
+        .filter(|o| o.symbol == symbol && (o.state.is_active() || o.updated_at > cutoff))
+        .map(|o| o.to_order_level())
+        .collect()
 }
 
 /// Submit and return the new order ID (convenience for write sites that need the ID)
@@ -1517,33 +1915,61 @@ pub(crate) fn check_margin(symbol: &str, side: &str, qty: u32, order_type: &str,
         .and_then(|r| r.json().ok())
 }
 
-/// Kill switch — cancel everything on backend and locally
+/// Kill switch — engage local gate, cancel all locally, fire broker /risk/kill.
+/// State persists across restart so a UI crash cannot un-engage silently.
 pub(crate) fn kill_switch() {
-    std::thread::spawn(|| {
-        let client = reqwest::blocking::Client::new();
-        let _ = client.post(format!("{}/risk/kill", APEXIB_URL))
-            .timeout(std::time::Duration::from_secs(10)).send();
-    });
-    with_mgr(|mgr| mgr.cancel_all(""));
+    let _ = with_mgr(|mgr| mgr.engage_kill());
     with_mgr(|mgr| mgr.save_to_disk());
+    save_control_flags();
 }
 
-/// Halt trading on the backend
-pub(crate) fn halt_trading() {
-    std::thread::spawn(|| {
-        let client = reqwest::blocking::Client::new();
-        let _ = client.post(format!("{}/risk/halt", APEXIB_URL))
-            .timeout(std::time::Duration::from_secs(5)).send();
-    });
+pub(crate) fn engage_kill_switch() -> Result<(), String> {
+    let r = with_mgr(|mgr| mgr.engage_kill());
+    with_mgr(|mgr| mgr.save_to_disk());
+    save_control_flags();
+    r
 }
 
-/// Resume trading on the backend
-pub(crate) fn resume_trading() {
-    std::thread::spawn(|| {
-        let client = reqwest::blocking::Client::new();
-        let _ = client.post(format!("{}/risk/resume", APEXIB_URL))
-            .timeout(std::time::Duration::from_secs(5)).send();
-    });
+pub(crate) fn release_kill_switch() -> Result<(), String> {
+    let r = with_mgr(|mgr| mgr.release_kill());
+    save_control_flags();
+    r
+}
+
+/// Halt trading — local gate + broker /risk/halt.
+pub(crate) fn halt_trading() -> Result<(), String> {
+    let r = with_mgr(|mgr| mgr.halt_inner());
+    save_control_flags();
+    r
+}
+
+/// Resume trading — local gate + broker /risk/resume.
+pub(crate) fn resume_trading() -> Result<(), String> {
+    let r = with_mgr(|mgr| mgr.resume_inner());
+    save_control_flags();
+    r
+}
+
+/// Defense-in-depth: are submits currently blocked by kill or halt?
+pub(crate) fn is_trading_blocked() -> bool {
+    with_mgr(|mgr| mgr.is_blocked())
+}
+
+fn control_flags_path() -> std::path::PathBuf {
+    let dir = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let state = dir.join("state");
+    let _ = std::fs::create_dir_all(&state);
+    state.join("control_flags.json")
+}
+
+fn save_control_flags() {
+    let (k, h) = with_mgr(|m| (m.kill_engaged, m.halted));
+    let v = serde_json::json!({ "kill_engaged": k, "halted": h });
+    if let Err(e) = std::fs::write(control_flags_path(), v.to_string()) {
+        eprintln!("[control] save_control_flags failed: {e}");
+    }
 }
 
 /// Set paper/live mode
@@ -1572,85 +1998,1290 @@ pub(crate) fn reconcile_with_ib(ib_orders: &[super::IbOrder]) {
     with_mgr(|mgr| mgr.save_to_disk());
 }
 
+/// Per-order broker-visibility tracker used by Rule 3.
+/// Maps local order id -> last epoch_ms a poll observed the order at the broker.
+/// Lives outside `ManagedOrder` so we don't churn the persisted struct schema.
+fn last_seen() -> &'static Mutex<HashMap<u64, u64>> {
+    static SEEN: OnceLock<Mutex<HashMap<u64, u64>>> = OnceLock::new();
+    SEEN.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Map an IB status string to a local OrderState.
+/// Returns None if the status is unrecognized (so the caller skips it).
+/// `is_partial` lets the caller upgrade Working → PartialFill when filled_qty < qty.
+fn map_ib_status(status: &str, is_partial: bool) -> Option<(OrderState, Option<String>)> {
+    match status {
+        "filled" | "Filled" => Some((OrderState::Filled, None)),
+        "cancelled" | "Cancelled" | "ApiCancelled" => Some((OrderState::Cancelled, None)),
+        "inactive" | "Inactive" | "rejected" | "Rejected" =>
+            Some((OrderState::Rejected, Some(format!("IB: {}", status)))),
+        "submitted" | "Submitted" | "PreSubmitted" | "working" | "Working" => {
+            if is_partial { Some((OrderState::PartialFill, None)) } else { Some((OrderState::Working, None)) }
+        }
+        _ => None,
+    }
+}
+
+/// Match a broker-reported order to a local managed order index.
+/// Rule 1: prefer matching on backend_order_id; fall back to (symbol, side, qty).
+fn find_local_match(orders: &[ManagedOrder], ib: &super::IbOrder) -> Option<usize> {
+    // Rule 1a: id-based match wins if both sides have an id.
+    if !ib.backend_id.is_empty() {
+        if let Some(i) = orders.iter().position(|o| {
+            o.backend_order_id.as_deref() == Some(ib.backend_id.as_str())
+        }) {
+            return Some(i);
+        }
+    }
+    // Rule 1b: side-aware (symbol, side, qty) match. Prefer active orders to
+    // avoid mis-binding to a stale terminal twin.
+    let ib_side_buy = ib.side.eq_ignore_ascii_case("buy") || ib.side.eq_ignore_ascii_case("bot");
+    let pred = |o: &ManagedOrder| -> bool {
+        o.symbol.eq_ignore_ascii_case(&ib.symbol)
+        && o.qty == ib.qty as u32
+        && ((ib_side_buy && matches!(o.side, OrderSide::Buy | OrderSide::TriggerBuy))
+            || (!ib_side_buy && matches!(o.side,
+                OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::OcoTarget | OrderSide::TriggerSell)))
+    };
+    if let Some(i) = orders.iter().position(|o| pred(o) && o.state.is_active()) {
+        return Some(i);
+    }
+    // Rule 4 path: local Cancelled but broker still Working — match terminal too.
+    orders.iter().position(pred)
+}
+
 fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder]) {
     let now = epoch_ms();
 
-    // Collect updates first to avoid double borrow
-    let mut updates: Vec<(usize, OrderState, u32, f32, Option<String>)> = Vec::new(); // (idx, state, filled_qty, avg_price, rejection)
+    // Track which local orders the broker still references this poll.
+    let mut seen_local_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    // Re-fire-cancel queue for Rule 4.
+    let mut to_recancel: Vec<u64> = Vec::new();
+
+    let mut fills = 0u64;
 
     for ib in ib_orders {
-        let ib_side_buy = ib.side.eq_ignore_ascii_case("buy") || ib.side.eq_ignore_ascii_case("bot");
-        let matched_idx = mgr.orders.iter().position(|o| {
-            o.symbol == ib.symbol
-            && o.state.is_active()
-            && ((ib_side_buy && matches!(o.side, OrderSide::Buy | OrderSide::TriggerBuy))
-                || (!ib_side_buy && matches!(o.side, OrderSide::Sell | OrderSide::Stop | OrderSide::OcoStop | OrderSide::OcoTarget | OrderSide::TriggerSell)))
-            && o.qty == ib.qty as u32
-            && o.backend_order_id.is_none()
-        });
+        let matched_idx = find_local_match(&mgr.orders, ib);
 
-        if let Some(idx) = matched_idx {
-            // Detect partial fills explicitly: any non-empty filled_qty that's
-            // less than the requested qty is a PartialFill, regardless of the
-            // status string (IB sometimes reports "Submitted" while shipping
-            // partial fills via separate execDetails).
-            let qty_target = mgr.orders[idx].qty as i64;
-            let qty_filled = ib.filled_qty as i64;
-            let is_partial = qty_filled > 0 && qty_filled < qty_target;
-            let (new_state, rejection) = match ib.status.as_str() {
-                "filled" | "Filled" => (OrderState::Filled, None),
-                "cancelled" | "Cancelled" | "ApiCancelled" => (OrderState::Cancelled, None),
-                "inactive" | "Inactive" | "rejected" | "Rejected" => (OrderState::Rejected, Some(format!("IB: {}", ib.status))),
-                "submitted" | "Submitted" | "PreSubmitted" => {
-                    if is_partial { (OrderState::PartialFill, None) } else { (OrderState::Working, None) }
+        // ── Rule 5: broker has an order we don't know about → adopt as External.
+        let idx = match matched_idx {
+            Some(i) => i,
+            None => {
+                // Only adopt when the broker reports it as still actionable
+                // or recently active. Skip pure historical executions that
+                // arrive as "filled" with no other context (avoid spam after
+                // restart re-pulling 24h of history).
+                let qty_target = ib.qty.max(1) as i64;
+                let qty_filled = ib.filled_qty as i64;
+                let is_partial = qty_filled > 0 && qty_filled < qty_target;
+                let Some((state, rejection)) = map_ib_status(&ib.status, is_partial) else { continue; };
+
+                // Skip terminal historical rows on first sight (would just
+                // pollute the ledger with `Filled` adoptions for orders the
+                // user placed yesterday on another machine).
+                if state.is_terminal() && ib.submitted_at > 0 && (now as i64 - ib.submitted_at) > 60_000 {
+                    continue;
                 }
-                _ => continue,
-            };
-            updates.push((idx, new_state, ib.filled_qty as u32, ib.avg_fill_price as f32, rejection));
-        }
-    }
 
-    // Apply updates
-    let mut fills = 0u64;
-    for (idx, new_state, filled_qty, avg_price, rejection) in updates {
-        if mgr.orders[idx].state == new_state { continue; }
-        let is_buy = matches!(mgr.orders[idx].side, OrderSide::Buy | OrderSide::TriggerBuy);
-        let side_str = if is_buy { "BUY" } else { "SELL" };
-        let sym = mgr.orders[idx].symbol.clone();
-        let qty = mgr.orders[idx].qty;
-        if new_state == OrderState::Filled {
-            mgr.orders[idx].filled_qty = filled_qty;
-            mgr.orders[idx].avg_fill_price = avg_price;
-            fills += 1;
-            mgr.pending_toasts.push(format!("FILLED: {} {} x{} @ {:.2}",
-                side_str, sym, filled_qty, avg_price));
+                let id = mgr.next_id; mgr.next_id += 1;
+                let side = if ib.side.eq_ignore_ascii_case("buy") || ib.side.eq_ignore_ascii_case("bot") {
+                    OrderSide::Buy
+                } else {
+                    OrderSide::Sell
+                };
+                let backend_id = if ib.backend_id.is_empty() {
+                    format!("ext_{}_{}", ib.symbol, ib.submitted_at.max(now as i64))
+                } else {
+                    ib.backend_id.clone()
+                };
+                let adopted = ManagedOrder {
+                    id,
+                    client_order_id: format!("ext-{}", backend_id),
+                    symbol: ib.symbol.clone(),
+                    side,
+                    order_type: ManagedOrderType::Limit,
+                    price: ib.limit_price as f32,
+                    stop_price: 0.0,
+                    qty: ib.qty.max(0) as u32,
+                    filled_qty: ib.filled_qty.max(0) as u32,
+                    avg_fill_price: ib.avg_fill_price as f32,
+                    state,
+                    pair_id: None,
+                    trail_amount: None,
+                    trail_percent: None,
+                    option_symbol: None,
+                    option_con_id: None,
+                    source: OrderSource::Api,
+                    created_at: ib.submitted_at.max(0) as u64,
+                    updated_at: now,
+                    backend_order_id: Some(backend_id),
+                    tif: 0,
+                    outside_rth: false,
+                    state_history: vec![(state, now)],
+                    rejection_reason: rejection,
+                    modify_version: 0,
+                    modify_inflight: false,
+                    modify_pending_price: None,
+                };
+                let new_idx = mgr.orders.len();
+                mgr.orders.push(adopted);
+                eprintln!("[reconcile] Rule 5: adopted external order id={} {} {} x{} state={:?}",
+                    id, mgr.orders[new_idx].symbol,
+                    if matches!(mgr.orders[new_idx].side, OrderSide::Buy) {"BUY"} else {"SELL"},
+                    mgr.orders[new_idx].qty, state);
+                journal::append(JournalEvent::Reconcile {
+                    client_id: id.to_string(),
+                    local: state,
+                    broker: ib.status.clone(),
+                    resolution: format!("Rule 5: adopt external (backend_id={})", mgr.orders[new_idx].backend_order_id.as_deref().unwrap_or("?")),
+                    ts_ms: now,
+                });
+                new_idx
+            }
+        };
+
+        let local_id = mgr.orders[idx].id;
+        seen_local_ids.insert(local_id);
+
+        // Snapshot fields we'll need.
+        let prev_state = mgr.orders[idx].state;
+        let local_filled = mgr.orders[idx].filled_qty;
+        let qty_target = mgr.orders[idx].qty as i64;
+        let qty_filled_broker = ib.filled_qty as i64;
+        let is_partial = qty_filled_broker > 0 && qty_filled_broker < qty_target;
+        let Some((broker_state, rejection)) = map_ib_status(&ib.status, is_partial) else { continue; };
+
+        // Stash backend_order_id if the broker now gives us one and we hadn't
+        // recorded it before (Rule 1 prep + Rule 2 ACK). Falls back to a
+        // synthetic "ib_<created_at>" tag so cancel paths still have a token
+        // to send when the broker doesn't echo an id.
+        if mgr.orders[idx].backend_order_id.is_none() {
+            let token = if !ib.backend_id.is_empty() {
+                ib.backend_id.clone()
+            } else {
+                format!("ib_{}", mgr.orders[idx].created_at)
+            };
+            mgr.orders[idx].backend_order_id = Some(token);
         }
-        if new_state == OrderState::PartialFill {
-            mgr.orders[idx].filled_qty = filled_qty;
-            mgr.orders[idx].avg_fill_price = avg_price;
-            mgr.pending_toasts.push(format!("PARTIAL: {} {} {}/{} @ {:.2}",
-                side_str, sym, filled_qty, qty, avg_price));
+
+        // ── Rule 4: local Cancelled but broker still reports Working → re-cancel.
+        if matches!(prev_state, OrderState::Cancelled)
+            && matches!(broker_state, OrderState::Working | OrderState::PartialFill)
+        {
+            eprintln!("[reconcile] Rule 4: local Cancelled but broker Working — re-firing cancel id={}", local_id);
+            journal::append(JournalEvent::Reconcile {
+                client_id: local_id.to_string(),
+                local: prev_state,
+                broker: ib.status.clone(),
+                resolution: "Rule 4: re-issue cancel".into(),
+                ts_ms: now,
+            });
+            to_recancel.push(local_id);
+            continue;
         }
-        if new_state == OrderState::Cancelled {
-            mgr.pending_toasts.push(format!("CANCELLED: {} {} x{}",
-                side_str, sym, qty));
+
+        // ── Rule 6: broker filled_qty > local → adopt and toast.
+        // Independent of state transition (might be PartialFill→PartialFill with more shares).
+        let mut filled_qty_to_set: Option<u32> = None;
+        if (qty_filled_broker as u32) > local_filled {
+            filled_qty_to_set = Some(qty_filled_broker as u32);
+        } else if (qty_filled_broker as u32) < local_filled {
+            // Rule 6 inverse: keep local; broker hasn't caught up.
+            // No-op intentionally; filled_qty stays.
         }
-        if let Some(ref reason) = rejection {
-            mgr.pending_toasts.push(format!("REJECTED: {} {} x{} ({})",
-                side_str, sym, qty, reason));
-        }
-        if let Some(reason) = rejection {
+
+        // ── Rule 2: pending → broker has it → ACK the pending.
+        // Rule 3 (else): Working/PartialFill → broker still has it → just refresh.
+        let new_state = match (prev_state, broker_state) {
+            // Rule 2a: PendingSubmit + Submitted/Working/Filled → adopt broker
+            (OrderState::PendingSubmit, s) if matches!(s, OrderState::Working | OrderState::PartialFill | OrderState::Filled) => s,
+            // Rule 2b: PendingCancel + Cancelled → confirm cancel
+            (OrderState::PendingCancel, OrderState::Cancelled) => OrderState::Cancelled,
+            // Rule 2c: PendingModify + Working → confirm modify (state-wise)
+            (OrderState::PendingModify, OrderState::Working) => OrderState::Working,
+            // Existing flow: Working → PartialFill / Filled / Cancelled / Rejected
+            (_, s) => s,
+        };
+
+        // Reject rule: handle reasons regardless of state path.
+        if let Some(reason) = rejection.clone() {
             mgr.orders[idx].rejection_reason = Some(reason);
         }
-        mgr.orders[idx].state = new_state;
-        mgr.orders[idx].updated_at = now;
-        mgr.orders[idx].state_history.push((new_state, now));
-        let created = mgr.orders[idx].created_at;
-        mgr.orders[idx].backend_order_id = Some(format!("ib_{}", created));
+
+        let mut state_changed = false;
+        if mgr.orders[idx].state != new_state {
+            mgr.orders[idx].state = new_state;
+            mgr.orders[idx].updated_at = now;
+            mgr.orders[idx].state_history.push((new_state, now));
+            state_changed = true;
+        }
+
+        // Apply filled_qty / avg_fill_price updates.
+        let mut filled_changed = false;
+        if let Some(fq) = filled_qty_to_set {
+            mgr.orders[idx].filled_qty = fq;
+            mgr.orders[idx].avg_fill_price = ib.avg_fill_price as f32;
+            filled_changed = true;
+        } else if matches!(new_state, OrderState::Filled) && mgr.orders[idx].filled_qty == 0 && qty_filled_broker > 0 {
+            mgr.orders[idx].filled_qty = qty_filled_broker as u32;
+            mgr.orders[idx].avg_fill_price = ib.avg_fill_price as f32;
+            filled_changed = true;
+        }
+
+        // Toasts + journal — only when something actually changed.
+        if state_changed || filled_changed {
+            let is_buy = matches!(mgr.orders[idx].side, OrderSide::Buy | OrderSide::TriggerBuy);
+            let side_str = if is_buy { "BUY" } else { "SELL" };
+            let sym = mgr.orders[idx].symbol.clone();
+            let qty = mgr.orders[idx].qty;
+            let fq = mgr.orders[idx].filled_qty;
+            let avg = mgr.orders[idx].avg_fill_price;
+            match new_state {
+                OrderState::Filled => {
+                    fills += 1;
+                    mgr.pending_toasts.push(format!("FILLED: {} {} x{} @ {:.2}", side_str, sym, fq, avg));
+                }
+                OrderState::PartialFill => {
+                    mgr.pending_toasts.push(format!("PARTIAL: {} {} {}/{} @ {:.2}", side_str, sym, fq, qty, avg));
+                }
+                OrderState::Cancelled => {
+                    mgr.pending_toasts.push(format!("CANCELLED: {} {} x{}", side_str, sym, qty));
+                }
+                OrderState::Rejected => {
+                    let reason = mgr.orders[idx].rejection_reason.clone().unwrap_or_default();
+                    mgr.pending_toasts.push(format!("REJECTED: {} {} x{} ({})", side_str, sym, qty, reason));
+                }
+                _ => {}
+            }
+            // Naming the rule that drove this transition for journal clarity.
+            let resolution = match (prev_state, new_state) {
+                (OrderState::PendingSubmit, OrderState::Working)
+                | (OrderState::PendingSubmit, OrderState::PartialFill)
+                | (OrderState::PendingSubmit, OrderState::Filled) => "Rule 2: ACK pending submit",
+                (OrderState::PendingCancel, OrderState::Cancelled) => "Rule 2: confirm cancel",
+                (OrderState::PendingModify, OrderState::Working) => "Rule 2: confirm modify",
+                _ if filled_changed => "Rule 6: adopt broker filled_qty",
+                _ => "Rule 3: refresh from broker",
+            };
+            journal::append(JournalEvent::Reconcile {
+                client_id: local_id.to_string(),
+                local: prev_state,
+                broker: format!("{:?}", new_state),
+                resolution: resolution.into(),
+                ts_ms: now,
+            });
+        }
     }
+
     mgr.orders_filled += fills;
+
+    // ── Rule 3: local Working but broker reports nothing for >15s → Unknown.
+    {
+        let mut seen = last_seen().lock().unwrap_or_else(|e| e.into_inner());
+        // Mark every local order we matched this poll as "seen now".
+        for id in &seen_local_ids { seen.insert(*id, now); }
+        // For each active local order with a backend_order_id we previously
+        // recorded, if the broker dropped it from this poll AND the gap
+        // exceeds 15s AND we've already seen it at least once, flip to Unknown.
+        let mut to_unknown: Vec<u64> = Vec::new();
+        for o in &mgr.orders {
+            if !matches!(o.state, OrderState::Working | OrderState::PartialFill) { continue; }
+            if seen_local_ids.contains(&o.id) { continue; }
+            let last = match seen.get(&o.id) { Some(t) => *t, None => continue };
+            if now.saturating_sub(last) > 15_000 {
+                to_unknown.push(o.id);
+            }
+        }
+        // Drop the lock before mutating mgr.orders.
+        drop(seen);
+        for id in to_unknown {
+            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id) {
+                let prev = o.state;
+                if !matches!(prev, OrderState::Unknown) {
+                    eprintln!("[reconcile] Rule 3: order {} not seen by broker for >15s — marking Unknown", id);
+                    o.state = OrderState::Unknown;
+                    o.updated_at = now;
+                    o.state_history.push((OrderState::Unknown, now));
+                    journal::append(JournalEvent::Reconcile {
+                        client_id: id.to_string(),
+                        local: prev,
+                        broker: "absent".into(),
+                        resolution: "Rule 3: gap > 15s → Unknown".into(),
+                        ts_ms: now,
+                    });
+                }
+            }
+            // Clear from seen so subsequent reappearance restarts the timer.
+            if let Ok(mut s) = last_seen().lock() { s.remove(&id); }
+        }
+    }
+
+    // ── Wave 4c: pair integrity sweep.
+    // If one leg of a bracket/OCO is now terminal but its partner is still
+    // active, cancel the partner. Catches the case where the broker fills
+    // one leg out-of-band and never sends us the cancel for the other.
+    let mut to_cancel_partners: Vec<u64> = Vec::new();
+    for o in &mgr.orders {
+        if let Some(pid) = o.pair_id {
+            if o.state.is_terminal() {
+                if let Some(p) = mgr.orders.iter().find(|x| x.id == pid) {
+                    if p.state.is_active() {
+                        to_cancel_partners.push(p.id);
+                    }
+                }
+            }
+        }
+    }
+    for cid in to_cancel_partners {
+        eprintln!("[reconcile] orphan pair: cancelling partner id={}", cid);
+        journal::append(JournalEvent::Reconcile {
+            client_id: cid.to_string(),
+            local: mgr.orders.iter().find(|o| o.id == cid).map(|o| o.state).unwrap_or(OrderState::Unknown),
+            broker: "n/a".into(),
+            resolution: "Wave 4c: orphan pair cancel".into(),
+            ts_ms: now,
+        });
+        mgr.cancel(cid);
+    }
+
+    // ── Rule 4 follow-through: re-issue broker DELETE for orders the user
+    // already cancelled locally that the broker still reports Working.
+    // We can't go through `mgr.cancel()` — the order is already Cancelled
+    // (terminal), so cancel() short-circuits via its `is_active` guard.
+    // Fire the DELETE directly using the recorded backend id (idempotent
+    // server-side).
+    let paper = mgr.paper_mode;
+    for id in to_recancel {
+        let backend_id = mgr.orders.iter().find(|o| o.id == id)
+            .and_then(|o| o.backend_order_id.clone());
+        let Some(bid) = backend_id else { continue; };
+        let cid_str = id.to_string();
+        if paper {
+            paper::cancel_paper(&bid);
+            journal::append(JournalEvent::Ack { client_id: cid_str, backend_id: Some(bid), ts_ms: now });
+        } else {
+            let cid_thread = cid_str;
+            let bid_thread = bid.clone();
+            std::thread::spawn(move || {
+                let client = reqwest::blocking::Client::new();
+                let res = client.delete(format!("{}/orders/{}", APEXIB_URL, bid_thread))
+                    .timeout(std::time::Duration::from_secs(5)).send();
+                match res {
+                    Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid_thread), ts_ms: epoch_ms() }),
+                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("rule4 recancel: {e}"), ts_ms: epoch_ms() }),
+                }
+            });
+        }
+    }
+
+    snapshot::publish(&mgr.orders);
 }
 
 fn epoch_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+}
+
+/// Lock-free snapshot accessor for render path.
+#[allow(dead_code)]
+pub(crate) fn orders_snapshot() -> std::sync::Arc<crate::chart::renderer::trading::snapshot::OrdersSnapshot> {
+    crate::chart::renderer::trading::snapshot::current()
+}
+
+// ─── Wave 6a: WAL replay & broker reconciliation ─────────────────────────────
+
+/// Broker-side view of an order, returned by `query_broker_by_client_id`.
+#[derive(Debug, Clone)]
+pub(crate) enum BrokerOrderState {
+    Working { backend_id: String, status: String },
+    Filled { backend_id: String, fill_price: f32, qty: u32 },
+    Cancelled { backend_id: String },
+    Rejected { reason: String },
+    NotFound,
+}
+
+/// Query ApexIB for the order with the given client_order_id (idempotency key).
+/// Returns `None` if the HTTP request itself failed (network/timeout) — the
+/// caller should leave the orphan alone and retry next startup.
+///
+/// TODO: confirm with backend — assumed endpoint shape is
+/// `GET {APEXIB_URL}/orders/by-client-id/{cid}` returning a JSON object with
+/// `status`, `orderId`, `avgFillPrice`, `filledQty`. If the endpoint isn't
+/// available the request returns 404 → `Some(NotFound)`, which is the safe
+/// outcome (we'll mark the local order Rejected with a clear reason).
+fn query_broker_by_client_id(cid: &str) -> Option<BrokerOrderState> {
+    let client = reqwest::blocking::Client::new();
+    let url = format!("{}/orders/by-client-id/{}", APEXIB_URL, cid);
+    let resp = client.get(&url)
+        .timeout(std::time::Duration::from_secs(3))
+        .send()
+        .ok()?;
+    let status = resp.status();
+    if status.as_u16() == 404 {
+        return Some(BrokerOrderState::NotFound);
+    }
+    if !status.is_success() {
+        // Any other non-2xx is treated as transient — don't draw conclusions.
+        return None;
+    }
+    let json: serde_json::Value = resp.json().ok()?;
+    let backend_id = json["orderId"].as_str().map(|s| s.to_string())
+        .or_else(|| json["orderId"].as_i64().map(|n| n.to_string()))
+        .unwrap_or_default();
+    let raw_status = json["status"].as_str().unwrap_or("").to_string();
+    let lower = raw_status.to_ascii_lowercase();
+    Some(match lower.as_str() {
+        "filled" => BrokerOrderState::Filled {
+            backend_id,
+            fill_price: json["avgFillPrice"].as_f64().unwrap_or(0.0) as f32,
+            qty: json["filledQty"].as_i64().unwrap_or(0).max(0) as u32,
+        },
+        "cancelled" | "apicancelled" => BrokerOrderState::Cancelled { backend_id },
+        "rejected" | "inactive" => BrokerOrderState::Rejected {
+            reason: format!("broker: {}", raw_status),
+        },
+        "submitted" | "presubmitted" | "working" | "" =>
+            BrokerOrderState::Working { backend_id, status: raw_status },
+        _ => BrokerOrderState::Working { backend_id, status: raw_status },
+    })
+}
+
+/// Wave 6a: replay the WAL, find Attempts with no Ack/Fail, and ask the broker
+/// what really happened. Adopts working/filled/cancelled state when broker has
+/// it; marks the local row Rejected with `orphan-not-at-broker` when broker
+/// never saw it; leaves orphans untouched on transport failure (retried next
+/// startup or by the live reconciler).
+pub(crate) fn replay_and_recover() {
+    let orphans = journal::find_orphan_attempts();
+    if orphans.is_empty() { return; }
+    eprintln!("[recovery] {} orphan attempts — querying broker", orphans.len());
+
+    for (cid, kind, ts, _payload) in orphans {
+        // Cancel/CancelAll attempts are best handled by the live reconciler;
+        // skip here to avoid double-action.
+        if !matches!(kind, journal::AttemptKind::Submit) {
+            continue;
+        }
+        match query_broker_by_client_id(&cid) {
+            Some(BrokerOrderState::Working { backend_id, status }) => {
+                with_mgr(|mgr| {
+                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
+                        o.backend_order_id = Some(backend_id.clone());
+                        if !matches!(o.state, OrderState::Working | OrderState::PartialFill) {
+                            let now = epoch_ms();
+                            o.state = OrderState::Working;
+                            o.updated_at = now;
+                            o.state_history.push((OrderState::Working, now));
+                        }
+                    }
+                    journal::append(JournalEvent::Reconcile {
+                        client_id: cid.clone(),
+                        local: OrderState::PendingSubmit,
+                        broker: status,
+                        resolution: format!("Wave 6a: adopt working (backend_id={})", backend_id),
+                        ts_ms: epoch_ms(),
+                    });
+                    journal::append(JournalEvent::Ack {
+                        client_id: cid.clone(),
+                        backend_id: Some(backend_id),
+                        ts_ms: epoch_ms(),
+                    });
+                    snapshot::publish(&mgr.orders);
+                });
+            }
+            Some(BrokerOrderState::Filled { backend_id, fill_price, qty }) => {
+                with_mgr(|mgr| {
+                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
+                        let now = epoch_ms();
+                        o.backend_order_id = Some(backend_id.clone());
+                        o.state = OrderState::Filled;
+                        o.filled_qty = qty;
+                        o.avg_fill_price = fill_price;
+                        o.updated_at = now;
+                        o.state_history.push((OrderState::Filled, now));
+                    }
+                    journal::append(JournalEvent::Reconcile {
+                        client_id: cid.clone(),
+                        local: OrderState::PendingSubmit,
+                        broker: "filled".into(),
+                        resolution: format!("Wave 6a: adopt filled (backend_id={})", backend_id),
+                        ts_ms: epoch_ms(),
+                    });
+                    journal::append(JournalEvent::Ack {
+                        client_id: cid.clone(),
+                        backend_id: Some(backend_id),
+                        ts_ms: epoch_ms(),
+                    });
+                    snapshot::publish(&mgr.orders);
+                });
+            }
+            Some(BrokerOrderState::Cancelled { backend_id }) => {
+                with_mgr(|mgr| {
+                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
+                        let now = epoch_ms();
+                        o.backend_order_id = Some(backend_id.clone());
+                        o.state = OrderState::Cancelled;
+                        o.updated_at = now;
+                        o.state_history.push((OrderState::Cancelled, now));
+                    }
+                    journal::append(JournalEvent::Reconcile {
+                        client_id: cid.clone(),
+                        local: OrderState::PendingSubmit,
+                        broker: "cancelled".into(),
+                        resolution: format!("Wave 6a: adopt cancelled (backend_id={})", backend_id),
+                        ts_ms: epoch_ms(),
+                    });
+                    journal::append(JournalEvent::Ack {
+                        client_id: cid.clone(),
+                        backend_id: Some(backend_id),
+                        ts_ms: epoch_ms(),
+                    });
+                    snapshot::publish(&mgr.orders);
+                });
+            }
+            Some(BrokerOrderState::Rejected { reason }) => {
+                with_mgr(|mgr| {
+                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
+                        let now = epoch_ms();
+                        o.state = OrderState::Rejected;
+                        o.rejection_reason = Some(reason.clone());
+                        o.updated_at = now;
+                        o.state_history.push((OrderState::Rejected, now));
+                    }
+                    journal::append(JournalEvent::Fail {
+                        client_id: cid.clone(),
+                        reason: reason.clone(),
+                        ts_ms: epoch_ms(),
+                    });
+                    snapshot::publish(&mgr.orders);
+                });
+            }
+            Some(BrokerOrderState::NotFound) => {
+                with_mgr(|mgr| {
+                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
+                        let now = epoch_ms();
+                        o.state = OrderState::Rejected;
+                        o.rejection_reason = Some("orphan-not-at-broker".into());
+                        o.updated_at = now;
+                        o.state_history.push((OrderState::Rejected, now));
+                    }
+                    journal::append(JournalEvent::Reconcile {
+                        client_id: cid.clone(),
+                        local: OrderState::PendingSubmit,
+                        broker: "not-found".into(),
+                        resolution: "orphan: never reached broker".into(),
+                        ts_ms: epoch_ms(),
+                    });
+                    journal::append(JournalEvent::Fail {
+                        client_id: cid.clone(),
+                        reason: "orphan-not-at-broker".into(),
+                        ts_ms: epoch_ms(),
+                    });
+                    snapshot::publish(&mgr.orders);
+                });
+            }
+            None => {
+                // Broker query failed (transport / timeout). Leave as orphan;
+                // next startup or live reconciler will retry.
+                eprintln!("[recovery] broker query failed for cid={} (kind={:?} ts={}) — leaving as orphan",
+                    cid, kind, ts);
+            }
+        }
+    }
+    with_mgr(|mgr| mgr.save_to_disk());
+}
+
+// ─── Wave 6d: position drift reconciliation ───────────────────────────────────
+
+/// Per-symbol toast cooldown so a persistent drift doesn't spam toasts every 5s.
+fn drift_toast_cooldown() -> &'static Mutex<HashMap<String, Instant>> {
+    static COOLDOWN: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+    COOLDOWN.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Wave 6d: compare broker positions to summed local Filled qty.
+/// Logs a Reconcile journal event + toast on drift; does NOT auto-correct
+/// (broker is authoritative for the account but we don't know which local
+/// fill is "wrong" — surface to operator instead).
+pub(crate) fn reconcile_positions(positions: &[super::Position]) {
+    with_mgr(|mgr| {
+        for pos in positions {
+            let local_signed: i64 = mgr.orders.iter()
+                .filter(|o| o.symbol.eq_ignore_ascii_case(&pos.symbol) && o.state == OrderState::Filled)
+                .map(|o| {
+                    let q = o.filled_qty as i64;
+                    if matches!(o.side, OrderSide::Buy | OrderSide::TriggerBuy) { q } else { -q }
+                })
+                .sum();
+            let broker_signed = pos.qty as i64;
+            if local_signed != broker_signed {
+                eprintln!("[reconcile-pos] {}: local={} broker={} drift={}",
+                    pos.symbol, local_signed, broker_signed, broker_signed - local_signed);
+                journal::append(JournalEvent::Reconcile {
+                    client_id: format!("position:{}", pos.symbol),
+                    local: OrderState::Filled,
+                    broker: format!("pos={}", broker_signed),
+                    resolution: format!("position drift: local={} broker={}", local_signed, broker_signed),
+                    ts_ms: epoch_ms(),
+                });
+                // Rate-limit toasts: at most one per 30s per symbol.
+                let mut emit = true;
+                if let Ok(mut cd) = drift_toast_cooldown().lock() {
+                    let key = pos.symbol.to_uppercase();
+                    if let Some(last) = cd.get(&key) {
+                        if last.elapsed() < std::time::Duration::from_secs(30) {
+                            emit = false;
+                        }
+                    }
+                    if emit {
+                        cd.insert(key, Instant::now());
+                    }
+                }
+                if emit {
+                    mgr.pending_toasts.push(format!(
+                        "POSITION DRIFT: {} local={} broker={}",
+                        pos.symbol, local_signed, broker_signed
+                    ));
+                }
+            }
+        }
+    });
+}
+
+/// Spawn a background sweeper that flips orders stuck in pending states
+/// (PendingSubmit / PendingCancel / PendingModify) for >10s into `Unknown`,
+/// so stale "in-flight" rows don't lie about being live.
+fn start_pending_sweeper() {
+    static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    STARTED.get_or_init(|| {
+        std::thread::spawn(|| {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let now = epoch_ms();
+                with_mgr(|mgr| {
+                    let mut to_unknown: Vec<u64> = Vec::new();
+                    for o in mgr.orders.iter() {
+                        let pending = matches!(o.state, OrderState::PendingSubmit | OrderState::PendingCancel | OrderState::PendingModify);
+                        if pending && now.saturating_sub(o.updated_at) > 10_000 {
+                            to_unknown.push(o.id);
+                        }
+                    }
+                    for id in to_unknown {
+                        eprintln!("[sweeper] order {} stuck pending — marking Unknown", id);
+                        mgr.transition(id, OrderState::Unknown);
+                    }
+                });
+            }
+        });
+    });
+}
+
+// ─── Broker-disconnect watchdog ─────────────────────────────────────────────
+//
+// The slow account poller calls `mark_broker_contact()` after every successful
+// HTTP response. A dedicated 1s watchdog thread checks `last_broker_contact`
+// and engages a protective auto-halt if we've gone >10s without contact. When
+// contact is restored, the auto-halt is lifted — but only if WE engaged it
+// (a user-engaged halt is preserved).
+
+/// Stamp the most-recent successful broker contact. Called from the account
+/// poller after any successful response. Cheap — single mutex grab + store.
+pub(crate) fn mark_broker_contact() {
+    with_mgr(|m| m.last_broker_contact = Some(epoch_ms()));
+}
+
+/// Watchdog tick — engages protective auto-halt when broker contact has been
+/// stale for >10s, and lifts it only if WE engaged it (preserves user halts).
+pub(crate) fn check_broker_health() {
+    with_mgr(|m| {
+        let now = epoch_ms();
+        let stale = match m.last_broker_contact {
+            None => false,  // never seen contact — startup; give it a chance
+            Some(ts) => now.saturating_sub(ts) > 10_000,
+        };
+        if stale && !m.halted {
+            // Engage protective halt. We don't fire /risk/halt to the broker
+            // here — broker is unreachable; the local gate is what matters.
+            m.halted = true;
+            m.auto_halted_due_to_disconnect = true;
+            m.pending_toasts.push("BROKER DISCONNECTED \u{2014} trading auto-halted".into());
+            eprintln!("[broker-watchdog] disconnect >10s, halting");
+            journal::append(JournalEvent::Control { kind: ControlKind::Halt, ts_ms: now });
+        }
+        if !stale && m.auto_halted_due_to_disconnect {
+            // Contact restored, lift our auto-halt only.
+            m.halted = false;
+            m.auto_halted_due_to_disconnect = false;
+            m.pending_toasts.push("BROKER RECONNECTED \u{2014} trading resumed".into());
+            eprintln!("[broker-watchdog] contact restored, resuming");
+            journal::append(JournalEvent::Control { kind: ControlKind::Resume, ts_ms: now });
+        }
+    });
+}
+
+/// Reason the trading gate is currently blocked. Returned as a tuple so the
+/// UI can pick the right banner copy without re-locking the manager.
+/// `(auto_halted_due_to_disconnect, kill_engaged, halted)`
+pub(crate) fn trading_block_reason() -> (bool, bool, bool) {
+    with_mgr(|m| (m.auto_halted_due_to_disconnect, m.kill_engaged, m.halted))
+}
+
+/// Spawn the disconnect watchdog. 1s cadence — not called from the poller
+/// threads to avoid lock re-entry.
+fn start_broker_watchdog() {
+    static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    STARTED.get_or_init(|| {
+        std::thread::spawn(|| {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                check_broker_health();
+            }
+        });
+    });
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+//
+// All tests instantiate a fresh `OrderManager` directly and never touch the
+// global `ORDER_MANAGER` singleton — that path runs disk persistence side
+// effects which would break test isolation. Tests run in paper mode so live
+// HTTP submission is short-circuited; they accept the WAL disk writes since
+// no clean knob exists to disable journaling in-test.
+//
+// Tests that need a live broker / live HTTP / mockable clock are marked
+// `#[ignore]` with a TODO comment.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart::renderer::trading::OrderSide;
+
+    fn fresh_manager() -> OrderManager {
+        let mut m = OrderManager::new();
+        // Paper mode short-circuits the HTTP path on submit/cancel/modify.
+        m.paper_mode = true;
+        // Armed: limit orders go straight to PendingSubmit (else they sit in
+        // Draft and submit() returns NeedsConfirmation, which makes happy-path
+        // tests harder to express). The kill/halt/dedup paths we exercise here
+        // don't depend on Draft semantics.
+        m.armed = true;
+        // Tighten dedup cooldown so cooldown-elapsed tests run fast (default
+        // is 500ms; tests bring it down to 50ms).
+        m.risk_limits.dedup_cooldown_ms = 50;
+        m
+    }
+
+    fn limit_intent(symbol: &str, side: OrderSide, price: f32, qty: u32) -> OrderIntent {
+        OrderIntent {
+            symbol: symbol.to_string(),
+            side,
+            order_type: ManagedOrderType::Limit,
+            price,
+            stop_price: 0.0,
+            qty,
+            source: OrderSource::OrderPanel,
+            pair_with: None,
+            option_symbol: None,
+            option_con_id: None,
+            trail_amount: None,
+            trail_percent: None,
+            last_price: 0.0,
+            tif: 0,
+            outside_rth: false,
+        }
+    }
+
+    fn order_id(result: &OrderResult) -> Option<u64> {
+        match result {
+            OrderResult::Accepted(id) | OrderResult::NeedsConfirmation(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    // ── A. Idempotency / dedup ───────────────────────────────────────────────
+
+    #[test]
+    fn submit_duplicate_within_cooldown_returns_duplicate() {
+        let mut m = fresh_manager();
+        // Bump cooldown well above the time between two submits in a tight
+        // loop so the dedup window can't accidentally elapse between calls.
+        m.risk_limits.dedup_cooldown_ms = 5_000;
+        let i1 = limit_intent("AAPL", OrderSide::Buy, 100.0, 10);
+        let i2 = i1.clone();
+        let r1 = m.submit(i1);
+        assert!(matches!(r1, OrderResult::Accepted(_)), "first submit should accept, got {:?}", r1);
+        let r2 = m.submit(i2);
+        assert!(matches!(r2, OrderResult::Duplicate), "duplicate within cooldown should return Duplicate, got {:?}", r2);
+    }
+
+    #[test]
+    fn submit_duplicate_after_cooldown_succeeds() {
+        let mut m = fresh_manager();
+        m.risk_limits.dedup_cooldown_ms = 30;
+        let i1 = limit_intent("AAPL", OrderSide::Buy, 100.0, 10);
+        let i2 = i1.clone();
+        let r1 = m.submit(i1);
+        assert!(matches!(r1, OrderResult::Accepted(_)));
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        let r2 = m.submit(i2);
+        assert!(matches!(r2, OrderResult::Accepted(_)),
+                "second submit after cooldown should accept, got {:?}", r2);
+    }
+
+    // ── B. Risk gate ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn submit_qty_zero_is_rejected() {
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 0));
+        match r {
+            OrderResult::Rejected(reason) => {
+                assert!(reason.to_lowercase().contains("qty"),
+                        "expected qty rejection, got: {}", reason);
+            }
+            other => panic!("expected Rejected for qty=0, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn submit_qty_above_max_order_qty_is_rejected_in_live_mode() {
+        // The risk-limit gate (`qty > max_order_qty`) only fires outside paper
+        // mode. We exercise it by flipping paper_mode off — note this still
+        // tries to spawn a live HTTP thread for submit_to_ib, but that's fine
+        // because the rejection happens BEFORE submit_to_ib runs.
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_order_qty = 100;
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 200));
+        match r {
+            OrderResult::Rejected(reason) => {
+                assert!(reason.to_lowercase().contains("max"),
+                        "expected max-qty rejection, got: {}", reason);
+            }
+            other => panic!("expected Rejected for qty>max, got {:?}", other),
+        }
+    }
+
+    // ── C. In-flight cap (live mode only) ────────────────────────────────────
+
+    #[test]
+    fn working_plus_new_qty_exceeds_max_position_is_rejected() {
+        // The in-flight cap (`working+new > max_position_qty`) only fires
+        // outside paper. We push a Working order directly into orders[] so we
+        // don't have to go through submit() (which would require live HTTP).
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        m.risk_limits.max_position_qty = 1_000;
+        // Pre-load 900 working buys in AAPL.
+        let now = epoch_ms();
+        m.orders.push(ManagedOrder {
+            id: 1, client_order_id: "pre-1".into(),
+            symbol: "AAPL".into(), side: OrderSide::Buy,
+            order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
+            qty: 900, filled_qty: 0, avg_fill_price: 0.0,
+            state: OrderState::Working, pair_id: None,
+            trail_amount: None, trail_percent: None,
+            option_symbol: None, option_con_id: None,
+            source: OrderSource::OrderPanel,
+            created_at: now, updated_at: now, backend_order_id: None,
+            tif: 0, outside_rth: false,
+            state_history: vec![(OrderState::Working, now)],
+            rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
+        });
+        m.next_id = 2;
+
+        // 900 working + 200 new = 1100 > 1000 cap → reject.
+        // Note the price is set above last_price=0 so the fat-finger check
+        // does NOT fire (it requires last_price > 0).
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 200));
+        match r {
+            OrderResult::Rejected(reason) => {
+                let lower = reason.to_lowercase();
+                assert!(lower.contains("position") || lower.contains("working"),
+                        "expected in-flight cap rejection, got: {}", reason);
+            }
+            other => panic!("expected Rejected for in-flight cap breach, got {:?}", other),
+        }
+    }
+
+    // ── D. Kill switch ───────────────────────────────────────────────────────
+
+    #[test]
+    fn submit_while_kill_engaged_is_rejected() {
+        let mut m = fresh_manager();
+        m.kill_engaged = true; // direct flip — engage_kill() spawns broker HTTP.
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        match r {
+            OrderResult::Rejected(reason) => {
+                assert!(reason.contains("kill"), "expected 'kill' in reason, got: {}", reason);
+            }
+            other => panic!("expected Rejected, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn submit_after_release_kill_succeeds() {
+        let mut m = fresh_manager();
+        m.kill_engaged = true;
+        let r1 = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        assert!(matches!(r1, OrderResult::Rejected(_)));
+        m.kill_engaged = false;
+        let r2 = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        assert!(matches!(r2, OrderResult::Accepted(_)),
+                "after release_kill, submit should succeed, got {:?}", r2);
+    }
+
+    // ── E. Halt ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn submit_while_halted_is_rejected() {
+        let mut m = fresh_manager();
+        m.halted = true;
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        match r {
+            OrderResult::Rejected(reason) => {
+                assert!(reason.contains("halt") || reason.contains("disconnect"),
+                        "expected halt-related reason, got: {}", reason);
+            }
+            other => panic!("expected Rejected, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn submit_after_resume_succeeds() {
+        let mut m = fresh_manager();
+        m.halted = true;
+        let r1 = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        assert!(matches!(r1, OrderResult::Rejected(_)));
+        m.halted = false;
+        let r2 = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        assert!(matches!(r2, OrderResult::Accepted(_)),
+                "after resume, submit should succeed, got {:?}", r2);
+    }
+
+    #[test]
+    fn cancel_works_while_halted() {
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit should accept");
+        m.halted = true;
+        let cancelled = m.cancel(id);
+        assert!(cancelled, "cancel must work while halted");
+        let o = m.orders.iter().find(|o| o.id == id).expect("order present");
+        assert_eq!(o.state, OrderState::Cancelled);
+    }
+
+    // ── F. State machine ─────────────────────────────────────────────────────
+
+    #[test]
+    fn freshly_submitted_order_is_working_in_paper_mode() {
+        // submit() unconditionally calls `transition(id, Working)` after the
+        // PendingSubmit insert in paper mode, so the OBSERVABLE post-state
+        // is Working. We verify the historical PendingSubmit was recorded too.
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit should accept");
+        let o = m.orders.iter().find(|o| o.id == id).expect("order present");
+        assert_eq!(o.state, OrderState::Working,
+                   "paper-mode submit short-circuits PendingSubmit -> Working");
+        // History should contain at least the PendingSubmit and Working entries.
+        let states: Vec<_> = o.state_history.iter().map(|(s, _)| *s).collect();
+        assert!(states.contains(&OrderState::PendingSubmit),
+                "state_history should record PendingSubmit, got {:?}", states);
+        assert!(states.contains(&OrderState::Working),
+                "state_history should record Working, got {:?}", states);
+    }
+
+    #[test]
+    fn cancel_working_order_transitions_to_cancelled() {
+        // In paper mode the cancel ack is synthesized inline, so the final
+        // observable state is Cancelled (no PendingCancel hop visible).
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit should accept");
+        assert!(m.cancel(id));
+        let o = m.orders.iter().find(|o| o.id == id).expect("order present");
+        assert_eq!(o.state, OrderState::Cancelled);
+    }
+
+    // ── G. Modify version / coalescing ───────────────────────────────────────
+
+    #[test]
+    fn modify_price_twice_quickly_coalesces_pending_in_paper() {
+        // In paper mode, `modify_price` calls `apply_modify_result_inner`
+        // synchronously via the same &mut self. That means by the time
+        // `modify_price` returns, modify_inflight has already been cleared
+        // and any pending_price has been drained. So we can't observe the
+        // mid-flight `modify_pending_price` set without breaking apart the
+        // method. Instead, we verify the FINAL price equals the second call,
+        // which is the correctness guarantee that matters.
+        let mut m = fresh_manager();
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        let id = order_id(&r).expect("submit should accept");
+        assert!(m.modify_price(id, 101.0));
+        assert!(m.modify_price(id, 102.0));
+        let o = m.orders.iter().find(|o| o.id == id).expect("order present");
+        assert!((o.price - 102.0).abs() < 0.001,
+                "after two modify_price calls, price should equal latest: got {}", o.price);
+        // After the synchronous paper path settles, no inflight should remain.
+        assert!(!o.modify_inflight, "modify_inflight should be cleared after paper modify settles");
+        assert!(o.modify_pending_price.is_none(),
+                "modify_pending_price should be drained after paper modify settles");
+        // Two modify calls bumped the version twice.
+        assert_eq!(o.modify_version, 2);
+    }
+
+    #[test]
+    #[ignore = "modify_inflight is observable only with a non-paper broker that doesn't ack inline; needs a Broker trait or async pump to test"]
+    fn modify_inflight_queues_second_call() {
+        // TODO: introduce a Broker trait so we can stall the PUT and observe
+        // modify_pending_price between the two modify_price calls.
+    }
+
+    // ── H. Pair integrity in reconcile ───────────────────────────────────────
+
+    #[test]
+    fn reconcile_partner_cancelled_when_one_pair_leg_fills() {
+        // Manually create two paired managed orders (simulating an OCO) with
+        // pair_id pointing at each other. Simulate the fill by setting one to
+        // Filled directly (skips state machine), then run reconcile_with_ib_inner
+        // with no IB orders — the pair-integrity sweep should cancel the partner.
+        let mut m = fresh_manager();
+        let now = epoch_ms();
+        let mk = |id: u64, side: OrderSide, state: OrderState, pair: u64| ManagedOrder {
+            id, client_order_id: format!("oco-{}", id),
+            symbol: "AAPL".into(), side,
+            order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
+            qty: 10, filled_qty: if matches!(state, OrderState::Filled) { 10 } else { 0 },
+            avg_fill_price: 0.0, state, pair_id: Some(pair),
+            trail_amount: None, trail_percent: None,
+            option_symbol: None, option_con_id: None,
+            source: OrderSource::Oco,
+            created_at: now, updated_at: now, backend_order_id: None,
+            tif: 0, outside_rth: false,
+            state_history: vec![(state, now)],
+            rejection_reason: None,
+            modify_version: 0, modify_inflight: false, modify_pending_price: None,
+        };
+        m.orders.push(mk(1, OrderSide::Buy,  OrderState::Filled,  2));
+        m.orders.push(mk(2, OrderSide::Sell, OrderState::Working, 1));
+        m.next_id = 3;
+
+        // Empty IB feed — pair-integrity sweep still runs.
+        reconcile_with_ib_inner(&mut m, &[]);
+
+        let o2 = m.orders.iter().find(|o| o.id == 2).expect("partner present");
+        assert_eq!(o2.state, OrderState::Cancelled,
+                   "partner of a Filled leg should be cancelled by pair-integrity sweep");
+    }
+
+    // ── I. Reconciliation rules ──────────────────────────────────────────────
+
+    mod reconcile_tests {
+        use super::*;
+        use crate::chart::renderer::trading::IbOrder;
+
+        fn ib(symbol: &str, side: &str, qty: i32, status: &str) -> IbOrder {
+            IbOrder {
+                symbol: symbol.into(), side: side.into(),
+                qty, filled_qty: 0,
+                order_type: "limit".into(),
+                limit_price: 100.0, avg_fill_price: 0.0,
+                status: status.into(),
+                strike: 0.0, option_type: "".into(),
+                submitted_at: epoch_ms() as i64,
+                backend_id: "".into(),
+            }
+        }
+
+        #[test]
+        fn rule1_id_match_wins_over_attribute_match() {
+            // Local A has backend_order_id="abc", symbol AAPL qty 10 buy.
+            // Local B has backend_order_id=None,  symbol AAPL qty 10 buy.
+            // IB reports backend_id="abc" — must bind to A even though B is also
+            // a candidate by (symbol, side, qty).
+            let mut m = fresh_manager();
+            let now = epoch_ms();
+            let mut a = ManagedOrder {
+                id: 10, client_order_id: "ka".into(),
+                symbol: "AAPL".into(), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
+                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                state: OrderState::PendingSubmit, pair_id: None,
+                trail_amount: None, trail_percent: None,
+                option_symbol: None, option_con_id: None,
+                source: OrderSource::OrderPanel,
+                created_at: now, updated_at: now,
+                backend_order_id: Some("abc".into()),
+                tif: 0, outside_rth: false,
+                state_history: vec![(OrderState::PendingSubmit, now)],
+                rejection_reason: None,
+                modify_version: 0, modify_inflight: false, modify_pending_price: None,
+            };
+            let mut b = a.clone();
+            b.id = 11; b.client_order_id = "kb".into(); b.backend_order_id = None;
+            m.orders.push(a.clone()); m.orders.push(b.clone());
+            m.next_id = 12;
+
+            let mut feed = ib("AAPL", "buy", 10, "submitted");
+            feed.backend_id = "abc".into();
+            reconcile_with_ib_inner(&mut m, &[feed]);
+
+            // A should be Working (Rule 2 ACK), B untouched.
+            let oa = m.orders.iter().find(|o| o.id == 10).unwrap();
+            let ob = m.orders.iter().find(|o| o.id == 11).unwrap();
+            assert_eq!(oa.state, OrderState::Working, "A bound by id should be ACKed Working");
+            assert_eq!(ob.state, OrderState::PendingSubmit, "B not bound — must not transition");
+        }
+
+        #[test]
+        fn rule2_pending_submit_acks_to_working() {
+            let mut m = fresh_manager();
+            let now = epoch_ms();
+            m.orders.push(ManagedOrder {
+                id: 1, client_order_id: "k".into(),
+                symbol: "AAPL".into(), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
+                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                state: OrderState::PendingSubmit, pair_id: None,
+                trail_amount: None, trail_percent: None,
+                option_symbol: None, option_con_id: None,
+                source: OrderSource::OrderPanel,
+                created_at: now, updated_at: now, backend_order_id: None,
+                tif: 0, outside_rth: false,
+                state_history: vec![(OrderState::PendingSubmit, now)],
+                rejection_reason: None,
+                modify_version: 0, modify_inflight: false, modify_pending_price: None,
+            });
+            m.next_id = 2;
+
+            reconcile_with_ib_inner(&mut m, &[ib("AAPL", "buy", 10, "submitted")]);
+
+            let o = m.orders.iter().find(|o| o.id == 1).unwrap();
+            assert_eq!(o.state, OrderState::Working);
+        }
+
+        #[test]
+        #[ignore = "Rule 3 requires a mockable clock to fast-forward past the 15s gap; not yet supported"]
+        fn rule3_gap_marks_unknown() {
+            // TODO: thread an Instant source through last_seen() so we can
+            // simulate "this order hasn't been seen in 15s" deterministically.
+        }
+
+        #[test]
+        fn rule4_local_cancelled_broker_working_queues_recancel() {
+            // Local Cancelled, IB reports same order Working → reconciler should
+            // re-fire DELETE for the backend id. We can't observe the HTTP call
+            // (paper mode skips it via paper::cancel_paper), but we can assert
+            // that:
+            //   - the local state stays Cancelled (Rule 4 short-circuits before
+            //     the normal state-update path), and
+            //   - a Reconcile journal event was appended (covered by inspecting
+            //     the order's state_history is unchanged but a journal write
+            //     happens; we don't have an in-test journal sink so we just
+            //     assert state stability — the broker DELETE is fire-and-forget
+            //     paper::cancel_paper which is a no-op).
+            let mut m = fresh_manager();
+            let now = epoch_ms();
+            m.orders.push(ManagedOrder {
+                id: 1, client_order_id: "k".into(),
+                symbol: "AAPL".into(), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
+                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                state: OrderState::Cancelled, pair_id: None,
+                trail_amount: None, trail_percent: None,
+                option_symbol: None, option_con_id: None,
+                source: OrderSource::OrderPanel,
+                created_at: now, updated_at: now,
+                backend_order_id: Some("abc".into()),
+                tif: 0, outside_rth: false,
+                state_history: vec![(OrderState::Cancelled, now)],
+                rejection_reason: None,
+                modify_version: 0, modify_inflight: false, modify_pending_price: None,
+            });
+            m.next_id = 2;
+
+            let mut feed = ib("AAPL", "buy", 10, "submitted");
+            feed.backend_id = "abc".into();
+            reconcile_with_ib_inner(&mut m, &[feed]);
+
+            let o = m.orders.iter().find(|o| o.id == 1).unwrap();
+            // Rule 4 should NOT flip the local state — it stays Cancelled.
+            assert_eq!(o.state, OrderState::Cancelled,
+                       "Rule 4 must leave local state Cancelled (broker recancel only)");
+        }
+
+        #[test]
+        fn rule5_adopts_external_order() {
+            let mut m = fresh_manager();
+            let mut feed = ib("AAPL", "buy", 10, "submitted");
+            feed.backend_id = "ext-7".into();
+            feed.limit_price = 99.5;
+            reconcile_with_ib_inner(&mut m, &[feed]);
+
+            assert_eq!(m.orders.len(), 1, "Rule 5 should adopt the external order");
+            let o = &m.orders[0];
+            assert_eq!(o.symbol, "AAPL");
+            assert_eq!(o.qty, 10);
+            assert!(matches!(o.side, OrderSide::Buy));
+            assert!(matches!(o.source, OrderSource::Api),
+                    "adopted order should have OrderSource::Api, got {:?}", o.source);
+            assert_eq!(o.backend_order_id.as_deref(), Some("ext-7"));
+        }
+
+        #[test]
+        fn rule6_filled_qty_divergence_local_catches_up_to_broker() {
+            // Local PartialFill 50/100 at 100.0, broker reports filled_qty=80.
+            // Local should adopt 80.
+            let mut m = fresh_manager();
+            let now = epoch_ms();
+            m.orders.push(ManagedOrder {
+                id: 1, client_order_id: "k".into(),
+                symbol: "AAPL".into(), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
+                qty: 100, filled_qty: 50, avg_fill_price: 100.0,
+                state: OrderState::PartialFill, pair_id: None,
+                trail_amount: None, trail_percent: None,
+                option_symbol: None, option_con_id: None,
+                source: OrderSource::OrderPanel,
+                created_at: now, updated_at: now,
+                backend_order_id: Some("abc".into()),
+                tif: 0, outside_rth: false,
+                state_history: vec![(OrderState::PartialFill, now)],
+                rejection_reason: None,
+                modify_version: 0, modify_inflight: false, modify_pending_price: None,
+            });
+            m.next_id = 2;
+
+            let mut feed = ib("AAPL", "buy", 100, "submitted");
+            feed.backend_id = "abc".into();
+            feed.filled_qty = 80;
+            feed.avg_fill_price = 100.5;
+            reconcile_with_ib_inner(&mut m, &[feed]);
+
+            let o = m.orders.iter().find(|o| o.id == 1).unwrap();
+            assert_eq!(o.filled_qty, 80, "local should catch up to broker filled_qty");
+            assert!((o.avg_fill_price - 100.5).abs() < 0.001,
+                    "avg_fill_price should be updated alongside filled_qty");
+        }
+    }
+
+    // ── J. Buying-power check ────────────────────────────────────────────────
+
+    #[test]
+    #[ignore = "Buying-power check reads global ACCOUNT_DATA via super::read_account_data(); injecting a mock account is too invasive without a refactor. Skipped per task brief."]
+    fn submit_with_insufficient_buying_power_is_rejected() {
+        // TODO: introduce a small AccountSource trait or pass the snapshot
+        // explicitly into submit() so this test can inject a low-bp account
+        // without touching the global ACCOUNT_DATA OnceLock.
+    }
+
+    // ── K. WAL roundtrip ─────────────────────────────────────────────────────
+
+    #[test]
+    #[ignore = "wal::append writes to a hardcoded `state/orders.wal` next to the executable; testing roundtrip cleanly requires a path override (env var or feature flag) to avoid trampling the live WAL on developer machines."]
+    fn wal_roundtrip_replays_in_order() {
+        // TODO: thread a path override (env var `APEX_WAL_PATH` or a
+        // feature flag) through wal::wal_path() so tests can write to a
+        // temp dir.
+    }
 }

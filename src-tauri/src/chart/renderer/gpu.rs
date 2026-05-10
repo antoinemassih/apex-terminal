@@ -4018,6 +4018,11 @@ pub(crate) struct Watchlist {
     pub(crate) shared_x_axis: bool,
     pub(crate) shared_y_axis: bool,
     pub(crate) hotkeys: Vec<HotKey>,
+    // Order ledger panel state (wave 3b)
+    pub(crate) order_ledger_open: bool,
+    pub(crate) order_ledger_view: u8,    // 0=Active, 1=Journal, 2=All
+    pub(crate) order_ledger_filter: u8,  // index into LedgerFilter
+    pub(crate) order_ledger_search: String,
     pub(crate) trendline_filter_open: bool, // trendline filter dropdown
     pub(crate) account_strip_open: bool, // account summary bar below toolbar
     pub(crate) object_tree_open: bool, // object tree panel (drawings, indicators, overlays)
@@ -4223,6 +4228,11 @@ pub(crate) struct Watchlist {
     pub(crate) signals_panel_open: bool,
     pub(crate) signals_tab: crate::chart_renderer::SignalsTab,
     pub(crate) signals_splits: Vec<SplitSection<crate::chart_renderer::SignalsTab>>,
+    // Indicators panel — unified active list / library / tool toggles.
+    pub(crate) indicators_panel_open: bool,
+    pub(crate) indicators_panel_search: String,
+    pub(crate) indicators_lib_collapsed: std::collections::HashSet<String>,
+    pub(crate) indicators_section_fracs: [f32; 3],
     // Feed sidebar — subdivided sections
     pub(crate) feed_panel_open: bool,
     pub(crate) feed_tab: crate::chart_renderer::FeedTab,
@@ -4267,6 +4277,7 @@ impl Watchlist {
                renaming_section: None, rename_buf: String::new(), color_picking_section: None,
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
+               order_ledger_open: false, order_ledger_view: 0, order_ledger_filter: 0, order_ledger_search: String::new(),
                settings_open: false, font_scale: 1.6, native_dpi_scale: 1.0, font_idx: 0,
                default_stock_qty: 100, default_options_qty: 1, default_order_type: 0, default_tif: 0, default_outside_rth: false,
                compact_mode: false,
@@ -4374,6 +4385,9 @@ impl Watchlist {
                signals_panel_open: false,
                signals_tab: crate::chart_renderer::SignalsTab::Alerts,
                signals_splits: vec![SplitSection::new(crate::chart_renderer::SignalsTab::Alerts, 1.0)],
+               indicators_panel_open: false, indicators_panel_search: String::new(),
+               indicators_lib_collapsed: std::collections::HashSet::new(),
+               indicators_section_fracs: [0.18, 0.25, 0.57],
                feed_panel_open: false,
                feed_tab: crate::chart_renderer::FeedTab::News,
                feed_splits: vec![SplitSection::new(crate::chart_renderer::FeedTab::News, 1.0)],

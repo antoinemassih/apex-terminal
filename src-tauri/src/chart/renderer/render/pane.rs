@@ -183,7 +183,7 @@ fn render_chart_pane(
         if st.hairline_borders {
             // Meridien: crisp hairline rules top/left/bottom + accent top accent on active pane.
             let painter = ui.painter();
-            let rule_col = crate::chart_renderer::ui::style::rule_stroke_for(t.bg, t.toolbar_border);
+            let rule_col = crate::chart_renderer::ui::style::rule_stroke_for(t.bg, t.toolbar_border.gamma_multiply(0.7));
             // Top hairline
             painter.line_segment(
                 [pane_rect.left_top(), pane_rect.right_top()],
@@ -3218,21 +3218,19 @@ fn render_chart_pane(
 
         for pane in &mut floating_panes {
             let adv = chart.order_advanced;
-            let fp_panel_w = if adv { 270.0 } else { 210.0 };
+            let fp_panel_w = if adv { 340.0 } else { 300.0 };
 
             egui::Window::new(format!("float_order_{}_{}", pane_idx, pane.id))
                 .fixed_pos(pane.pos)
                 .fixed_size(egui::vec2(fp_panel_w, 0.0))
                 .title_bar(false)
-                .frame(egui::Frame::popup(&ctx.style())
-                    .fill(t.toolbar_bg)
-                    .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-                    .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 100)))
-                    .corner_radius(4.0))
+                .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
-                    use crate::chart_renderer::ui::widgets::pane::FloatingOrderPaneChrome;
+                    use crate::chart_renderer::ui::chrome::FloatingPaneChrome;
+                    use crate::ui_kit::icons::Icon;
+                    use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant};
 
-                    // Optional position indicator text
+                    // Optional position indicator
                     let pos_info: Option<(String, egui::Color32)> =
                         account_data_cached.as_ref().and_then(|(_, positions, _)| {
                             positions.iter().find(|p| p.symbol == chart.symbol).map(|pos| {
@@ -3246,24 +3244,46 @@ fn render_chart_pane(
                             })
                         });
 
-                    let mut chrome = FloatingOrderPaneChrome::new(pane.id)
-                        .title(&pane.title)
+                    let mut buy_clicked  = false;
+                    let mut sell_clicked = false;
+                    let is_buy           = chart.order_is_buy;
+                    let chrome_title     = chart.symbol.clone();
+                    let last_px          = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+                    let first_px         = chart.bars.first().map(|b| b.close).unwrap_or(last_px);
+                    let pct_change       = if first_px > 0.0 { (last_px - first_px) / first_px * 100.0 } else { 0.0 };
+                    let chrome_subtitle  = format!("${:.2}", last_px);
+                    let chrome_badge     = format!("{:+.2}%", pct_change);
+                    let chrome_badge_col = if pct_change >= 0.0 { t.bull } else { t.bear };
+
+                    let chrome = FloatingPaneChrome::new(pane.id, &chrome_title)
+                        .subtitle(&chrome_subtitle)
+                        .badge(&chrome_badge, chrome_badge_col)
                         .width(fp_panel_w)
-                        .armed(chart.armed)
-                        .advanced(adv)
-                        .theme(t);
-                    if let Some((ref text, color)) = pos_info {
-                        chrome = chrome.position_text(text, color);
-                    }
+                        .theme(t)
+                        .trailing(|ui| {
+                            // Trailing slot is right_to_left: items added later
+                            // move further left, so add Sell first, then Buy.
+                            if ui.add(KitButton::new("Sell")
+                                    .variant(Variant::Chrome)
+                                    .active(!is_buy)
+                                    .min_size(egui::vec2(36.0, 18.0))).clicked() {
+                                sell_clicked = true;
+                            }
+                            if ui.add(KitButton::new("Buy")
+                                    .variant(Variant::Chrome)
+                                    .active(is_buy)
+                                    .min_size(egui::vec2(36.0, 18.0))).clicked() {
+                                buy_clicked = true;
+                            }
+                        });
 
                     let cr = chrome.show(ui, |ui| {
-                        // ── Body (shared component) ──
                         render_order_entry_body(ui, chart, t, 1000 + pane.id as u64, fp_panel_w);
                     });
 
-                    if cr.close_clicked    { close_ids.push(pane.id); }
-                    if cr.armed_toggled    { chart.armed = !chart.armed; }
-                    if cr.advanced_toggled { chart.order_advanced = !chart.order_advanced; }
+                    if cr.close_clicked { close_ids.push(pane.id); }
+                    if buy_clicked      { chart.order_is_buy = true;  }
+                    if sell_clicked     { chart.order_is_buy = false; }
                     if cr.drag_delta != egui::Vec2::ZERO {
                         pane.pos.x += cr.drag_delta.x;
                         pane.pos.y += cr.drag_delta.y;
@@ -10907,12 +10927,12 @@ fn render_chart_pane(
         }
         // Ctrl+Shift+H: Halt trading
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::H)) {
-            crate::chart_renderer::trading::order_manager::halt_trading();
+            let _ = crate::chart_renderer::trading::order_manager::halt_trading();
             PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("Trading HALTED".into(), 0.0, false)));
         }
         // Ctrl+Shift+R: Resume trading
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::R)) {
-            crate::chart_renderer::trading::order_manager::resume_trading();
+            let _ = crate::chart_renderer::trading::order_manager::resume_trading();
             PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("Trading RESUMED".into(), 0.0, true)));
         }
     }

@@ -413,15 +413,16 @@ pub(crate) fn draw(
 
     // CANCEL — pastel red fill so it reads as a destructive (but not alarm)
     // action paired with FLATTEN. Centered text, dark fg for readable
-    // contrast against the soft red.
-    let cancel_fill = egui::Color32::from_rgb(232, 156, 156);
+    // contrast against the soft red. Colors come from the order-status
+    // semantic tokens (style::order_cancel_bg / order_cancel_fg).
+    let cancel_fill = order_cancel_bg();
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y+mid_half_h+2.0), egui::vec2(mid_w, mid_half_h));
     let resp = place_at(ui, r, |ui| {
         ui.add(Button::new("CANCEL")
             .variant(Variant::Secondary)
             .size(KitSize::Md)
             .fill(cancel_fill)
-            .fg(egui::Color32::from_rgb(70, 25, 25))
+            .fg(order_cancel_fg())
             .min_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }

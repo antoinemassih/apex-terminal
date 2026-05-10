@@ -3,6 +3,14 @@
 
 pub mod order_manager;
 
+// Wave 3 lifecycle modules — declared (not all wired into the live order
+// path yet) so the journal/WAL is reachable from UI panels.
+#[allow(dead_code)] pub(crate) mod types;
+#[allow(dead_code)] pub(crate) mod journal;
+pub(crate) mod snapshot;
+pub(crate) mod inflight;
+pub(crate) mod paper;
+
 use std::sync::{Mutex, OnceLock};
 
 /// ApexIB endpoint configuration (duplicated from gpu.rs where it's also used)
@@ -101,6 +109,9 @@ pub(crate) struct IbOrder {
     pub strike: f64,
     pub option_type: String,
     pub submitted_at: i64, // unix ms
+    /// Broker-assigned id, when reported. Empty string if not provided.
+    /// Wave 4: enables Rule 1 (match on backend_order_id first).
+    pub backend_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -125,11 +136,58 @@ impl Position {
 // Shared account data — written by background worker, read by render thread
 pub(crate) static ACCOUNT_DATA: OnceLock<Mutex<Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>> = OnceLock::new();
 
-/// Start the account polling worker (call once). Polls ApexIB every 5 seconds.
+/// Start the account polling workers (call once).
+///
+/// Wave 4a — split into two threads:
+///  - "Hot orders" thread: polls /executions + /orders every 1s and feeds
+///    `order_manager::reconcile_with_ib` so fills/rejects are seen sub-second.
+///  - "Slow account" thread: polls /account/summary, /account/pnl, /positions
+///    every 5s — these don't need to be hot.
+///
+/// TODO(websocket): if ApexIB exposes a push stream for order events
+/// (e.g. ws://apexib-dev.xllio.com/ws/orders) we should subscribe there
+/// and only fall back to the 1s poll on disconnect. tokio-tungstenite is
+/// available, but the existing poller is a sync std::thread and there is
+/// no confirmed broker endpoint yet — defer until the API is documented.
 pub(crate) fn start_account_poller() {
     static STARTED: OnceLock<bool> = OnceLock::new();
     STARTED.get_or_init(|| {
         let _ = ACCOUNT_DATA.get_or_init(|| Mutex::new(None));
+
+        // ── Hot orders thread (1s) ──────────────────────────────────────────
+        // Drives reconcile_with_ib + ACCOUNT_DATA's `ib_orders` slot.
+        std::thread::spawn(|| {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(3))
+                .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+            loop {
+                let (ib_orders, any_ok) = fetch_ib_orders(&client);
+                // Feed the reconciler — even if the slow thread hasn't yet
+                // populated ACCOUNT_DATA, order state stays fresh.
+                order_manager::reconcile_with_ib(&ib_orders);
+                // Watchdog stamp: any successful broker response counts.
+                if any_ok { order_manager::mark_broker_contact(); }
+                // Update the orders slot of ACCOUNT_DATA so panels reading
+                // raw broker rows get hot updates too. Preserve summary +
+                // positions written by the slow thread.
+                if let Some(data) = ACCOUNT_DATA.get() {
+                    if let Ok(mut d) = data.lock() {
+                        match d.take() {
+                            Some((summary, positions, _)) => {
+                                *d = Some((summary, positions, ib_orders));
+                            }
+                            None => {
+                                *d = Some((AccountSummary::default(), Vec::new(), ib_orders));
+                            }
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        });
+
+        // ── Slow account thread (5s) ────────────────────────────────────────
+        // Account summary / P&L / positions don't need sub-second cadence.
         std::thread::spawn(|| {
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(3))
@@ -140,6 +198,7 @@ pub(crate) fn start_account_poller() {
 
                 // Fetch account summary
                 if let Ok(resp) = client.get(format!("{}/account/summary", APEXIB_URL)).send() {
+                    order_manager::mark_broker_contact();
                     if let Ok(json) = resp.json::<serde_json::Value>() {
                         summary.connected = true;
                         summary.nav = json["netLiquidation"].as_f64().unwrap_or(0.0);
@@ -148,7 +207,6 @@ pub(crate) fn start_account_poller() {
                         summary.initial_margin = json["initMarginReq"].as_f64().unwrap_or(0.0);
                         summary.maintenance_margin = json["maintMarginReq"].as_f64().unwrap_or(0.0);
                         summary.gross_position_value = json["grossPositionValue"].as_f64().unwrap_or(0.0);
-                        // Account summary also has unrealized/realized P&L
                         if summary.unrealized_pnl == 0.0 {
                             summary.unrealized_pnl = json["unrealizedPnL"].as_f64().unwrap_or(0.0);
                         }
@@ -160,6 +218,7 @@ pub(crate) fn start_account_poller() {
 
                 // Fetch P&L
                 if let Ok(resp) = client.get(format!("{}/account/pnl", APEXIB_URL)).send() {
+                    order_manager::mark_broker_contact();
                     if let Ok(json) = resp.json::<serde_json::Value>() {
                         summary.daily_pnl = json["dailyPnL"].as_f64().unwrap_or(0.0);
                         summary.unrealized_pnl = json["unrealizedPnL"].as_f64().unwrap_or(0.0);
@@ -169,6 +228,7 @@ pub(crate) fn start_account_poller() {
 
                 // Fetch positions
                 if let Ok(resp) = client.get(format!("{}/positions", APEXIB_URL)).send() {
+                    order_manager::mark_broker_contact();
                     if let Ok(json) = resp.json::<serde_json::Value>() {
                         if let Some(pos_arr) = json["positions"].as_array() {
                             for p in pos_arr {
@@ -186,56 +246,19 @@ pub(crate) fn start_account_poller() {
                     }
                 }
 
-                // Fetch executions + pending + cancelled orders
-                let mut ib_orders = Vec::new();
-                // Only show orders from the last 24 hours
-                let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
-                let cutoff_ms = now_ms - 86_400_000; // 24 hours ago
-
-                let parse_orders = |json: &serde_json::Value, key: &str, orders: &mut Vec<IbOrder>, cutoff: i64| {
-                    if let Some(arr) = json[key].as_array() {
-                        for o in arr {
-                            let ts = o["submittedAt"].as_i64().or_else(|| o["time"].as_i64()).unwrap_or(0);
-                            if ts > 0 && ts < cutoff { continue; } // skip old orders
-                            orders.push(IbOrder {
-                                symbol: o["symbol"].as_str().unwrap_or("").into(),
-                                side: o["side"].as_str().or_else(|| o["action"].as_str()).unwrap_or("").into(),
-                                qty: o["quantity"].as_i64().or_else(|| o["shares"].as_i64()).unwrap_or(0) as i32,
-                                filled_qty: o["filledQty"].as_i64().or_else(|| o["shares"].as_i64()).unwrap_or(0) as i32,
-                                order_type: o["orderType"].as_str().unwrap_or("").into(),
-                                limit_price: o["limitPrice"].as_f64().or_else(|| o["price"].as_f64()).unwrap_or(0.0),
-                                avg_fill_price: o["avgFillPrice"].as_f64().or_else(|| o["avgPrice"].as_f64()).or_else(|| o["price"].as_f64()).unwrap_or(0.0),
-                                status: o["status"].as_str().unwrap_or(if key == "executions" { "filled" } else { "" }).into(),
-                                strike: o["strike"].as_f64().unwrap_or(0.0),
-                                option_type: o["optionType"].as_str().unwrap_or("").into(),
-                                submitted_at: ts,
-                            });
-                        }
-                    }
-                };
-                // Executions (filled trades)
-                if let Ok(resp) = client.get(format!("{}/executions", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "executions", &mut ib_orders, cutoff_ms);
-                    }
-                }
-                // Pending/submitted orders
-                if let Ok(resp) = client.get(format!("{}/orders?status=submitted", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "orders", &mut ib_orders, cutoff_ms);
-                    }
-                }
-                // Cancelled orders
-                if let Ok(resp) = client.get(format!("{}/orders?status=cancelled", APEXIB_URL)).send() {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        parse_orders(&json, "orders", &mut ib_orders, cutoff_ms);
-                    }
-                }
-
                 summary.last_update = Some(std::time::Instant::now());
 
+                // Wave 6d: reconcile broker positions against local Filled state.
+                // Runs after every successful /positions fetch so drift surfaces
+                // within one slow-poll cycle.
+                order_manager::reconcile_positions(&positions);
+
+                // Merge into ACCOUNT_DATA, preserving the hot thread's ib_orders.
                 if let Some(data) = ACCOUNT_DATA.get() {
-                    if let Ok(mut d) = data.lock() { *d = Some((summary, positions, ib_orders)); }
+                    if let Ok(mut d) = data.lock() {
+                        let prev_orders = d.as_ref().map(|(_, _, o)| o.clone()).unwrap_or_default();
+                        *d = Some((summary, positions, prev_orders));
+                    }
                 }
 
                 std::thread::sleep(std::time::Duration::from_secs(5));
@@ -243,6 +266,62 @@ pub(crate) fn start_account_poller() {
         });
         true
     });
+}
+
+/// Fetch /executions + /orders?status=submitted + /orders?status=cancelled
+/// and assemble a single `Vec<IbOrder>`. Used by the hot-orders thread.
+fn fetch_ib_orders(client: &reqwest::blocking::Client) -> (Vec<IbOrder>, bool) {
+    let mut ib_orders = Vec::new();
+    let mut any_ok = false;
+    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    let cutoff_ms = now_ms - 86_400_000; // 24h
+
+    let parse_orders = |json: &serde_json::Value, key: &str, orders: &mut Vec<IbOrder>, cutoff: i64| {
+        if let Some(arr) = json[key].as_array() {
+            for o in arr {
+                let ts = o["submittedAt"].as_i64().or_else(|| o["time"].as_i64()).unwrap_or(0);
+                if ts > 0 && ts < cutoff { continue; }
+                let backend_id = o["orderId"].as_str().map(|s| s.to_string())
+                    .or_else(|| o["orderId"].as_i64().map(|n| n.to_string()))
+                    .or_else(|| o["id"].as_str().map(|s| s.to_string()))
+                    .or_else(|| o["id"].as_i64().map(|n| n.to_string()))
+                    .unwrap_or_default();
+                orders.push(IbOrder {
+                    symbol: o["symbol"].as_str().unwrap_or("").into(),
+                    side: o["side"].as_str().or_else(|| o["action"].as_str()).unwrap_or("").into(),
+                    qty: o["quantity"].as_i64().or_else(|| o["shares"].as_i64()).unwrap_or(0) as i32,
+                    filled_qty: o["filledQty"].as_i64().or_else(|| o["shares"].as_i64()).unwrap_or(0) as i32,
+                    order_type: o["orderType"].as_str().unwrap_or("").into(),
+                    limit_price: o["limitPrice"].as_f64().or_else(|| o["price"].as_f64()).unwrap_or(0.0),
+                    avg_fill_price: o["avgFillPrice"].as_f64().or_else(|| o["avgPrice"].as_f64()).or_else(|| o["price"].as_f64()).unwrap_or(0.0),
+                    status: o["status"].as_str().unwrap_or(if key == "executions" { "filled" } else { "" }).into(),
+                    strike: o["strike"].as_f64().unwrap_or(0.0),
+                    option_type: o["optionType"].as_str().unwrap_or("").into(),
+                    submitted_at: ts,
+                    backend_id,
+                });
+            }
+        }
+    };
+    if let Ok(resp) = client.get(format!("{}/executions", APEXIB_URL)).send() {
+        any_ok = true;
+        if let Ok(json) = resp.json::<serde_json::Value>() {
+            parse_orders(&json, "executions", &mut ib_orders, cutoff_ms);
+        }
+    }
+    if let Ok(resp) = client.get(format!("{}/orders?status=submitted", APEXIB_URL)).send() {
+        any_ok = true;
+        if let Ok(json) = resp.json::<serde_json::Value>() {
+            parse_orders(&json, "orders", &mut ib_orders, cutoff_ms);
+        }
+    }
+    if let Ok(resp) = client.get(format!("{}/orders?status=cancelled", APEXIB_URL)).send() {
+        any_ok = true;
+        if let Ok(json) = resp.json::<serde_json::Value>() {
+            parse_orders(&json, "orders", &mut ib_orders, cutoff_ms);
+        }
+    }
+    (ib_orders, any_ok)
 }
 
 /// Read latest account data (non-blocking)

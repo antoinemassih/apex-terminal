@@ -87,7 +87,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
+use crate::ui_kit::widgets::{Button as KitButton, SelectableRow, tokens::Variant as KitVariant};
 use crate::chart_renderer::gpu::{
     Chart, Layout, Watchlist, Theme,
     CURRENT_WINDOW, CLOSE_REQUESTED, TB_BTN_CLICKED, PENDING_TOASTS, PENDING_WL_TOOLTIP,
@@ -224,6 +224,48 @@ pub(crate) fn render(
     use crate::monitoring::{span_begin, span_end};
     let ap = *active_pane;
     span_begin("top_panel");
+
+    // ── Trading-block banner (kill / halt / auto-halt) ──────────────────────
+    // Renders BEFORE the toolbar so it always sits at the very top of the
+    // window, regardless of the toolbar auto-hide state. Operator must see
+    // this immediately when trading is gated.
+    {
+        use crate::chart_renderer::trading::order_manager;
+        if order_manager::is_trading_blocked() {
+            let (auto, kill, halted) = order_manager::trading_block_reason();
+            let (msg, fill) = if kill {
+                (
+                    "\u{1F6D1} KILL SWITCH ENGAGED \u{2014} new orders blocked",
+                    t.bear,
+                )
+            } else if halted && auto {
+                (
+                    "\u{26A0} BROKER DISCONNECTED \u{2014} auto-halted, will resume on reconnect",
+                    t.bear,
+                )
+            } else {
+                // user-engaged halt
+                (
+                    "\u{23F8} TRADING HALTED \u{2014} press Ctrl+Shift+R to resume",
+                    t.warn,
+                )
+            };
+            egui::TopBottomPanel::top("trading_block_banner")
+                .exact_height(28.0)
+                .frame(egui::Frame::NONE
+                    .fill(fill)
+                    .inner_margin(egui::Margin { left: gap_md() as i8, right: gap_md() as i8, top: 4, bottom: 4 }))
+                .show(ctx, |ui| {
+                    let fg = crate::chart_renderer::ui::style::contrast_fg(fill);
+                    ui.horizontal_centered(|ui| {
+                        ui.label(egui::RichText::new(msg)
+                            .color(fg)
+                            .size(font_md() as f32)
+                            .strong());
+                    });
+                });
+        }
+    }
 
     // Auto-hide toolbar logic
     let toolbar_visible = if watchlist.toolbar_auto_hide {
@@ -461,7 +503,7 @@ pub(crate) fn render(
                         ("1 Year",   "1d",  252),
                     ];
                     for &(label, tf, preset_vc) in presets {
-                        if ui.selectable_label(false, egui::RichText::new(label).monospace().size(FONT_SM)).clicked() {
+                        if ui.add(SelectableRow::new(label, false)).clicked() {
                             panes[ap].pending_timeframe_change = Some(tf.to_string());
                             panes[ap].vc = preset_vc;
                             panes[ap].vc_target = preset_vc;
@@ -525,7 +567,7 @@ pub(crate) fn render(
                         for (tool, label) in *tools {
                             let shortcut = tool_shortcut(tool);
                             let resp = ui.horizontal(|ui| {
-                                let r = ui.selectable_label(cur == *tool, egui::RichText::new(*label).monospace().size(FONT_SM));
+                                let r = ui.add(SelectableRow::new(label, cur == *tool));
                                 if let Some(ref key) = shortcut {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         crate::ui_kit::widgets::Kbd::new(key.clone()).show(ui, t);
@@ -540,7 +582,7 @@ pub(crate) fn render(
                     }
                     if !cur.is_empty() {
                         ui.separator();
-                        if ui.selectable_label(false, egui::RichText::new("Cancel Tool").monospace().size(FONT_SM).color(t.bear)).clicked() {
+                        if ui.add(SelectableRow::new("Cancel Tool", false)).clicked() {
                             new_tool = Some(String::new());
                         }
                     }
@@ -624,7 +666,6 @@ pub(crate) fn render(
 
             // ── Organized dropdown menus ──
             let _menu_font = egui::FontId::monospace(11.0);
-            let check = |active: bool| if active { Icon::CHECK_FILL } else { "  " };
 
             // Chart Type dropdown (single-select)
             let cm_label = match panes[ap].candle_mode {
@@ -646,13 +687,13 @@ pub(crate) fn render(
                     (CandleMode::TickBar, "Tick Bars"),
                 ] {
                     let active = panes[ap].candle_mode == mode;
-                    if ui.selectable_label(active, egui::RichText::new(format!("{} {}", check(active), label)).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new(label, active)).clicked() {
                         panes[ap].candle_mode = mode;
                     }
                 }
                 ui.separator();
                 let log = panes[ap].log_scale;
-                if ui.selectable_label(log, egui::RichText::new(format!("{} Log Scale", check(log))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Log Scale", log)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !log;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.log_scale = nv; } } else { panes[ap].log_scale = nv; }
                 }
@@ -750,12 +791,12 @@ pub(crate) fn render(
                     .collect();
                 if !existing.is_empty() {
                     for (eid, ekind, eperiod, ecolor, evis) in &existing {
-                        let label_text = format!("{} {} {}", if *evis { Icon::CHECK } else { "" }, ekind.label(), eperiod);
+                        let label_text = format!("{} {}", ekind.label(), eperiod);
                         let c = hex_to_color(ecolor, 1.0);
                         ui.horizontal(|ui| {
                             ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, c);
                             ui.add_space(gap_xl());
-                            if ui.selectable_label(*evis, egui::RichText::new(label_text.trim()).monospace().size(FONT_SM)).clicked() {
+                            if ui.add(SelectableRow::new(&label_text, *evis)).clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 let nv = !*evis;
                                 if shift || watchlist.broadcast_mode {
@@ -787,7 +828,7 @@ pub(crate) fn render(
                 }
                 // Add new MA instance
                 for (itype, label) in ma_types {
-                    if ui.selectable_label(false, egui::RichText::new(format!("{} + {}", Icon::PLUS, label)).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new(label, false).leading_icon(Icon::PLUS)).clicked() {
                         let shift = ui.input(|i| i.modifiers.shift);
                         if shift || watchlist.broadcast_mode {
                             for p in panes.iter_mut() {
@@ -808,7 +849,7 @@ pub(crate) fn render(
                 }
                 ui.separator();
                 let ribbon_active = panes[ap].show_ma_ribbon;
-                if ui.selectable_label(ribbon_active, egui::RichText::new(format!("{} MA Ribbon (8-89)", check(ribbon_active))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("MA Ribbon (8-89)", ribbon_active)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !ribbon_active;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_ma_ribbon = nv; } } else { panes[ap].show_ma_ribbon = nv; }
@@ -824,7 +865,7 @@ pub(crate) fn render(
                     (IndicatorType::WilliamsR, "Williams %R"), (IndicatorType::ADX, "ADX"), (IndicatorType::ATR, "ATR")];
                 for (itype, label) in osc_types {
                     let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
-                    if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new(label, has)).clicked() {
                         let shift = ui.input(|i| i.modifiers.shift);
                         if shift || watchlist.broadcast_mode {
                             for p in panes.iter_mut() {
@@ -858,7 +899,7 @@ pub(crate) fn render(
                 }
                 ui.separator();
                 let cvd = panes[ap].show_cvd;
-                if ui.selectable_label(cvd, egui::RichText::new(format!("{} CVD", check(cvd))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("CVD", cvd)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !cvd;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_cvd = nv; } } else { panes[ap].show_cvd = nv; }
@@ -870,17 +911,17 @@ pub(crate) fn render(
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let vol = panes[ap].show_volume;
-                if ui.selectable_label(vol, egui::RichText::new(format!("{} Volume Bars", check(vol))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Volume Bars", vol)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !vol;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_volume = nv; } } else { panes[ap].show_volume = nv; }
                 }
                 let dvol = panes[ap].show_delta_volume;
-                if ui.selectable_label(dvol, egui::RichText::new(format!("{} Delta Volume", check(dvol))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Delta Volume", dvol)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !dvol;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_delta_volume = nv; } } else { panes[ap].show_delta_volume = nv; }
                 }
                 let rvol = panes[ap].show_rvol;
-                if ui.selectable_label(rvol, egui::RichText::new(format!("{} Relative Volume", check(rvol))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Relative Volume", rvol)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !rvol;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_rvol = nv; } } else { panes[ap].show_rvol = nv; }
                 }
@@ -892,7 +933,7 @@ pub(crate) fn render(
                     (VolumeProfileMode::Clean, "Clean (POC/VA)"),
                 ] {
                     let active = panes[ap].vp_mode == mode;
-                    if ui.selectable_label(active, egui::RichText::new(format!("{} {}", check(active), label)).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new(label, active)).clicked() {
                         panes[ap].vp_mode = mode; panes[ap].vp_data = None;
                     }
                 }
@@ -916,7 +957,7 @@ pub(crate) fn render(
                     ];
                     for (itype, label) in overlay_types {
                         let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
-                        if ui.selectable_label(has, egui::RichText::new(format!("{} {}", check(has), label)).monospace().size(FONT_SM)).clicked() {
+                        if ui.add(SelectableRow::new(label, has)).clicked() {
                             if has {
                                 if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
                             } else {
@@ -932,11 +973,11 @@ pub(crate) fn render(
                     }
                     ui.separator();
                     let vwap = panes[ap].show_vwap_bands;
-                    if ui.selectable_label(vwap, egui::RichText::new(format!("{} VWAP + Bands", check(vwap))).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new("VWAP + Bands", vwap)).clicked() {
                         panes[ap].show_vwap_bands = !panes[ap].show_vwap_bands;
                     }
                     let sr = panes[ap].show_auto_sr;
-                    if ui.selectable_label(sr, egui::RichText::new(format!("{} Auto S/R Levels", check(sr))).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new("Auto S/R Levels", sr)).clicked() {
                         panes[ap].show_auto_sr = !panes[ap].show_auto_sr;
                     }
                 });
@@ -947,7 +988,7 @@ pub(crate) fn render(
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
                             let v = panes[ap].$field;
-                            if ui.selectable_label(v, egui::RichText::new(format!("{} {}", check(v), $label)).monospace().size(FONT_SM)).clicked() {
+                            if ui.add(SelectableRow::new($label, v)).clicked() {
                                 panes[ap].$field = !v;
                             }
                         }
@@ -962,7 +1003,7 @@ pub(crate) fn render(
                     overlay_toggle!(show_insider_trades, "Insider Trades");
                     ui.separator();
                     let gamma = panes[ap].show_gamma;
-                    if ui.selectable_label(gamma, egui::RichText::new(format!("{} Gamma Levels (GEX)", check(gamma))).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new("Gamma Levels (GEX)", gamma)).clicked() {
                         panes[ap].show_gamma = !panes[ap].show_gamma;
                         if panes[ap].show_gamma && panes[ap].gamma_levels.is_empty() {
                             if let Some(last_bar) = panes[ap].bars.last() {
@@ -996,7 +1037,7 @@ pub(crate) fn render(
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
                             let v = panes[ap].$field;
-                            if ui.selectable_label(v, egui::RichText::new(format!("{} {}", check(v), $label)).monospace().size(FONT_SM)).clicked() {
+                            if ui.add(SelectableRow::new($label, v)).clicked() {
                                 panes[ap].$field = !v;
                             }
                         }
@@ -1012,7 +1053,7 @@ pub(crate) fn render(
                 ui.menu_button(egui::RichText::new(format!("{} Data", Icon::CHART_LINE_UP_FILL)).size(FONT_SM).color(t.dim), |ui| {
                     ui.set_min_width(200.0);
                     let events = panes[ap].show_events;
-                    if ui.selectable_label(events, egui::RichText::new(format!("{} Event Markers", check(events))).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new("Event Markers", events)).clicked() {
                         panes[ap].show_events = !panes[ap].show_events;
                         if panes[ap].show_events && panes[ap].event_markers.is_empty() && !panes[ap].timestamps.is_empty() {
                             let ts = &panes[ap].timestamps;
@@ -1028,7 +1069,7 @@ pub(crate) fn render(
                         }
                     }
                     let dp = panes[ap].show_darkpool;
-                    if ui.selectable_label(dp, egui::RichText::new(format!("{} Dark Pool Prints", check(dp))).monospace().size(FONT_SM)).clicked() {
+                    if ui.add(SelectableRow::new("Dark Pool Prints", dp)).clicked() {
                         panes[ap].show_darkpool = !panes[ap].show_darkpool;
                         if panes[ap].show_darkpool && panes[ap].darkpool_prints.is_empty() {
                             if let Some(last_bar) = panes[ap].bars.last() {
@@ -1071,7 +1112,7 @@ pub(crate) fn render(
                     panes[ap].overlay_editing_idx = Some(ei);
                     panes[ap].overlay_input = panes[ap].symbol_overlays[ei].symbol.clone();
                 }
-                if ui.selectable_label(false, egui::RichText::new(format!("{} Add Symbol Overlay", Icon::PLUS)).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Add Symbol Overlay", false).leading_icon(Icon::PLUS)).clicked() {
                     watchlist.pending_overlay_add = true;
                 }
             });
@@ -1083,32 +1124,32 @@ pub(crate) fn render(
 
                 ui.label(egui::RichText::new("DISPLAY").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                 let ohlc = panes[ap].ohlc_tooltip;
-                if ui.selectable_label(ohlc, egui::RichText::new(format!("{} OHLC Tooltip", check(ohlc))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("OHLC Tooltip", ohlc)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !ohlc;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.ohlc_tooltip = nv; } } else { panes[ap].ohlc_tooltip = nv; }
                 }
                 let mt = panes[ap].measure_tooltip;
-                if ui.selectable_label(mt, egui::RichText::new(format!("{} Measure Tooltip", check(mt))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Measure Tooltip", mt)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !mt;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.measure_tooltip = nv; } } else { panes[ap].measure_tooltip = nv; }
                 }
                 let pc = panes[ap].show_prev_close;
-                if ui.selectable_label(pc, egui::RichText::new(format!("{} Prev Close / Open", check(pc))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Prev Close / Open", pc)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !pc;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_prev_close = nv; } } else { panes[ap].show_prev_close = nv; }
                 }
                 let pl = panes[ap].show_pattern_labels;
-                if ui.selectable_label(pl, egui::RichText::new(format!("{} Pattern Labels", check(pl))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Pattern Labels", pl)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !pl;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_pattern_labels = nv; } } else { panes[ap].show_pattern_labels = nv; }
                 }
                 let pnl = panes[ap].show_pnl_curve;
-                if ui.selectable_label(pnl, egui::RichText::new(format!("{} P&L Curve", check(pnl))).monospace().size(FONT_SM)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
+                if ui.add(SelectableRow::new("P&L Curve", pnl)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
 
                 ui.separator();
                 ui.label(egui::RichText::new("CURSOR").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                 let fp = panes[ap].show_footprint;
-                if ui.selectable_label(fp, egui::RichText::new(format!("{} Footprint (hover)", check(fp))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Footprint (hover)", fp)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !fp;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_footprint = nv; } } else { panes[ap].show_footprint = nv; }
                 }
@@ -1116,7 +1157,7 @@ pub(crate) fn render(
                 ui.separator();
                 ui.label(egui::RichText::new("REPLAY").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
                 let rpl = panes[ap].replay_mode;
-                if ui.selectable_label(rpl, egui::RichText::new(format!("{} Bar Replay", check(rpl))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Bar Replay", rpl)).clicked() {
                     panes[ap].replay_mode = !panes[ap].replay_mode;
                     if panes[ap].replay_mode {
                         panes[ap].replay_bar_count = panes[ap].bars.len().min(50);
@@ -1133,18 +1174,18 @@ pub(crate) fn render(
                 let sl_mode = panes[ap].swing_leg_mode;
                 let sl_active = sl_mode > 0;
                 let sl_suffix = match sl_mode { 1 => " (Vertical)", 2 => " (Diagonal)", _ => "" };
-                if ui.selectable_label(sl_active, egui::RichText::new(format!("{} SwingRange{}", check(sl_active), sl_suffix)).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new(&format!("SwingRange{}", sl_suffix), sl_active)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = (sl_mode + 1) % 3;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.swing_leg_mode = nv; } } else { panes[ap].swing_leg_mode = nv; }
                 }
                 let afib = panes[ap].show_auto_fib;
-                if ui.selectable_label(afib, egui::RichText::new(format!("{} Auto Fibonacci", check(afib))).monospace().size(FONT_SM)).clicked() {
+                if ui.add(SelectableRow::new("Auto Fibonacci", afib)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !afib;
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_auto_fib = nv; } } else { panes[ap].show_auto_fib = nv; }
                 }
                 ui.separator();
-                ui.selectable_label(false, egui::RichText::new("  Triangulator").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
-                ui.selectable_label(false, egui::RichText::new("  Auto Target").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
+                ui.add(SelectableRow::new("Triangulator", false).disabled(true));
+                ui.add(SelectableRow::new("Auto Target", false).disabled(true));
             });
 
             }); // ── end Indicators outer dropdown (wraps MAs/Osc/Vol/Overlay/Tools/Suites) ──
@@ -1261,8 +1302,7 @@ pub(crate) fn render(
                 ui.add_space(gap_sm());
                 ui.separator();
                 if !panes[ap].chart_widgets.is_empty() {
-                    if ui.selectable_label(false, egui::RichText::new("\u{1F5D1} Remove All Widgets")
-                        .monospace().size(FONT_SM).color(t.bear)).clicked() {
+                    if ui.add(SelectableRow::new("Remove All Widgets", false).leading_icon(Icon::TRASH)).clicked() {
                         panes[ap].chart_widgets.clear();
                         ui.close_menu();
                     }
@@ -1316,9 +1356,7 @@ pub(crate) fn render(
                             } else {
                                 ui.label(egui::RichText::new("  ").size(font_xs()));
                             }
-                            let label_col = if is_active { t.accent } else { t.dim };
-                            if ui.selectable_label(is_active,
-                                egui::RichText::new(name).monospace().size(FONT_SM).color(label_col)).clicked() && !is_active {
+                            if ui.add(SelectableRow::new(name, is_active)).clicked() && !is_active {
                                 watchlist.active_workspace = name.clone();
                                 watchlist.pending_workspace_load = Some(name.clone());
                                 ui.close_menu();
@@ -1588,6 +1626,11 @@ pub(crate) fn render(
                 // Analysis sidebar toggle
                 let resp = toolbar_btn(ui, &nav_label(Icon::CHART_LINE, "Analysis"), watchlist.analysis_open, t).on_hover_text("Analysis Sidebar");
                 if resp.clicked() { watchlist.analysis_open = !watchlist.analysis_open; }
+                nav_divider!(ui, resp);
+
+                // Indicators panel — manage active indicators + library + tool toggles
+                let resp = toolbar_btn(ui, &nav_label(Icon::PULSE, "Indicators"), watchlist.indicators_panel_open, t).on_hover_text("Indicators (Active + Library + Tools)");
+                if resp.clicked() { watchlist.indicators_panel_open = !watchlist.indicators_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
@@ -2014,6 +2057,16 @@ pub(crate) fn render(
     span_begin("sidebar.orders");
     crate::chart_renderer::ui::panels::orders_panel::draw(ctx, watchlist, panes, ap, t, account_data_cached);
 
+    // ── Order Ledger (Wave 3 visibility panel) ──────────────────────────────
+    // Hotkey: Ctrl+L toggles. The render loop takes a non-mutable `panes`
+    // slice for active-order display; cancel actions dispatch through the
+    // global `order_manager` API.
+    if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::L)) {
+        watchlist.order_ledger_open = !watchlist.order_ledger_open;
+    }
+    span_begin("sidebar.order_ledger");
+    crate::chart_renderer::ui::panels::order_ledger_panel::draw(ctx, watchlist, panes, t);
+
     // ── Scanner side panel
     span_begin("sidebar.scanner");
     crate::chart_renderer::ui::panels::scanner_panel::draw(ctx, watchlist, panes, ap, t);
@@ -2029,6 +2082,10 @@ pub(crate) fn render(
     // ── Analysis sidebar (unified RRG / T&S / Scanner / Scripts)
     span_begin("sidebar.analysis");
     crate::chart_renderer::ui::panels::analysis_panel::draw(ctx, watchlist, panes, *active_pane, t);
+
+    // ── Indicators panel (active + library + tool toggles)
+    span_begin("sidebar.indicators");
+    crate::chart_renderer::ui::panels::indicators_panel::draw(ctx, watchlist, panes, ap, t);
 
     // ── Signals sidebar (unified Alerts + Signals)
     span_begin("sidebar.signals");

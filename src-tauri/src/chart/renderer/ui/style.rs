@@ -177,6 +177,102 @@ pub const SHADOW_OFFSET: f32 = 2.0;
 pub const SHADOW_ALPHA:  u8  = 60;
 pub const SHADOW_SPREAD: f32 = 4.0;
 
+// ─── Shadow preset accessors (semantic depth scale) ──────────────────────────
+// Returns egui::epaint::Shadow ready for `Frame::shadow(...)`. Backed by the
+// `shadow_preset` design-token sub-struct when design-mode is on, else hard-
+// coded defaults that match the original inline values they replace.
+#[inline]
+fn shadow_from_preset(offset: [i8; 2], blur: u8, spread: u8, alpha: u8) -> egui::epaint::Shadow {
+    egui::epaint::Shadow {
+        offset, blur, spread,
+        color: Color32::from_black_alpha(alpha),
+    }
+}
+
+/// Card / panel — subtle resting lift. Defaults: offset (0,2), blur 4, alpha 60.
+pub fn shadow_card() -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(t) = crate::design_tokens::get() {
+        let p = t.shadow_preset.card;
+        return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset([0, 2], 4, 0, 60)
+}
+
+/// Modal dialog — tall, soft. Defaults: offset (0,8), blur 28, spread 2, alpha 80.
+pub fn shadow_modal() -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(t) = crate::design_tokens::get() {
+        let p = t.shadow_preset.modal;
+        return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset([0, 8], 28, 2, 80)
+}
+
+/// Tooltip — small, crisp. Used for hover bubbles.
+pub fn shadow_tooltip() -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(t) = crate::design_tokens::get() {
+        let p = t.shadow_preset.tooltip;
+        return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset([0, 2], 0, 0, 60)
+}
+
+/// Dropdown / popover. Defaults: offset (0,8), blur 24, spread 1, alpha 40.
+pub fn shadow_dropdown() -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(t) = crate::design_tokens::get() {
+        let p = t.shadow_preset.dropdown;
+        return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset([0, 8], 24, 1, 40)
+}
+
+// ─── Semantic color accessors ────────────────────────────────────────────────
+// Intent colors that don't fit the brand palette: hover/focus/disabled, order
+// status (cancel pastel), sentiment, and third-party brand colors.
+/// Soft white overlay for hover-tint on dark surfaces.
+pub fn hover_tint() -> Color32 {
+    crate::dt_rgba!(semantic.hover_tint, [255, 255, 255, 16])
+}
+/// Focus ring — keyboard-focus halo color.
+pub fn focus_ring() -> Color32 {
+    crate::dt_rgba!(semantic.focus_ring, [100, 200, 255, 200])
+}
+/// Foreground color for disabled controls.
+pub fn disabled_fg() -> Color32 {
+    crate::dt_rgba!(semantic.disabled_fg, [140, 140, 150, 160])
+}
+/// Background color for disabled controls.
+pub fn disabled_bg() -> Color32 {
+    crate::dt_rgba!(semantic.disabled_bg, [40, 40, 46, 200])
+}
+/// Order cancel button background — pastel red.
+pub fn order_cancel_bg() -> Color32 {
+    crate::dt_rgba!(semantic.order_cancel_bg, [232, 156, 156, 255])
+}
+/// Order cancel button foreground — dark red on pastel.
+pub fn order_cancel_fg() -> Color32 {
+    crate::dt_rgba!(semantic.order_cancel_fg, [70, 25, 25, 255])
+}
+/// Sentiment — positive (bullish, good news, upvote).
+pub fn sentiment_positive() -> Color32 {
+    crate::dt_rgba!(semantic.sentiment_positive, [80, 200, 120, 255])
+}
+/// Sentiment — neutral (informational).
+pub fn sentiment_neutral() -> Color32 {
+    crate::dt_rgba!(semantic.sentiment_neutral, [180, 180, 195, 255])
+}
+/// Sentiment — negative (bearish, bad news, downvote).
+pub fn sentiment_negative() -> Color32 {
+    crate::dt_rgba!(semantic.sentiment_negative, [224, 85, 96, 255])
+}
+/// Discord brand color — "Blurple" (#5865F2).
+pub fn discord_blurple() -> Color32 {
+    crate::dt_rgba!(semantic.discord_blurple, [88, 101, 242, 255])
+}
+
 // ─── Fixed text colors (fallback for code without Theme access) ──────────────
 // Prefer `t.text` when Theme is in scope — these are dark-theme defaults.
 pub static TEXT_PRIMARY: Color32 = Color32::from_rgb(220, 220, 230);

@@ -42,6 +42,14 @@ pub struct DesignTokens {
     pub color: ColorTokens,
     pub status: StatusTokens,
     pub drawing: DrawingTokens,
+    /// Semantic shadow presets (card / modal / tooltip / dropdown). New family —
+    /// `#[serde(default)]` so legacy TOMLs without this section still load.
+    #[serde(default)]
+    pub shadow_preset: ShadowPresetTokens,
+    /// Semantic color tokens — hover / focus / disabled / order-status / sentiment.
+    /// `#[serde(default)]` for forward-compat with older design.toml files.
+    #[serde(default)]
+    pub semantic: SemanticColorTokens,
 }
 
 #[cfg(feature = "design-mode")]
@@ -150,6 +158,100 @@ pub struct DrawingTokens {
     pub palette: [Rgba; 4],
 }
 
+// ─── Shadow presets — semantic depth scale ──────────────────────────────────
+// Field types mirror egui::epaint::Shadow (offset: [i8; 2], blur/spread: u8,
+// alpha: u8). Stored as plain numerics to keep serde / TOML simple — the
+// style.rs accessors convert to egui's type at the call site.
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ShadowPreset {
+    /// (x, y) offset in pixels. Positive y = below.
+    pub offset: [i8; 2],
+    /// Gaussian blur radius.
+    pub blur: u8,
+    /// Spread — extends the shadow rect outward before blur.
+    pub spread: u8,
+    /// Alpha of the (black) shadow color, 0..=255.
+    pub alpha: u8,
+}
+
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShadowPresetTokens {
+    /// Resting card / panel — subtle lift.
+    pub card: ShadowPreset,
+    /// Modal dialog — tall, soft.
+    pub modal: ShadowPreset,
+    /// Tooltip — small, crisp.
+    pub tooltip: ShadowPreset,
+    /// Dropdown / popover — medium drop.
+    pub dropdown: ShadowPreset,
+}
+
+#[cfg(feature = "design-mode")]
+impl Default for ShadowPresetTokens {
+    fn default() -> Self {
+        Self {
+            // Mirrors components/frames.rs card_frame defaults (offset 2, blur 4, alpha 60).
+            card:     ShadowPreset { offset: [0, 2],  blur: 4,  spread: 0, alpha: 60 },
+            // Mirrors components/frames.rs dialog_frame (offset 0,8 / blur 28 / spread 2 / a 80).
+            modal:    ShadowPreset { offset: [0, 8],  blur: 28, spread: 2, alpha: 80 },
+            // Mirrors style.rs paint_tooltip_shadow (offset+offset, alpha 60).
+            tooltip:  ShadowPreset { offset: [0, 2],  blur: 0,  spread: 0, alpha: 60 },
+            // Mirrors components/frames.rs themed_popup_frame (offset 0,8 / blur 24 / spread 1 / a 40).
+            dropdown: ShadowPreset { offset: [0, 8],  blur: 24, spread: 1, alpha: 40 },
+        }
+    }
+}
+
+// ─── Semantic color tokens ──────────────────────────────────────────────────
+// Intent colors that don't fit the existing `color` palette: hover overlay,
+// focus ring, disabled text/bg, order cancel pastel, sentiment, brand.
+// Stored as Rgba ([u8;4]) for TOML round-trip; converted to Color32 at site.
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticColorTokens {
+    /// Soft white overlay used for hover-tint on dark surfaces.
+    pub hover_tint:         Rgba,
+    /// Focus ring — accent-derived blue used for keyboard focus halos.
+    pub focus_ring:         Rgba,
+    /// Foreground for disabled controls (greyed text).
+    pub disabled_fg:        Rgba,
+    /// Background for disabled controls (flat, low-contrast).
+    pub disabled_bg:        Rgba,
+    /// Order/trade cancel button background — pastel red.
+    pub order_cancel_bg:    Rgba,
+    /// Order/trade cancel button foreground — dark red on pastel.
+    pub order_cancel_fg:    Rgba,
+    /// Sentiment positive — bullish / good news / upvote.
+    pub sentiment_positive: Rgba,
+    /// Sentiment neutral — informational / no signal.
+    pub sentiment_neutral:  Rgba,
+    /// Sentiment negative — bearish / bad news / downvote.
+    pub sentiment_negative: Rgba,
+    /// Discord brand purple (Blurple).
+    pub discord_blurple:    Rgba,
+}
+
+#[cfg(feature = "design-mode")]
+impl Default for SemanticColorTokens {
+    fn default() -> Self {
+        Self {
+            hover_tint:         [255, 255, 255,  16],
+            focus_ring:         [100, 200, 255, 200],
+            disabled_fg:        [140, 140, 150, 160],
+            disabled_bg:        [ 40,  40,  46, 200],
+            // Mirrors dom_panel.rs cancel_fill / cancel_fg literals.
+            order_cancel_bg:    [232, 156, 156, 255],
+            order_cancel_fg:    [ 70,  25,  25, 255],
+            sentiment_positive: [ 80, 200, 120, 255],
+            sentiment_neutral:  [180, 180, 195, 255],
+            sentiment_negative: [224,  85,  96, 255],
+            discord_blurple:    [ 88, 101, 242, 255],
+        }
+    }
+}
+
 // ─── Default + save ─────────────────────────────────────────────────────────
 
 #[cfg(feature = "design-mode")]
@@ -202,6 +304,8 @@ impl Default for DesignTokens {
                     [180, 100, 255, 255], // purple
                 ],
             },
+            shadow_preset: ShadowPresetTokens::default(),
+            semantic:      SemanticColorTokens::default(),
         }
     }
 }

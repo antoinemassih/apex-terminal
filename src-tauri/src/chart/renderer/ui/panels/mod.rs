@@ -1,3 +1,4 @@
+pub mod kit;
 pub mod alerts_panel;
 pub mod analysis_panel;
 pub mod apex_diagnostics;
@@ -8,9 +9,11 @@ pub mod dom_panel;
 pub mod feed_panel;
 pub mod heat_panel;
 pub mod heatmap_pane;
+pub mod indicators_panel;
 pub mod journal_panel;
 pub mod news_panel;
 pub mod object_tree;
+pub mod order_ledger_panel;
 pub mod orders_panel;
 pub mod playbook_panel;
 pub mod plays_panel;
