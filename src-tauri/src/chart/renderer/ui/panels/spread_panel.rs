@@ -6,9 +6,10 @@ use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::text::{MonospaceCode, SectionLabel};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
-use super::super::widgets::inputs::TextInput;
+use crate::ui_kit::icons::Icon;
 use super::super::widgets::cards::metric_card::MetricCard;
-use super::super::widgets::headers::PanelHeaderWithClose;
+use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+use super::super::widgets::text::SectionLabelSize;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 
@@ -225,37 +226,36 @@ const EXPIRY_OPTIONS: &[&str] = &["0DTE", "1W", "2W", "1M", "2M", "3M"];
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
     if !watchlist.spread_open { return; }
 
-    let mut close = false;
     let mut pending_strategy: Option<SpreadStrategy> = None;
     let mut remove_leg: Option<usize> = None;
     let mut add_leg = false;
     let mut do_submit = false;
 
-    egui::Window::new("spread_builder")
-        .default_pos(egui::pos2(400.0, 100.0))
-        .default_size(egui::vec2(340.0, 520.0))
-        .resizable(true)
-        .movable(true)
-        .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
-            .corner_radius(r_lg_cr()))
-        .show(ctx, |ui| {
+    let frame = egui::Frame::popup(&ctx.style())
+        .fill(t.toolbar_bg)
+        .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
+        .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
+        .corner_radius(r_lg_cr());
+
+    let resp = Modal::new("SPREAD BUILDER")
+        .id("spread_builder")
+        .ctx(ctx)
+        .theme(t)
+        .size(egui::vec2(340.0, 520.0))
+        .anchor(Anchor::Window { pos: Some(egui::pos2(400.0, 100.0)) })
+        .frame_kind(FrameKind::Custom(frame))
+        .draggable_header(true)
+        .header_style(HeaderStyle::Panel {
+            title_size:      SectionLabelSize::Sm,
+            title_size_px:   Some(10.0),
+            title_monospace: Some(true),
+            leading_space:   8.0,
+            trailing_space:  6.0,
+        })
+        .separator(false)
+        .show(|ui| {
             let w = ui.available_width();
 
-            // ── Header — monospace 10px title with edge padding for the zero-margin popup frame ──
-            if PanelHeaderWithClose::new("SPREAD BUILDER")
-                .title_monospace(true)
-                .title_size_px(10.0)
-                .leading_space(8.0)
-                .trailing_space(6.0)
-                .theme(t)
-                .show(ui)
-            {
-                close = true;
-            }
             ui.add_space(4.0);
             // Divider
             let div_rect = egui::Rect::from_min_size(
@@ -343,7 +343,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         egui::pos2(card_rect.min.x + 6.0, card_rect.center().y),
                         egui::Align2::LEFT_CENTER,
                         &leg_text,
-                        egui::FontId::monospace(11.0),
+                        mono_sm(),
                         leg_label_col,
                     );
 
@@ -371,9 +371,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             leg.side = if leg.side == "BUY" { "SELL".into() } else { "BUY".into() };
                         }
                         // Qty
-                        if ui.add(Button::icon("-").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() && leg.qty > 1 { leg.qty -= 1; }
+                        if ui.add(Button::icon(Icon::MINUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() && leg.qty > 1 { leg.qty -= 1; }
                         ui.add(MonospaceCode::new(&format!("{}", leg.qty)).size_px(9.0).color(egui::Color32::from_gray(220)));
-                        if ui.add(Button::icon("+").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() { leg.qty += 1; }
+                        if ui.add(Button::icon(Icon::PLUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() { leg.qty += 1; }
                         // Option type toggle
                         let ot_col = if leg.option_type == "CALL" { t.bull } else { t.bear };
                         if ui.add(Button::new(leg.option_type.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(ot_col).min_size(egui::vec2(34.0, 14.0))).clicked() {
@@ -475,7 +475,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             });
         });
 
-    if close { watchlist.spread_open = false; }
+    if resp.closed { watchlist.spread_open = false; }
 
     // Apply deferred actions outside the closure
     if let Some(strat) = pending_strategy {
@@ -544,5 +544,6 @@ fn submit_spread(watchlist: &mut Watchlist) {
         OrderResult::NeedsConfirmation(id) => format!("OK: Needs confirmation (ID {})", id),
         OrderResult::Rejected(reason) => format!("Rejected: {}", reason),
         OrderResult::Duplicate => "Duplicate order blocked".into(),
+        OrderResult::NeedsApproval { reason, .. } => format!("Needs approval: {}", reason),
     });
 }

@@ -10,8 +10,10 @@ pub mod order_manager;
 pub(crate) mod snapshot;
 pub(crate) mod inflight;
 pub(crate) mod paper;
+pub(crate) mod broker;
 
 use std::sync::{Mutex, OnceLock};
+use crate::chart_renderer::ui::style::COLOR_PROFIT_GREEN;
 
 /// ApexIB endpoint configuration (duplicated from gpu.rs where it's also used)
 pub(crate) const APEXIB_URL: &str = "https://apexib-dev.xllio.com";
@@ -24,6 +26,12 @@ pub(crate) enum OrderSide { Buy, Sell, Stop, OcoTarget, OcoStop, TriggerBuy, Tri
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum OrderStatus { Draft, Placed, Executed, Cancelled }
 
+/// Re-export of the full lifecycle state for state-aware rendering.
+/// `OrderLevel` carries this in addition to the legacy 4-bucket `OrderStatus`
+/// so the chart renderer can paint pulsing/dashed/ghosted variants per state
+/// without losing information across the conversion.
+pub(crate) use order_manager::OrderState;
+
 #[derive(Debug, Clone)]
 pub(crate) struct OrderLevel {
     pub id: u32,
@@ -31,6 +39,11 @@ pub(crate) struct OrderLevel {
     pub price: f32,
     pub qty: u32,
     pub status: OrderStatus,
+    /// Full lifecycle state — added so renderers can show
+    /// PendingSubmit/PendingCancel/PendingModify/PartialFill/Unknown/Filled
+    /// distinctly. Construction sites that don't have a richer signal can fall
+    /// back to `OrderState::from_legacy_status(status)`.
+    pub state: OrderState,
     pub pair_id: Option<u32>, // linked order (OCO target↔stop, trigger buy↔sell)
     // Option trigger metadata (only for TriggerBuy/TriggerSell on underlying chart)
     pub option_symbol: Option<String>,  // e.g. "SPY 560C 0DTE"
@@ -38,6 +51,22 @@ pub(crate) struct OrderLevel {
     // Trailing stop visualization
     pub trail_amount: Option<f32>,
     pub trail_percent: Option<f32>,
+    /// Fill ratio for PartialFill rendering (filled_qty / qty in [0.0, 1.0]).
+    /// Only meaningful when `state == OrderState::PartialFill`.
+    pub filled_ratio: f32,
+}
+
+impl OrderState {
+    /// Lossy upgrade from the legacy 4-bucket status used by chart-side
+    /// constructors that haven't been wired to the `OrderManager` yet.
+    pub(crate) fn from_legacy_status(s: OrderStatus) -> Self {
+        match s {
+            OrderStatus::Draft => Self::Draft,
+            OrderStatus::Placed => Self::Working,
+            OrderStatus::Executed => Self::Filled,
+            OrderStatus::Cancelled => Self::Cancelled,
+        }
+    }
 }
 
 impl OrderLevel {
@@ -136,6 +165,34 @@ impl Position {
 // Shared account data — written by background worker, read by render thread
 pub(crate) static ACCOUNT_DATA: OnceLock<Mutex<Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>> = OnceLock::new();
 
+/// Exponential backoff for poll loops. Doubles on failure (1→2→4→8→16→30s
+/// ceiling), snaps back to base on first success. Used by the hot-orders and
+/// slow-account threads so a downed broker doesn't get hammered every cycle.
+struct PollBackoff {
+    base_secs: u64,
+    current_secs: u64,
+    max_secs: u64,
+}
+impl PollBackoff {
+    fn new(base: u64) -> Self { Self { base_secs: base, current_secs: base, max_secs: 30 } }
+    fn on_success(&mut self) {
+        if self.current_secs != self.base_secs {
+            eprintln!("[poll-backoff] reconnected after backoff (was {}s)", self.current_secs);
+        }
+        self.current_secs = self.base_secs;
+    }
+    fn on_failure(&mut self) {
+        let next = (self.current_secs * 2).min(self.max_secs);
+        if next != self.current_secs {
+            eprintln!("[poll-backoff] backing off {}s -> {}s", self.current_secs, next);
+            self.current_secs = next;
+        }
+    }
+    fn sleep(&self) {
+        std::thread::sleep(std::time::Duration::from_secs(self.current_secs));
+    }
+}
+
 /// Start the account polling workers (call once).
 ///
 /// Wave 4a — split into two threads:
@@ -160,6 +217,7 @@ pub(crate) fn start_account_poller() {
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(3))
                 .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+            let mut backoff = PollBackoff::new(1);
             loop {
                 let (ib_orders, any_ok) = fetch_ib_orders(&client);
                 // Feed the reconciler — even if the slow thread hasn't yet
@@ -182,7 +240,8 @@ pub(crate) fn start_account_poller() {
                         }
                     }
                 }
-                std::thread::sleep(std::time::Duration::from_secs(1));
+                if any_ok { backoff.on_success(); } else { backoff.on_failure(); }
+                backoff.sleep();
             }
         });
 
@@ -192,12 +251,15 @@ pub(crate) fn start_account_poller() {
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(3))
                 .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+            let mut backoff = PollBackoff::new(5);
             loop {
                 let mut summary = AccountSummary::default();
                 let mut positions = Vec::new();
+                let mut any_ok = false;
 
                 // Fetch account summary
                 if let Ok(resp) = client.get(format!("{}/account/summary", APEXIB_URL)).send() {
+                    any_ok = true;
                     order_manager::mark_broker_contact();
                     if let Ok(json) = resp.json::<serde_json::Value>() {
                         summary.connected = true;
@@ -218,6 +280,7 @@ pub(crate) fn start_account_poller() {
 
                 // Fetch P&L
                 if let Ok(resp) = client.get(format!("{}/account/pnl", APEXIB_URL)).send() {
+                    any_ok = true;
                     order_manager::mark_broker_contact();
                     if let Ok(json) = resp.json::<serde_json::Value>() {
                         summary.daily_pnl = json["dailyPnL"].as_f64().unwrap_or(0.0);
@@ -228,6 +291,7 @@ pub(crate) fn start_account_poller() {
 
                 // Fetch positions
                 if let Ok(resp) = client.get(format!("{}/positions", APEXIB_URL)).send() {
+                    any_ok = true;
                     order_manager::mark_broker_contact();
                     if let Ok(json) = resp.json::<serde_json::Value>() {
                         if let Some(pos_arr) = json["positions"].as_array() {
@@ -261,7 +325,8 @@ pub(crate) fn start_account_poller() {
                     }
                 }
 
-                std::thread::sleep(std::time::Duration::from_secs(5));
+                if any_ok { backoff.on_success(); } else { backoff.on_failure(); }
+                backoff.sleep();
             }
         });
         true
@@ -393,7 +458,7 @@ pub(crate) fn market_session() -> (&'static str, egui::Color32) {
     let now = chrono::Utc::now();
     let h = now.hour(); let m = now.minute();
     let mins = h * 60 + m;
-    if mins >= 13*60+30 && mins < 20*60 { ("OPEN", egui::Color32::from_rgb(46, 204, 113)) }
+    if mins >= 13*60+30 && mins < 20*60 { ("OPEN", COLOR_PROFIT_GREEN) }
     else if mins >= 9*60 && mins < 13*60+30 { ("PRE", egui::Color32::from_rgb(255, 193, 37)) }
     else if mins >= 20*60 { ("POST", egui::Color32::from_rgb(100, 150, 255)) }
     else { ("CLOSED", egui::Color32::from_rgb(100, 100, 110)) }
@@ -416,6 +481,8 @@ pub(crate) struct FloatingOrderPane {
     pub is_call: bool,
     pub qty: u32,
     pub pos: egui::Pos2,     // window position (relative to pane)
+    /// Header-double-clicked collapse state.
+    pub collapsed: bool,
 }
 
 #[derive(Clone)]

@@ -13,6 +13,7 @@ pub mod indicators_panel;
 pub mod journal_panel;
 pub mod news_panel;
 pub mod object_tree;
+pub mod order_health_panel;
 pub mod order_ledger_panel;
 pub mod orders_panel;
 pub mod playbook_panel;

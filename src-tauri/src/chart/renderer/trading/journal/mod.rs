@@ -88,6 +88,70 @@ pub(crate) fn find_orphan_attempts() -> Vec<(String, AttemptKind, u64, serde_jso
     orphans
 }
 
+/// Spawn a background thread that snapshots the WAL hourly.
+/// State layout: state/wal_backup/orders-2026-05-10T14.wal (one per hour, plus
+/// orders.wal.1 rotation if present). Keeps last 24 backups; older are deleted.
+///
+/// Idempotent — repeated calls are no-ops thanks to the OnceLock guard.
+/// Does NOT acquire `wal::WAL_LOCK`, so the append path is never blocked.
+pub(crate) fn start_wal_backup_thread() {
+    static STARTED: OnceLock<()> = OnceLock::new();
+    if STARTED.get().is_some() { return; }
+    let _ = STARTED.set(());
+    std::thread::spawn(|| loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600)); // 1 hour
+        match snapshot_wal() {
+            Ok(path) => eprintln!("[wal-backup] snapshot saved: {}", path),
+            Err(e) => eprintln!("[wal-backup] failed: {}", e),
+        }
+        prune_old_backups(24);
+    });
+}
+
+/// Trigger a snapshot synchronously. Exposed so a future "Backup now" button
+/// in the Order Ledger panel can call it. Returns the destination path on
+/// success.
+#[allow(dead_code)]
+pub(crate) fn snapshot_wal_now() -> Result<String, String> {
+    snapshot_wal()
+}
+
+fn snapshot_wal() -> Result<String, String> {
+    use std::fs;
+    let src = wal::wal_path();
+    if !src.exists() { return Err("no wal yet".into()); }
+    let dir = backup_dir()?;
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir: {e}"))?;
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H").to_string();
+    let dst = dir.join(format!("orders-{}.wal", now));
+    fs::copy(&src, &dst).map_err(|e| format!("copy: {e}"))?;
+    // Also snapshot the rotated WAL if present, so the audit trail across the
+    // 10 MB rotation boundary survives a corruption event.
+    let rotated_src = src.with_file_name("orders.wal.1");
+    if rotated_src.exists() {
+        let rotated_dst = dir.join(format!("orders-{}.wal.1", now));
+        let _ = fs::copy(&rotated_src, &rotated_dst);
+    }
+    Ok(dst.to_string_lossy().into_owned())
+}
+
+fn prune_old_backups(keep: usize) {
+    let dir = match backup_dir() { Ok(d) => d, Err(_) => return };
+    let mut entries: Vec<_> = match std::fs::read_dir(&dir) {
+        Ok(it) => it.flatten().collect(),
+        Err(_) => return,
+    };
+    // Newest first by filename — timestamp prefix sorts lexicographically.
+    entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+    for old in entries.iter().skip(keep) {
+        let _ = std::fs::remove_file(old.path());
+    }
+}
+
+fn backup_dir() -> Result<std::path::PathBuf, String> {
+    Ok(wal::wal_path().parent().ok_or("no parent")?.join("wal_backup"))
+}
+
 /// Scan the WAL and report Attempts that never received an Ack or Fail.
 /// Logs each to stderr; returns count.
 #[allow(dead_code)]

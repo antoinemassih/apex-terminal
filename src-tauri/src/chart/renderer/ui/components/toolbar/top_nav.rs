@@ -105,13 +105,14 @@ use crate::chart_renderer::gpu::{
     new_uuid,
 };
 use crate::chart_renderer::ui::style::{
-    color_alpha, hex_to_color, segmented_control,
+    color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, hex_to_color, segmented_control,
     dialog_window_themed, dialog_header, action_btn,
     FONT_MD, FONT_SM, FONT_2XS, STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
     BTN_ICON_SM, BTN_ICON_LG,
     set_toolbar_rect, tb_group_break, current as style_current,
-    font_xs, font_sm, font_md, alpha_muted, alpha_ghost, alpha_strong,
+    font_xs, font_sm, font_md, font_lg, font_xl, alpha_muted, alpha_ghost, alpha_strong,
+    mono_xs, mono_sm, mono_md, mono_lg,
     gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
     stroke_std, stroke_thin, r_md_cr,
 };
@@ -221,6 +222,19 @@ pub(crate) fn render(
     conn_panel_open: &mut bool,
     toasts: &[(String, f32, std::time::Instant, bool)],
 ) {
+    {
+        use std::sync::Once;
+        static SHORTCUTS_REGISTERED: Once = Once::new();
+        SHORTCUTS_REGISTERED.call_once(|| {
+            use crate::foundation::shortcuts::{register, shortcut_cmd, ShortcutEntry};
+            register(ShortcutEntry {
+                shortcut: shortcut_cmd(egui::Key::L),
+                action: "panel.order_ledger_toggle",
+                description: "Toggle order ledger panel",
+                category: "Panels",
+            });
+        });
+    }
     use crate::monitoring::{span_begin, span_end};
     let ap = *active_pane;
     span_begin("top_panel");
@@ -352,9 +366,9 @@ pub(crate) fn render(
             //     hover fill spanning the entire toolbar height before the button widget.
             {
                 let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
-                let acct_label = if connected { "IBKR ●" } else { "IBKR ○" };
+                let acct_label_owned = format!("IBKR {}", if connected { Icon::CIRCLE_FILL } else { Icon::CIRCLE });
                 let acct_active = watchlist.account_strip_open;
-                let acct_resp = toolbar_btn(ui, acct_label, acct_active, t)
+                let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t)
                     .on_hover_text("Account Summary");
                 if style_current().vertical_group_dividers && acct_resp.hovered() {
                     let col = color_alpha(t.toolbar_border, 80);
@@ -491,7 +505,7 @@ pub(crate) fn render(
                 let range_resp = ui.menu_button(egui::RichText::new(range_label).monospace().size(font_sm()).strong().color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                    ui.label(egui::RichText::new("RANGE").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.4)));
+                    ui.label(egui::RichText::new("RANGE").monospace().size(FONT_SM).color(color_dim(t.dim)));
                     let presets: &[(&str, &str, u32)] = &[
                         ("1 Day",    "5m",  78),
                         ("2 Days",   "5m",  156),
@@ -541,7 +555,7 @@ pub(crate) fn render(
                 let has_tool = !panes[ap].draw_tool.is_empty();
                 let cur_tool = panes[ap].draw_tool.clone();
                 let mut new_tool: Option<String> = None;
-                let drawing_menu = ui.menu_button(egui::RichText::new(draw_label).size(16.0).color(if has_tool { t.accent } else { t.dim }), |ui| {
+                let drawing_menu = ui.menu_button(egui::RichText::new(draw_label).size(font_lg()).color(if has_tool { t.accent } else { t.dim }), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     let cur = cur_tool.as_str();
@@ -665,7 +679,7 @@ pub(crate) fn render(
             ui.add(egui::Separator::default().spacing(4.0));
 
             // ── Organized dropdown menus ──
-            let _menu_font = egui::FontId::monospace(11.0);
+            let _menu_font = mono_sm();
 
             // Chart Type dropdown (single-select)
             let cm_label = match panes[ap].candle_mode {
@@ -774,7 +788,7 @@ pub(crate) fn render(
 
             // ── Indicators dropdown — single chart-icon entry point with nested
             //    submenus for MAs / Oscillators / Volume / Overlays / Tools / Suites.
-            let indicators_menu = ui.menu_button(egui::RichText::new(Icon::CHART_LINE).size(16.0).color(t.dim), |ui| {
+            let indicators_menu = ui.menu_button(egui::RichText::new(Icon::CHART_LINE).size(font_lg()).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
@@ -807,10 +821,10 @@ pub(crate) fn render(
                                     if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
                                 }
                             }
-                            if KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::Ghost).glyph_color(t.dim.gamma_multiply(0.5)).show(ui, t).clicked() {
+                            if KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::MutedIcon).show(ui, t).clicked() {
                                 panes[ap].editing_indicator = Some(*eid);
                             }
-                            if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(t.bear.gamma_multiply(0.5)).show(ui, t).clicked() {
+                            if KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).glyph_color(color_half(t.bear)).show(ui, t).clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 if shift || watchlist.broadcast_mode {
                                     for p in panes.iter_mut() {
@@ -1091,7 +1105,7 @@ pub(crate) fn render(
 
                 ui.separator();
                 // Symbol overlays
-                ui.label(egui::RichText::new("SYMBOL OVERLAY").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("SYMBOL OVERLAY").monospace().size(FONT_SM).color(color_half(t.dim)));
                 let mut remove_idx: Option<usize> = None;
                 let mut edit_idx: Option<usize> = None;
                 for (oi, ov) in panes[ap].symbol_overlays.iter().enumerate() {
@@ -1101,7 +1115,7 @@ pub(crate) fn render(
                         ui.add_space(gap_xl());
                         let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(FONT_SM).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
-                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(t.bear.gamma_multiply(0.5)).show(ui, t).clicked() {
+                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(color_half(t.bear)).show(ui, t).clicked() {
                             remove_idx = Some(oi);
                         }
                     });
@@ -1122,7 +1136,7 @@ pub(crate) fn render(
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
-                ui.label(egui::RichText::new("DISPLAY").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("DISPLAY").monospace().size(FONT_SM).color(color_half(t.dim)));
                 let ohlc = panes[ap].ohlc_tooltip;
                 if ui.add(SelectableRow::new("OHLC Tooltip", ohlc)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !ohlc;
@@ -1147,7 +1161,7 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("P&L Curve", pnl)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
 
                 ui.separator();
-                ui.label(egui::RichText::new("CURSOR").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("CURSOR").monospace().size(FONT_SM).color(color_half(t.dim)));
                 let fp = panes[ap].show_footprint;
                 if ui.add(SelectableRow::new("Footprint (hover)", fp)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !fp;
@@ -1155,7 +1169,7 @@ pub(crate) fn render(
                 }
 
                 ui.separator();
-                ui.label(egui::RichText::new("REPLAY").monospace().size(FONT_SM).color(t.dim.gamma_multiply(0.5)));
+                ui.label(egui::RichText::new("REPLAY").monospace().size(FONT_SM).color(color_half(t.dim)));
                 let rpl = panes[ap].replay_mode;
                 if ui.add(SelectableRow::new("Bar Replay", rpl)).clicked() {
                     panes[ap].replay_mode = !panes[ap].replay_mode;
@@ -1207,7 +1221,7 @@ pub(crate) fn render(
             }
 
             // ── Widgets dropdown — two-layer categorized picker with mini previews ──
-            let widgets_menu = ui.menu_button(egui::RichText::new(Icon::CIRCLES_FOUR).size(16.0).color(t.dim), |ui| {
+            let widgets_menu = ui.menu_button(egui::RichText::new(Icon::CIRCLES_FOUR).size(font_lg()).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(160.0);
@@ -1275,7 +1289,7 @@ pub(crate) fn render(
                             // Description
                             let desc = widget_description(kind);
                             p.text(egui::pos2(name_x, r.top() + 23.0), egui::Align2::LEFT_CENTER,
-                                desc, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.35));
+                                desc, mono_sm(), t.dim.gamma_multiply(0.35));
 
                             // Active checkmark
                             if is_active {
@@ -1338,12 +1352,12 @@ pub(crate) fn render(
             // ── Workspace — icon-only dropdown (active workspace shown inside the menu) ──
             {
                 let ws_names = list_workspaces();
-                let ws_menu = ui.menu_button(egui::RichText::new(Icon::BROWSERS).size(16.0).color(t.dim), |ui| {
+                let ws_menu = ui.menu_button(egui::RichText::new(Icon::BROWSERS).size(font_lg()).color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.set_min_width(200.0);
 
-                    ui.label(egui::RichText::new("WORKSPACES").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.5)));
+                    ui.label(egui::RichText::new("WORKSPACES").monospace().size(font_xs()).color(color_half(t.dim)));
                     ui.add_space(gap_sm());
 
                     // Workspace list
@@ -1399,7 +1413,7 @@ pub(crate) fn render(
 
                     // Auto-save info
                     ui.add_space(gap_sm());
-                    ui.label(egui::RichText::new("Auto-saves every 30s").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.3)));
+                    ui.label(egui::RichText::new("Auto-saves every 30s").monospace().size(font_xs()).color(color_very_dim(t.dim)));
                 });
                 paint_nav_col_tint(ui, tb_rect, ws_menu.response.rect, t,
                     ws_menu.response.hovered(), false, "workspace");
@@ -1488,7 +1502,7 @@ pub(crate) fn render(
                     let (resp, r) = win_btn(ui, true);
                     let c = r.center();
                     let s = 4.5;
-                    let col = if resp.hovered() { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                    let col = if resp.hovered() { egui::Color32::WHITE } else { color_subtle(t.dim) };
                     ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(STROKE_STD, col));
                     ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(STROKE_STD, col));
                     if resp.clicked() {
@@ -1502,7 +1516,7 @@ pub(crate) fn render(
                     let (resp, r) = win_btn(ui, false);
                     let c = r.center();
                     let s = 4.5;
-                    let col = if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.7) };
+                    let col = if resp.hovered() { t.dim } else { color_subtle(t.dim) };
                     let is_max = win_ref.as_ref().map_or(false, |w| w.is_maximized());
                     if is_max {
                         // Restore icon: two overlapping squares
@@ -1521,7 +1535,7 @@ pub(crate) fn render(
                     let (resp, r) = win_btn(ui, false);
                     let c = r.center();
                     let s = 5.0;
-                    let col = if resp.hovered() { t.dim } else { t.dim.gamma_multiply(0.7) };
+                    let col = if resp.hovered() { t.dim } else { color_subtle(t.dim) };
                     ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(STROKE_STD, col));
                     if resp.clicked() {
                         if let Some(w) = &win_ref { w.set_minimized(true); }
@@ -1598,7 +1612,7 @@ pub(crate) fn render(
                         let col = color_alpha(t.toolbar_border, alpha_muted());
                         $ui.painter().line_segment(
                             [egui::pos2(x, tb_rect.top() + 4.0), egui::pos2(x, tb_rect.bottom() - 4.0)],
-                            egui::Stroke::new(0.5, col),
+                            egui::Stroke::new(stroke_thin(), col),
                         );
                     }};
                 }
@@ -1777,7 +1791,7 @@ pub(crate) fn render(
                         }
                         ui.horizontal(|ui| {
                             ui.add_space(gap_md());
-                            ui.label(egui::RichText::new(section).monospace().size(font_xs()).strong().color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(section).monospace().size(font_xs()).strong().color(color_half(t.dim)));
                         });
                         ui.add_space(gap_xs());
                         last_section = section;
@@ -1801,14 +1815,14 @@ pub(crate) fn render(
                     ui.painter().text(
                         egui::pos2(row_rect.left() + 14.0, row_rect.center().y),
                         egui::Align2::LEFT_CENTER, tf_label,
-                        egui::FontId::monospace(11.0), lc,
+                        mono_sm(), lc,
                     );
 
                     // Star — toggles favorite without closing the dropdown
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { t.dim.gamma_multiply(0.5) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
-                    ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(11.0), sc);
+                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
+                    ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                         if is_fav { watchlist.timeframe_favorites.retain(|f| f != tf_label); }
@@ -1883,7 +1897,7 @@ pub(crate) fn render(
                         }
                         ui.horizontal(|ui| {
                             ui.add_space(gap_md());
-                            ui.label(egui::RichText::new(sec).monospace().size(font_xs()).strong().color(t.dim.gamma_multiply(0.5)));
+                            ui.label(egui::RichText::new(sec).monospace().size(font_xs()).strong().color(color_half(t.dim)));
                         });
                         ui.add_space(gap_xs());
                         last_section = sec;
@@ -1904,7 +1918,7 @@ pub(crate) fn render(
 
                     // Mini glyph (29×19)
                     let gr = egui::Rect::from_min_size(egui::pos2(row_rect.left() + 6.0, row_rect.center().y - 9.5), egui::vec2(29.0, 19.0));
-                    let gc = if is_cur { t.accent } else if hovered { t.dim } else { t.dim.gamma_multiply(0.5) };
+                    let gc = if is_cur { t.accent } else if hovered { t.dim } else { color_half(t.dim) };
                     let mini = ly.pane_rects(gr, ly.max_panes(), 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5);
                     for mr in &mini {
                         let s = egui::Rect::from_min_max(egui::pos2(mr.left() + 0.5, mr.top() + 0.5), egui::pos2(mr.right() - 0.5, mr.bottom() - 0.5));
@@ -1914,15 +1928,15 @@ pub(crate) fn render(
 
                     // Label + description
                     let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
-                    ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), egui::FontId::monospace(11.0), lc);
+                    ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), mono_sm(), lc);
                     let dc = if hovered { color_alpha(t.dim, ALPHA_HEAVY) } else { t.dim.gamma_multiply(0.55) };
-                    ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), egui::FontId::monospace(11.0), dc);
+                    ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);
 
                     // Star — filled, raw pointer click
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { t.dim.gamma_multiply(0.5) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
-                    ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(11.0), sc);
+                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
+                    ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                         if is_fav { watchlist.layout_favorites.retain(|f| f != ly.label()); }
@@ -1997,7 +2011,7 @@ pub(crate) fn render(
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].new_group_name)
-                        .hint_text("Group name...").desired_width(230.0 - m * 2.0).font(egui::FontId::monospace(11.0)));
+                        .hint_text("Group name...").desired_width(230.0 - m * 2.0).font(mono_sm()));
                     resp.request_focus();
                 });
                 ui.add_space(gap_lg());
@@ -2066,6 +2080,16 @@ pub(crate) fn render(
     }
     span_begin("sidebar.order_ledger");
     crate::chart_renderer::ui::panels::order_ledger_panel::draw(ctx, watchlist, panes, t);
+
+    // ── Order System Health (operator observability) ────────────────────────
+    // Hotkey: Ctrl+Shift+O toggles a small dashboard with submit-latency,
+    // reject-rate, top reject reasons, active-state counts and broker contact
+    // age. Recomputes journal aggregates at most once/sec via in-panel cache.
+    if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::O)) {
+        watchlist.order_health_open = !watchlist.order_health_open;
+    }
+    span_begin("sidebar.order_health");
+    crate::chart_renderer::ui::panels::order_health_panel::draw(ctx, watchlist, t);
 
     // ── Scanner side panel
     span_begin("sidebar.scanner");

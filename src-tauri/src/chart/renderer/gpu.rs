@@ -1317,20 +1317,31 @@ pub(crate) fn render_order_entry_body(
                 });
             } else {
                 use super::trading::order_manager::*;
-                let result = submit_order(OrderIntent {
+                let intent = OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Buy,
                     order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
                     source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
-                });
+                    strategy_id: None, override_warnings: false,
+                };
+                let result = submit_order(intent.clone());
                 match result {
                     OrderResult::Accepted(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                     }
                     OrderResult::NeedsConfirmation(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                         chart.pending_confirms.push((id as u32, std::time::Instant::now()));
                     }
-                    _ => {}
+                    OrderResult::NeedsApproval { reason, .. } => {
+                        // Stash original intent + reason for the per-frame
+                        // approval modal; on confirm, the modal flips
+                        // override_warnings=true and resubmits.
+                        enqueue_approval(reason, intent);
+                    }
+                    OrderResult::Rejected(reason) => {
+                        eprintln!("[aperture] rejected (buy @ {:.2}): {}", price, reason);
+                    }
+                    OrderResult::Duplicate => { /* silently blocked */ }
                 }
             }
         }
@@ -1348,20 +1359,31 @@ pub(crate) fn render_order_entry_body(
                 });
             } else {
                 use super::trading::order_manager::*;
-                let result = submit_order(OrderIntent {
+                let intent = OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Sell,
                     order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
                     source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
-                });
+                    strategy_id: None, override_warnings: false,
+                };
+                let result = submit_order(intent.clone());
                 match result {
                     OrderResult::Accepted(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                     }
                     OrderResult::NeedsConfirmation(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                         chart.pending_confirms.push((id as u32, std::time::Instant::now()));
                     }
-                    _ => {}
+                    OrderResult::NeedsApproval { reason, .. } => {
+                        // Stash original intent + reason for the per-frame
+                        // approval modal; on confirm, the modal flips
+                        // override_warnings=true and resubmits.
+                        enqueue_approval(reason, intent);
+                    }
+                    OrderResult::Rejected(reason) => {
+                        eprintln!("[aperture] rejected (sell @ {:.2}): {}", price, reason);
+                    }
+                    OrderResult::Duplicate => { /* silently blocked */ }
                 }
             }
         }
@@ -3492,6 +3514,8 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         }
     }
     super::trading::order_manager::gc_orders(); // periodic cleanup
+    // Stash the active theme index in egui memory so ui_kit widgets can read it.
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("apex_active_theme_idx"), theme_idx));
     let win_ref: Option<Arc<Window>> = {
         CURRENT_WINDOW.with(|w| w.borrow().clone())
     };
@@ -4023,6 +4047,10 @@ pub(crate) struct Watchlist {
     pub(crate) order_ledger_view: u8,    // 0=Active, 1=Journal, 2=All
     pub(crate) order_ledger_filter: u8,  // index into LedgerFilter
     pub(crate) order_ledger_search: String,
+    /// Order System Health panel — operator observability for the order
+    /// subsystem. Toggled via Ctrl+Shift+O. See
+    /// `chart::renderer::ui::panels::order_health_panel`.
+    pub(crate) order_health_open: bool,
     pub(crate) trendline_filter_open: bool, // trendline filter dropdown
     pub(crate) account_strip_open: bool, // account summary bar below toolbar
     pub(crate) object_tree_open: bool, // object tree panel (drawings, indicators, overlays)
@@ -4278,6 +4306,7 @@ impl Watchlist {
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
                order_ledger_open: false, order_ledger_view: 0, order_ledger_filter: 0, order_ledger_search: String::new(),
+               order_health_open: false,
                settings_open: false, font_scale: 1.6, native_dpi_scale: 1.0, font_idx: 0,
                default_stock_qty: 100, default_options_qty: 1, default_order_type: 0, default_tif: 0, default_outside_rth: false,
                compact_mode: false,

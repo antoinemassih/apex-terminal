@@ -11,12 +11,13 @@
 //! - Backend sync (ApexIB)
 //! - Thread-safe global singleton
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use super::{OrderSide, OrderStatus, OrderLevel, APEXIB_URL};
 use super::{snapshot, inflight, paper};
+use super::broker::{Broker, LiveBroker, PaperBroker, SubmitArgs};
 use super::journal::{self, JournalEvent, AttemptKind, ControlKind};
 
 // ─── Lock helper (panic-poison recovery) ────────────────────────────────────
@@ -53,6 +54,7 @@ fn manager() -> &'static Mutex<OrderManager> {
         }
         start_pending_sweeper();
         start_broker_watchdog();
+        journal::start_wal_backup_thread();
         mgr
     })
 }
@@ -223,19 +225,26 @@ pub(crate) fn new_client_order_id() -> String {
 }
 
 impl ManagedOrder {
-    /// Convert to legacy OrderLevel for rendering compatibility
+    /// Convert to legacy OrderLevel for rendering compatibility.
+    /// Carries the full lifecycle `state` so the renderer can paint
+    /// pending-pulse / partial-fill / unknown / ghost-filled variants.
     pub(crate) fn to_order_level(&self) -> OrderLevel {
+        let filled_ratio = if self.qty > 0 {
+            (self.filled_qty as f32 / self.qty as f32).clamp(0.0, 1.0)
+        } else { 0.0 };
         OrderLevel {
             id: self.id as u32,
             side: self.side,
             price: self.price,
             qty: self.qty,
             status: self.state.to_legacy(),
+            state: self.state,
             pair_id: self.pair_id.map(|p| p as u32),
             option_symbol: self.option_symbol.clone(),
             option_con_id: self.option_con_id,
             trail_amount: self.trail_amount,
             trail_percent: self.trail_percent,
+            filled_ratio,
         }
     }
 }
@@ -265,6 +274,45 @@ pub(crate) struct OrderIntent {
     // TIF and extended hours
     pub(crate) tif: u8,           // 0=DAY, 1=GTC, 2=IOC
     pub(crate) outside_rth: bool, // allow trading outside regular trading hours
+    // ── Wave 7 Task 5: strategy attribution ──
+    /// Optional strategy/play identifier so the UI ledger and journal can
+    /// show which automation drove a fill. Manual entry from UI sets None.
+    /// Bracket/OCO legs inherit from the parent intent in the spawn helpers.
+    #[allow(dead_code)] // read via journal payload + ledger panel; field still consumed across paths
+    pub(crate) strategy_id: Option<String>,
+    // ── Wave 7 Task 6: risk tier override ──
+    /// When `true`, the manager skips the fat-finger and max-notional checks
+    /// (only those two — kill, halt, position cap, oversell, dedup, qty=0
+    /// remain mandatory). Default `false`. The UI MUST NEVER set this to
+    /// `true` without an explicit operator confirmation dialog: this knob
+    /// is the difference between "you typed the wrong price" and "I really
+    /// meant 5x bigger than usual".
+    #[allow(dead_code)]
+    pub(crate) override_warnings: bool,
+}
+
+impl Default for OrderIntent {
+    fn default() -> Self {
+        Self {
+            symbol: String::new(),
+            side: OrderSide::Buy,
+            order_type: ManagedOrderType::Market,
+            price: 0.0,
+            stop_price: 0.0,
+            qty: 0,
+            source: OrderSource::Api,
+            pair_with: None,
+            option_symbol: None,
+            option_con_id: None,
+            trail_amount: None,
+            trail_percent: None,
+            last_price: 0.0,
+            tif: 0,
+            outside_rth: false,
+            strategy_id: None,
+            override_warnings: false,
+        }
+    }
 }
 
 // ─── Conditional Order Intent ─────────────────────────────────────────────────
@@ -304,6 +352,25 @@ pub(crate) enum OrderResult {
     NeedsConfirmation(u64),  // Order ID, requires armed/confirm
     Rejected(String),        // Reason
     Duplicate,               // Dedup caught it
+    /// Wave 8a: a soft-block warning gate. Fat-finger / max-notional / similar
+    /// "this looks unusual" checks return this instead of a hard reject when
+    /// the intent did NOT carry `override_warnings = true`. The UI is expected
+    /// to surface `reason` to the operator and, on explicit confirmation,
+    /// resubmit the same intent with `override_warnings = true` (which bypasses
+    /// the same two gates). No managed order is created when this is returned —
+    /// `intent_id` is a transient handle for telemetry, NOT an order id.
+    NeedsApproval { reason: String, intent_id: u64 },
+}
+
+/// Wave 8a follow-up: a pending approval-confirmation request. UI sites that
+/// receive `OrderResult::NeedsApproval` enqueue one of these (carrying the
+/// original intent) and the per-frame UI loop drains the queue and renders a
+/// confirmation modal. On "Override and submit", the renderer flips
+/// `override_warnings = true` on the carried intent and resubmits.
+#[derive(Clone, Debug)]
+pub(crate) struct PendingApproval {
+    pub(crate) reason: String,
+    pub(crate) intent: OrderIntent,
 }
 
 // ─── Risk Limits ────────────────────────────────────────────────────────────
@@ -345,6 +412,11 @@ pub(crate) struct OrderManager {
     recent_signatures: HashMap<OrderSignature, Instant>,
     // Pending actions for the render thread to process
     pending_toasts: Vec<String>,
+    // Wave 8a follow-up: queue of soft-warning approvals awaiting operator
+    // confirmation. UI sites push here on `OrderResult::NeedsApproval`; the
+    // per-frame UI loop drains and renders a modal that, on "Override and
+    // submit", resubmits the stashed intent with override_warnings=true.
+    pending_approvals: Vec<PendingApproval>,
     // Stats
     orders_submitted: u64,
     orders_filled: u64,
@@ -360,6 +432,16 @@ pub(crate) struct OrderManager {
     // fail here. These fields default in `new()` and are not persisted.
     pub(crate) auto_halted_due_to_disconnect: bool,
     pub(crate) last_broker_contact: Option<u64>,
+    // ── Wave 8a Task B: submit-rate token bucket (runtime only; not persisted) ──
+    // Caps how fast a user (or a misbehaving widget) can fire submits. Cancels
+    // and modifies are deliberately NOT rate-limited — those are remediations,
+    // not new exposure. Defaults: 20 burst, 5/sec refill — generous enough that
+    // a power user clicking quickly won't ever hit it, tight enough that a stuck
+    // hotkey or a runaway loop trips at the second of sustained spam.
+    submit_tokens: f32,
+    submit_max_tokens: f32,
+    submit_refill_per_sec: f32,
+    submit_last_refill: Option<Instant>,
 }
 
 static ORDER_MANAGER: OnceLock<Mutex<OrderManager>> = OnceLock::new();
@@ -374,6 +456,7 @@ impl OrderManager {
             risk_limits: RiskLimits::default(),
             recent_signatures: HashMap::new(),
             pending_toasts: Vec::new(),
+            pending_approvals: Vec::new(),
             orders_submitted: 0,
             orders_filled: 0,
             orders_rejected: 0,
@@ -382,7 +465,43 @@ impl OrderManager {
             halted: false,
             auto_halted_due_to_disconnect: false,
             last_broker_contact: None,
+            // Token bucket starts full so cold-start submits aren't penalized.
+            submit_tokens: 20.0,
+            submit_max_tokens: 20.0,
+            submit_refill_per_sec: 5.0,
+            submit_last_refill: None,
         }
+    }
+
+    /// Pull a single token from the submit bucket. Refills lazily based on
+    /// wall-clock elapsed since the last attempt. Returns true if a token was
+    /// consumed (caller may proceed), false if the bucket is dry (caller MUST
+    /// reject). Wave 8a Task B.
+    fn try_consume_submit_token(&mut self) -> bool {
+        let now = Instant::now();
+        if let Some(last) = self.submit_last_refill {
+            let elapsed = now.duration_since(last).as_secs_f32();
+            self.submit_tokens = (self.submit_tokens + elapsed * self.submit_refill_per_sec)
+                .min(self.submit_max_tokens);
+        }
+        self.submit_last_refill = Some(now);
+        if self.submit_tokens >= 1.0 {
+            self.submit_tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Test/dev-tool hook: override the submit rate-limit shape. `max` is the
+    /// burst size (current tokens are reset to `max`); `refill` is tokens/sec.
+    /// Wave 8a Task B.
+    #[allow(dead_code)]
+    pub(crate) fn set_submit_rate_limit(&mut self, max: f32, refill: f32) {
+        self.submit_max_tokens = max;
+        self.submit_refill_per_sec = refill;
+        self.submit_tokens = max;
+        self.submit_last_refill = None;
     }
 
     /// True if any submit should be refused locally (kill or halt).
@@ -495,6 +614,18 @@ impl OrderManager {
     pub(crate) fn submit(&mut self, intent: OrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
+        // Wave 8a Task B: rate-limit submits (only — cancels and modifies remain
+        // unmetered since they reduce exposure). Trips BEFORE dedup so a stuck
+        // hotkey that keeps re-firing the same intent gets caught at the bucket
+        // rather than the dedup window (much tighter).
+        if !self.try_consume_submit_token() {
+            journal::append(JournalEvent::Fail {
+                client_id: "rate-limit".into(),
+                reason: "submit rate limit".into(),
+                ts_ms: epoch_ms(),
+            });
+            return OrderResult::Rejected("submit rate limit exceeded".into());
+        }
         let now_ms = epoch_ms();
         // Paper mode is practice — no real money at stake, so the risk limits
         // (notional, position size, fat-finger, oversell) don't apply. We still
@@ -575,29 +706,41 @@ impl OrderManager {
         }
 
         // ── 2.6 Fat-finger price check (ONLY on opening orders, not closing) ──
+        // Wave 8a: returns NeedsApproval (soft gate) rather than Rejected when
+        // override_warnings == false. The UI confirms with the operator and
+        // resubmits the same intent with override_warnings=true to bypass.
+        // intent_id is 0 here — the managed-order id isn't assigned until §3
+        // below, and no order is created on this path anyway.
         let is_opening = (is_buy && net_position >= 0) || (is_sell && net_position <= 0);
-        if !paper && is_opening && self.risk_limits.fat_finger_pct > 0.0 && intent.last_price > 0.0 && intent.price > 0.0
+        if !paper && !intent.override_warnings && is_opening && self.risk_limits.fat_finger_pct > 0.0
+            && intent.last_price > 0.0 && intent.price > 0.0
             && intent.order_type != ManagedOrderType::Market
         {
             let deviation_pct = ((intent.price - intent.last_price) / intent.last_price * 100.0).abs();
             if deviation_pct > self.risk_limits.fat_finger_pct {
                 self.orders_rejected += 1;
-                return OrderResult::Rejected(format!(
-                    "Fat-finger: price {:.2} is {:.1}% from market {:.2} (max {}%)",
-                    intent.price, deviation_pct, intent.last_price, self.risk_limits.fat_finger_pct
-                ));
+                return OrderResult::NeedsApproval {
+                    reason: format!("fat finger: {:.1}% from last", deviation_pct),
+                    intent_id: 0,
+                };
             }
         }
 
         // ── 2.7 Max notional check (per-order + working aggregate) ──
+        // Wave 8a: per-order notional cap is a soft warning gate; the working+new
+        // aggregate cap remains a hard reject because once the working book is
+        // already full there's nothing the user can confirm away.
         if !paper && self.risk_limits.max_notional > 0.0 {
             let order_price = if intent.price > 0.0 { intent.price } else { intent.last_price };
             let notional = order_price as f64 * intent.qty as f64;
-            if notional > self.risk_limits.max_notional {
+            if notional > self.risk_limits.max_notional && !intent.override_warnings {
                 self.orders_rejected += 1;
-                return OrderResult::Rejected(format!(
-                    "Notional ${:.0} exceeds max ${:.0}", notional, self.risk_limits.max_notional
-                ));
+                return OrderResult::NeedsApproval {
+                    reason: format!(
+                        "notional ${:.0} exceeds max ${:.0}", notional, self.risk_limits.max_notional
+                    ),
+                    intent_id: 0,
+                };
             }
             let working_notional = inflight::working_notional(&self.orders, &intent.symbol);
             if working_notional + notional > self.risk_limits.max_notional {
@@ -660,7 +803,10 @@ impl OrderManager {
         let id = self.next_id;
         self.next_id += 1;
 
-        let initial_state = if self.armed || intent.order_type == ManagedOrderType::Market {
+        // Wave 8a Task 3: paper-mode UX fix — paper trading has no financial
+        // risk, so the armed/Draft confirmation gate is just friction. In paper
+        // mode every order goes straight to PendingSubmit regardless of `armed`.
+        let initial_state = if paper || self.armed || intent.order_type == ManagedOrderType::Market {
             OrderState::PendingSubmit
         } else {
             OrderState::Draft
@@ -830,6 +976,16 @@ impl OrderManager {
     pub(crate) fn submit_bracket(&mut self, intent: OrderIntent, take_profit_price: f32, stop_loss_price: f32) -> (OrderResult, Option<u64>, Option<u64>) {
         if self.kill_engaged { return (OrderResult::Rejected("kill switch engaged".into()), None, None); }
         if self.halted { return (OrderResult::Rejected(self.halt_reason().into()), None, None); }
+        // Wave 8a Task B: bracket is 1 logical submit (3 legs go down atomically
+        // server-side), so it costs 1 token, not 3.
+        if !self.try_consume_submit_token() {
+            journal::append(JournalEvent::Fail {
+                client_id: "rate-limit".into(),
+                reason: "submit rate limit".into(),
+                ts_ms: epoch_ms(),
+            });
+            return (OrderResult::Rejected("submit rate limit exceeded".into()), None, None);
+        }
         let now_ms = epoch_ms();
 
         // Validate
@@ -845,7 +1001,8 @@ impl OrderManager {
         let tp_id = self.next_id; self.next_id += 1;
         let sl_id = self.next_id; self.next_id += 1;
 
-        let initial_state = if self.armed || intent.order_type == ManagedOrderType::Market {
+        // Wave 8a Task 3: paper mode skips the Draft confirmation gate.
+        let initial_state = if self.paper_mode || self.armed || intent.order_type == ManagedOrderType::Market {
             OrderState::PendingSubmit
         } else {
             OrderState::Draft
@@ -983,6 +1140,15 @@ impl OrderManager {
     pub(crate) fn submit_oco(&mut self, orders: Vec<OrderIntent>) -> Vec<OrderResult> {
         if self.kill_engaged { return vec![OrderResult::Rejected("kill switch engaged".into())]; }
         if self.halted { return vec![OrderResult::Rejected(self.halt_reason().into())]; }
+        // Wave 8a Task B: OCO is one user gesture → one token.
+        if !self.try_consume_submit_token() {
+            journal::append(JournalEvent::Fail {
+                client_id: "rate-limit".into(),
+                reason: "submit rate limit".into(),
+                ts_ms: epoch_ms(),
+            });
+            return vec![OrderResult::Rejected("submit rate limit exceeded".into())];
+        }
         let now_ms = epoch_ms();
         if orders.len() < 2 {
             return vec![OrderResult::Rejected("OCO requires at least 2 orders".into())];
@@ -1112,6 +1278,15 @@ impl OrderManager {
     pub(crate) fn submit_conditional(&mut self, intent: ConditionalOrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
+        // Wave 8a Task B: rate-limit before any work.
+        if !self.try_consume_submit_token() {
+            journal::append(JournalEvent::Fail {
+                client_id: "rate-limit".into(),
+                reason: "submit rate limit".into(),
+                ts_ms: epoch_ms(),
+            });
+            return OrderResult::Rejected("submit rate limit exceeded".into());
+        }
         let now_ms = epoch_ms();
         let base = &intent.base;
 
@@ -1223,6 +1398,15 @@ impl OrderManager {
     ) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
+        // Wave 8a Task B: rate-limit before any work.
+        if !self.try_consume_submit_token() {
+            journal::append(JournalEvent::Fail {
+                client_id: "rate-limit".into(),
+                reason: "submit rate limit".into(),
+                ts_ms: epoch_ms(),
+            });
+            return OrderResult::Rejected("submit rate limit exceeded".into());
+        }
         let now_ms = epoch_ms();
         if qty == 0 {
             return OrderResult::Rejected("Qty cannot be zero".into());
@@ -1308,6 +1492,15 @@ impl OrderManager {
     ) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
+        // Wave 8a Task B: rate-limit before any work.
+        if !self.try_consume_submit_token() {
+            journal::append(JournalEvent::Fail {
+                client_id: "rate-limit".into(),
+                reason: "submit rate limit".into(),
+                ts_ms: epoch_ms(),
+            });
+            return OrderResult::Rejected("submit rate limit exceeded".into());
+        }
         let now_ms = epoch_ms();
         if qty == 0 {
             return OrderResult::Rejected("Qty cannot be zero".into());
@@ -1612,6 +1805,8 @@ impl OrderManager {
                 last_price: 0.0,
                 tif: 0,
                 outside_rth: false,
+                strategy_id: None,
+                override_warnings: false,
             });
         }
     }
@@ -1807,6 +2002,23 @@ pub(crate) fn drain_order_toasts() -> Vec<String> {
     with_mgr(|mgr| mgr.drain_toasts())
 }
 
+/// Wave 8a follow-up: enqueue a `NeedsApproval` warning for the operator to
+/// confirm or cancel via the per-frame approval modal. UI sites that match on
+/// `OrderResult::NeedsApproval { reason, .. }` should call this with the
+/// ORIGINAL intent (not a fresh one) so the resubmit path preserves every
+/// field — strategy_id, source, tif, last_price, the lot.
+pub(crate) fn enqueue_approval(reason: String, intent: OrderIntent) {
+    with_mgr(|m| m.pending_approvals.push(PendingApproval { reason, intent }));
+}
+
+/// Drain pending approval requests for the per-frame UI loop. Each returned
+/// entry should be rendered as a confirmation dialog; on "Override and submit"
+/// the caller flips `intent.override_warnings = true` and resubmits via
+/// `submit_order`. Wave 8a follow-up.
+pub(crate) fn drain_approvals() -> Vec<PendingApproval> {
+    with_mgr(|m| m.pending_approvals.drain(..).collect())
+}
+
 /// Run GC
 pub(crate) fn gc_orders() {
     with_mgr(|mgr| mgr.gc())
@@ -1841,6 +2053,14 @@ pub(crate) fn submit_and_get_id(intent: OrderIntent) -> Option<u64> {
         }
         OrderResult::Rejected(reason) => {
             eprintln!("[order-manager] Rejected: side={:?} price={:.2} qty={}: {}",
+                side, price, qty, reason);
+            None
+        }
+        OrderResult::NeedsApproval { reason, .. } => {
+            // No order id is created on the soft-warning path — callers that
+            // need to surface the warning to the operator must use
+            // `submit_order` directly and inspect the result.
+            eprintln!("[order-manager] NeedsApproval (silent at this entry point): side={:?} price={:.2} qty={}: {}",
                 side, price, qty, reason);
             None
         }
@@ -2689,6 +2909,14 @@ pub(crate) fn mark_broker_contact() {
     with_mgr(|m| m.last_broker_contact = Some(epoch_ms()));
 }
 
+/// Seconds since the most recent successful broker contact, or `None` if
+/// we've never seen one (cold start). Used by the Order System Health panel
+/// to flag stale broker connectivity.
+#[allow(dead_code)]
+pub(crate) fn broker_contact_age_secs() -> Option<u64> {
+    with_mgr(|m| m.last_broker_contact.map(|ts| epoch_ms().saturating_sub(ts) / 1000))
+}
+
 /// Watchdog tick — engages protective auto-halt when broker contact has been
 /// stale for >10s, and lifts it only if WE engaged it (preserves user halts).
 pub(crate) fn check_broker_health() {
@@ -2786,13 +3014,16 @@ mod tests {
             last_price: 0.0,
             tif: 0,
             outside_rth: false,
+            strategy_id: None,
+            override_warnings: false,
         }
     }
 
     fn order_id(result: &OrderResult) -> Option<u64> {
         match result {
             OrderResult::Accepted(id) | OrderResult::NeedsConfirmation(id) => Some(*id),
-            _ => None,
+            // NeedsApproval intentionally yields None — no order was created.
+            OrderResult::Rejected(_) | OrderResult::Duplicate | OrderResult::NeedsApproval { .. } => None,
         }
     }
 
@@ -3283,5 +3514,89 @@ mod tests {
         // TODO: thread a path override (env var `APEX_WAL_PATH` or a
         // feature flag) through wal::wal_path() so tests can write to a
         // temp dir.
+    }
+
+    // ── L. Wave 8a Task B: submit rate limit ────────────────────────────────
+
+    #[test]
+    fn submit_rate_limit_blocks_after_burst() {
+        // 3-token burst, no refill: first three submits succeed, fourth must
+        // reject with a rate-limit reason. We vary price across submits so
+        // the dedup window (50ms in fresh_manager) doesn't catch them first —
+        // this isolates the bucket gate from the dedup gate.
+        let mut m = fresh_manager();
+        m.set_submit_rate_limit(3.0, 0.0);
+
+        let r1 = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        assert!(matches!(r1, OrderResult::Accepted(_)), "1st submit should accept, got {:?}", r1);
+        let r2 = m.submit(limit_intent("AAPL", OrderSide::Buy, 101.0, 10));
+        assert!(matches!(r2, OrderResult::Accepted(_)), "2nd submit should accept, got {:?}", r2);
+        let r3 = m.submit(limit_intent("AAPL", OrderSide::Buy, 102.0, 10));
+        assert!(matches!(r3, OrderResult::Accepted(_)), "3rd submit should accept, got {:?}", r3);
+
+        let r4 = m.submit(limit_intent("AAPL", OrderSide::Buy, 103.0, 10));
+        match r4 {
+            OrderResult::Rejected(reason) => {
+                assert!(reason.to_lowercase().contains("rate"),
+                        "expected rate-limit rejection, got: {}", reason);
+            }
+            other => panic!("expected Rejected for 4th submit past burst cap, got {:?}", other),
+        }
+    }
+
+    // ── M. Wave 8a Task C: paper-mode skips armed gate ──────────────────────
+
+    #[test]
+    fn paper_mode_skips_armed_confirmation() {
+        // In paper mode with armed=false, a limit submit should still go
+        // straight to Accepted (no armed-confirm gate). Practice trading is
+        // friction-free by design — there's no financial risk to confirm.
+        let mut m = fresh_manager();
+        m.paper_mode = true;
+        m.armed = false;
+        let result = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
+        assert!(matches!(result, OrderResult::Accepted(_)),
+                "paper-mode armed=false limit submit should be Accepted (no Draft gate), got {:?}",
+                result);
+    }
+
+    // ── N. Wave 8a Task A: NeedsApproval soft gates ─────────────────────────
+
+    #[test]
+    fn fat_finger_returns_needs_approval_when_not_overridden() {
+        // Live mode + a 50% deviation from last price should trip the
+        // fat-finger gate. With override_warnings=false (default), the gate
+        // returns NeedsApproval rather than a hard Rejected.
+        let mut m = fresh_manager();
+        m.paper_mode = false; // fat-finger is live-only
+        let mut intent = limit_intent("AAPL", OrderSide::Buy, 150.0, 10);
+        intent.last_price = 100.0; // 50% deviation — well past the 5% default
+        let r = m.submit(intent);
+        match r {
+            OrderResult::NeedsApproval { reason, .. } => {
+                assert!(reason.to_lowercase().contains("fat"),
+                        "expected fat-finger reason, got: {}", reason);
+            }
+            other => panic!("expected NeedsApproval for fat-finger, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn fat_finger_override_warnings_bypasses_gate() {
+        // Same intent, but override_warnings=true must clear the soft gate.
+        // The submit will then proceed (Accepted in paper-mode-equivalent path
+        // since we still have paper_mode=false here, but with bp check skipped
+        // — buying_power is 0 in fresh test state so the bp branch logs and
+        // proceeds). End state: Accepted, not NeedsApproval.
+        let mut m = fresh_manager();
+        m.paper_mode = false;
+        // Crank max_order_qty so the live-mode qty cap doesn't trip first.
+        m.risk_limits.max_order_qty = 1_000_000;
+        let mut intent = limit_intent("AAPL", OrderSide::Buy, 150.0, 10);
+        intent.last_price = 100.0;
+        intent.override_warnings = true;
+        let r = m.submit(intent);
+        assert!(matches!(r, OrderResult::Accepted(_)),
+                "override_warnings=true should clear fat-finger soft gate, got {:?}", r);
     }
 }
