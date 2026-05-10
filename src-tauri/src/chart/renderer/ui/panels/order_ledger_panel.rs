@@ -93,7 +93,7 @@ pub(crate) fn draw(
         .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
             // ── Header + close ───────────────────────────────────────────
-            if PanelHeaderWithClose::new("ORDER LEDGER").theme(t).show(ui) {
+            if PanelHeaderWithClose::new("ORDER LEDGER").theme(t).watchlist(watchlist).show(ui) {
                 watchlist.order_ledger_open = false;
             }
             separator(ui, color_alpha(t.toolbar_border, alpha_muted()));

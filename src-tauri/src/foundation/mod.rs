@@ -1,3 +1,4 @@
+pub mod shortcuts;
 pub mod monitoring;
 pub mod frame_profiler;
 pub mod design_tokens;

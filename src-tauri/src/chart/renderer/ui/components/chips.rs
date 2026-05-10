@@ -25,58 +25,8 @@ pub fn keybind_chip(ui: &mut Ui, hint: &str, fg: Color32, bg_border: Color32) ->
     )
 }
 
-// ─── Filter chip ──────────────────────────────────────────────────────────────
-
-/// Filter chip — togglable inline tag.
-/// Filter chip toggle.
-///
-/// **Deprecated**: use [`super::super::components::pill_button`] for new code.
-#[deprecated(since = "0.10.0", note = "Use `pill_button(ui, text, active, accent, dim)` — see docs/DESIGN_SYSTEM.md")]
-pub fn filter_chip(
-    ui: &mut Ui,
-    text: &str,
-    active: bool,
-    accent: Color32,
-    fg_inactive: Color32,
-) -> Response {
-    let st = current();
-    let cr = r_pill();
-
-    let (bg, fg, stroke) = if active {
-        if st.solid_active_fills {
-            (accent, contrast_fg_local(accent), Stroke::NONE)
-        } else {
-            (
-                color_alpha(accent, alpha_tint()),
-                accent,
-                Stroke::new(st.stroke_thin, color_alpha(accent, alpha_strong())),
-            )
-        }
-    } else {
-        (
-            Color32::TRANSPARENT,
-            fg_inactive,
-            Stroke::new(st.stroke_thin, color_alpha(fg_inactive, alpha_muted())),
-        )
-    };
-
-    let resp = ui.add(
-        egui::Button::new(
-            RichText::new(text)
-                .monospace()
-                .size(font_xs())
-                .color(fg),
-        )
-        .fill(bg)
-        .stroke(stroke)
-        .corner_radius(cr)
-        .min_size(Vec2::new(0.0, 16.0)),
-    );
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp
-}
+// `filter_chip` (deprecated v0.10) deleted 2026-05 — zero callers.
+// Use `pill_button` from components/pills.rs, or `Button::new(...).variant(Variant::Chip)`.
 
 // ─── Notification badge ───────────────────────────────────────────────────────
 

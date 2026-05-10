@@ -11,9 +11,10 @@
 //!     .columns(3)
 //!     .show(ui, theme);
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{CornerRadius, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 use super::label::Label;
+use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 
@@ -37,6 +38,7 @@ pub struct ChoiceGrid<'a> {
     items: &'a [ChoiceItem<'a>],
     columns: usize,
     cell_size: Vec2,
+    disabled: bool,
 }
 
 impl<'a> ChoiceGrid<'a> {
@@ -46,6 +48,7 @@ impl<'a> ChoiceGrid<'a> {
             items,
             columns: 3,
             cell_size: DEFAULT_CELL,
+            disabled: false,
         }
     }
 
@@ -59,8 +62,10 @@ impl<'a> ChoiceGrid<'a> {
         self
     }
 
+    pub fn disabled(mut self, d: bool) -> Self { self.disabled = d; self }
+
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        let Self { selected, items, columns, cell_size } = self;
+        let Self { selected, items, columns, cell_size, disabled } = self;
 
         let n = items.len();
         let rows = if n == 0 { 0 } else { (n + columns - 1) / columns };
@@ -75,7 +80,8 @@ impl<'a> ChoiceGrid<'a> {
         }
 
         let painter = ui.painter_at(rect);
-        let divider = theme.border_variant();
+        let dim_mul = if disabled { 0.5 } else { 1.0 };
+        let divider = theme.border_variant().gamma_multiply(dim_mul);
         let divider_stroke = Stroke::new(1.0, divider);
 
         // Per-cell pass: detect hover/click, paint cell background + inner
@@ -91,14 +97,22 @@ impl<'a> ChoiceGrid<'a> {
             );
 
             let id = ui.id().with(("choice_grid_cell", i));
-            let cell_resp = ui.interact(cell_rect, id, Sense::click());
+            let cell_sense = if disabled { Sense::hover() } else { Sense::click() };
+            let cell_resp = ui.interact(cell_rect, id, cell_sense);
+
+            let is_selected = *selected == i;
+            let hovered = !disabled && cell_resp.hovered();
+
+            // Motion-based hover fade.
+            let hover_t = motion::ease_bool(ui.ctx(), id.with("hov"), hovered, motion::FAST);
 
             // Background: selected wins over hover.
-            let is_selected = *selected == i;
             if is_selected {
-                painter.rect_filled(cell_rect, CornerRadius::ZERO, theme.element_selected());
-            } else if cell_resp.hovered() {
-                painter.rect_filled(cell_rect, CornerRadius::ZERO, theme.element_hover());
+                let bg = theme.element_selected().gamma_multiply(dim_mul);
+                painter.rect_filled(cell_rect, CornerRadius::ZERO, bg);
+            } else if hover_t > 0.0 {
+                let bg = theme.element_hover().gamma_multiply(hover_t * dim_mul);
+                painter.rect_filled(cell_rect, CornerRadius::ZERO, bg);
             }
 
             // Icon centered in the upper portion of the cell.
@@ -108,12 +122,13 @@ impl<'a> ChoiceGrid<'a> {
             let content_h = icon_size + label_gap + label_h;
             let content_top = cell_rect.center().y - content_h * 0.5;
             let icon_center = Pos2::new(cell_rect.center().x, content_top + icon_size * 0.5);
+            let icon_col = if is_selected { theme.icon_accent() } else { theme.icon() };
             painter.text(
                 icon_center,
                 egui::Align2::CENTER_CENTER,
                 item.icon,
                 FontId::proportional(icon_size),
-                if is_selected { theme.icon_accent() } else { theme.icon() },
+                icon_col.gamma_multiply(dim_mul),
             );
 
             // Label below the icon.
@@ -145,19 +160,20 @@ impl<'a> ChoiceGrid<'a> {
 
             // Selected cell: 1px accent border on top of dividers.
             if is_selected {
+                let accent = theme.accent().gamma_multiply(dim_mul);
                 painter.rect_stroke(
                     cell_rect,
                     CornerRadius::ZERO,
-                    Stroke::new(1.0, theme.accent()),
+                    Stroke::new(1.0, accent),
                     StrokeKind::Inside,
                 );
             }
 
-            if cell_resp.clicked() {
+            if !disabled && cell_resp.clicked() {
                 *selected = i;
                 response.mark_changed();
             }
-            if cell_resp.hovered() {
+            if hovered {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
             response = response.union(cell_resp);

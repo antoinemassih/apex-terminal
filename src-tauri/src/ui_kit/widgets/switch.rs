@@ -54,7 +54,7 @@ impl<'a> Switch<'a> {
 
 impl<'a> Widget for Switch<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let theme = &crate::chart_renderer::gpu::THEMES[0];
+        let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, theme)
     }
 }

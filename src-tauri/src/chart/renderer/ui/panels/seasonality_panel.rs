@@ -64,7 +64,7 @@ pub(crate) fn draw_content(
     // Zero line
     p.line_segment(
         [egui::pos2(chart_rect.left(), mid_y), egui::pos2(chart_rect.right(), mid_y)],
-        egui::Stroke::new(0.5, color_alpha(t.dim, alpha_muted())));
+        egui::Stroke::new(stroke_thin(), color_alpha(t.dim, alpha_muted())));
 
     let col_w = bar_w / 12.0;
     let scale = (chart_h * 0.4) / max_abs;
@@ -87,20 +87,20 @@ pub(crate) fn draw_content(
 
         p.line_segment(
             [egui::pos2(cx, mid_y), egui::pos2(cx, tip_y)],
-            egui::Stroke::new(if is_current { 2.5 } else { 1.5 },
+            egui::Stroke::new(if is_current { stroke_extra_thick() } else { stroke_bold() },
                 egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), line_alpha)));
         p.circle_filled(egui::pos2(cx, tip_y), circle_r, color);
 
         // Value label above/below circle
         let label_y = if *avg >= 0.0 { tip_y - 8.0 } else { tip_y + 8.0 };
         p.text(egui::pos2(cx, label_y), egui::Align2::CENTER_CENTER,
-            &format!("{:+.1}%", avg), egui::FontId::monospace(11.0),
+            &format!("{:+.1}%", avg), mono_sm(),
             if is_current { color } else { color.gamma_multiply(0.6) });
 
         // Month label
         let month_col = if is_current { t.accent } else { t.dim.gamma_multiply(0.5) };
         p.text(egui::pos2(cx, chart_rect.bottom() - 6.0), egui::Align2::CENTER_CENTER,
-            month_labels[i], egui::FontId::monospace(11.0), month_col);
+            month_labels[i], mono_sm(), month_col);
     }
 
     ui.add_space(gap_md());

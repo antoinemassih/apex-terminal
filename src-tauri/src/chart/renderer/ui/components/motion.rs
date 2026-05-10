@@ -119,6 +119,9 @@ pub fn ease_in_out_cubic(t: f32) -> f32 {
 /// with cubic ease applied. Stable across frames via egui memory keyed
 /// on `id`.
 pub fn ease_bool(ctx: &Context, id: Id, value: bool, duration: f32) -> f32 {
+    if !crate::chart::renderer::ui::style::current().animations_enabled {
+        return if value { 1.0 } else { 0.0 };
+    }
     let raw = ctx.animate_bool_with_time(id, value, duration);
     let target = if value { 1.0 } else { 0.0 };
     let in_flight = (raw - target).abs() > ANIM_EPSILON;
@@ -128,6 +131,9 @@ pub fn ease_bool(ctx: &Context, id: Id, value: bool, duration: f32) -> f32 {
 
 // ── Value tracker ──────────────────────────────────────────────────────
 pub fn ease_value(ctx: &Context, id: Id, target: f32, duration: f32) -> f32 {
+    if !crate::chart::renderer::ui::style::current().animations_enabled {
+        return target;
+    }
     let raw = ctx.animate_value_with_time(id, target, duration);
     let in_flight = (raw - target).abs() > ANIM_EPSILON;
     observe(id, in_flight, next_tick());

@@ -257,11 +257,11 @@ pub(crate) fn draw(
         0.0, t.toolbar_bg,
     );
     // Inset shadow above the controls so the row reads as separate from the
-    // ladder above.
+    // ladder above. Uses theme.shadow_color so light themes don't render black.
     for i in 0..4u32 {
         painter.line_segment(
             [egui::pos2(inner.left(), ctrl_top - i as f32), egui::pos2(inner.right(), ctrl_top - i as f32)],
-            egui::Stroke::new(stroke_std(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, 20u8.saturating_sub(i as u8 * 5))),
+            egui::Stroke::new(stroke_std(), shadow_color_alpha(t, 20u8.saturating_sub(i as u8 * 5))),
         );
     }
     // Hairline divider between DOM ladder and the controls.
@@ -397,16 +397,13 @@ pub(crate) fn draw(
     // matching the BUY/SELL pill treatment so the row reads as a unit.
     let mid_x = inner.left()+1.0+side_w+3.0;
 
-    // FLATTEN — neutral grey fill with black text. Reads as the structural
-    // "close all" action: high contrast, low chroma, no implied direction.
-    let flatten_fill = egui::Color32::from_gray(170);
+    // FLATTEN — Variant::NeutralAction (grey fill, black text). Reads as the
+    // structural "close all" action: high contrast, low chroma, no direction.
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y), egui::vec2(mid_w, mid_half_h));
     let resp = place_at(ui, r, |ui| {
         ui.add(Button::new("FLATTEN")
-            .variant(Variant::Secondary)
+            .variant(Variant::NeutralAction)
             .size(KitSize::Md)
-            .fill(flatten_fill)
-            .fg(egui::Color32::BLACK)
             .min_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
@@ -452,8 +449,8 @@ pub(crate) fn draw(
     let ms = mb.max(ma) as f32;
     let mv = levels.iter().map(|l| l.volume).max().unwrap_or(1).max(1);
     let ao: Vec<&OrderLevel> = orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).collect();
-    let font = egui::FontId::monospace(13.0);
-    let font_sm = egui::FontId::monospace(11.0);
+    let font = mono_md();
+    let font_sm = mono_sm();
     let lp = ui.painter_at(egui::Rect::from_min_max(egui::pos2(dom_rect.left(), body_top), egui::pos2(dom_rect.right(), body_top+body_h)));
     let _ = (font, font_sm); // retained imports above; widget owns its fonts now
 
@@ -570,8 +567,8 @@ fn fmt_size(size: u32) -> String {
 /// Draw order badge text: side letter + large bold qty, high contrast against badge bg
 fn draw_order_label(painter: &egui::Painter, rect: egui::Rect, side: &str, qty: u32, _color: egui::Color32) {
     let qty_str = format!("{}", qty);
-    let side_font = egui::FontId::monospace(11.0);
-    let qty_font = egui::FontId::monospace(11.0);
+    let side_font = mono_sm();
+    let qty_font = mono_sm();
     let text_col = _color; // high contrast against colored badge (caller provides)
     // Side letter on the left
     painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, side, side_font, text_col);

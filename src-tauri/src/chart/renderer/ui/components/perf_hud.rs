@@ -5,7 +5,7 @@
 //! spans, allocation counts, GPU/CPU/RAM stats, and recent jank events.
 
 use egui::{Color32, RichText};
-use super::super::style::{font_xs, font_sm, color_alpha, ALPHA_SOLID};
+use super::super::style::{font_xs, font_sm, color_alpha, ALPHA_SOLID, stroke_std};
 fn ft() -> &'static crate::chart_renderer::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
 
 fn us_to_ms(us: u64) -> f64 { us as f64 / 1000.0 }
@@ -51,6 +51,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
     let frame_ms = us_to_ms(snap.frames.last_frame_us);
     let avg_ms   = us_to_ms(snap.frames.avg_frame_us);
 
+    // retained as Window: collapsible + resizable + corner-anchored; uses ft() theme hack throughout (dev tool)
     egui::Window::new("⏱ Perf HUD")
         .id(egui::Id::new("perf_hud_window"))
         .anchor(egui::Align2::RIGHT_TOP, [-8.0, 8.0])
@@ -60,7 +61,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
         .frame(
             egui::Frame::window(&ctx.style())
                 .fill(color_alpha(ft().bg, ALPHA_SOLID))
-                .stroke(egui::Stroke::new(1.0, ft().toolbar_border))
+                .stroke(egui::Stroke::new(stroke_std(), ft().toolbar_border))
                 .inner_margin(8.0)
                 .corner_radius(4.0),
         )

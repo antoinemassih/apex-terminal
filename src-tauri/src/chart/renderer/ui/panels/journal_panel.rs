@@ -8,6 +8,7 @@ use super::super::widgets::layout::EmptyState;
 use super::super::widgets::frames::PanelFrame;
 use super::super::widgets::headers::PanelHeaderWithClose;
 use crate::ui_kit::widgets::Pagination;
+use crate::ui_kit::widgets::{TradeCard, TradeCardData};
 
 const TRADE_LOG_PAGE_SIZE: usize = 10;
 
@@ -48,7 +49,7 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
-            if PanelHeaderWithClose::new("TRADE JOURNAL").theme(t).show(ui) {
+            if PanelHeaderWithClose::new("TRADE JOURNAL").theme(t).watchlist(watchlist).show(ui) {
                 watchlist.journal_panel_open = false;
             }
             separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
@@ -114,7 +115,7 @@ fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
     ui.horizontal(|ui| {
         ui.add_space(gap_sm());
         ui.vertical(|ui| {
-            ui.label(egui::RichText::new("TOTAL P&L").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.5)));
+            ui.label(egui::RichText::new("TOTAL P&L").monospace().size(font_xs()).color(color_half(t.dim)));
             let sign = if total_pnl >= 0.0 { "+" } else { "" };
             ui.label(egui::RichText::new(format!("{}${:.0}", sign, total_pnl)).size(34.0).color(pnl_col));
         });
@@ -200,66 +201,25 @@ fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f6
         p.rect_filled(egui::Rect::from_min_size(br.min, egui::vec2(bar_w * wr / 100.0, 8.0)),
             2.0, color_alpha(col, alpha_dim()));
         ui.label(egui::RichText::new(format!("{:.0}%", wr)).monospace().size(font_xs()).color(col));
-        ui.label(egui::RichText::new(format!("{}t", total)).monospace().size(font_xs()).color(t.dim.gamma_multiply(0.4)));
+        ui.label(egui::RichText::new(format!("{}t", total)).monospace().size(font_xs()).color(color_dim(t.dim)));
         let pc = if pnl >= 0.0 { t.bull } else { t.bear };
         ui.label(egui::RichText::new(format!("${:+.0}", pnl)).monospace().size(font_xs()).color(pc));
     });
 }
 
 fn draw_card(ui: &mut egui::Ui, entry: &JournalEntry, t: &Theme) {
-    let card_w = ui.available_width();
-    let card_h = if entry.notes.is_empty() { 52.0 } else { 66.0 };
-    let (card_rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
-    let p = ui.painter();
-    let is_win = entry.pnl > 0.0;
-    let pnl_col = if is_win { t.bull } else { t.bear };
-    let dir_col = if entry.side == "Long" { t.bull } else { t.bear };
-
-    let bg = if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        color_alpha(t.toolbar_border, alpha_subtle())
-    } else { color_alpha(t.toolbar_border, 8) };
-    p.rect_filled(card_rect, radius_sm(), bg);
-    p.rect_filled(egui::Rect::from_min_max(
-        egui::pos2(card_rect.left(), card_rect.top() + 3.0),
-        egui::pos2(card_rect.left() + 3.0, card_rect.bottom() - 3.0)), 1.0, pnl_col);
-
-    let cx = card_rect.left() + 8.0;
-    let mut cy = card_rect.top() + 8.0;
-
-    p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &entry.symbol, egui::FontId::monospace(FONT_SM), t.text);
-    p.text(egui::pos2(cx + 50.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &entry.side, egui::FontId::monospace(FONT_XS), dir_col);
-    let sign = if entry.pnl >= 0.0 { "+" } else { "" };
-    p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
-        &format!("{}${:.0} ({:+.1}%)", sign, entry.pnl, entry.pnl_pct),
-        egui::FontId::monospace(FONT_SM), pnl_col);
-    cy += 16.0;
-
-    p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &entry.setup_type, egui::FontId::monospace(11.0), t.accent.gamma_multiply(0.7));
-    let dur = if entry.duration_mins >= 1440 { format!("{:.0}d", entry.duration_mins as f64 / 1440.0) }
-        else if entry.duration_mins >= 60 { format!("{:.0}h", entry.duration_mins as f64 / 60.0) }
-        else { format!("{}m", entry.duration_mins) };
-    p.text(egui::pos2(cx + 60.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &dur, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
-    let r_col = if entry.r_multiple > 0.0 { t.bull } else { t.bear };
-    p.text(egui::pos2(cx + 90.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &format!("{:+.1}R", entry.r_multiple), egui::FontId::monospace(11.0), r_col);
-    cy += 14.0;
-
-    p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-        &format!("{:.2} \u{2192} {:.2}", entry.entry_price, entry.exit_price),
-        egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.4));
-    p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
-        &entry.timeframe, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.4));
-
-    if !entry.notes.is_empty() {
-        cy += 14.0;
-        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-            &entry.notes, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.35));
-    }
-
-    ui.add_space(gap_xs());
+    let data = TradeCardData {
+        symbol:        &entry.symbol,
+        side:          &entry.side,
+        entry_price:   entry.entry_price,
+        exit_price:    entry.exit_price,
+        pnl:           entry.pnl,
+        pnl_pct:       entry.pnl_pct,
+        setup_type:    &entry.setup_type,
+        duration_mins: entry.duration_mins,
+        r_multiple:    entry.r_multiple,
+        timeframe:     &entry.timeframe,
+        notes:         &entry.notes,
+    };
+    TradeCard::new(&data).show(ui, t);
 }

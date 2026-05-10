@@ -22,8 +22,12 @@ use crate::chart_renderer::ui::style::{
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn ft() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
+fn ft(ctx: Option<&egui::Context>) -> &'static Theme {
+    let idx = ctx
+        .map(|c| super::theme::active_theme_idx(c))
+        .unwrap_or(0)
+        .min(crate::chart_renderer::gpu::THEMES.len() - 1);
+    &crate::chart_renderer::gpu::THEMES[idx]
 }
 
 /// Toast variant — affects accent / icon color.
@@ -64,9 +68,9 @@ impl<'a> Toast<'a> {
             body: None,
             variant: ToastVariant::Info,
             accent: None,
-            bg: ft().toolbar_bg,
-            border: ft().toolbar_border,
-            text: ft().text,
+            bg: ft(None).toolbar_bg,
+            border: ft(None).toolbar_border,
+            text: ft(None).text,
             auto_dismiss_secs: None,
             width: 280.0,
             id: None,
@@ -98,7 +102,7 @@ impl<'a> Toast<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> ToastResponse {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
+        let accent = self.accent.unwrap_or_else(|| ft(Some(ui.ctx())).accent);
         let due = self.auto_dismiss_secs
             .map(|s| ui.ctx().input(|i| i.time) + s as f64);
 

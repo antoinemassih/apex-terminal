@@ -32,6 +32,7 @@ pub struct Slider<'a, T: egui::emath::Numeric> {
     size: Size,
     variant: Variant,
     full_width: bool,
+    disabled: bool,
 }
 
 impl<'a, T: egui::emath::Numeric> Slider<'a, T> {
@@ -46,6 +47,7 @@ impl<'a, T: egui::emath::Numeric> Slider<'a, T> {
             size: Size::Md,
             variant: Variant::Primary,
             full_width: false,
+            disabled: false,
         }
     }
 
@@ -56,6 +58,7 @@ impl<'a, T: egui::emath::Numeric> Slider<'a, T> {
     pub fn size(mut self, s: Size) -> Self { self.size = s; self }
     pub fn variant(mut self, v: Variant) -> Self { self.variant = v; self }
     pub fn full_width(mut self) -> Self { self.full_width = true; self }
+    pub fn disabled(mut self, d: bool) -> Self { self.disabled = d; self }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         paint_slider(ui, theme, self)
@@ -64,7 +67,7 @@ impl<'a, T: egui::emath::Numeric> Slider<'a, T> {
 
 impl<'a, T: egui::emath::Numeric> Widget for Slider<'a, T> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let theme = &crate::chart_renderer::gpu::THEMES[0];
+        let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, theme)
     }
 }
@@ -73,7 +76,7 @@ fn variant_color(variant: Variant, theme: &dyn ComponentTheme) -> Color32 {
     match variant {
         Variant::Primary => theme.accent(),
         Variant::Danger => theme.bear(),
-        Variant::Secondary | Variant::Ghost | Variant::Link | Variant::Chrome => theme.accent(),
+        _ => theme.accent(),
     }
 }
 
@@ -83,7 +86,7 @@ fn paint_slider<T: egui::emath::Numeric>(
     s: Slider<'_, T>,
 ) -> Response {
     let Slider {
-        value, range, step, ticks, show_value, label, size, variant, full_width,
+        value, range, step, ticks, show_value, label, size, variant, full_width, disabled,
     } = s;
 
     let track_h = match size { Size::Sm | Size::Xs => 4.0, _ => 6.0 };
@@ -120,7 +123,8 @@ fn paint_slider<T: egui::emath::Numeric>(
             };
 
             let row_size = Vec2::new(track_w, total_h);
-            let (rect, mut response) = ui.allocate_exact_size(row_size, Sense::click_and_drag());
+            let sense = if disabled { Sense::hover() } else { Sense::click_and_drag() };
+            let (rect, mut response) = ui.allocate_exact_size(row_size, sense);
             let id = response.id;
 
             // Track rect (centered vertically in row).
@@ -163,12 +167,13 @@ fn paint_slider<T: egui::emath::Numeric>(
             let painter = ui.painter_at(rect);
 
             // Track background.
-            let track_bg = st::color_alpha(theme.dim(), 64);
+            let dim_mul = if disabled { 0.5 } else { 1.0 };
+            let track_bg = st::color_alpha(theme.dim(), 64).gamma_multiply(dim_mul);
             let cr = CornerRadius::same((track_h * 0.5) as u8);
             painter.rect_filled(track_rect, cr, track_bg);
 
             // Filled portion.
-            let fill_color = variant_color(variant, theme);
+            let fill_color = variant_color(variant, theme).gamma_multiply(dim_mul);
             let filled = egui::Rect::from_min_max(
                 track_rect.min,
                 Pos2::new(thumb_x, track_rect.max.y),
@@ -186,14 +191,15 @@ fn paint_slider<T: egui::emath::Numeric>(
                 );
             }
 
-            // Thumb (scale on hover/drag).
-            let active = response.hovered() || response.dragged();
+            // Thumb (scale on hover/drag; no animation when disabled).
+            let active = !disabled && (response.hovered() || response.dragged());
             let scale_t = motion::ease_bool(ui.ctx(), id.with("sl_hov"), active, motion::FAST);
             let d = thumb_d + scale_t * hover_extra;
-            painter.circle_filled(thumb_center, d * 0.5, theme.bg());
+            let thumb_bg = theme.bg().gamma_multiply(dim_mul);
+            painter.circle_filled(thumb_center, d * 0.5, thumb_bg);
             painter.circle_stroke(thumb_center, d * 0.5, Stroke::new(2.0, fill_color));
 
-            if response.hovered() {
+            if !disabled && response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
 

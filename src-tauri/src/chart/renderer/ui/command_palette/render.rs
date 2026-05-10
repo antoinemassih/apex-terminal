@@ -160,7 +160,7 @@ pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(Stri
 }
 
 fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart], _ap: usize) {
-    ui.add(BodyLabel::new(sym).size(22.0).monospace(true).strong(true).color(t.text));
+    ui.add(BodyLabel::new(sym).size(font_xl()).monospace(true).strong(true).color(t.text));
     ui.add_space(gap_xs());
 
     // Attempt to fetch cached bars (non-blocking — guarded by is_connected)

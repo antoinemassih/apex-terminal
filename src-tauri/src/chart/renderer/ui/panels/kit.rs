@@ -359,6 +359,10 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
         let h_panel = self.height_override.unwrap_or(resolved_h);
         let font_size = self.font_size_override.unwrap_or(resolved_font);
 
+        // Namespace tab interaction state under the parent ui's id so two
+        // tabbed panels in the same context don't collide on `ui.interact`.
+        let scope_id = ui.id().with(("kit_panel_tabs", self.salt));
+
         let avail_w = ui.available_width();
         let (rect, _resp) = ui.allocate_exact_size(Vec2::new(avail_w, h_panel), Sense::hover());
         let painter = ui.painter_at(rect);
@@ -397,24 +401,26 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
             let tab_rect = Rect::from_min_size(Pos2::new(cx, tab_y), Vec2::new(tab_w, tab_h));
             let tab_resp = ui.interact(
                 tab_rect,
-                egui::Id::new(("kit_panel_tabs", self.salt, ti)),
+                scope_id.with(("tab", ti)),
                 Sense::click(),
             );
             if tab_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
-            // Background (painter_pane.rs:579-598 spec):
-            //  - active: t.bg.gamma_multiply(0.4)
-            //  - hover (not active): color_alpha(toolbar_border, tab_hover_bg_alpha)
-            //  - idle: transparent
+            // Background — animated with motion::ease_bool, mirroring
+            // painter_pane.rs:583-598. Active fades over MED (180ms), hover
+            // over FAST (120ms). Painted as: idle → hover → active layered.
+            use super::super::components::motion;
+            let active_id = scope_id.with(("active", ti));
+            let hover_id  = scope_id.with(("hover", ti));
+            let active_t = motion::ease_bool(ui.ctx(), active_id, is_active, motion::MED);
+            let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  tab_resp.hovered() && !is_active, motion::FAST);
             let corners = CornerRadius { nw: r_md_corner, ne: r_md_corner, sw: 0, se: 0 };
-            if is_active {
-                painter.rect_filled(tab_rect, corners, t.bg.gamma_multiply(0.4));
-            } else if tab_resp.hovered() {
-                painter.rect_filled(
-                    tab_rect, corners,
-                    color_alpha(t.toolbar_border, st_settings.tab_hover_bg_alpha),
-                );
-            }
+            let idle_bg   = Color32::TRANSPARENT;
+            let hover_bg  = color_alpha(t.toolbar_border, st_settings.tab_hover_bg_alpha);
+            let active_bg = t.bg.gamma_multiply(0.4);
+            let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
+            tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);
+            painter.rect_filled(tab_rect, corners, tab_bg);
 
             // Inter-tab vertical hairline divider (painter_pane.rs:609-616).
             if ti + 1 < self.tabs.len() {

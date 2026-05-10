@@ -356,7 +356,7 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
         .show(ctx, |ui| {
-            let closed = PanelHeaderWithClose::new("INDICATORS").theme(t).show(ui);
+            let closed = PanelHeaderWithClose::new("INDICATORS").theme(t).watchlist(watchlist).show(ui);
             if closed {
                 watchlist.indicators_panel_open = false;
                 return;
@@ -442,7 +442,7 @@ fn section_header(ui: &mut egui::Ui, title: &str, count: Option<usize>, t: &Them
     let stripe_x = rect.left() + 1.0;
     p.line_segment(
         [egui::pos2(stripe_x, rect.top() + 6.0), egui::pos2(stripe_x, rect.bottom() - 6.0)],
-        egui::Stroke::new(2.0, color_alpha(t.accent, alpha_strong())),
+        egui::Stroke::new(stroke_thick(), color_alpha(t.accent, alpha_strong())),
     );
 
     // Title — uppercase, monospace small, slightly emphasised.
@@ -490,7 +490,7 @@ fn section_inset_body(
     ui.painter().rect_filled(rect, 5.0, bg);
     ui.painter().rect_stroke(
         rect, 5.0,
-        egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_subtle())),
+        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_subtle())),
         egui::StrokeKind::Inside,
     );
 
@@ -541,7 +541,7 @@ fn grippy_divider(ui: &mut egui::Ui, _id_salt: &str, t: &Theme) -> f32 {
         let cy = rect.center().y;
         ui.painter().line_segment(
             [egui::pos2(rect.left() + 12.0, cy), egui::pos2(rect.right() - 12.0, cy)],
-            egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_subtle())),
+            egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_subtle())),
         );
     }
     if resp.dragged() { resp.drag_delta().y } else { 0.0 }
@@ -622,7 +622,7 @@ fn tool_group_divider(ui: &mut egui::Ui, t: &Theme) {
     let cx = rect.center().x;
     ui.painter().line_segment(
         [egui::pos2(cx, rect.top() + 5.0), egui::pos2(cx, rect.bottom() - 5.0)],
-        egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())),
+        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
     );
 }
 
@@ -643,7 +643,7 @@ fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
 
     if total_active == 0 {
         ui.label(egui::RichText::new("No indicators or overlays on this pane.")
-            .monospace().size(font_sm()).color(t.dim.gamma_multiply(0.7)));
+            .monospace().size(font_sm()).color(color_subtle(t.dim)));
         ui.add_space(4.0);
         add_overlay_button(ui, t, chart);
         return;
@@ -714,12 +714,12 @@ fn active_symbol_overlay_row(
         ui.add_space(4.0);
 
         let label = if loading { format!("{} (loading…)", symbol) } else { symbol.clone() };
-        let txt_color = if visible { t.text } else { t.dim.gamma_multiply(0.5) };
+        let txt_color = if visible { t.text } else { color_half(t.dim) };
         let label_resp = ui.label(egui::RichText::new(label).monospace().size(font_sm()).color(txt_color));
         if label_resp.double_clicked() { *edit = Some(idx); }
 
         // Tag the row with "OV" so users distinguish overlays from indicators
-        ui.label(egui::RichText::new("OV").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.6)));
+        ui.label(egui::RichText::new("OV").monospace().size(font_xs()).color(color_muted(t.dim)));
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if mini_btn(ui, t, "\u{00D7}", "Remove overlay", false).clicked() {
@@ -742,7 +742,7 @@ fn add_overlay_button(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
             egui::RichText::new(format!("{}  Add symbol overlay", Icon::PLUS))
                 .monospace().size(font_sm()).color(t.dim))
             .fill(egui::Color32::TRANSPARENT)
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())))
             .corner_radius(3.0)
             .min_size(egui::vec2(ui.available_width(), 22.0)),
     );
@@ -782,7 +782,7 @@ fn active_indicator_row(
         let col = hex_to_color(&ind.color, 1.0);
         ui.painter().rect_filled(rect, 2.0, col);
         ui.add_space(4.0);
-        let txt_color = if ind.visible { t.text } else { t.dim.gamma_multiply(0.5) };
+        let txt_color = if ind.visible { t.text } else { color_half(t.dim) };
         ui.label(egui::RichText::new(ind.display_name()).monospace().size(font_sm()).color(txt_color));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if mini_btn(ui, t, "\u{00D7}", "Remove", false).clicked() { *remove_id = Some(ind.id); }
@@ -839,7 +839,7 @@ fn active_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
 }
 
 fn mini_btn(ui: &mut egui::Ui, t: &Theme, icon: &str, tip: &str, active: bool) -> egui::Response {
-    let col = if active { t.text } else { t.dim.gamma_multiply(0.7) };
+    let col = if active { t.text } else { color_subtle(t.dim) };
     ui.add(egui::Button::new(egui::RichText::new(icon).size(font_md()).color(col))
         .fill(egui::Color32::TRANSPARENT)
         .min_size(egui::vec2(20.0, 20.0)))
@@ -949,7 +949,7 @@ fn draw_library_section(
             );
             ui.painter().rect_stroke(
                 body_rect, 3.0,
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_subtle())),
+                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_subtle())),
                 egui::StrokeKind::Inside,
             );
 
@@ -973,7 +973,7 @@ fn draw_library_section(
             ui.painter().line_segment(
                 [egui::pos2(div_rect.left() + 8.0, div_rect.center().y),
                  egui::pos2(div_rect.right() - 8.0, div_rect.center().y)],
-                egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_muted())),
+                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
             );
             ui.add_space(4.0);
         }

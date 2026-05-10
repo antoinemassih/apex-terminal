@@ -16,11 +16,6 @@ use crate::chart::renderer::ui::foundation::{
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn fallback_theme() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
-}
-
-
 #[must_use = "NewsRow must be finalized with `.show(ui)` to render"]
 pub struct NewsRow<'a> {
     headline: &'a str,
@@ -64,12 +59,12 @@ impl<'a> NewsRow<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let ft = fallback_theme();
-        let bull = self.theme_bull.unwrap_or(ft.bull);
-        let bear = self.theme_bear.unwrap_or(ft.bear);
-        let dim = self.theme_dim.unwrap_or(ft.dim);
-        let accent = self.theme_accent.unwrap_or(ft.accent);
+        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
+        let bull = self.theme_bull.unwrap_or(default_t.bull);
+        let bear = self.theme_bear.unwrap_or(default_t.bear);
+        let dim = self.theme_dim.unwrap_or(default_t.dim);
+        let accent = self.theme_accent.unwrap_or(default_t.accent);
         let headline_fg = theme_ref.text;
 
         let headline = self.headline;
@@ -91,7 +86,7 @@ impl<'a> NewsRow<'a> {
 
                 let headline_pos = egui::pos2(rect.min.x + m, rect.min.y + 4.0);
                 painter.text(headline_pos, egui::Align2::LEFT_TOP,
-                    headline, egui::FontId::monospace(11.0),
+                    headline, mono_sm(),
                     headline_fg);
 
                 let meta_y = rect.min.y + 30.0;
@@ -100,24 +95,24 @@ impl<'a> NewsRow<'a> {
                     "Reuters" => Color32::from_rgb(255, 140, 0),
                     "Bloomberg" => Color32::from_rgb(100, 180, 255),
                     "CNBC" => Color32::from_rgb(0, 180, 120),
-                    "Benzinga" => Color32::from_rgb(180, 100, 255),
+                    "Benzinga" => COLOR_PURPLE,
                     _ => dim,
                 };
                 let source_rect = egui::Rect::from_min_size(
                     egui::pos2(rect.min.x + m, meta_y), egui::vec2(50.0, 14.0));
                 painter.rect_filled(source_rect, 2.0, color_alpha(source_col, alpha_subtle()));
                 painter.text(source_rect.center(), egui::Align2::CENTER_CENTER,
-                    source, egui::FontId::monospace(11.0), source_col);
+                    source, mono_sm(), source_col);
 
                 painter.text(egui::pos2(rect.min.x + m + 55.0, meta_y + 7.0),
                     egui::Align2::LEFT_CENTER, timestamp,
-                    egui::FontId::monospace(11.0), dim.gamma_multiply(0.5));
+                    mono_sm(), dim.gamma_multiply(0.5));
 
                 let sym_rect = egui::Rect::from_min_size(
                     egui::pos2(rect.min.x + m + 95.0, meta_y), egui::vec2(36.0, 14.0));
                 painter.rect_filled(sym_rect, 2.0, color_alpha(accent, alpha_ghost()));
                 painter.text(sym_rect.center(), egui::Align2::CENTER_CENTER,
-                    symbol, egui::FontId::monospace(11.0), accent);
+                    symbol, mono_sm(), accent);
 
                 let mut chip_x = sym_rect.right() + 4.0;
                 for tag in tags.iter() {
@@ -126,7 +121,7 @@ impl<'a> NewsRow<'a> {
                     if tr.right() > rect.right() - 16.0 { break; }
                     painter.rect_filled(tr, 2.0, color_alpha(dim, alpha_ghost()));
                     painter.text(tr.center(), egui::Align2::CENTER_CENTER,
-                        tag, egui::FontId::monospace(11.0), dim);
+                        tag, mono_sm(), dim);
                     chip_x = tr.right() + 3.0;
                 }
 

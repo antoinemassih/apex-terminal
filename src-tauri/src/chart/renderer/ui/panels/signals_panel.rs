@@ -2,9 +2,6 @@
 
 use egui;
 use super::super::style::*;
-use super::super::widgets as widgets_compat;
-// widgets alias
-#[allow(unused_imports)]
 use super::super::widgets as widgets;
 use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use super::super::widgets::headers::PanelHeaderWithClose;
@@ -32,8 +29,14 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
         .show(ctx, |ui| {
-            // Header — title + add-section button + close
-            let closed = PanelHeaderWithClose::new("SIGNALS").theme(t).show_with(ui, |ui| {
+            // Header — title + add-section button + close. Pre-resolve
+            // pane-aligned metrics to avoid a watchlist borrow conflict with
+            // the mutating closure below.
+            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+            let title_font_size = watchlist.pane_header_size.title_font();
+            let closed = PanelHeaderWithClose::new("SIGNALS").theme(t)
+                .height(header_h).font_size(title_font_size)
+                .show_with(ui, |ui| {
                 if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(FONT_SM).color(t.dim))
                     .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
                     let used: Vec<SignalsTab> = watchlist.signals_splits.iter().map(|s| s.tab).collect();
@@ -92,7 +95,7 @@ pub(crate) fn draw(
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
                      egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-                    egui::Stroke::new(0.5, color_alpha(t.toolbar_border, alpha_faint())));
+                    egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
 
                 egui::ScrollArea::vertical().id_salt(format!("sig_sec_{}", i)).max_height(h).show(ui, |ui| {
                     match tab {

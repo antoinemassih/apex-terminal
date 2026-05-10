@@ -2,9 +2,6 @@
 
 use egui;
 use super::super::style::*;
-use super::super::widgets as widgets_compat;
-// widgets alias
-#[allow(unused_imports)]
 use super::super::widgets as widgets;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::Variant;
@@ -37,8 +34,13 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
         .show(ctx, |ui| {
-            // Header — title + add-section button + close
-            let closed = PanelHeaderWithClose::new("FEED").theme(t).show_with(ui, |ui| {
+            // Header — title + add-section button + close. Pre-resolve
+            // pane-aligned metrics outside the mutating closure.
+            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+            let title_font_size = watchlist.pane_header_size.title_font();
+            let closed = PanelHeaderWithClose::new("FEED").theme(t)
+                .height(header_h).font_size(title_font_size)
+                .show_with(ui, |ui| {
                 if ui.add(Button::new("+").variant(Variant::Chrome).fill(egui::Color32::TRANSPARENT).fg(t.dim).min_size(egui::vec2(20.0, 20.0)).frameless(true)).clicked() {
                     let used: Vec<FeedTab> = watchlist.feed_splits.iter().map(|s| s.tab).collect();
                     let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
@@ -88,7 +90,7 @@ pub(crate) fn draw(
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.add(Button::new("\u{00D7}").variant(Variant::Chrome)
                                 .fill(egui::Color32::TRANSPARENT)
-                                .fg(t.dim.gamma_multiply(0.4))
+                                .fg(color_dim(t.dim))
                                 .min_size(egui::vec2(18.0, 18.0))
                                 .frameless(true)).clicked() {
                                 remove_idx = Some(i);
@@ -99,7 +101,7 @@ pub(crate) fn draw(
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
                      egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-                    egui::Stroke::new(0.5, color_alpha(t.toolbar_border, alpha_faint())));
+                    egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
 
                 egui::ScrollArea::vertical().id_salt(format!("feed_sec_{}", i)).max_height(h).show(ui, |ui| {
                     match tab {

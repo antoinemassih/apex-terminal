@@ -3,8 +3,7 @@
 //! Call [`show_drawing_tool_menu`] and [`show_template_menu`] from within
 //! the `resp.context_menu(|ui| { ... })` closure in gpu.rs.
 
-use crate::chart_renderer::gpu::{Theme, Chart, CandleMode};
-use crate::chart_renderer::{LineStyle};
+use crate::chart_renderer::gpu::Chart;
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::ui::style::font_sm;

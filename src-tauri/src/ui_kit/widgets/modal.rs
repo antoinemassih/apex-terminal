@@ -19,7 +19,10 @@ use egui::{Color32, Context, Id, Pos2, Rect, Stroke, Ui, Vec2};
 use super::theme::ComponentTheme;
 use super::motion;
 
-use crate::chart_renderer::ui::components::{DialogHeaderWithClose, PaneHeaderWithClose, PopupFrame};
+use crate::chart_renderer::ui::components::{
+    DialogHeaderWithClose, PaneHeaderWithClose, PanelHeaderWithClose, PopupFrame,
+};
+use crate::chart_renderer::ui::components::text::SectionLabelSize;
 use crate::chart_renderer::ui::style::{self, alpha_line, color_alpha, gap_sm, r_lg_cr};
 
 /// How the modal is anchored on screen.
@@ -38,8 +41,39 @@ pub enum HeaderStyle {
     Pane,
     /// Full dialog title bar with X close (style::dialog_header).
     Dialog,
+    /// Panel-style header (PanelHeaderWithClose) — title via SectionLabel,
+    /// optional subtitle, close button, and optional leading/trailing actions.
+    /// The title is taken from `Modal::new(title)`. Use `.subtitle(s)`,
+    /// `.panel_title_actions(f)`, `.panel_actions(f)` to configure further.
+    Panel {
+        /// Title `SectionLabel` size variant (default: `Sm`).
+        title_size:      SectionLabelSize,
+        /// Escape-hatch pixel size that overrides the variant.
+        title_size_px:   Option<f32>,
+        /// Force monospace (or proportional) title rendering.
+        title_monospace: Option<bool>,
+        /// Pixels of horizontal space inserted before the title.
+        leading_space:   f32,
+        /// Pixels of horizontal space inserted after the close button.
+        trailing_space:  f32,
+    },
     /// No auto-header — caller renders its own inside the body closure.
     None,
+}
+
+impl HeaderStyle {
+    /// Convenience constructor for a default Panel header. Mirrors
+    /// `PanelHeaderWithClose::new(title)` defaults — `Sm` SectionLabel, no
+    /// pixel override, default monospace, no edge padding.
+    pub const fn panel() -> Self {
+        Self::Panel {
+            title_size:      SectionLabelSize::Sm,
+            title_size_px:   None,
+            title_monospace: None,
+            leading_space:   0.0,
+            trailing_space:  0.0,
+        }
+    }
 }
 
 /// Frame style.
@@ -64,6 +98,10 @@ pub struct ModalResponse<R> {
 /// requested close (e.g. clicked an X). Boxed for object-safety.
 type HeaderPainter<'a> = Box<dyn FnOnce(&mut Ui) -> bool + 'a>;
 
+/// Trailing/leading action painter for `HeaderStyle::Panel` — runs inside the
+/// header strip alongside the auto-title and close button.
+type PanelActionFn<'a> = Box<dyn FnOnce(&mut Ui) + 'a>;
+
 /// Builder for a centered modal with title bar + close + body.
 #[must_use = "Modal does nothing until `.show()` is called"]
 pub struct Modal<'a> {
@@ -80,6 +118,17 @@ pub struct Modal<'a> {
     close_on_click_outside: bool,
     draggable_header: bool,
     header_painter: Option<HeaderPainter<'a>>,
+    // ── HeaderStyle::Panel side-channel state ─────────────────────────────
+    /// Optional subtitle rendered next to the title (monospace, dim).
+    header_subtitle: Option<&'a str>,
+    /// Override accent (title color) for the panel header.
+    panel_accent: Option<Color32>,
+    /// Override dim color (subtitle / close button) for the panel header.
+    panel_dim: Option<Color32>,
+    /// Inline actions placed immediately to the RIGHT of the title (LTR).
+    panel_title_actions: Option<PanelActionFn<'a>>,
+    /// Trailing actions placed to the LEFT of the close button (RTL).
+    panel_actions: Option<PanelActionFn<'a>>,
 }
 
 impl<'a> Modal<'a> {
@@ -98,6 +147,11 @@ impl<'a> Modal<'a> {
             close_on_click_outside: false,
             draggable_header: false,
             header_painter: None,
+            header_subtitle: None,
+            panel_accent: None,
+            panel_dim: None,
+            panel_title_actions: None,
+            panel_actions: None,
         }
     }
 
@@ -132,6 +186,39 @@ impl<'a> Modal<'a> {
         f: impl FnOnce(&mut Ui) -> bool + 'a,
     ) -> Self {
         self.header_painter = Some(Box::new(f));
+        self
+    }
+
+    /// Subtitle for `HeaderStyle::Panel` — rendered next to the title in
+    /// monospace `font_sm` using the dim color.
+    pub fn subtitle(mut self, s: &'a str) -> Self {
+        self.header_subtitle = Some(s);
+        self
+    }
+    /// Override the accent (title) color for `HeaderStyle::Panel`. Defaults
+    /// to `theme.accent()`.
+    pub fn panel_accent(mut self, c: Color32) -> Self {
+        self.panel_accent = Some(c);
+        self
+    }
+    /// Override the dim (subtitle / close-button) color for `HeaderStyle::Panel`.
+    /// Defaults to `theme.dim()`.
+    pub fn panel_dim(mut self, c: Color32) -> Self {
+        self.panel_dim = Some(c);
+        self
+    }
+    /// Trailing actions placed to the LEFT of the close button (RTL flow).
+    /// Mirrors `PanelHeaderWithClose::show_with`. Used for filter chips,
+    /// toolbar buttons, etc.
+    pub fn panel_actions(mut self, f: impl FnOnce(&mut Ui) + 'a) -> Self {
+        self.panel_actions = Some(Box::new(f));
+        self
+    }
+    /// Inline actions placed immediately to the RIGHT of the title (LTR flow).
+    /// Mirrors `PanelHeaderWithClose::show_with_title_actions`. Used for
+    /// next-to-title chips, badges, etc.
+    pub fn panel_title_actions(mut self, f: impl FnOnce(&mut Ui) + 'a) -> Self {
+        self.panel_title_actions = Some(Box::new(f));
         self
     }
 
@@ -170,6 +257,11 @@ impl<'a> Modal<'a> {
         let header_painter = self.header_painter;
         let had_painter = header_painter.is_some();
         let draggable = self.draggable_header;
+        let header_subtitle = self.header_subtitle;
+        let panel_accent = self.panel_accent;
+        let panel_dim = self.panel_dim;
+        let panel_title_actions = self.panel_title_actions;
+        let panel_actions = self.panel_actions;
 
         // Inner render closure: header + separator + body. Returns
         // (closed_from_header, body_return_value).
@@ -189,6 +281,33 @@ impl<'a> Modal<'a> {
                     HeaderStyle::Dialog => {
                         let d = header_color.unwrap_or(dim);
                         DialogHeaderWithClose::new(title).dim(d).show(ui)
+                    }
+                    HeaderStyle::Panel {
+                        title_size,
+                        title_size_px,
+                        title_monospace,
+                        leading_space,
+                        trailing_space,
+                    } => {
+                        let acc = panel_accent.or(header_color).unwrap_or(accent);
+                        let d   = panel_dim.unwrap_or(dim);
+                        let mut hb = PanelHeaderWithClose::new(title)
+                            .accent(acc)
+                            .dim(d)
+                            .title_size(title_size)
+                            .leading_space(leading_space)
+                            .trailing_space(trailing_space);
+                        if let Some(s)  = header_subtitle { hb = hb.subtitle(s); }
+                        if let Some(px) = title_size_px   { hb = hb.title_size_px(px); }
+                        if let Some(m)  = title_monospace { hb = hb.title_monospace(m); }
+                        // Dispatch to the most specific show_* method based
+                        // on which action closures were supplied.
+                        match (panel_title_actions, panel_actions) {
+                            (Some(ta), Some(ba)) => hb.show_full(ui, ta, ba),
+                            (Some(ta), None)     => hb.show_with_title_actions(ui, ta),
+                            (None,     Some(ba)) => hb.show_with(ui, ba),
+                            (None,     None)     => hb.show(ui),
+                        }
                     }
                     HeaderStyle::None => false,
                 };

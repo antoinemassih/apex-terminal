@@ -11,7 +11,6 @@
 #![allow(dead_code)]
 
 use egui::Ui;
-use crate::chart_renderer::ui::style::*;
 use crate::chart_renderer::gpu::Theme;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
@@ -43,16 +42,11 @@ impl<'a> NmfToggle<'a> {
     pub fn show(self, ui: &mut Ui) {
         for (lvl, label) in [(0u8, "N"), (1u8, "M"), (2u8, "F")] {
             let active = *self.value == lvl;
-            let col = if active { self.accent } else { self.dim.gamma_multiply(0.4) };
             if ui.add(
-                Button::new(label).variant(Variant::Chrome).size(Size::Xs).fg(col)
-                    .fill(if active {
-                        color_alpha(self.accent, alpha_subtle())
-                    } else {
-                        egui::Color32::TRANSPARENT
-                    })
-                    .min_size(egui::vec2(14.0, 14.0))
-                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32),
+                Button::new(label)
+                    .variant(Variant::Chip)
+                    .size(Size::Xs)
+                    .active(active),
             ).clicked() {
                 *self.value = lvl;
             }

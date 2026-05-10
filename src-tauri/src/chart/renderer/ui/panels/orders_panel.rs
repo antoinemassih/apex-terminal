@@ -5,7 +5,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::frames::PanelFrame;
 use super::super::widgets::rows::order_row::{OrderRow, OrderSideTag};
-use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::{Button, MetricRow, MetricTone};
 use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::headers::PanelHeaderWithTabs;
 use super::super::widgets::text::{self as wtext, MonospaceCode};
@@ -30,15 +30,30 @@ if watchlist.orders_panel_open {
         .max_width(330.0)
         .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
-            // Tab-driven panel header (Book / Journal) with close button.
+            // Tab-driven panel header (Book / Journal) — chart-pane parity.
+            // Pre-resolve metrics outside the mutable borrow on `book_tab`.
+            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+            let title_font_size = watchlist.pane_header_size.title_font();
             if PanelHeaderWithTabs::new(&mut watchlist.book_tab, &[
                 (BookTab::Book, "Book"),
                 (BookTab::Journal, "Journal"),
-            ]).theme(t).show(ui) {
+            ]).theme(t)
+              .height(header_h)
+              .font_size(title_font_size)
+              .show(ui) {
                 watchlist.orders_panel_open = false;
             }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_sm());
+
+            // Body padding — the panel frame is zero-margin so the header sits
+            // flush at the top edge; body content needs its own inset.
+            egui::Frame::NONE
+                .inner_margin(egui::Margin {
+                    left:   gap_sm() as i8,
+                    right:  gap_sm() as i8,
+                    top:    gap_sm() as i8,
+                    bottom: gap_sm() as i8,
+                })
+                .show(ui, |ui| {
 
             if watchlist.book_tab == BookTab::Journal {
                 super::journal_panel::draw_content(ui, watchlist, t);
@@ -151,14 +166,12 @@ if watchlist.orders_panel_open {
                         }
                     });
                     // Total P&L row
-                    let total_color = if total_pnl >= 0.0 { t.bull } else { t.bear };
+                    let total_tone = if total_pnl >= 0.0 { MetricTone::Bull } else { MetricTone::Bear };
                     ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        ui.add(MonospaceCode::new("Total P&L").size_px(font_sm_tight()).color(t.dim));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add(MonospaceCode::new(&format!("{:+.2}", total_pnl)).size_px(font_sm()).strong(true).color(total_color));
-                        });
-                    });
+                    MetricRow::new("Total P&L")
+                        .value(format!("{:+.2}", total_pnl))
+                        .tone(total_tone)
+                        .show(ui, t);
                 } else {
                     ui.add_space(8.0);
                     ui.add(MonospaceCode::new("No open positions").size_px(font_sm_tight()).color(t.dim).gamma(0.4));
@@ -261,7 +274,7 @@ if watchlist.orders_panel_open {
                 if !active_orders.is_empty() {
                     ui.horizontal(|ui| {
                         let check_icon = if all_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
-                        let check_color = if all_selected { t.accent } else { t.dim.gamma_multiply(0.4) };
+                        let check_color = if all_selected { t.accent } else { color_dim(t.dim) };
                         if ui.add(Button::icon(check_icon)
                             .variant(Variant::Chrome)
                             .glyph_color(check_color)
@@ -341,7 +354,7 @@ if watchlist.orders_panel_open {
                         let is_fill = o.status == "filled";
                         let is_cancel = o.status == "cancelled";
                         let side_color = if o.side == "BUY" { t.bull } else { t.bear };
-                        let status_color = if is_fill { t.bull } else if is_cancel { t.dim.gamma_multiply(0.4) } else { t.accent };
+                        let status_color = if is_fill { t.bull } else if is_cancel { color_dim(t.dim) } else { t.accent };
                         let opt_label = if !o.option_type.is_empty() { format!(" {:.0}{}", o.strike, o.option_type) } else { String::new() };
                         order_card(ui, side_color, color_alpha(t.toolbar_border, if is_cancel { 5 } else { 10 }), |ui| {
                             ui.horizontal(|ui| {
@@ -391,7 +404,7 @@ if watchlist.orders_panel_open {
                                     status_badge(ui, "TRIGGERED", t.accent);
                                 }
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), FONT_MD).clicked() {
+                                    if icon_btn(ui, Icon::X, color_half(t.dim), FONT_MD).clicked() {
                                         remove_alert = Some(alert.id);
                                     }
                                 });
@@ -404,6 +417,8 @@ if watchlist.orders_panel_open {
                     if let Some(id) = remove_alert { watchlist.alerts.retain(|a| a.id != id); }
                 }
             });
+
+            }); // close body-padding Frame
         });
 }
 

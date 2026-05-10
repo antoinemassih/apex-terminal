@@ -36,6 +36,7 @@ pub struct DatePicker<'a> {
     full_width: bool,
     size: Size,
     id_salt: Option<Id>,
+    disabled: bool,
 }
 
 pub struct DatePickerResponse {
@@ -55,6 +56,7 @@ impl<'a> DatePicker<'a> {
             full_width: false,
             size: Size::Md,
             id_salt: None,
+            disabled: false,
         }
     }
 
@@ -69,6 +71,7 @@ impl<'a> DatePicker<'a> {
             full_width: false,
             size: Size::Md,
             id_salt: None,
+            disabled: false,
         }
     }
 
@@ -83,6 +86,7 @@ impl<'a> DatePicker<'a> {
         self.id_salt = Some(Id::new(salt));
         self
     }
+    pub fn disabled(mut self, d: bool) -> Self { self.disabled = d; self }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> DatePickerResponse {
         paint_date_picker(ui, theme, self)
@@ -91,7 +95,7 @@ impl<'a> DatePicker<'a> {
 
 impl<'a> Widget for DatePicker<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let theme = &crate::chart_renderer::gpu::THEMES[0];
+        let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, theme).response
     }
 }
@@ -111,6 +115,7 @@ fn paint_date_picker<'a>(
         full_width,
         size,
         id_salt,
+        disabled,
     } = dp;
 
     let h = size.height();
@@ -142,24 +147,27 @@ fn paint_date_picker<'a>(
 
     let desired_w = if full_width { ui.available_width() } else { 200.0 };
     let row_size = Vec2::new(desired_w, h);
-    let (rect, response) = ui.allocate_exact_size(row_size, Sense::click());
+    let sense = if disabled { Sense::hover() } else { Sense::click() };
+    let (rect, response) = ui.allocate_exact_size(row_size, sense);
     let id = response.id;
 
-    let hovered = response.hovered();
+    let hovered = !disabled && response.hovered();
     let hover_t = motion::ease_bool(ui.ctx(), id.with("hover"), hovered, motion::FAST);
     let focus_t = motion::ease_bool(ui.ctx(), id.with("focus"), open, motion::FAST);
+    let dim_mul = if disabled { 0.5 } else { 1.0 };
 
     let mut border_col = motion::lerp_color(theme.border(), theme.dim(), hover_t);
     border_col = motion::lerp_color(border_col, theme.accent(), focus_t);
+    border_col = border_col.gamma_multiply(dim_mul);
 
     let radius = CornerRadius::same(4);
     if ui.is_rect_visible(rect) {
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, radius, theme.surface());
+        painter.rect_filled(rect, radius, theme.surface().gamma_multiply(dim_mul));
         painter.rect_stroke(rect, radius, Stroke::new(1.0, border_col), StrokeKind::Inside);
 
         // Leading calendar icon.
-        let icon_color = motion::lerp_color(theme.dim(), theme.accent(), focus_t);
+        let icon_color = motion::lerp_color(theme.dim(), theme.accent(), focus_t).gamma_multiply(dim_mul);
         let cy = rect.center().y;
         let icon_x = rect.left() + pad_x;
         painter.text(
@@ -173,9 +181,9 @@ fn paint_date_picker<'a>(
         // Trigger text.
         let text_x = icon_x + font_size * 1.1 + icon_gap;
         let text_col = if is_placeholder {
-            st::color_alpha(theme.dim(), 160)
+            st::color_alpha(theme.dim(), 160).gamma_multiply(dim_mul)
         } else {
-            theme.text()
+            theme.text().gamma_multiply(dim_mul)
         };
         let max_text_w = rect.right() - pad_x - text_x;
         let truncated = truncate_to_width(ui, &trigger_text, font_size, max_text_w);
@@ -191,7 +199,7 @@ fn paint_date_picker<'a>(
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
-    if response.clicked() {
+    if !disabled && response.clicked() {
         open = !open;
     }
 

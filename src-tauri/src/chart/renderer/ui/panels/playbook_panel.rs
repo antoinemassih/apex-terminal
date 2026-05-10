@@ -22,7 +22,7 @@ pub(crate) fn draw(
         .resizable(true)
         .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
-            if PanelHeaderWithClose::new("PLAYBOOK").theme(t).show(ui) {
+            if PanelHeaderWithClose::new("PLAYBOOK").theme(t).watchlist(watchlist).show(ui) {
                 watchlist.playbook_panel_open = false;
             }
             separator(ui, color_alpha(t.toolbar_border, alpha_muted()));

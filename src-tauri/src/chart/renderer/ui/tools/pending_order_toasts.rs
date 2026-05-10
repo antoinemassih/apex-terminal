@@ -2,8 +2,8 @@
 
 use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart};
-use crate::chart_renderer::trading::{OrderLevel, OrderStatus};
-use crate::chart_renderer::ui::style::{color_alpha, gap_xs, gap_sm, font_xs, font_sm, font_md};
+use crate::chart_renderer::trading::OrderStatus;
+use crate::chart_renderer::ui::style::{gap_sm, font_sm, stroke_std};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 
@@ -29,12 +29,13 @@ pub fn show_pending_order_toasts(c: PendingOrderToastsCtx<'_>) {
             .map(|o| (o.label(), o.price, o.qty, o.color(c.t.bull, c.t.bear)));
         if let Some((label, price, qty, color)) = order_data {
             let toast_y = c.base_y - ci as f32 * 34.0;
+            // retained as Window: per-order accent border color and chart-relative stack position can't be expressed via Modal API
             egui::Window::new(format!("confirm_toast_{}_{}", c.pane_idx, oid))
                 .fixed_pos(egui::pos2(c.rect_left + 8.0, toast_y))
                 .fixed_size(egui::vec2(180.0, 26.0))
                 .title_bar(false)
                 .frame(egui::Frame::popup(&c.ctx.style()).fill(c.t.toolbar_bg).inner_margin(gap_sm())
-                    .stroke(egui::Stroke::new(1.0, color)))
+                    .stroke(egui::Stroke::new(stroke_std(), color)))
                 .show(c.ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(font_sm()).color(color));

@@ -4,11 +4,10 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::text::{BodyLabel, SectionLabel};
-use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button, Indicator, IndicatorTone, Progress};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::chart_renderer::gpu::APEXIB_URL;
-use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, read_account_data};
+use crate::chart_renderer::trading::read_account_data;
 
 pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mut [Chart], _ap: usize, t: &Theme, conn_panel_open: &mut bool) {
     if !*conn_panel_open { return; }
@@ -18,7 +17,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
     let custom_frame = egui::Frame::popup(&_ctx.style())
         .fill(t.toolbar_bg)
         .inner_margin(0.0)
-        .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, alpha_active())))
+        .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_active())))
         .corner_radius(r_lg_cr());
     let resp = Modal::new("CONNECTIONS")
         .id("connections")
@@ -35,7 +34,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
 
             ui.horizontal(|ui| {
                 ui.add_space(m);
-                ui.add(SectionLabel::new("SERVICES").tiny().color(t.dim.gamma_multiply(0.5)));
+                ui.add(SectionLabel::new("SERVICES").tiny().color(color_half(t.dim)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.add(Button::new("diag").variant(Variant::Secondary).simple_treatment(true).fg(t.dim)).on_hover_text("ApexData diagnostics panel").clicked() {
                         _watchlist.apex_diag_open = true;

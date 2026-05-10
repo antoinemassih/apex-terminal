@@ -499,7 +499,7 @@ impl Widget for NotificationBadge {
             rect.center(),
             egui::Align2::CENTER_CENTER,
             &label,
-            egui::FontId::monospace(11.0),
+            mono_sm(),
             self.fg,
         );
         resp

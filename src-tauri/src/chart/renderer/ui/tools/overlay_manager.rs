@@ -5,26 +5,23 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
-use super::super::widgets::frames::PopupFrame;
 use crate::ui_kit::widgets::{Button, Input};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
+use crate::ui_kit::widgets::modal::{Modal, HeaderStyle};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Overlay management pane ─────────────────────────────────────────────
 if panes[ap].overlay_editing {
-    let mut close_ov = false;
     let mut delete_idx: Option<usize> = None;
-    egui::Window::new("overlay_mgr")
-        .default_pos(egui::pos2(200.0, 80.0))
-        .default_size(egui::vec2(260.0, 0.0))
-        .resizable(false)
-        .movable(true)
-        .title_bar(false)
-        .frame(PopupFrame::new().theme(t).ctx(ctx).build())
-        .show(ctx, |ui| {
+    let modal_resp = Modal::new("SYMBOL OVERLAYS")
+        .id("overlay_mgr")
+        .ctx(ctx)
+        .theme(t)
+        .size(egui::vec2(260.0, 0.0))
+        .header_style(HeaderStyle::Dialog)
+        .draggable_header(true)
+        .show(|ui| {
             let m = 8.0;
-            // Header
-            if dialog_header(ui, "SYMBOL OVERLAYS", t.dim) { close_ov = true; }
             ui.add_space(8.0);
 
             // ── Existing overlays ──
@@ -111,11 +108,10 @@ if panes[ap].overlay_editing {
                 panes[ap].overlay_input.clear();
             }
 
-            if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close_ov = true; }
             ui.add_space(8.0);
         });
     if let Some(di) = delete_idx { panes[ap].symbol_overlays.remove(di); }
-    if close_ov { panes[ap].overlay_editing = false; panes[ap].overlay_editing_idx = None; panes[ap].overlay_input.clear(); }
+    if modal_resp.closed { panes[ap].overlay_editing = false; panes[ap].overlay_editing_idx = None; panes[ap].overlay_input.clear(); }
 }
 
 

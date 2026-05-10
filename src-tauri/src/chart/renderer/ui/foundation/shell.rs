@@ -395,11 +395,16 @@ impl<'a> CardShell<'a> {
             .stroke(stroke)
             .corner_radius(self.radius.corner());
         if matches!(self.variant, CardVariant::Elevated) && settings.shadows_enabled {
+            let shadow_col = if let Some(th) = self.theme {
+                shadow_color_alpha(th, shadow_alpha())
+            } else {
+                Color32::from_black_alpha(shadow_alpha())
+            };
             frame = frame.shadow(egui::epaint::Shadow {
                 offset: [0, shadow_offset() as i8],
                 blur: shadow_spread() as u8 + 4,
                 spread: 1,
-                color: Color32::from_black_alpha(shadow_alpha()),
+                color: shadow_col,
             });
         }
         let title_style = self.title_style.unwrap_or(TextStyle::HeadingMd);

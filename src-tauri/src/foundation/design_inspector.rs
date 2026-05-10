@@ -2422,7 +2422,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
         p.rect_stroke(rect, egui::CornerRadius::ZERO,
             Stroke::new(st.stroke_hair, preview_alpha(border, 80)), egui::StrokeKind::Outside);
         p.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER,
-            "AAPL", egui::FontId::monospace(11.0), accent);
+            "AAPL", crate::chart_renderer::ui::style::mono_sm(), accent);
         p.text(egui::pos2(rect.right() - 8.0, rect.center().y), egui::Align2::RIGHT_CENTER,
             "x", egui::FontId::monospace(10.0), dim);
     }
@@ -2439,7 +2439,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
         let stripe = egui::Rect::from_min_max(rect.min, egui::pos2(rect.left() + 3.0, rect.bottom()));
         p.rect_filled(stripe, egui::CornerRadius { nw: st.r_md, sw: st.r_md, ne: 0, se: 0 }, accent);
         p.text(egui::pos2(rect.left() + 10.0, rect.top() + 10.0), egui::Align2::LEFT_TOP,
-            "AAPL - 185.30", egui::FontId::monospace(11.0), text);
+            "AAPL - 185.30", crate::chart_renderer::ui::style::mono_sm(), text);
         p.text(egui::pos2(rect.left() + 10.0, rect.top() + 24.0), egui::Align2::LEFT_TOP,
             "1 call @ 1.45", egui::FontId::monospace(9.0), dim);
         p.text(egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0), egui::Align2::RIGHT_BOTTOM,
@@ -2563,7 +2563,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
         p.rect_filled(hdr, egui::CornerRadius { nw: st.r_lg, ne: st.r_lg, sw: 0, se: 0 },
             Color32::from_rgb(18, 18, 28));
         p.text(egui::pos2(hdr.left() + 10.0, hdr.center().y), egui::Align2::LEFT_CENTER,
-            "Confirm Order", egui::FontId::monospace(11.0), text);
+            "Confirm Order", crate::chart_renderer::ui::style::mono_sm(), text);
         p.text(egui::pos2(hdr.right() - 8.0, hdr.center().y), egui::Align2::RIGHT_CENTER,
             "x", egui::FontId::monospace(10.0), dim);
         p.text(egui::pos2(rect.left() + 10.0, rect.top() + 34.0), egui::Align2::LEFT_TOP,

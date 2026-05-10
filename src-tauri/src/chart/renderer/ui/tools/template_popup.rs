@@ -3,7 +3,7 @@
 
 use egui;
 use super::super::style::*;
-use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, VolumeProfileMode, Indicator, IndicatorType, INDICATOR_COLORS};
+use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, INDICATOR_COLORS};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
@@ -31,7 +31,7 @@ pub(crate) fn draw(
             .corner_radius(r_lg_cr())
             .shadow(egui::epaint::Shadow {
                 offset: [0, 4], blur: 14, spread: 0,
-                color: egui::Color32::from_black_alpha(80),
+                color: shadow_color_alpha(t, 80),
             });
         let modal_resp = Modal::new("TEMPLATES")
             .id(&format!("template_popup_{}", pi))

@@ -13,7 +13,6 @@ use super::super::super::style::*;
 use crate::ui_kit::icons::Icon;
 
 type Theme = crate::chart_renderer::gpu::Theme;
-fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SortDir { None, Asc, Desc }
@@ -119,12 +118,12 @@ impl<'a, T> Table<'a, T> {
             egui::vec2(avail_w, avail_h),
         );
 
-        let t = ft();
-        let dim = self.theme_dim.unwrap_or(t.dim);
-        let fg = self.theme_fg.unwrap_or(t.text);
-        let accent = self.theme_accent.unwrap_or(t.accent);
-        let border = self.theme_border.unwrap_or(t.toolbar_border);
-        let bg = self.theme_bg.unwrap_or(t.toolbar_bg);
+        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let dim = self.theme_dim.unwrap_or(default_t.dim);
+        let fg = self.theme_fg.unwrap_or(default_t.text);
+        let accent = self.theme_accent.unwrap_or(default_t.accent);
+        let border = self.theme_border.unwrap_or(default_t.toolbar_border);
+        let bg = self.theme_bg.unwrap_or(default_t.toolbar_bg);
 
         // Compute column x-positions.
         let select_w = if self.select_col { 22.0 } else { 0.0 };
@@ -165,12 +164,12 @@ impl<'a, T> Table<'a, T> {
             } else {
                 egui::pos2(cell.left() + pad, cell.center().y)
             };
-            ui.painter().text(pos, align, c.label, egui::FontId::monospace(11.0), col_text);
+            ui.painter().text(pos, align, c.label, mono_sm(), col_text);
             if active {
                 let gx = if c.right_align { cell.right() - pad - (c.label.len() as f32) * 6.0 - 8.0 } else { cell.left() + pad + (c.label.len() as f32) * 6.0 + 4.0 };
                 ui.painter().text(egui::pos2(gx, cell.center().y),
                     egui::Align2::CENTER_CENTER,
-                    self.state.sort_dir.glyph(), egui::FontId::monospace(11.0), accent);
+                    self.state.sort_dir.glyph(), mono_sm(), accent);
             }
             if c.sortable && resp.clicked() {
                 if self.state.sort_col == Some(i) {

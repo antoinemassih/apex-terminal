@@ -341,6 +341,7 @@ impl<'a> Widget for NumericDisplay<'a> {
 // ─── SectionLabel ─────────────────────────────────────────────────────────────
 
 /// Size variant for [`SectionLabel`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SectionLabelSize {
     /// `7.0` — matches legacy `style::section_label` (sub-`font_xs`).
     Tiny,

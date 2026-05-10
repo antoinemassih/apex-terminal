@@ -52,10 +52,14 @@ impl<'a> PlayCard<'a> {
         let (card_rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
         let p = ui.painter();
 
-        // Shadow
-        p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), RADIUS_LG, color_alpha(t.shadow_color, 25));
-        p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), RADIUS_LG, color_alpha(t.shadow_color, 15));
+        // Shadow — hand-painted two-layer tint stack (resting card depth).
+        // Alphas come from the semantic alpha-tier tokens to keep softness in
+        // lockstep with the rest of the card chrome.
+        p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), RADIUS_LG, color_alpha(t.shadow_color, ALPHA_SOFT));
+        p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), RADIUS_LG, color_alpha(t.shadow_color, ALPHA_GHOST));
 
+        // TODO(design-system): channel-math hover/rest tints derived from theme; consider a
+        // `tint_brighter(c, n)` token helper or `hover_tint()` overlay.
         let bg = if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             egui::Color32::from_rgba_unmultiplied(
@@ -69,7 +73,8 @@ impl<'a> PlayCard<'a> {
         // Top bevel highlight
         p.rect_filled(egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
             egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
-            egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 40 } else { 8 }));
+            // TODO(design-system): theme-aware bevel highlight; 40 ≈ ALPHA_SUBTLE, 8 is custom.
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { ALPHA_SUBTLE } else { 8 }));
 
         p.rect_stroke(card_rect, RADIUS_LG, egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_STRONG)), egui::StrokeKind::Outside);
 
@@ -91,19 +96,19 @@ impl<'a> PlayCard<'a> {
             p.text(pill_rect.center(), egui::Align2::CENTER_CENTER, play.direction.label(), egui::FontId::monospace(FONT_XS), dir_color);
 
             p.text(egui::pos2(cx + pill_w + 6.0, cy + 6.0), egui::Align2::LEFT_CENTER,
-                play.play_type.icon(), egui::FontId::proportional(FONT_SM), t.dim.gamma_multiply(0.5));
+                play.play_type.icon(), egui::FontId::proportional(FONT_SM), color_half(t.dim));
             p.text(egui::pos2(cx + pill_w + 22.0, cy + 6.0), egui::Align2::LEFT_CENTER,
                 &play.symbol, egui::FontId::monospace(FONT_LG), t.text);
 
             let status_color = match play.status {
                 PlayStatus::Draft => t.dim, PlayStatus::Published => t.accent,
                 PlayStatus::Active => t.warn,
-                PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => t.dim.gamma_multiply(0.5),
+                PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => color_half(t.dim),
             };
             let status_x = card_rect.right() - 60.0;
             let sr = egui::Rect::from_min_size(egui::pos2(status_x, cy - 1.0), egui::vec2(48.0, 16.0));
             p.rect_filled(sr, 3.0, color_alpha(status_color, ALPHA_SUBTLE));
-            p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), egui::FontId::monospace(11.0), status_color);
+            p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), egui::FontId::monospace(FONT_SM), status_color);
 
             if play.risk_reward > 0.0 {
                 p.text(egui::pos2(status_x - 8.0, cy + 6.0), egui::Align2::RIGHT_CENTER,
@@ -115,16 +120,16 @@ impl<'a> PlayCard<'a> {
         // Row 2: Entry / Target / Stop
         {
             let col_w = (card_w - 24.0) / 3.0;
-            p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER, "ENTRY", egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
+            p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER, "ENTRY", egui::FontId::monospace(FONT_SM), color_half(t.dim));
             p.text(egui::pos2(cx + col_w * 0.6, cy + 4.0), egui::Align2::LEFT_CENTER,
                 &format!("${:.2}", play.entry_price), egui::FontId::monospace(FONT_SM), t.text);
             let tx = cx + col_w;
-            p.text(egui::pos2(tx, cy + 4.0), egui::Align2::LEFT_CENTER, "TARGET", egui::FontId::monospace(11.0), t.bull.gamma_multiply(0.6));
+            p.text(egui::pos2(tx, cy + 4.0), egui::Align2::LEFT_CENTER, "TARGET", egui::FontId::monospace(FONT_SM), color_muted(t.bull));
             p.text(egui::pos2(tx + col_w * 0.6, cy + 4.0), egui::Align2::LEFT_CENTER,
                 &format!("${:.2}", play.target_price), egui::FontId::monospace(FONT_SM), t.bull);
             if play.play_type != PlayType::Scalp {
                 let sx = cx + col_w * 2.0;
-                p.text(egui::pos2(sx, cy + 4.0), egui::Align2::LEFT_CENTER, "STOP", egui::FontId::monospace(11.0), t.bear.gamma_multiply(0.6));
+                p.text(egui::pos2(sx, cy + 4.0), egui::Align2::LEFT_CENTER, "STOP", egui::FontId::monospace(FONT_SM), color_muted(t.bear));
                 p.text(egui::pos2(sx + col_w * 0.5, cy + 4.0), egui::Align2::LEFT_CENTER,
                     &format!("${:.2}", play.stop_price), egui::FontId::monospace(FONT_SM), t.bear);
             }
@@ -135,11 +140,11 @@ impl<'a> PlayCard<'a> {
         if has_targets {
             for tgt in &play.targets {
                 p.text(egui::pos2(cx + 8.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-                    &tgt.label, egui::FontId::monospace(11.0), t.bull.gamma_multiply(0.5));
+                    &tgt.label, egui::FontId::monospace(FONT_SM), color_half(t.bull));
                 p.text(egui::pos2(cx + 30.0, cy + 4.0), egui::Align2::LEFT_CENTER,
                     &format!("${:.2}", tgt.price), egui::FontId::monospace(FONT_XS), t.bull);
                 p.text(egui::pos2(cx + 100.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-                    &format!("{}%", (tgt.pct * 100.0) as i32), egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.4));
+                    &format!("{}%", (tgt.pct * 100.0) as i32), egui::FontId::monospace(FONT_SM), color_dim(t.dim));
                 cy += 12.0;
             }
         }
@@ -164,7 +169,7 @@ impl<'a> PlayCard<'a> {
             let mut tx = cx;
             for tag in &play.tags {
                 p.text(egui::pos2(tx, cy + 4.0), egui::Align2::LEFT_CENTER,
-                    &format!("#{}", tag), egui::FontId::monospace(11.0), t.accent.gamma_multiply(0.5));
+                    &format!("#{}", tag), egui::FontId::monospace(FONT_SM), color_half(t.accent));
                 tx += tag.len() as f32 * 5.0 + 12.0;
             }
             cy += 12.0;
@@ -173,7 +178,7 @@ impl<'a> PlayCard<'a> {
         // Notes
         if !play.notes.is_empty() {
             p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &play.notes, egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.5));
+                &play.notes, egui::FontId::monospace(FONT_XS), color_half(t.dim));
         }
 
         // Hover buttons
@@ -187,7 +192,7 @@ impl<'a> PlayCard<'a> {
                 ui.painter().rect_filled(del_rect, 2.0, color_alpha(t.bear, ALPHA_GHOST));
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
-            ui.painter().text(del_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.5));
+            ui.painter().text(del_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(FONT_SM), color_half(t.dim));
             if del_resp.clicked() { delete_clicked = true; btn_clicked = true; }
 
             if play.status == PlayStatus::Draft {
@@ -195,7 +200,7 @@ impl<'a> PlayCard<'a> {
                 let act_resp = ui.interact(act_rect, egui::Id::new(("play_act", &play.id[..8])), egui::Sense::click());
                 let act_bg = if act_resp.hovered() { color_alpha(t.accent, ALPHA_DIM) } else { color_alpha(t.accent, ALPHA_GHOST) };
                 ui.painter().rect_filled(act_rect, 3.0, act_bg);
-                ui.painter().text(act_rect.center(), egui::Align2::CENTER_CENTER, "Activate", egui::FontId::monospace(11.0), t.accent);
+                ui.painter().text(act_rect.center(), egui::Align2::CENTER_CENTER, "Activate", egui::FontId::monospace(FONT_SM), t.accent);
                 if act_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if act_resp.clicked() { activate_clicked = true; btn_clicked = true; }
             }

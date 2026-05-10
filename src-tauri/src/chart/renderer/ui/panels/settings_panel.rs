@@ -8,7 +8,8 @@ use super::super::widgets::form::{FormRow, FormRowAlign};
 use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
-use crate::ui_kit::widgets::{ToggleRow, ThemePreviewCard};
+use crate::ui_kit::widgets::{ToggleRow, ThemePreviewCard, NumberStepper, FormSection};
+use crate::ui_kit::widgets::SegmentedControl;
 use crate::ui_kit::widgets::theme_preview_card::PreviewKind;
 
 /// Build a FormRow pre-configured to match the legacy `setting_row` look:
@@ -80,7 +81,7 @@ SettingsTab::Appearance => {
     ui.add_space(gap_sm());
 
     // ── Theme — big preview blocks with mini chart layout ──
-    dialog_section(ui, "THEME", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("THEME").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     ui.horizontal(|ui| {
         ui.add_space(m);
@@ -103,7 +104,7 @@ SettingsTab::Appearance => {
 
     // ── Style preset (Aperture / Octave / Meridien / …) — wraps to the
     //    available width so it doesn't overflow narrow dialogs. ──
-    dialog_section(ui, "STYLE", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("STYLE").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     {
         let presets = crate::chart_renderer::ui::style::list_style_presets();
@@ -139,7 +140,7 @@ SettingsTab::Appearance => {
     ui.add_space(gap_lg());
 
     // ── Font Scale ──
-    dialog_section(ui, "FONT SCALE", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("FONT SCALE").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     srow("Size", m).show(ui, t, |ui| {
         let display_pct = ((watchlist.font_scale - 0.96) / 0.016).round() as i32 + 60;
@@ -168,7 +169,7 @@ SettingsTab::Appearance => {
     ui.add_space(gap_lg());
 
     // ── Font Family ──
-    dialog_section(ui, "FONT", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("FONT").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     {
         let font_names = crate::ui_kit::icons::FONT_NAMES;
@@ -210,7 +211,7 @@ SettingsTab::Appearance => {
                     ui.painter().text(
                         egui::pos2(r.left() + 8.0, r.bottom() - 12.0),
                         egui::Align2::LEFT_CENTER,
-                        type_label, egui::FontId::monospace(11.0), type_col);
+                        type_label, mono_sm(), type_col);
 
                     let sample_col = if sel { TEXT_PRIMARY } else { t.dim.gamma_multiply(0.7) };
                     ui.painter().text(
@@ -230,7 +231,7 @@ SettingsTab::Appearance => {
     ui.add_space(gap_lg());
 
     // ── Layout ──
-    dialog_section(ui, "LAYOUT", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("LAYOUT").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     setting_toggle_described(ui, m, "Compact Toolbar",
         Some("Trade vertical density for visual breathing room."),
@@ -246,11 +247,10 @@ SettingsTab::Appearance => {
             (PaneHeaderSize::Normal, "Normal"),
             (PaneHeaderSize::Expanded, "Expanded"),
         ];
-        let active_idx = labels.iter().position(|(s, _)| *s == current).unwrap_or(0);
-        let label_refs: Vec<&str> = labels.iter().map(|(_, l)| *l).collect();
-        if let Some(i) = segmented_control(ui, active_idx, &label_refs,
-            t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
-            watchlist.pane_header_size = labels[i].0;
+        let mut active_idx = labels.iter().position(|(s, _)| *s == current).unwrap_or(0);
+        const PANE_HEADER_OPTS: &[(usize, &str)] = &[(0, "Compact"), (1, "Normal"), (2, "Expanded")];
+        if SegmentedControl::new(&mut active_idx, PANE_HEADER_OPTS).show(ui, t).changed() {
+            watchlist.pane_header_size = labels[active_idx.min(labels.len() - 1)].0;
         }
     });
     ui.add_space(gap_lg());
@@ -263,7 +263,7 @@ SettingsTab::Chart => {
     ui.add_space(gap_sm());
 
     // ── Axes ──
-    dialog_section(ui, "AXES & GRID", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("AXES & GRID").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     setting_toggle_described(ui, m, "Show X-Axis (time)",
         Some("Render the time axis along the bottom of every chart pane."),
@@ -280,7 +280,7 @@ SettingsTab::Chart => {
     ui.add_space(gap_lg());
 
     // ── Chart Behavior ──
-    dialog_section(ui, "CHART BEHAVIOR", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("CHART BEHAVIOR").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     setting_toggle_described(ui, m, "OHLC Tooltip",
         Some("Show open/high/low/close values for the bar under the cursor."),
@@ -297,7 +297,7 @@ SettingsTab::Chart => {
 
     // ── Sessions ──
     let is_crypto = crate::data::is_crypto(&chart.symbol);
-    dialog_section(ui, "SESSIONS", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("SESSIONS").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     if is_crypto {
         ui.horizontal(|ui| {
@@ -367,7 +367,7 @@ SettingsTab::Trading => {
     ui.add_space(gap_sm());
 
     // ── Paper Mode ──
-    dialog_section(ui, "MODE", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("MODE").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     {
         let was_paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
@@ -394,52 +394,46 @@ SettingsTab::Trading => {
     ui.add_space(gap_lg());
 
     // ── Order Defaults ──
-    dialog_section(ui, "ORDER DEFAULTS", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("ORDER DEFAULTS").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     srow("Stock Qty", m).show(ui, t, |ui| {
         let mut v = watchlist.default_stock_qty as i32;
-        if ui.add(egui::DragValue::new(&mut v).range(1..=100_000).speed(10)
-            .custom_formatter(|v, _| format!("{} shares", v as i32))).changed() {
+        if NumberStepper::new(&mut v).range(1..=100_000).step(10.0).suffix(" shares").integer().show(ui, t).changed() {
             watchlist.default_stock_qty = v.max(1) as u32;
         }
     });
     srow("Options Qty", m).show(ui, t, |ui| {
         let mut v = watchlist.default_options_qty as i32;
-        if ui.add(egui::DragValue::new(&mut v).range(1..=10_000).speed(1)
-            .custom_formatter(|v, _| format!("{} contracts", v as i32))).changed() {
+        if NumberStepper::new(&mut v).range(1..=10_000).step(1.0).suffix(" contracts").integer().show(ui, t).changed() {
             watchlist.default_options_qty = v.max(1) as u32;
         }
     });
     srow("Order Type", m).show(ui, t, |ui| {
-        if let Some(i) = segmented_control(ui, watchlist.default_order_type,
-            &["MKT", "LMT", "STP"], t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
-            watchlist.default_order_type = i;
-        }
+        const ORDER_TYPES: &[(usize, &str)] = &[(0, "MKT"), (1, "LMT"), (2, "STP")];
+        SegmentedControl::new(&mut watchlist.default_order_type, ORDER_TYPES).show(ui, t);
     });
     srow("Time in Force", m).show(ui, t, |ui| {
-        if let Some(i) = segmented_control(ui, watchlist.default_tif,
-            &["DAY", "GTC", "IOC"], t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
-            watchlist.default_tif = i;
-        }
+        const TIF_OPTS: &[(usize, &str)] = &[(0, "DAY"), (1, "GTC"), (2, "IOC")];
+        SegmentedControl::new(&mut watchlist.default_tif, TIF_OPTS).show(ui, t);
     });
     setting_toggle(ui, m, "Outside RTH", t, &mut watchlist.default_outside_rth);
     ui.add_space(gap_lg());
 
     // ── Risk Management ──
-    dialog_section(ui, "RISK MANAGEMENT", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("RISK MANAGEMENT").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     {
         use crate::chart_renderer::trading::order_manager;
         let mut limits = order_manager::get_risk_limits();
         srow("Max Order Qty", m).show(ui, t, |ui| {
             let mut v = limits.max_order_qty as i32;
-            if ui.add(egui::DragValue::new(&mut v).range(1..=100_000).speed(10)).changed() {
+            if NumberStepper::new(&mut v).range(1..=100_000).step(10.0).integer().show(ui, t).changed() {
                 limits.max_order_qty = v.max(1) as u32;
             }
         });
         srow("Max Position", m).show(ui, t, |ui| {
             let mut v = limits.max_position_qty as i32;
-            if ui.add(egui::DragValue::new(&mut v).range(1..=500_000).speed(100)).changed() {
+            if NumberStepper::new(&mut v).range(1..=500_000).step(100.0).integer().show(ui, t).changed() {
                 limits.max_position_qty = v.max(1) as u32;
             }
         });
@@ -489,7 +483,7 @@ SettingsTab::Trading => {
     ui.add_space(gap_lg());
 
     // ── ApexData ─────────────────────────────────────────────────────
-    dialog_section(ui, "APEX DATA", m, t.dim.gamma_multiply(0.5));
+    ui.horizontal(|ui| { ui.add_space(m); FormSection::new("APEX DATA").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
     {
         let mut enabled = crate::apex_data::is_enabled();

@@ -25,12 +25,8 @@ pub fn toast_card(
         frame = frame.stroke(Stroke::new(st.stroke_thin, color_alpha(accent, alpha_muted())));
     }
     if st.shadows_enabled {
-        frame = frame.shadow(egui::epaint::Shadow {
-            offset: [0, 4],
-            blur: 16,
-            spread: 1,
-            color: Color32::from_black_alpha(60),
-        });
+        // Card-tier lift via the semantic shadow-preset token.
+        frame = frame.shadow(shadow_card());
     }
 
     frame.show(ui, |ui| {

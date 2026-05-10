@@ -5,7 +5,9 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::Variant;
-use super::super::widgets::form::{FormRow, IndicatorParamRow, IndicatorParamRowF};
+use crate::ui_kit::widgets::NumberStepper;
+use super::super::widgets::form::{IndicatorParamRow, IndicatorParamRowF};
+use crate::ui_kit::widgets::FormRow;
 use super::super::widgets::inputs::{ColorSwatchPicker, ThicknessPicker};
 use super::super::widgets::modal::{Modal, Anchor, FrameKind, HeaderStyle};
 use super::super::widgets::frames::PopupFrame;
@@ -76,7 +78,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(4.0);
-                    if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.7), FONT_LG).on_hover_text("Close").clicked() {
+                    if icon_btn(ui, Icon::X, color_subtle(t.dim), FONT_LG).on_hover_text("Close").clicked() {
                         hdr_close = true;
                     }
                 });
@@ -99,7 +101,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
 
                 // MA type switcher (only for moving averages)
                 if is_ma {
-                    dialog_section(ui, "TYPE", m, t.dim.gamma_multiply(0.5));
+                    dialog_section(ui, "TYPE", m, color_half(t.dim));
                     ui.horizontal(|ui| {
                         ui.add_space(m);
                         const MA_KINDS: &[(IndicatorType, &str)] = &[
@@ -117,7 +119,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
 
                 // Band type switcher (BB ↔ Keltner)
                 if matches!(ind.kind, IndicatorType::BollingerBands | IndicatorType::KeltnerChannels) {
-                    dialog_section(ui, "TYPE", m, t.dim.gamma_multiply(0.5));
+                    dialog_section(ui, "TYPE", m, color_half(t.dim));
                     ui.horizontal(|ui| {
                         ui.add_space(m);
                         const BAND_KINDS: &[(IndicatorType, &str)] = &[
@@ -133,7 +135,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 }
 
                 // ── PARAMETERS section ──
-                dialog_section(ui, "PARAMETERS", m, t.dim.gamma_multiply(0.5));
+                dialog_section(ui, "PARAMETERS", m, color_half(t.dim));
 
                 // Period (for most types except VWAP) — label + DragValue + presets.
                 // FormRow handles indent + label gutter; body contains DragValue + presets.
@@ -165,27 +167,24 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 match ind.kind {
                     IndicatorType::MACD => {
                         // Slow period (param2, default 26)
-                        FormRow::new("Slow  ").indent(m).label_width(40.0).show(ui, t, |ui| {
+                        FormRow::new("Slow  ").leading_space(m).label_width(40.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 26.0 };
-                            if ui.add(egui::DragValue::new(&mut v).range(2.0..=200.0).speed(0.5)
-                                .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                            if NumberStepper::new(&mut v).range(2.0..=200.0).step(0.5).integer().show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
                         // Signal period (param3, default 9)
-                        FormRow::new("Signal").indent(m).label_width(40.0).show(ui, t, |ui| {
+                        FormRow::new("Signal").leading_space(m).label_width(40.0).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 9.0 };
-                            if ui.add(egui::DragValue::new(&mut v).range(1.0..=50.0).speed(0.3)
-                                .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                            if NumberStepper::new(&mut v).range(1.0..=50.0).step(0.3).integer().show(ui, t).changed() {
                                 ind.param3 = v; needs_recompute = true;
                             }
                         });
                     }
                     IndicatorType::Stochastic => {
-                        FormRow::new("%D    ").indent(m).label_width(40.0).show(ui, t, |ui| {
+                        FormRow::new("%D    ").leading_space(m).label_width(40.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 3.0 };
-                            if ui.add(egui::DragValue::new(&mut v).range(1.0..=20.0).speed(0.3)
-                                .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                            if NumberStepper::new(&mut v).range(1.0..=20.0).step(0.3).integer().show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
@@ -201,49 +200,43 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     }
                     IndicatorType::KeltnerChannels | IndicatorType::Supertrend => {
                         let def = if ind.kind == IndicatorType::Supertrend { 3.0 } else { 2.0 };
-                        FormRow::new("Mult  ").indent(m).label_width(40.0).show(ui, t, |ui| {
+                        FormRow::new("Mult  ").leading_space(m).label_width(40.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { def };
-                            if ui.add(egui::DragValue::new(&mut v).range(0.5..=6.0).speed(0.05)
-                                .custom_formatter(|v, _| format!("{:.1}", v))).changed() {
+                            if NumberStepper::new(&mut v).range(0.5..=6.0).step(0.05).decimals(1).show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
                     }
                     IndicatorType::Ichimoku => {
-                        FormRow::new("Kijun ").indent(m).label_width(48.0).show(ui, t, |ui| {
+                        FormRow::new("Kijun ").leading_space(m).label_width(48.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 26.0 };
-                            if ui.add(egui::DragValue::new(&mut v).range(1.0..=200.0).speed(0.5)
-                                .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                            if NumberStepper::new(&mut v).range(1.0..=200.0).step(0.5).integer().show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
-                        FormRow::new("Senkou").indent(m).label_width(48.0).show(ui, t, |ui| {
+                        FormRow::new("Senkou").leading_space(m).label_width(48.0).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 52.0 };
-                            if ui.add(egui::DragValue::new(&mut v).range(1.0..=200.0).speed(0.5)
-                                .custom_formatter(|v, _| format!("{}", v as i32))).changed() {
+                            if NumberStepper::new(&mut v).range(1.0..=200.0).step(0.5).integer().show(ui, t).changed() {
                                 ind.param3 = v; needs_recompute = true;
                             }
                         });
                     }
                     IndicatorType::ParabolicSAR => {
-                        FormRow::new("Start ").indent(m).label_width(44.0).show(ui, t, |ui| {
+                        FormRow::new("Start ").leading_space(m).label_width(44.0).show(ui, t, |ui| {
                             let mut v = if ind.param4 > 0.0 { ind.param4 } else { 0.02 };
-                            if ui.add(egui::DragValue::new(&mut v).range(0.001..=0.1).speed(0.001)
-                                .custom_formatter(|v, _| format!("{:.3}", v))).changed() {
+                            if NumberStepper::new(&mut v).range(0.001..=0.1).step(0.001).decimals(3).show(ui, t).changed() {
                                 ind.param4 = v; needs_recompute = true;
                             }
                         });
-                        FormRow::new("Step  ").indent(m).label_width(44.0).show(ui, t, |ui| {
+                        FormRow::new("Step  ").leading_space(m).label_width(44.0).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 0.02 };
-                            if ui.add(egui::DragValue::new(&mut v).range(0.001..=0.1).speed(0.001)
-                                .custom_formatter(|v, _| format!("{:.3}", v))).changed() {
+                            if NumberStepper::new(&mut v).range(0.001..=0.1).step(0.001).decimals(3).show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
-                        FormRow::new("Max   ").indent(m).label_width(44.0).show(ui, t, |ui| {
+                        FormRow::new("Max   ").leading_space(m).label_width(44.0).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 0.2 };
-                            if ui.add(egui::DragValue::new(&mut v).range(0.05..=0.5).speed(0.005)
-                                .custom_formatter(|v, _| format!("{:.2}", v))).changed() {
+                            if NumberStepper::new(&mut v).range(0.05..=0.5).step(0.005).decimals(2).show(ui, t).changed() {
                                 ind.param3 = v; needs_recompute = true;
                             }
                         });
@@ -282,7 +275,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     for (i, &tf) in tfs.iter().enumerate() {
                         let label = if tf.is_empty() { "Chart" } else { tf };
                         let sel = ind.source_tf == tf;
-                        let fg = if sel { egui::Color32::WHITE } else { t.dim.gamma_multiply(0.7) };
+                        let fg = if sel { egui::Color32::WHITE } else { color_subtle(t.dim) };
                         let bg = if sel { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                         let rounding = if i == 0 {
                             egui::CornerRadius { nw: r_sm, sw: r_sm, ne: 0, se: 0 }
@@ -311,7 +304,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.add_space(8.0);
 
                 // ── APPEARANCE ──
-                dialog_section(ui, "APPEARANCE", m, t.dim.gamma_multiply(0.5));
+                dialog_section(ui, "APPEARANCE", m, color_half(t.dim));
                 ui.add_space(4.0);
                 // Color
                 ui.horizontal(|ui| {
@@ -340,7 +333,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 // ── BAND STYLING (BB / KC only) ──
                 if matches!(ind.kind, IndicatorType::BollingerBands | IndicatorType::KeltnerChannels) {
                     ui.add_space(8.0);
-                    dialog_section(ui, "BAND COLORS", m, t.dim.gamma_multiply(0.5));
+                    dialog_section(ui, "BAND COLORS", m, color_half(t.dim));
                     ui.add_space(4.0);
 
                     const BAND_WIDTHS: &[f32] = &[0.5, 0.8, 1.0, 1.5, 2.0];
@@ -390,7 +383,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
-                    let vis_fg = if ind.visible { t.dim } else { t.dim.gamma_multiply(0.4) };
+                    let vis_fg = if ind.visible { t.dim } else { color_dim(t.dim) };
                     let vr = ui.add(Button::icon(vis_icon)
                         .variant(Variant::Chrome)
                         .glyph_color(vis_fg)

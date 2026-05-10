@@ -45,6 +45,8 @@ pub mod breadcrumb;
 pub mod link;
 pub mod alert;
 pub mod stepper;
+pub mod number_stepper;
+pub mod metric_row;
 pub mod tree;
 pub mod sidebar;
 pub mod resizable;
@@ -57,6 +59,25 @@ pub mod indicator;
 pub mod toggle_row;
 pub mod theme_preview_card;
 pub mod choice_grid;
+pub mod selectable_row;
+pub mod opacity_picker;
+pub mod risk_reward_bar;
+pub mod heatmap_grid;
+pub mod trade_card;
+pub mod guild_avatar_grid;
+pub mod text_area;
+pub mod search_input;
+pub mod segmented_control;
+pub mod toggle_group;
+pub mod tag_input;
+pub mod time_picker;
+pub mod range_slider;
+pub mod form_row;
+pub mod form_section;
+
+pub use range_slider::RangeSlider;
+pub use form_row::{FormRow, FormRowAlign};
+pub use form_section::{FormSection, FieldSet, FormActions};
 
 pub use shadow::{ShadowSpec, paint as paint_shadow, paint_gpu as paint_shadow_gpu};
 pub use calendar::{Calendar, CalendarResponse};
@@ -70,6 +91,8 @@ pub use skeleton::Skeleton;
 
 pub use tabs::{Tabs, TabsResponse, TabItem, TabTreatment, TabAlign};
 pub use button::{Button, show_button_gallery};
+pub use number_stepper::NumberStepper;
+pub use metric_row::{MetricRow, Tone as MetricTone};
 pub use input::{Input, InputResponse};
 pub use modal::Modal;
 pub use toast::Toast;
@@ -103,6 +126,18 @@ pub use indicator::{Indicator, IndicatorStyle, IndicatorTone};
 pub use toggle_row::ToggleRow;
 pub use theme_preview_card::ThemePreviewCard;
 pub use choice_grid::{ChoiceGrid, ChoiceItem};
+pub use selectable_row::SelectableRow;
+pub use opacity_picker::{OpacityPicker, OPACITY_LEVELS as PICKER_OPACITY_LEVELS};
+pub use risk_reward_bar::RiskRewardBar;
+pub use heatmap_grid::{HeatmapGrid, HeatmapCell};
+pub use trade_card::{TradeCard, TradeCardData};
+pub use guild_avatar_grid::{GuildAvatarGrid, GuildEntry};
+pub use text_area::TextArea;
+pub use search_input::SearchInput;
+pub use segmented_control::SegmentedControl;
+pub use toggle_group::ToggleGroup;
+pub use tag_input::TagInput;
+pub use time_picker::TimePicker;
 
 use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};
@@ -170,7 +205,7 @@ pub fn tool_button(ui: &mut Ui, icon: &str, label: &str, active: bool) -> bool {
 pub fn delete_button(ui: &mut Ui) -> bool {
     button::Button::icon(Icon::X)
         .variant(tokens::Variant::Danger)
-        .show(ui, &crate::chart_renderer::gpu::THEMES[0])
+        .show(ui, theme::active_theme(ui.ctx()))
         .clicked()
 }
 

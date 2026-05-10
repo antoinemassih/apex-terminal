@@ -4,7 +4,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
-use crate::chart_renderer::ui::style::{gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_lg};
+use crate::chart_renderer::ui::style::{gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 
 /// Output from the picker.

@@ -9,21 +9,30 @@ use crate::ui_kit::widgets::tokens::Variant;
 use crate::ui_kit::icons::Icon;
 use crate::monitoring::{span_begin, span_end};
 use crate::chart_renderer::DrawingKind;
-use crate::chart_renderer::LineStyle;
-use super::super::widgets::frames::PopupFrame;
+use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Trendline filter dropdown ────────────────────────────────────────────
 if watchlist.trendline_filter_open {
-    dialog_window_themed(ctx, "trendline_filter", egui::pos2(300.0, 40.0), 190.0, t.toolbar_bg, t.toolbar_border, None)
+    use crate::chart_renderer::ui::chrome::FloatingPaneChrome;
+    let mut close_clicked = false;
+    // retained as Window: wraps FloatingPaneChrome with custom chrome; Modal would double-render headers
+    egui::Window::new("trendline_filter")
+        .fixed_pos(egui::pos2(300.0, 40.0))
+        .fixed_size(egui::vec2(220.0, 0.0))
+        .title_bar(false)
+        .frame(egui::Frame::NONE)
         .show(ctx, |ui| {
-            if dialog_header(ui, "DRAWING FILTERS", t.dim) { watchlist.trendline_filter_open = false; }
-            ui.add_space(8.0);
+            let cr = FloatingPaneChrome::new(0xF11_7E2, "DRAWING FILTERS")
+                .leading_icon(Icon::FUNNEL)
+                .width(220.0)
+                .theme(t)
+                .show(ui, |ui| {
             let m = 8.0;
             let chart = &mut panes[ap];
 
             // Per-type visibility toggles
-            dialog_section(ui, "BY TYPE", m, t.dim.gamma_multiply(0.5));
+            dialog_section(ui, "BY TYPE", m, color_half(t.dim));
             let types = [("trendline", "Trendlines"), ("hline", "H-Lines"), ("hzone", "Zones"), ("barmarker", "Markers"), ("fibonacci", "Fibonacci"), ("channel", "Channels"), ("fibchannel", "Fib Channels")];
             for (dtype, label) in &types {
                 let count = chart.drawings.iter().filter(|d| {
@@ -50,10 +59,10 @@ if watchlist.trendline_filter_open {
             ui.add_space(8.0);
 
             // Visibility toggles
-            dialog_section(ui, "VISIBILITY", m, t.dim.gamma_multiply(0.5));
+            dialog_section(ui, "VISIBILITY", m, color_half(t.dim));
             let vis_btn = |ui: &mut egui::Ui, hidden: bool, label: &str, count: usize| -> bool {
                 let icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
-                let fg = if hidden { t.dim.gamma_multiply(0.4) } else { t.dim };
+                let fg = if hidden { color_dim(t.dim) } else { t.dim };
                 let vis_label = format!("{} {} ({})", icon, label, count);
                 ui.horizontal(|ui| {
                     ui.add_space(m);
@@ -74,7 +83,7 @@ if watchlist.trendline_filter_open {
                 ui.add_space(8.0);
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_line()));
                 ui.add_space(8.0);
-                dialog_section(ui, "GROUPS", m, t.dim.gamma_multiply(0.5));
+                dialog_section(ui, "GROUPS", m, color_half(t.dim));
                 for g in chart.groups.clone() {
                     let hidden = chart.hidden_groups.contains(&g.id);
                     let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
@@ -85,7 +94,10 @@ if watchlist.trendline_filter_open {
                 }
             }
             ui.add_space(8.0);
+                });
+            close_clicked = cr.close_clicked;
         });
+    if close_clicked { watchlist.trendline_filter_open = false; }
 }
 
 // Symbol picker popup — render for any pane that has it open
@@ -187,12 +199,15 @@ if chart.picker_open {
         }
     }
 
-    let picker_win_resp = egui::Window::new(format!("picker_{}", picker_pane_idx))
-        .fixed_pos(chart.picker_pos)
-        .fixed_size(egui::vec2(320.0, 420.0))
-        .title_bar(false)
-        .frame(PopupFrame::new().theme(t).ctx(ctx).build())
-        .show(ctx, |ui| {
+    let picker_win_resp = Modal::new(&format!("picker_{}", picker_pane_idx))
+        .ctx(ctx)
+        .theme(t)
+        .size(egui::vec2(320.0, 420.0))
+        .anchor(Anchor::Area { pos: chart.picker_pos })
+        .header_style(HeaderStyle::None)
+        .separator(false)
+        .close_on_click_outside(true)
+        .show(|ui| {
             let input = super::super::widgets::inputs::TextInput::new(&mut chart.picker_query)
                     .placeholder("Search any stock, ETF, index...")
                     .width(300.0)
@@ -258,7 +273,7 @@ if chart.picker_open {
                             ui.vertical(|ui| {
                                 ui.add(MonospaceCode::new(name.as_str()).size_px(9.0).color(t.dim));
                                 if !tag.is_empty() {
-                                    ui.add(MonospaceCode::new(tag.as_str()).size_px(9.0).color(t.dim.gamma_multiply(0.6)));
+                                    ui.add(MonospaceCode::new(tag.as_str()).size_px(9.0).color(color_muted(t.dim)));
                                 }
                             });
                             r
@@ -283,20 +298,8 @@ if chart.picker_open {
             }
         });
 
-    // Click-away closes picker
-    if !close_picker {
-        if let Some(wr) = &picker_win_resp {
-            let picker_rect = wr.response.rect;
-            if ctx.input(|i| i.pointer.any_pressed()) {
-                if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                    if !picker_rect.contains(pos) {
-                        close_picker = true;
-                    }
-                }
-            }
-        }
-    }
-
+    // Click-away is handled by Modal::close_on_click_outside; also honour manual close flag.
+    if picker_win_resp.closed { close_picker = true; }
     if close_picker { chart.picker_open = false; }
 
     if let Some((sym, name)) = new_symbol {

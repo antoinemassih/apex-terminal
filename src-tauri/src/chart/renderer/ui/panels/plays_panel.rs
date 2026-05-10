@@ -205,7 +205,7 @@ fn draw_play_editor(
             ui.horizontal_wrapped(|ui| {
                 for pty in PlayType::all() {
                     let sel = pt == *pty;
-                    let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
+                    let fg = if sel { t.accent } else { color_half(t.dim) };
                     let bg = if sel { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                     let label = format!("{} {}", pty.icon(), pty.label());
                     if ui.add(Button::new(label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
@@ -240,7 +240,7 @@ fn draw_play_editor(
                     (PlayDirection::Short, "SHORT", t.bear),
                 ] {
                     let sel = watchlist.play_editor_direction == dir;
-                    let fg = if sel { color } else { t.dim.gamma_multiply(0.5) };
+                    let fg = if sel { color } else { color_half(t.dim) };
                     let bg = if sel { color_alpha(color, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                     // legacy: monospace+strong; Button uses plain text
                     if ui.add(Button::new(label).variant(Variant::Chrome).size(Size::Sm).fg(fg)
@@ -300,7 +300,7 @@ fn draw_play_editor(
 
             // T1 — primary target with allocation
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("T1").monospace().size(font_xs()).strong().color(t.bull.gamma_multiply(0.7)));
+                ui.label(egui::RichText::new("T1").monospace().size(font_xs()).strong().color(color_subtle(t.bull)));
                 let resp = TextInput::new(&mut watchlist.play_editor_target)
                     .id(egui::Id::new(("play_price", PlayLineKind::Target as u8)))
                     .width(65.0).font_size(FONT_SM).theme(t).show(ui);
@@ -324,7 +324,7 @@ fn draw_play_editor(
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target2); }
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t2_pct, t);
-                    if ui.add(Button::icon("\u{00D7}").variant(Variant::Chrome).glyph_color(t.bear.gamma_multiply(0.6)).size(Size::Sm)
+                    if ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
                         .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM)).clicked() {
                         remove_t2 = true;
                     }
@@ -351,7 +351,7 @@ fn draw_play_editor(
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target3); }
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t3_pct, t);
-                    if ui.add(Button::icon("\u{00D7}").variant(Variant::Chrome).glyph_color(t.bear.gamma_multiply(0.6)).size(Size::Sm)
+                    if ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
                         .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM)).clicked() {
                         remove_t3 = true;
                     }
@@ -368,7 +368,7 @@ fn draw_play_editor(
             if pt != PlayType::Scalp {
                 ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
-                    let stop_label = egui::RichText::new("STOP").monospace().size(font_xs()).color(t.bear.gamma_multiply(0.7));
+                    let stop_label = egui::RichText::new("STOP").monospace().size(font_xs()).color(color_subtle(t.bear));
                     ui.label(stop_label);
                     let resp = TextInput::new(&mut watchlist.play_editor_stop)
                         .id(egui::Id::new(("play_price", PlayLineKind::Stop as u8)))
@@ -394,15 +394,7 @@ fn draw_play_editor(
                     let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { t.warn } else { t.bear };
                     ui.add(super::super::widgets::text::MonospaceCode::new(&format!("{:.1} : 1", rr)).sm().color(rr_col).strong(true));
                     let bar_w = ui.available_width().min(120.0);
-                    let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 6.0), egui::Sense::hover());
-                    let p = ui.painter();
-                    p.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, alpha_muted()));
-                    let risk_pct = (risk / (risk + reward)).min(1.0);
-                    p.rect_filled(egui::Rect::from_min_size(bar_rect.min, egui::vec2(bar_w * risk_pct, 6.0)), 2.0, color_alpha(t.bear, alpha_dim()));
-                    p.rect_filled(egui::Rect::from_min_size(
-                        egui::pos2(bar_rect.left() + bar_w * risk_pct, bar_rect.top()),
-                        egui::vec2(bar_w * (1.0 - risk_pct), 6.0)), 2.0, color_alpha(t.bull, alpha_dim()));
-                    p.circle_filled(egui::pos2(bar_rect.left() + bar_w * risk_pct, bar_rect.center().y), 3.0, t.text);
+                    crate::ui_kit::widgets::RiskRewardBar::new(risk, reward).width(bar_w).show(ui, t);
                 });
             }
 
@@ -414,7 +406,7 @@ fn draw_play_editor(
             ui.horizontal_wrapped(|ui| {
                 for tag in TAG_PRESETS {
                     let active = watchlist.play_editor_tags.iter().any(|t| t == tag);
-                    let fg = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
+                    let fg = if active { t.accent } else { color_dim(t.dim) };
                     let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                     if ui.add(Button::new(*tag).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(bg).corner_radius(current().r_md as f32)
@@ -574,7 +566,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
 }
 
 fn click_to_set_btn(ui: &mut egui::Ui, icon: &str, t: &Theme, active: bool) -> bool {
-    let fg = if active { t.accent } else { t.dim.gamma_multiply(0.4) };
+    let fg = if active { t.accent } else { color_dim(t.dim) };
     let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
     ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(fg).size(Size::Sm)
         .fill(bg).corner_radius(current().r_sm as f32)
@@ -616,16 +608,16 @@ fn clear_editor(watchlist: &mut Watchlist) {
 }
 
 fn convert_play_to_orders(play: &Play, chart: &mut Chart) {
-    use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus};
+    use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderStatus, OrderState};
 
     let entry_side = if play.direction == PlayDirection::Long { OrderSide::Buy } else { OrderSide::Sell };
     let next_id = chart.orders.iter().map(|o| o.id).max().unwrap_or(0) + 1;
 
     chart.orders.push(OrderLevel {
         id: next_id, side: entry_side, price: play.entry_price,
-        qty: play.quantity, status: OrderStatus::Draft, pair_id: None,
+        qty: play.quantity, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None,
         option_symbol: None, option_con_id: None,
-        trail_amount: None, trail_percent: None,
+        trail_amount: None, trail_percent: None, filled_ratio: 0.0,
     });
 
     // Create OCO pairs for each target + stop
@@ -634,23 +626,23 @@ fn convert_play_to_orders(play: &Play, chart: &mut Chart) {
         let stop_id = next_id + 2;
         chart.orders.push(OrderLevel {
             id: target_id, side: OrderSide::OcoTarget, price: play.target_price,
-            qty: play.quantity, status: OrderStatus::Draft, pair_id: Some(stop_id),
+            qty: play.quantity, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(stop_id),
             option_symbol: None, option_con_id: None,
-            trail_amount: None, trail_percent: None,
+            trail_amount: None, trail_percent: None, filled_ratio: 0.0,
         });
         chart.orders.push(OrderLevel {
             id: stop_id, side: OrderSide::OcoStop, price: play.stop_price,
-            qty: play.quantity, status: OrderStatus::Draft, pair_id: Some(target_id),
+            qty: play.quantity, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(target_id),
             option_symbol: None, option_con_id: None,
-            trail_amount: None, trail_percent: None,
+            trail_amount: None, trail_percent: None, filled_ratio: 0.0,
         });
     } else {
         // Scalp — target only
         chart.orders.push(OrderLevel {
             id: next_id + 1, side: OrderSide::OcoTarget, price: play.target_price,
-            qty: play.quantity, status: OrderStatus::Draft, pair_id: None,
+            qty: play.quantity, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None,
             option_symbol: None, option_con_id: None,
-            trail_amount: None, trail_percent: None,
+            trail_amount: None, trail_percent: None, filled_ratio: 0.0,
         });
     }
 }
@@ -683,9 +675,9 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
     let (card_rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
     let p = ui.painter();
 
-    // Shadow
-    p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), radius_lg(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, 25));
-    p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), radius_lg(), egui::Color32::from_rgba_unmultiplied(0, 0, 0, 15));
+    // Shadow — uses theme.shadow_color so light themes don't render black halos
+    p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), radius_lg(), shadow_color_alpha(t, 25));
+    p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), radius_lg(), shadow_color_alpha(t, 15));
 
     let bg = if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -722,19 +714,19 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
         p.text(pill_rect.center(), egui::Align2::CENTER_CENTER, play.direction.label(), egui::FontId::monospace(FONT_XS), dir_color);
 
         p.text(egui::pos2(cx + pill_w + 6.0, cy + 6.0), egui::Align2::LEFT_CENTER,
-            play.play_type.icon(), egui::FontId::proportional(FONT_SM), t.dim.gamma_multiply(0.5));
+            play.play_type.icon(), egui::FontId::proportional(FONT_SM), color_half(t.dim));
         p.text(egui::pos2(cx + pill_w + 22.0, cy + 6.0), egui::Align2::LEFT_CENTER,
             &play.symbol, egui::FontId::monospace(FONT_LG), t.text);
 
         let status_color = match play.status {
             PlayStatus::Draft => t.dim, PlayStatus::Published => t.accent,
             PlayStatus::Active => t.warn,
-            PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => t.dim.gamma_multiply(0.5),
+            PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => color_half(t.dim),
         };
         let status_x = card_rect.right() - 60.0;
         let sr = egui::Rect::from_min_size(egui::pos2(status_x, cy - 1.0), egui::vec2(48.0, 16.0));
         p.rect_filled(sr, 3.0, color_alpha(status_color, alpha_subtle()));
-        p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), egui::FontId::monospace(11.0), status_color);
+        p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), mono_sm(), status_color);
 
         if play.risk_reward > 0.0 {
             p.text(egui::pos2(status_x - 8.0, cy + 6.0), egui::Align2::RIGHT_CENTER,
@@ -746,16 +738,16 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
     // Row 2: Entry / Target / Stop
     {
         let col_w = (card_w - 24.0) / 3.0;
-        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER, "ENTRY", egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
+        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER, "ENTRY", mono_sm(), color_half(t.dim));
         p.text(egui::pos2(cx + col_w * 0.6, cy + 4.0), egui::Align2::LEFT_CENTER,
             &format!("${:.2}", play.entry_price), egui::FontId::monospace(FONT_SM), t.text);
         let tx = cx + col_w;
-        p.text(egui::pos2(tx, cy + 4.0), egui::Align2::LEFT_CENTER, "TARGET", egui::FontId::monospace(11.0), t.bull.gamma_multiply(0.6));
+        p.text(egui::pos2(tx, cy + 4.0), egui::Align2::LEFT_CENTER, "TARGET", mono_sm(), color_muted(t.bull));
         p.text(egui::pos2(tx + col_w * 0.6, cy + 4.0), egui::Align2::LEFT_CENTER,
             &format!("${:.2}", play.target_price), egui::FontId::monospace(FONT_SM), t.bull);
         if play.play_type != PlayType::Scalp {
             let sx = cx + col_w * 2.0;
-            p.text(egui::pos2(sx, cy + 4.0), egui::Align2::LEFT_CENTER, "STOP", egui::FontId::monospace(11.0), t.bear.gamma_multiply(0.6));
+            p.text(egui::pos2(sx, cy + 4.0), egui::Align2::LEFT_CENTER, "STOP", mono_sm(), color_muted(t.bear));
             p.text(egui::pos2(sx + col_w * 0.5, cy + 4.0), egui::Align2::LEFT_CENTER,
                 &format!("${:.2}", play.stop_price), egui::FontId::monospace(FONT_SM), t.bear);
         }
@@ -766,11 +758,11 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
     if has_targets {
         for tgt in &play.targets {
             p.text(egui::pos2(cx + 8.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &tgt.label, egui::FontId::monospace(11.0), t.bull.gamma_multiply(0.5));
+                &tgt.label, mono_sm(), color_half(t.bull));
             p.text(egui::pos2(cx + 30.0, cy + 4.0), egui::Align2::LEFT_CENTER,
                 &format!("${:.2}", tgt.price), egui::FontId::monospace(FONT_XS), t.bull);
             p.text(egui::pos2(cx + 100.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &format!("{}%", (tgt.pct * 100.0) as i32), egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.4));
+                &format!("{}%", (tgt.pct * 100.0) as i32), mono_sm(), color_dim(t.dim));
             cy += 12.0;
         }
     }
@@ -795,7 +787,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
         let mut tx = cx;
         for tag in &play.tags {
             p.text(egui::pos2(tx, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &format!("#{}", tag), egui::FontId::monospace(11.0), t.accent.gamma_multiply(0.5));
+                &format!("#{}", tag), mono_sm(), color_half(t.accent));
             tx += tag.len() as f32 * 5.0 + 12.0;
         }
         cy += 12.0;
@@ -804,7 +796,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
     // Notes
     if !play.notes.is_empty() {
         p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-            &play.notes, egui::FontId::monospace(FONT_XS), t.dim.gamma_multiply(0.5));
+            &play.notes, egui::FontId::monospace(FONT_XS), color_half(t.dim));
     }
 
     // Hover buttons
@@ -816,7 +808,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
             p.rect_filled(del_rect, 2.0, color_alpha(t.bear, alpha_ghost()));
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-        p.text(del_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", egui::FontId::monospace(FONT_SM), t.dim.gamma_multiply(0.5));
+        p.text(del_rect.center(), egui::Align2::CENTER_CENTER, Icon::X, egui::FontId::monospace(FONT_SM), color_half(t.dim));
         if del_resp.clicked() { *remove_id = Some(play.id.clone()); btn_clicked = true; }
 
         if play.status == PlayStatus::Draft {
@@ -824,7 +816,7 @@ fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: 
             let act_resp = ui.interact(act_rect, egui::Id::new(("play_act", &play.id[..8])), egui::Sense::click());
             let act_bg = if act_resp.hovered() { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.accent, alpha_ghost()) };
             p.rect_filled(act_rect, 3.0, act_bg);
-            p.text(act_rect.center(), egui::Align2::CENTER_CENTER, "Activate", egui::FontId::monospace(11.0), t.accent);
+            p.text(act_rect.center(), egui::Align2::CENTER_CENTER, "Activate", mono_sm(), t.accent);
             if act_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             if act_resp.clicked() { *activate_id = Some(play.id.clone()); btn_clicked = true; }
         }

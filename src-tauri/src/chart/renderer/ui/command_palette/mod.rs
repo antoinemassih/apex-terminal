@@ -86,6 +86,33 @@ pub(super) struct Entry {
 // Entry point
 // ────────────────────────────────────────────────────────────────────────────
 
+/// Register command-palette shortcuts into the global registry (runs once).
+fn ensure_registered() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        use crate::foundation::shortcuts::{register, shortcut, shortcut_cmd, ShortcutEntry};
+        register(ShortcutEntry {
+            shortcut: shortcut_cmd(egui::Key::Space),
+            action: "command_palette.open",
+            description: "Open command palette",
+            category: "Navigation",
+        });
+        register(ShortcutEntry {
+            shortcut: shortcut_cmd(egui::Key::K),
+            action: "command_palette.open.alt",
+            description: "Open command palette (alternate binding)",
+            category: "Navigation",
+        });
+        register(ShortcutEntry {
+            shortcut: shortcut(egui::Key::Escape),
+            action: "modal.dismiss",
+            description: "Dismiss modal / cancel current action",
+            category: "Navigation",
+        });
+    });
+}
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
@@ -94,23 +121,28 @@ pub(crate) fn draw(
     active_pane: &mut usize,
     t: &Theme,
 ) {
+    ensure_registered();
     if !ctx.wants_keyboard_input() {
-        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Space)) {
-            watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
-            if watchlist.cmd_palette_open {
-                watchlist.cmd_palette_query.clear();
-                watchlist.cmd_palette_results.clear();
-                watchlist.cmd_palette_sel = 0;
-                watchlist.cmd_palette_ai_mode = false;
+        if let Some(action) = crate::foundation::shortcuts::registry().read().unwrap().matches(ctx) {
+            match action {
+                "command_palette.open" | "command_palette.open.alt" => {
+                    watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
+                    if watchlist.cmd_palette_open {
+                        watchlist.cmd_palette_query.clear();
+                        watchlist.cmd_palette_results.clear();
+                        watchlist.cmd_palette_sel = 0;
+                        watchlist.cmd_palette_ai_mode = false;
+                    }
+                }
+                "modal.dismiss" if watchlist.cmd_palette_open => {
+                    if watchlist.cmd_palette_ai_mode { watchlist.cmd_palette_ai_mode = false; }
+                    else { watchlist.cmd_palette_open = false; }
+                }
+                _ => {}
             }
         }
     }
     if !watchlist.cmd_palette_open { return; }
-
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-        if watchlist.cmd_palette_ai_mode { watchlist.cmd_palette_ai_mode = false; }
-        else { watchlist.cmd_palette_open = false; return; }
-    }
 
     let screen = ctx.screen_rect();
     let pal_w = 640.0_f32;

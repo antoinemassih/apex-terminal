@@ -50,6 +50,12 @@ pub struct DesignTokens {
     /// `#[serde(default)]` for forward-compat with older design.toml files.
     #[serde(default)]
     pub semantic: SemanticColorTokens,
+    /// Chat author-distinction palette — 8 colors indexed by author-name hash
+    /// to give each speaker a stable, distinct color in the Discord chat panel.
+    /// Distinct from `semantic` (intent colors) and `drawing.palette` (line groups).
+    /// `#[serde(default)]` for forward-compat with older design.toml files.
+    #[serde(default)]
+    pub chat_author_palette: ChatAuthorPalette,
 }
 
 #[cfg(feature = "design-mode")]
@@ -231,7 +237,18 @@ pub struct SemanticColorTokens {
     pub sentiment_negative: Rgba,
     /// Discord brand purple (Blurple).
     pub discord_blurple:    Rgba,
+    /// Order ledger badge — RECON state (lavender/purple).
+    #[serde(default = "default_order_state_recon")]
+    pub order_state_recon:  Rgba,
+    /// Order ledger badge — CTRL state (red).
+    #[serde(default = "default_order_state_ctrl")]
+    pub order_state_ctrl:   Rgba,
 }
+
+#[cfg(feature = "design-mode")]
+fn default_order_state_recon() -> Rgba { [167, 139, 250, 255] }
+#[cfg(feature = "design-mode")]
+fn default_order_state_ctrl()  -> Rgba { [255, 100, 100, 255] }
 
 #[cfg(feature = "design-mode")]
 impl Default for SemanticColorTokens {
@@ -248,6 +265,38 @@ impl Default for SemanticColorTokens {
             sentiment_neutral:  [180, 180, 195, 255],
             sentiment_negative: [224,  85,  96, 255],
             discord_blurple:    [ 88, 101, 242, 255],
+            order_state_recon:  default_order_state_recon(),
+            order_state_ctrl:   default_order_state_ctrl(),
+        }
+    }
+}
+
+// ─── Chat author palette ────────────────────────────────────────────────────
+// 8-color palette for the Discord chat panel. Author names are hashed and
+// modulo'd into this array to give each speaker a stable, distinct color.
+// Stored as Rgba ([u8;4]) for TOML round-trip; converted to Color32 at site.
+#[cfg(feature = "design-mode")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatAuthorPalette {
+    /// Eight identity colors — order is load-bearing (hash modulo).
+    pub colors: [Rgba; 8],
+}
+
+#[cfg(feature = "design-mode")]
+impl Default for ChatAuthorPalette {
+    fn default() -> Self {
+        // Mirrors discord_panel.rs author_colors literal block.
+        Self {
+            colors: [
+                [ 74, 158, 255, 255], // Blue
+                [ 46, 204, 113, 255], // Green
+                [243, 156,  18, 255], // Orange
+                [155,  89, 182, 255], // Purple
+                [231,  76,  60, 255], // Red
+                [ 26, 188, 156, 255], // Teal
+                [241, 196,  15, 255], // Yellow
+                [ 52, 152, 219, 255], // Light Blue
+            ],
         }
     }
 }
@@ -306,6 +355,7 @@ impl Default for DesignTokens {
             },
             shadow_preset: ShadowPresetTokens::default(),
             semantic:      SemanticColorTokens::default(),
+            chat_author_palette: ChatAuthorPalette::default(),
         }
     }
 }

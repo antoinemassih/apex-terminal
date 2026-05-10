@@ -158,11 +158,11 @@ impl ChartWidgetKind {
             Self::MarketBreadth  => "\u{2637}",  // ☷
             Self::Correlation    => "\u{2194}",  // ↔
             Self::DarkPool       => "\u{2588}",  // █
-            Self::PositionPnl    => "\u{0024}",  // $
-            Self::EarningsBadge  => "\u{1F4C5}", // 📅
-            Self::NewsTicker     => "\u{1F4F0}", // 📰
-            Self::ExitGauge      => "\u{23F9}",  // ⏹
-            Self::PrecursorAlert => "\u{26A1}",  // ⚡
+            Self::PositionPnl    => crate::ui_kit::icons::Icon::CURRENCY_DOLLAR,
+            Self::EarningsBadge  => crate::ui_kit::icons::Icon::CALENDAR_BLANK,
+            Self::NewsTicker     => crate::ui_kit::icons::Icon::NEWSPAPER,
+            Self::ExitGauge      => "\u{23F9}",  // ⏹ — no Phosphor equiv
+            Self::PrecursorAlert => crate::ui_kit::icons::Icon::LIGHTNING,
             Self::TradePlan      => "\u{1F3AF}", // 🎯
             Self::ChangePoints   => "\u{21BA}",  // ↺
             Self::ZoneStrength   => "\u{2591}",  // ░
@@ -188,14 +188,14 @@ impl ChartWidgetKind {
             Self::SignalRadar    => "\u{25C8}",  // ◈
             Self::CrossAssetPulse => "\u{229E}", // ⊞
             Self::TapeSpeed      => "\u{23F1}",  // ⏱
-            Self::Fundamentals   => "\u{1F4CA}", // 📊
-            Self::EconCalendar   => "\u{1F4C5}", // 📅
-            Self::Latency        => "\u{23F1}",  // ⏱
-            Self::PayoffChart    => "\u{1F4C8}", // 📈
-            Self::OptionsFlow    => "\u{1F4A7}", // 💧
-            Self::PositionsPanel => "\u{1F4BC}", // 💼
-            Self::DailyPnl       => "\u{1F4B0}", // 💰
-            Self::Custom         => "\u{2699}",  // ⚙
+            Self::Fundamentals   => crate::ui_kit::icons::Icon::CHART_BAR,
+            Self::EconCalendar   => crate::ui_kit::icons::Icon::CALENDAR_BLANK,
+            Self::Latency        => "\u{23F1}",  // ⏱ — no Phosphor equiv
+            Self::PayoffChart    => crate::ui_kit::icons::Icon::CHART_LINE,
+            Self::OptionsFlow    => "\u{1F4A7}", // 💧 — no Phosphor equiv
+            Self::PositionsPanel => "\u{1F4BC}", // 💼 — no Phosphor equiv
+            Self::DailyPnl       => crate::ui_kit::icons::Icon::CURRENCY_DOLLAR,
+            Self::Custom         => crate::ui_kit::icons::Icon::GEAR,
         }
     }
     pub(crate) fn all() -> &'static [Self] {

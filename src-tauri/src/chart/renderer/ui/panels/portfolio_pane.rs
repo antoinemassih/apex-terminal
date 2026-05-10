@@ -3,7 +3,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use crate::chart_renderer::trading::{read_account_data, AccountSummary, Position};
+use crate::chart_renderer::trading::{AccountSummary, Position};
 use super::super::widgets::headers::PaneHeader;
 use super::super::components::{
     metric_value_with_label, section_label_xs, monospace_label_row,
@@ -113,7 +113,7 @@ pub(crate) fn render(
     let sep_y = metrics_top + metrics_h + 4.0;
     painter.line_segment(
         [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
-        egui::Stroke::new(0.5, color_alpha(t.toolbar_border, alpha_muted())));
+        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
 
     // ── Positions table ────────────────────────────────────────────────────────
     let table_top = sep_y + 8.0;
@@ -228,7 +228,7 @@ pub(crate) fn render(
             let lx = donut_cx + (donut_r + 18.0) * mid_a.cos();
             let ly = donut_cy + (donut_r + 18.0) * mid_a.sin();
             painter.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER,
-                &format!("{} {:.0}%", label, frac * 100.0), egui::FontId::monospace(11.0), color);
+                &format!("{} {:.0}%", label, frac * 100.0), mono_sm(), color);
             angle += sweep;
         }
 
@@ -329,10 +329,10 @@ pub(crate) fn render(
             for (i, sym) in syms.iter().enumerate() {
                 painter.text(egui::pos2(grid_x + 28.0 + i as f32 * cell_sz + cell_sz * 0.5, grid_y - 2.0),
                     egui::Align2::CENTER_BOTTOM, &sym[..sym.len().min(3)],
-                    egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
+                    mono_sm(), t.dim.gamma_multiply(0.5));
                 painter.text(egui::pos2(grid_x + 26.0, grid_y + i as f32 * cell_sz + cell_sz * 0.5),
                     egui::Align2::RIGHT_CENTER, &sym[..sym.len().min(4)],
-                    egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
+                    mono_sm(), t.dim.gamma_multiply(0.5));
             }
 
             // Cells
@@ -353,7 +353,7 @@ pub(crate) fn render(
                     painter.rect_filled(cell_rect, 2.0, cell_col);
                     if row != col && cell_sz > 14.0 {
                         painter.text(cell_rect.center(), egui::Align2::CENTER_CENTER,
-                            &format!("{:.1}", corr), egui::FontId::monospace(11.0), t.text);
+                            &format!("{:.1}", corr), mono_sm(), t.text);
                     }
                 }
             }
@@ -397,7 +397,7 @@ pub(crate) fn render(
                 if imp_y + i as f32 * 12.0 > inner.bottom() { break; }
                 let c = if *imp >= 0.0 { t.bull } else { t.bear };
                 painter.text(egui::pos2(sector_x, imp_y + i as f32 * 12.0), egui::Align2::LEFT_CENTER,
-                    &format!("{}: ${:+.0}", sym, imp), egui::FontId::monospace(11.0), c);
+                    &format!("{}: ${:+.0}", sym, imp), mono_sm(), c);
             }
         }
     }

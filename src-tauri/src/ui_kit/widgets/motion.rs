@@ -14,6 +14,16 @@ pub use crate::chart::renderer::ui::components::motion::*;
 
 use egui::{Context, Id};
 
+// ── Delay / micro-timing tokens ────────────────────────────────────────
+/// Instant transitions (~30ms — for cursor blink smoothing, micro-flashes).
+pub const INSTANT: f32 = 0.03;
+/// Tooltip-style delay before showing (400ms).
+pub const DELAY_TOOLTIP: f32 = 0.4;
+/// Hover-card delay (600ms — slower than tooltip because content is heavier).
+pub const DELAY_HOVER_CARD: f32 = 0.6;
+/// Scroll wheel ease duration.
+pub const SCROLL_EASE_DURATION: f32 = 0.20;
+
 // ── Cursor blink ───────────────────────────────────────────────────────
 /// Standard cursor blink rate. 530ms on, 530ms off — matches Zed.
 pub const CURSOR_BLINK_PERIOD: f32 = 1.06;
@@ -37,7 +47,7 @@ pub fn cursor_visibility(ctx: &Context, id: Id, force_visible: bool) -> f32 {
     // Smooth the square-wave with a ~60ms cubic ease so the blink fades
     // instead of snapping. ease_value already applies cubic via the
     // egui animation memory.
-    let smoothed = ease_value(ctx, id, target, 0.06);
+    let smoothed = ease_value(ctx, id, target, INSTANT);
     smoothed.clamp(0.0, 1.0)
 }
 
@@ -55,4 +65,4 @@ pub const SCROLL_STOP_THRESHOLD: f32 = 0.1;
 /// Duration used when easing a scroll offset toward a target (e.g. wheel
 /// click → smooth scroll). Matches `motion::FAST` philosophy but slightly
 /// longer so the eye can track long jumps.
-pub const SCROLL_EASE: f32 = 0.20; // 200ms cubic ease-out
+pub const SCROLL_EASE: f32 = SCROLL_EASE_DURATION; // 200ms cubic ease-out

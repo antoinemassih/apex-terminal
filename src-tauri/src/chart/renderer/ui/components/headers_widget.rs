@@ -35,6 +35,10 @@ pub struct PanelHeaderWithClose<'a> {
     title_monospace: Option<bool>,
     leading_space:   f32,
     trailing_space:  f32,
+    theme_ref:       Option<&'a super::super::super::gpu::Theme>,
+    watchlist_ref:   Option<&'a super::super::super::gpu::Watchlist>,
+    height_override:    Option<f32>,
+    font_size_override: Option<f32>,
 }
 
 impl<'a> PanelHeaderWithClose<'a> {
@@ -49,8 +53,24 @@ impl<'a> PanelHeaderWithClose<'a> {
             title_monospace: None,
             leading_space:   0.0,
             trailing_space:  0.0,
+            theme_ref:       None,
+            watchlist_ref:   None,
+            height_override:    None,
+            font_size_override: None,
         }
     }
+    /// Pin the header height + title font to the chart pane's metrics
+    /// (`watchlist.pane_header_size`). Without this, the header falls back
+    /// to the Normal preset (32px / 12px). Required for true pixel parity.
+    pub fn watchlist(mut self, w: &'a super::super::super::gpu::Watchlist) -> Self {
+        self.watchlist_ref = Some(w); self
+    }
+    /// Override header height directly. Use when you can't borrow the
+    /// watchlist for `.watchlist()` (e.g. closure also mutates it).
+    pub fn height(mut self, h: f32) -> Self { self.height_override = Some(h); self }
+    /// Override title font size directly. Pair with `.height()` to pre-resolve
+    /// pane-header metrics outside a borrow conflict.
+    pub fn font_size(mut self, px: f32) -> Self { self.font_size_override = Some(px); self }
     pub fn accent(mut self, c: Color32) -> Self { self.accent = c; self }
     pub fn dim(mut self, c: Color32) -> Self { self.dim = c; self }
     pub fn subtitle(mut self, s: &'a str) -> Self { self.subtitle = Some(s); self }
@@ -69,8 +89,11 @@ impl<'a> PanelHeaderWithClose<'a> {
     pub fn leading_space(mut self, px: f32) -> Self { self.leading_space = px; self }
     /// Pixels of horizontal space inserted after the close button (right edge).
     pub fn trailing_space(mut self, px: f32) -> Self { self.trailing_space = px; self }
-    pub fn theme(self, t: &super::super::super::gpu::Theme) -> Self {
-        self.accent(t.accent).dim(t.dim)
+    pub fn theme(mut self, t: &'a super::super::super::gpu::Theme) -> Self {
+        self.accent = t.accent;
+        self.dim = t.dim;
+        self.theme_ref = Some(t);
+        self
     }
 
     /// Render the header. Returns `true` if the close button was clicked.
@@ -104,39 +127,27 @@ impl<'a> PanelHeaderWithClose<'a> {
 
     /// Render with both leading (next-to-title) and trailing (next-to-close)
     /// controls. Returns `true` if the close button was clicked.
+    ///
+    /// Delegates to `panels::kit::PanelHeader` so all side panels share the
+    /// same chart-pane-parity chrome (perimeter hairline, 28px height,
+    /// monospace `font_md` title in painter mode). Subtitle/legacy size knobs
+    /// are no longer honored — the unified visual takes precedence so panels
+    /// line up with chart pane headers above them.
     pub fn show_full(
         self,
         ui: &mut Ui,
         title_actions: impl FnOnce(&mut Ui),
         actions: impl FnOnce(&mut Ui),
     ) -> bool {
-        let mut closed = false;
-        let title = self.title;
-        let subtitle = self.subtitle;
-        let accent = self.accent;
-        let dim = self.dim;
-        let size = self.title_size;
-        let size_px = self.title_size_px;
-        let mono = self.title_monospace;
-        let leading = self.leading_space;
-        let trailing = self.trailing_space;
-        ui.horizontal(|ui| {
-            if leading > 0.0 { ui.add_space(leading); }
-            let mut label = SectionLabel::new(title).size(size).color(accent);
-            if let Some(px) = size_px { label = label.size_px(px); }
-            if let Some(m) = mono   { label = label.monospace(m); }
-            ui.add(label);
-            if let Some(sub) = subtitle {
-                ui.label(RichText::new(sub).monospace().size(font_sm()).color(dim));
-            }
-            title_actions(ui);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if trailing > 0.0 { ui.add_space(trailing); }
-                if super::super::style::close_button(ui, dim) { closed = true; }
-                actions(ui);
-            });
-        });
-        closed
+        let theme = self.theme_ref
+            .unwrap_or_else(|| &super::super::super::gpu::THEMES[0]);
+        let mut h = super::super::super::ui::panels::kit::PanelHeader::new(self.title);
+        if let Some(w) = self.watchlist_ref {
+            h = h.watchlist(w);
+        }
+        if let Some(px) = self.height_override { h = h.height(px); }
+        if let Some(px) = self.font_size_override { h = h.font_size(px); }
+        h.show_full(ui, theme, title_actions, actions)
     }
 }
 
@@ -163,6 +174,9 @@ pub struct PanelHeaderWithTabs<'a, T: PartialEq + Copy> {
     dim:        Color32,
     theme:      Option<&'a super::super::super::gpu::Theme>,
     min_height: f32,
+    watchlist:  Option<&'a super::super::super::gpu::Watchlist>,
+    height_override:    Option<f32>,
+    font_size_override: Option<f32>,
 }
 
 impl<'a, T: PartialEq + Copy> PanelHeaderWithTabs<'a, T> {
@@ -174,6 +188,9 @@ impl<'a, T: PartialEq + Copy> PanelHeaderWithTabs<'a, T> {
             dim:        FALLBACK_DIM,
             theme:      None,
             min_height: 24.0,
+            watchlist:  None,
+            height_override:    None,
+            font_size_override: None,
         }
     }
     pub fn accent(mut self, c: Color32) -> Self { self.accent = c; self }
@@ -185,6 +202,17 @@ impl<'a, T: PartialEq + Copy> PanelHeaderWithTabs<'a, T> {
         self.theme = Some(t);
         self
     }
+    /// Pin the header to the chart-pane height/font configured by this
+    /// `Watchlist` so the side-panel tab strip lines up with the strip
+    /// in the chart pane header above.
+    pub fn watchlist(mut self, w: &'a super::super::super::gpu::Watchlist) -> Self {
+        self.watchlist = Some(w); self
+    }
+    /// Override header height directly. Use when `.watchlist()` would
+    /// conflict with a mutable borrow inside the closure.
+    pub fn height(mut self, h: f32) -> Self { self.height_override = Some(h); self }
+    /// Override the tab label font size.
+    pub fn font_size(mut self, px: f32) -> Self { self.font_size_override = Some(px); self }
 
     /// Render the header. Returns `true` if the close button was clicked.
     pub fn show(self, ui: &mut Ui) -> bool {
@@ -193,31 +221,18 @@ impl<'a, T: PartialEq + Copy> PanelHeaderWithTabs<'a, T> {
 
     /// Render with extra controls placed to the LEFT of the close button (RTL
     /// layout). Used for badges (e.g. watchlist's market-session indicator).
+    ///
+    /// Delegates to `panels::kit::PanelHeaderTabs` so all tabbed side panels
+    /// share the same chart-pane-parity chrome and tab paint.
     pub fn show_with(self, ui: &mut Ui, actions: impl FnOnce(&mut Ui)) -> bool {
-        let mut closed = false;
-        let dim = self.dim;
-        let min_h = self.min_height;
-        let tabs = self.tabs;
-        let current = self.current;
-        // Map the typed (T, &str) pairs onto the index-based ui_kit Tabs API.
-        let mut active_idx = tabs.iter().position(|(v, _)| *v == *current).unwrap_or(0);
-        let prev_idx = active_idx;
-        let labels: Vec<&str> = tabs.iter().map(|(_, l)| *l).collect();
         let theme = self.theme.unwrap_or_else(|| &super::super::super::gpu::THEMES[0]);
-        ui.horizontal(|ui| {
-            ui.set_min_height(min_h);
-            crate::ui_kit::widgets::Tabs::new(&mut active_idx, &labels)
-                .treatment(crate::ui_kit::widgets::tabs::TabTreatment::Card)
-                .show(ui, theme);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if super::super::style::close_button(ui, dim) { closed = true; }
-                actions(ui);
-            });
-        });
-        if active_idx != prev_idx {
-            if let Some((v, _)) = tabs.get(active_idx) { *current = *v; }
+        let mut h = super::super::super::ui::panels::kit::PanelHeaderTabs::new(self.current, self.tabs);
+        if let Some(w) = self.watchlist {
+            h = h.watchlist(w);
         }
-        closed
+        if let Some(px) = self.height_override { h = h.height(px); }
+        if let Some(px) = self.font_size_override { h = h.font_size(px); }
+        h.show_with(ui, theme, actions)
     }
 }
 

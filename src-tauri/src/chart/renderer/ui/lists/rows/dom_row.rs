@@ -275,15 +275,15 @@ impl<'a> DomRow<'a> {
                 }
                 let find = |k: DomColumn| col_rects.iter().find(|(kk, _)| *kk == k).map(|(_, r)| *r);
 
-                let f_lg = egui::FontId::monospace(13.0);
-                let f_sm = egui::FontId::monospace(11.0);
+                let f_lg = mono_md();
+                let f_sm = mono_sm();
                 let dark = theme_ref.overlay_text;
                 let cy = rect.center().y;
 
                 // ── Δ column ──
                 if let Some(dr) = find(DomColumn::Delta) {
                     if delta != 0 {
-                        let dc = if delta > 0 { bull.gamma_multiply(0.6) } else { bear.gamma_multiply(0.6) };
+                        let dc = if delta > 0 { color_muted(bull) } else { color_muted(bear) };
                         let s = if delta > 0 { format!("+{}", delta) } else { format!("{}", delta) };
                         painter.text(dr.center(), egui::Align2::CENTER_CENTER, &s, f_sm.clone(), dc);
                     }
@@ -304,7 +304,7 @@ impl<'a> DomRow<'a> {
                     if show_numbers && bid_size > 0 {
                         let txt = fmt_size(bid_size);
                         let pos = br.center();
-                        let normal = bull.gamma_multiply(0.7);
+                        let normal = color_subtle(bull);
                         painter.text(pos, egui::Align2::CENTER_CENTER, &txt, f_lg.clone(), normal);
                         if let Some(bar) = bar_rect_opt {
                             if bid_fill > 0.2 {
@@ -339,7 +339,7 @@ impl<'a> DomRow<'a> {
                     if show_numbers && ask_size > 0 {
                         let txt = fmt_size(ask_size);
                         let pos = ar.center();
-                        let normal = bear.gamma_multiply(0.7);
+                        let normal = color_subtle(bear);
                         painter.text(pos, egui::Align2::CENTER_CENTER, &txt, f_lg.clone(), normal);
                         if let Some(bar) = bar_rect_opt {
                             if ask_fill > 0.2 {
@@ -363,7 +363,7 @@ impl<'a> DomRow<'a> {
                             else if volume >= 1_000 { format!("{:.0}K", volume as f64/1e3) }
                             else { format!("{}", volume) };
                         let pos = vr.center();
-                        painter.text(pos, egui::Align2::CENTER_CENTER, &s, f_sm.clone(), dim.gamma_multiply(0.5));
+                        painter.text(pos, egui::Align2::CENTER_CENTER, &s, f_sm.clone(), color_half(dim));
                         if volume_fill > 0.3 {
                             let clip = ui.painter_at(bar);
                             clip.text(pos, egui::Align2::CENTER_CENTER, &s, f_sm.clone(), dark);
@@ -382,9 +382,9 @@ impl<'a> DomRow<'a> {
                                 egui::pos2(or.min.x + 1.0 + i as f32 * chip_w, or.min.y + 1.0),
                                 egui::vec2(chip_w - 1.0, or.height() - 2.0),
                             );
-                            painter.rect_filled(cr, 2.0, color_alpha(ord.color, 140));
-                            painter.rect_stroke(cr, 2.0,
-                                Stroke::new(stroke_thin(), color_alpha(ord.color, 180)),
+                            painter.rect_filled(cr, radius_xs(), color_alpha(ord.color, alpha_intense()));
+                            painter.rect_stroke(cr, radius_xs(),
+                                Stroke::new(stroke_thin(), color_alpha(ord.color, alpha_prominent())),
                                 StrokeKind::Outside);
                             let label = format!("{}{}", ord.side, ord.qty);
                             painter.text(cr.center(), egui::Align2::CENTER_CENTER,
@@ -477,8 +477,8 @@ impl<'a> DomRow<'a> {
         let ry = rr.min.y;
         let cy = rr.center().y;
 
-        let font = egui::FontId::monospace(13.0);
-        let font_sm = egui::FontId::monospace(11.0);
+        let font = mono_md();
+        let font_sm = mono_sm();
         let dark = theme_ref.overlay_text;
 
         // Backgrounds: selected / current / hovered
@@ -506,7 +506,7 @@ impl<'a> DomRow<'a> {
 
         // Δ
         if layout.show_delta && self.delta != 0 {
-            let dc = if self.delta > 0 { bull.gamma_multiply(0.6) } else { bear.gamma_multiply(0.6) };
+            let dc = if self.delta > 0 { color_muted(bull) } else { color_muted(bear) };
             let s = if self.delta > 0 { format!("+{}", self.delta) } else { format!("{}", self.delta) };
             painter.text(egui::pos2(x0 + cd * 0.5, cy), egui::Align2::CENTER_CENTER, &s, font_sm.clone(), dc);
         }
@@ -523,7 +523,7 @@ impl<'a> DomRow<'a> {
             if layout.show_numbers {
                 let txt = fmt_size(self.bid_size);
                 let pos = egui::pos2(xb + cb * 0.5, cy);
-                let normal = if hv { bull } else { bull.gamma_multiply(0.7) };
+                let normal = if hv { bull } else { color_subtle(bull) };
                 painter.text(pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), normal);
                 if fr > 0.2 {
                     let clip = ui.painter_at(bar_rect);
@@ -536,8 +536,8 @@ impl<'a> DomRow<'a> {
         let pc = self.price_color_override.unwrap_or_else(|| {
             if self.current_price { Color32::WHITE }
             else if self.selected { accent }
-            else if self.imbalance > 0.0 { bull.gamma_multiply(0.7) }
-            else { bear.gamma_multiply(0.7) }
+            else if self.imbalance > 0.0 { color_subtle(bull) }
+            else { color_subtle(bear) }
         });
         let _ = fg;
         let ps = if self.compact_price {
@@ -546,7 +546,7 @@ impl<'a> DomRow<'a> {
         } else if self.price >= 1.0 && (self.price.fract() == 0.0) {
             format!("{:.0}", self.price)
         } else { format!("{:.2}", self.price) };
-        let price_font = if self.current_price { egui::FontId::monospace(font_md()) } else { font.clone() };
+        let price_font = if self.current_price { mono_md() } else { font.clone() };
         painter.text(egui::pos2(xp + cp * 0.5, cy), egui::Align2::CENTER_CENTER, &ps, price_font, pc);
 
         // ASK
@@ -561,7 +561,7 @@ impl<'a> DomRow<'a> {
             if layout.show_numbers {
                 let txt = fmt_size(self.ask_size);
                 let pos = egui::pos2(xa + ca * 0.5, cy);
-                let normal = if hv { bear } else { bear.gamma_multiply(0.7) };
+                let normal = if hv { bear } else { color_subtle(bear) };
                 painter.text(pos, egui::Align2::CENTER_CENTER, &txt, font.clone(), normal);
                 if fr > 0.2 {
                     let clip = ui.painter_at(bar_rect);
@@ -583,7 +583,7 @@ impl<'a> DomRow<'a> {
                 else if self.volume >= 1_000 { format!("{:.0}K", self.volume as f64 / 1e3) }
                 else { format!("{}", self.volume) };
             let pos = egui::pos2(xv + cv * 0.5, cy);
-            painter.text(pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), dim.gamma_multiply(0.5));
+            painter.text(pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), color_half(dim));
             if vf > 0.3 {
                 let clip = ui.painter_at(vol_bar);
                 clip.text(pos, egui::Align2::CENTER_CENTER, &vs, font_sm.clone(), dark);
@@ -604,8 +604,8 @@ impl<'a> DomRow<'a> {
 
             let currently_dragging_this = self.drag_cx.dragging_order_id == Some(oid);
             let alpha_mult = if currently_dragging_this { 0.3 } else { 1.0 };
-            painter.rect_filled(br, 2.0, color_alpha(oc, (140.0 * alpha_mult) as u8));
-            painter.rect_stroke(br, 2.0,
+            painter.rect_filled(br, radius_xs(), color_alpha(oc, (140.0 * alpha_mult) as u8));
+            painter.rect_stroke(br, radius_xs(),
                 Stroke::new(stroke_thin(), color_alpha(oc, (180.0 * alpha_mult) as u8)),
                 StrokeKind::Outside);
 
@@ -614,7 +614,7 @@ impl<'a> DomRow<'a> {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 let xr = Rect::from_min_size(egui::pos2(br.right() - 12.0, br.top()), egui::vec2(12.0, br.height()));
                 painter.rect_filled(xr, 1.0, color_alpha(bear, alpha_dim()));
-                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", egui::FontId::monospace(11.0), Color32::WHITE);
+                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", mono_sm(), Color32::WHITE);
                 let label_rect = Rect::from_min_max(br.min, egui::pos2(br.right() - 12.0, br.max.y));
                 draw_order_chip_label(painter, label_rect, side_ch, qty);
                 if drag_resp.clicked() {
@@ -634,8 +634,8 @@ impl<'a> DomRow<'a> {
                     egui::pos2(xo + 1.0, ry + 1.0),
                     egui::vec2(co - 3.0, row_h - 2.0),
                 );
-                painter.rect_filled(gr, 2.0, color_alpha(oc, 160));
-                painter.rect_stroke(gr, 2.0, Stroke::new(stroke_bold(), oc), StrokeKind::Outside);
+                painter.rect_filled(gr, radius_xs(), color_alpha(oc, 160));
+                painter.rect_stroke(gr, radius_xs(), Stroke::new(stroke_bold(), oc), StrokeKind::Outside);
                 draw_order_chip_label(painter, gr, side_ch, self.drag_cx.ghost_qty);
                 painter.rect_stroke(rr, 0.0,
                     Stroke::new(stroke_std(), color_alpha(oc, alpha_dim())),
@@ -655,8 +655,8 @@ impl<'a> DomRow<'a> {
 
 fn draw_order_chip_label(painter: &Painter, rect: Rect, side: char, qty: u32) {
     let qty_str = format!("{}", qty);
-    let side_font = egui::FontId::monospace(11.0);
-    let qty_font = egui::FontId::monospace(11.0);
+    let side_font = mono_sm();
+    let qty_font = mono_sm();
     let text_col = fallback_theme().overlay_text; // high-contrast label on colored chip
     let s = side.to_string();
     painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, &s, side_font, text_col);

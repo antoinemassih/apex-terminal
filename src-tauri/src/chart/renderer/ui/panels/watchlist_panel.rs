@@ -4,10 +4,9 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::rows::{
-    WatchlistRow, WatchlistRowZone, WatchlistIconSet, WatchlistPinState,
+    WatchlistRow, WatchlistIconSet, WatchlistPinState,
 };
 use super::super::lists::rows::watchlist_columns::{BUILTIN as WL_COLUMNS_BUILTIN};
-use super::super::super::{Drawing, DrawingKind, ChartCommand};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::gpu::{fetch_chain_background, fetch_search_background, fetch_watchlist_prices, set_pending_wl_tooltip, WlTooltipData};
 use crate::chart_renderer::trading::market_session;
@@ -15,8 +14,9 @@ use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use super::super::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::SearchInput;
 use super::super::widgets::frames::PopupFrame;
-use super::super::widgets::watchlist::{FilterPill, SectionHeader, NmfToggle};
+use super::super::widgets::watchlist::{SectionHeader, NmfToggle};
 use crate::ui_kit::widgets::{Input, Tag, TagTone};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use super::super::widgets::headers::PanelHeaderWithTabs;
@@ -30,9 +30,7 @@ if watchlist.open {
         .min_width(140.0)
         .max_width(500.0)
         .resizable(true)
-        .frame(
-            egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin::same(gap_sm() as i8))
-        )
+        .frame(super::super::widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
         .show(ctx, |ui| {
             // Force content to never exceed the panel's actual width
             let panel_w = ui.available_width();
@@ -45,25 +43,31 @@ if watchlist.open {
             let mut wl_dup_idx: Option<usize> = None;
 
             // ── A) Tab-driven header (LIST / CHAIN / HEAT) + market-session badge + close ──
+            // Pre-resolve pane-aligned metrics outside the mutable borrow window.
+            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+            let title_font_size = watchlist.pane_header_size.title_font();
             let closed = PanelHeaderWithTabs::new(&mut watchlist.tab, &[
                 (WatchlistTab::Stocks, "LIST"),
                 (WatchlistTab::Chain, "CHAIN"),
                 (WatchlistTab::Heat, "HEAT"),
             ])
             .theme(t)
-            .min_height(22.0)
-            .show_with(ui, |ui| {
-                let (session, session_col) = market_session();
-                ui.add_space(gap_sm());
-                let badge_bg = color_alpha(session_col, alpha_tint());
-                // legacy RichText was monospace+strong; Button label loses those — visual: bold+mono now plain
-                ui.add(Button::new(session).variant(Variant::Chrome).size(Size::Xs).fg(session_col)
-                    .fill(badge_bg).corner_radius(current().r_sm as f32).stroke(egui::Stroke::NONE)
-                    .min_size(egui::vec2(34.0, 14.0)));
-            });
+            .height(header_h)
+            .font_size(title_font_size)
+            .show(ui);
             if closed { watchlist.open = false; }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_sm());
+
+            // Body padding — the panel frame is zero-margin (so the header
+            // sits flush at the panel edge), so the body content needs its
+            // own inner inset. Top gap clears the 10px header drop-shadow.
+            egui::Frame::NONE
+                .inner_margin(egui::Margin {
+                    left:   gap_sm() as i8,
+                    right:  gap_sm() as i8,
+                    top:    gap_sm() as i8,
+                    bottom: gap_sm() as i8,
+                })
+                .show(ui, |ui| {
 
             let mut open_option_chart: Option<(String, f32, bool, String)> = None;
             // OCC ticker for the click → routed into pending_opt_chart_contract
@@ -153,13 +157,16 @@ if watchlist.open {
                                 }
                             });
                             // "+" button to create new watchlist
-                            if ui.add(Button::icon(Icon::PLUS).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Md).frameless(true)).clicked() {
+                            if ui.add(Button::icon(Icon::PLUS).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Md)).clicked() {
                                 let n = watchlist.saved_watchlists.len() + 1;
                                 let syms = watchlist.create_watchlist(&format!("Watchlist {}", n));
                                 if !syms.is_empty() { wl_fetch_syms = syms; }
                             }
                         }
-                        // Options toggle (circle icon) — right-aligned
+                        // Right-anchored cluster: market-session badge (OPEN/PRE/POST/CLOSED)
+                        // + options-visibility toggle (circle icon). The session badge lives
+                        // here — beside the watchlist selector — rather than in the header,
+                        // so the chart-pane-aligned header stays uncluttered.
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
                             let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
@@ -167,6 +174,18 @@ if watchlist.open {
                                 .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)));
                             if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+
+                            ui.add_space(gap_xs());
+                            let (session, session_col) = market_session();
+                            let badge_bg = color_alpha(session_col, alpha_tint());
+                            ui.add(Button::new(session)
+                                .variant(Variant::Chrome)
+                                .size(Size::Xs)
+                                .fg(session_col)
+                                .fill(badge_bg)
+                                .corner_radius(current().r_sm as f32)
+                                .stroke(egui::Stroke::NONE)
+                                .min_size(egui::vec2(34.0, 14.0)));
                         });
                     });
                     // Handle deferred rename
@@ -201,7 +220,6 @@ if watchlist.open {
                     // ── C) Search field + filter button beside it ──
                     // Use allocate_ui_with_layout to place them side by side without
                     // ui.horizontal() which reports combined min-width and forces expansion.
-                    let search_id = egui::Id::new("wl_search_input");
                     let avail = ui.available_width();
                     let btn_w = 22.0;
                     let search_w = (avail - btn_w - 4.0).max(40.0);
@@ -209,33 +227,35 @@ if watchlist.open {
                     let (full_rect, _) = ui.allocate_exact_size(egui::vec2(avail, search_h), egui::Sense::hover());
                     // Search field (left portion)
                     let search_rect = egui::Rect::from_min_size(full_rect.min, egui::vec2(search_w, search_h));
-                    let search_resp = TextInput::new(&mut watchlist.search_query)
-                        .id(search_id)
-                        .placeholder("Add symbol...").width(search_w).font_size(11.0)
-                        .put_at(search_rect)
-                        .show(ui);
+                    let search_resp = ui.allocate_ui_at_rect(search_rect, |ui| {
+                        SearchInput::new(&mut watchlist.search_query)
+                            .placeholder("Add symbol...")
+                            .width(search_w)
+                            .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                            .show(ui, t)
+                    }).inner;
                     // Filter button (right portion)
                     let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
                     let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.4) };
                     let btn_rect = egui::Rect::from_min_size(egui::pos2(full_rect.right() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
                     let filter_btn_rect = btn_rect; // capture for popup anchor
-                    ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(11.0), icon_col);
+                    ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(font_sm()), icon_col);
                     let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
                     if btn_resp.clicked() { watchlist.filter_open = !watchlist.filter_open; }
                     if btn_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     // Columns config button (sliders icon)
                     let col_btn_rect = egui::Rect::from_min_size(egui::pos2(btn_rect.left() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
                     let col_icon_col = if watchlist.wl_columns_open { t.accent } else { t.dim.gamma_multiply(0.4) };
-                    ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(11.0), col_icon_col);
+                    ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(font_sm()), col_icon_col);
                     let col_resp = ui.interact(col_btn_rect, egui::Id::new("wl_columns_btn"), egui::Sense::click());
                     if col_resp.clicked() { watchlist.wl_columns_open = !watchlist.wl_columns_open; }
                     if col_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     // Refocus after adding a symbol
                     if watchlist.search_refocus {
                         watchlist.search_refocus = false;
-                        search_resp.request_focus();
+                        search_resp.response.request_focus();
                     }
-                    if search_resp.changed() {
+                    if search_resp.response.changed() {
                         watchlist.search_sel = -1; // reset selection on text change
                         if !watchlist.search_query.is_empty() {
                             // Immediate: static results
@@ -249,7 +269,7 @@ if watchlist.open {
                     }
                     // Arrow key navigation + Enter to select
                     let has_results = !watchlist.search_query.is_empty() && !watchlist.search_results.is_empty();
-                    if has_results && search_resp.has_focus() {
+                    if has_results && search_resp.response.has_focus() {
                         let max = watchlist.search_results.len() as i32;
                         if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
                             watchlist.search_sel = (watchlist.search_sel + 1).min(max - 1);
@@ -274,7 +294,7 @@ if watchlist.open {
                         watchlist.persist();
                     }
                     // Escape clears search
-                    if search_resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    if search_resp.response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                         watchlist.search_query.clear();
                         watchlist.search_results.clear();
                         watchlist.search_sel = -1;
@@ -369,7 +389,7 @@ if watchlist.open {
                                             .size(KitSize::Xs)
                                             .show(ui, t);
                                         if !watchlist.filter_text.is_empty() {
-                                            if ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Xs).frameless(true)).clicked() {
+                                            if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Xs)).clicked() {
                                                 watchlist.filter_text.clear();
                                             }
                                         }
@@ -575,7 +595,7 @@ if watchlist.open {
                                         ui.horizontal(|ui| {
                                             for hex in row {
                                                 let c = hex_to_color(hex, 1.0);
-                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::Chrome).glyph_color(c).size(Size::Lg).frameless(true)).clicked() {
+                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg)).clicked() {
                                                     if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                         sec.color = Some(hex.to_string());
                                                     }
@@ -610,7 +630,7 @@ if watchlist.open {
 
                                     // Collapse chevron (keep visible during rename)
                                     let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                    ui.add(Button::icon(chevron).variant(Variant::Chrome).glyph_color(t.dim.gamma_multiply(0.6)).size(Size::Sm).frameless(true));
+                                    ui.add(Button::icon(chevron).variant(Variant::TextOnly).glyph_color(t.dim.gamma_multiply(0.6)).size(Size::Sm));
 
                                     let te = super::super::widgets::inputs::TextInput::new(&mut watchlist.rename_buf)
                                         .width((ui.available_width() - 10.0).max(40.0)).font_size(9.0).show(ui);
@@ -727,7 +747,7 @@ if watchlist.open {
                                             ui.add(MonospaceCode::new(&item_sym).size_px(font_sm()).strong(true).color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
-                                                if ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(t.dim.gamma_multiply(0.3)).size(Size::Sm).frameless(true)).clicked() {
+                                                if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(t.dim.gamma_multiply(0.3)).size(Size::Sm)).clicked() {
                                                     remove_sym = Some(item_sym.clone());
                                                 }
                                                 // Bid x Ask (or price fallback)
@@ -801,7 +821,7 @@ if watchlist.open {
                                             .drag_confirmed(drag_confirmed)
                                             .sym_font(egui::FontId::monospace(font_sz))
                                             .chg_font(egui::FontId::proportional(font_sz))
-                                            .price_font(egui::FontId::proportional(13.0))
+                                            .price_font(egui::FontId::proportional(font_md()))
                                             .price_string(price_str)
                                             .price_right_inset(24.0)
                                             // Panel symbol layout: star at left+16, sym at star+10 when star
@@ -996,8 +1016,7 @@ if watchlist.open {
                         ui.add_space(gap_md());
                         ui.horizontal(|ui| {
                             let add_sec_lbl = format!("{} Section", Icon::PLUS);
-                            if ui.add(Button::new(add_sec_lbl.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(t.dim.gamma_multiply(0.4))
-                                .frameless(true)).clicked() {
+                            if ui.add(Button::new(add_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(t.dim.gamma_multiply(0.4))).clicked() {
                                 watchlist.add_section("New Section");
                                 watchlist.persist();
                             }
@@ -1103,7 +1122,7 @@ if watchlist.open {
                                         ui.horizontal(|ui| {
                                             for hex in row {
                                                 let c = hex_to_color(hex, 1.0);
-                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::Chrome).glyph_color(c).size(Size::Lg).frameless(true)).clicked() {
+                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg)).clicked() {
                                                     if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                         sec.color = Some(hex.to_string());
                                                     }
@@ -1212,8 +1231,7 @@ if watchlist.open {
                             ui.add_space(gap_md());
                             ui.horizontal(|ui| {
                                 let add_opt_sec_lbl = format!("{} Section", Icon::PLUS);
-                                if ui.add(Button::new(add_opt_sec_lbl.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(t.dim.gamma_multiply(0.4))
-                                    .frameless(true)).clicked() {
+                                if ui.add(Button::new(add_opt_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(t.dim.gamma_multiply(0.4))).clicked() {
                                     watchlist.add_option_section("New Options");
                                     watchlist.persist();
                                 }
@@ -1438,7 +1456,7 @@ if watchlist.open {
                         // Check mark
                         if is_saved {
                             painter.text(egui::pos2(x + col_chk * 0.5, y_center), egui::Align2::CENTER_CENTER,
-                                Icon::CHECK, egui::FontId::proportional(11.0), t.accent);
+                                Icon::CHECK, egui::FontId::proportional(font_sm()), t.accent);
                         }
                         x += col_chk + gap;
 
@@ -1463,7 +1481,7 @@ if watchlist.open {
                             else { format!("{}", row.oi) };
                         let oi_x = x;
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &oi_str, egui::FontId::monospace(11.0), t.dim.gamma_multiply(0.5));
+                            &oi_str, mono_sm(), t.dim.gamma_multiply(0.5));
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
@@ -1804,6 +1822,8 @@ if watchlist.open {
                 watchlist.pending_opt_chart = Some(info);
                 watchlist.pending_opt_chart_contract = clicked_occ_ticker.take();
             }
+
+            }); // close body-padding Frame
         });
 }
 

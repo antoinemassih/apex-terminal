@@ -2,8 +2,8 @@
 
 use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, DrawingAction, drawing_persist_key, drawing_to_db};
-use crate::chart_renderer::{Drawing, DrawingKind, LineStyle};
-use crate::chart_renderer::ui::style::{hex_to_color, color_alpha, COLOR_AMBER, gap_xs, gap_sm, gap_md, font_xs, font_sm, font_md};
+use crate::chart_renderer::{DrawingKind, LineStyle};
+use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, stroke_bold};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 #[cfg(target_os = "windows")]
@@ -111,7 +111,7 @@ pub fn show_drawing_properties_bar_ui(
                             .fill(c)
                             .min_size(egui::vec2(20.0, 20.0))
                             .corner_radius(3.0)
-                            .stroke(if is_cur { egui::Stroke::new(1.5, egui::Color32::WHITE) } else { egui::Stroke::NONE }));
+                            .stroke(if is_cur { egui::Stroke::new(stroke_bold(), egui::Color32::WHITE) } else { egui::Stroke::NONE }));
                         if resp.clicked() {
                             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                                 chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));

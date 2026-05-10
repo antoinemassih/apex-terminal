@@ -12,6 +12,27 @@ pub enum Variant {
     Danger,     // bear-colored, destructive
     Link,       // text-only, underline on hover
     Chrome,     // fully overridable; caller sets fill/stroke/min_size/corner_radius
+    // ── 2026-05 additions to absorb the 75 Chrome escape-hatch sites ─────────
+    /// Toggle chip — small selectable pill. Active = accent fg + soft accent
+    /// fill; inactive = dim*0.5 fg + transparent fill. Used in segmented
+    /// controls, filter pills, preset selectors. Set `.active(bool)`.
+    Chip,
+    /// Tab — frameless, transparent fill, accent fg when `.active(true)`,
+    /// `dim*0.5` otherwise. For nav strips like Stocks/Options, panel tabs.
+    Tab,
+    /// Inline close — small icon-only `Icon::X` style with dim*0.7 glyph,
+    /// frameless, 18px square. For modal headers, chip dismiss, floating panes.
+    InlineClose,
+    /// Muted icon — Ghost variant with `dim*0.5` glyph color. For secondary
+    /// row actions (edit, delete) that should not steal focus.
+    MutedIcon,
+    /// Neutral action — Secondary with a gray fill (170,170,170) and BLACK fg.
+    /// For utility actions like FLATTEN that aren't destructive but aren't
+    /// primary either.
+    NeutralAction,
+    /// Text-only — Chrome + transparent fill + frameless. For inline link-like
+    /// affordances that shouldn't render as a button. Caller sets `.fg()`.
+    TextOnly,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]

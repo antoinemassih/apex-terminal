@@ -11,6 +11,7 @@ use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::Variant;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{HeatmapGrid, HeatmapCell};
 
 // ── Heat index dropdown options ────────────────────────────────────────────
 const HEAT_OPTS: &[(&str, &str)] = &[
@@ -144,80 +145,7 @@ pub(crate) fn render_heat_panel(
             // Configurable N-column layout with click-to-chart
             let num_cols = watchlist.heat_cols.max(1) as usize;
             let heat_sort = watchlist.heat_sort;
-            let render_sector_items = |ui: &mut egui::Ui, items_unsorted: &[&HeatItem], t: &Theme, _pm: &std::collections::HashMap<String, f32>, num_cols: usize, sort: i8, click_sym: &mut Option<String>, active_sym: &str| {
-                let mut items: Vec<&HeatItem> = items_unsorted.to_vec();
-                if sort == 1 { items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)); }
-                else if sort == -1 { items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)); }
-                let avail_w = ui.available_width();
-                let gap = 3.0;
-                let col_w = (avail_w - gap * (num_cols - 1) as f32) / num_cols as f32;
-                let cell_h = if num_cols == 1 { 26.0 } else { 28.0 };
-                let font_sz = if num_cols >= 3 { 10.0 } else { 12.0 };
-                let max_pct = items.iter().map(|i| i.1.abs()).fold(1.0_f32, f32::max);
-                let rows = (items.len() + num_cols - 1) / num_cols;
-                let total_h = rows as f32 * cell_h;
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(avail_w, total_h), egui::Sense::click());
-                let painter = ui.painter();
-                // Hover detection — find which cell the mouse is over
-                let hover_idx: Option<usize> = ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
-                    if !rect.contains(pos) { return None; }
-                    let col = ((pos.x - rect.left()) / (col_w + gap)).floor() as usize;
-                    let row = ((pos.y - rect.top()) / cell_h).floor() as usize;
-                    let idx = row * num_cols + col;
-                    if idx < items.len() { Some(idx) } else { None }
-                });
-                if hover_idx.is_some() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                // Click detection
-                if resp.clicked() {
-                    if let Some(pos) = resp.interact_pointer_pos() {
-                        let col = ((pos.x - rect.left()) / (col_w + gap)).floor() as usize;
-                        let row = ((pos.y - rect.top()) / cell_h).floor() as usize;
-                        let idx = row * num_cols + col;
-                        if let Some(item) = items.get(idx) { *click_sym = Some(item.0.clone()); }
-                    }
-                }
-                for (i, item) in items.iter().enumerate() {
-                    let col = i % num_cols;
-                    let row = i / num_cols;
-                    let cx = rect.left() + col as f32 * (col_w + gap);
-                    let cy = rect.top() + row as f32 * cell_h;
-                    let intensity = (item.1.abs() / 5.0).min(1.0);
-                    let is_up = item.1 >= 0.0;
-                    let is_active = item.0 == active_sym;
-                    let is_hovered = hover_idx == Some(i);
-                    // Hover highlight
-                    if is_hovered {
-                        painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(col_w, cell_h)),
-                            2.0, color_alpha(t.text,12));
-                    }
-                    // Active symbol border
-                    if is_active {
-                        painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(col_w, cell_h - 2.0)),
-                            2.0, egui::Stroke::new(stroke_bold(), t.accent), egui::StrokeKind::Outside);
-                    }
-                    // Background bar
-                    let bar_frac = if max_pct > 0.0 { item.1.abs() / max_pct } else { 0.0 };
-                    let bar_w = bar_frac * col_w * 0.6;
-                    let bar_col = if is_up {
-                        color_alpha(t.bull, (25.0 + intensity * 55.0) as u8)
-                    } else {
-                        color_alpha(t.bear, (25.0 + intensity * 55.0) as u8)
-                    };
-                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(bar_w, cell_h - 2.0)), 2.0, bar_col);
-                    // Edge strip
-                    let edge_a = (120.0 + intensity * 135.0) as u8;
-                    let edge_col = if is_up { color_alpha(t.bull, edge_a) } else { color_alpha(t.bear, edge_a) };
-                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)), 0.0, edge_col);
-                    // Symbol (bright white for active, slightly dimmer for others)
-                    let sym_col = if is_active { egui::Color32::WHITE } else if is_hovered { color_alpha(t.text,230) } else { color_alpha(t.text,190) };
-                    painter.text(egui::pos2(cx + 7.0, cy + cell_h / 2.0), egui::Align2::LEFT_CENTER,
-                        &item.0, egui::FontId::monospace(font_sz), sym_col);
-                    // Change%
-                    let chg_col = if is_up { t.bull } else { t.bear };
-                    painter.text(egui::pos2(cx + col_w - 3.0, cy + cell_h / 2.0), egui::Align2::RIGHT_CENTER,
-                        &format!("{:+.1}%", item.1), egui::FontId::monospace(font_sz), chg_col);
-                }
-            };
+            // render_sector_items extracted to HeatmapGrid widget
 
             // Render grouped by sector
             let mut groups: Vec<(String, Vec<&HeatItem>)> = vec![];
@@ -258,7 +186,16 @@ pub(crate) fn render_heat_panel(
                     ui.add_space(4.0);
                 }
                 if !is_collapsed {
-                    render_sector_items(ui, items, t, &price_map, num_cols, heat_sort, &mut heat_click_sym_outer, active_sym);
+                    let mut sorted: Vec<&HeatItem> = items.to_vec();
+                    if heat_sort == 1 { sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)); }
+                    else if heat_sort == -1 { sorted.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)); }
+                    let cells: Vec<HeatmapCell> = sorted.iter().map(|i| HeatmapCell { symbol: i.0.clone(), change_pct: i.1 }).collect();
+                    let click_ref = &mut heat_click_sym_outer;
+                    HeatmapGrid::new(&cells)
+                        .num_cols(num_cols)
+                        .active_symbol(Some(active_sym))
+                        .on_click(|sym| { *click_ref = Some(sym.to_string()); })
+                        .show(ui, t);
                 }
             }
         });

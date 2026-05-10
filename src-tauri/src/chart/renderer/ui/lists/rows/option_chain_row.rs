@@ -16,10 +16,6 @@ use crate::chart::renderer::ui::foundation::{
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn fallback_theme() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
-}
-
 #[derive(Clone, Copy, Default)]
 pub struct ChainSide {
     pub bid: f32,
@@ -79,13 +75,13 @@ impl<'a> OptionChainRow<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let ft = fallback_theme();
-        let accent = self.theme_accent.unwrap_or(ft.accent);
-        let bull = self.theme_bull.unwrap_or(ft.bull);
-        let bear = self.theme_bear.unwrap_or(ft.bear);
-        let dim = self.theme_dim.unwrap_or(ft.dim);
-        let fg = self.theme_fg.unwrap_or(ft.text);
+        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
+        let accent = self.theme_accent.unwrap_or(default_t.accent);
+        let bull = self.theme_bull.unwrap_or(default_t.bull);
+        let bear = self.theme_bear.unwrap_or(default_t.bear);
+        let dim = self.theme_dim.unwrap_or(default_t.dim);
+        let fg = self.theme_fg.unwrap_or(default_t.text);
         let strike = self.strike;
         let call = self.call;
         let put = self.put;
@@ -107,7 +103,7 @@ impl<'a> OptionChainRow<'a> {
 
                 let painter = ui.painter();
                 let cy = rect.center().y;
-                let f = egui::FontId::monospace(11.0);
+                let f = mono_sm();
 
                 painter.text(egui::pos2(call_rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
                     &format!("{:.2}", call.bid), f.clone(), bull);
@@ -119,7 +115,7 @@ impl<'a> OptionChainRow<'a> {
                 let strike_x = rect.center().x;
                 painter.text(egui::pos2(strike_x, cy), egui::Align2::CENTER_CENTER,
                     &format!("{:.2}", strike),
-                    egui::FontId::monospace(11.0), accent);
+                    mono_sm(), accent);
 
                 painter.text(egui::pos2(put_rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
                     &format!("{}", put.volume), f.clone(), dim);
@@ -132,7 +128,7 @@ impl<'a> OptionChainRow<'a> {
                     painter.text(egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0),
                         egui::Align2::RIGHT_BOTTOM,
                         &format!("Δ{:+.2}", call.delta),
-                        egui::FontId::monospace(11.0), dim);
+                        mono_sm(), dim);
                 }
             })
             .show(ui);

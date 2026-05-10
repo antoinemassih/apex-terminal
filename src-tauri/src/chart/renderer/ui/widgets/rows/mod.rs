@@ -17,7 +17,6 @@ use egui::{Color32, Response, Sense, Stroke, Ui, Widget};
 use super::super::style::*;
 
 type Theme = crate::chart_renderer::gpu::Theme;
-fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
 
 
 
@@ -143,8 +142,9 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
         );
         let resp = ui.allocate_rect(rect, self.sense);
 
-        let border = self.theme_border.unwrap_or(ft().toolbar_border);
-        let accent = self.theme_accent.unwrap_or(ft().accent);
+        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let border = self.theme_border.unwrap_or(default_t.toolbar_border);
+        let accent = self.theme_accent.unwrap_or(default_t.accent);
 
         let bg = if self.selected {
             color_alpha(accent, alpha_subtle())
@@ -180,7 +180,7 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
                 egui::pos2(inner_x, rect.center().y),
                 egui::Align2::LEFT_CENTER,
                 glyph,
-                egui::FontId::monospace(11.0),
+                mono_sm(),
                 col,
             );
             inner_x += 14.0;

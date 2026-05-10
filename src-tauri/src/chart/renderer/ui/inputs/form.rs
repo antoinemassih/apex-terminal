@@ -530,7 +530,8 @@ pub struct OrderTicketOutcome {
 /// // … existing compact body …
 /// ```
 #[must_use = "MeridienOrderTicket must be shown with `.show(ui, state)`"]
-pub struct MeridienOrderTicket {
+pub struct MeridienOrderTicket<'a> {
+    theme:   Option<&'a Theme>,
     bg:      Color32,
     text:    Color32,
     dim:     Color32,
@@ -541,21 +542,24 @@ pub struct MeridienOrderTicket {
     width:   f32,
 }
 
-impl MeridienOrderTicket {
+impl<'a> MeridienOrderTicket<'a> {
     pub fn new() -> Self {
+        let t = ft();
         Self {
-            bg:     Color32::from_rgb(24, 20, 16),
-            text:   Color32::from_rgb(238, 228, 210),
-            dim:    Color32::from_rgb(150, 138, 118),
-            bull:   Color32::from_rgb(120, 170, 104),
-            bear:   Color32::from_rgb(220, 108, 70),
-            accent: Color32::from_rgb(232, 118, 80),
-            border: Color32::from_rgb(80, 72, 60),
-            width:  0.0, // 0 = fill available
+            theme:  None,
+            bg:     t.toolbar_bg,
+            text:   t.text,
+            dim:    t.dim,
+            bull:   t.bull,
+            bear:   t.bear,
+            accent: t.accent,
+            border: t.toolbar_border,
+            width:  0.0,
         }
     }
     pub fn width(mut self, w: f32) -> Self { self.width = w; self }
-    pub fn theme(mut self, t: &Theme) -> Self {
+    pub fn theme(mut self, t: &'a Theme) -> Self {
+        self.theme  = Some(t);
         self.bg     = t.toolbar_bg;
         self.text   = t.text;
         self.dim    = t.dim;
@@ -566,275 +570,379 @@ impl MeridienOrderTicket {
         self
     }
 
-    /// Render the full editorial order ticket. Returns `OrderTicketOutcome`.
+    /// Render the order ticket body — layout matches
+    /// `design references/zed/goodLayout.png`:
+    ///
+    /// - **BID / SPREAD / ASK** card — three columns, tinted backings
+    /// - **LIMIT + QUANTITY** form: shared label row, then stepper row
+    /// - **Type / TIF** segmented pill rows
+    /// - **EST. COST** card with embedded CTA on the right
     pub fn show(self, ui: &mut Ui, s: &mut OrderTicketState<'_>) -> OrderTicketOutcome {
+        use crate::ui_kit::widgets::Button;
+        use crate::ui_kit::widgets::tokens::Variant;
+        use super::stepper::NumericStepper;
+
         let mut review_clicked = false;
-        let st = current();
+        let theme_for_seg = self.theme;
         let panel_w = if self.width > 0.0 { self.width } else { ui.available_width() };
         let label_color = self.dim.gamma_multiply(0.7);
-        let border_col  = color_alpha(self.border, 50);
-        let hairline_sw = st.stroke_std;
+        let card_bg     = color_alpha(self.border, alpha_subtle());
+        let card_radius = radius_md() as u8;
 
-        let section_label_txt = |ui: &mut Ui, txt: &str| {
+        // ── Layout constants — unified rhythm ─────────────────────────
+        let outer_pad      = gap_sm();          // card outer margin from pane edges
+        let inner_pad      = gap_sm();          // padding inside cards
+        let row_gap        = gap_xs();          // gap between section rows
+        let col_gap        = gap_sm();          // gap between left/right columns
+        let strip_h        = 48.0_f32;
+        let stepper_h      = 26.0_f32;
+        let pill_h         = 22.0_f32;
+        let cost_card_h    = 52.0_f32;
+        let cta_h          = 40.0_f32;
+        let cta_w          = 96.0_f32;
+
+        // ── Pad pane content inward from the chrome edges ────────────
+        let inner_w = panel_w - outer_pad * 2.0;
+        let half_w  = (inner_w - col_gap) / 2.0;
+
+        let section_label = |ui: &mut Ui, txt: &str| {
             ui.label(RichText::new(style_label_case(txt))
-                .monospace().size(font_xs())
-                .color(label_color));
-        };
-
-        let hairline = |ui: &mut Ui| {
-            let avail = ui.available_width();
-            let (rect, _) = ui.allocate_exact_size(Vec2::new(avail, 1.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, border_col);
-            ui.add_space(gap_xs());
+                .monospace().size(font_xs()).color(label_color));
         };
 
         ui.set_width(panel_w);
-        ui.spacing_mut().item_spacing.y = 3.0;
-        ui.add_space(gap_sm());
+        ui.spacing_mut().item_spacing.y = row_gap;
+        ui.add_space(outer_pad);
 
-        // ── Section 1: Header ──────────────────────────────────────────────
-        ui.horizontal(|ui| {
-            section_label_txt(ui, "Order Ticket");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new(s.symbol)
-                    .monospace().size(font_md()).strong()
-                    .color(self.text));
+        // Active-side accent strip along the left edge of the body content.
+        let side_color = if *s.is_buy { self.bull } else { self.bear };
+        let body_top = ui.cursor().min.y;
+        // Reserved here; final rect drawn after the body is laid out below.
+        let _ = (side_color, body_top);
+
+        // Helper: render two equal-width columns with a fixed gap.
+        let two_col = |ui: &mut Ui,
+                       left: &mut dyn FnMut(&mut Ui),
+                       right: &mut dyn FnMut(&mut Ui)| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.add_space(outer_pad);
+                ui.allocate_ui_with_layout(
+                    Vec2::new(half_w, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| { ui.set_width(half_w); left(ui); });
+                ui.add_space(col_gap);
+                ui.allocate_ui_with_layout(
+                    Vec2::new(half_w, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| { ui.set_width(half_w); right(ui); });
+                ui.add_space(outer_pad);
             });
-        });
-        ui.add_space(gap_xs());
-        hairline(ui);
+        };
 
-        // ── Section 2: BID/LAST/ASK strip ─────────────────────────────────
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            let col_w = panel_w / 3.0;
-            for &(label, val, color) in &[
-                ("BID",  s.bid,  self.bear),
-                ("LAST", s.last, self.text),
-                ("ASK",  s.ask,  self.bull),
-            ] {
-                ui.vertical(|ui| {
-                    ui.set_width(col_w);
-                    ui.label(RichText::new(label).monospace().size(font_xs())
-                        .color(color_alpha(label_color, alpha_active())));
-                    ui.label(RichText::new(format!("{:.2}", val)).monospace()
-                        .size(font_sm()).color(color));
+        // ─── BID / SPREAD / ASK card ───────────────────────────────────
+        let bid_w    = (inner_w * 0.40).floor();
+        let spread_w = (inner_w * 0.20).floor();
+        let ask_w    = inner_w - bid_w - spread_w;
+        let strip_top = egui::pos2(ui.cursor().min.x + outer_pad, ui.cursor().min.y);
+        let strip_rect = egui::Rect::from_min_size(strip_top, Vec2::new(inner_w, strip_h));
+
+        ui.painter().rect_filled(strip_rect,
+            egui::CornerRadius::same(card_radius), card_bg);
+
+        let bid_rect = egui::Rect::from_min_size(strip_top, Vec2::new(bid_w, strip_h));
+        let ask_rect = egui::Rect::from_min_size(
+            egui::pos2(strip_top.x + bid_w + spread_w, strip_top.y),
+            Vec2::new(ask_w, strip_h));
+
+        ui.painter().rect_filled(bid_rect,
+            egui::CornerRadius { nw: card_radius, ne: 0, sw: card_radius, se: 0 },
+            color_alpha(self.bear, alpha_subtle()));
+        ui.painter().rect_filled(ask_rect,
+            egui::CornerRadius { nw: 0, ne: card_radius, sw: 0, se: card_radius },
+            color_alpha(self.bull, alpha_subtle()));
+
+        // Click BID/ASK to snap the limit price. Brighter tint on hover.
+        let bid_resp = ui.interact(bid_rect,
+            egui::Id::new(("meridien_bid", strip_top.x as i32, strip_top.y as i32)),
+            egui::Sense::click());
+        if bid_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            ui.painter().rect_filled(bid_rect,
+                egui::CornerRadius { nw: card_radius, ne: 0, sw: card_radius, se: 0 },
+                color_alpha(self.bear, alpha_muted()));
+        }
+        if bid_resp.clicked() {
+            *s.limit_price = format!("{:.2}", s.bid);
+            if *s.order_type_idx == 0 {
+                *s.order_type_idx = 1; *s.order_market = false;
+            }
+        }
+        let ask_resp = ui.interact(ask_rect,
+            egui::Id::new(("meridien_ask", strip_top.x as i32, strip_top.y as i32)),
+            egui::Sense::click());
+        if ask_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            ui.painter().rect_filled(ask_rect,
+                egui::CornerRadius { nw: 0, ne: card_radius, sw: 0, se: card_radius },
+                color_alpha(self.bull, alpha_muted()));
+        }
+        if ask_resp.clicked() {
+            *s.limit_price = format!("{:.2}", s.ask);
+            if *s.order_type_idx == 0 {
+                *s.order_type_idx = 1; *s.order_market = false;
+            }
+        }
+
+        // Re-paint the BID/ASK text on top of the hover overlay so labels
+        // stay visible during hover (rect_filled is painted last).
+        let _ = (bid_resp, ask_resp);
+
+        // BID
+        ui.painter().text(
+            egui::pos2(bid_rect.left() + inner_pad, bid_rect.center().y - 9.0),
+            egui::Align2::LEFT_CENTER, "BID",
+            egui::FontId::monospace(font_xs()), self.bear);
+        ui.painter().text(
+            egui::pos2(bid_rect.left() + inner_pad, bid_rect.center().y + 7.0),
+            egui::Align2::LEFT_CENTER, &format!("{:.2}", s.bid),
+            egui::FontId::proportional(font_lg()), self.text);
+
+        // SPREAD
+        let spread_cx = strip_top.x + bid_w + spread_w * 0.5;
+        ui.painter().text(
+            egui::pos2(spread_cx, strip_rect.center().y - 5.0),
+            egui::Align2::CENTER_CENTER,
+            &format!("{:.2}", (s.ask - s.bid).abs()),
+            egui::FontId::monospace(font_sm()), self.text);
+        ui.painter().text(
+            egui::pos2(spread_cx, strip_rect.center().y + 8.0),
+            egui::Align2::CENTER_CENTER, "SPREAD",
+            egui::FontId::monospace(font_xs()), label_color);
+
+        // ASK
+        ui.painter().text(
+            egui::pos2(ask_rect.right() - inner_pad, ask_rect.center().y - 9.0),
+            egui::Align2::RIGHT_CENTER, "ASK",
+            egui::FontId::monospace(font_xs()), self.bull);
+        ui.painter().text(
+            egui::pos2(ask_rect.right() - inner_pad, ask_rect.center().y + 7.0),
+            egui::Align2::RIGHT_CENTER, &format!("{:.2}", s.ask),
+            egui::FontId::proportional(font_lg()), self.text);
+
+        ui.allocate_exact_size(Vec2::new(panel_w, strip_h), egui::Sense::hover());
+
+        // ─── LIMIT + QUANTITY label row ───────────────────────────────
+        two_col(ui,
+            &mut |ui| {
+                ui.horizontal(|ui| {
+                    section_label(ui, "LIMIT");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(RichText::new(format!("mid {:.2}", s.last))
+                            .monospace().size(font_xs()).color(label_color));
+                    });
                 });
-            }
-        });
-        ui.add_space(gap_xs());
-        hairline(ui);
-
-        // ── Section 3: BUY / SELL toggle ──────────────────────────────────
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_sm();
-            let half = (panel_w - 4.0) / 2.0;
-            for &(label, is_this, color) in &[
-                ("BUY",  true,  self.bull),
-                ("SELL", false, self.bear),
-            ] {
-                let active = *s.is_buy == is_this;
-                let bg = if active { color_alpha(color, 60) } else { color_alpha(self.border, 20) };
-                let fg = if active { color } else { color_alpha(self.dim, alpha_strong()) };
-                let (rect, resp) = ui.allocate_exact_size(
-                    Vec2::new(half, 22.0), egui::Sense::click());
-                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, bg);
-                if active {
-                    ui.painter().rect_stroke(rect, egui::CornerRadius::ZERO,
-                        Stroke::new(hairline_sw, color), egui::StrokeKind::Inside);
-                }
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-                    label, egui::FontId::monospace(font_sm()), fg);
-                if resp.clicked() { *s.is_buy = is_this; }
-            }
-        });
-        ui.add_space(gap_xs());
-
-        // ── Section 4: TYPE ────────────────────────────────────────────────
-        let order_types = ["MKT", "LMT", "STP", "STP-LMT", "TRAIL"];
-        ui.horizontal(|ui| {
-            section_label_txt(ui, "Type");
-            ui.add_space(gap_md());
-            ui.spacing_mut().item_spacing.x = 0.0;
-            let seg_w = (panel_w * 0.6 / order_types.len() as f32).max(24.0);
-            for (i, &opt) in order_types.iter().enumerate() {
-                let sel = *s.order_type_idx == i;
-                let fg = if sel { self.text } else { color_alpha(self.dim, alpha_strong()) };
-                let bg = if sel { color_alpha(self.accent, 40) } else { egui::Color32::TRANSPARENT };
-                if ui.add(egui::Button::new(
-                    RichText::new(opt).monospace().size(font_xs()).color(fg))
-                    .fill(bg).min_size(Vec2::new(seg_w, 16.0)))
-                    .clicked()
-                {
-                    *s.order_type_idx = i;
-                    *s.order_market = i == 0;
-                }
-            }
-        });
-
-        // ── Section 5: TIF ─────────────────────────────────────────────────
-        let tifs = ["DAY", "GTC", "IOC"];
-        ui.horizontal(|ui| {
-            section_label_txt(ui, "TIF");
-            ui.add_space(gap_md());
-            ui.spacing_mut().item_spacing.x = 0.0;
-            let seg_w = (panel_w * 0.4 / tifs.len() as f32).max(24.0);
-            for (i, &opt) in tifs.iter().enumerate() {
-                let sel = *s.order_tif_idx == i;
-                let fg = if sel { self.text } else { color_alpha(self.dim, alpha_strong()) };
-                let bg = if sel { color_alpha(self.accent, 40) } else { egui::Color32::TRANSPARENT };
-                if ui.add(egui::Button::new(
-                    RichText::new(opt).monospace().size(font_xs()).color(fg))
-                    .fill(bg).min_size(Vec2::new(seg_w, 16.0)))
-                    .clicked()
-                {
-                    *s.order_tif_idx = i;
-                }
-            }
-        });
-        ui.add_space(gap_xs());
-        hairline(ui);
-
-        // ── Section 6: QUANTITY hero ───────────────────────────────────────
-        section_label_txt(ui, "Quantity");
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_md();
-            // Hero numeric — large serif
-            ui.label(hero_text(&s.order_qty.to_string(), self.text)
-                .size(st.font_hero * 0.7));
-            // ± stepper
-            if ui.small_button("−").clicked() {
-                *s.order_qty = s.order_qty.saturating_sub(1).max(1);
-            }
-            if ui.small_button("+").clicked() {
-                *s.order_qty = s.order_qty.saturating_add(1);
-            }
-            // Preset chips
-            ui.add_space(gap_sm());
-            for &preset in &[100u32, 500, 1000] {
-                let sel = *s.order_qty == preset;
-                let fg = if sel { self.accent } else { color_alpha(self.dim, alpha_strong()) };
-                let bg = if sel { color_alpha(self.accent, 25) } else { egui::Color32::TRANSPARENT };
-                if ui.add(egui::Button::new(
-                    RichText::new(preset.to_string()).monospace().size(font_xs()).color(fg))
-                    .fill(bg).min_size(Vec2::new(32.0, 16.0)))
-                    .clicked()
-                {
-                    *s.order_qty = preset;
-                }
-            }
-        });
-        ui.add_space(gap_xs());
-
-        // ── Section 7: LIMIT PRICE ────────────────────────────────────────
-        if !*s.order_market {
-            section_label_txt(ui, "Limit Price");
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = gap_sm();
-                ui.add_sized(Vec2::new(80.0, 18.0),
-                    egui::TextEdit::singleline(s.limit_price)
-                        .font(egui::FontId::monospace(font_sm()))
-                        .text_color(self.text));
-                // BID/LAST/ASK presets
-                for &(tag, val) in &[("B", s.bid), ("L", s.last), ("A", s.ask)] {
-                    if ui.add(egui::Button::new(
-                        RichText::new(tag).monospace().size(font_xs())
-                            .color(color_alpha(self.dim, alpha_strong())))
-                        .fill(egui::Color32::TRANSPARENT)
-                        .min_size(Vec2::new(18.0, 16.0)))
-                        .clicked()
-                    {
-                        *s.limit_price = format!("{:.2}", val);
-                    }
-                }
+            },
+            &mut |ui| {
+                ui.horizontal(|ui| {
+                    section_label(ui, "QUANTITY");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        for &(pct, lbl) in &[(1.0_f32, "100%"), (0.5, "50%"), (0.25, "25%")] {
+                            if ui.add(Button::new(lbl)
+                                    .variant(Variant::Chrome)
+                                    .min_size(Vec2::new(30.0, 16.0))).clicked() {
+                                let bp = s.buying_power.max(0.0);
+                                if s.last > 0.0 {
+                                    *s.order_qty = (bp * pct / s.last) as u32;
+                                }
+                            }
+                        }
+                    });
+                });
             });
-            ui.add_space(gap_xs());
-        }
-        hairline(ui);
 
-        // ── Section 8: BRACKET ────────────────────────────────────────────
-        ui.horizontal(|ui| {
-            let brk_col = if *s.bracket { self.accent } else { color_alpha(self.dim, alpha_muted()) };
-            if ui.add(egui::Button::new(
-                RichText::new(style_label_case("Bracket — Stop + Target"))
-                    .monospace().size(font_xs()).color(brk_col))
-                .fill(egui::Color32::TRANSPARENT))
-                .clicked()
-            {
-                *s.bracket = !*s.bracket;
-            }
-        });
-        if *s.bracket {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = gap_lg();
-                ui.label(RichText::new("TP").monospace().size(font_xs()).color(self.bull));
-                ui.add_sized(Vec2::new(60.0, 16.0),
-                    egui::TextEdit::singleline(s.tp_price)
-                        .font(egui::FontId::monospace(font_xs()))
-                        .text_color(self.text));
-                ui.label(RichText::new("SL").monospace().size(font_xs()).color(self.bear));
-                ui.add_sized(Vec2::new(60.0, 16.0),
-                    egui::TextEdit::singleline(s.sl_price)
-                        .font(egui::FontId::monospace(font_xs()))
-                        .text_color(self.text));
+        // ─── LIMIT + QUANTITY stepper row ─────────────────────────────
+        let is_market = *s.order_market;
+        two_col(ui,
+            &mut |ui| {
+                if is_market {
+                    // Market order — no editable price; show "AT MARKET" muted.
+                    let (rect, _) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), stepper_h),
+                        egui::Sense::hover());
+                    ui.painter().rect_filled(rect,
+                        egui::CornerRadius::same(radius_sm() as u8),
+                        color_alpha(self.border, alpha_subtle()));
+                    ui.painter().rect_stroke(rect,
+                        egui::CornerRadius::same(radius_sm() as u8),
+                        Stroke::new(stroke_std(), color_alpha(self.border, alpha_line())),
+                        egui::StrokeKind::Inside);
+                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
+                        "AT MARKET",
+                        egui::FontId::monospace(font_sm()),
+                        label_color);
+                } else {
+                    let mut stepper = NumericStepper::new(s.limit_price)
+                        .prefix("$")
+                        .step(0.01)
+                        .min(0.0)
+                        .height(stepper_h)
+                        .decimals(2);
+                    if let Some(t) = theme_for_seg { stepper = stepper.theme(t); }
+                    stepper.show(ui);
+                }
+            },
+            &mut |ui| {
+                let mut stepper = NumericStepper::new(s.order_qty)
+                    .step(1.0)
+                    .min(1.0)
+                    .height(stepper_h);
+                if let Some(t) = theme_for_seg { stepper = stepper.theme(t); }
+                stepper.show(ui);
             });
-        }
-        ui.add_space(gap_xs());
-        hairline(ui);
 
-        // ── Section 9: META ROW ───────────────────────────────────────────
-        let meta_notional   = format!("${:.0}", s.notional);
-        let meta_bp         = format!("${:.0}M", s.buying_power / 1_000_000.0);
-        let meta_slip       = format!("{:.1} bp", s.slippage_bps);
-        let meta: [(&str, &str); 3] = [
-            ("Notional",      &meta_notional),
-            ("Buying Power",  &meta_bp),
-            ("Est. Slippage", &meta_slip),
+        // ─── Type & TIF — pill toggle + caret dropdown ────────────────
+        let order_types: [(usize, &str); 5] = [
+            (0, "MKT"), (1, "LMT"), (2, "STP"), (3, "STP-LMT"), (4, "TRAIL"),
         ];
+        let tifs: [(usize, &str); 4] = [
+            (0, "DAY"), (1, "GTC"), (2, "IOC"), (3, "FOK"),
+        ];
+
+        let render_pill_with_more = |ui: &mut Ui,
+                                     state: &mut usize,
+                                     options: &[(usize, &str)],
+                                     id_salt: &str,
+                                     col_w: f32| {
+            let default_lbl = options[0].1;
+            let other_idx = if *state == 0 { 1 } else { *state };
+            let other_lbl = options.get(other_idx).map(|(_, l)| *l)
+                .unwrap_or(options[1].1);
+            let is_default = *state == 0;
+            let caret_w = 14.0_f32;
+            let pill_w = ((col_w - caret_w) / 2.0).floor();
+            ui.allocate_ui_with_layout(
+                Vec2::new(col_w, pill_h),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.spacing_mut().button_padding = Vec2::new(2.0, 0.0);
+                    let dflt = ui.add(Button::new(default_lbl)
+                        .variant(Variant::Chrome)
+                        .active(is_default)
+                        .corner_radius(0.0)
+                        .min_size(Vec2::new(pill_w, pill_h)));
+                    if dflt.clicked() { *state = 0; }
+                    let othr = ui.add(Button::new(other_lbl)
+                        .variant(Variant::Chrome)
+                        .active(!is_default)
+                        .corner_radius(0.0)
+                        .min_size(Vec2::new(pill_w, pill_h)));
+                    if othr.clicked() && is_default { *state = other_idx; }
+                    let caret = ui.add(Button::icon(Icon::CARET_DOWN)
+                        .variant(Variant::Chrome)
+                        .glyph_size(9.0)
+                        .min_size(Vec2::new(caret_w, pill_h))
+                        .corner_radius(0.0));
+                    let popup_id = ui.make_persistent_id(("pill_more", id_salt));
+                    if caret.clicked() {
+                        ui.memory_mut(|m| m.toggle_popup(popup_id));
+                    }
+                    egui::popup::popup_below_widget(
+                        ui,
+                        popup_id,
+                        &caret,
+                        egui::PopupCloseBehavior::CloseOnClickOutside,
+                        |ui| {
+                            ui.set_min_width(80.0);
+                            for (i, lbl) in options.iter().skip(1) {
+                                let active = *state == *i;
+                                if ui.selectable_label(active,
+                                    RichText::new(*lbl).monospace().size(font_sm())).clicked() {
+                                    *state = *i;
+                                    ui.memory_mut(|m| m.close_popup());
+                                }
+                            }
+                        });
+                });
+        };
+
+        two_col(ui,
+            &mut |ui| {
+                let prev = *s.order_type_idx;
+                render_pill_with_more(ui, s.order_type_idx, &order_types, "ot_type", half_w);
+                if prev != *s.order_type_idx {
+                    *s.order_market = *s.order_type_idx == 0;
+                }
+            },
+            &mut |ui| {
+                render_pill_with_more(ui, s.order_tif_idx, &tifs, "ot_tif", half_w);
+            });
+
+        // ─── EST. COST card with embedded CTA ─────────────────────────
+        ui.add_space(row_gap);
+        let notional: f32 = s.last * (*s.order_qty as f32);
+        let bp_after: f32 = (s.buying_power - notional).max(0.0);
+        let cost_top = egui::pos2(ui.cursor().min.x + outer_pad, ui.cursor().min.y);
+        let cost_rect = egui::Rect::from_min_size(cost_top, Vec2::new(inner_w, cost_card_h));
+        ui.painter().rect_filled(cost_rect,
+            egui::CornerRadius::same(card_radius), card_bg);
+
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            let col_w = panel_w / 3.0;
-            for &(lbl, val_str) in &meta {
-                ui.vertical(|ui| {
-                    ui.set_width(col_w);
-                    section_label_txt(ui, lbl);
-                    ui.label(RichText::new(val_str).monospace()
-                        .size(font_sm()).color(self.text));
+            ui.add_space(outer_pad + inner_pad);
+            let cost_text_w = (inner_w - cta_w - inner_pad * 2.0).max(120.0);
+            ui.allocate_ui_with_layout(
+                Vec2::new(cost_text_w, cost_card_h),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_width(cost_text_w);
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    ui.add_space(gap_xs());
+                    section_label(ui, "EST. COST");
+                    ui.label(RichText::new(format!("${:.2}", notional))
+                        .monospace().size(font_md()).strong().color(self.text));
+                    ui.label(RichText::new(format!("@ ${:.2} \u{00B7} BP ${:.0} after",
+                            s.last, bp_after))
+                        .monospace().size(font_xs()).color(label_color));
                 });
-            }
+            // CTA aligned vertically centered inside card
+            ui.allocate_ui_with_layout(
+                Vec2::new(cta_w + inner_pad, cost_card_h),
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    ui.add_space(inner_pad);
+                    let side_str = if *s.is_buy { "Buy" } else { "Sell" };
+                    let qty_sub  = format!("{}", *s.order_qty);
+                    let cta_btn = if *s.is_buy {
+                        Button::buy(side_str)
+                    } else {
+                        Button::sell(side_str)
+                    }.sublabel(qty_sub).fg(egui::Color32::WHITE);
+                    if ui.add(cta_btn.min_size(Vec2::new(cta_w, cta_h))).clicked() {
+                        review_clicked = true;
+                    }
+                });
+            ui.add_space(outer_pad);
         });
-        ui.add_space(gap_sm());
+        ui.allocate_exact_size(Vec2::new(panel_w, 0.0), egui::Sense::hover());
 
-        // ── Section 10: REVIEW CTA ────────────────────────────────────────
-        let side_str = if *s.is_buy { "BUY" } else { "SELL" };
-        let cta_color = if *s.is_buy { self.bull } else { self.bear };
-        let price_str = if *s.order_market {
-            "MKT".to_string()
-        } else {
-            s.limit_price.clone()
-        };
-        let cta_label = format!("REVIEW {} · {} @ {}", side_str, s.order_qty, price_str);
-        let (cta_rect, cta_resp) = ui.allocate_exact_size(
-            Vec2::new(panel_w, 26.0), egui::Sense::click());
-        if cta_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        let cta_bg = if cta_resp.hovered() {
-            color_alpha(cta_color, 80)
-        } else {
-            color_alpha(cta_color, 55)
-        };
-        ui.painter().rect_filled(cta_rect, egui::CornerRadius::ZERO, cta_bg);
-        ui.painter().text(cta_rect.center(), egui::Align2::CENTER_CENTER,
-            &cta_label,
-            egui::FontId::monospace(font_sm()),
-            self.text);
-        if cta_resp.clicked() { review_clicked = true; }
+        ui.add_space(outer_pad);
+
+        // Side-color accent strip along the left edge.
+        let body_bottom = ui.cursor().min.y;
+        let accent_rect = egui::Rect::from_min_size(
+            egui::pos2(ui.max_rect().left(), body_top),
+            Vec2::new(2.0, (body_bottom - body_top).max(0.0)),
+        );
+        ui.painter().rect_filled(accent_rect, egui::CornerRadius::ZERO, side_color);
 
         OrderTicketOutcome { review_clicked }
     }
 }
 
-impl Default for MeridienOrderTicket {
+impl<'a> Default for MeridienOrderTicket<'a> {
     fn default() -> Self { Self::new() }
 }
 
@@ -1183,7 +1291,7 @@ impl ApertureOrderTicket {
                 let rth_amber = COLOR_AMBER;
                 let rth_fg = if *s.order_outside_rth { rth_amber } else { color_alpha(self.dim, 40) };
                 let rth_bg = if *s.order_outside_rth { color_alpha(rth_amber, 30) } else { egui::Color32::TRANSPARENT };
-                let rth_stroke = Stroke::new(0.5, if *s.order_outside_rth {
+                let rth_stroke = Stroke::new(stroke_thin(), if *s.order_outside_rth {
                     color_alpha(rth_amber, 80)
                 } else {
                     color_alpha(self.toolbar_border, 40)
@@ -1214,7 +1322,7 @@ impl ApertureOrderTicket {
                 let premium = last;
                 let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
                 ui.add(egui::TextEdit::singleline(s.order_notional_amount)
-                    .desired_width(70.0).font(egui::FontId::monospace(11.0)).hint_text("Amount"));
+                    .desired_width(70.0).font(mono_sm()).hint_text("Amount"));
                 let notional: f32 = s.order_notional_amount.parse().unwrap_or(0.0);
                 let qty = if premium > 0.0 && mult > 0.0 {
                     (notional / (premium * mult)).floor() as i32
@@ -1241,7 +1349,7 @@ impl ApertureOrderTicket {
             } else {
                 let _ = ui.add(
                     egui::TextEdit::singleline(&mut format!("{} contracts", s.order_qty))
-                        .desired_width(100.0).font(egui::FontId::monospace(11.0))
+                        .desired_width(100.0).font(mono_sm())
                         .horizontal_align(egui::Align::Center).interactive(false));
             }
             ui.add_space(gap_sm());
@@ -1256,7 +1364,7 @@ impl ApertureOrderTicket {
                         .monospace().size(font_md()).color(self.dim));
                 } else {
                     ui.add(egui::TextEdit::singleline(s.order_limit_price)
-                        .desired_width(68.0).font(egui::FontId::monospace(11.0))
+                        .desired_width(68.0).font(mono_sm())
                         .hint_text("Price").horizontal_align(egui::Align::RIGHT));
                 }
                 ui.add_space(gap_xs());
@@ -1288,7 +1396,7 @@ impl ApertureOrderTicket {
                 FormRow::new("Limit").leading_space(pad).label_width(32.0).hint("Limit price")
                     .show(ui, &t_stub, |ui| {
                         ui.add(egui::TextEdit::singleline(s.order_limit_price)
-                            .desired_width(80.0).font(egui::FontId::monospace(11.0))
+                            .desired_width(80.0).font(mono_sm())
                             .horizontal_align(egui::Align::RIGHT));
                     });
             }
@@ -1297,7 +1405,7 @@ impl ApertureOrderTicket {
                     .label_color(self.bear).hint("Stop price")
                     .show(ui, &t_stub, |ui| {
                         ui.add(egui::TextEdit::singleline(s.order_stop_price)
-                            .desired_width(80.0).font(egui::FontId::monospace(11.0))
+                            .desired_width(80.0).font(mono_sm())
                             .horizontal_align(egui::Align::RIGHT));
                     });
             }
@@ -1306,7 +1414,7 @@ impl ApertureOrderTicket {
                     .label_color(self.accent).hint("Trail amt")
                     .show(ui, &t_stub, |ui| {
                         ui.add(egui::TextEdit::singleline(s.order_trail_amt)
-                            .desired_width(80.0).font(egui::FontId::monospace(11.0))
+                            .desired_width(80.0).font(mono_sm())
                             .horizontal_align(egui::Align::RIGHT));
                     });
             }
@@ -1331,11 +1439,11 @@ impl ApertureOrderTicket {
                     ui.add_space(gap_sm());
                     ui.label(egui::RichText::new("TP").monospace().size(font_sm()).color(self.bull));
                     ui.add(egui::TextEdit::singleline(s.order_tp_price)
-                        .desired_width(52.0).font(egui::FontId::monospace(11.0)).hint_text("Take")
+                        .desired_width(52.0).font(mono_sm()).hint_text("Take")
                         .horizontal_align(egui::Align::RIGHT));
                     ui.label(egui::RichText::new("SL").monospace().size(font_sm()).color(self.bear));
                     ui.add(egui::TextEdit::singleline(s.order_sl_price)
-                        .desired_width(52.0).font(egui::FontId::monospace(11.0)).hint_text("Stop")
+                        .desired_width(52.0).font(mono_sm()).hint_text("Stop")
                         .horizontal_align(egui::Align::RIGHT));
                 }
             });
@@ -1406,12 +1514,12 @@ fn aperture_stub_theme_full(
         accent,
         text:           Color32::from_rgb(220, 215, 205),
         warn:               crate::chart_renderer::ui::style::COLOR_AMBER,
-        notification_red:   Color32::from_rgb(231, 76, 60),
+        notification_red:   COLOR_LOSS_RED,
         gold:               Color32::from_rgb(255, 193, 37),
         shadow_color:       Color32::from_rgb(0, 0, 0),
         overlay_text:       Color32::from_rgb(240, 240, 250),
         rrg_leading:        Color32::from_rgb(56, 203, 137),
-        rrg_improving:      Color32::from_rgb(74, 158, 255),
+        rrg_improving:      COLOR_INFO_CYAN,
         rrg_weakening:      Color32::from_rgb(230, 200, 50),
         rrg_lagging:        Color32::from_rgb(224, 82, 82),
         cmd_palette:        crate::chart_renderer::gpu::CMD_PALETTE_DEFAULT,

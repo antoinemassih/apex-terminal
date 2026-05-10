@@ -33,37 +33,56 @@ type Theme = crate::chart_renderer::gpu::Theme;
 pub struct PanelFrame {
     bg: Color32,
     border: Color32,
+    margin: Option<egui::Margin>,
 }
 
 impl PanelFrame {
     pub fn new(toolbar_bg: Color32, toolbar_border: Color32) -> Self {
-        Self { bg: toolbar_bg, border: toolbar_border }
+        Self { bg: toolbar_bg, border: toolbar_border, margin: None }
     }
 
     /// Pull bg + border from a theme.
-    pub fn theme(self, t: &Theme) -> Self {
-        Self { bg: t.toolbar_bg, border: t.toolbar_border }
+    pub fn theme(mut self, t: &Theme) -> Self {
+        self.bg = t.toolbar_bg;
+        self.border = t.toolbar_border;
+        self
     }
 
     /// Override with explicit colors (alternative to `.theme()`).
-    pub fn colors(self, bg: Color32, border: Color32) -> Self {
-        Self { bg, border }
+    pub fn colors(mut self, bg: Color32, border: Color32) -> Self {
+        self.bg = bg;
+        self.border = border;
+        self
+    }
+
+    /// Drop the default inner padding. Use when the panel renders its own
+    /// chart-pane-aligned header that needs to sit flush against the panel
+    /// edge.
+    pub fn zero_margin(mut self) -> Self {
+        self.margin = Some(egui::Margin::ZERO);
+        self
+    }
+
+    /// Custom inner margin override.
+    pub fn inner_margin(mut self, m: egui::Margin) -> Self {
+        self.margin = Some(m);
+        self
     }
 
     /// Build the `egui::Frame`. Edge-only border discipline (Zed): the
     /// SidePanel divider is provided by egui's resize handle on the touching
     /// edge — we omit the 4-edge perimeter stroke so we don't draw a doubled
     /// hairline against neighboring panels.
+    ///
+    /// Default margin is **zero** so the new chart-pane-parity `PanelHeader`
+    /// renders flush at the panel's top edge and full width. Panels add their
+    /// own body padding (typically via `kit::panel_body`) inside.
     pub fn build(self) -> egui::Frame {
         let _ = self.border; // kept for API symmetry; perimeter stroke dropped
+        let margin = self.margin.unwrap_or(egui::Margin::ZERO);
         egui::Frame::NONE
             .fill(self.bg)
-            .inner_margin(egui::Margin {
-                left:   gap_xl() as i8,
-                right:  gap_xl() as i8,
-                top:    gap_xl() as i8,
-                bottom: gap_lg() as i8,
-            })
+            .inner_margin(margin)
             .corner_radius(r_md_cr())
     }
 }

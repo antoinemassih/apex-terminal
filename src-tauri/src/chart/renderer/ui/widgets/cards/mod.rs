@@ -39,8 +39,6 @@ use super::frames::CardFrame;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
-
 /// Visual variant of a `Card`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CardVariant {
@@ -77,14 +75,15 @@ pub struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new() -> Self {
+        let default_t = &crate::chart_renderer::gpu::THEMES[0];
         Self {
             title: None,
             subtitle: None,
             variant: CardVariant::Bordered,
             bg:     Color32::TRANSPARENT,
             border: Color32::TRANSPARENT,
-            fg:     ft().text,
-            dim:    ft().dim,
+            fg:     default_t.text,
+            dim:    default_t.dim,
         }
     }
 

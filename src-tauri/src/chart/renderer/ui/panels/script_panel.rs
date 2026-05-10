@@ -10,10 +10,11 @@ use super::super::widgets::frames::PopupFrame;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::TextArea;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::cards::Card;
-use super::super::widgets::headers::PanelHeaderWithClose;
+use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use super::super::super::gpu::{Watchlist, Theme};
 
 // ── Preset example scripts ──────────────────────────────────────────────────
@@ -142,27 +143,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     ui.add_space(4.0);
 
     // ── Code editor area ────────────────────────────────────
-    let editor_bg = color_alpha(t.bg, 200);
-    let editor_height = 140.0;
-
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(w - 8.0, editor_height), egui::Sense::hover());
-    ui.painter().rect_filled(rect, 4.0, editor_bg);
-    ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())), egui::StrokeKind::Outside);
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect.shrink(6.0)), |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt("script_editor_tab")
-            .show(ui, |ui| {
-                ui.add_sized(
-                    egui::vec2(rect.width() - 12.0, editor_height - 16.0),
-                    egui::TextEdit::multiline(&mut watchlist.script_source)
-                        .font(egui::FontId::monospace(11.0))
-                        .code_editor()
-                        .desired_rows(8)
-                        .text_color(egui::Color32::from_gray(220))
-                        .frame(false)
-                );
-            });
-    });
+    TextArea::new(&mut watchlist.script_source)
+        .min_rows(8)
+        .max_rows(8)
+        .monospace(true)
+        .full_width()
+        .show(ui, t);
     ui.add_space(4.0);
 
     // ── Button row ──────────────────────────────────────────
@@ -194,7 +180,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             watchlist.script_result_tab = ScriptResultTab::Backtest;
         }
         ui.add_space(4.0);
-        if action_button(ui, "Clear", t.bear.gamma_multiply(0.7), t).clicked() {
+        if action_button(ui, "Clear", color_subtle(t.bear), t).clicked() {
             watchlist.script_source.clear();
             watchlist.script_ai_prompt.clear();
             watchlist.script_output.clear();
@@ -234,20 +220,21 @@ fn separator(ui: &mut egui::Ui, color: egui::Color32) {
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     if !watchlist.script_open { return; }
 
-    let mut close = false;
+    let frame = PopupFrame::new().ctx(ctx).theme(t).build();
 
-    egui::Window::new("apex_script")
-        .default_pos(egui::pos2(280.0, 80.0))
-        .default_size(egui::vec2(480.0, 620.0))
-        .resizable(true)
-        .movable(true)
-        .title_bar(false)
-        .frame(PopupFrame::new().ctx(ctx).theme(t).build())
-        .show(ctx, |ui| {
+    let resp = Modal::new("APEX SCRIPT")
+        .id("apex_script")
+        .ctx(ctx)
+        .theme(t)
+        .size(egui::vec2(480.0, 620.0))
+        .anchor(Anchor::Window { pos: Some(egui::pos2(280.0, 80.0)) })
+        .frame_kind(FrameKind::Custom(frame))
+        .draggable_header(true)
+        .header_style(HeaderStyle::panel())
+        .separator(false)
+        .show(|ui| {
             let w = ui.available_width();
 
-            // ── Header ──────────────────────────────────────────────
-            if PanelHeaderWithClose::new("APEX SCRIPT").theme(t).show(ui) { close = true; }
             ui.add_space(4.0);
             divider(ui, w, t);
             ui.add_space(8.0);
@@ -301,35 +288,14 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             ui.add_space(8.0);
 
             // ── Code editor area ────────────────────────────────────
-            let editor_bg = color_alpha(t.bg, 200);
-            let editor_height = 160.0;
-
-            // Dark background frame for code area
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                let (rect, _) = ui.allocate_exact_size(
-                    egui::vec2(w - 16.0, editor_height),
-                    egui::Sense::hover(),
-                );
-                ui.painter().rect_filled(rect, 4.0, editor_bg);
-                ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())), egui::StrokeKind::Outside);
-
-                // Place the text editor inside the rect
-                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect.shrink(6.0)), |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("script_editor")
-                        .show(ui, |ui| {
-                            ui.add_sized(
-                                egui::vec2(rect.width() - 12.0, editor_height - 16.0),
-                                egui::TextEdit::multiline(&mut watchlist.script_source)
-                                    .font(egui::FontId::monospace(11.0))
-                                    .code_editor()
-                                    .desired_rows(10)
-                                    .text_color(egui::Color32::from_gray(220))
-                                    .frame(false)
-                            );
-                        });
-                });
+                TextArea::new(&mut watchlist.script_source)
+                    .min_rows(10)
+                    .max_rows(10)
+                    .monospace(true)
+                    .full_width()
+                    .show(ui, t);
             });
             ui.add_space(8.0);
 
@@ -380,7 +346,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                 ui.add_space(4.0);
 
                 // Clear button (bear/red)
-                if action_button(ui, "Clear", t.bear.gamma_multiply(0.7), t).clicked() {
+                if action_button(ui, "Clear", color_subtle(t.bear), t).clicked() {
                     watchlist.script_source.clear();
                     watchlist.script_ai_prompt.clear();
                     watchlist.script_output.clear();
@@ -412,7 +378,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                 });
         });
 
-    if close { watchlist.script_open = false; }
+    if resp.closed { watchlist.script_open = false; }
 }
 
 // ── Output tab ──────────────────────────────────────────────────────────────
@@ -482,15 +448,15 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
                 egui::pos2(rect.center().x, rect.min.y + 10.0),
                 egui::Align2::CENTER_CENTER,
                 label,
-                egui::FontId::monospace(11.0),
-                t.dim.gamma_multiply(0.5),
+                mono_sm(),
+                color_half(t.dim),
             );
             // Value
             ui.painter().text(
                 egui::pos2(rect.center().x, rect.min.y + 26.0),
                 egui::Align2::CENTER_CENTER,
                 value,
-                egui::FontId::monospace(11.0),
+                mono_sm(),
                 *color,
             );
         }
@@ -519,8 +485,8 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(ui.cursor().min.x + col_x[i], header_y + 7.0),
             egui::Align2::LEFT_CENTER,
             hdr,
-            egui::FontId::monospace(11.0),
-            t.dim.gamma_multiply(0.4),
+            mono_sm(),
+            color_dim(t.dim),
         );
     }
 
@@ -560,7 +526,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             side_rect.center(),
             egui::Align2::CENTER_CENTER,
             trade.side,
-            egui::FontId::monospace(11.0),
+            mono_sm(),
             side_col,
         );
 
@@ -569,7 +535,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[1], cy),
             egui::Align2::LEFT_CENTER,
             format!("{:.2}", trade.entry_price),
-            egui::FontId::monospace(11.0),
+            mono_sm(),
             t.dim.gamma_multiply(0.8),
         );
 
@@ -578,7 +544,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[2], cy),
             egui::Align2::LEFT_CENTER,
             format!("{:.2}", trade.exit_price),
-            egui::FontId::monospace(11.0),
+            mono_sm(),
             t.dim.gamma_multiply(0.8),
         );
 
@@ -588,7 +554,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[3], cy),
             egui::Align2::LEFT_CENTER,
             format!("{}${:.2}", pnl_sign, trade.pnl),
-            egui::FontId::monospace(11.0),
+            mono_sm(),
             pnl_color,
         );
 
@@ -597,7 +563,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::pos2(base_x + col_x[4], cy),
             egui::Align2::LEFT_CENTER,
             format!("{}{:.2}%", pnl_sign, trade.pnl_pct),
-            egui::FontId::monospace(11.0),
+            mono_sm(),
             pnl_color,
         );
     }
@@ -630,7 +596,7 @@ fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme
 /// Tab button for Output / Backtest result tabs.
 fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: &mut ScriptResultTab, t: &Theme) {
     let is_active = *active == tab;
-    let fg = if is_active { t.accent } else { t.dim.gamma_multiply(0.5) };
+    let fg = if is_active { t.accent } else { color_half(t.dim) };
     let bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
     let border = if is_active { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_muted()) };
 

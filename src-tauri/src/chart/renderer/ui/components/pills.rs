@@ -29,59 +29,8 @@ pub fn status_pill(ui: &mut Ui, text: &str, fill: Color32, fg: Color32) -> Respo
     )
 }
 
-/// Pill button — interactive, style-aware corner radius.
-/// Under Meridien (`solid_active_fills`), active fills solid with `fill`.
-/// Under Relay, active is a low-alpha tint.
-///
-/// **Deprecated**: use [`pill_button`] for new code (simpler signature, single source of truth).
-#[deprecated(since = "0.10.0", note = "Use `pill_button(ui, text, active, accent, dim)` — see docs/DESIGN_SYSTEM.md")]
-pub fn pill_btn(
-    ui: &mut Ui,
-    text: &str,
-    active: bool,
-    fill: Color32,
-    fg_active: Color32,
-    fg_inactive: Color32,
-) -> Response {
-    let st = current();
-    let cr = r_pill();
-
-    let (bg, fg, stroke) = if active {
-        if st.solid_active_fills {
-            (fill, fg_active, Stroke::new(st.stroke_std, fill))
-        } else {
-            (
-                color_alpha(fill, alpha_tint()),
-                fg_active,
-                Stroke::new(st.stroke_thin, color_alpha(fill, alpha_strong())),
-            )
-        }
-    } else {
-        (
-            Color32::TRANSPARENT,
-            fg_inactive,
-            Stroke::new(st.stroke_thin, color_alpha(fg_inactive, alpha_muted())),
-        )
-    };
-
-    let resp = ui.add(
-        egui::Button::new(
-            RichText::new(text)
-                .monospace()
-                .size(font_sm())
-                .strong()
-                .color(fg),
-        )
-        .fill(bg)
-        .stroke(stroke)
-        .corner_radius(cr)
-        .min_size(Vec2::new(0.0, 18.0)),
-    );
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp
-}
+// `pill_btn` (deprecated v0.10) deleted 2026-05 — zero callers.
+// Use `pill_button` (below) or `Button::new(...).variant(Variant::Chip)`.
 
 /// Status badge — small filled pill for things like DRAFT, ACTIVE, FILLED.
 pub fn status_badge(ui: &mut Ui, text: &str, bg: Color32, fg: Color32) -> Response {

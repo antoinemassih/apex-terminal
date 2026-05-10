@@ -17,7 +17,7 @@
 
 #![allow(dead_code)]
 
-use egui::{Color32, Id, Pos2, Rect, Response, Stroke, Ui, Vec2};
+use egui::{Color32, Pos2, Rect, Response, Stroke, Ui, Vec2};
 
 use super::motion;
 use super::placement::{compute as compute_placement, Placement, Side};
@@ -29,7 +29,7 @@ use crate::chart_renderer::ui::style::{
     alpha_line, alpha_strong, color_alpha, gap_sm, gap_xs, radius_sm, stroke_thin,
 };
 
-const DEFAULT_DELAY_MS: u64 = 400;
+const DEFAULT_DELAY_MS: u64 = (motion::DELAY_TOOLTIP * 1000.0) as u64;
 const MAX_WIDTH: f32 = 280.0;
 
 type RichFn<'a> = Box<dyn FnOnce(&mut Ui, &dyn ComponentTheme) + 'a>;

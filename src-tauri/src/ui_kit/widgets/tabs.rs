@@ -29,7 +29,7 @@
 //! ```
 
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Id, Pos2, Rect, Response, Sense, Stroke, StrokeKind,
+    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind,
     Ui, Vec2,
 };
 
@@ -51,6 +51,12 @@ pub enum TabTreatment {
     /// and a subtle surface fill. No bottom border, so the tab visually merges
     /// with the content panel below. Inactive tabs are flat/transparent.
     Card,
+    /// Chart-pane look: active tab gets a darkened bg fill (`bg().gamma(0.4)`),
+    /// top-only rounded corners, and NO accent stripe / top-left-right borders.
+    /// Inter-tab vertical hairline dividers (in `border_variant` at strong alpha)
+    /// separate adjacent tabs. No bottom rule. Mirrors `painter_pane`'s tab
+    /// strip exactly so side-panel tabs line up with chart-pane tabs.
+    Pane,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -602,6 +608,23 @@ fn paint_tabs(
         }
     }
 
+    // ── Pane treatment: vertical hairline between adjacent tabs only ──
+    // Mirrors `painter_pane`'s `border_variant` divider at alpha 200,
+    // stroke_thin, inset 4px from top and bottom. NO bottom rule under the
+    // strip — chart panes don't draw one (content sits flush below).
+    if matches!(treatment, TabTreatment::Pane) && n > 1 {
+        let sep_color = st::color_alpha(theme.border_variant(), 200);
+        let stroke = Stroke::new(st::stroke_thin(), sep_color);
+        for i in 1..n {
+            let r = displaced_rects[i];
+            ui.painter().line_segment(
+                [Pos2::new(r.left(), r.top() + 4.0),
+                 Pos2::new(r.left(), r.bottom() - 4.0)],
+                stroke,
+            );
+        }
+    }
+
     // ── Line treatment: 1px vertical hairline between adjacent tabs ──
     // Zed parity. Only between tabs (not before first / after last).
     if matches!(treatment, TabTreatment::Line) && n > 1 {
@@ -759,6 +782,29 @@ fn paint_one_tab_painter(
                     hover_t,
                 );
                 painter.rect_filled(rect, CornerRadius::same(4), alpha(bg));
+            }
+        }
+        TabTreatment::Pane => {
+            // Mirrors `chrome::painter_pane`'s tab strip:
+            // - Active fill: theme.bg().gamma(0.4) — noticeably darker than the
+            //   header surface so the active tab reads at a glance.
+            // - Hover fill: faint `border` tint, animated.
+            // - Top-only rounded corners (radius_md) — bottom edge merges with
+            //   the content area below.
+            // - NO accent stripe, NO top/left/right hairline borders.
+            // Inter-tab vertical dividers are painted post-loop in `paint_tabs`.
+            let r_md = st::radius_md() as u8;
+            let corners = CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 };
+            if is_active {
+                let bg = motion::fade_in(theme.bg().gamma_multiply(0.4), active_t);
+                painter.rect_filled(rect, corners, alpha(bg));
+            } else if hover_t > 0.01 {
+                let bg = motion::lerp_color(
+                    Color32::TRANSPARENT,
+                    st::color_alpha(theme.border(), 40),
+                    hover_t,
+                );
+                painter.rect_filled(rect, corners, alpha(bg));
             }
         }
         TabTreatment::Card => {

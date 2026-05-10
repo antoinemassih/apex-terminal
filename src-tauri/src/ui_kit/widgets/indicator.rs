@@ -153,7 +153,7 @@ impl Indicator {
 
 impl Widget for Indicator {
     fn ui(self, ui: &mut Ui) -> Response {
-        let theme = &crate::chart_renderer::gpu::THEMES[0];
+        let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, theme)
     }
 }

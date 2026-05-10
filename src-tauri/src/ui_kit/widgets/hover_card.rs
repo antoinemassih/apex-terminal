@@ -6,7 +6,7 @@
 
 #![allow(dead_code)]
 
-use egui::{Color32, Id, Rect, Response, Stroke, Ui, Vec2};
+use egui::{Color32, Rect, Response, Stroke, Ui, Vec2};
 
 use super::motion;
 use super::placement::{compute as compute_placement, Placement, Side};
@@ -16,7 +16,7 @@ use crate::chart_renderer::ui::style::{
     alpha_line, color_alpha, gap_sm, radius_sm, stroke_thin,
 };
 
-const DEFAULT_DELAY_MS: u64 = 600;
+const DEFAULT_DELAY_MS: u64 = (motion::DELAY_HOVER_CARD * 1000.0) as u64;
 
 pub struct HoverCard {
     delay_ms: u64,

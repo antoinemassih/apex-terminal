@@ -5,7 +5,6 @@
 
 use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::gpu::Watchlist;
-use crate::ui_kit::icons::Icon;
 
 /// Post-render output from the chart interaction menu.
 ///

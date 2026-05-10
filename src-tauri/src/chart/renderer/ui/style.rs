@@ -45,43 +45,62 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 // Use mono_xs/sm/md/lg for prices, quantities, OCC tickers, anything
 // tabular. The font picker controls proportional UI chrome only.
 
+// Below `font_xs` are the *micro* tier — chart annotations, badge counts on
+// glyphs. They exist because chart_widgets / pane.rs need labels at 6–8px to
+// fit dense overlays without overlapping ticks. New UI code should NOT use
+// these; they are the floor for chart rendering only.
+/// 6.0 — chart micro-overlay text only (RSI zones, market phase). Avoid in UI chrome.
+pub fn font_4xs() -> f32 { 6.0 }
+/// 7.0 — chart annotations (volume ratios, trade entries). Avoid in UI chrome.
+pub fn font_3xs() -> f32 { 7.0 }
+/// 8.0 — small badges and overlay tags (price-axis order labels).
+pub fn font_2xs() -> f32 { 8.0 }
 /// 9.0 — micro-labels, dropdown items, badge text.
 pub fn font_xs() -> f32 { 9.0 }
+/// 10.0 — between xs and sm (compact column headers, condensed body).
+pub fn font_xs_plus() -> f32 { 10.0 }
 /// 11.0 — default body, list rows, tab labels, nav buttons.
 pub fn font_sm() -> f32 { 11.0 }
 /// 13.0 — emphasized body, panel titles.
 pub fn font_md() -> f32 { 13.0 }
+/// 14.0 — between md and lg (large chart annotations, hero stats).
+pub fn font_md_plus() -> f32 { 14.0 }
 /// 16.0 — section headers, modal titles.
 pub fn font_lg() -> f32 { 16.0 }
+/// 22.0 — hero numbers, modal hero titles.
+pub fn font_xl() -> f32 { 22.0 }
 
 // ─── Monospace helpers (JetBrains Mono, pinned) ───────────────────────────────
 // Use these for tabular financial data: prices, quantities, OCC tickers.
 // Returns FontId so the family is explicit at the call site.
-#[inline] pub fn mono_xs() -> egui::FontId { egui::FontId::new(font_xs(), egui::FontFamily::Monospace) }
-#[inline] pub fn mono_sm() -> egui::FontId { egui::FontId::new(font_sm(), egui::FontFamily::Monospace) }
-#[inline] pub fn mono_md() -> egui::FontId { egui::FontId::new(font_md(), egui::FontFamily::Monospace) }
-#[inline] pub fn mono_lg() -> egui::FontId { egui::FontId::new(font_lg(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_4xs() -> egui::FontId { egui::FontId::new(font_4xs(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_3xs() -> egui::FontId { egui::FontId::new(font_3xs(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_2xs() -> egui::FontId { egui::FontId::new(font_2xs(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_xs()  -> egui::FontId { egui::FontId::new(font_xs(),  egui::FontFamily::Monospace) }
+#[inline] pub fn mono_xs_plus() -> egui::FontId { egui::FontId::new(font_xs_plus(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_sm()  -> egui::FontId { egui::FontId::new(font_sm(),  egui::FontFamily::Monospace) }
+#[inline] pub fn mono_md()  -> egui::FontId { egui::FontId::new(font_md(),  egui::FontFamily::Monospace) }
+#[inline] pub fn mono_md_plus() -> egui::FontId { egui::FontId::new(font_md_plus(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_lg()  -> egui::FontId { egui::FontId::new(font_lg(),  egui::FontFamily::Monospace) }
 
 // ─── Legacy aliases (DEPRECATED) ──────────────────────────────────────────────
-// Mapped to the new 4-step scale. Existing call sites keep compiling; new code
-// must use font_xs/sm/md/lg directly. Mappings:
-//   font_2xs / font_sm_tight → font_xs (11)  [bumps sub-readable to readable]
-//   font_xl                  → font_lg (18)  [collapses 2 sizes to 1]
-//   font_2xl                 → font_lg (18)
-#[doc(hidden)] pub fn font_2xs()      -> f32 { font_xs() }
+// Kept compiling existing call sites; new code must use the named tier above.
 #[doc(hidden)] pub fn font_sm_tight() -> f32 { font_xs() }
-#[doc(hidden)] pub fn font_xl()       -> f32 { font_lg() }
 #[doc(hidden)] pub fn font_2xl()      -> f32 { font_lg() }
 
 // Const aliases — kept so any const-context call sites compile. Values match
-// the active scale (xs=9, sm=11, md=13, lg=16).
-pub const FONT_2XS: f32 = 9.0;
-pub const FONT_XS:  f32 = 9.0;
-pub const FONT_SM:  f32 = 11.0;
-pub const FONT_MD:  f32 = 13.0;
-pub const FONT_LG:  f32 = 16.0;
-pub const FONT_XL:  f32 = 16.0;
-pub const FONT_2XL: f32 = 16.0;
+// the active scale (4xs=6, 3xs=7, 2xs=8, xs=9, xs+=10, sm=11, md=13, md+=14, lg=16, xl=22).
+pub const FONT_4XS:     f32 = 6.0;
+pub const FONT_3XS:     f32 = 7.0;
+pub const FONT_2XS:     f32 = 8.0;
+pub const FONT_XS:      f32 = 9.0;
+pub const FONT_XS_PLUS: f32 = 10.0;
+pub const FONT_SM:      f32 = 11.0;
+pub const FONT_MD:      f32 = 13.0;
+pub const FONT_MD_PLUS: f32 = 14.0;
+pub const FONT_LG:      f32 = 16.0;
+pub const FONT_XL:      f32 = 22.0;
+pub const FONT_2XL:     f32 = 22.0;
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
 // Spacing scale — strict 4px grid, anchored at 4 for density-first chrome.
@@ -97,7 +116,11 @@ pub const FONT_2XL: f32 = 16.0;
 //   gap_3xl() = 32.0  — page-level breaks (rare)
 //
 // If you find yourself wanting 6px or 10px, the answer is gap_sm (8) or gap_md (12).
-pub fn gap_2xs() -> f32 { 4.0 }
+//
+// 2026-05: gap_2xs was previously aliased to gap_xs (both 4.0). It is now a
+// real 2.0 token for icon-internal padding and tightly-packed compositions
+// (the gap inside `[icon][badge]` overlays, etc.).
+pub fn gap_2xs() -> f32 { 2.0 }
 pub fn gap_xs()  -> f32 { 4.0 }
 pub fn gap_sm()  -> f32 { 8.0 }
 pub fn gap_md()  -> f32 { 12.0 }
@@ -106,6 +129,7 @@ pub fn gap_xl()  -> f32 { 20.0 }
 pub fn gap_2xl() -> f32 { 24.0 }
 pub fn gap_3xl() -> f32 { 32.0 }
 
+pub const GAP_2XS: f32 =  2.0;
 pub const GAP_XS:  f32 =  4.0;
 pub const GAP_SM:  f32 =  8.0;
 pub const GAP_MD:  f32 = 12.0;
@@ -115,58 +139,82 @@ pub const GAP_2XL: f32 = 24.0;
 pub const GAP_3XL: f32 = 32.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
-pub fn radius_sm() -> f32 { crate::dt_f32!(radius.sm, 3.0) }
-pub fn radius_md() -> f32 { crate::dt_f32!(radius.md, 4.0) }
-pub fn radius_lg() -> f32 { crate::dt_f32!(radius.lg, 8.0) }
+// 2026-05: function fallbacks reconciled with the const values (was 3/4/8).
+pub fn radius_xs() -> f32 { crate::dt_f32!(radius.xs, 2.0) }
+pub fn radius_sm() -> f32 { crate::dt_f32!(radius.sm, 4.0) }
+pub fn radius_md() -> f32 { crate::dt_f32!(radius.md, 6.0) }
+pub fn radius_lg() -> f32 { crate::dt_f32!(radius.lg, 12.0) }
+/// Pill (full-rounded). For toggle pills, status badges, etc.
+pub fn radius_pill() -> f32 { 999.0 }
 
+pub const RADIUS_XS: f32 = 2.0;
 pub const RADIUS_SM: f32 = 4.0;
 pub const RADIUS_MD: f32 = 6.0;
 pub const RADIUS_LG: f32 = 12.0;
+pub const RADIUS_PILL: f32 = 999.0;
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
-pub fn stroke_hair()  -> f32 { crate::dt_f32!(stroke.hair, 0.3) }
-pub fn stroke_thin()  -> f32 { crate::dt_f32!(stroke.thin, 0.5) }
-pub fn stroke_std()   -> f32 { crate::dt_f32!(stroke.std, 1.0) }
-pub fn stroke_bold()  -> f32 { crate::dt_f32!(stroke.bold, 1.5) }
-pub fn stroke_thick() -> f32 { crate::dt_f32!(stroke.thick, 2.0) }
+pub fn stroke_hair()        -> f32 { crate::dt_f32!(stroke.hair, 0.3) }
+pub fn stroke_thin()        -> f32 { crate::dt_f32!(stroke.thin, 0.5) }
+pub fn stroke_medium()      -> f32 { 0.8 }
+pub fn stroke_std()         -> f32 { crate::dt_f32!(stroke.std, 1.0) }
+pub fn stroke_bold()        -> f32 { crate::dt_f32!(stroke.bold, 1.5) }
+pub fn stroke_thick()       -> f32 { crate::dt_f32!(stroke.thick, 2.0) }
+pub fn stroke_extra_thick() -> f32 { 2.5 }
+pub fn stroke_heavy()       -> f32 { 3.0 }
 
-pub const STROKE_HAIR:   f32 = 0.3;
-pub const STROKE_THIN:   f32 = 0.5;
-pub const STROKE_STD:    f32 = 1.0;
-pub const STROKE_BOLD:   f32 = 1.5;
-pub const STROKE_THICK:  f32 = 2.0;
+pub const STROKE_HAIR:        f32 = 0.3;
+pub const STROKE_THIN:        f32 = 0.5;
+pub const STROKE_MEDIUM:      f32 = 0.8;
+pub const STROKE_STD:         f32 = 1.0;
+pub const STROKE_BOLD:        f32 = 1.5;
+pub const STROKE_THICK:       f32 = 2.0;
+pub const STROKE_EXTRA_THICK: f32 = 2.5;
+pub const STROKE_HEAVY:       f32 = 3.0;
 
 // ─── Semantic alpha tokens ────────────────────────────────────────────────────
-// Mid-tier values bumped 2026-05 to make hairline borders more visible at
-// a glance — subtle/tint/muted/line are the alphas most chrome borders use.
-// faint / ghost / soft kept low: those are intentional barely-there hints.
-// dim / strong / active / heavy / solid kept: those are already prominent.
-pub fn alpha_faint()  -> u8 { crate::dt_u8!(alpha.faint, 10) }
-pub fn alpha_ghost()  -> u8 { crate::dt_u8!(alpha.ghost, 15) }
-pub fn alpha_soft()   -> u8 { crate::dt_u8!(alpha.soft, 20) }
-pub fn alpha_subtle() -> u8 { crate::dt_u8!(alpha.subtle, 40) }
-pub fn alpha_tint()   -> u8 { crate::dt_u8!(alpha.tint, 48) }
-pub fn alpha_muted()  -> u8 { crate::dt_u8!(alpha.muted, 60) }
-pub fn alpha_line()   -> u8 { crate::dt_u8!(alpha.line, 80) }
-pub fn alpha_dim()    -> u8 { crate::dt_u8!(alpha.dim, 60) }
-pub fn alpha_strong() -> u8 { crate::dt_u8!(alpha.strong, 80) }
-pub fn alpha_active() -> u8 { crate::dt_u8!(alpha.active, 100) }
-pub fn alpha_heavy()  -> u8 { crate::dt_u8!(alpha.heavy, 120) }
-pub fn alpha_solid()  -> u8 { crate::dt_u8!(alpha.solid, 200) }
+// 2026-05: tier expanded with intermediate values to absorb hardcoded literals
+// (25, 30, 140, 180, 230). Existing tiers (faint=10, subtle=40, muted=60,
+// line=80, active=100, heavy=120, solid=200) keep their values so visuals
+// don't shift. Note: `alpha_muted == alpha_dim` (both 60) and
+// `alpha_line == alpha_strong` (both 80) by design — same value, different
+// semantic intent (muted/strong = chrome; dim/line = borders).
+pub fn alpha_faint()       -> u8 { crate::dt_u8!(alpha.faint, 10) }
+pub fn alpha_ghost()       -> u8 { crate::dt_u8!(alpha.ghost, 15) }
+pub fn alpha_soft()        -> u8 { crate::dt_u8!(alpha.soft, 20) }
+pub fn alpha_whisper()     -> u8 { 25 }
+pub fn alpha_hint()        -> u8 { 30 }
+pub fn alpha_subtle()      -> u8 { crate::dt_u8!(alpha.subtle, 40) }
+pub fn alpha_tint()        -> u8 { crate::dt_u8!(alpha.tint, 48) }
+pub fn alpha_muted()       -> u8 { crate::dt_u8!(alpha.muted, 60) }
+pub fn alpha_dim()         -> u8 { crate::dt_u8!(alpha.dim, 60) }
+pub fn alpha_line()        -> u8 { crate::dt_u8!(alpha.line, 80) }
+pub fn alpha_strong()      -> u8 { crate::dt_u8!(alpha.strong, 80) }
+pub fn alpha_active()      -> u8 { crate::dt_u8!(alpha.active, 100) }
+pub fn alpha_heavy()       -> u8 { crate::dt_u8!(alpha.heavy, 120) }
+pub fn alpha_intense()     -> u8 { 140 }
+pub fn alpha_prominent()   -> u8 { 180 }
+pub fn alpha_solid()       -> u8 { crate::dt_u8!(alpha.solid, 200) }
+pub fn alpha_near_opaque() -> u8 { 230 }
 
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.
-pub const ALPHA_FAINT:  u8 = 10;
-pub const ALPHA_GHOST:  u8 = 15;
-pub const ALPHA_SOFT:   u8 = 20;
-pub const ALPHA_SUBTLE: u8 = 40;
-pub const ALPHA_TINT:   u8 = 48;
-pub const ALPHA_MUTED:  u8 = 60;
-pub const ALPHA_LINE:   u8 = 80;
-pub const ALPHA_DIM:    u8 = 60;
-pub const ALPHA_STRONG: u8 = 80;
-pub const ALPHA_ACTIVE: u8 = 100;
-pub const ALPHA_HEAVY:  u8 = 120;
-pub const ALPHA_SOLID:  u8 = 200;
+pub const ALPHA_FAINT:       u8 = 10;
+pub const ALPHA_GHOST:       u8 = 15;
+pub const ALPHA_SOFT:        u8 = 20;
+pub const ALPHA_WHISPER:     u8 = 25;
+pub const ALPHA_HINT:        u8 = 30;
+pub const ALPHA_SUBTLE:      u8 = 40;
+pub const ALPHA_TINT:        u8 = 48;
+pub const ALPHA_MUTED:       u8 = 60;
+pub const ALPHA_DIM:         u8 = 60;
+pub const ALPHA_LINE:        u8 = 80;
+pub const ALPHA_STRONG:      u8 = 80;
+pub const ALPHA_ACTIVE:      u8 = 100;
+pub const ALPHA_HEAVY:       u8 = 120;
+pub const ALPHA_INTENSE:     u8 = 140;
+pub const ALPHA_PROMINENT:   u8 = 180;
+pub const ALPHA_SOLID:       u8 = 200;
+pub const ALPHA_NEAR_OPAQUE: u8 = 230;
 
 // ─── Drop shadow tokens ───────────────────────────────────────────────────────
 pub fn shadow_offset() -> f32 { crate::dt_f32!(shadow.offset, 2.0) }
@@ -264,6 +312,28 @@ pub fn sentiment_positive() -> Color32 {
 pub fn sentiment_neutral() -> Color32 {
     crate::dt_rgba!(semantic.sentiment_neutral, [180, 180, 195, 255])
 }
+/// Chat author-distinction palette — returns the i-th color, modulo'd by the
+/// palette length so callers can pass a raw author-name hash directly. Used
+/// by the Discord chat panel to give each speaker a stable, distinct color.
+///
+/// Note: `crate::design_tokens::get()` returns a cloned snapshot, so we only
+/// expose an indexed accessor (no `&'static` slice variant).
+pub fn chat_author_color(idx: usize) -> Color32 {
+    // Hard-coded fallback mirrors ChatAuthorPalette::default() — must stay in sync.
+    const FALLBACK: [[u8; 4]; 8] = [
+        [ 74, 158, 255, 255], [ 46, 204, 113, 255], [243, 156,  18, 255], [155,  89, 182, 255],
+        [231,  76,  60, 255], [ 26, 188, 156, 255], [241, 196,  15, 255], [ 52, 152, 219, 255],
+    ];
+    #[cfg(feature = "design-mode")]
+    if let Some(t) = crate::design_tokens::get() {
+        let pal = &t.chat_author_palette.colors;
+        let c = pal[idx % pal.len()];
+        return Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]);
+    }
+    let c = FALLBACK[idx % FALLBACK.len()];
+    Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3])
+}
+
 /// Sentiment — negative (bearish, bad news, downvote).
 pub fn sentiment_negative() -> Color32 {
     crate::dt_rgba!(semantic.sentiment_negative, [224, 85, 96, 255])
@@ -271,6 +341,14 @@ pub fn sentiment_negative() -> Color32 {
 /// Discord brand color — "Blurple" (#5865F2).
 pub fn discord_blurple() -> Color32 {
     crate::dt_rgba!(semantic.discord_blurple, [88, 101, 242, 255])
+}
+/// Order ledger badge — RECON state (lavender/purple).
+pub fn order_state_recon() -> Color32 {
+    crate::dt_rgba!(semantic.order_state_recon, [167, 139, 250, 255])
+}
+/// Order ledger badge — CTRL state (red).
+pub fn order_state_ctrl() -> Color32 {
+    crate::dt_rgba!(semantic.order_state_ctrl, [255, 100, 100, 255])
 }
 
 // ─── Fixed text colors (fallback for code without Theme access) ──────────────
@@ -311,6 +389,17 @@ pub const COLOR_AMBER: Color32 = Color32::from_rgb(255, 191, 0);
 pub const COLOR_T2: Color32 = Color32::from_rgb(26, 188, 156);
 /// Blue — T3 target label color (third exit level).
 pub const COLOR_T3: Color32 = Color32::from_rgb(52, 152, 219);
+/// Cyan/blue informational color — used for "info" status, link-like
+/// non-accent emphasis. RGB: (74,158,255). Theme-invariant; if you need a
+/// theme-following blue, use `t.accent` instead.
+pub const COLOR_INFO_CYAN:    Color32 = Color32::from_rgb( 74, 158, 255);
+/// Pastel green — sentiment/profit signal independent of theme bull color.
+/// Use sparingly; prefer `t.bull` for trade direction.
+pub const COLOR_PROFIT_GREEN: Color32 = Color32::from_rgb( 46, 204, 113);
+/// Pastel red — sentiment/loss signal independent of theme bear color.
+pub const COLOR_LOSS_RED:     Color32 = Color32::from_rgb(231,  76,  60);
+/// Purple accent for special-tier indicators / category-specific tints.
+pub const COLOR_PURPLE:       Color32 = Color32::from_rgb(180, 100, 255);
 
 // ─── Raw text helpers ─────────────────────────────────────────────────────────
 
@@ -875,6 +964,40 @@ pub fn color_alpha(c: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
 }
 
+// ─── Color dimming helpers ───────────────────────────────────────────────────
+// Replace ad-hoc `color.gamma_multiply(0.X)` chains with these named helpers.
+// Pick by intent, not by number — see UI_AUDIT.md for the histogram of
+// usages each multiplier covers.
+//
+// `subtle`     — secondary text/icons that still read clearly
+// `muted`      — disabled-leaning, but still visible
+// `dim`        — clearly de-emphasised (placeholder text, etc.)
+// `very_dim`   — barely visible (decorative chart rules, watermarks)
+
+/// 0.7× — secondary text/icons that still read clearly.
+#[inline] pub fn color_subtle(c: Color32) -> Color32 { c.gamma_multiply(0.7) }
+/// 0.6× — muted UI element (visible but not interactive-feeling).
+#[inline] pub fn color_muted(c: Color32) -> Color32 { c.gamma_multiply(0.6) }
+/// 0.5× — half-strength.
+#[inline] pub fn color_half(c: Color32) -> Color32 { c.gamma_multiply(0.5) }
+/// 0.4× — clearly de-emphasised (placeholder text, inactive states).
+#[inline] pub fn color_dim(c: Color32) -> Color32 { c.gamma_multiply(0.4) }
+/// 0.3× — barely visible (decorative chart rules, watermarks).
+#[inline] pub fn color_very_dim(c: Color32) -> Color32 { c.gamma_multiply(0.3) }
+
+// ─── Theme-aware shadow color ────────────────────────────────────────────────
+// Light themes set `t.shadow_color` to a dark-gray (not black) so shadows on
+// cream/peach backgrounds blend instead of looking like hole-punched silhouettes.
+// Use this helper instead of hardcoding `Color32::from_rgba_unmultiplied(0,0,0,X)`.
+
+/// Shadow color from the theme at the given alpha. Replaces hardcoded
+/// `Color32::from_rgba_unmultiplied(0, 0, 0, X)` calls — those break light themes.
+#[inline]
+pub fn shadow_color_alpha(t: &super::super::gpu::Theme, alpha: u8) -> Color32 {
+    let c = t.shadow_color;
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+}
+
 // ─── Form layout ──────────────────────────────────────────────────────────────
 
 /// Form row: right-aligned fixed-width label + content widget.
@@ -1307,6 +1430,12 @@ pub struct StyleSettings {
     /// Pill / chip border radius separate from r_sm. 0 = use r_sm.
     /// When non-zero, overrides r_sm for badge/chip corners specifically.
     pub r_chip: u8,
+
+    // ── Accessibility ─────────────────────────────────────────────────────
+    /// When false, all motion::ease_bool / ease_value calls snap immediately
+    /// to their target value, honoring the system "reduce motion" preference.
+    /// Default: true.
+    pub animations_enabled: bool,
 }
 
 // Active style selection — set once at the top of each draw_chart frame
@@ -1367,7 +1496,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
             inactive_header_fill: true,
-            header_outer_border_alpha: 55, header_outer_border_width: 0.5,
+            header_outer_border_alpha: 38, header_outer_border_width: 0.5,
             header_divider_alpha: 50,
             account_strip_height: 26.0,
             pane_border_width: 1.0, pane_gap: 8.0,
@@ -1393,6 +1522,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             drag_handle_alpha: 0.7, drag_handle_dot_scale: 1.0,
             toast_bg_alpha: 200, card_stripe_alpha: 255,
             r_chip: 0,
+            animations_enabled: true,
         },
         2 => StyleSettings {
             r_xs: 1, r_sm: 2, r_md: 3, r_lg: 4, r_pill: 99,
@@ -1408,7 +1538,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
             inactive_header_fill: true,
-            header_outer_border_alpha: 55, header_outer_border_width: 0.5,
+            header_outer_border_alpha: 38, header_outer_border_width: 0.5,
             header_divider_alpha: 50,
             account_strip_height: 26.0,
             pane_border_width: 1.0, pane_gap: 2.0,
@@ -1434,6 +1564,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             drag_handle_alpha: 0.6, drag_handle_dot_scale: 0.85,
             toast_bg_alpha: 220, card_stripe_alpha: 255,
             r_chip: 0,
+            animations_enabled: true,
         },
         _ => StyleSettings {
             r_xs: 0, r_sm: 0, r_md: 0, r_lg: 0, r_pill: 0,
@@ -1449,7 +1580,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             show_active_tab_underline: true,
             active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
             inactive_header_fill: true,
-            header_outer_border_alpha: 55, header_outer_border_width: 0.5,
+            header_outer_border_alpha: 38, header_outer_border_width: 0.5,
             header_divider_alpha: 50,
             account_strip_height: 36.0,
             pane_border_width: 1.0, pane_gap: 0.0,
@@ -1476,6 +1607,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             drag_handle_alpha: 0.5, drag_handle_dot_scale: 1.0,
             toast_bg_alpha: 230, card_stripe_alpha: 255,
             r_chip: 0,
+            animations_enabled: true,
         },
     }
 }

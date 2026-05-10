@@ -707,7 +707,7 @@ pub(crate) fn render(
                                 .width(cw - 4.0)
                                 .show(&mut child);
                             ui.painter_at(cell_rect).rect_stroke(cell_rect, 0.0,
-                                egui::Stroke::new(1.0, t.accent),
+                                egui::Stroke::new(stroke_std(), t.accent),
                                 egui::epaint::StrokeKind::Middle);
                             resp.request_focus();
                             let input = ui.input(|i| (
@@ -735,7 +735,7 @@ pub(crate) fn render(
                         }
                         if selected_here {
                             ui.painter_at(cell_rect).rect_stroke(cell_rect, 0.0,
-                                egui::Stroke::new(1.0, t.accent),
+                                egui::Stroke::new(stroke_std(), t.accent),
                                 egui::epaint::StrokeKind::Middle);
                         }
                         let id = ui.id().with(("ss_cell", r, c));

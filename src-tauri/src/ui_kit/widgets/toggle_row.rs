@@ -23,7 +23,7 @@ use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use super::{Label, Switch, Tooltip};
+use super::{Switch, Tooltip};
 use crate::chart::renderer::ui::style as st;
 
 type InfoFn<'a> = Box<dyn FnOnce(&mut Ui, &dyn ComponentTheme) + 'a>;
@@ -75,7 +75,7 @@ impl<'a> ToggleRow<'a> {
 
 impl<'a> Widget for ToggleRow<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let theme = &crate::chart_renderer::gpu::THEMES[0];
+        let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, theme)
     }
 }

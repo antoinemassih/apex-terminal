@@ -11,8 +11,6 @@ use crate::chart::renderer::ui::foundation::text_style::TextStyle;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
-
 #[must_use = "SignalCard must be rendered with `.show(ui)`"]
 pub struct SignalCard<'a> {
     name:   &'a str,
@@ -39,14 +37,14 @@ impl<'a> SignalCard<'a> {
             .padding(Margin::same(gap_lg() as i8))
             .body(move |ui| {
                 ui.add_space(gap_xs());
-                let color = theme
-                    .map(|t| if score >= 0.0 { t.bull } else { t.bear })
-                    .unwrap_or_else(|| ft().dim);
+                let fallback = &crate::chart_renderer::gpu::THEMES[0];
+                let t_ref = theme.unwrap_or(fallback);
+                let color = if score >= 0.0 { t_ref.bull } else { t_ref.bear };
                 ui.label(RichText::new(format!("{:+.2}", score))
                     .monospace().size(font_xl()).strong().color(color));
                 let h = font_md() + 2.0;
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), h), Sense::hover());
-                let dim = theme.map(|t| t.dim).unwrap_or_else(|| ft().dim);
+                let dim = t_ref.dim;
                 ui.painter().rect_stroke(
                     rect,
                     egui::CornerRadius::same(radius_sm() as u8),

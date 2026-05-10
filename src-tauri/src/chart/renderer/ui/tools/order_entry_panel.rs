@@ -4,10 +4,9 @@
 
 use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, render_order_entry_body};
-use crate::chart_renderer::trading::{OrderSide, OrderLevel, OrderStatus, AccountSummary, Position, IbOrder};
-use crate::chart_renderer::trading::order_manager::{OrderIntent, ManagedOrderType, OrderSource};
+use crate::chart_renderer::trading::{OrderSide, OrderLevel, OrderStatus, OrderState, AccountSummary, Position, IbOrder};
 use crate::chart_renderer::gpu::Watchlist;
-use crate::chart_renderer::ui::style::{color_alpha, gap_xs, gap_sm, gap_md, gap_lg, gap_2xl, font_xs, font_sm, font_md};
+use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, stroke_std};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 use crate::ui_kit::icons::Icon;
 
@@ -36,6 +35,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
     // ── Collapsed pill ──
     if chart.order_collapsed {
         let pill_w = 90.0;
+        // retained as Window: needs corner_radius(12) + custom drag delta capture that bypasses Modal API
         egui::Window::new(format!("order_pill_{}", c.pane_idx))
             .fixed_pos(abs_pos)
             .fixed_size(egui::vec2(pill_w, 24.0))
@@ -48,10 +48,10 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
                 .build())
             .show(c.ctx, |ui| {
                 let resp = ui.horizontal(|ui| {
-                    let armed_dot = if chart.armed { c.t.accent } else { c.t.dim.gamma_multiply(0.3) };
+                    let armed_dot = if chart.armed { c.t.accent } else { color_very_dim(c.t.dim) };
                     ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 8.0), 3.5, armed_dot);
                     ui.add_space(gap_2xl());
-                    ui.label(egui::RichText::new("ORDER").monospace().size(font_sm()).strong().color(c.t.dim.gamma_multiply(0.7)));
+                    ui.label(egui::RichText::new("ORDER").monospace().size(font_sm()).strong().color(color_subtle(c.t.dim)));
                 });
                 let pill_resp = ui.interact(resp.response.rect, egui::Id::new(("order_pill_interact", c.pane_idx)), egui::Sense::click_and_drag());
                 if pill_resp.double_clicked() { chart.order_collapsed = false; }
@@ -74,7 +74,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
         .frame(egui::Frame::popup(&c.ctx.style())
             .fill(c.t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-            .stroke(egui::Stroke::new(1.0, color_alpha(c.t.toolbar_border, 100)))
+            .stroke(egui::Stroke::new(stroke_std(), color_alpha(c.t.toolbar_border, 100)))
             .corner_radius(4.0))
         .show(c.ctx, |ui| {
             // ── Header bar ──
@@ -87,9 +87,9 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
                     color_alpha(c.t.toolbar_border, 30));
                 ui.add_space(gap_sm());
                 let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
-                let armed_color = if chart.armed { c.t.accent } else { c.t.dim.gamma_multiply(0.4) };
+                let armed_color = if chart.armed { c.t.accent } else { color_dim(c.t.dim) };
                 ui.label(egui::RichText::new(armed_icon).size(font_md()).color(armed_color));
-                ui.label(egui::RichText::new("ORDER").monospace().size(font_sm()).strong().color(c.t.dim.gamma_multiply(0.6)));
+                ui.label(egui::RichText::new("ORDER").monospace().size(font_sm()).strong().color(color_muted(c.t.dim)));
                 if let Some((_, ref positions, _)) = c.account_data_cached {
                     if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
                         let pos_color = if pos.qty > 0 { c.t.bull } else { c.t.bear };
@@ -100,9 +100,9 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(gap_sm());
                     let exp_icon = if adv { Icon::MINUS } else { Icon::PLUS };
-                    ui.label(egui::RichText::new(exp_icon).size(font_sm()).color(c.t.dim.gamma_multiply(0.5)));
+                    ui.label(egui::RichText::new(exp_icon).size(font_sm()).color(color_half(c.t.dim)));
                     ui.add(egui::Separator::default().spacing(gap_xs()));
-                    let dom_col = if chart.dom_open { c.t.accent } else { c.t.dim.gamma_multiply(0.4) };
+                    let dom_col = if chart.dom_open { c.t.accent } else { color_dim(c.t.dim) };
                     ui.label(egui::RichText::new("DOM").monospace().size(font_xs()).color(dom_col));
                 });
             });
@@ -158,9 +158,6 @@ fn render_dom_ladder(
     account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
     panel_w: f32,
 ) {
-    use crate::chart_renderer::ui::style::color_alpha;
-    use crate::chart_renderer::ui::style::COLOR_AMBER;
-
     let live_q = if chart.is_option && !chart.option_contract.is_empty() {
         crate::apex_data::live_state::get_quote(&chart.option_contract)
     } else {
@@ -196,9 +193,9 @@ fn render_dom_ladder(
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
         let col_w = (panel_w - gap_lg()) / 3.0;
-        ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("BID").monospace().size(font_xs()).color(t.bull.gamma_multiply(0.4))));
-        ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("PRICE").monospace().size(font_xs()).color(t.dim.gamma_multiply(0.4))));
-        ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("ASK").monospace().size(font_xs()).color(t.bear.gamma_multiply(0.4))));
+        ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("BID").monospace().size(font_xs()).color(color_dim(t.bull))));
+        ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("PRICE").monospace().size(font_xs()).color(color_dim(t.dim))));
+        ui.add_sized(egui::vec2(col_w, 14.0), egui::Label::new(egui::RichText::new("ASK").monospace().size(font_xs()).color(color_dim(t.bear))));
     });
 
     let rows_above = 10_i32; let rows_below = 10_i32;
@@ -220,9 +217,9 @@ fn render_dom_ladder(
             ui.painter().rect_filled(rr, 0.0, bg);
             if has_buy { ui.painter().rect_filled(rr, 0.0, color_alpha(t.bull, 25)); }
             if has_sell { ui.painter().rect_filled(rr, 0.0, color_alpha(t.bear, 25)); }
-            if is_entry { ui.painter().rect_stroke(rr, 0.0, egui::Stroke::new(1.0, color_alpha(crate::chart_renderer::ui::style::COLOR_AMBER, 150)), egui::StrokeKind::Inside); }
+            if is_entry { ui.painter().rect_stroke(rr, 0.0, egui::Stroke::new(stroke_std(), color_alpha(crate::chart_renderer::ui::style::COLOR_AMBER, 150)), egui::StrokeKind::Inside); }
             let col_w = (panel_w - gap_lg()) / 3.0;
-            let bc = if rh { t.bull } else { t.bull.gamma_multiply(0.6) };
+            let bc = if rh { t.bull } else { color_muted(t.bull) };
             let bbg = if rh { color_alpha(t.bull, 15) } else { egui::Color32::TRANSPARENT };
             if ui.add(egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(font_sm()).color(bc)).fill(bbg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
                 use crate::chart_renderer::trading::order_manager::*;
@@ -230,14 +227,15 @@ fn render_dom_ladder(
                     symbol: chart.symbol.clone(), side: OrderSide::Buy,
                     order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
                     source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
+                    strategy_id: None, override_warnings: false,
                 }) {
-                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                 }
             }
-            let pc = if is_current { egui::Color32::WHITE } else if price > current_price { t.bull.gamma_multiply(0.7) } else { t.bear.gamma_multiply(0.7) };
+            let pc = if is_current { egui::Color32::WHITE } else if price > current_price { color_subtle(t.bull) } else { color_subtle(t.bear) };
             let pf = if tick >= 1.0 { format!("{:.0}", price) } else { format!("{:.2}", price) };
             ui.add_sized(egui::vec2(col_w, row_h), egui::Label::new(egui::RichText::new(pf).monospace().size(font_sm()).strong().color(pc)));
-            let ac = if rh { t.bear } else { t.bear.gamma_multiply(0.6) };
+            let ac = if rh { t.bear } else { color_muted(t.bear) };
             let abg = if rh { color_alpha(t.bear, 15) } else { egui::Color32::TRANSPARENT };
             if ui.add(egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(font_sm()).color(ac)).fill(abg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
                 use crate::chart_renderer::trading::order_manager::*;
@@ -245,8 +243,9 @@ fn render_dom_ladder(
                     symbol: chart.symbol.clone(), side: OrderSide::Sell,
                     order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
                     source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
+                    strategy_id: None, override_warnings: false,
                 }) {
-                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None });
+                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                 }
             }
         });

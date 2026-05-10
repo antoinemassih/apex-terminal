@@ -12,8 +12,7 @@
 
 #![allow(dead_code)]
 
-use egui::{Response, RichText, Widget};
-use crate::chart_renderer::ui::style::*;
+use egui::{Response, Widget};
 use crate::chart_renderer::gpu::Theme;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
@@ -50,17 +49,12 @@ impl<'a> FilterPill<'a> {
 
 impl<'a> Widget for FilterPill<'a> {
     fn ui(self, ui: &mut egui::Ui) -> Response {
-        let col = if self.active { self.accent } else { self.dim };
-        let bg  = if self.active {
-            color_alpha(self.accent, alpha_subtle())
-        } else {
-            egui::Color32::TRANSPARENT
-        };
+        // Variant::Chip handles the active/inactive fg+fill+corner_radius dance.
         ui.add(
-            Button::new(self.label).variant(Variant::Chrome).size(Size::Xs).fg(col)
-                .fill(bg)
-                .corner_radius(crate::chart_renderer::ui::style::current().r_md as f32)
-                .min_size(egui::vec2(0.0, 16.0)),
+            Button::new(self.label)
+                .variant(Variant::Chip)
+                .size(Size::Xs)
+                .active(self.active),
         )
     }
 }

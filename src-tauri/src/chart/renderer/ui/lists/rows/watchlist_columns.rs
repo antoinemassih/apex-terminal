@@ -131,7 +131,7 @@ fn render_rvol_badge(c: &mut ColumnCtx) {
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
         &format!("{:.1}x", rv),
-        egui::FontId::monospace(11.0),
+        mono_sm(),
         rcol,
     );
 }
@@ -174,7 +174,7 @@ fn render_volume(c: &mut ColumnCtx) {
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
         &s,
-        egui::FontId::monospace(11.0),
+        mono_sm(),
         c.dim.gamma_multiply(0.6),
     );
 }
@@ -186,7 +186,7 @@ fn render_atr(c: &mut ColumnCtx) {
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
         &format!("{:.2}", v),
-        egui::FontId::monospace(11.0),
+        mono_sm(),
         c.dim.gamma_multiply(0.6),
     );
 }
@@ -202,7 +202,7 @@ fn render_market_cap(c: &mut ColumnCtx) {
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
         &s,
-        egui::FontId::monospace(11.0),
+        mono_sm(),
         c.dim.gamma_multiply(0.6),
     );
 }

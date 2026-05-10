@@ -3,7 +3,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::text::{BodyLabel, SectionLabel, SectionLabelSize};
+use super::super::widgets::text::{BodyLabel, SectionLabelSize};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::headers::PanelHeaderWithClose;
@@ -126,6 +126,7 @@ pub(crate) fn draw(
                 .title_size(SectionLabelSize::Tiny)
                 .title_size_px(9.0)
                 .theme(t)
+                .watchlist(watchlist)
                 .show_with_title_actions(ui, |ui| {
                     ui.add(BodyLabel::new(&format!("({})", count)).size(font_sm()).monospace(true).color(dim));
                 })

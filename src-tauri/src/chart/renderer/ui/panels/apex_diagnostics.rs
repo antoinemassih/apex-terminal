@@ -7,7 +7,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::headers::PanelHeaderWithClose;
+use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use super::super::widgets::text::SectionLabelSize;
 use crate::ui_kit::widgets::{Alert, Progress};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
@@ -19,21 +19,32 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     let w = 620.0_f32;
     let h = (screen.height() * 0.85).min(720.0);
 
-    egui::Window::new("apex_diagnostics")
-        .fixed_pos(egui::pos2(screen.center().x - w / 2.0, 60.0))
-        .fixed_size(egui::vec2(w, h))
-        .title_bar(false)
-        .frame(super::super::widgets::frames::PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build())
-        .show(ctx, |ui| {
-            let closed = PanelHeaderWithClose::new("APEX DATA DIAGNOSTICS")
-                .title_size(SectionLabelSize::Md)
-                .theme(t)
-                .show_with(ui, |ui| {
-                    if ui.small_button("reset breaker").clicked() {
-                        crate::apex_data::rest::reset_breaker();
-                    }
-                });
-            if closed { watchlist.apex_diag_open = false; }
+    let frame = super::super::widgets::frames::PopupFrame::new()
+        .colors(t.toolbar_bg, t.toolbar_border)
+        .ctx(ctx)
+        .build();
+
+    let resp = Modal::new("APEX DATA DIAGNOSTICS")
+        .id("apex_diagnostics")
+        .ctx(ctx)
+        .theme(t)
+        .size(egui::vec2(w, h))
+        .anchor(Anchor::Window { pos: Some(egui::pos2(screen.center().x - w / 2.0, 60.0)) })
+        .frame_kind(FrameKind::Custom(frame))
+        .header_style(HeaderStyle::Panel {
+            title_size:      SectionLabelSize::Md,
+            title_size_px:   None,
+            title_monospace: None,
+            leading_space:   0.0,
+            trailing_space:  0.0,
+        })
+        .panel_actions(|ui| {
+            if ui.small_button("reset breaker").clicked() {
+                crate::apex_data::rest::reset_breaker();
+            }
+        })
+        .separator(false)
+        .show(|ui| {
             ui.separator();
 
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -50,6 +61,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                 section_recent_calls(ui, t);
             });
         });
+
+    if resp.closed { watchlist.apex_diag_open = false; }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -174,7 +187,7 @@ fn section_rest_stats(ui: &mut egui::Ui, t: &Theme) {
 fn section_ws_subs(ui: &mut egui::Ui, t: &Theme) {
     hdr(ui, "WS", t);
     ui.add(super::super::widgets::text::MonospaceCode::new("(subscription counts tracked client-side; see 'chain cache' below for live state)")
-        .color(t.dim.gamma_multiply(0.6)));
+        .color(color_muted(t.dim)));
 }
 
 fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
@@ -185,11 +198,11 @@ fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
         return;
     }
     ui.horizontal(|ui| {
-        ui.add(super::super::widgets::text::MonospaceCode::new("underlying").color(t.dim.gamma_multiply(0.6)));
+        ui.add(super::super::widgets::text::MonospaceCode::new("underlying").color(color_muted(t.dim)));
         ui.add_space(60.0);
-        ui.add(super::super::widgets::text::MonospaceCode::new("rows").color(t.dim.gamma_multiply(0.6)));
+        ui.add(super::super::widgets::text::MonospaceCode::new("rows").color(color_muted(t.dim)));
         ui.add_space(gap_2xl());
-        ui.add(super::super::widgets::text::MonospaceCode::new("last update").color(t.dim.gamma_multiply(0.6)));
+        ui.add(super::super::widgets::text::MonospaceCode::new("last update").color(color_muted(t.dim)));
     });
     for (ul, rows, age_s) in summary {
         let age_color = if age_s < 10 { t.bull }

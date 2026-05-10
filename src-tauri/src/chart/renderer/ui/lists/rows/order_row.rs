@@ -16,10 +16,6 @@ use crate::chart::renderer::ui::foundation::{
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn fallback_theme() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
-}
-
 #[derive(Clone, Copy, PartialEq)]
 pub enum OrderSideTag { Buy, Sell }
 
@@ -70,12 +66,12 @@ impl<'a> OrderRow<'a> {
 
     /// Returns (row_response, cancel_clicked).
     pub fn show(self, ui: &mut Ui) -> (Response, bool) {
-        let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let ft = fallback_theme();
-        let bull = self.theme_bull.unwrap_or(ft.bull);
-        let bear = self.theme_bear.unwrap_or(ft.bear);
-        let dim = self.theme_dim.unwrap_or(ft.dim);
-        let fg = self.theme_fg.unwrap_or(ft.text);
+        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
+        let bull = self.theme_bull.unwrap_or(default_t.bull);
+        let bear = self.theme_bear.unwrap_or(default_t.bear);
+        let dim = self.theme_dim.unwrap_or(default_t.dim);
+        let fg = self.theme_fg.unwrap_or(default_t.text);
 
         let side = self.side;
         let symbol = self.symbol;
@@ -106,22 +102,22 @@ impl<'a> OrderRow<'a> {
                     egui::vec2(14.0, 14.0));
                 painter.rect_filled(pill, 2.0, color_alpha(side_col, alpha_subtle()));
                 painter.text(pill.center(), egui::Align2::CENTER_CENTER,
-                    side_lbl, egui::FontId::monospace(11.0), side_col);
+                    side_lbl, mono_sm(), side_col);
 
                 painter.text(egui::pos2(pill.right() + 6.0, cy), egui::Align2::LEFT_CENTER,
-                    symbol, egui::FontId::monospace(11.0), fg);
+                    symbol, mono_sm(), fg);
 
                 painter.text(egui::pos2(rect.center().x, cy), egui::Align2::CENTER_CENTER,
                     &format!("{} @ {:.2}", qty, price),
-                    egui::FontId::monospace(11.0), fg);
+                    mono_sm(), fg);
 
                 painter.text(egui::pos2(rect.right() - 80.0, cy), egui::Align2::RIGHT_CENTER,
-                    status, egui::FontId::monospace(11.0), dim);
+                    status, mono_sm(), dim);
 
                 if let Some(a) = age {
                     let x = if show_cancel { rect.right() - 28.0 } else { rect.right() - 6.0 };
                     ui.painter().text(egui::pos2(x, cy), egui::Align2::RIGHT_CENTER,
-                        a, egui::FontId::monospace(11.0), dim.gamma_multiply(0.7));
+                        a, mono_sm(), dim.gamma_multiply(0.7));
                 }
 
                 // Embedded cancel button.
@@ -132,7 +128,7 @@ impl<'a> OrderRow<'a> {
                     let cb_resp = ui.allocate_rect(cb, egui::Sense::click());
                     let col = if cb_resp.hovered() { bear } else { dim };
                     ui.painter().text(cb.center(), egui::Align2::CENTER_CENTER,
-                        "×", egui::FontId::monospace(11.0), col);
+                        "×", mono_sm(), col);
                     if cb_resp.clicked() { cancel_ref.set(true); }
                 }
             })

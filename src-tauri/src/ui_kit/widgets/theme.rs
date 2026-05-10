@@ -66,6 +66,19 @@ impl ComponentTheme for crate::chart_renderer::gpu::Theme {
 // Blanket impl so callers can pass `&T` where T: ComponentTheme through
 // `&dyn ComponentTheme` interchangeably without explicit coercion in
 // generic contexts.
+/// Read the active theme index stashed in egui memory by the render loop.
+/// Falls back to 0 (Midnight) if nothing was stashed.
+pub fn active_theme_idx(ctx: &egui::Context) -> usize {
+    ctx.data(|d| d.get_temp::<usize>(egui::Id::new("apex_active_theme_idx")))
+       .unwrap_or(0)
+}
+
+/// Convenience: returns &Theme for the active idx via THEMES array.
+pub fn active_theme(ctx: &egui::Context) -> &'static crate::chart_renderer::gpu::Theme {
+    let idx = active_theme_idx(ctx).min(crate::chart_renderer::gpu::THEMES.len() - 1);
+    &crate::chart_renderer::gpu::THEMES[idx]
+}
+
 impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {
     fn accent(&self) -> Color32 { (**self).accent() }
     fn bull(&self) -> Color32 { (**self).bull() }

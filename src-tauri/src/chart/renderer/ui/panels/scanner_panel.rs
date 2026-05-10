@@ -14,7 +14,7 @@ use super::super::widgets::layout::EmptyState;
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use super::super::widgets::form::FormRow;
 use super::super::widgets::rows::WatchlistRow;
-use crate::ui_kit::widgets::{Button, Input, Skeleton};
+use crate::ui_kit::widgets::{Button, Input, NumberStepper, Skeleton};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
@@ -118,9 +118,9 @@ pub(crate) fn draw_content(
                     .show(ui, t);
             });
             FormRow::new("Min %").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                ui.add(egui::DragValue::new(&mut watchlist.scanner_new_min_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
+                NumberStepper::new(&mut watchlist.scanner_new_min_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
                 ui.add(MonospaceCode::new("Max %").size_px(font_xs()).color(t.dim));
-                ui.add(egui::DragValue::new(&mut watchlist.scanner_new_max_change).speed(0.5).range(-100.0..=100.0).suffix("%"));
+                NumberStepper::new(&mut watchlist.scanner_new_max_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
             });
             FormRow::new("Min Vol").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
                 Input::new(&mut watchlist.scanner_new_min_volume)
@@ -212,13 +212,13 @@ pub(crate) fn draw_content(
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if !is_preset {
-                            if icon_btn(ui, Icon::X, t.dim.gamma_multiply(0.5), 8.0)
+                            if icon_btn(ui, Icon::X, color_half(t.dim), 8.0)
                                 .on_hover_text("Remove scanner").clicked()
                             {
                                 delete_scanner_idx = Some(scanner_idx);
                             }
                         }
-                        if icon_btn(ui, Icon::FOLDER, t.dim.gamma_multiply(0.5), 8.0)
+                        if icon_btn(ui, Icon::FOLDER, color_half(t.dim), 8.0)
                             .on_hover_text("Save as Watchlist").clicked()
                         {
                             save_as_watchlist = Some((scanner_name.clone(), results.clone()));
@@ -234,7 +234,7 @@ pub(crate) fn draw_content(
                     ui.horizontal(|ui| {
                         ui.add_space(4.0);
                         let cw = (panel_w - 16.0) / 3.0;
-                        let hdr_color = t.dim.gamma_multiply(0.4);
+                        let hdr_color = color_dim(t.dim);
                         col_header(ui, "SYMBOL", cw, hdr_color, false);
                         col_header(ui, "PRICE",  cw, hdr_color, true);
                         col_header(ui, "CHG%",   cw, hdr_color, true);
@@ -252,9 +252,9 @@ pub(crate) fn draw_content(
                             .price_string(price_str)
                             .price_right_inset(4.0)
                             .sym_layout(0.0, 0.0, 4.0)
-                            .sym_font(egui::FontId::monospace(11.0))
-                            .chg_font(egui::FontId::monospace(11.0))
-                            .price_font(egui::FontId::monospace(11.0))
+                            .sym_font(mono_sm())
+                            .chg_font(mono_sm())
+                            .price_font(mono_sm())
                             .fg(egui::Color32::from_gray(200))
                             .hover_overlay(color_alpha(t.accent, alpha_ghost()))
                             .show(ui);

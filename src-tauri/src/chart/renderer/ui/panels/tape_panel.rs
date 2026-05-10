@@ -61,7 +61,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
 
             let col_w = (panel_w - 12.0) / 3.0;
             for entry in entries.iter().rev().take(200).collect::<Vec<_>>().into_iter().rev() {
-                let side_color = if entry.is_buy { egui::Color32::from_rgb(46, 204, 113) } else { egui::Color32::from_rgb(231, 76, 60) };
+                let side_color = if entry.is_buy { COLOR_PROFIT_GREEN } else { COLOR_LOSS_RED };
 
                 // Build strings before the closure to avoid borrow issues.
                 let secs = entry.time / 1000;
@@ -91,7 +91,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                     .row_tint(side_color, 12)
                     .body(move |ui| {
                         let rect = ui.max_rect();
-                        let font = egui::FontId::monospace(11.0);
+                        let font = mono_sm();
                         ui.painter().text(
                             egui::pos2(rect.left(), rect.center().y),
                             egui::Align2::LEFT_CENTER, &time_str, font.clone(),
@@ -123,7 +123,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .resizable(true)
         .frame(CompactPanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
-            if PanelHeaderWithClose::new("TIME & SALES").subtitle(active_symbol).theme(t).show(ui) {
+            if PanelHeaderWithClose::new("TIME & SALES").subtitle(active_symbol).theme(t).watchlist(watchlist).show(ui) {
                 watchlist.tape_open = false;
             }
             ui.add_space(4.0);

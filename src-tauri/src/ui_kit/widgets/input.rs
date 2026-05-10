@@ -265,7 +265,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             painter.text(
                 r.center(),
                 egui::Align2::CENTER_CENTER,
-                "\u{2715}", // ✕
+                crate::ui_kit::icons::Icon::X,
                 FontId::proportional(sz),
                 muted,
             );

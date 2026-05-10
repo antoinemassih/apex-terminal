@@ -18,10 +18,6 @@ use crate::chart::renderer::ui::foundation::{
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn fallback_theme() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
-}
-
 #[derive(Clone, Copy, PartialEq)]
 pub enum AlertCmp { Above, Below, Crosses }
 
@@ -79,13 +75,13 @@ impl<'a> AlertRow<'a> {
 
     /// Returns (row_response, delete_clicked).
     pub fn show(self, ui: &mut Ui) -> (Response, bool) {
-        let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let ft = fallback_theme();
-        let bull = self.theme_bull.unwrap_or(ft.bull);
-        let bear = self.theme_bear.unwrap_or(ft.bear);
-        let dim = self.theme_dim.unwrap_or(ft.dim);
-        let fg = self.theme_fg.unwrap_or(ft.text);
-        let accent = self.theme_accent.unwrap_or(ft.accent);
+        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
+        let bull = self.theme_bull.unwrap_or(default_t.bull);
+        let bear = self.theme_bear.unwrap_or(default_t.bear);
+        let dim = self.theme_dim.unwrap_or(default_t.dim);
+        let fg = self.theme_fg.unwrap_or(default_t.text);
+        let accent = self.theme_accent.unwrap_or(default_t.accent);
 
         let symbol = self.symbol;
         let cmp = self.cmp;
@@ -118,19 +114,19 @@ impl<'a> AlertRow<'a> {
                     glyph, egui::FontId::proportional(24.0), gcol);
 
                 painter.text(egui::pos2(rect.left() + 22.0, cy), egui::Align2::LEFT_CENTER,
-                    symbol, egui::FontId::monospace(11.0), fg);
+                    symbol, mono_sm(), fg);
 
                 let cmp_col = match cmp {
                     AlertCmp::Above => bull, AlertCmp::Below => bear, AlertCmp::Crosses => accent,
                 };
                 let main = format!("{} {:.2}", cmp.glyph(), target);
                 painter.text(egui::pos2(rect.left() + 80.0, cy), egui::Align2::LEFT_CENTER,
-                    &main, egui::FontId::monospace(11.0), cmp_col);
+                    &main, mono_sm(), cmp_col);
 
                 if let Some(n) = note {
                     ui.painter().text(egui::pos2(rect.center().x + 30.0, cy),
                         egui::Align2::LEFT_CENTER,
-                        n, egui::FontId::monospace(11.0), dim);
+                        n, mono_sm(), dim);
                 }
 
                 // Embedded delete button.
@@ -139,7 +135,7 @@ impl<'a> AlertRow<'a> {
                 let db_resp = ui.allocate_rect(db, egui::Sense::click());
                 let col = if db_resp.hovered() { bear } else { dim };
                 ui.painter().text(db.center(), egui::Align2::CENTER_CENTER,
-                    "×", egui::FontId::monospace(11.0), col);
+                    "×", mono_sm(), col);
                 if db_resp.clicked() { delete_ref.set(true); }
             })
             .show(ui);

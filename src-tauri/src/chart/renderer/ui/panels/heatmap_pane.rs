@@ -119,7 +119,7 @@ pub(crate) fn render(
         } else { bg };
         painter.rect_filled(inset, 2.0, draw_bg);
         if cell_hovered {
-            painter.rect_stroke(inset, 2.0, egui::Stroke::new(1.5, t.text), egui::StrokeKind::Outside);
+            painter.rect_stroke(inset, 2.0, egui::Stroke::new(stroke_bold(), t.text), egui::StrokeKind::Outside);
         }
         if cell_resp.clicked() {
             // Load this symbol into pane 0 (or the active chart pane)

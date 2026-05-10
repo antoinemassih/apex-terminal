@@ -10,8 +10,6 @@ use crate::chart::renderer::ui::foundation::shell::CardShell;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
-
 #[must_use = "EventCard must be rendered with `.show(ui)`"]
 pub struct EventCard<'a> {
     title: &'a str,
@@ -31,8 +29,9 @@ impl<'a> EventCard<'a> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) {
-        let dim  = self.theme.map(|t| t.dim).unwrap_or_else(|| ft().dim);
-        let text = self.theme.map(|t| t.text).unwrap_or_else(|| ft().text);
+        let t = self.theme.unwrap_or(&crate::chart_renderer::gpu::THEMES[0]);
+        let dim  = t.dim;
+        let text = t.text;
         let theme = self.theme;
         let title = self.title;
         let when = self.when;

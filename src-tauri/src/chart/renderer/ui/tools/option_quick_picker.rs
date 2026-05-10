@@ -61,7 +61,7 @@ pub(crate) fn draw(
             .corner_radius(r_lg_cr())
             .shadow(egui::epaint::Shadow {
                 offset: [0, 4], blur: 14, spread: 0,
-                color: egui::Color32::from_black_alpha(80),
+                color: shadow_color_alpha(t, 80),
             });
         let modal_resp = Modal::new("OPT_QUICK_PICKER")
             .id(&format!("opt_quick_picker_{}", pi))

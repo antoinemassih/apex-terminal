@@ -44,7 +44,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeK
 
 use super::super::style::{
     alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
-    color_alpha, contrast_fg, current, drawing_palette, font_md, font_sm, gap_md, gap_sm, gap_xs,
+    color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_sm, gap_md, gap_sm, gap_xs,
     radius_sm, radius_md, stroke_hair, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
@@ -127,7 +127,7 @@ fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color
 /// (bear color + tinted background). Used by the per-tab close, the indicator
 /// chip remove-X, and the pane-level close button.
 fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: &Theme, font_size_offset: f32) {
-    let col = if hovered { theme.bear } else { theme.dim.gamma_multiply(0.7) };
+    let col = if hovered { theme.bear } else { color_subtle(theme.dim) };
     if hovered {
         painter.rect_filled(rect, radius_sm(), color_alpha(theme.bear, alpha_tint()));
     }
@@ -454,7 +454,7 @@ impl<'a> PainterPaneHeader<'a> {
 
         // 1. Active-pane bg darken (only meaningful with >1 pane).
         if self.visible_count > 1 && self.is_active {
-            let active_bg = t.bg.gamma_multiply(0.7);
+            let active_bg = color_subtle(t.bg);
             painter.rect_filled(rect, 0.0, active_bg);
         }
 
@@ -588,7 +588,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let hover_bg  = color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha);
                 // Active tab: noticeably darker than the (now lighter) inactive
                 // pane header so the contrast reads clearly.
-                let active_bg = t.bg.gamma_multiply(0.4);
+                let active_bg = color_dim(t.bg);
                 let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
                 tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);
                 let r_md = radius_md() as u8;
@@ -826,7 +826,7 @@ impl<'a> PainterPaneHeader<'a> {
             } else if resp.hovered() {
                 t.text
             } else {
-                t.dim.gamma_multiply(0.7)
+                color_subtle(t.dim)
             };
             if resp.hovered() || self.is_maximized {
                 painter.rect_filled(expand_rect, radius_sm(), color_alpha(

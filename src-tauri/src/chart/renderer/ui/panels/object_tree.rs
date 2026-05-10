@@ -56,55 +56,16 @@ fn hash_str(s: &str) -> u64 {
     h.finish()
 }
 
-fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
+// `fn ft()` removed 2026-05 — sig_color now takes `t: &Theme` so the active
+// theme drives the badge colours instead of always-Midnight.
 
-// Six discrete opacity levels: fully faded (readable) up to fully opaque.
-pub(crate) const OPACITY_LEVELS: [f32; 6] = [0.15, 0.30, 0.50, 0.70, 0.85, 1.0];
-
-/// Find the closest level index for an opacity value.
-fn closest_level_idx(op: f32) -> usize {
-    let mut best = 0; let mut best_d = f32::MAX;
-    for (i, &lv) in OPACITY_LEVELS.iter().enumerate() {
-        let d = (lv - op).abs();
-        if d < best_d { best_d = d; best = i; }
-    }
-    best
-}
-
-/// Compact 6-segment opacity picker. Returns Some(new_opacity) if user clicked a segment.
-fn opacity_picker(ui: &mut egui::Ui, current: f32, accent: egui::Color32, dim: egui::Color32, id_salt: &str) -> Option<f32> {
-    let cur_idx = closest_level_idx(current);
-    let seg_w = 7.0;
-    let seg_h = 10.0;
-    let gap = 1.0;
-    let total_w = (seg_w + gap) * OPACITY_LEVELS.len() as f32;
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(total_w, seg_h + 2.0),
-        egui::Sense::click());
-    let painter = ui.painter_at(rect);
-    let mut clicked_idx: Option<usize> = None;
-    for i in 0..OPACITY_LEVELS.len() {
-        let x = rect.min.x + i as f32 * (seg_w + gap);
-        let seg_rect = egui::Rect::from_min_size(egui::pos2(x, rect.min.y + 1.0), egui::vec2(seg_w, seg_h));
-        let filled = i <= cur_idx;
-        let col = if filled {
-            let a = OPACITY_LEVELS[i];
-            egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), (a * 220.0) as u8)
-        } else {
-            egui::Color32::from_rgba_unmultiplied(dim.r(), dim.g(), dim.b(), 40)
-        };
-        painter.rect_filled(seg_rect, 1.5, col);
-        if resp.clicked() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                if pos.x >= seg_rect.left() && pos.x <= seg_rect.right() + gap {
-                    clicked_idx = Some(i);
-                }
-            }
-        }
-    }
-    let _ = resp.on_hover_text_at_pointer(format!("Opacity {}%", (OPACITY_LEVELS[cur_idx] * 100.0) as i32));
-    let _ = id_salt;
-    clicked_idx.map(|i| OPACITY_LEVELS[i])
+/// Thin adapter: delegates to `OpacityPicker` widget, returning `Some(new_opacity)` on click.
+fn opacity_picker(ui: &mut egui::Ui, current: f32, _accent: egui::Color32, _dim: egui::Color32, _id_salt: &str) -> Option<f32> {
+    use crate::ui_kit::widgets::OpacityPicker;
+    use crate::ui_kit::widgets::theme::active_theme;
+    let mut value = current;
+    let resp = OpacityPicker::new(&mut value).show(ui, active_theme(ui.ctx()));
+    if resp.changed() { Some(value) } else { None }
 }
 
 /// Short type key for type-level opacity mapping.
@@ -140,12 +101,13 @@ fn kind_short_label(kind: &DrawingKind) -> &'static str {
     }
 }
 
-/// Significance score badge color.
-fn sig_color(score: f32) -> egui::Color32 {
-    if score >= 7.0 { ft().bear }                // red — critical
-    else if score >= 5.0 { ft().warn }            // gold — strong
-    else if score >= 3.0 { ft().bull }           // green — moderate
-    else { ft().dim }                            // gray — weak
+/// Significance score badge color. Takes the active theme so the colours
+/// follow the user's selection instead of hardcoded Midnight (THEMES[0]).
+fn sig_color(score: f32, t: &Theme) -> egui::Color32 {
+    if score >= 7.0 { t.bear }                // red — critical
+    else if score >= 5.0 { t.warn }           // gold — strong
+    else if score >= 3.0 { t.bull }           // green — moderate
+    else { t.dim }                            // gray — weak
 }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
@@ -166,6 +128,7 @@ egui::SidePanel::left("object_tree_panel")
             .title_monospace(true)
             .title_size_px(font_sm())
             .theme(t)
+            .watchlist(watchlist)
             .show(ui)
         {
             watchlist.object_tree_open = false;
@@ -450,7 +413,7 @@ egui::SidePanel::left("object_tree_panel")
                                 .body(|ui| {
                                     ui.add(MonospaceCode::new(kind_label).size_px(font_sm()).color(label_col));
                                     if let Some(score) = sig_score {
-                                        let sc = sig_color(score);
+                                        let sc = sig_color(score, t);
                                         let (badge_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
                                         ui.painter().circle_filled(badge_r.center(), 3.0, sc);
                                     }

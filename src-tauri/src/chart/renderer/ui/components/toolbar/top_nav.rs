@@ -87,7 +87,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, SelectableRow, tokens::Variant as KitVariant};
+use crate::ui_kit::widgets::{Button as KitButton, NumberStepper, SelectableRow, tokens::Variant as KitVariant};
 use crate::chart_renderer::gpu::{
     Chart, Layout, Watchlist, Theme,
     CURRENT_WINDOW, CLOSE_REQUESTED, TB_BTN_CLICKED, PENDING_TOASTS, PENDING_WL_TOOLTIP,
@@ -742,9 +742,7 @@ pub(crate) fn render(
                     }
                     if !is_auto {
                         let mut val = panes[ap].renko_brick_size;
-                        let resp = ui.add(egui::DragValue::new(&mut val).speed(0.01).range(0.01..=10000.0)
-                            .custom_formatter(|v, _| format!("{:.2}", v))
-                            .prefix("Brick: "));
+                        let resp = NumberStepper::new(&mut val).step(0.01).range(0.01..=10000.0).decimals(2).prefix("Brick: ").show(ui, t);
                         if resp.changed() {
                             panes[ap].renko_brick_size = val;
                             panes[ap].alt_bars_dirty = true;
@@ -765,9 +763,7 @@ pub(crate) fn render(
                     }
                     if !is_auto {
                         let mut val = panes[ap].range_bar_size;
-                        let resp = ui.add(egui::DragValue::new(&mut val).speed(0.01).range(0.01..=10000.0)
-                            .custom_formatter(|v, _| format!("{:.2}", v))
-                            .prefix("Range: "));
+                        let resp = NumberStepper::new(&mut val).step(0.01).range(0.01..=10000.0).decimals(2).prefix("Range: ").show(ui, t);
                         if resp.changed() {
                             panes[ap].range_bar_size = val;
                             panes[ap].alt_bars_dirty = true;
@@ -776,8 +772,7 @@ pub(crate) fn render(
                 }
                 CandleMode::TickBar => {
                     let mut val = panes[ap].tick_bar_count as i32;
-                    let resp = ui.add(egui::DragValue::new(&mut val).speed(10).range(1..=100000)
-                        .prefix("Ticks: "));
+                    let resp = NumberStepper::new(&mut val).step(10.0).range(1..=100000).prefix("Ticks: ").integer().show(ui, t);
                     if resp.changed() {
                         panes[ap].tick_bar_count = val.max(1) as u32;
                         panes[ap].alt_bars_dirty = true;

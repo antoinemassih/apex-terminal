@@ -2,14 +2,12 @@
 
 use egui;
 use super::super::style::*;
-use super::super::widgets as widgets_compat;
-// widgets alias
-#[allow(unused_imports)]
-use super::super::widgets as widgets;
+use super::super::widgets;
 use super::super::widgets::inputs::TextInput;
 use super::super::widgets::headers::PanelHeaderWithClose;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
+use crate::ui_kit::widgets::{GuildAvatarGrid, GuildEntry};
 use super::super::super::gpu::{Watchlist, DiscordMessage, Theme};
 use crate::ui_kit::icons::Icon;
 
@@ -128,13 +126,16 @@ if watchlist.discord_open {
 /// Tab body content (no SidePanel wrapper). Used by feed_panel Discord tab.
 /// NOTE: caller must call `drain_background(ctx, watchlist)` before this each frame.
 pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
-    let discord_blurple = egui::Color32::from_rgb(88, 101, 242);
+    // Brand color from the semantic-color tokens (style::discord_blurple()).
+    // Bound through the explicit module path because the function name is
+    // shadowed by the local binding within this scope.
+    let discord_blurple = super::super::style::discord_blurple();
     let panel_w = ui.available_width();
     {
             if !watchlist.discord_authenticated {
                 // ── Not authenticated: Connect button ──
                 ui.add_space(8.0);
-                if PanelHeaderWithClose::new("DISCORD").accent(discord_blurple).dim(t.dim).show(ui) {
+                if PanelHeaderWithClose::new("DISCORD").accent(discord_blurple).dim(t.dim).watchlist(watchlist).show(ui) {
                     watchlist.discord_open = false;
                 }
                 let avail = ui.available_size();
@@ -143,17 +144,17 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     egui::Layout::top_down(egui::Align::Center),
                     |ui| {
                         ui.add_space(avail.y * 0.25);
-                        ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(32.0).color(discord_blurple.gamma_multiply(0.5)));
+                        ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(32.0).color(color_half(discord_blurple)));
                         ui.add_space(12.0);
                         if !crate::discord::is_configured() {
                             ui.add(widgets::text::MonospaceCode::new("Discord not configured").xs().color(t.dim));
-                            ui.add(widgets::text::MonospaceCode::new("Add discord.env with credentials").xs().color(t.dim.gamma_multiply(0.5)));
+                            ui.add(widgets::text::MonospaceCode::new("Add discord.env with credentials").xs().color(color_half(t.dim)));
                         } else if watchlist.discord_connecting {
                             ui.add(widgets::text::MonospaceCode::new("Waiting for authorization...").xs().color(t.dim));
                             ui.add_space(8.0);
                             crate::ui_kit::widgets::Spinner::new().show(ui, t);
                             ui.add_space(4.0);
-                            ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(t.dim.gamma_multiply(0.5)));
+                            ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(color_half(t.dim)));
                         } else {
                             if ui.add(Button::new("  Connect Discord  ")
                                 .variant(Variant::Chrome)
@@ -167,7 +168,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                 crate::discord::start_oauth2();
                             }
                             ui.add_space(8.0);
-                            ui.add(widgets::text::MonospaceCode::new("Chat with your trading community").xs().color(t.dim.gamma_multiply(0.5)));
+                            ui.add(widgets::text::MonospaceCode::new("Chat with your trading community").xs().color(color_half(t.dim)));
                         }
                     },
                 );
@@ -188,10 +189,9 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                         ui.add_space(8.0);
                         if close_button(ui, t.dim) { watchlist.discord_open = false; }
                         if ui.add(Button::new("×")
-                            .variant(Variant::Chrome)
+                            .variant(Variant::TextOnly)
                             .size(Size::Sm)
                             .fg(t.bear)
-                            .fill(egui::Color32::TRANSPARENT).frameless(true)
                         ).on_hover_text("Disconnect").clicked() {
                             crate::discord::disconnect();
                             watchlist.discord_authenticated = false;
@@ -217,77 +217,32 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     let strip_h = 44.0;
                     let (strip_bg_rect, _) = ui.allocate_exact_size(egui::vec2(panel_w, 0.0), egui::Sense::hover());
                     let bg_rect = egui::Rect::from_min_size(strip_bg_rect.min, egui::vec2(panel_w, strip_h));
-                    ui.painter().rect_filled(bg_rect, 0.0, color_alpha(egui::Color32::BLACK, alpha_tint()));
+                    // Was Color32::BLACK + alpha_tint — broke 4 light themes.
+                    // Use the theme-aware shadow color instead so the strip still reads
+                    // as "darker than chart bg" on dark themes and "darker than cream
+                    // bg" on light themes.
+                    ui.painter().rect_filled(bg_rect, 0.0, shadow_color_alpha(t, alpha_tint()));
 
                     egui::ScrollArea::horizontal().id_salt("guild_strip").show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.add_space(8.0);
-                            let guild_list: Vec<_> = watchlist.discord_guilds.clone();
-                            for guild in &guild_list {
-                                let selected = watchlist.discord_selected_guild.as_ref() == Some(&guild.id);
-                                let icon_size = 32.0;
-
-                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(icon_size + 6.0, icon_size + 8.0), egui::Sense::click());
-                                let hovered = resp.hovered();
-
-                                let icon_rect = egui::Rect::from_center_size(
-                                    egui::pos2(rect.center().x, rect.center().y - 1.0),
-                                    egui::vec2(icon_size, icon_size),
-                                );
-
-                                // Rounding: selected → squircle, hovered → less round, default → circle
-                                let rounding = if selected { 10.0 } else if hovered { 12.0 } else { 16.0 };
-
-                                // Background glow on hover/selected
-                                if selected || hovered {
-                                    let glow_rect = icon_rect.expand(2.0);
-                                    let glow_color = if selected { color_alpha(discord_blurple, alpha_strong()) } else { color_alpha(egui::Color32::WHITE, alpha_soft()) };
-                                    ui.painter().rect_filled(glow_rect, rounding + 2.0, glow_color);
-                                }
-
-                                if let Some(tex) = watchlist.discord_guild_icons.get(&guild.id) {
-                                    // Real icon
-                                    let bg = if hovered && !selected { egui::Color32::from_gray(50) } else { egui::Color32::from_gray(35) };
-                                    ui.painter().rect_filled(icon_rect, rounding, bg);
-                                    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                                    let tint = if hovered || selected { egui::Color32::WHITE } else { egui::Color32::from_gray(200) };
-                                    ui.painter().image(tex.id(), icon_rect, uv, tint);
-                                } else {
-                                    // Initials fallback
-                                    let bg = if selected { discord_blurple }
-                                             else if hovered { egui::Color32::from_gray(70) }
-                                             else { egui::Color32::from_gray(50) };
-                                    ui.painter().rect_filled(icon_rect, rounding, bg);
-                                    let abbrev: String = guild.name.split_whitespace()
-                                        .filter_map(|w| w.chars().next())
-                                        .take(2)
-                                        .collect::<String>()
-                                        .to_uppercase();
-                                    let font = egui::FontId::monospace(if abbrev.len() > 1 { 9.0 } else { 11.0 });
-                                    let text_col = if selected || hovered { egui::Color32::WHITE } else { egui::Color32::from_gray(180) };
-                                    ui.painter().text(icon_rect.center(), egui::Align2::CENTER_CENTER, &abbrev, font, text_col);
-                                }
-
-                                // Selection dot under icon
-                                if selected {
-                                    let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + 4.0);
-                                    ui.painter().circle_filled(dot_center, 2.5, discord_blurple);
-                                } else if hovered {
-                                    let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + 4.0);
-                                    ui.painter().circle_filled(dot_center, 1.5, egui::Color32::from_gray(120));
-                                }
-
-                                if resp.clicked() {
-                                    watchlist.discord_selected_guild = Some(guild.id.clone());
-                                    watchlist.discord_channels.clear();
-                                    watchlist.discord_selected_channel = None;
-                                    watchlist.discord_messages.clear();
-                                    watchlist.discord_last_msg_id = None;
-                                    watchlist.discord_channel.clear();
-                                    watchlist.discord_channels_loading = true;
-                                    crate::discord::fetch_channels_bg(guild.id.clone());
-                                }
-                                resp.on_hover_text(&guild.name);
+                            let guild_entries: Vec<GuildEntry<'_>> = watchlist.discord_guilds.iter()
+                                .map(|g| GuildEntry { id: &g.id, name: &g.name })
+                                .collect();
+                            let mut clicked_guild: Option<String> = None;
+                            GuildAvatarGrid::new(&guild_entries, &watchlist.discord_guild_icons)
+                                .selected(watchlist.discord_selected_guild.as_deref())
+                                .on_click(|id| { clicked_guild = Some(id.to_string()); })
+                                .show(ui, t);
+                            if let Some(id) = clicked_guild {
+                                watchlist.discord_selected_guild = Some(id.clone());
+                                watchlist.discord_channels.clear();
+                                watchlist.discord_selected_channel = None;
+                                watchlist.discord_messages.clear();
+                                watchlist.discord_last_msg_id = None;
+                                watchlist.discord_channel.clear();
+                                watchlist.discord_channels_loading = true;
+                                crate::discord::fetch_channels_bg(id);
                             }
                             ui.add_space(4.0);
                         });
@@ -310,8 +265,8 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                 egui::Layout::top_down(egui::Align::Center),
                                 |ui| {
                                     ui.add_space(avail.y * 0.3);
-                                    ui.add(widgets::text::MonospaceCode::new("Select a server").sm().color(t.dim.gamma_multiply(0.6)));
-                                    ui.add(widgets::text::MonospaceCode::new("from the icons above").xs().color(t.dim.gamma_multiply(0.4)));
+                                    ui.add(widgets::text::MonospaceCode::new("Select a server").sm().color(color_muted(t.dim)));
+                                    ui.add(widgets::text::MonospaceCode::new("from the icons above").xs().color(color_dim(t.dim)));
                                 },
                             );
                         } else if watchlist.discord_selected_channel.is_none() {
@@ -332,11 +287,11 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     egui::Layout::top_down(egui::Align::Center),
                                     |ui| {
                                         ui.add_space(avail.y * 0.2);
-                                        ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(32.0).color(t.dim.gamma_multiply(0.5)));
+                                        ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(32.0).color(color_half(t.dim)));
                                         ui.add_space(8.0);
                                         ui.add(widgets::text::MonospaceCode::new("Bot not in this server").xs().color(t.dim));
                                         ui.add_space(4.0);
-                                        ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(t.dim.gamma_multiply(0.5)));
+                                        ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(color_half(t.dim)));
                                         ui.add_space(8.0);
                                         if ui.add(Button::new("  Add Bot to Server  ")
                                             .variant(Variant::Chrome)
@@ -384,7 +339,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                             ui.horizontal(|ui| {
                                                 ui.add_space(8.0);
                                                 let name = ch.name.as_deref().unwrap_or("UNKNOWN").to_uppercase();
-                                                ui.label(egui::RichText::new(Icon::CARET_DOWN).size(font_xs()).color(t.dim.gamma_multiply(0.5)));
+                                                ui.label(egui::RichText::new(Icon::CARET_DOWN).size(font_xs()).color(color_half(t.dim)));
                                                 ui.add(widgets::text::SectionLabel::new(&name).xs().color(t.dim).gamma(0.6));
                                             });
                                             current_category = ch.id.clone();
@@ -424,10 +379,9 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.horizontal(|ui| {
                                 ui.add_space(8.0);
                                 if ui.add(Button::new(Icon::CARET_RIGHT)
-                                    .variant(Variant::Chrome)
+                                    .variant(Variant::TextOnly)
                                     .size(Size::Sm)
                                     .fg(t.dim)
-                                    .fill(egui::Color32::TRANSPARENT).frameless(true)
                                 ).on_hover_text("Back to channels").clicked() {
                                     watchlist.discord_selected_channel = None;
                                     watchlist.discord_messages.clear();
@@ -438,11 +392,9 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             });
                             ui.add_space(4.0);
 
-                            let author_colors: &[egui::Color32] = &[
-                                egui::Color32::from_rgb(74, 158, 255), egui::Color32::from_rgb(46, 204, 113), egui::Color32::from_rgb(243, 156, 18),
-                                egui::Color32::from_rgb(155, 89, 182), egui::Color32::from_rgb(231, 76, 60), egui::Color32::from_rgb(26, 188, 156),
-                                egui::Color32::from_rgb(241, 196, 15), egui::Color32::from_rgb(52, 152, 219),
-                            ];
+                            // Author-distinction palette is provided by style::chat_author_color
+                            // (backed by the ChatAuthorPalette design-token family). Indexed
+                            // directly by the author-name hash — no local array needed.
 
                             // Messages
                             let input_h = 36.0;
@@ -481,7 +433,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     for msg in &watchlist.discord_messages {
                                         if msg.content.is_empty() { continue; }
                                         let author_hash = msg.author.bytes().fold(0usize, |a, b| a.wrapping_mul(31).wrapping_add(b as usize));
-                                        let author_col = author_colors[author_hash % author_colors.len()];
+                                        let author_col = chat_author_color(author_hash);
                                         let same_author = msg.author == prev_author;
 
                                         if !same_author {

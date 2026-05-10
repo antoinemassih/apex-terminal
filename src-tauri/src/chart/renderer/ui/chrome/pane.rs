@@ -579,7 +579,7 @@ impl<'a> PaneHeaderActions<'a> {
                     let rule_col = rule_color_for(self.border_color);
                     ui.painter().line_segment(
                         [Pos2::new(x, top), Pos2::new(x, bot)],
-                        Stroke::new(1.0, rule_col),
+                        Stroke::new(stroke_std(), rule_col),
                     );
                     ui.add_space(divider_sp);
                 } else if i > 0 {
@@ -825,7 +825,7 @@ impl<'a> AccountStrip<'a> {
                                 .fill(color_alpha(t.bear, 120))
                                 .corner_radius(3.0)
                                 .min_size(egui::vec2(0.0, 22.0))
-                                .stroke(Stroke::new(1.0, t.bear)),
+                                .stroke(Stroke::new(stroke_std(), t.bear)),
                         ).clicked() {
                             on_cancel_all();
                         }
@@ -835,7 +835,7 @@ impl<'a> AccountStrip<'a> {
                                 .fill(color_alpha(t.bear, 180))
                                 .corner_radius(3.0)
                                 .min_size(egui::vec2(0.0, 22.0))
-                                .stroke(Stroke::new(1.0, t.bear)),
+                                .stroke(Stroke::new(stroke_std(), t.bear)),
                         ).clicked() {
                             on_flatten();
                         }
@@ -892,6 +892,9 @@ pub struct FloatingOrderPaneChrome<'a> {
     dim:          Color32,
     toolbar_bg:   Color32,
     toolbar_border: Color32,
+    /// Borrowed active theme — set by `.theme(t)`; falls back to `&THEMES[0]`
+    /// only if the caller forgot to call `.theme()` (which they always do).
+    theme_ref:    Option<&'a super::super::super::gpu::Theme>,
 }
 
 pub struct FloatingOrderPaneChromeResponse {
@@ -918,6 +921,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
             dim:            ft().dim,
             toolbar_bg:     ft().toolbar_bg,
             toolbar_border: ft().toolbar_border,
+            theme_ref:      None,
         }
     }
 
@@ -929,11 +933,12 @@ impl<'a> FloatingOrderPaneChrome<'a> {
     pub fn position_text(mut self, text: &'a str, color: Color32) -> Self {
         self.pos_text = Some((text, color)); self
     }
-    pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
+    pub fn theme(mut self, t: &'a super::super::super::gpu::Theme) -> Self {
         self.accent         = t.accent;
         self.dim            = t.dim;
         self.toolbar_bg     = t.toolbar_bg;
         self.toolbar_border = t.toolbar_border;
+        self.theme_ref      = Some(t);
         self
     }
 
@@ -1008,7 +1013,9 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 ui.add_space(gap_sm());
 
                 // Close button
-                let close_resp = KitButton::icon(Icon::X).variant(Variant::Ghost).show(ui, &crate::chart_renderer::gpu::THEMES[0]);
+                let close_resp = KitButton::icon(Icon::X)
+                    .variant(Variant::Ghost)
+                    .show(ui, self.theme_ref.unwrap_or(&crate::chart_renderer::gpu::THEMES[0]));
                 if close_resp.clicked() { close_clicked = true; }
 
                 ui.add(egui::Separator::default().spacing(2.0));

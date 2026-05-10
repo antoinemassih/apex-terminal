@@ -1,7 +1,6 @@
 //! Dashboard pane — auto-tiling grid of widgets.
 
 use egui;
-use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::layout::EmptyState;
 use super::super::widgets::headers::PaneHeader;

@@ -778,6 +778,7 @@ pub(crate) fn submit_ib_order(symbol: &str, side: &str, qty: u32, order_type_idx
         pair_with: None, option_symbol: None, option_con_id: None,
         trail_amount: None, trail_percent: None, last_price: 0.0,
         tif: tif_idx as u8, outside_rth: false,
+        strategy_id: None, override_warnings: false,
     };
 
     if bracket {

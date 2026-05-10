@@ -4,7 +4,6 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::text::{BodyLabel, SectionLabel};
-use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 
@@ -98,7 +97,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                     if *is_editing {
                         ui.add(BodyLabel::new("Press a key...").size(font_sm()).monospace(true).color(t.accent));
                     } else {
-                        if Button::new("Edit").variant(Variant::Chrome).size(Size::Xs).fg(t.dim).frameless(true).show(ui, t).clicked() {
+                        if Button::new("Edit").variant(Variant::TextOnly).size(Size::Xs).fg(t.dim).show(ui, t).clicked() {
                             watchlist.hotkey_editing_id = Some(*hk_id);
                         }
                     }

@@ -104,6 +104,7 @@ impl Icon {
     pub const TERMINAL: &'static str = ph::TERMINAL;
     pub const CAMERA: &'static str = ph::CAMERA;
     pub const CALENDAR_BLANK: &'static str = ph::CALENDAR_BLANK;
+    pub const CLOCK: &'static str = ph::CLOCK;
 
     // Chart
     pub const CHART_LINE: &'static str = ph::CHART_LINE;

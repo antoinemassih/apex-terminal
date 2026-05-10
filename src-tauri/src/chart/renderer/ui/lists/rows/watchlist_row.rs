@@ -89,10 +89,6 @@ pub struct WatchlistRowResponse {
     pub hovered_zone: WatchlistRowZone,
 }
 
-/// Fallback theme for theme-less callers — first registered project theme.
-fn fallback_theme() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
-}
 
 #[must_use = "WatchlistRow must be finalized with `.show(ui)` to render"]
 pub struct WatchlistRow<'a> {
@@ -271,13 +267,14 @@ impl<'a> WatchlistRow<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> WatchlistRowResponse {
-        let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
-        let bull = self.theme_bull.unwrap_or(fallback_theme().bull);
-        let bear = self.theme_bear.unwrap_or(fallback_theme().bear);
-        let dim = self.theme_dim.unwrap_or(fallback_theme().dim);
-        let fg = self.fg_override.unwrap_or_else(|| self.theme_fg.unwrap_or(fallback_theme().text));
-        let accent = self.theme_accent.unwrap_or(fallback_theme().accent);
-        let border = self.theme_border.unwrap_or(fallback_theme().toolbar_border);
+        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
+        let bull = self.theme_bull.unwrap_or(default_t.bull);
+        let bear = self.theme_bear.unwrap_or(default_t.bear);
+        let dim = self.theme_dim.unwrap_or(default_t.dim);
+        let fg = self.fg_override.unwrap_or_else(|| self.theme_fg.unwrap_or(default_t.text));
+        let accent = self.theme_accent.unwrap_or(default_t.accent);
+        let border = self.theme_border.unwrap_or(default_t.toolbar_border);
         let symbol = self.symbol;
         let price = self.price;
         let change_pct = self.change_pct;
@@ -421,7 +418,7 @@ impl<'a> WatchlistRow<'a> {
                 if star_visible_here {
                     let star_col = match pin_state {
                         PinState::Pinned => color_alpha(theme_ref.accent, ALPHA_HEAVY),
-                        PinState::NotPinned => dim.gamma_multiply(0.3),
+                        PinState::NotPinned => color_very_dim(dim),
                     };
                     let star_x = left + 16.0 + star_x_offset;
                     painter.text(egui::pos2(star_x, cy), egui::Align2::CENTER_CENTER,
@@ -451,13 +448,13 @@ impl<'a> WatchlistRow<'a> {
                     if days <= 14 {
                         let e_text = format!("E:{}", days);
                         let e_galley = painter.layout_no_wrap(e_text.clone(),
-                            egui::FontId::monospace(11.0), Color32::BLACK);
+                            mono_sm(), Color32::BLACK);
                         let pw = e_galley.size().x + 6.0;
                         let pill_rect = egui::Rect::from_min_size(
                             egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0));
                         painter.rect_filled(pill_rect, 6.0, color_alpha(theme_ref.accent, ALPHA_HEAVY));
                         painter.text(egui::pos2(ind_x + pw / 2.0, cy), egui::Align2::CENTER_CENTER,
-                            &e_text, egui::FontId::monospace(11.0), Color32::BLACK);
+                            &e_text, mono_sm(), Color32::BLACK);
                         zones_body.borrow_mut().earnings = Some(pill_rect);
                         ind_x += pw + 3.0;
                     }
@@ -478,7 +475,7 @@ impl<'a> WatchlistRow<'a> {
                 if let Some(corr) = correlation_dot {
                     let dot_col = if corr >= 0.5 { bull }
                         else if corr <= -0.5 { bear }
-                        else { dim.gamma_multiply(0.5) };
+                        else { color_half(dim) };
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 3.0, dot_col);
                     ind_x += 12.0;
                 }
@@ -572,7 +569,7 @@ impl<'a> WatchlistRow<'a> {
                             egui::Align2::CENTER_CENTER,
                             icon_set.x,
                             egui::FontId::proportional(11.0),
-                            dim.gamma_multiply(0.5),
+                            color_half(dim),
                         );
                     }
                 }

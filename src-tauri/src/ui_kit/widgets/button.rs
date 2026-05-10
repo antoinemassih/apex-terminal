@@ -211,6 +211,40 @@ impl<'a> Button<'a> {
         paint_button(ui, theme, self, None)
     }
 
+    /// Render as a menu trigger. The button paints via the design system,
+    /// and `body` runs inside the popup when the user clicks. Replaces raw
+    /// `ui.menu_button(RichText::new(label).monospace().size(font_sm()).color(t.dim), ...)`
+    /// patterns — the styling now matches the rest of the toolbar.
+    ///
+    /// Returns the trigger's `Response`. The popup is auto-managed by egui.
+    pub fn show_menu<R>(
+        self,
+        ui: &mut Ui,
+        theme: &dyn ComponentTheme,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<Option<R>> {
+        // Compose a RichText label that mirrors the Button's idle styling.
+        // This keeps the trigger looking like a Button even though egui's
+        // menu_button owns the click-and-popup behaviour.
+        let default_size = match self.size {
+            Size::Xs => st::font_xs(),
+            Size::Sm => st::font_sm(),
+            Size::Md => st::font_md(),
+            Size::Lg => st::font_lg(),
+        };
+        let fg = self.fg_override.unwrap_or_else(|| theme.dim());
+        let label_text = if self.icon_only && self.label.is_empty() {
+            self.leading_icon.unwrap_or("").to_string()
+        } else if let Some(icon) = self.leading_icon {
+            format!("{}  {}", icon, self.label)
+        } else {
+            self.label.to_string()
+        };
+        let glyph_size = self.glyph_px.unwrap_or(default_size);
+        let rich = RichText::new(label_text).size(glyph_size).color(fg);
+        ui.menu_button(rich, body)
+    }
+
     /// Paint the button at an absolute rect using the provided painter.
     /// Use when the call site has pre-allocated a rect (e.g., the pane
     /// header's hand-laid-out right cluster). Returns a Response built
@@ -242,7 +276,7 @@ impl<'a> Widget for Button<'a> {
         // Fallback: first registered chart theme. This keeps non-themed
         // call sites compiling; prefer `.show(ui, theme)` when you have
         // an explicit theme handle.
-        let theme = &crate::chart_renderer::gpu::THEMES[0];
+        let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, theme)
     }
 }
@@ -572,6 +606,18 @@ fn paint_button<'a>(
             }
         }
 
+        // Focus ring overlay — drawn on top of all other paint so the
+        // keyboard focus indicator is visible regardless of variant.
+        if response.has_focus() {
+            let ring_color = st::color_alpha(theme.accent(), st::alpha_active());
+            painter.rect_stroke(
+                rect.expand(2.0),
+                cr,
+                Stroke::new(2.0, ring_color),
+                StrokeKind::Outside,
+            );
+        }
+
         // Cursor.
         if hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -683,9 +729,10 @@ fn paint_secondary_with_treatment(
 
 fn default_radius(v: Variant) -> f32 {
     match v {
-        Variant::Primary | Variant::Secondary | Variant::Danger => 4.0,
-        Variant::Ghost => 2.0,
-        Variant::Link => 0.0,
+        Variant::Primary | Variant::Secondary | Variant::Danger | Variant::NeutralAction => 4.0,
+        Variant::Ghost | Variant::MutedIcon | Variant::InlineClose => 2.0,
+        Variant::Link | Variant::TextOnly | Variant::Tab => 0.0,
+        Variant::Chip => 99.0, // pill
         Variant::Chrome => 4.0,
     }
 }
@@ -754,6 +801,69 @@ fn resolve_palette(
             // Defaults are transparent / theme.text(); caller is expected to
             // override via `.fill()` / `.stroke()` / `.fg()`. Hover lightens
             // the resolved fill by 8% unless overridden via `.hover_fill()`.
+            transparent,
+            transparent,
+            transparent,
+            text,
+            text,
+            transparent,
+            transparent,
+        ),
+        // ── 2026-05 additions ──────────────────────────────────────────────
+        Variant::Chip => (
+            // Toggle chip: idle = transparent, hover = subtle text overlay,
+            // active = soft accent fill. Caller sets `.active(bool)`.
+            transparent,
+            st::color_alpha(text, 18),
+            st::color_alpha(accent, st::alpha_soft()),
+            theme.dim().gamma_multiply(0.6),
+            text,
+            transparent,
+            st::color_alpha(accent, st::alpha_active()),
+        ),
+        Variant::Tab => (
+            // Tab: frameless, transparent. fg cycles via `.active(bool)`.
+            transparent,
+            transparent,
+            transparent,
+            theme.dim().gamma_multiply(0.6),
+            text,
+            transparent,
+            transparent,
+        ),
+        Variant::InlineClose => (
+            // Small icon-X close affordance. Hover paints a subtle dim overlay
+            // instead of an accent so it doesn't fight modal headings.
+            transparent,
+            st::color_alpha(text, 18),
+            transparent,
+            theme.dim().gamma_multiply(0.7),
+            text,
+            transparent,
+            transparent,
+        ),
+        Variant::MutedIcon => (
+            // Ghost-like icon button starting muted; hover restores full text.
+            transparent,
+            st::color_alpha(text, 18),
+            st::color_alpha(accent, st::alpha_tint()),
+            theme.dim().gamma_multiply(0.5),
+            text,
+            transparent,
+            transparent,
+        ),
+        Variant::NeutralAction => (
+            // Utility action (FLATTEN etc.) — neutral gray, dark fg.
+            Color32::from_gray(170),
+            Color32::from_gray(190),
+            Color32::from_gray(150),
+            Color32::BLACK,
+            Color32::BLACK,
+            border,
+            transparent,
+        ),
+        Variant::TextOnly => (
+            // Frameless text. Caller sets fg.
             transparent,
             transparent,
             transparent,

@@ -10,8 +10,6 @@ use crate::chart::renderer::ui::foundation::shell::CardShell;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
-
 #[must_use = "MetricCard must be rendered with `.show(ui)`"]
 pub struct MetricCard<'a> {
     label: &'a str,
@@ -28,10 +26,11 @@ impl<'a> MetricCard<'a> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) {
-        let bull = self.theme.map(|t| t.bull).unwrap_or_else(|| ft().bull);
-        let bear = self.theme.map(|t| t.bear).unwrap_or_else(|| ft().bear);
-        let dim  = self.theme.map(|t| t.dim).unwrap_or_else(|| ft().dim);
-        let text = self.theme.map(|t| t.text).unwrap_or_else(|| ft().text);
+        let t = self.theme.unwrap_or(&crate::chart_renderer::gpu::THEMES[0]);
+        let bull = t.bull;
+        let bear = t.bear;
+        let dim  = t.dim;
+        let text = t.text;
         let theme = self.theme;
         let label = self.label;
         let value = self.value;

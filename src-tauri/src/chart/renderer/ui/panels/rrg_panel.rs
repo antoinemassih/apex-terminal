@@ -405,7 +405,7 @@ fn draw_rrg_content(
 
     // ── Axis labels ──
     let axis_label_color = color_alpha(t.dim, alpha_dim());
-    let axis_font = egui::FontId::monospace(11.0);
+    let axis_font = mono_sm();
     // X-axis label
     painter.text(
         egui::pos2(plot_rect.center().x, rect.bottom() - 4.0),
@@ -425,7 +425,7 @@ fn draw_rrg_content(
 
     // ── Axis tick marks ──
     let tick_color = color_alpha(t.dim, alpha_subtle());
-    let tick_font = egui::FontId::monospace(11.0);
+    let tick_font = mono_sm();
     // X-axis ticks
     let x_step = ((max_x - min_x) / 4.0).max(0.5);
     let mut xv = (min_x / x_step).ceil() * x_step;
@@ -468,7 +468,7 @@ fn draw_rrg_content(
     }
 
     // ── Quadrant labels (corners, very faded) ──
-    let quad_font = egui::FontId::monospace(11.0);
+    let quad_font = mono_sm();
     let quad_alpha = 40u8;
     // Leading (top-right)
     painter.text(
@@ -558,7 +558,7 @@ fn draw_rrg_content(
             egui::pos2(label_x, pos.y),
             label_align,
             &sector.symbol,
-            egui::FontId::monospace(11.0),
+            mono_sm(),
             egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200),
         );
     }

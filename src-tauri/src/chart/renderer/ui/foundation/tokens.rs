@@ -51,20 +51,11 @@ impl Size {
     }
 }
 
-/// Vertical density mode applied across rows / lists / cards.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Density { Compact, Default, Comfortable }
-
-impl Density {
-    /// Scale factor applied to vertical padding. 1.0 == Default.
-    pub fn vscale(self) -> f32 {
-        match self {
-            Density::Compact => 0.65,
-            Density::Default => 1.0,
-            Density::Comfortable => 1.4,
-        }
-    }
-}
+// `Density` enum removed 2026-05 — never imported. The actual density knob
+// lives on `StyleSettings::density: u8` and is consumed by
+// `style_row_height` / `style_button_height` / `style_tab_height` in
+// `chart/renderer/ui/style.rs`. If we re-introduce a typed enum, name it
+// `DensityMode` so it doesn't collide with the field.
 
 /// Radius scale. Pill is fully rounded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

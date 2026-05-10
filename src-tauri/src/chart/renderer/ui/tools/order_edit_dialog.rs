@@ -5,11 +5,12 @@
 
 use egui::Context;
 use crate::chart_renderer::gpu::Theme;
-use crate::chart_renderer::trading::{OrderSide, OrderLevel};
-use crate::chart_renderer::ui::style::{color_alpha, dialog_header, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md};
+use crate::chart_renderer::trading::OrderSide;
+use crate::chart_renderer::ui::style::{color_alpha, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, shadow_color_alpha, stroke_thin};
 use crate::chart_renderer::ui::widgets::inputs::TextInput;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
+use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 
 /// Everything the dialog needs to read (no mutation — mutations come back via [`OrderEditOutput`]).
 pub struct OrderEditCtx<'a> {
@@ -61,21 +62,26 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
         format!("EDIT {}", c.order_label)
     };
 
-    egui::Window::new(format!("order_edit_{}", c.edit_id))
-        .fixed_pos(popup_pos)
-        .fixed_size(egui::vec2(dialog_w, 0.0))
-        .title_bar(false)
-        .frame(egui::Frame::popup(&c.ctx.style())
-            .fill(c.t.toolbar_bg)
-            .inner_margin(0.0)
-            .stroke(egui::Stroke::new(0.5, color_alpha(c.t.toolbar_border, 60)))
-            .corner_radius(6.0)
-            .shadow(egui::epaint::Shadow {
-                offset: [0, 4], blur: 12, spread: 2,
-                color: egui::Color32::from_rgba_unmultiplied(0, 0, 0, 80),
-            }))
-        .show(c.ctx, |ui| {
-            if dialog_header(ui, &title, c.t.dim) { close_editor = true; }
+    let resp = Modal::new(&title)
+        .id(&format!("order_edit_{}", c.edit_id))
+        .ctx(c.ctx)
+        .theme(c.t)
+        .size(egui::vec2(dialog_w, 0.0))
+        .anchor(Anchor::Area { pos: popup_pos })
+        .header_style(HeaderStyle::Dialog)
+        .frame_kind(FrameKind::Custom(
+            egui::Frame::popup(&c.ctx.style())
+                .fill(c.t.toolbar_bg)
+                .inner_margin(0.0)
+                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(c.t.toolbar_border, 60)))
+                .corner_radius(6.0)
+                .shadow(egui::epaint::Shadow {
+                    offset: [0, 4], blur: 12, spread: 2,
+                    color: shadow_color_alpha(c.t, 80),
+                })
+        ))
+        .separator(false)
+        .show(|ui| {
             ui.add_space(gap_sm());
             let m = gap_lg();
 
@@ -181,6 +187,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
             });
             ui.add_space(gap_sm());
         });
+    if resp.closed { close_editor = true; }
 
     OrderEditOutput { close_editor, apply_price, apply_qty, cancel_it }
 }

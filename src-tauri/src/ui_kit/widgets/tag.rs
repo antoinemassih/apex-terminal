@@ -53,6 +53,7 @@ pub struct Tag<'a> {
     closable: bool,
     dot: bool,
     outline: bool,
+    disabled: bool,
     _lt: std::marker::PhantomData<&'a ()>,
 }
 
@@ -70,6 +71,7 @@ impl<'a> Tag<'a> {
             closable: false,
             dot: false,
             outline: false,
+            disabled: false,
             _lt: std::marker::PhantomData,
         }
     }
@@ -86,9 +88,11 @@ impl<'a> Tag<'a> {
     pub fn closable(mut self, v: bool) -> Self { self.closable = v; self }
     pub fn dot(mut self, v: bool) -> Self { self.dot = v; self }
     pub fn outline(mut self, v: bool) -> Self { self.outline = v; self }
+    pub fn disabled(mut self, d: bool) -> Self { self.disabled = d; self }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> TagResponse {
-        let tone_col = self.tone.color(theme);
+        let dim_mul = if self.disabled { 0.5 } else { 1.0 };
+        let tone_col = self.tone.color(theme).gamma_multiply(dim_mul);
         let font_size = match self.size { Size::Xs => st::font_xs() - 1.0, _ => st::font_xs() };
         let pad_x = st::gap_xs();
         let pad_y: f32 = 2.0;
@@ -149,8 +153,9 @@ impl<'a> Tag<'a> {
                 x += icon_gap;
                 let close_center = Pos2::new(x + close_size * 0.5, cy);
                 let close_rect = egui::Rect::from_center_size(close_center, Vec2::splat(close_size + 4.0));
-                let close_resp = ui.interact(close_rect, response.id.with("close"), Sense::click());
-                let col = if close_resp.hovered() {
+                let close_sense = if self.disabled { Sense::hover() } else { Sense::click() };
+                let close_resp = ui.interact(close_rect, response.id.with("close"), close_sense);
+                let col = if !self.disabled && close_resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     st::color_alpha(tone_col, 255)
                 } else {
@@ -163,7 +168,7 @@ impl<'a> Tag<'a> {
                     FontId::proportional(close_size),
                     col,
                 );
-                if close_resp.clicked() { closed = true; }
+                if !self.disabled && close_resp.clicked() { closed = true; }
             }
         }
 
@@ -173,7 +178,7 @@ impl<'a> Tag<'a> {
 
 impl<'a> Widget for Tag<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let theme = &crate::chart_renderer::gpu::THEMES[0];
+        let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, theme).response
     }
 }

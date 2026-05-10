@@ -5,9 +5,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::AnalysisTab;
-use super::super::widgets::text::SectionLabel;
 use crate::ui_kit::widgets::Button;
-use crate::ui_kit::widgets::tokens::{Variant, Size};
+use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::frames::PanelFrame;
 use super::super::widgets::headers::PanelHeaderWithClose;
 
@@ -40,8 +39,13 @@ pub(crate) fn draw(
         .show(ctx, |ui| {
             let panel_w = ui.available_width();
 
-            // Header: title + add-section button + close
-            let closed = PanelHeaderWithClose::new("ANALYSIS").theme(t).show_with(ui, |ui| {
+            // Header: title + add-section button + close. Pre-resolve
+            // pane-aligned metrics outside the mutating closure.
+            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+            let title_font_size = watchlist.pane_header_size.title_font();
+            let closed = PanelHeaderWithClose::new("ANALYSIS").theme(t)
+                .height(header_h).font_size(title_font_size)
+                .show_with(ui, |ui| {
                 if ui.add(Button::new("+").variant(Variant::Chrome).fill(egui::Color32::TRANSPARENT).fg(t.dim).min_size(egui::vec2(20.0, 20.0)).frameless(true)).clicked() {
                     let used: Vec<AnalysisTab> = watchlist.analysis_splits.iter().map(|s| s.tab).collect();
                     let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
@@ -86,24 +90,17 @@ pub(crate) fn draw(
                     // Render tabs inline
                     for (t_val, t_label) in ALL_TABS {
                         let sel = tab == *t_val;
-                        let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        if ui.add(Button::new(*t_label).variant(Variant::Chrome)
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE)
-                            .fg(fg)
-                            .min_size(egui::vec2(0.0, 22.0))
-                            .frameless(true)).clicked() {
+                        if ui.add(Button::new(*t_label)
+                            .variant(Variant::Tab)
+                            .active(sel)).clicked() {
                             watchlist.analysis_splits[i].tab = *t_val;
                         }
                     }
                     // Close button for this section
                     if can_close {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(Button::new("\u{00D7}").variant(Variant::Chrome)
-                                .fill(egui::Color32::TRANSPARENT)
-                                .fg(t.dim.gamma_multiply(0.4))
-                                .min_size(egui::vec2(18.0, 18.0))
-                                .frameless(true)).clicked() {
+                            if ui.add(Button::icon(crate::ui_kit::icons::Icon::X)
+                                .variant(Variant::InlineClose)).clicked() {
                                 remove_idx = Some(i);
                             }
                         });
@@ -113,7 +110,7 @@ pub(crate) fn draw(
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
                      egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-                    egui::Stroke::new(0.5, color_alpha(t.toolbar_border, alpha_faint())));
+                    egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
 
                 // Content
                 egui::ScrollArea::vertical().id_salt(format!("analysis_sec_{}", i)).max_height(h).show(ui, |ui| {
