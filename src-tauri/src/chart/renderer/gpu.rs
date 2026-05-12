@@ -3475,10 +3475,12 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
     // on Retina (2x) the display floor takes over unless the user zooms past it.
     ctx.set_pixels_per_point(watchlist.font_scale.max(watchlist.native_dpi_scale));
     let account_data_cached = read_account_data();
-    // Reconcile OrderManager with IB backend state
-    if let Some((_, _, ref ib_orders)) = account_data_cached {
-        super::trading::order_manager::reconcile_with_ib(ib_orders);
-    }
+    // NOTE: reconcile_with_ib is NOT called from the render loop — the
+    // background hot-orders poller in `trading/mod.rs` calls it every 1s.
+    // Calling it per-frame (60Hz) here was the source of duplicate FILLED
+    // toasts: the same broker payload was reconciled both by the poller
+    // and the frame loop, and any transient state mismatch could re-fire
+    // the toast. The poller is the single canonical caller now.
     // Drain order manager toasts (fills, rejections, cancellations) into PENDING_TOASTS
     {
         let order_toasts = super::trading::order_manager::drain_order_toasts();

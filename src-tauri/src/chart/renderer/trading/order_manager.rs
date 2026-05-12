@@ -412,6 +412,13 @@ pub(crate) struct OrderManager {
     recent_signatures: HashMap<OrderSignature, Instant>,
     // Pending actions for the render thread to process
     pending_toasts: Vec<String>,
+    // Recent toast messages with timestamp — used to silence duplicates within
+    // a short window. The reconciler can match the same logical order across
+    // multiple IB endpoints (/executions, /orders?status=submitted) in a
+    // single poll; without dedup the operator sees the same FILLED/CANCELLED
+    // line N times. Window is 3 seconds — longer than any reasonable retry
+    // burst, shorter than the operator's perception of "a new event".
+    recent_toast_msgs: HashMap<String, Instant>,
     // Wave 8a follow-up: queue of soft-warning approvals awaiting operator
     // confirmation. UI sites push here on `OrderResult::NeedsApproval`; the
     // per-frame UI loop drains and renders a modal that, on "Override and
@@ -432,6 +439,13 @@ pub(crate) struct OrderManager {
     // fail here. These fields default in `new()` and are not persisted.
     pub(crate) auto_halted_due_to_disconnect: bool,
     pub(crate) last_broker_contact: Option<u64>,
+    // ── Reconcile startup grace ──
+    // The first reconcile sweep after process start catches up to broker
+    // truth — including yesterday's trades that filled while we were closed.
+    // Toast emissions during that catch-up are not "new events" from the
+    // operator's perspective, they're history. Silence them until first
+    // sweep completes. Flips to `true` at end of `reconcile_with_ib_inner`.
+    initial_reconcile_done: bool,
     // ── Wave 8a Task B: submit-rate token bucket (runtime only; not persisted) ──
     // Caps how fast a user (or a misbehaving widget) can fire submits. Cancels
     // and modifies are deliberately NOT rate-limited — those are remediations,
@@ -456,6 +470,7 @@ impl OrderManager {
             risk_limits: RiskLimits::default(),
             recent_signatures: HashMap::new(),
             pending_toasts: Vec::new(),
+            recent_toast_msgs: HashMap::new(),
             pending_approvals: Vec::new(),
             orders_submitted: 0,
             orders_filled: 0,
@@ -465,6 +480,7 @@ impl OrderManager {
             halted: false,
             auto_halted_due_to_disconnect: false,
             last_broker_contact: None,
+            initial_reconcile_done: false,
             // Token bucket starts full so cold-start submits aren't penalized.
             submit_tokens: 20.0,
             submit_max_tokens: 20.0,
@@ -491,6 +507,32 @@ impl OrderManager {
         } else {
             false
         }
+    }
+
+    /// Push a toast, skipping if the same message was pushed within the last
+    /// 3 seconds. Prevents the reconciler from spamming the operator when the
+    /// same logical order surfaces across multiple broker endpoints in one
+    /// poll cycle (e.g., /executions AND /orders?status=submitted both
+    /// referencing the same fill).
+    fn push_toast_deduped(&mut self, msg: String) {
+        const TOAST_DEDUP_MS: u128 = 3_000;
+        // Startup catch-up: silently swallow toasts emitted while the first
+        // reconcile sweep is still bringing us up to broker truth. Without
+        // this, every order that was Working at shutdown but filled overnight
+        // would re-toast on the next launch as if it just happened.
+        if !self.initial_reconcile_done {
+            return;
+        }
+        let now = Instant::now();
+        // Opportunistic GC: drop stale entries so the map doesn't grow.
+        self.recent_toast_msgs.retain(|_, t| now.duration_since(*t).as_millis() < TOAST_DEDUP_MS);
+        if let Some(last) = self.recent_toast_msgs.get(&msg) {
+            if now.duration_since(*last).as_millis() < TOAST_DEDUP_MS {
+                return; // suppress duplicate
+            }
+        }
+        self.recent_toast_msgs.insert(msg.clone(), now);
+        self.pending_toasts.push(msg);
     }
 
     /// Test/dev-tool hook: override the submit rate-limit shape. `max` is the
@@ -2412,7 +2454,15 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
 
         // ── Rule 2: pending → broker has it → ACK the pending.
         // Rule 3 (else): Working/PartialFill → broker still has it → just refresh.
+        // Rule 7 (terminal-sticky): once an order is Filled/Cancelled/Rejected
+        // locally, never let a different broker endpoint revert it. The
+        // /executions endpoint reports `filled` while /orders?status=submitted
+        // can still list the same order as `submitted` for a window — without
+        // this rule, the state oscillated Working↔Filled across polls and
+        // each Working→Filled flip emitted another FILLED toast.
         let new_state = match (prev_state, broker_state) {
+            // Rule 7: terminal states are absorbing — broker truth doesn't undo them.
+            (s, _) if s.is_terminal() => s,
             // Rule 2a: PendingSubmit + Submitted/Working/Filled → adopt broker
             (OrderState::PendingSubmit, s) if matches!(s, OrderState::Working | OrderState::PartialFill | OrderState::Filled) => s,
             // Rule 2b: PendingCancel + Cancelled → confirm cancel
@@ -2456,20 +2506,46 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             let qty = mgr.orders[idx].qty;
             let fq = mgr.orders[idx].filled_qty;
             let avg = mgr.orders[idx].avg_fill_price;
+            // Toast firing rules — surgical to prevent repeated emissions
+            // when the broker streams multiple execution records (one per
+            // fill chunk) for the same trade. Each record bumps filled_qty
+            // and used to re-toast even though state didn't transition.
             match new_state {
                 OrderState::Filled => {
-                    fills += 1;
-                    mgr.pending_toasts.push(format!("FILLED: {} {} x{} @ {:.2}", side_str, sym, fq, avg));
+                    // FILLED is terminal — toast ONLY on the actual
+                    // transition (state_changed). Subsequent filled_qty
+                    // updates while already Filled (broker re-asserting the
+                    // same trade from /executions) must be silent.
+                    if state_changed {
+                        fills += 1;
+                        // Display fill qty: prefer the broker-reported filled_qty;
+                        // fall back to the order's own qty if the broker didn't
+                        // populate `filledQty` (some /executions shapes only
+                        // carry price + symbol).
+                        let display_qty = if fq > 0 { fq } else { qty };
+                        mgr.push_toast_deduped(format!("FILLED: {} {} x{} @ {:.2}", side_str, sym, display_qty, avg));
+                    }
                 }
                 OrderState::PartialFill => {
-                    mgr.pending_toasts.push(format!("PARTIAL: {} {} {}/{} @ {:.2}", side_str, sym, fq, qty, avg));
+                    // PartialFill is genuinely re-fireable — each new chunk
+                    // is informative. But still honor the dedup window so
+                    // identical reads from /executions across polls don't
+                    // spam.
+                    if state_changed || filled_changed {
+                        let display_fq = if fq > 0 { fq } else { qty };
+                        mgr.push_toast_deduped(format!("PARTIAL: {} {} {}/{} @ {:.2}", side_str, sym, display_fq, qty, avg));
+                    }
                 }
                 OrderState::Cancelled => {
-                    mgr.pending_toasts.push(format!("CANCELLED: {} {} x{}", side_str, sym, qty));
+                    if state_changed {
+                        mgr.push_toast_deduped(format!("CANCELLED: {} {} x{}", side_str, sym, qty));
+                    }
                 }
                 OrderState::Rejected => {
-                    let reason = mgr.orders[idx].rejection_reason.clone().unwrap_or_default();
-                    mgr.pending_toasts.push(format!("REJECTED: {} {} x{} ({})", side_str, sym, qty, reason));
+                    if state_changed {
+                        let reason = mgr.orders[idx].rejection_reason.clone().unwrap_or_default();
+                        mgr.push_toast_deduped(format!("REJECTED: {} {} x{} ({})", side_str, sym, qty, reason));
+                    }
                 }
                 _ => {}
             }
@@ -2595,6 +2671,9 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
     }
 
     snapshot::publish(&mgr.orders);
+    // First sweep complete — from this point on, state transitions are
+    // genuine new events the operator should see, not catch-up to yesterday.
+    mgr.initial_reconcile_done = true;
 }
 
 fn epoch_ms() -> u64 {
@@ -2994,6 +3073,10 @@ mod tests {
         // Tighten dedup cooldown so cooldown-elapsed tests run fast (default
         // is 500ms; tests bring it down to 50ms).
         m.risk_limits.dedup_cooldown_ms = 50;
+        // Skip the startup catch-up gate so tests that assert on toast pushes
+        // (or future ones) see immediate emission. Production goes through
+        // reconcile_with_ib_inner which flips this flag at end-of-sweep.
+        m.initial_reconcile_done = true;
         m
     }
 
