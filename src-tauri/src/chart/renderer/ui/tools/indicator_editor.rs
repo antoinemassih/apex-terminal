@@ -78,7 +78,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(4.0);
-                    if icon_btn(ui, Icon::X, color_subtle(t.dim), FONT_LG).on_hover_text("Close").clicked() {
+                    if icon_btn(ui, Icon::X, color_subtle(t.dim), font_lg()).on_hover_text("Close").clicked() {
                         hdr_close = true;
                     }
                 });

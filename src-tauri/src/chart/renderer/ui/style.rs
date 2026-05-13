@@ -803,7 +803,9 @@ pub fn segmented_control(
     let mut union_rect: Option<egui::Rect> = None;
     let n = labels.len();
     let rsm = radius_sm() as u8;
-    let seg_btn_h = 20.0;
+    // Match Size::Sm button height (22px) so segmented controls don't read
+    // 2px shorter than adjacent toolbar buttons.
+    let seg_btn_h = 22.0;
     let seg_pad_x = 5.0;
 
     for (i, label) in labels.iter().enumerate() {

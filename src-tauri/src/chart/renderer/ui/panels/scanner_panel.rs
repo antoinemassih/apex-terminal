@@ -89,12 +89,12 @@ pub(crate) fn draw_content(
             ui.add(Spinner::new().sm().theme(t));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if icon_btn(ui, Icon::ARROW_COUNTER_CLOCKWISE, t.dim, FONT_MD)
+            if icon_btn(ui, Icon::ARROW_COUNTER_CLOCKWISE, t.dim, font_md())
                 .on_hover_text("Refresh now").clicked()
             {
                 watchlist.scanner_last_fetch = None;
             }
-            if icon_btn(ui, Icon::PLUS, t.dim, FONT_MD)
+            if icon_btn(ui, Icon::PLUS, t.dim, font_md())
                 .on_hover_text("New custom scanner").clicked()
             {
                 watchlist.scanner_builder_open = !watchlist.scanner_builder_open;
@@ -201,7 +201,7 @@ pub(crate) fn draw_content(
 
                 let header_resp = ui.horizontal(|ui| {
                     let caret = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                    icon_btn(ui, caret, t.dim, FONT_MD);
+                    icon_btn(ui, caret, t.dim, font_md());
 
                     let color = if is_preset { t.accent } else { t.dim };
                     let label_resp = ui.add(egui::Label::new(

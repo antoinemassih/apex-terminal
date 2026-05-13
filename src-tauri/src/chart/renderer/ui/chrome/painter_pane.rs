@@ -44,7 +44,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeK
 
 use super::super::style::{
     alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
-    color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_sm, gap_md, gap_sm, gap_xs,
+    color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_md_plus, font_sm, gap_md, gap_sm, gap_xs,
     radius_sm, radius_md, stroke_hair, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
@@ -516,7 +516,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let (bg, fg) = nav_colors(self.can_go_back, resp.hovered(), t, ui);
                 painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_LEFT,
-                    FontId::proportional(font_md() + 1.0), fg);
+                    FontId::proportional(font_md_plus()), fg);
                 if resp.clicked() && self.can_go_back { out.clicked_back = true; }
                 cx += NAV_BTN_SIZE + gap_xs();
             }
@@ -527,7 +527,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let (bg, fg) = nav_colors(self.can_go_fwd, resp.hovered(), t, ui);
                 painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_RIGHT,
-                    FontId::proportional(font_md() + 1.0), fg);
+                    FontId::proportional(font_md_plus()), fg);
                 if resp.clicked() && self.can_go_fwd { out.clicked_fwd = true; }
                 cx += NAV_BTN_SIZE + gap_sm();
             }
@@ -663,9 +663,13 @@ impl<'a> PainterPaneHeader<'a> {
                 cx += tab_w + 1.0;
             }
         } else if let Some(sym) = self.symbol {
-            // Simple label
+            // Simple label. Bump the symbol one tier above the title baseline
+            // so the pane-title reads as the primary header (vs axis labels /
+            // chip text). Keep the tab-strip path on title_font so dense tab
+            // rows don't grow.
             let label_color = if self.is_active { t.bull } else { t.text };
-            let sym_galley = painter.layout_no_wrap(sym.to_string(), title_font.clone(), label_color);
+            let sym_font = FontId::monospace(crate::chart_renderer::ui::style::font_lg());
+            let sym_galley = painter.layout_no_wrap(sym.to_string(), sym_font.clone(), label_color);
             // Allocate a click rect for the symbol label so callers can anchor pickers.
             let sym_label_rect = Rect::from_min_size(
                 pos2(cx, rect.center().y - sym_galley.size().y / 2.0),
@@ -689,8 +693,8 @@ impl<'a> PainterPaneHeader<'a> {
             let sym_clicked = sym_resp.clicked();
             let p0 = pos2(cx + 2.0, rect.center().y);
             painter.text(pos2(p0.x + 0.5, p0.y), Align2::LEFT_CENTER, sym,
-                title_font.clone(), label_color);
-            painter.text(p0, Align2::LEFT_CENTER, sym, title_font.clone(), label_color);
+                sym_font.clone(), label_color);
+            painter.text(p0, Align2::LEFT_CENTER, sym, sym_font.clone(), label_color);
             cx += sym_galley.size().x + gap_md() + 4.0;
 
             // Option badges: C/P pill + DTE countdown (shared helper).
@@ -837,7 +841,7 @@ impl<'a> PainterPaneHeader<'a> {
             painter.text(
                 expand_rect.center(), Align2::CENTER_CENTER,
                 Icon::ARROWS_OUT_SIMPLE,
-                FontId::proportional(font_md() + 1.0), col,
+                FontId::proportional(font_md_plus()), col,
             );
             if resp.clicked() { out.clicked_expand = true; }
             // Divider between expand and ORDER/DOM cluster

@@ -360,7 +360,7 @@ if watchlist.open {
                                             }
                                         }
                                         let lbl_col = if visible { t.text } else { t.dim.gamma_multiply(0.4) };
-                                        ui.add(MonospaceCode::new(s.label).size_px(FONT_XS).color(lbl_col));
+                                        ui.add(MonospaceCode::new(s.label).size_px(font_xs()).color(lbl_col));
                                     });
                                 }
                             });

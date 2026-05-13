@@ -203,7 +203,7 @@ SettingsTab::Appearance => {
                     ui.painter().text(
                         egui::pos2(r.center().x, r.top() + 14.0),
                         egui::Align2::CENTER_CENTER,
-                        name, egui::FontId::monospace(FONT_SM), name_col);
+                        name, egui::FontId::monospace(font_sm()), name_col);
 
                     // Type badge + sample
                     let type_label = if is_mono[i.min(is_mono.len()-1)] { "mono" } else { "sans" };
@@ -217,7 +217,7 @@ SettingsTab::Appearance => {
                     ui.painter().text(
                         egui::pos2(r.right() - 8.0, r.bottom() - 12.0),
                         egui::Align2::RIGHT_CENTER,
-                        "0123 AAPL $9.50", egui::FontId::monospace(FONT_XS), sample_col);
+                        "0123 AAPL $9.50", egui::FontId::monospace(font_xs()), sample_col);
 
                     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if resp.clicked() && !sel {

@@ -1450,6 +1450,26 @@ fn render_chart_pane(
                 &format!("{} {}", chart.symbol, chart.timeframe),
                 mono_xs_plus(), color_alpha(t.dim, text_alpha));
             ui.ctx().request_repaint();
+        } else {
+            // Truly empty pane: render a single calm line so the surface
+            // doesn't read as broken. Hierarchy: title (sm, muted) +
+            // hint (xs, very dim).
+            let center = egui::pos2(rect.left() + cw / 2.0, rect.top() + pt + ch / 2.0);
+            let lp = ui.painter();
+            lp.text(
+                egui::pos2(center.x, center.y - 6.0),
+                egui::Align2::CENTER_CENTER,
+                "No symbol",
+                mono_sm(),
+                color_alpha(t.dim, style::alpha_strong()),
+            );
+            lp.text(
+                egui::pos2(center.x, center.y + 10.0),
+                egui::Align2::CENTER_CENTER,
+                "Click pane title to set",
+                mono_xs(),
+                color_alpha(t.dim, style::alpha_muted()),
+            );
         }
         // ── Option-pane MARK toggle (visible even while bars are loading) ──
         if chart.is_option {
@@ -1634,8 +1654,9 @@ fn render_chart_pane(
             chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.2}", p);
             let f = mono_xs_plus();
             let ax = rect.left() + cw + pr - 4.0; // 4px gap from right edge
-            painter.text(egui::pos2(ax + 0.5, y), egui::Align2::RIGHT_CENTER, &chart.fmt_buf, f.clone(), t.text);
-            painter.text(egui::pos2(ax, y), egui::Align2::RIGHT_CENTER, &chart.fmt_buf, f, t.text);
+            let axis_col = t.dim.gamma_multiply(0.85);
+            painter.text(egui::pos2(ax + 0.5, y), egui::Align2::RIGHT_CENTER, &chart.fmt_buf, f.clone(), axis_col);
+            painter.text(egui::pos2(ax, y), egui::Align2::RIGHT_CENTER, &chart.fmt_buf, f, axis_col);
         }
         p+=step;
     }

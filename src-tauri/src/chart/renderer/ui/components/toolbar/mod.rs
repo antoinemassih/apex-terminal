@@ -128,7 +128,7 @@ impl<'a> TimeframeSelector<'a> {
                     .fill(bg)
                     .stroke(Stroke::new(stroke_thin(), border))
                     .corner_radius(pill_r)
-                    .min_size(egui::vec2(0.0, 20.0)),
+                    .min_size(egui::vec2(0.0, 22.0)),
             );
             if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

@@ -992,7 +992,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
             ui.label(
                 egui::RichText::new(self.title)
                     .monospace()
-                    .size(font_xs() + 1.0)
+                    .size(font_xs_plus())
                     .strong()
                     .color(color_alpha(dim, alpha_strong())),
             );
@@ -1002,7 +1002,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 ui.label(
                     egui::RichText::new(text)
                         .monospace()
-                        .size(font_xs() + 1.0)
+                        .size(font_xs_plus())
                         .strong()
                         .color(color),
                 );
@@ -1024,7 +1024,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 let exp_icon = if advanced { Icon::MINUS } else { Icon::PLUS };
                 let exp_resp = ui.add(
                     egui::Button::new(
-                        egui::RichText::new(exp_icon).size(font_xs() + 1.0).color(dim.gamma_multiply(0.5)),
+                        egui::RichText::new(exp_icon).size(font_xs_plus()).color(dim.gamma_multiply(0.5)),
                     )
                     .fill(Color32::TRANSPARENT)
                     .min_size(egui::vec2(20.0, 18.0))

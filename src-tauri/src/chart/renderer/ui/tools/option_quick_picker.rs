@@ -79,9 +79,9 @@ pub(crate) fn draw(
                         // ── Header: underlying symbol + close ──
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(&underlying)
-                                .monospace().size(FONT_LG).strong().color(t.accent));
+                                .monospace().size(font_lg()).strong().color(t.accent));
                             ui.label(egui::RichText::new(format!("@ {:.2}", spot))
-                                .monospace().size(FONT_SM).color(t.dim));
+                                .monospace().size(font_sm()).color(t.dim));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if close_button(ui, t.dim) { close_picker = true; }
                             });
@@ -96,7 +96,7 @@ pub(crate) fn draw(
                             // Back arrow
                             let can_back = dte_idx > 0;
                             let back_col = if can_back { t.accent } else { t.dim.gamma_multiply(0.3) };
-                            if icon_btn(ui, Icon::CARET_LEFT, back_col, FONT_LG).clicked() && can_back {
+                            if icon_btn(ui, Icon::CARET_LEFT, back_col, font_lg()).clicked() && can_back {
                                 panes[pi].option_quick_dte_idx = dte_idx - 1;
                                 let new_dte = DTE_LIST[dte_idx - 1];
                                 fetch_chain_background(underlying.clone(), 15, new_dte, spot);
@@ -104,14 +104,14 @@ pub(crate) fn draw(
                             // DTE label (centered)
                             ui.vertical_centered(|ui| {
                                 ui.label(egui::RichText::new(dte_label(current_dte))
-                                    .monospace().size(FONT_LG).strong().color(TEXT_PRIMARY));
+                                    .monospace().size(font_lg()).strong().color(TEXT_PRIMARY));
                             });
                             // Forward arrow
                             let can_fwd = dte_idx < DTE_LIST.len() - 1;
                             let fwd_col = if can_fwd { t.accent } else { t.dim.gamma_multiply(0.3) };
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.add_space(gap_md());
-                                if icon_btn(ui, Icon::CARET_RIGHT, fwd_col, FONT_LG).clicked() && can_fwd {
+                                if icon_btn(ui, Icon::CARET_RIGHT, fwd_col, font_lg()).clicked() && can_fwd {
                                     panes[pi].option_quick_dte_idx = dte_idx + 1;
                                     let new_dte = DTE_LIST[dte_idx + 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
@@ -141,7 +141,7 @@ pub(crate) fn draw(
                                 ui.painter().text(
                                     prev_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("{} Prev Strike", Icon::CARET_LEFT),
-                                    egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+                                    egui::FontId::monospace(font_sm()), TEXT_PRIMARY);
                                 if prev_resp.clicked() {
                                     // Find the next-lower strike in the current type's chain
                                     let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
@@ -168,7 +168,7 @@ pub(crate) fn draw(
                                 ui.painter().text(
                                     next_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("Next Strike {}", Icon::CARET_RIGHT),
-                                    egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+                                    egui::FontId::monospace(font_sm()), TEXT_PRIMARY);
                                 if next_resp.clicked() {
                                     let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
                                     let rows = if current_dte == 0 { rows }
@@ -211,7 +211,7 @@ pub(crate) fn draw(
                             ui.add_space(gap_lg());
                             ui.vertical_centered(|ui| {
                                 ui.label(egui::RichText::new("Loading chain…")
-                                    .monospace().size(FONT_SM).color(t.dim));
+                                    .monospace().size(font_sm()).color(t.dim));
                             });
                             ui.add_space(gap_lg());
                         } else {
@@ -241,7 +241,7 @@ pub(crate) fn draw(
                                                 ui.painter().rect_filled(crect, r_sm_cr(), color_alpha(t.bull, alpha_ghost()));
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
-                                                &call_text, egui::FontId::monospace(FONT_SM),
+                                                &call_text, egui::FontId::monospace(font_sm()),
                                                 if call_row.is_some() { t.bull } else { t.dim.gamma_multiply(0.4) });
                                             if cresp.clicked() && call_row.is_some() {
                                                 pending_load = Some((*strike, true));
@@ -256,7 +256,7 @@ pub(crate) fn draw(
                                             };
                                             ui.painter().text(srect.center(), egui::Align2::CENTER_CENTER,
                                                 strike_txt,
-                                                egui::FontId::monospace(FONT_SM),
+                                                egui::FontId::monospace(font_sm()),
                                                 strike_col);
                                             // PUT cell
                                             let put_text = put_row.map(|r| format!("{:.2}", r.bid))
@@ -267,7 +267,7 @@ pub(crate) fn draw(
                                                 ui.painter().rect_filled(prect, r_sm_cr(), color_alpha(t.bear, alpha_ghost()));
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
-                                                &put_text, egui::FontId::monospace(FONT_SM),
+                                                &put_text, egui::FontId::monospace(font_sm()),
                                                 if put_row.is_some() { t.bear } else { t.dim.gamma_multiply(0.4) });
                                             if presp.clicked() && put_row.is_some() {
                                                 pending_load = Some((*strike, false));

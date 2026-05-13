@@ -344,8 +344,12 @@ fn paint_button<'a>(
             content_w += font_size * 1.1 + icon_gap;
         }
         if !label.is_empty() {
+            // Chrome buttons render labels in Proportional (Inter) so they
+            // visually match context menus, panel chrome, and dropdowns.
+            // Tabular data (prices, tickers) should use RichText.monospace
+            // directly, not Button labels.
             let galley = ui.fonts(|f| {
-                f.layout_no_wrap(label.to_string(), FontId::monospace(font_size), Color32::WHITE)
+                f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), Color32::WHITE)
             });
             content_w += galley.rect.width();
         }
@@ -571,14 +575,14 @@ fn paint_button<'a>(
             }
             if !label.is_empty() {
                 let galley = ui.fonts(|f| {
-                    f.layout_no_wrap(label.to_string(), FontId::monospace(font_size), fg)
+                    f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), fg)
                 });
                 let lw = galley.rect.width();
                 painter.text(
                     Pos2::new(x, cy),
                     egui::Align2::LEFT_CENTER,
                     label,
-                    FontId::monospace(font_size),
+                    FontId::proportional(font_size),
                     fg,
                 );
                 x += lw;
@@ -679,7 +683,7 @@ fn paint_secondary_with_treatment(
     let h = btn.min_size_override.map(|v| v.y).unwrap_or_else(btn_small_height);
     let min_w = btn.min_size_override.map(|v| v.x).unwrap_or(0.0);
     let resp = ui.add(
-        egui::Button::new(RichText::new(btn.label).monospace().size(font_sm()).color(fg))
+        egui::Button::new(RichText::new(btn.label).size(font_sm()).color(fg))
             .fill(fill)
             .stroke(Stroke::new(stroke_w, stroke_col))
             .corner_radius(cr)
@@ -771,13 +775,18 @@ fn resolve_palette(
             st::color_alpha(accent, st::alpha_active()),
         ),
         Variant::Ghost => (
+            // Toolbar toggles paint Ghost. When many are simultaneously
+            // active (e.g. SMA+EMA+Bollinger+VOL all on), the accent
+            // tint+border previously summed into a "purple soup". Softer
+            // active bg (alpha_soft) and dropped border keep the surface
+            // calm; foreground accent on active is set by `toolbar_btn`.
             transparent,
             st::color_alpha(text, 18),
-            st::color_alpha(accent, st::alpha_tint()),
+            st::color_alpha(accent, st::alpha_soft()),
             text,
             text,
             transparent,
-            st::color_alpha(accent, st::alpha_muted()),
+            transparent,
         ),
         Variant::Danger => (
             bear,

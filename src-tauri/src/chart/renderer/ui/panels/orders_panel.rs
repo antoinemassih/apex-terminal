@@ -404,7 +404,7 @@ if watchlist.orders_panel_open {
                                     status_badge(ui, "TRIGGERED", t.accent);
                                 }
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if icon_btn(ui, Icon::X, color_half(t.dim), FONT_MD).clicked() {
+                                    if icon_btn(ui, Icon::X, color_half(t.dim), font_md()).clicked() {
                                         remove_alert = Some(alert.id);
                                     }
                                 });

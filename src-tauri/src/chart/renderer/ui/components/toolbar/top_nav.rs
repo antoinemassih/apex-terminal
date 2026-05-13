@@ -107,11 +107,11 @@ use crate::chart_renderer::gpu::{
 use crate::chart_renderer::ui::style::{
     color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, hex_to_color, segmented_control,
     dialog_window_themed, dialog_header, action_btn,
-    FONT_MD, FONT_SM, FONT_2XS, STROKE_STD, STROKE_THIN,
+    STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
     BTN_ICON_SM, BTN_ICON_LG,
     set_toolbar_rect, tb_group_break, current as style_current,
-    font_xs, font_sm, font_md, font_lg, font_xl, alpha_muted, alpha_ghost, alpha_strong,
+    font_4xs, font_xs, font_2xs, font_sm, font_md, font_lg, font_xl, alpha_muted, alpha_ghost, alpha_strong, alpha_dim,
     mono_xs, mono_sm, mono_md, mono_lg,
     gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
     stroke_std, stroke_thin, r_md_cr,
@@ -505,7 +505,7 @@ pub(crate) fn render(
                 let range_resp = ui.menu_button(egui::RichText::new(range_label).monospace().size(font_sm()).strong().color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                    ui.label(egui::RichText::new("RANGE").monospace().size(FONT_SM).color(color_dim(t.dim)));
+                    ui.label(egui::RichText::new("RANGE").monospace().size(font_sm()).color(color_dim(t.dim)));
                     let presets: &[(&str, &str, u32)] = &[
                         ("1 Day",    "5m",  78),
                         ("2 Days",   "5m",  156),
@@ -577,7 +577,7 @@ pub(crate) fn render(
                     };
                     for (si, (section, tools)) in sections.iter().enumerate() {
                         if si > 0 { ui.separator(); }
-                        ui.label(egui::RichText::new(*section).monospace().size(FONT_SM).color(t.dim));
+                        ui.label(egui::RichText::new(*section).monospace().size(font_sm()).color(t.dim));
                         for (tool, label) in *tools {
                             let shortcut = tool_shortcut(tool);
                             let resp = ui.horizontal(|ui| {
@@ -643,7 +643,7 @@ pub(crate) fn render(
                             badge_center,
                             egui::Align2::CENTER_CENTER,
                             draw_count.to_string(),
-                            egui::FontId::proportional(6.0),
+                            egui::FontId::proportional(font_4xs()),
                             egui::Color32::WHITE,
                         );
                     }
@@ -731,7 +731,7 @@ pub(crate) fn render(
                 CandleMode::Renko => {
                     let is_auto = panes[ap].renko_brick_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(FONT_SM).color(if is_auto { t.accent } else { t.dim }))
+                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(font_sm()).color(if is_auto { t.accent } else { t.dim }))
                         .frame(false).min_size(egui::vec2(32.0, 16.0))).clicked() {
                         if is_auto {
                             panes[ap].renko_brick_size = Chart::auto_brick_size(&panes[ap].bars, 0.5);
@@ -752,7 +752,7 @@ pub(crate) fn render(
                 CandleMode::RangeBar => {
                     let is_auto = panes[ap].range_bar_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(FONT_SM).color(if is_auto { t.accent } else { t.dim }))
+                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(font_sm()).color(if is_auto { t.accent } else { t.dim }))
                         .frame(false).min_size(egui::vec2(32.0, 16.0))).clicked() {
                         if is_auto {
                             panes[ap].range_bar_size = Chart::auto_brick_size(&panes[ap].bars, 1.0);
@@ -935,7 +935,7 @@ pub(crate) fn render(
                     if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_rvol = nv; } } else { panes[ap].show_rvol = nv; }
                 }
                 ui.separator();
-                ui.label(egui::RichText::new("Volume Profile").monospace().size(FONT_SM).color(t.dim));
+                ui.label(egui::RichText::new("Volume Profile").monospace().size(font_sm()).color(t.dim));
                 for (mode, label) in [
                     (VolumeProfileMode::Off, "Off"), (VolumeProfileMode::Classic, "Classic"),
                     (VolumeProfileMode::Heatmap, "Heatmap"), (VolumeProfileMode::Strip, "Strip"),
@@ -955,7 +955,7 @@ pub(crate) fn render(
                 ui.set_min_width(150.0);
 
                 // ── Technical Overlays (indicator-based)
-                ui.menu_button(egui::RichText::new(format!("{} Technical", Icon::PULSE)).size(FONT_SM).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(format!("{} Technical", Icon::PULSE)).size(font_sm()).color(t.dim), |ui| {
                     ui.set_min_width(200.0);
                     let overlay_types = [
                         (IndicatorType::BollingerBands, "Bollinger Bands"),
@@ -992,7 +992,7 @@ pub(crate) fn render(
                 });
 
                 // ── Structure (S/R, volume, price levels)
-                ui.menu_button(egui::RichText::new(format!("{} Structure", Icon::TREE_STRUCTURE_FILL)).size(FONT_SM).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(format!("{} Structure", Icon::TREE_STRUCTURE_FILL)).size(font_sm()).color(t.dim), |ui| {
                     ui.set_min_width(220.0);
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
@@ -1041,7 +1041,7 @@ pub(crate) fn render(
                 });
 
                 // ── Regime (momentum, volatility, correlation)
-                ui.menu_button(egui::RichText::new(format!("{} Regime", Icon::BROADCAST_FILL)).size(FONT_SM).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(format!("{} Regime", Icon::BROADCAST_FILL)).size(font_sm()).color(t.dim), |ui| {
                     ui.set_min_width(220.0);
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
@@ -1059,7 +1059,7 @@ pub(crate) fn render(
                 });
 
                 // ── Data (events, dark pool, etc.)
-                ui.menu_button(egui::RichText::new(format!("{} Data", Icon::CHART_LINE_UP_FILL)).size(FONT_SM).color(t.dim), |ui| {
+                ui.menu_button(egui::RichText::new(format!("{} Data", Icon::CHART_LINE_UP_FILL)).size(font_sm()).color(t.dim), |ui| {
                     ui.set_min_width(200.0);
                     let events = panes[ap].show_events;
                     if ui.add(SelectableRow::new("Event Markers", events)).clicked() {
@@ -1100,7 +1100,7 @@ pub(crate) fn render(
 
                 ui.separator();
                 // Symbol overlays
-                ui.label(egui::RichText::new("SYMBOL OVERLAY").monospace().size(FONT_SM).color(color_half(t.dim)));
+                ui.label(egui::RichText::new("SYMBOL OVERLAY").monospace().size(font_sm()).color(color_half(t.dim)));
                 let mut remove_idx: Option<usize> = None;
                 let mut edit_idx: Option<usize> = None;
                 for (oi, ov) in panes[ap].symbol_overlays.iter().enumerate() {
@@ -1108,7 +1108,7 @@ pub(crate) fn render(
                         let oc = hex_to_color(&ov.color, 1.0);
                         ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, oc);
                         ui.add_space(gap_xl());
-                        let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(FONT_SM).color(oc));
+                        let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(font_sm()).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
                         if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(color_half(t.bear)).show(ui, t).clicked() {
                             remove_idx = Some(oi);
@@ -1131,7 +1131,7 @@ pub(crate) fn render(
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
-                ui.label(egui::RichText::new("DISPLAY").monospace().size(FONT_SM).color(color_half(t.dim)));
+                ui.label(egui::RichText::new("DISPLAY").monospace().size(font_sm()).color(color_half(t.dim)));
                 let ohlc = panes[ap].ohlc_tooltip;
                 if ui.add(SelectableRow::new("OHLC Tooltip", ohlc)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !ohlc;
@@ -1156,7 +1156,7 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("P&L Curve", pnl)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
 
                 ui.separator();
-                ui.label(egui::RichText::new("CURSOR").monospace().size(FONT_SM).color(color_half(t.dim)));
+                ui.label(egui::RichText::new("CURSOR").monospace().size(font_sm()).color(color_half(t.dim)));
                 let fp = panes[ap].show_footprint;
                 if ui.add(SelectableRow::new("Footprint (hover)", fp)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !fp;
@@ -1164,7 +1164,7 @@ pub(crate) fn render(
                 }
 
                 ui.separator();
-                ui.label(egui::RichText::new("REPLAY").monospace().size(FONT_SM).color(color_half(t.dim)));
+                ui.label(egui::RichText::new("REPLAY").monospace().size(font_sm()).color(color_half(t.dim)));
                 let rpl = panes[ap].replay_mode;
                 if ui.add(SelectableRow::new("Bar Replay", rpl)).clicked() {
                     panes[ap].replay_mode = !panes[ap].replay_mode;
@@ -1251,7 +1251,7 @@ pub(crate) fn render(
                         format!("{} {}", cat_icon, cat_name)
                     };
 
-                    ui.menu_button(egui::RichText::new(&cat_label).monospace().size(FONT_SM)
+                    ui.menu_button(egui::RichText::new(&cat_label).monospace().size(font_sm())
                         .color(if active_in_cat > 0 { t.accent } else { t.dim }), |ui| {
                         ui.set_min_width(280.0);
                         ui.label(egui::RichText::new(*cat_name).monospace().size(font_xs()).strong().color(t.accent));
@@ -1278,7 +1278,7 @@ pub(crate) fn render(
                             // Name
                             let name_x = r.left() + 38.0;
                             p.text(egui::pos2(name_x, r.top() + 10.0), egui::Align2::LEFT_CENTER,
-                                kind.label(), egui::FontId::monospace(FONT_SM),
+                                kind.label(), egui::FontId::monospace(font_sm()),
                                 if is_active { t.text } else { t.dim });
 
                             // Description
@@ -1290,7 +1290,7 @@ pub(crate) fn render(
                             if is_active {
                                 p.text(egui::pos2(r.right() - 12.0, r.center().y),
                                     egui::Align2::CENTER_CENTER, "\u{2713}",
-                                    egui::FontId::proportional(FONT_SM), t.accent);
+                                    egui::FontId::proportional(font_sm()), t.accent);
                             }
 
                             if resp.clicked() {
@@ -1380,7 +1380,7 @@ pub(crate) fn render(
                     // Save current
                     if !watchlist.active_workspace.is_empty() {
                         if ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
-                            .monospace().size(FONT_SM).color(t.accent)).clicked() {
+                            .monospace().size(font_sm()).color(t.accent)).clicked() {
                             save_workspace(&watchlist.active_workspace, panes, *layout);
                             ui.close_menu();
                         }
@@ -1392,10 +1392,10 @@ pub(crate) fn render(
                         ui.add(egui::TextEdit::singleline(&mut watchlist.workspace_save_name)
                             .hint_text("New workspace…")
                             .desired_width(130.0)
-                            .font(egui::FontId::monospace(FONT_SM)));
+                            .font(egui::FontId::monospace(font_sm())));
                         let can_save = !watchlist.workspace_save_name.trim().is_empty();
                         if can_save {
-                            if ui.add(egui::Button::new(egui::RichText::new("Save As").monospace().size(FONT_SM).color(t.accent)))
+                            if ui.add(egui::Button::new(egui::RichText::new("Save As").monospace().size(font_sm()).color(t.accent)))
                                 .clicked() {
                                 let name = watchlist.workspace_save_name.trim().to_string();
                                 save_workspace(&name, panes, *layout);
@@ -1573,14 +1573,17 @@ pub(crate) fn render(
                 };
 
                 // Settings — always icon-only.
-                if toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t).on_hover_text("Settings").clicked() {
-                    watchlist.settings_open = !watchlist.settings_open;
+                {
+                    let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t).on_hover_text("Settings");
+                    paint_nav_col_tint(ui, tb_rect, settings_resp.rect, t, settings_resp.hovered(), watchlist.settings_open, "right_settings");
+                    if settings_resp.clicked() { watchlist.settings_open = !watchlist.settings_open; }
                 }
 
                 // Search / command palette — icon-only ToolbarBtn.
                 {
                     use crate::ui_kit::widgets::{Tooltip, Kbd};
                     let search_resp = toolbar_btn(ui, Icon::MAGNIFYING_GLASS, watchlist.cmd_palette_open, t);
+                    paint_nav_col_tint(ui, tb_rect, search_resp.rect, t, search_resp.hovered(), watchlist.cmd_palette_open, "right_search");
                     Tooltip::rich(|ui, theme| {
                         ui.label(egui::RichText::new("Search").size(font_sm()).strong().color(theme.text()));
                         ui.label(egui::RichText::new("Search & command palette").size(font_xs()).color(theme.dim()));
@@ -1597,48 +1600,71 @@ pub(crate) fn render(
                 //    inner button padding, hairline dividers between each. ──
                 let prev_spacing = ui.spacing().item_spacing.x;
                 let prev_panel_pad = ui.spacing().button_padding;
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
+                // 8px gap between buttons (4px on each side of the divider).
+                ui.spacing_mut().item_spacing.x = 8.0;
+                // gap_lg horizontal padding so labels breathe and the hover
+                // column has visible margin on either side of the text.
+                ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_sm());
 
                 // Divider drawn at the left edge of the just-drawn button's rect (RTL layout).
+                //
+                // Paints on the Foreground layer (NOT `$ui.painter()`) because with
+                // `item_spacing.x = 0` the neighbouring button's rect ends at this
+                // same x coordinate — its bg / column tint would otherwise overdraw
+                // a sub-pixel hairline. Foreground layer + stroke_std + pixel-snapped
+                // coordinate guarantee it actually reads.
+                // Center the divider in the 8px gap between buttons (btn.left - 4)
+                // and span the full toolbar height (top→bottom). Uses `t.dim`
+                // so it actually reads — `t.toolbar_border` is intentionally
+                // hairline-faint per the theme palette.
                 macro_rules! nav_divider {
                     ($ui:expr, $resp:expr) => {{
-                        let x = $resp.rect.left() - 0.5;
-                        let col = color_alpha(t.toolbar_border, alpha_muted());
-                        $ui.painter().line_segment(
-                            [egui::pos2(x, tb_rect.top() + 4.0), egui::pos2(x, tb_rect.bottom() - 4.0)],
-                            egui::Stroke::new(stroke_thin(), col),
+                        let x = ($resp.rect.left() - 4.0).round() + 0.5;
+                        let col = color_alpha(t.dim, alpha_dim());
+                        let painter = $ui.ctx().layer_painter(egui::LayerId::new(
+                            egui::Order::Foreground,
+                            egui::Id::new(("nav_divider", x.to_bits())),
+                        ));
+                        painter.line_segment(
+                            [egui::pos2(x, tb_rect.top()), egui::pos2(x, tb_rect.bottom())],
+                            egui::Stroke::new(stroke_std(), col),
                         );
                     }};
                 }
 
                 // Feed pane (News + Discord + Screenshots)
                 let resp = toolbar_btn(ui, &nav_label(Icon::NEWSPAPER, "Feed"), watchlist.feed_panel_open, t).on_hover_text("Feed (News, Discord, Screenshots)");
+                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.feed_panel_open, "right_feed");
                 if resp.clicked() { watchlist.feed_panel_open = !watchlist.feed_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Playbook
                 let resp = toolbar_btn(ui, &nav_label(Icon::STAR, "Playbook"), watchlist.playbook_panel_open, t).on_hover_text("Playbook (Trade Ideas)");
+                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.playbook_panel_open, "right_playbook");
                 if resp.clicked() { watchlist.playbook_panel_open = !watchlist.playbook_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Watchlist toggle
                 let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t).on_hover_text("Watchlist");
+                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
                 if resp.clicked() { watchlist.open = !watchlist.open; }
                 nav_divider!(ui, resp);
 
                 // Orders panel
                 let resp = toolbar_btn(ui, &nav_label(Icon::CURRENCY_DOLLAR, "Orders"), watchlist.orders_panel_open, t).on_hover_text("Orders Panel");
+                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.orders_panel_open, "right_orders");
                 if resp.clicked() { watchlist.orders_panel_open = !watchlist.orders_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Analysis sidebar toggle
                 let resp = toolbar_btn(ui, &nav_label(Icon::CHART_LINE, "Analysis"), watchlist.analysis_open, t).on_hover_text("Analysis Sidebar");
+                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.analysis_open, "right_analysis");
                 if resp.clicked() { watchlist.analysis_open = !watchlist.analysis_open; }
                 nav_divider!(ui, resp);
 
                 // Indicators panel — manage active indicators + library + tool toggles
                 let resp = toolbar_btn(ui, &nav_label(Icon::PULSE, "Indicators"), watchlist.indicators_panel_open, t).on_hover_text("Indicators (Active + Library + Tools)");
+                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.indicators_panel_open, "right_indicators");
                 if resp.clicked() { watchlist.indicators_panel_open = !watchlist.indicators_panel_open; }
                 nav_divider!(ui, resp);
 
@@ -1647,6 +1673,7 @@ pub(crate) fn render(
                     let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
                         + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
                     let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel_open, t).on_hover_text("Signals (Alerts + Signals)");
+                    paint_nav_col_tint(ui, tb_rect, signals_resp.rect, t, signals_resp.hovered(), watchlist.signals_panel_open, "right_signals");
                     if active_count > 0 {
                         // Overlay a Badge at the top-right corner of the Signals button.
                         // Painter-mode positioning: anchor the badge so its center sits at
