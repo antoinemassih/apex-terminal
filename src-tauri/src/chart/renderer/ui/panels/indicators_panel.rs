@@ -840,7 +840,7 @@ fn active_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
 
 fn mini_btn(ui: &mut egui::Ui, t: &Theme, icon: &str, tip: &str, active: bool) -> egui::Response {
     let col = if active { t.text } else { color_subtle(t.dim) };
-    ui.add(egui::Button::new(egui::RichText::new(icon).size(font_md()).color(col))
+    crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(icon).size(font_md()).color(col))
         .fill(egui::Color32::TRANSPARENT)
         .min_size(egui::vec2(20.0, 20.0)))
         .on_hover_text(tip)

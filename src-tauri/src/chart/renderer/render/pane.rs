@@ -9249,7 +9249,7 @@ fn render_chart_pane(
     // 2a: Measure tool (shift+drag or context menu)
     if !event_consumed && (shift_held || chart.measure_active) && chart.draw_tool.is_empty() {
         // Set cursor unconditionally whenever measure is armed — even if pointer hasn't entered pane yet
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        crate::chart_renderer::ui::style::cursor::modal(ui, egui::CursorIcon::Crosshair);
         if let Some(pos) = hover_pos {
             let bar_f = pos_to_bar(pos);
             let price_f = pos_to_price(pos);
@@ -9329,7 +9329,7 @@ fn render_chart_pane(
         event_consumed = true;
         let has_start = chart.zoom_start != egui::Pos2::ZERO;
         // Set magnifier cursor unconditionally while zoom tool is armed
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ZoomIn);
+        crate::chart_renderer::ui::style::cursor::modal(ui, egui::CursorIcon::ZoomIn);
 
         if !has_start {
             if resp.clicked() {
@@ -9366,7 +9366,7 @@ fn render_chart_pane(
     // 2c: Trigger order crosshair mode
     if !event_consumed && chart.trigger_setup.phase == TriggerPhase::Picking {
         event_consumed = true;
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        crate::chart_renderer::ui::style::cursor::modal(ui, egui::CursorIcon::Crosshair);
         if let Some(mouse) = hover_pos {
             if in_chart_body {
                 let price_at_mouse = py_inv(mouse.y);
@@ -9850,6 +9850,7 @@ fn render_chart_pane(
     if !event_consumed && chart.draw_tool.is_empty() && chart.dragging_drawing.is_none()
         && chart.dragging_order.is_none() && chart.axis_drag_mode == 0
         && resp.dragged_by(egui::PointerButton::Primary) {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         let d = resp.drag_delta();
         // Pan sensitivity multiplier — bumped 30% over the raw 1px-per-px
         // drag so feel matches the user's expectation of pixel-distance ≠
@@ -9883,7 +9884,7 @@ fn render_chart_pane(
                 // Not clicked yet, keep waiting (put it back)
                 chart.play_click_to_set = Some(kind);
                 // Show crosshair cursor while in click-to-set mode
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                crate::chart_renderer::ui::style::cursor::modal(ui, egui::CursorIcon::Crosshair);
             }
         }
     }
@@ -12045,8 +12046,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     egui::pos2(right_clip.left(), clip_top),
                     egui::pos2(right_clip.left() + 8.0, clip_bottom));
                 let div_resp = ui.interact(drag_rect_v, egui::Id::new(("pane_div_h", di)), egui::Sense::drag());
+                crate::chart_renderer::ui::style::cursor::resize_h(ui, &div_resp);
                 if div_resp.hovered() || div_resp.dragged() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
                     let alpha = if div_resp.dragged() { 15u8 } else { 7 };
                     // Clip painter to the right pane rect so nothing bleeds into adjacent panes
                     let p = ui.painter_at(right_clip);
@@ -12095,8 +12096,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     egui::pos2(below_clip.left(), edge_y),
                     egui::pos2(below_clip.right(), edge_y + 8.0));
                 let div_resp = ui.interact(drag_rect, egui::Id::new(("pane_div_v", di)), egui::Sense::drag());
+                crate::chart_renderer::ui::style::cursor::resize_v(ui, &div_resp);
                 if div_resp.hovered() || div_resp.dragged() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                     let alpha = if div_resp.dragged() { 15u8 } else { 7 };
                     // Clip painter to the lower pane so nothing bleeds into adjacent panes
                     let p = ui.painter_at(below_clip);

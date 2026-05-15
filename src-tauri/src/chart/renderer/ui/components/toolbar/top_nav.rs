@@ -409,6 +409,7 @@ pub(crate) fn render(
                     .corner_radius(r_md_cr())
                     .min_size(egui::vec2(28.0, 22.0)),
                 );
+                crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                 if resp.on_hover_text(tip).clicked() {
                     crate::chart_renderer::trading::order_manager::set_paper_mode(!paper);
                 }
@@ -731,7 +732,8 @@ pub(crate) fn render(
                 CandleMode::Renko => {
                     let is_auto = panes[ap].renko_brick_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(font_sm()).color(if is_auto { t.accent } else { t.dim }))
+                    if crate::chart_renderer::ui::style::cursor::click_widget(ui,
+                        egui::Button::new(egui::RichText::new(auto_label).monospace().size(font_sm()).color(if is_auto { t.accent } else { t.dim }))
                         .frame(false).min_size(egui::vec2(32.0, 16.0))).clicked() {
                         if is_auto {
                             panes[ap].renko_brick_size = Chart::auto_brick_size(&panes[ap].bars, 0.5);
@@ -752,7 +754,8 @@ pub(crate) fn render(
                 CandleMode::RangeBar => {
                     let is_auto = panes[ap].range_bar_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if ui.add(egui::Button::new(egui::RichText::new(auto_label).monospace().size(font_sm()).color(if is_auto { t.accent } else { t.dim }))
+                    if crate::chart_renderer::ui::style::cursor::click_widget(ui,
+                        egui::Button::new(egui::RichText::new(auto_label).monospace().size(font_sm()).color(if is_auto { t.accent } else { t.dim }))
                         .frame(false).min_size(egui::vec2(32.0, 16.0))).clicked() {
                         if is_auto {
                             panes[ap].range_bar_size = Chart::auto_brick_size(&panes[ap].bars, 1.0);
@@ -1264,6 +1267,7 @@ pub(crate) fn render(
                             let r = resp.rect;
                             let p = ui.painter();
 
+                            crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                             if resp.hovered() {
                                 p.rect_filled(r, 4.0, color_alpha(t.accent, ALPHA_GHOST));
                             }
@@ -1395,7 +1399,8 @@ pub(crate) fn render(
                             .font(egui::FontId::monospace(font_sm())));
                         let can_save = !watchlist.workspace_save_name.trim().is_empty();
                         if can_save {
-                            if ui.add(egui::Button::new(egui::RichText::new("Save As").monospace().size(font_sm()).color(t.accent)))
+                            if crate::chart_renderer::ui::style::cursor::click_widget(ui,
+                                egui::Button::new(egui::RichText::new("Save As").monospace().size(font_sm()).color(t.accent)))
                                 .clicked() {
                                 let name = watchlist.workspace_save_name.trim().to_string();
                                 save_workspace(&name, panes, *layout);
@@ -1486,8 +1491,8 @@ pub(crate) fn render(
                     if resp.hovered() {
                         let bg = if danger { t.bear } else { color_alpha(t.toolbar_border, 80) };
                         ui.painter().rect_filled(r, 0.0, bg);
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                     if resp.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
                     (resp, r)
                 };
@@ -1554,9 +1559,7 @@ pub(crate) fn render(
                         rgb(230, 160, 40)
                     };
                     ui.painter().circle_filled(rect.center(), 3.0, dot_color);
-                    if resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    }
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                     let tip = if connected { "Connection: OK" } else { "Connection: Issue" };
                     let resp = resp.on_hover_text(tip);
                     if resp.clicked() { *conn_panel_open = !*conn_panel_open; }

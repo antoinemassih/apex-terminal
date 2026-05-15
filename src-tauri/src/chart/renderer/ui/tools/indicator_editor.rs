@@ -285,7 +285,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             egui::CornerRadius::ZERO
                         };
                         let stroke_col = if sel { color_alpha(t.accent, alpha_heavy()) } else { color_alpha(t.toolbar_border, alpha_line()) };
-                        if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(font_sm()).color(fg))
+                        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(label).monospace().size(font_sm()).color(fg))
                             .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 20.0))
                             .stroke(egui::Stroke::new(stroke_thin(), stroke_col)))
                             .clicked() && !sel

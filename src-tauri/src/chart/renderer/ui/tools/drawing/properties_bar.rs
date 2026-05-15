@@ -107,7 +107,7 @@ pub fn show_drawing_properties_bar_ui(
                     for hex in SWATCHES {
                         let c = hex_to_color(hex, 1.0);
                         let is_cur = sel_draw.color == *hex;
-                        let resp = ui.add(egui::Button::new("")
+                        let resp = crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new("")
                             .fill(c)
                             .min_size(egui::vec2(20.0, 20.0))
                             .corner_radius(3.0)
@@ -232,7 +232,7 @@ pub fn show_drawing_properties_bar_ui(
 
         // Extension toggles (lines only)
         if matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..}) {
-            if ui.add(egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(font_md()).color(if sel_draw.extend_left { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(font_md()).color(if sel_draw.extend_left { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -240,7 +240,7 @@ pub fn show_drawing_properties_bar_ui(
                     crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
             }
-            if ui.add(egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(font_md()).color(if sel_draw.extend_right { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(font_md()).color(if sel_draw.extend_right { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -252,7 +252,7 @@ pub fn show_drawing_properties_bar_ui(
         }
 
         // Lock
-        if ui.add(egui::Button::new(egui::RichText::new(if sel_draw.locked { "Locked" } else { "Lock" }).monospace().size(font_sm()).color(if sel_draw.locked { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT)).clicked() {
+        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(if sel_draw.locked { "Locked" } else { "Lock" }).monospace().size(font_sm()).color(if sel_draw.locked { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT)).clicked() {
             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) { d.locked = !d.locked; }
         }
 
@@ -274,7 +274,7 @@ pub fn show_drawing_properties_bar_ui(
         let has_alert = sel_draw.alert_enabled;
         let bell_col = if has_alert { COLOR_AMBER } else { dim };
         let bell_label = if has_alert { "\u{1F514} ON" } else { "\u{1F514}" };
-        if ui.add(egui::Button::new(egui::RichText::new(bell_label).monospace().size(font_sm()).color(bell_col)).fill(egui::Color32::TRANSPARENT)).clicked() {
+        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(bell_label).monospace().size(font_sm()).color(bell_col)).fill(egui::Color32::TRANSPARENT)).clicked() {
             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                 d.alert_enabled = !d.alert_enabled;
                 let drawing_id = d.id.clone();

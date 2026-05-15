@@ -155,6 +155,9 @@ impl<'a, T> Table<'a, T> {
             let cell = egui::Rect::from_min_size(
                 egui::pos2(cx, header_rect.min.y), egui::vec2(cw, header_h));
             let resp = ui.allocate_rect(cell, if c.sortable { Sense::click() } else { Sense::hover() });
+            if c.sortable {
+                crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
+            }
             let active = self.state.sort_col == Some(i) && self.state.sort_dir != SortDir::None;
             let col_text = if active { accent } else { dim };
             let align = if c.right_align { egui::Align2::RIGHT_CENTER } else { egui::Align2::LEFT_CENTER };

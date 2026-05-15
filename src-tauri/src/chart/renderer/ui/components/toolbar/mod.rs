@@ -130,9 +130,7 @@ impl<'a> TimeframeSelector<'a> {
                     .corner_radius(pill_r)
                     .min_size(egui::vec2(0.0, 22.0)),
             );
-            if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
+            super::super::style::cursor::clickable(ui, &resp);
             if resp.clicked() && i != self.active_idx {
                 clicked = Some(i);
             }

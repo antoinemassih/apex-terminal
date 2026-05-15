@@ -37,7 +37,7 @@ pub(crate) fn draw(
             let closed = PanelHeaderWithClose::new("SIGNALS").theme(t)
                 .height(header_h).font_size(title_font_size)
                 .show_with(ui, |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(font_sm()).color(t.dim))
+                if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("+").monospace().size(font_sm()).color(t.dim))
                     .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
                     let used: Vec<SignalsTab> = watchlist.signals_splits.iter().map(|s| s.tab).collect();
                     let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
@@ -77,7 +77,7 @@ pub(crate) fn draw(
                     for (t_val, t_label) in ALL_TABS {
                         let sel = tab == *t_val;
                         let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        if ui.add(egui::Button::new(egui::RichText::new(*t_label).monospace().size(font_xs()).color(fg))
+                        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(*t_label).monospace().size(font_xs()).color(fg))
                             .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
                             .min_size(egui::vec2(0.0, 22.0))).clicked() {
                             watchlist.signals_splits[i].tab = *t_val;
@@ -85,7 +85,7 @@ pub(crate) fn draw(
                     }
                     if can_close {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}").size(font_sm()).color(t.dim.gamma_multiply(0.4)))
+                            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{00D7}").size(font_sm()).color(t.dim.gamma_multiply(0.4)))
                                 .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
                                 remove_idx = Some(i);
                             }

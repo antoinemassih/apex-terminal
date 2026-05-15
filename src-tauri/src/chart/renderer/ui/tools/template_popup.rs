@@ -70,7 +70,7 @@ pub(crate) fn draw(
                                 let active = panes[pi].pane_type == ptype;
                                 let fg = if active { t.accent } else { t.dim.gamma_multiply(0.5) };
                                 let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
-                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
+                                if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
                                     .monospace().size(font_xs()).color(fg))
                                     .fill(bg).corner_radius(r_sm_cr())
                                     .stroke(egui::Stroke::new(if active { stroke_thin() } else { 0.0 },

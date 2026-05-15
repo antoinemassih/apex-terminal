@@ -153,6 +153,128 @@ pub const RADIUS_MD: f32 = 6.0;
 pub const RADIUS_LG: f32 = 12.0;
 pub const RADIUS_PILL: f32 = 999.0;
 
+// ─── Cursor tokens ───────────────────────────────────────────────────────────
+//
+// Centralized cursor policy. Every interactive surface in the app should
+// route its cursor through one of these helpers. They:
+//   1. Check `resp.hovered()` — no cursor leak when the pointer moves away.
+//   2. Honor `is_inspect_mode()` — the design inspector owns the cursor
+//      while it's active, so widgets must not override it.
+//   3. Implement state machines where relevant (draggable: Grab on hover,
+//      Grabbing while a drag is in progress).
+//
+// Add a new helper here rather than inlining `set_cursor_icon` at a call
+// site. Inlined sites drift: they forget the inspect guard, they don't
+// handle drag-state transitions, and they make role audits impossible.
+pub mod cursor {
+    use egui::{CursorIcon, Response, Ui};
+
+    #[inline]
+    fn inspect_mode() -> bool {
+        crate::design_tokens::is_inspect_mode()
+    }
+
+    /// PointingHand on hover — for any surface that responds to click
+    /// (buttons, chips, links, list rows, menu items, status indicators).
+    #[inline]
+    pub fn clickable(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+    }
+
+    /// Grab on hover, Grabbing while the user is actively dragging.
+    /// For chart pan, drawing handles, draggable lines, tab reorder.
+    #[inline]
+    pub fn draggable(ui: &Ui, resp: &Response) {
+        if inspect_mode() { return; }
+        if resp.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+        } else if resp.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::Grab);
+        }
+    }
+
+    /// Horizontal resize cursor — vertical dividers between panes/columns.
+    /// Stays sticky during a drag so the cursor doesn't flicker back to the
+    /// default arrow when the pointer briefly leaves the narrow drag rect.
+    #[inline]
+    pub fn resize_h(ui: &Ui, resp: &Response) {
+        if inspect_mode() { return; }
+        if resp.hovered() || resp.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+        }
+    }
+
+    /// Vertical resize cursor — horizontal dividers between rows/panes.
+    /// Stays sticky during a drag.
+    #[inline]
+    pub fn resize_v(ui: &Ui, resp: &Response) {
+        if inspect_mode() { return; }
+        if resp.hovered() || resp.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeVertical);
+        }
+    }
+
+    /// Diagonal NW–SE resize — corner grabbers on resizable panels.
+    #[inline]
+    pub fn resize_nwse(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeNwSe);
+        }
+    }
+
+    /// Text I-beam — text input fields, editable cells.
+    #[inline]
+    pub fn text_input(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::Text);
+        }
+    }
+
+    /// Crosshair — chart measurement tool, precision picking.
+    #[inline]
+    pub fn crosshair(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
+        }
+    }
+
+    /// ZoomIn — zoom-box tool while idle (Grabbing takes over once the
+    /// drag starts, paint that one yourself with `set_cursor_icon` since
+    /// the zoom drag is modal and doesn't go through Response).
+    #[inline]
+    pub fn zoom_in(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::ZoomIn);
+        }
+    }
+
+    /// Modal cursor: set whenever a tool mode is active (measure, zoom,
+    /// crosshair, drawing). Doesn't read from a Response — caller already
+    /// knows the mode is on. Still honors inspect mode so the design
+    /// inspector retains control.
+    #[inline]
+    pub fn modal(ui: &Ui, icon: CursorIcon) {
+        if !inspect_mode() {
+            ui.ctx().set_cursor_icon(icon);
+        }
+    }
+
+    /// `ui.add(widget)` + `clickable(...)` in one call. Use this anywhere
+    /// you're about to write `ui.add(egui::Button::new(...))` — the
+    /// resulting `Response` already has PointingHand wired up on hover.
+    /// egui 0.31 has no global "interactive cursor" style, so call sites
+    /// either route through this helper, `ui_kit::Button` (which sets
+    /// PointingHand internally), or set the cursor manually.
+    #[inline]
+    pub fn click_widget<W: egui::Widget>(ui: &mut Ui, widget: W) -> Response {
+        let r = ui.add(widget);
+        clickable(ui, &r);
+        r
+    }
+}
+
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
 pub fn stroke_hair()        -> f32 { crate::dt_f32!(stroke.hair, 0.3) }
 pub fn stroke_thin()        -> f32 { crate::dt_f32!(stroke.thin, 0.5) }
@@ -827,7 +949,7 @@ pub fn segmented_control(
         );
         ui.spacing_mut().button_padding = prev_pad;
         union_rect = Some(union_rect.map_or(resp.rect, |r: egui::Rect| r.union(resp.rect)));
-        if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        cursor::clickable(ui, &resp);
         if resp.clicked() { clicked = Some(i); }
     }
 
