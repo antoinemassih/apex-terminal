@@ -349,6 +349,9 @@ pub(crate) fn draw(
         painter.rect_stroke(arm_rect, arm_radius,
             egui::Stroke::new(stroke_thin(), color_alpha(t.bear, alpha_strong())),
             egui::StrokeKind::Inside);
+        // Armed badge uses true white intentionally — the red `t.bear` fill is
+        // a destructive/active signal, and the icon needs maximum contrast
+        // regardless of theme background. Same pattern as Button::trade glyphs.
         painter.text(arm_rect.center(), egui::Align2::CENTER_CENTER,
             Icon::PULSE, egui::FontId::proportional(font_md() + 1.0),
             egui::Color32::WHITE);

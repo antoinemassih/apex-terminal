@@ -3,8 +3,8 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::text::{MonospaceCode, SectionLabel};
-use crate::ui_kit::widgets::Button;
+use super::super::widgets::text::MonospaceCode;
+use crate::ui_kit::widgets::{Button, PanelSection};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::icons::Icon;
 use super::super::widgets::cards::metric_card::MetricCard;
@@ -317,11 +317,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 ui.add_space(8.0);
 
                 // ── Legs ──
-                ui.horizontal(|ui| {
-                    ui.add_space(m);
-                    ui.add(SectionLabel::new("LEGS").xs().color(t.dim));
-                });
-                ui.add_space(4.0);
+                let leg_count_for_header = watchlist.spread_state.legs.len();
+                PanelSection::new("LEGS")
+                    .count(leg_count_for_header)
+                    .rule(false)
+                    .show(ui, t, |_ui, _t| { /* body rendered inline below */ });
 
                 // Leg rows
                 let leg_count = watchlist.spread_state.legs.len();
@@ -372,7 +372,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         }
                         // Qty
                         if ui.add(Button::icon(Icon::MINUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() && leg.qty > 1 { leg.qty -= 1; }
-                        ui.add(MonospaceCode::new(&format!("{}", leg.qty)).size_px(9.0).color(egui::Color32::from_gray(220)));
+                        ui.add(MonospaceCode::new(&format!("{}", leg.qty)).size_px(9.0).color(t.text));
                         if ui.add(Button::icon(Icon::PLUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() { leg.qty += 1; }
                         // Option type toggle
                         let ot_col = if leg.option_type == "CALL" { t.bull } else { t.bear };
@@ -447,7 +447,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     if ui.add(Button::icon("-").variant(Variant::Ghost).glyph_color(t.dim)).clicked() && watchlist.spread_state.combo_qty > 1 {
                         watchlist.spread_state.combo_qty -= 1;
                     }
-                    ui.add(MonospaceCode::new(&format!("{}", watchlist.spread_state.combo_qty)).size_px(12.0).strong(true).color(egui::Color32::from_gray(240)));
+                    ui.add(MonospaceCode::new(&format!("{}", watchlist.spread_state.combo_qty)).size_px(12.0).strong(true).color(t.text));
                     if ui.add(Button::icon("+").variant(Variant::Ghost).glyph_color(t.dim)).clicked() {
                         watchlist.spread_state.combo_qty += 1;
                     }
