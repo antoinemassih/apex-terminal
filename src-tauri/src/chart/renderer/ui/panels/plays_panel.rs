@@ -2,11 +2,27 @@
 //! Shows in the Feed sidebar under the "Plays" tab.
 //! Each play is a polished visual card with shadow, bevel, and rich layout.
 //! The editor spawns draggable play lines on the chart, synced bidirectionally.
+//!
+//! Migration notes (Agent Q):
+//!   - Header row → `PanelSection` ("PLAYBOOK" with count + "+ New Play" action).
+//!   - Empty state → `PanelEmpty` with star glyph (replaces the hand-rolled
+//!     centered "No plays yet" block).
+//!   - Bespoke play card visuals — DELIBERATELY preserved. The `PlayCard`
+//!     widget (in `lists/cards/play_card.rs`) keeps its distinctive
+//!     shadow + bevel + direction stripe look per user intent. This panel
+//!     does not collapse it into `PanelCard` because that primitive's
+//!     intentional layered/no-border style would lose the "premium card"
+//!     showcase feel the user wants here.
+//!   - Play-type chips: left untouched per Agent H's note (per-chip styling
+//!     and Long/Short bull/bear tints are intentional).
+//!   - There is no standalone `draw` (panel only renders as a tab body via
+//!     `draw_content`), so no `SidePanelShell` wrapping is required from this
+//!     file — the host (`playbook_panel`) owns the shell.
 
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::{Button, PanelEmpty, PanelSection, PanelTone};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use super::super::widgets::inputs::TextInput;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType, PlayLine, PlayLineKind, PlayTarget};
@@ -24,24 +40,21 @@ pub(crate) fn draw_content(
 ) {
     ui.add_space(gap_sm());
 
-    // ── Header with "New Play" button ──
-    ui.horizontal(|ui| {
-        section_label(ui, &format!("PLAYBOOK ({})", watchlist.plays.len()), t.accent);
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if Button::small_action("+ New Play").tint(t.accent).show(ui, t).clicked() {
-                watchlist.play_editor_open = !watchlist.play_editor_open;
-                if watchlist.play_editor_open && !panes.is_empty() {
-                    spawn_play_lines(watchlist, &mut panes[ap]);
-                } else if !watchlist.play_editor_open && !panes.is_empty() {
-                    panes[ap].play_lines.clear();
-                    panes[ap].play_click_to_set = None;
-                }
-            }
-        });
-    });
-    ui.add_space(gap_sm());
-    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-    ui.add_space(gap_sm());
+    // ── Header: PLAYBOOK section with count + "+ New Play" action ──
+    let header_resp = PanelSection::new("PLAYBOOK")
+        .title_color(t.accent)
+        .count(watchlist.plays.len())
+        .action("+ New Play", PanelTone::Accent)
+        .show(ui, t, |_ui, _t| {});
+    if header_resp.action_clicked {
+        watchlist.play_editor_open = !watchlist.play_editor_open;
+        if watchlist.play_editor_open && !panes.is_empty() {
+            spawn_play_lines(watchlist, &mut panes[ap]);
+        } else if !watchlist.play_editor_open && !panes.is_empty() {
+            panes[ap].play_lines.clear();
+            panes[ap].play_click_to_set = None;
+        }
+    }
 
     // ── Play editor (inline) ──
     if watchlist.play_editor_open {
@@ -54,13 +67,11 @@ pub(crate) fn draw_content(
 
     // ── Play cards ──
     if watchlist.plays.is_empty() {
-        ui.add_space(gap_3xl());
-        ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new(Icon::STAR).size(32.0).color(t.dim.gamma_multiply(0.2)));
-            ui.add_space(gap_sm());
-            ui.add(super::super::widgets::text::MonospaceCode::new("No plays yet").sm().color(t.dim).gamma(0.5));
-            ui.add(super::super::widgets::text::MonospaceCode::new("Create a play to share a trade idea").xs().color(t.dim).gamma(0.3));
-        });
+        PanelEmpty::new("No plays yet")
+            .glyph(Icon::STAR)
+            .hint("Create a play to share a trade idea")
+            .min_height(120.0)
+            .show(ui, t);
         return;
     }
 
@@ -648,7 +659,9 @@ fn convert_play_to_orders(play: &Play, chart: &mut Chart) {
 /// A polished play card with shadow, direction stripe, and rich layout.
 ///
 /// Wave 5: thin delegation to the `PlayCard` widget in the cards system.
-/// All visuals + action wiring live in `widgets::cards::play_card`.
+/// All visuals + action wiring live in `widgets::cards::play_card`. The
+/// distinctive shadow/bevel/stripe look is preserved per user intent
+/// (intentional showcase styling — NOT collapsed into `PanelCard`).
 fn draw_play_card(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: &mut Option<String>, activate_id: &mut Option<String>, display_id: &mut Option<String>) {
     use super::super::widgets::cards::PlayCard;
     let r = PlayCard::new(play, t).show(ui);
@@ -657,173 +670,3 @@ fn draw_play_card(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: &mut Opt
     if r.clicked          { *display_id  = Some(play.id.clone()); }
 }
 
-#[allow(dead_code)]
-#[cfg(any())]
-fn _draw_play_card_legacy(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: &mut Option<String>, activate_id: &mut Option<String>, display_id: &mut Option<String>) {
-    let is_long = play.direction == PlayDirection::Long;
-    let dir_color = if is_long { t.bull } else { t.bear };
-    let card_w = ui.available_width();
-    let has_tags = !play.tags.is_empty();
-    let has_targets = play.targets.len() > 1;
-    let card_h = 76.0
-        + if !play.notes.is_empty() { 14.0 } else { 0.0 }
-        + if has_tags { 14.0 } else { 0.0 }
-        + if has_targets { play.targets.len() as f32 * 10.0 } else { 0.0 };
-
-    let (card_rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
-    let p = ui.painter();
-
-    // Shadow — uses theme.shadow_color so light themes don't render black halos
-    p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), radius_lg(), shadow_color_alpha(t, 25));
-    p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), radius_lg(), shadow_color_alpha(t, 15));
-
-    let bg = if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        egui::Color32::from_rgba_unmultiplied(
-            t.toolbar_border.r().saturating_add(15), t.toolbar_border.g().saturating_add(15),
-            t.toolbar_border.b().saturating_add(15), 255)
-    } else {
-        egui::Color32::from_rgb(t.toolbar_bg.r().saturating_add(8), t.toolbar_bg.g().saturating_add(8), t.toolbar_bg.b().saturating_add(8))
-    };
-    p.rect_filled(card_rect, radius_lg(), bg);
-
-    // Top bevel highlight
-    p.rect_filled(egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
-        egui::CornerRadius { nw: radius_lg() as u8, ne: radius_lg() as u8, sw: 0, se: 0 },
-        egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 40 } else { 8 }));
-
-    p.rect_stroke(card_rect, radius_lg(), egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())), egui::StrokeKind::Outside);
-
-    // Accent stripe
-    p.rect_filled(egui::Rect::from_min_max(
-        egui::pos2(card_rect.left(), card_rect.top() + 4.0),
-        egui::pos2(card_rect.left() + 3.0, card_rect.bottom() - 4.0)),
-        egui::CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 }, dir_color);
-
-    let cx = card_rect.left() + 12.0;
-    let mut cy = card_rect.top() + 10.0;
-
-    // Row 1: Direction pill + type icon + symbol + status + R:R
-    {
-        let pill_w = 42.0;
-        let pill_rect = egui::Rect::from_min_size(egui::pos2(cx, cy - 1.0), egui::vec2(pill_w, 16.0));
-        p.rect_filled(pill_rect, 3.0, color_alpha(dir_color, alpha_tint()));
-        p.rect_stroke(pill_rect, 3.0, egui::Stroke::new(stroke_thin(), color_alpha(dir_color, alpha_dim())), egui::StrokeKind::Outside);
-        p.text(pill_rect.center(), egui::Align2::CENTER_CENTER, play.direction.label(), egui::FontId::monospace(font_xs()), dir_color);
-
-        p.text(egui::pos2(cx + pill_w + 6.0, cy + 6.0), egui::Align2::LEFT_CENTER,
-            play.play_type.icon(), egui::FontId::proportional(font_sm()), color_half(t.dim));
-        p.text(egui::pos2(cx + pill_w + 22.0, cy + 6.0), egui::Align2::LEFT_CENTER,
-            &play.symbol, egui::FontId::monospace(font_lg()), t.text);
-
-        let status_color = match play.status {
-            PlayStatus::Draft => t.dim, PlayStatus::Published => t.accent,
-            PlayStatus::Active => t.warn,
-            PlayStatus::Won => t.bull, PlayStatus::Lost => t.bear, _ => color_half(t.dim),
-        };
-        let status_x = card_rect.right() - 60.0;
-        let sr = egui::Rect::from_min_size(egui::pos2(status_x, cy - 1.0), egui::vec2(48.0, 16.0));
-        p.rect_filled(sr, 3.0, color_alpha(status_color, alpha_subtle()));
-        p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), mono_sm(), status_color);
-
-        if play.risk_reward > 0.0 {
-            p.text(egui::pos2(status_x - 8.0, cy + 6.0), egui::Align2::RIGHT_CENTER,
-                &format!("{:.1}R", play.risk_reward), egui::FontId::monospace(font_sm()), t.accent);
-        }
-        cy += 22.0;
-    }
-
-    // Row 2: Entry / Target / Stop
-    {
-        let col_w = (card_w - 24.0) / 3.0;
-        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER, "ENTRY", mono_sm(), color_half(t.dim));
-        p.text(egui::pos2(cx + col_w * 0.6, cy + 4.0), egui::Align2::LEFT_CENTER,
-            &format!("${:.2}", play.entry_price), egui::FontId::monospace(font_sm()), t.text);
-        let tx = cx + col_w;
-        p.text(egui::pos2(tx, cy + 4.0), egui::Align2::LEFT_CENTER, "TARGET", mono_sm(), color_muted(t.bull));
-        p.text(egui::pos2(tx + col_w * 0.6, cy + 4.0), egui::Align2::LEFT_CENTER,
-            &format!("${:.2}", play.target_price), egui::FontId::monospace(font_sm()), t.bull);
-        if play.play_type != PlayType::Scalp {
-            let sx = cx + col_w * 2.0;
-            p.text(egui::pos2(sx, cy + 4.0), egui::Align2::LEFT_CENTER, "STOP", mono_sm(), color_muted(t.bear));
-            p.text(egui::pos2(sx + col_w * 0.5, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &format!("${:.2}", play.stop_price), egui::FontId::monospace(font_sm()), t.bear);
-        }
-        cy += 20.0;
-    }
-
-    // Row 2b: Additional targets with allocations
-    if has_targets {
-        for tgt in &play.targets {
-            p.text(egui::pos2(cx + 8.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &tgt.label, mono_sm(), color_half(t.bull));
-            p.text(egui::pos2(cx + 30.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &format!("${:.2}", tgt.price), egui::FontId::monospace(font_xs()), t.bull);
-            p.text(egui::pos2(cx + 100.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &format!("{}%", (tgt.pct * 100.0) as i32), mono_sm(), color_dim(t.dim));
-            cy += 12.0;
-        }
-    }
-
-    // R:R bar
-    {
-        let bar_x = cx;
-        let bar_w = card_w - 24.0;
-        let bar_rect = egui::Rect::from_min_size(egui::pos2(bar_x, cy), egui::vec2(bar_w, 4.0));
-        p.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, alpha_muted()));
-        let total_range = (play.target_price - play.stop_price).abs();
-        let risk = (play.entry_price - play.stop_price).abs();
-        let risk_pct = if total_range > 0.0 { (risk / total_range).min(1.0) } else { 0.5 };
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, cy), egui::vec2(bar_w * risk_pct, 4.0)), 2.0, color_alpha(t.bear, alpha_dim()));
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + bar_w * risk_pct, cy), egui::vec2(bar_w * (1.0 - risk_pct), 4.0)), 2.0, color_alpha(t.bull, alpha_dim()));
-        p.circle_filled(egui::pos2(bar_x + bar_w * risk_pct, cy + 2.0), 3.0, t.text);
-        cy += 10.0;
-    }
-
-    // Tags
-    if has_tags {
-        let mut tx = cx;
-        for tag in &play.tags {
-            p.text(egui::pos2(tx, cy + 4.0), egui::Align2::LEFT_CENTER,
-                &format!("#{}", tag), mono_sm(), color_half(t.accent));
-            tx += tag.len() as f32 * 5.0 + 12.0;
-        }
-        cy += 12.0;
-    }
-
-    // Notes
-    if !play.notes.is_empty() {
-        p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-            &play.notes, egui::FontId::monospace(font_xs()), color_half(t.dim));
-    }
-
-    // Hover buttons
-    let mut btn_clicked = false;
-    if resp.hovered() {
-        let del_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 18.0, card_rect.top() + 4.0), egui::vec2(14.0, 14.0));
-        let del_resp = ui.interact(del_rect, egui::Id::new(("play_del", &play.id[..8])), egui::Sense::click());
-        if del_resp.hovered() {
-            p.rect_filled(del_rect, 2.0, color_alpha(t.bear, alpha_ghost()));
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        p.text(del_rect.center(), egui::Align2::CENTER_CENTER, Icon::X, egui::FontId::monospace(font_sm()), color_half(t.dim));
-        if del_resp.clicked() { *remove_id = Some(play.id.clone()); btn_clicked = true; }
-
-        if play.status == PlayStatus::Draft {
-            let act_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 60.0, card_rect.bottom() - 18.0), egui::vec2(52.0, 14.0));
-            let act_resp = ui.interact(act_rect, egui::Id::new(("play_act", &play.id[..8])), egui::Sense::click());
-            let act_bg = if act_resp.hovered() { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.accent, alpha_ghost()) };
-            p.rect_filled(act_rect, 3.0, act_bg);
-            p.text(act_rect.center(), egui::Align2::CENTER_CENTER, "Activate", mono_sm(), t.accent);
-            if act_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            if act_resp.clicked() { *activate_id = Some(play.id.clone()); btn_clicked = true; }
-        }
-    }
-
-    // Click card body → display play lines on chart
-    if resp.clicked() && !btn_clicked {
-        *display_id = Some(play.id.clone());
-    }
-
-    ui.add_space(gap_md());
-}
