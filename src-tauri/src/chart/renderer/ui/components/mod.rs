@@ -12,7 +12,6 @@
 
 // Original components
 pub mod labels;
-pub mod pills;
 pub mod frames;
 pub mod headers;
 pub mod hairlines;
@@ -20,7 +19,6 @@ pub mod metrics;
 
 // From components_extra
 pub mod action_button;
-pub mod chips;
 pub mod dom_action;
 pub mod header_buttons;
 pub mod inputs;
@@ -47,13 +45,11 @@ pub mod toolbar;
 pub mod motion;
 
 pub use labels::*;
-pub use pills::*;
 pub use frames::*;
 pub use headers::*;
 pub use hairlines::*;
 pub use metrics::*;
 pub use action_button::*;
-pub use chips::*;
 pub use dom_action::*;
 pub use header_buttons::*;
 pub use sortable_headers::*;

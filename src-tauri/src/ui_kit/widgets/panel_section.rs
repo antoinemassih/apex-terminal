@@ -241,7 +241,7 @@ impl<'a> PanelSection<'a> {
         {
             let layer = egui::LayerId::new(
                 egui::Order::Foreground,
-                ui.id().with(("panel_section_shadow", hr.left().to_bits(), hr.top().to_bits())),
+                ui.id().with(("panel_section_shadow", self.title)),
             );
             let painter = ui.ctx().layer_painter(layer);
             for i in 0..shadow_h as i32 {

@@ -54,11 +54,9 @@ pub mod scroll_area;
 pub mod calendar;
 pub mod date_picker;
 pub mod color_picker;
-pub mod disclosure;
 pub mod indicator;
 pub mod toggle_row;
 pub mod theme_preview_card;
-pub mod choice_grid;
 pub mod selectable_row;
 pub mod opacity_picker;
 pub mod risk_reward_bar;
@@ -79,29 +77,26 @@ pub mod header;
 // Outer side-panel chrome (Agent J)
 pub mod side_panel_shell;
 pub mod split_section_panel;
-pub mod panel_footer;
 // Body content primitives (Agent K)
 pub mod panel_section;
 pub mod panel_empty;
 pub mod panel_loading;
-pub mod panel_divider;
 pub mod panel_list_row;
 pub mod panel_card;
 pub mod panel_key_value_row;
 // Foundation extension wave 2 (Agent V)
 pub mod panel_sub_section;
 
+pub use tokens::{Size, Variant};
 pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
 pub use side_panel_shell::{SidePanelShell, SidePanelShellResponse, SidePanelShellTabs, Width};
 pub use split_section_panel::SplitSectionPanel;
-pub use panel_footer::{PanelFooter, Tone as PanelFooterTone};
 pub use panel_section::{
     PanelSection, PanelSectionGroup, PanelSectionGroupBuilder, SectionResponse, Tone as PanelTone,
 };
 pub use panel_empty::PanelEmpty;
 pub use panel_loading::PanelLoading;
-pub use panel_divider::panel_divider;
 pub use panel_list_row::{PanelListRow, PanelListRowResponse, TrailingBtn, TrailingTone};
 // Foundation extension wave 2 (Agent V)
 // NOTE: Agent U is also adding re-exports in this file — merge conflict
@@ -156,11 +151,9 @@ pub use sidebar::{Sidebar, SidebarStyle, SidebarItem, SidebarSection};
 pub use resizable::Resizable;
 pub use scroll_area::{ScrollDirection, ThemedScrollArea};
 pub use self::color_picker::ColorPicker;
-pub use disclosure::Disclosure;
 pub use indicator::{Indicator, IndicatorStyle, IndicatorTone};
 pub use toggle_row::ToggleRow;
 pub use theme_preview_card::ThemePreviewCard;
-pub use choice_grid::{ChoiceGrid, ChoiceItem};
 pub use selectable_row::SelectableRow;
 pub use opacity_picker::{OpacityPicker, OPACITY_LEVELS as PICKER_OPACITY_LEVELS};
 pub use risk_reward_bar::RiskRewardBar;

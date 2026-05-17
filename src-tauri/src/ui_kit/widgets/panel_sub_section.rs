@@ -313,7 +313,7 @@ impl<'a> PanelSubSection<'a> {
         {
             let layer = egui::LayerId::new(
                 egui::Order::Foreground,
-                ui.id().with(("panel_sub_section_shadow", rect.left().to_bits(), rect.top().to_bits())),
+                ui.id().with(("panel_sub_section_shadow", id_salt)),
             );
             let painter = ui.ctx().layer_painter(layer);
             for i in 0..shadow_h as i32 {
