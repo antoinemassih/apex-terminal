@@ -951,6 +951,7 @@ fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart, sec_idx
     let resp = PanelListRow::new(&id_salt)
         .primary(label)
         .selected(active)
+        .divided(true)
         .trailing(move |ui, _t| {
             ui.label(
                 egui::RichText::new(trail_text)
@@ -971,6 +972,7 @@ fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {
     let resp = PanelListRow::new(&id_salt)
         .primary("Volume profile")
         .selected(active)
+        .divided(true)
         .trailing(move |ui, _t| {
             ui.label(
                 egui::RichText::new(&trail_text)
@@ -1001,6 +1003,7 @@ fn lib_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize
     let resp = PanelListRow::new(&id_salt)
         .primary("SwingRange")
         .selected(active)
+        .divided(true)
         .trailing(move |ui, _t| {
             ui.label(
                 egui::RichText::new(&trail_text)

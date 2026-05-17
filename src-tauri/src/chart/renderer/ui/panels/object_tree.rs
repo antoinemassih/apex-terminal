@@ -31,7 +31,8 @@ use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Chart, Theme, DrawingAction, drawing_to_db, pane_tabs_header_h};
 use super::super::super::DrawingKind;
 use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, PanelSubSection, SidePanelShell, Side, Width,
+    Button, PanelEmpty, PanelListRow, PanelSection, PanelSubSection, SidePanelShell, Side,
+    TrailingBtn, TrailingTone, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use super::super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
@@ -351,14 +352,6 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                         let ds_id_del = ds.id.clone();
                         let ds_id_lock = ds.id.clone();
 
-                        // Cells for deferred action capture from trailing closure.
-                        let want_delete = std::cell::Cell::new(false);
-                        let want_toggle_vis = std::cell::Cell::new(false);
-                        let want_toggle_lock = std::cell::Cell::new(false);
-                        let del_ref = &want_delete;
-                        let vis_ref = &want_toggle_vis;
-                        let lock_ref = &want_toggle_lock;
-
                         let id_salt = format!("dr_{}", ds.id);
                         let primary_text: String = if let Some(score) = sig_score {
                             format!("{}  · {:.1}", kind_label, score)
@@ -367,59 +360,56 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                         };
                         let sig_dot_col = sig_score.map(|s| sig_color(s, t));
 
+                        // Trailing icon strip: slice-based form replaces three
+                        // Cell<bool> trampolines. Slice order is L→R visual; we
+                        // keep EYE leftmost, then LOCK, then TRASH rightmost to
+                        // mirror the previous right-to-left layout. The
+                        // significance dot moves into the leading slot next to
+                        // the swatch — it's a status indicator, not a button,
+                        // and trailing_buttons + trailing(closure) are mutually
+                        // exclusive.
+                        let lock_icon = if locked { Icon::LOCK } else { Icon::LOCK_OPEN };
+                        let eye_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
+                        let btns = [
+                            TrailingBtn::icon(eye_icon)
+                                .tone(TrailingTone::Muted)
+                                .active(!is_hidden)
+                                .tooltip("Show / hide group"),
+                            TrailingBtn::icon(lock_icon)
+                                .tone(TrailingTone::Muted)
+                                .active(locked)
+                                .tooltip("Lock / unlock"),
+                            TrailingBtn::icon(Icon::TRASH)
+                                .tone(TrailingTone::Bear)
+                                .tooltip("Delete"),
+                        ];
+
                         let row_resp = PanelListRow::new(&id_salt)
                             .selected(is_sel)
-                            .leading(move |ui, _t| { paint_swatch(ui, dc); })
-                            .primary(&primary_text)
-                            .trailing(move |ui, t| {
-                                if Button::icon(Icon::TRASH)
-                                    .variant(Variant::Ghost)
-                                    .glyph_color(t.bear)
-                                    .size(KitSize::Xs)
-                                    .show(ui, t)
-                                    .on_hover_text("Delete")
-                                    .clicked()
-                                {
-                                    del_ref.set(true);
-                                }
-                                let lock_icon = if locked { Icon::LOCK } else { Icon::LOCK_OPEN };
-                                if Button::icon(lock_icon)
-                                    .variant(Variant::Ghost)
-                                    .glyph_color(if locked { t.dim } else { color_half(t.dim) })
-                                    .size(KitSize::Xs)
-                                    .show(ui, t)
-                                    .on_hover_text("Lock / unlock")
-                                    .clicked()
-                                {
-                                    lock_ref.set(true);
-                                }
-                                let eye_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
-                                if Button::icon(eye_icon)
-                                    .variant(Variant::Ghost)
-                                    .glyph_color(if is_hidden { color_very_dim(t.dim) } else { t.dim })
-                                    .size(KitSize::Xs)
-                                    .show(ui, t)
-                                    .on_hover_text("Show / hide group")
-                                    .clicked()
-                                {
-                                    vis_ref.set(true);
-                                }
+                            .leading(move |ui, _t| {
+                                paint_swatch(ui, dc);
                                 if let Some(sc) = sig_dot_col {
                                     let (badge_r, _) = ui.allocate_exact_size(
                                         egui::vec2(8.0, 18.0), egui::Sense::hover());
                                     ui.painter().circle_filled(badge_r.center(), 3.0, sc);
                                 }
                             })
-                            .show(ui, t);
+                            .primary(&primary_text)
+                            .trailing_buttons(&btns)
+                            .show_full(ui, t);
 
-                        if want_delete.get() { delete_id = Some(ds_id_del); }
-                        if want_toggle_vis.get() { toggle_vis_group = Some(group_id_eye); }
-                        if want_toggle_lock.get() { toggle_lock_id = Some(ds_id_lock); }
+                        match row_resp.trailing_clicked_idx {
+                            Some(0) => toggle_vis_group = Some(group_id_eye),
+                            Some(1) => toggle_lock_id = Some(ds_id_lock),
+                            Some(2) => delete_id = Some(ds_id_del),
+                            _ => {}
+                        }
 
-                        if row_resp.clicked() {
+                        if row_resp.clicked {
                             if shift { shift_click_id = Some(ds.id.clone()); }
                             else { click_id = Some(ds.id.clone()); }
                         }
+                        let row_resp = row_resp.response.expect("PanelListRow::show_full always sets response");
 
                         // Context menu (right-click)
                         let ds_id_for_menu = ds.id.clone();
@@ -693,44 +683,26 @@ fn draw_overlays_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
         .collect();
 
     for (idx, color, visible, symbol) in &snaps {
-        let want_toggle = std::cell::Cell::new(false);
-        let want_delete = std::cell::Cell::new(false);
-        let tg_ref = &want_toggle;
-        let dl_ref = &want_delete;
         let id_salt = format!("ov_{}", idx);
         let visible = *visible;
         let color = *color;
 
-        PanelListRow::new(&id_salt)
+        let eye_icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
+        let btns = [
+            TrailingBtn::icon(Icon::TRASH).tone(TrailingTone::Bear).tooltip("Remove overlay"),
+            TrailingBtn::icon(eye_icon).tone(TrailingTone::Muted).active(visible).tooltip("Show / hide"),
+        ];
+        let resp = PanelListRow::new(&id_salt)
             .leading(move |ui, _t| { paint_swatch(ui, color); })
             .primary(symbol.as_str())
-            .trailing(move |ui, t| {
-                if Button::icon(Icon::TRASH)
-                    .variant(Variant::Ghost)
-                    .glyph_color(t.bear)
-                    .size(KitSize::Xs)
-                    .show(ui, t)
-                    .on_hover_text("Remove overlay")
-                    .clicked()
-                {
-                    dl_ref.set(true);
-                }
-                let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-                if Button::icon(eye)
-                    .variant(Variant::Ghost)
-                    .glyph_color(if visible { t.dim } else { color_very_dim(t.dim) })
-                    .size(KitSize::Xs)
-                    .show(ui, t)
-                    .on_hover_text("Show / hide")
-                    .clicked()
-                {
-                    tg_ref.set(true);
-                }
-            })
-            .show(ui, t);
+            .trailing_buttons(&btns)
+            .show_full(ui, t);
 
-        if want_toggle.get() { toggle_idx = Some(*idx); }
-        if want_delete.get() { delete_idx = Some(*idx); }
+        match resp.trailing_clicked_idx {
+            Some(0) => delete_idx = Some(*idx),
+            Some(1) => toggle_idx = Some(*idx),
+            _ => {}
+        }
     }
 
     if let Some(i) = toggle_idx {
