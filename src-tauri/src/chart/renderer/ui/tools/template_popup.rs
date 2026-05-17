@@ -75,7 +75,7 @@ pub(crate) fn draw(
                                     .fill(bg).corner_radius(r_sm_cr())
                                     .stroke(egui::Stroke::new(if active { stroke_thin() } else { 0.0 },
                                         if active { color_alpha(t.accent, alpha_line()) } else { egui::Color32::TRANSPARENT }))
-                                    .min_size(egui::vec2(0.0, 20.0))).clicked() {
+                                    .min_size(egui::vec2(0.0, row_height_compact()))).clicked() {
                                     panes[pi].pane_type = ptype;
                                 }
                             }

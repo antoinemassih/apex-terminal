@@ -288,7 +288,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         };
                         let stroke_col = if sel { color_alpha(t.accent, alpha_heavy()) } else { color_alpha(t.toolbar_border, alpha_line()) };
                         if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(label).monospace().size(font_sm()).color(fg))
-                            .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 20.0))
+                            .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, row_height_compact()))
                             .stroke(egui::Stroke::new(stroke_thin(), stroke_col)))
                             .clicked() && !sel
                         {
@@ -391,7 +391,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         .glyph_color(vis_fg)
                         .fill(if ind.visible { color_alpha(t.toolbar_border, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                         .corner_radius(current().r_sm as f32)
-                        .min_size(egui::vec2(24.0, 22.0))
+                        .min_size(egui::vec2(24.0, row_height_default()))
                         .frameless(true));
                     if vr.on_hover_text("Toggle Visibility").clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -403,7 +403,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             .fill(color_alpha(del_color, alpha_ghost()))
                             .corner_radius(current().r_sm as f32)
                             .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
-                            .min_size(egui::vec2(24.0, 22.0))
+                            .min_size(egui::vec2(24.0, row_height_default()))
                             .frameless(true));
                         if dr.on_hover_text("Delete Indicator").clicked() {
                             delete_id = Some(edit_id); close_editor = true;

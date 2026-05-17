@@ -282,7 +282,7 @@ pub fn radio_button_row<T: PartialEq + Clone>(
                     .fill(bg)
                     .stroke(Stroke::new(stroke_std(), border))
                     .corner_radius(radius_sm())
-                    .min_size(egui::vec2(0.0, 20.0)),
+                    .min_size(egui::vec2(0.0, row_height_compact())),
             );
             if resp.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

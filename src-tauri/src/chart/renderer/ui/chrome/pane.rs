@@ -824,7 +824,7 @@ impl<'a> AccountStrip<'a> {
                             egui::Button::new(RichText::new("CANCEL ALL").monospace().size(font_sm()).strong().color(contrast_fg(t.bear)))
                                 .fill(color_alpha(t.bear, 120))
                                 .corner_radius(3.0) // TODO: off-token
-                                .min_size(egui::vec2(0.0, 22.0))
+                                .min_size(egui::vec2(0.0, row_height_default()))
                                 .stroke(Stroke::new(stroke_std(), t.bear)),
                         ).clicked() {
                             on_cancel_all();
@@ -834,7 +834,7 @@ impl<'a> AccountStrip<'a> {
                             egui::Button::new(RichText::new("FLATTEN").monospace().size(font_sm()).strong().color(contrast_fg(t.bear)))
                                 .fill(color_alpha(t.bear, 180))
                                 .corner_radius(3.0) // TODO: off-token
-                                .min_size(egui::vec2(0.0, 22.0))
+                                .min_size(egui::vec2(0.0, row_height_default()))
                                 .stroke(Stroke::new(stroke_std(), t.bear)),
                         ).clicked() {
                             on_flatten();
@@ -983,7 +983,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 egui::Button::new(egui::RichText::new(armed_icon).size(font_xs() + 3.0).color(armed_color))
                     .fill(if armed { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
                     .stroke(egui::Stroke::NONE)
-                    .min_size(egui::vec2(18.0, 18.0))
+                    .min_size(egui::vec2(18.0, row_height_dense()))
                     .corner_radius(radius_sm()),
             );
             if armed_resp.clicked()  { armed_toggled = true; }
@@ -1031,7 +1031,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                         egui::RichText::new(exp_icon).size(font_xs_plus()).color(color_half(dim)),
                     )
                     .fill(Color32::TRANSPARENT)
-                    .min_size(egui::vec2(20.0, 18.0))
+                    .min_size(egui::vec2(20.0, row_height_dense()))
                     .corner_radius(radius_sm()),
                 );
                 if exp_resp.clicked() { advanced_toggled = true; }

@@ -6,7 +6,7 @@
 use egui::Context;
 use crate::chart_renderer::gpu::Theme;
 use crate::chart_renderer::trading::OrderSide;
-use crate::chart_renderer::ui::style::{color_alpha, color_half, color_muted, cursor, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, radius_xs, radius_md, shadow_color_alpha, stroke_thin};
+use crate::chart_renderer::ui::style::{color_alpha, color_half, color_muted, cursor, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, radius_xs, radius_md, row_height_default, shadow_color_alpha, stroke_thin};
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
@@ -130,7 +130,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 ui.label(egui::RichText::new("Qty   ").monospace().size(font_sm()).color(c.t.dim));
                 ui.add_space(gap_sm());
                 if cursor::click_widget(ui, egui::Button::new(egui::RichText::new("-").monospace().size(font_md()).color(c.t.dim))
-                    .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(radius_xs()).min_size(egui::vec2(20.0, 22.0))).clicked() {
+                    .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(radius_xs()).min_size(egui::vec2(20.0, row_height_default()))).clicked() {
                     if let Ok(q) = c.edit_qty.parse::<u32>() {
                         let step = if q > 100 { 10 } else if q > 10 { 5 } else { 1 };
                         let new_q = q.saturating_sub(step).max(1);
@@ -148,7 +148,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                     if let Ok(q) = c.edit_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
                 }
                 if cursor::click_widget(ui, egui::Button::new(egui::RichText::new("+").monospace().size(font_md()).color(c.t.dim))
-                    .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(radius_xs()).min_size(egui::vec2(20.0, 22.0))).clicked() {
+                    .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(radius_xs()).min_size(egui::vec2(20.0, row_height_default()))).clicked() {
                     if let Ok(q) = c.edit_qty.parse::<u32>() {
                         let step = if q >= 100 { 10 } else if q >= 10 { 5 } else { 1 };
                         let new_q = q + step;

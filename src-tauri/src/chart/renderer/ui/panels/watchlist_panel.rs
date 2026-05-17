@@ -151,7 +151,7 @@ if watchlist.open {
                             let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
                             let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
                             let opt_resp = ui.add(Button::icon(opt_icon).variant(Variant::Chrome).glyph_color(opt_color).size(Size::Sm)
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)))
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense())))
                                 .on_hover_text("Show / hide options");
                             if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -290,7 +290,7 @@ if watchlist.open {
                                 let lbl = format!("{:6} {}", sym, name);
                                 // legacy: monospace RichText; Button uses plain text
                                 let resp = ui.add(Button::new(lbl.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(fg)
-                                    .fill(bg).frameless(true).min_size(egui::vec2(ui.available_width(), 20.0)));
+                                    .fill(bg).frameless(true).min_size(egui::vec2(ui.available_width(), row_height_compact())));
                                 if resp.clicked() {
                                     watchlist.add_symbol(sym);
                                     fetch_watchlist_prices(vec![sym.clone()]);
@@ -1356,7 +1356,7 @@ if watchlist.open {
                             for (sym, name) in watchlist.search_results.clone() {
                                 let chain_sugg_lbl = format!("{} {}", sym, name);
                                 if ui.add(Button::new(chain_sugg_lbl.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(t.dim)
-                                    .frameless(true).min_size(egui::vec2(ui.available_width(), 20.0))).clicked() {
+                                    .frameless(true).min_size(egui::vec2(ui.available_width(), row_height_compact()))).clicked() {
                                     watchlist.chain_symbol = sym;
                                     watchlist.chain_sym_input.clear();
                                     watchlist.search_results.clear();

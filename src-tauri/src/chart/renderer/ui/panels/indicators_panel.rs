@@ -487,7 +487,7 @@ fn tool_btn(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, tg: Tg, tooltip: &s
         .variant(crate::ui_kit::widgets::tokens::Variant::Toggle)
         .active(active)
         .size(KitSize::Sm)
-        .min_size(egui::vec2(26.0, 24.0))
+        .min_size(egui::vec2(26.0, row_height_spacious()))
         .show(ui, t)
         .on_hover_text(format!("{}\n{}", bool_label(tg), tooltip));
     if resp.clicked() { bool_set(chart, tg, !active); }

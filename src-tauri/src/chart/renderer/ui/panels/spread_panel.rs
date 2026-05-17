@@ -409,7 +409,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // Add leg button
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    if ui.add(Button::new("+ Add Leg").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(w - m * 2.0, 18.0))).clicked() {
+                    if ui.add(Button::new("+ Add Leg").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(w - m * 2.0, row_height_dense()))).clicked() {
                         add_leg = true;
                     }
                 });
@@ -457,7 +457,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 // ── Submit button ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    if ui.add(Button::new("SUBMIT SPREAD").variant(Variant::Primary).tint(t.accent).min_size(egui::vec2(w - m * 2.0, 30.0))).clicked() {
+                    if ui.add(Button::new("SUBMIT SPREAD").variant(Variant::Primary).tint(t.accent).min_size(egui::vec2(w - m * 2.0, row_height_tall()))).clicked() {
                         do_submit = true;
                     }
                 });
