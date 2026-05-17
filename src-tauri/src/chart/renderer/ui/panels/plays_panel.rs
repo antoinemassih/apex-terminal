@@ -28,7 +28,7 @@ pub(crate) fn draw_content(
     ui.horizontal(|ui| {
         section_label(ui, &format!("PLAYBOOK ({})", watchlist.plays.len()), t.accent);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if small_action_btn(ui, "+ New Play", t.accent) {
+            if Button::small_action("+ New Play").tint(t.accent).show(ui, t).clicked() {
                 watchlist.play_editor_open = !watchlist.play_editor_open;
                 if watchlist.play_editor_open && !panes.is_empty() {
                     spawn_play_lines(watchlist, &mut panes[ap]);
@@ -286,11 +286,11 @@ fn draw_play_editor(
                 section_label(ui, "LEGS", t.dim);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if !watchlist.play_editor_has_t2 && pt != PlayType::Scalp {
-                        if small_action_btn(ui, "+ Add Target", t.accent) {
+                        if Button::small_action("+ Add Target").tint(t.accent).show(ui, t).clicked() {
                             add_target_line(watchlist, chart.as_deref_mut(), PlayLineKind::Target2);
                         }
                     } else if watchlist.play_editor_has_t2 && !watchlist.play_editor_has_t3 && pt != PlayType::Scalp {
-                        if small_action_btn(ui, "+ Add T3", t.accent) {
+                        if Button::small_action("+ Add T3").tint(t.accent).show(ui, t).clicked() {
                             add_target_line(watchlist, chart.as_deref_mut(), PlayLineKind::Target3);
                         }
                     }
@@ -455,7 +455,7 @@ fn draw_play_editor(
                 let can_create = !watchlist.play_editor_symbol.trim().is_empty()
                     && watchlist.play_editor_entry.parse::<f32>().is_ok();
 
-                if action_btn(ui, "Create Play", t.accent, can_create) {
+                if Button::action("Create Play").tint(t.accent).disabled(!can_create).show(ui, t).clicked() {
                     let entry = watchlist.play_editor_entry.parse::<f32>().unwrap_or(0.0);
                     let target = watchlist.play_editor_target.parse::<f32>().unwrap_or(entry * 1.02);
                     let stop = watchlist.play_editor_stop.parse::<f32>().unwrap_or(entry * 0.98);
@@ -491,7 +491,7 @@ fn draw_play_editor(
                         c.play_click_to_set = None;
                     }
                 }
-                if small_action_btn(ui, "Cancel", t.dim) {
+                if Button::small_action("Cancel").tint(t.dim).show(ui, t).clicked() {
                     clear_editor(watchlist);
                     if let Some(ref mut c) = chart {
                         c.play_lines.clear();
@@ -549,7 +549,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
         val = val.saturating_sub(step).max(5);
     }
     ui.add(egui::TextEdit::singleline(pct_str)
-        .desired_width(22.0).font(egui::FontId::monospace(font_xs()))
+        .desired_width(22.0).font(mono_xs())
         .horizontal_align(egui::Align::Center));
     ui.add(super::super::widgets::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
     if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Xs).fg(t.dim)

@@ -242,14 +242,14 @@ if watchlist.open {
                     ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(font_sm()), icon_col);
                     let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
                     if btn_resp.clicked() { watchlist.filter_open = !watchlist.filter_open; }
-                    if btn_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &btn_resp);
                     // Columns config button (sliders icon)
                     let col_btn_rect = egui::Rect::from_min_size(egui::pos2(btn_rect.left() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
                     let col_icon_col = if watchlist.wl_columns_open { t.accent } else { t.dim.gamma_multiply(0.4) };
                     ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(font_sm()), col_icon_col);
                     let col_resp = ui.interact(col_btn_rect, egui::Id::new("wl_columns_btn"), egui::Sense::click());
                     if col_resp.clicked() { watchlist.wl_columns_open = !watchlist.wl_columns_open; }
-                    if col_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &col_resp);
                     // Refocus after adding a symbol
                     if watchlist.search_refocus {
                         watchlist.search_refocus = false;
@@ -507,6 +507,7 @@ if watchlist.open {
                             for (si, ii, pin_sym, pin_price, pin_prev, _pin_loaded, avg_range) in &pinned_items {
                                 let is_active = *pin_sym == active_sym;
                                 let change_pct = if *pin_prev > 0.0 { (*pin_price / *pin_prev - 1.0) * 100.0 } else { 0.0 };
+                                // Active row paints over an accent-tinted bg; WHITE locks contrast across all themes.
                                 let sym_fg = if is_active { egui::Color32::WHITE } else { color_alpha(t.text, 230) };
                                 let wresp = WatchlistRow::new(pin_sym, *pin_price, change_pct)
                                     .theme(t)
@@ -978,7 +979,7 @@ if watchlist.open {
                                     ui.painter().rect_filled(float_rect, 4.0, color_alpha(t.accent, alpha_muted()));
                                     ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(stroke_std(), t.accent), egui::StrokeKind::Outside);
                                     ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
-                                        drag_sym, egui::FontId::monospace(font_md()), t.text);
+                                        drag_sym, mono_md(), t.text);
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                                 }
                             }
@@ -1169,23 +1170,23 @@ if watchlist.open {
                                         painter.rect_filled(rect, 0.0, row_bg);
                                         if resp.hovered() {
                                             painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, alpha_subtle()));
-                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                         }
+                                        crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
 
                                         let badge = if is_call { "C" } else { "P" };
                                         let y_c = rect.center().y;
                                         // C/P badge
                                         painter.text(egui::pos2(rect.left() + 6.0, y_c), egui::Align2::LEFT_CENTER,
-                                            badge, egui::FontId::monospace(font_md()), color);
+                                            badge, mono_md(), color);
                                         // Contract name
                                         painter.text(egui::pos2(rect.left() + 22.0, y_c), egui::Align2::LEFT_CENTER,
                                             &format!("{} {:.0} {}", item_underlying, item_strike, item_expiry),
-                                            egui::FontId::monospace(font_lg()), t.text);
+                                            mono_lg(), t.text);
                                         // Bid x Ask (right-aligned)
                                         if item_bid > 0.0 || item_ask > 0.0 {
                                             painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
                                                 &format!("{:.2} x {:.2}", item_bid, item_ask),
-                                                egui::FontId::monospace(font_lg()), color.gamma_multiply(0.7));
+                                                mono_lg(), color.gamma_multiply(0.7));
                                         }
                                         // Faint separator
                                         painter.line_segment(
@@ -1200,6 +1201,7 @@ if watchlist.open {
                                         let x_rect = egui::Rect::from_min_size(egui::pos2(rect.right() - 16.0, rect.top()), egui::vec2(16.0, 22.0));
                                         if resp.hovered() {
                                             let x_resp = ui.interact(x_rect, egui::Id::new(("opt_x", si, ii, "opt_item")), egui::Sense::click());
+                                            crate::chart_renderer::ui::style::cursor::clickable(ui, &x_resp);
                                             if x_resp.clicked() { remove_sym = Some(item_sym.clone()); }
                                         }
                                     }
@@ -1310,7 +1312,7 @@ if watchlist.open {
                         }
                         // Spread Builder shortcut
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if small_action_btn(ui, "Spread", t.dim) {
+                            if Button::small_action("Spread").tint(t.dim).show(ui, t).clicked() {
                                 watchlist.spread_open = !watchlist.spread_open;
                             }
                         });
@@ -1336,7 +1338,7 @@ if watchlist.open {
                             let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
                             let r = sym_resp.rect;
                             ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
-                                display_text, egui::FontId::monospace(font_lg()), t.accent);
+                                display_text, mono_lg(), t.accent);
                         }
                         // Price display
                         if chain_price > 0.0 {
@@ -1462,17 +1464,17 @@ if watchlist.open {
 
                         // Strike
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.0}", row.strike), egui::FontId::monospace(font_lg()), t.text);
+                            &format!("{:.0}", row.strike), mono_lg(), t.text);
                         x += col_stk + gap;
 
                         // Bid
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.2}", row.bid), egui::FontId::monospace(font_lg()), color);
+                            &format!("{:.2}", row.bid), mono_lg(), color);
                         x += col_bid + gap;
 
                         // Ask
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.2}", row.ask), egui::FontId::monospace(font_lg()), t.dim);
+                            &format!("{:.2}", row.ask), mono_lg(), t.dim);
                         x += col_ask + gap;
 
                         // OI
@@ -1665,7 +1667,7 @@ if watchlist.open {
                                 format!("${:.2}", price)
                             };
                             ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER,
-                                &badge_text, egui::FontId::monospace(font_md()),
+                                &badge_text, mono_md(),
                                 TEXT_PRIMARY);
                         }
                         ui.add_space(20.0);
