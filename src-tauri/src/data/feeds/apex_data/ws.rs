@@ -13,9 +13,11 @@
 
 use super::config::{apex_ws_url, apex_token, is_enabled};
 use super::types::*;
+use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff};
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tokio::sync::mpsc;
@@ -61,10 +63,14 @@ struct Manager {
     listeners: Mutex<Vec<Listener>>,
     tx_ctrl: Mutex<Option<mpsc::UnboundedSender<CtrlMsg>>>,
     connected: Mutex<bool>,
+    /// Set by `Shutdown::drain` to stop the reconnect loop after the current
+    /// iteration exits.
+    shutdown: AtomicBool,
 }
 
 enum CtrlMsg {
     PushSubs,
+    Shutdown,
 }
 
 static MANAGER: OnceLock<Arc<Manager>> = OnceLock::new();
@@ -77,6 +83,7 @@ fn manager() -> Arc<Manager> {
             listeners: Mutex::new(Vec::new()),
             tx_ctrl: Mutex::new(None),
             connected: Mutex::new(false),
+            shutdown: AtomicBool::new(false),
         })
     }).clone()
 }
@@ -122,7 +129,10 @@ struct InEnvelope {
 
 /// Boot the client once at startup. Safe to call multiple times — first wins.
 pub fn start() {
-    if !is_enabled() { eprintln!("[apex_data.ws] disabled, not starting"); return; }
+    if !is_enabled() {
+        report(ErrorLevel::Info, "apex_data.ws", "disabled", "not starting");
+        return;
+    }
     let mgr = manager();
     // If a control channel already exists, we've already started.
     if mgr.tx_ctrl.lock().map(|g| g.is_some()).unwrap_or(false) { return; }
@@ -132,6 +142,33 @@ pub fn start() {
 
     let mgr_bg = mgr.clone();
     runtime().spawn(async move { run_connection_loop(mgr_bg, rx_ctrl).await; });
+
+    // Register a real Shutdown handler so process exit can drain cleanly.
+    connectivity::register("apex_data.ws", Arc::new(ApexDataWsShutdown { mgr: mgr.clone() }));
+}
+
+/// Real `Shutdown` impl for the ApexData WS connection.
+struct ApexDataWsShutdown {
+    mgr: Arc<Manager>,
+}
+
+#[async_trait::async_trait]
+impl connectivity::Shutdown for ApexDataWsShutdown {
+    async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        self.mgr.shutdown.store(true, Ordering::SeqCst);
+        // Best-effort: nudge the control loop so it observes shutdown.
+        if let Some(tx) = self.mgr.tx_ctrl.lock().ok().and_then(|g| g.clone()) {
+            let _ = tx.send(CtrlMsg::Shutdown);
+        }
+        // Wait until the connected flag clears or the deadline elapses.
+        let start = std::time::Instant::now();
+        while start.elapsed() < deadline {
+            let connected = self.mgr.connected.lock().map(|g| *g).unwrap_or(false);
+            if !connected { return Ok(()); }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        Err("apex_data.ws drain timed out".into())
+    }
 }
 
 pub fn is_connected() -> bool {
@@ -193,16 +230,22 @@ fn push_subs() {
 // ────────────────────────────────────────────────────────────────────────────
 
 async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedReceiver<CtrlMsg>) {
+    // Infinite reconnect attempts — exponential backoff w/ jitter prevents
+    // thundering herd. WS feeds should never give up.
+    let mut backoff = Backoff::new().with_max_attempts(None);
     loop {
+        if mgr.shutdown.load(Ordering::SeqCst) { break; }
         let url = format!("{}?format=msgpack{}", apex_ws_url(),
             apex_token().map(|t| format!("&token={t}")).unwrap_or_default());
-        eprintln!("[apex_data.ws] connecting → {url}");
+        report(ErrorLevel::Info, "apex_data.ws", "connecting", format!("→ {url}"));
 
         let req = match url.into_client_request() {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("[apex_data.ws] bad url: {e}");
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                report(ErrorLevel::Error, "apex_data.ws", "bad_url", e.to_string());
+                if let Some(d) = backoff.next_delay() {
+                    tokio::time::sleep(d).await;
+                }
                 continue;
             }
         };
@@ -216,7 +259,7 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         };
 
         let conn_result = if let Some((ip, port)) = lan_override.as_ref() {
-            eprintln!("[apex_data.ws] LAN override: dial {ip}:{port}");
+            report(ErrorLevel::Info, "apex_data.ws", "lan_override", format!("dial {ip}:{port}"));
             match TcpStream::connect((ip.as_str(), *port)).await {
                 Ok(stream) => match client_async(req, MaybeTlsStream::Plain(stream)).await {
                     Ok((ws, _)) => Ok(ws),
@@ -234,15 +277,18 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         let ws = match conn_result {
             Ok(ws) => ws,
             Err(e) => {
-                eprintln!("[apex_data.ws] connect failed: {e}");
+                report(ErrorLevel::Warn, "apex_data.ws", "connect_failed", e);
                 broadcast(&mgr, &Frame::Connection(false));
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                if let Some(d) = backoff.next_delay() {
+                    tokio::time::sleep(d).await;
+                }
                 continue;
             }
         };
-        eprintln!("[apex_data.ws] connected");
+        report(ErrorLevel::Info, "apex_data.ws", "connected", "ws established");
         if let Ok(mut c) = mgr.connected.lock() { *c = true; }
         broadcast(&mgr, &Frame::Connection(true));
+        backoff.reset();
 
         let (mut tx_ws, mut rx_ws) = ws.split();
 
@@ -258,10 +304,10 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
                     match msg {
                         Some(Ok(Message::Binary(bytes))) => handle_binary(&mgr, &bytes),
                         Some(Ok(Message::Text(text)))   => handle_text(&mgr, &text),
-                        Some(Ok(Message::Close(_))) => { eprintln!("[apex_data.ws] close"); break; }
+                        Some(Ok(Message::Close(_))) => { report(ErrorLevel::Warn, "apex_data.ws", "ws_close", "close frame"); break; }
                         Some(Ok(_))  => {}
-                        Some(Err(e)) => { eprintln!("[apex_data.ws] recv error: {e}"); break; }
-                        None         => { eprintln!("[apex_data.ws] stream ended"); break; }
+                        Some(Err(e)) => { report(ErrorLevel::Warn, "apex_data.ws", "recv_error", e.to_string()); break; }
+                        None         => { report(ErrorLevel::Warn, "apex_data.ws", "stream_ended", "no more frames"); break; }
                     }
                 }
                 ctrl = rx_ctrl.recv() => {
@@ -269,12 +315,15 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
                         Some(CtrlMsg::PushSubs) => {
                             if let Some(frame) = build_subs_frame(&mgr) {
                                 if let Err(e) = tx_ws.send(Message::Text(frame)).await {
-                                    eprintln!("[apex_data.ws] send failed: {e}");
+                                    report(ErrorLevel::Warn, "apex_data.ws", "send_failed", e.to_string());
                                     break;
                                 }
                             }
                         }
-                        None => break,
+                        Some(CtrlMsg::Shutdown) | None => {
+                            let _ = tx_ws.close().await;
+                            break;
+                        }
                     }
                 }
             }
@@ -282,7 +331,10 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
 
         if let Ok(mut c) = mgr.connected.lock() { *c = false; }
         broadcast(&mgr, &Frame::Connection(false));
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        if mgr.shutdown.load(Ordering::SeqCst) { break; }
+        if let Some(d) = backoff.next_delay() {
+            tokio::time::sleep(d).await;
+        }
     }
 }
 
@@ -314,7 +366,7 @@ fn broadcast(mgr: &Arc<Manager>, f: &Frame) {
 fn handle_text(mgr: &Arc<Manager>, text: &str) {
     match serde_json::from_str::<InEnvelope>(text) {
         Ok(env) => dispatch(mgr, env),
-        Err(e) => eprintln!("[apex_data.ws] bad json frame: {e}"),
+        Err(e) => report(ErrorLevel::Warn, "apex_data.ws", "parse_json", e.to_string()),
     }
 }
 
@@ -328,7 +380,7 @@ fn handle_binary(mgr: &Arc<Manager>, bytes: &[u8]) {
                     dispatch(mgr, env); return;
                 }
             }
-            eprintln!("[apex_data.ws] bad msgpack frame: {e}");
+            report(ErrorLevel::Warn, "apex_data.ws", "parse_msgpack", e.to_string());
         }
     }
 }
@@ -347,7 +399,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
             let src = env.data.get("source").and_then(|v| v.as_str()).unwrap_or("last").to_string();
             match serde_json::from_value::<BarUpdate>(env.data) {
                 Ok(mut b) => { b.source = src; Frame::Bar(b) }
-                Err(e) => { eprintln!("[apex_data.ws] bad bar: {e}"); return; }
+                Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_bar", e.to_string()); return; }
             }
         }
         "snapshot" => {
@@ -356,16 +408,16 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
             let bar = env.data.get("bar").cloned().unwrap_or(serde_json::Value::Null);
             match serde_json::from_value::<BarUpdate>(bar) {
                 Ok(mut b) => { b.source = src; Frame::Snapshot { subscription: sub, bar: b } }
-                Err(e) => { eprintln!("[apex_data.ws] bad snapshot: {e}"); return; }
+                Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_snapshot", e.to_string()); return; }
             }
         }
         "trade" => match serde_json::from_value::<Trade>(env.data) {
             Ok(t) => Frame::Trade(t),
-            Err(e) => { eprintln!("[apex_data.ws] bad trade: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_trade", e.to_string()); return; }
         },
         "quote" => match serde_json::from_value::<Quote>(env.data) {
             Ok(q) => Frame::Quote(q),
-            Err(e) => { eprintln!("[apex_data.ws] bad quote: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_quote", e.to_string()); return; }
         },
         "fmv" => {
             let symbol = env.data.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -375,7 +427,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
         }
         "chain_delta" => match serde_json::from_value::<ChainDelta>(env.data) {
             Ok(d) => Frame::ChainDelta(d),
-            Err(e) => { eprintln!("[apex_data.ws] bad chain_delta: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_chain_delta", e.to_string()); return; }
         },
         "resync" => {
             let reason = env.data.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -386,7 +438,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
             let message = env.data.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
             Frame::Error { code, message }
         }
-        other => { eprintln!("[apex_data.ws] unknown frame: {other}"); return; }
+        other => { report(ErrorLevel::Warn, "apex_data.ws", "unknown_frame", other.to_string()); return; }
     };
     broadcast(mgr, &frame);
 }

@@ -7,6 +7,7 @@
 //!   DISCORD_BOT_TOKEN=...     (enables channels, messages, sending)
 
 use std::sync::{Mutex, OnceLock};
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 const REDIRECT_PORT: u16 = 19847;
 const REDIRECT_URI: &str = "http://localhost:19847/callback";
@@ -94,7 +95,7 @@ fn load_auth_from_disk() -> Option<DiscordAuth> {
     if disk.expires_epoch <= epoch_now {
         // Token expired — delete file
         let _ = std::fs::remove_file(token_path());
-        eprintln!("[discord] Saved token expired");
+        report(ErrorLevel::Warn, "discord", "token_expired", "saved token expired");
         return None;
     }
     let remaining = disk.expires_epoch - epoch_now;
@@ -266,7 +267,7 @@ fn start_callback_server() {
                     let _ = stream.write_all(response.as_bytes());
                 }
                 Err(e) => {
-                    eprintln!("[discord] Token exchange failed: {}", e);
+                    report(ErrorLevel::Error, "discord", "token_exchange_failed", e.to_string());
                     let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body style='background:#1a1a2e;color:#eee;font-family:monospace;text-align:center;padding:60px'><h1>Connection Failed</h1><p>{}</p></body></html>", e);
                     let _ = stream.write_all(response.as_bytes());
                 }
@@ -370,7 +371,7 @@ pub fn fetch_channels_sync(guild_id: &str) -> Vec<DiscordChannel> {
             eprintln!("[discord] Channel fetch {}: {}", status, body);
             vec![]
         }
-        Err(e) => { eprintln!("[discord] Channel fetch error: {}", e); vec![] }
+        Err(e) => { report(ErrorLevel::Warn, "discord", "channel_fetch_error", e.to_string()); vec![] }
     }
 }
 
@@ -396,7 +397,7 @@ pub fn fetch_messages_sync(channel_id: &str, limit: u32, after: Option<&str>) ->
             eprintln!("[discord] Message fetch {}: {}", status, &body[..body.len().min(200)]);
             vec![]
         }
-        Err(e) => { eprintln!("[discord] Message fetch error: {}", e); vec![] }
+        Err(e) => { report(ErrorLevel::Warn, "discord", "message_fetch_error", e.to_string()); vec![] }
     }
 }
 

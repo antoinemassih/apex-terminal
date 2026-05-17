@@ -3,12 +3,16 @@
 //! Subscribes to chart timeframes + 1s for price tracking.
 //! Pushes UpdateLastBar / AppendBar / WatchlistPrice to the chart renderer.
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use crate::chart_renderer::{self, ChartCommand, Bar};
+use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff};
 
 const APEX_CRYPTO_WS: &str = "ws://192.168.1.56:30840/ws";
 
 static FEED_RUNNING: OnceLock<Mutex<bool>> = OnceLock::new();
+static SHUTDOWN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 
 pub fn start() {
     let running = FEED_RUNNING.get_or_init(|| Mutex::new(false));
@@ -17,27 +21,52 @@ pub fn start() {
     *guard = true;
     drop(guard);
 
-    std::thread::spawn(|| {
+    let shutdown = SHUTDOWN.get_or_init(|| Arc::new(AtomicBool::new(false))).clone();
+    connectivity::register("crypto_feed", Arc::new(CryptoFeedShutdown { shutdown: shutdown.clone() }));
+
+    std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
         rt.block_on(async {
+            // Infinite reconnect — never give up on crypto.
+            let mut backoff = Backoff::new().with_max_attempts(None);
             loop {
-                if let Err(e) = run_feed().await {
-                    eprintln!("[crypto-feed] Error: {e} — reconnecting in 3s");
+                if shutdown.load(Ordering::SeqCst) { break; }
+                match run_feed().await {
+                    Ok(()) => { backoff.reset(); }
+                    Err(e) => {
+                        report(ErrorLevel::Warn, "crypto_feed", "reconnect", e.to_string());
+                    }
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                if shutdown.load(Ordering::SeqCst) { break; }
+                if let Some(d) = backoff.next_delay() {
+                    tokio::time::sleep(d).await;
+                }
             }
         });
     });
+}
+
+struct CryptoFeedShutdown {
+    shutdown: Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl connectivity::Shutdown for CryptoFeedShutdown {
+    async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        self.shutdown.store(true, Ordering::SeqCst);
+        tokio::time::sleep(deadline.min(Duration::from_millis(200))).await;
+        Ok(())
+    }
 }
 
 async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use futures_util::{StreamExt, SinkExt};
     use tokio_tungstenite::connect_async;
 
-    eprintln!("[crypto-feed] Connecting to {}", APEX_CRYPTO_WS);
+    report(ErrorLevel::Info, "crypto_feed", "connecting", APEX_CRYPTO_WS);
     let (ws, _) = connect_async(APEX_CRYPTO_WS).await?;
     let (mut write, mut read) = ws.split();
 
@@ -49,7 +78,7 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     write.send(tokio_tungstenite::tungstenite::Message::Text(
         sub_msg.to_string().into()
     )).await?;
-    eprintln!("[crypto-feed] Connected — bars + tape subscribed");
+    report(ErrorLevel::Info, "crypto_feed", "connected", "bars + tape subscribed");
 
     let mut chart_updates: u64 = 0;
     let mut price_updates: u64 = 0;

@@ -15,12 +15,12 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, async_runtime};
 use tokio::{
     sync::{mpsc, Mutex},
-    time::sleep,
 };
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const WS_URL: &str = "ws://127.0.0.1:5000/ws";
-const RECONNECT_MS: u64 = 3_000;
 
 // ── Command channel ───────────────────────────────────────────────────────────
 
@@ -37,6 +37,8 @@ pub struct IbWsHandle {
     pub tx: mpsc::Sender<Cmd>,
     /// conIds currently active — restored verbatim on reconnect
     pub subscribed: Arc<Mutex<HashSet<i64>>>,
+    /// Set to true by `Shutdown::drain` to stop the reconnect loop.
+    pub shutdown: Arc<AtomicBool>,
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -44,8 +46,28 @@ pub struct IbWsHandle {
 pub fn spawn(app: AppHandle) -> IbWsHandle {
     let (tx, rx) = mpsc::channel::<Cmd>(512);
     let subscribed: Arc<Mutex<HashSet<i64>>> = Default::default();
-    async_runtime::spawn(ws_loop(app, rx, subscribed.clone()));
-    IbWsHandle { tx, subscribed }
+    let shutdown = Arc::new(AtomicBool::new(false));
+    async_runtime::spawn(ws_loop(app, rx, subscribed.clone(), shutdown.clone()));
+    let handle = IbWsHandle { tx: tx.clone(), subscribed, shutdown: shutdown.clone() };
+    connectivity::register("ib_ws", Arc::new(IbWsShutdown { tx, shutdown }));
+    handle
+}
+
+struct IbWsShutdown {
+    tx: mpsc::Sender<Cmd>,
+    shutdown: Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl connectivity::Shutdown for IbWsShutdown {
+    async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        self.shutdown.store(true, Ordering::SeqCst);
+        // Best-effort: send Shutdown so the loop exits the inner select.
+        let _ = self.tx.send(Cmd::Shutdown).await;
+        // Give the loop a chance to flush + close cleanly.
+        tokio::time::sleep(deadline.min(Duration::from_millis(500))).await;
+        Ok(())
+    }
 }
 
 // ── Background task ───────────────────────────────────────────────────────────
@@ -54,10 +76,14 @@ async fn ws_loop(
     app: AppHandle,
     mut rx: mpsc::Receiver<Cmd>,
     subscribed: Arc<Mutex<HashSet<i64>>>,
+    shutdown: Arc<AtomicBool>,
 ) {
+    let mut backoff = Backoff::new().with_max_attempts(None);
     loop {
+        if shutdown.load(Ordering::SeqCst) { return; }
         match connect_async(WS_URL).await {
             Ok((stream, _)) => {
+                backoff.reset();
                 let _ = app.emit("ib-connected", ());
                 let (mut write, mut read) = stream.split();
 
@@ -128,11 +154,14 @@ async fn ws_loop(
                 let _ = app.emit("ib-disconnected", ());
             }
             Err(e) => {
-                eprintln!("[ib_ws] connect failed: {e}");
+                report(ErrorLevel::Warn, "ib_ws", "connect_failed", e.to_string());
             }
         }
 
-        sleep(Duration::from_millis(RECONNECT_MS)).await;
+        if shutdown.load(Ordering::SeqCst) { return; }
+        if let Some(d) = backoff.next_delay() {
+            tokio::time::sleep(d).await;
+        }
     }
 }
 
