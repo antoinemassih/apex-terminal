@@ -24,7 +24,7 @@ use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, S
 
 use super::super::style::{
     alpha_dim, alpha_ghost, alpha_line, alpha_soft, alpha_subtle, alpha_tint,
-    color_alpha, current, font_md, font_xs, gap_md, gap_sm, gap_xs,
+    color_alpha, color_dim, color_subtle, current, font_md, font_xs, gap_md, gap_sm, gap_xs,
     style_label_case, stroke_thin,
 };
 use super::super::components::text::SectionLabel;
@@ -128,7 +128,7 @@ fn paint_header_shadow(ui: &Ui, header_rect: Rect) {
 fn paint_close_btn(ui: &mut Ui, painter: &egui::Painter, rect: Rect, t: &Theme) -> bool {
     let resp = ui.allocate_rect(rect, Sense::click());
     let st = current();
-    let col = if resp.hovered() { t.bear } else { t.dim.gamma_multiply(0.7) };
+    let col = if resp.hovered() { t.bear } else { color_subtle(t.dim) };
     if resp.hovered() {
         painter.rect_filled(rect, st.r_sm as f32, color_alpha(t.bear, alpha_tint()));
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -305,7 +305,7 @@ impl<'a> PanelHeader<'a> {
 ///
 /// Tab visual spec (matches `painter_pane.rs:541-664`):
 /// - Inactive: transparent fill, dim label
-/// - Active: `t.bg.gamma_multiply(0.4)` fill, top-rounded corners only,
+/// - Active: `color_dim(t.bg)` fill, top-rounded corners only,
 ///   `t.text` label (`t.accent` would require active-pane multipane semantics)
 /// - Vertical hairline divider between adjacent tabs in `border_variant` at
 ///   alpha 200, `stroke_thin`, inset 4px from top/bottom
@@ -417,7 +417,7 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
             let corners = CornerRadius { nw: r_md_corner, ne: r_md_corner, sw: 0, se: 0 };
             let idle_bg   = Color32::TRANSPARENT;
             let hover_bg  = color_alpha(t.toolbar_border, st_settings.tab_hover_bg_alpha);
-            let active_bg = t.bg.gamma_multiply(0.4);
+            let active_bg = color_dim(t.bg);
             let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
             tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);
             painter.rect_filled(tab_rect, corners, tab_bg);

@@ -585,7 +585,7 @@ impl<'a> MeridienOrderTicket<'a> {
         let mut review_clicked = false;
         let theme_for_seg = self.theme;
         let panel_w = if self.width > 0.0 { self.width } else { ui.available_width() };
-        let label_color = self.dim.gamma_multiply(0.7);
+        let label_color = color_subtle(self.dim);
         let card_bg     = color_alpha(self.border, alpha_subtle());
         let card_radius = radius_md() as u8;
 
@@ -1034,7 +1034,7 @@ impl<'a> IndicatorParamRow<'a> {
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 for &pr in self.presets {
                     let sel = *value == pr;
-                    let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
+                    let fg = if sel { accent } else { color_half(dim) };
                     let pr_label = format!("{}", pr);
                     if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
@@ -1129,7 +1129,7 @@ impl<'a> IndicatorParamRowF<'a> {
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 for &pr in self.presets {
                     let sel = (*value - pr).abs() < 0.01;
-                    let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
+                    let fg = if sel { accent } else { color_half(dim) };
                     let pr_label = format!("{:.prec$}", pr, prec = d);
                     if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })

@@ -235,7 +235,7 @@ fn draw_normal_mode(
             PaneType::Chart => "Chart", PaneType::Portfolio => "Portfolio",
             PaneType::Dashboard => "Dashboard", PaneType::Heatmap => "Heatmap",
             PaneType::Spreadsheet => "Spreadsheet",
-        })).size(font_sm()).color(t.dim.gamma_multiply(0.7)));
+        })).size(font_sm()).color(color_subtle(t.dim)));
     });
     ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
 

@@ -137,13 +137,13 @@ impl<'a, V: NumericValue> NumericStepper<'a, V> {
                                 if let Some(p) = prefix {
                                     ui.add_space(gap_sm());
                                     ui.label(RichText::new(p).monospace()
-                                        .size(font_sm()).color(dim.gamma_multiply(0.7)));
+                                        .size(font_sm()).color(color_subtle(dim)));
                                 }
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     if let Some(sf) = suffix {
                                         ui.add_space(gap_sm());
                                         ui.label(RichText::new(sf).monospace()
-                                            .size(font_xs()).color(dim.gamma_multiply(0.7)));
+                                            .size(font_xs()).color(color_subtle(dim)));
                                     }
                                     let te = egui::TextEdit::singleline(&mut buf)
                                         .font(egui::FontId::monospace(font_md()))

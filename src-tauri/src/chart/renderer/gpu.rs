@@ -404,7 +404,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY, COLOR_AMBER};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, color_dim, color_half, color_very_dim, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY, COLOR_AMBER};
 use super::ui::style as style;
 use super::ui::widgets::foundation::text_style::TextStyle;
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
@@ -3689,9 +3689,9 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
     use super::ChartWidgetKind as W;
     let cx = r.center().x;
     let cy = r.center().y;
-    let accent = if active { t.accent } else { t.dim.gamma_multiply(0.5) };
-    let bull = if active { t.bull } else { t.dim.gamma_multiply(0.4) };
-    let bear = if active { t.bear } else { t.dim.gamma_multiply(0.3) };
+    let accent = if active { t.accent } else { color_half(t.dim) };
+    let bull = if active { t.bull } else { color_dim(t.dim) };
+    let bear = if active { t.bear } else { color_very_dim(t.dim) };
 
     match kind {
         // Donut gauges — small ring

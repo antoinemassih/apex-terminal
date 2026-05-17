@@ -796,7 +796,7 @@ fn paint_one_tab_painter(
             let r_md = st::radius_md() as u8;
             let corners = CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 };
             if is_active {
-                let bg = motion::fade_in(theme.bg().gamma_multiply(0.4), active_t);
+                let bg = motion::fade_in(st::color_dim(theme.bg()), active_t);
                 painter.rect_filled(rect, corners, alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(

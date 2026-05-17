@@ -17,7 +17,7 @@
 //! - Selected: `color_alpha(theme.accent(), alpha_soft())` background,
 //!   `theme.accent()` label.
 //! - Hover: `color_alpha(theme.text(), alpha_faint())` background tint.
-//! - Disabled: `theme.text().gamma_multiply(0.4)` label, hover-only sense.
+//! - Disabled: `st::color_dim(theme.text())` label, hover-only sense.
 //! - Optional leading icon: `theme.dim()` color, `font_sm()` size,
 //!   `gap_xs()` from text.
 //!
@@ -77,13 +77,13 @@ impl<'a> SelectableRow<'a> {
 
         // Resolve colors.
         let text_color = if disabled {
-            theme.text().gamma_multiply(0.4)
+            st::color_dim(theme.text())
         } else if selected {
             theme.accent()
         } else {
             theme.text()
         };
-        let icon_color = if disabled { theme.dim().gamma_multiply(0.5) } else { theme.dim() };
+        let icon_color = if disabled { st::color_half(theme.dim()) } else { theme.dim() };
 
         // Measure label.
         let label_font = FontId::monospace(font_size);

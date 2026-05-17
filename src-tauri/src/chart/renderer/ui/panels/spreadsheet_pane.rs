@@ -614,7 +614,7 @@ pub(crate) fn render(
             let r = egui::Rect::from_min_size(egui::pos2(x, header_rect.top()),
                 egui::vec2(w, HEADER_H));
             p.text(r.center(), egui::Align2::CENTER_CENTER, col_label(c),
-                mono_xs(), t.dim.gamma_multiply(0.7));
+                mono_xs(), color_subtle(t.dim));
             p.line_segment([
                 egui::pos2(x, header_rect.top()),
                 egui::pos2(x, header_rect.bottom())],

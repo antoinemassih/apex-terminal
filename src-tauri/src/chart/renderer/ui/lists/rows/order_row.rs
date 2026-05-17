@@ -116,7 +116,7 @@ impl<'a> OrderRow<'a> {
                 if let Some(a) = age {
                     let x = if show_cancel { rect.right() - 28.0 } else { rect.right() - 6.0 };
                     ui.painter().text(egui::pos2(x, cy), egui::Align2::RIGHT_CENTER,
-                        a, mono_sm(), dim.gamma_multiply(0.7));
+                        a, mono_sm(), color_subtle(dim));
                 }
 
                 // Embedded cancel button.

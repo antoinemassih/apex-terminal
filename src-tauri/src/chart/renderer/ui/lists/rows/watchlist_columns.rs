@@ -126,7 +126,7 @@ fn render_rvol_badge(c: &mut ColumnCtx) {
     let cy = c.rect.center().y;
     let rcol = if rv > 2.0 { color_alpha(c.theme.accent, ALPHA_HEAVY) }
         else if rv > 1.2 { c.bull }
-        else { c.dim.gamma_multiply(0.4) };
+        else { color_dim(c.dim) };
     c.painter.text(
         egui::pos2(c.rect.left(), cy),
         egui::Align2::LEFT_CENTER,
@@ -175,7 +175,7 @@ fn render_volume(c: &mut ColumnCtx) {
         egui::Align2::LEFT_CENTER,
         &s,
         mono_sm(),
-        c.dim.gamma_multiply(0.6),
+        color_muted(c.dim),
     );
 }
 
@@ -187,7 +187,7 @@ fn render_atr(c: &mut ColumnCtx) {
         egui::Align2::LEFT_CENTER,
         &format!("{:.2}", v),
         mono_sm(),
-        c.dim.gamma_multiply(0.6),
+        color_muted(c.dim),
     );
 }
 
@@ -203,7 +203,7 @@ fn render_market_cap(c: &mut ColumnCtx) {
         egui::Align2::LEFT_CENTER,
         &s,
         mono_sm(),
-        c.dim.gamma_multiply(0.6),
+        color_muted(c.dim),
     );
 }
 

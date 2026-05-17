@@ -815,7 +815,7 @@ impl<'a> ColorSwatchPicker<'a> {
             let is_auto = value.is_empty();
             use crate::ui_kit::widgets::Button;
             use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
-            let auto_fg = if is_auto { accent } else { dim.gamma_multiply(0.5) };
+            let auto_fg = if is_auto { accent } else { color_half(dim) };
             let auto_bg = if is_auto { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT };
             if ui.add(Button::new("auto").variant(Variant::Chrome).size(KitSize::Xs).fg(auto_fg)
                 .fill(auto_bg)
@@ -899,7 +899,7 @@ impl<'a> ThicknessPicker<'a> {
 
         for (i, &th) in self.values.iter().enumerate() {
             let sel = (*value - th).abs() < 0.1;
-            let fg = if sel { Color32::WHITE } else { dim.gamma_multiply(0.7) };
+            let fg = if sel { Color32::WHITE } else { color_subtle(dim) };
             let bg = if sel { color_alpha(accent, alpha_dim()) } else { color_alpha(border, alpha_subtle()) };
             let rounding: egui::CornerRadius = if i == 0 {
                 egui::CornerRadius { nw: r_sm, sw: r_sm, ne: 0, se: 0 }

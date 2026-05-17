@@ -36,7 +36,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         "> summarize today's price action on QQQ",
         "> what widgets would help me trade earnings season?",
     ] {
-        ui.label(egui::RichText::new(hint).size(font_md()).monospace().color(t.text.gamma_multiply(0.7)));
+        ui.label(egui::RichText::new(hint).size(font_md()).monospace().color(color_subtle(t.text)));
     }
     ui.add_space(gap_xl());
     let te = TextInput::new(&mut watchlist.cmd_palette_ai_input)
@@ -192,7 +192,7 @@ fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart]
         // Sparkline
         let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 54.0), egui::Sense::hover());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, current().r_md, t.toolbar_bg.gamma_multiply(0.5));
+        painter.rect_filled(rect, current().r_md, color_half(t.toolbar_bg));
         let tail: Vec<_> = bars.iter().rev().take(60).rev().cloned().collect();
         if tail.len() >= 2 {
             let (mn, mx) = tail.iter().fold((f32::MAX, f32::MIN), |(a, b), bar| (a.min(bar.low), b.max(bar.high)));
@@ -211,7 +211,7 @@ fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart]
         ui.add_space(gap_md());
         let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::hover());
         ui.painter().rect_stroke(rect, current().r_md,
-            egui::Stroke::new(current().stroke_std, t.dim.gamma_multiply(0.4)), egui::StrokeKind::Inside);
+            egui::Stroke::new(current().stroke_std, color_dim(t.dim)), egui::StrokeKind::Inside);
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
             "no cached bars", egui::FontId::proportional(font_sm()), t.dim);
     }
