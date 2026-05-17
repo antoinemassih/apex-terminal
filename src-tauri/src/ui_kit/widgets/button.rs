@@ -195,11 +195,31 @@ impl<'a> Button<'a> {
         b
     }
 
+    /// Toggle chip — one of a row of selectable presets (style chips,
+    /// font-scale chips, session-tint chips). When `active` is true the
+    /// chip paints with an accent-tinted bg + accent fg + accent border;
+    /// when false it paints transparent with a soft dim outline and
+    /// text-color fg. Hover blends toward active styling. Defaults to
+    /// `Variant::Toggle` + `Size::Sm` with the `active` flag pre-set.
+    pub fn toggle(label: impl Into<&'a str>, active: bool) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Toggle;
+        b.size = Size::Sm;
+        b.active = active;
+        b
+    }
+
     pub fn variant(mut self, v: Variant) -> Self { self.variant = v; self }
     pub fn size(mut self, s: Size) -> Self { self.size = s; self }
     pub fn icon_only(mut self, v: bool) -> Self { self.icon_only = v; self }
     pub fn loading(mut self, v: bool) -> Self { self.loading = v; self }
     pub fn disabled(mut self, v: bool) -> Self { self.disabled = v; self }
+    /// Positive-form counterpart to [`Button::disabled`]. `.enabled(true)`
+    /// keeps the button interactive; `.enabled(false)` gates interaction
+    /// and dims the surface to 50%. Same backing field as `.disabled()` —
+    /// pick whichever reads better at the call site (most call sites think
+    /// "is this button currently active?" rather than "is it disabled?").
+    pub fn enabled(mut self, v: bool) -> Self { self.disabled = !v; self }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
     pub fn full_width(mut self, v: bool) -> Self { self.full_width = v; self }
     pub fn tint(mut self, c: Color32) -> Self { self.tint = Some(c); self }
@@ -227,6 +247,16 @@ impl<'a> Button<'a> {
 
     /// Minimum size (replaces auto-computed from Size enum).
     pub fn min_size(mut self, sz: Vec2) -> Self { self.min_size_override = Some(sz); self }
+
+    /// Shortcut for setting only the minimum width. Preserves any
+    /// previously-set min height; otherwise uses the variant's default
+    /// height from [`Size`]. Equivalent to
+    /// `.min_size(vec2(w, current_or_default_height))`.
+    pub fn min_width(mut self, w: f32) -> Self {
+        let h = self.min_size_override.map(|v| v.y).unwrap_or_else(|| self.size.height());
+        self.min_size_override = Some(Vec2::new(w, h));
+        self
+    }
 
     /// Frameless mode: paint label/icon only, no bg/border. Replaces
     /// `egui::Button::frame(false)` for parity with ChromeBtn::frameless.
@@ -517,6 +547,12 @@ fn paint_button<'a>(
         }
 
         let mut fg = motion::lerp_color(fg_idle, fg_hover, hover_t);
+        // Toggle variant: when active, fg snaps to accent (or the
+        // resolved tint). Blends in alongside the bg/border active state.
+        if matches!(variant, Variant::Toggle) && active_t > 0.001 {
+            let accent_fg = tint.unwrap_or_else(|| theme.accent());
+            fg = motion::lerp_color(fg, accent_fg, active_t);
+        }
         if let Some(c) = fg_override { fg = c; }
         let border_col = motion::lerp_color(border_idle, border_active, active_t);
 
@@ -550,7 +586,7 @@ fn paint_button<'a>(
                     painter.rect_stroke(rect, cr, s, StrokeKind::Inside);
                 }
             } else {
-                let border_w = match variant { Variant::Secondary => 1.0, _ => 0.0 };
+                let border_w = match variant { Variant::Secondary | Variant::Toggle => 1.0, _ => 0.0 };
                 if border_col.a() > 0 && (border_w > 0.0 || active_t > 0.001) {
                     let w = if border_w > 0.0 { border_w } else { 1.0 };
                     painter.rect_stroke(rect, cr, Stroke::new(w, border_col), StrokeKind::Inside);
@@ -807,7 +843,7 @@ fn default_radius(v: Variant) -> f32 {
         Variant::Primary | Variant::Secondary | Variant::Danger | Variant::NeutralAction => 4.0,
         Variant::Ghost | Variant::MutedIcon | Variant::InlineClose => 2.0,
         Variant::Link | Variant::TextOnly | Variant::Tab => 0.0,
-        Variant::Chip => 99.0, // pill
+        Variant::Chip | Variant::Toggle => 99.0, // pill
         Variant::Chrome => 4.0,
     }
 }
@@ -951,6 +987,22 @@ fn resolve_palette(
             text,
             transparent,
             transparent,
+        ),
+        Variant::Toggle => (
+            // Toggle chip — one of a row of selectable presets.
+            //   Inactive: transparent bg, dim fg (text @ alpha_soft via
+            //             gamma), soft outline.
+            //   Hover (inactive): bg = text @ alpha_ghost, fg snaps to text.
+            //   Active: accent-tinted bg, accent fg, accent border @ active.
+            //   Hover (active): bg brightened by 0.05 (handled by active_bg
+            //                   being slightly lighter than the tint).
+            transparent,
+            st::color_alpha(text, st::alpha_ghost()),
+            lighten(st::color_alpha(accent, st::alpha_tint()), 0.05),
+            st::color_alpha(text, st::alpha_soft()),
+            text,
+            st::color_alpha(text, st::alpha_soft()),
+            st::color_alpha(accent, st::alpha_active()),
         ),
     }
 }

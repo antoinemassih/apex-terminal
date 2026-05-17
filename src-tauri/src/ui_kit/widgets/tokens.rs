@@ -33,6 +33,13 @@ pub enum Variant {
     /// Text-only — Chrome + transparent fill + frameless. For inline link-like
     /// affordances that shouldn't render as a button. Caller sets `.fg()`.
     TextOnly,
+    /// Toggle chip — one of a row of mutually-exclusive (or independently)
+    /// selectable chips. Inactive = transparent bg + dim outline + text-color
+    /// fg (alpha-soft); Active = accent-tinted bg + accent fg + accent border
+    /// (alpha-active). Hover blends toward active styling. Used for style /
+    /// font-scale / session-tint preset chips in settings panels. Construct
+    /// via [`super::button::Button::toggle`].
+    Toggle,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
