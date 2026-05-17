@@ -145,8 +145,27 @@ fn greet(name: &str) -> String {
 
 struct OcocoProcess(Mutex<Option<CommandChild>>);
 
+/// Holds the `tracing-appender` non-blocking writer guard for the program's
+/// lifetime. Dropping it would stop the background log thread and silently
+/// truncate buffered lines, so we stash it here instead.
+static TRACING_GUARD: std::sync::OnceLock<tracing_appender::non_blocking::WorkerGuard> =
+    std::sync::OnceLock::new();
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize tracing FIRST so any startup error / log line gets captured.
+    // Log dir: ~/Library/Logs/apex-terminal (macOS) or std::env::temp_dir()
+    // fallback. The non-blocking writer guard MUST live for the program's
+    // duration — stash it in a static.
+    {
+        let log_dir = dirs::data_local_dir()
+            .map(|p| p.join("apex-terminal").join("logs"))
+            .unwrap_or_else(|| std::env::temp_dir().join("apex-terminal-logs"));
+        let guard = crate::data::connectivity::init_tracing(&log_dir);
+        let _ = TRACING_GUARD.set(guard);
+        tracing::info!(target: "apex", log_dir = %log_dir.display(), "tracing initialized");
+    }
+
     // Initialize design-mode token store so is_active() returns true and
     // the inspector keyboard shortcut (Ctrl+Shift+D) becomes responsive.
     // Tries design.toml first, falls back to defaults.
@@ -287,6 +306,19 @@ pub fn run() {
             let ib_handle = ib_ws::spawn(app.handle().clone());
             app.manage(ib_handle);
 
+            // Wave 1: register Shutdown stubs for the long-lived feeds so
+            // drain_all has a registry to walk on exit. Real drain logic
+            // (close WS gracefully, flush in-flight subscribes, etc.) lands
+            // per-feed in Wave 2 — for now these no-op so the plumbing is
+            // exercised end-to-end without altering shutdown behavior.
+            use std::sync::Arc;
+            use crate::data::connectivity::{register, shutdown::NoopShutdown};
+            register("apex_data",    Arc::new(NoopShutdown { name: "apex_data" }));
+            register("ib_ws",        Arc::new(NoopShutdown { name: "ib_ws" }));
+            register("crypto_feed",  Arc::new(NoopShutdown { name: "crypto_feed" }));
+            register("signals_feed", Arc::new(NoopShutdown { name: "signals_feed" }));
+            register("discord",      Arc::new(NoopShutdown { name: "discord" }));
+
             // Spawn ococo-api sidecar — bundled Node.js server
             match app.shell().sidecar("ococo-api") {
                 Err(e) => eprintln!("[apex] ococo-api sidecar not found: {e}"),
@@ -344,6 +376,12 @@ pub fn run() {
         .run(|app, event| {
             // Kill ococo-api cleanly when the app exits
             if let tauri::RunEvent::Exit = event {
+                // Wave 1: drain all registered connections within 3 s before
+                // killing sidecars. Best-effort — failures are logged via
+                // tracing inside `drain_all`.
+                tauri::async_runtime::block_on(async {
+                    crate::data::connectivity::drain_all(std::time::Duration::from_secs(3)).await;
+                });
                 if let Some(state) = app.try_state::<OcocoProcess>() {
                     if let Ok(mut guard) = state.0.lock() {
                         if let Some(child) = guard.take() {

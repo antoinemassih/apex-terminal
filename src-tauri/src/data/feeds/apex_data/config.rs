@@ -88,6 +88,30 @@ pub fn set_apex_lan_ip(ip: Option<String>) {
 
 /// Parse the host[:port] out of the configured base URL. Used by the REST
 /// and WS layers to bind the LAN-IP override only to this host.
+/// Wave 1: typed `Authenticated` adapter over the free-function token store.
+///
+/// ApexData does NOT currently expose a `/auth/refresh` endpoint, so
+/// `refresh_token()` returns `AuthError::RefreshFailed("not supported")`.
+/// Callers using `with_auth_retry` will see the original 401 propagate after
+/// one no-op refresh attempt — same effective behavior as today, but the
+/// typed surface is now in place so a server-side refresh flow can be wired
+/// without touching every call site.
+///
+/// TODO(wave-2): wire to the real refresh endpoint once it lands in ApexData.
+pub struct ApexDataAuth;
+
+#[async_trait::async_trait]
+impl crate::data::connectivity::Authenticated for ApexDataAuth {
+    async fn refresh_token(&self) -> Result<String, crate::data::connectivity::AuthError> {
+        Err(crate::data::connectivity::AuthError::RefreshFailed(
+            "apex_data: refresh endpoint not implemented server-side".into(),
+        ))
+    }
+    fn current_token(&self) -> Option<String> {
+        apex_token()
+    }
+}
+
 pub fn apex_host_port() -> Option<(String, u16)> {
     let url = apex_url();
     let rest = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")).unwrap_or(&url);
