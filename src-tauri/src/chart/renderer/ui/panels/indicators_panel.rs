@@ -825,7 +825,7 @@ fn draw_library_section(
             egui::Align2::LEFT_CENTER,
             sec.title,
             mono_sm(),
-            if hovered { t.text } else { t.text.gamma_multiply(0.92) },
+            if hovered { t.text } else { color_subtle(t.text) },
         );
         let chip_text = format!("{}", matches.len());
         let galley = painter.layout_no_wrap(chip_text.clone(),

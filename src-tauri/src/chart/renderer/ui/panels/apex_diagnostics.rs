@@ -238,7 +238,7 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
             ui.add_space(gap_sm());
             ui.label(egui::RichText::new(format!("{}ms", call.ms)).monospace().size(font_xs()).color(t.dim));
             ui.add_space(gap_sm());
-            ui.label(egui::RichText::new(&call.path).monospace().size(font_xs()).color(t.text.gamma_multiply(0.85)));
+            ui.label(egui::RichText::new(&call.path).monospace().size(font_xs()).color(color_subtle(t.text)));
         });
     }
 }

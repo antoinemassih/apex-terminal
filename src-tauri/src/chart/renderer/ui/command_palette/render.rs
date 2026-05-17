@@ -17,7 +17,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.add_space(gap_lg());
         let (badge_rect, _) = ui.allocate_exact_size(egui::vec2(68.0, 18.0), egui::Sense::hover());
         let painter = ui.painter();
-        painter.rect_filled(badge_rect, current().r_lg, Category::Ai.color(t).gamma_multiply(0.25));
+        painter.rect_filled(badge_rect, current().r_lg, color_very_dim(Category::Ai.color(t)));
         painter.rect_stroke(badge_rect, current().r_lg, egui::Stroke::new(current().stroke_std, Category::Ai.color(t)), egui::StrokeKind::Inside);
         painter.text(badge_rect.center(), egui::Align2::CENTER_CENTER,
             "GEMMA 4", egui::FontId::proportional(font_sm()), Category::Ai.color(t));
@@ -108,7 +108,7 @@ pub(super) fn draw_help_mode(ui: &mut egui::Ui, topic: &str, t: &Theme, _pal_w: 
 
 /// File-local helper: dim hint paragraph used throughout the preview pane.
 fn preview_hint(ui: &mut egui::Ui, text: &str, t: &Theme) {
-    ui.add(BodyLabel::new(text).color(t.text.gamma_multiply(0.75)));
+    ui.add(BodyLabel::new(text).color(color_subtle(t.text)));
 }
 
 pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(String, String, String)>, panes: &[Chart], ap: usize) {
@@ -128,7 +128,7 @@ pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(Stri
         draw_symbol_preview(ui, t, sym, panes, ap);
     } else if id == "ai:chat" {
         ui.label(egui::RichText::new("Conversational assistant\npowered by fine-tuned Gemma 4.")
-            .size(super::super::style::font_sm()).color(t.text.gamma_multiply(0.8)));
+            .size(super::super::style::font_sm()).color(color_subtle(t.text)));
         ui.add_space(gap_sm());
         ui.label(egui::RichText::new("• scanners in plain English\n• alert creation\n• context-aware answers")
             .size(font_sm()).color(t.dim));

@@ -4,7 +4,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
-use crate::chart_renderer::ui::style::{cursor, gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg, mono_sm};
+use crate::chart_renderer::ui::style::{cursor, gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg, mono_sm, color_subtle, color_muted, color_half, color_very_dim};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 
 /// Output from the picker.
@@ -181,19 +181,19 @@ pub fn show_drawing_tool_picker(
                                 cursor::clickable(ui, &resp);
                                 let hov = resp.hovered();
                                 let bg = if is_cur {
-                                    t.accent.gamma_multiply(0.30)
+                                    color_very_dim(t.accent)
                                 } else if hov {
-                                    t.toolbar_border.gamma_multiply(0.55)
+                                    color_muted(t.toolbar_border)
                                 } else { t.bg };
                                 let stroke_col = if is_cur || hov {
-                                    t.accent.gamma_multiply(if is_cur { 0.9 } else { 0.5 })
+                                    if is_cur { color_subtle(t.accent) } else { color_half(t.accent) }
                                 } else { t.toolbar_border };
                                 ui.painter().rect_filled(cell, 5.0, bg);
                                 ui.painter().rect_stroke(cell, 5.0,
                                     egui::Stroke::new(if is_cur { 1.5 } else { 0.7 }, stroke_col),
                                     egui::StrokeKind::Inside);
                                 let txt_col = if is_cur { t.accent }
-                                    else if hov { t.text } else { t.text.gamma_multiply(0.85) };
+                                    else if hov { t.text } else { color_subtle(t.text) };
                                 ui.painter().text(cell.center(), egui::Align2::CENTER_CENTER,
                                     icon, egui::FontId::proportional((cell_w * 0.55).max(11.0)), txt_col);
                                 if hov {
@@ -219,7 +219,7 @@ pub fn show_drawing_tool_picker(
                         );
                         cursor::clickable(ui, &resp);
                         let bg = if is_hovered_cat || resp.hovered() {
-                            t.accent.gamma_multiply(0.18)
+                            color_very_dim(t.accent)
                         } else { t.toolbar_bg };
                         ui.painter().rect_filled(row_rect, 3.0, bg);
                         ui.painter().text(
@@ -227,7 +227,7 @@ pub fn show_drawing_tool_picker(
                             egui::Align2::LEFT_CENTER,
                             cat,
                             mono_sm(),
-                            if is_hovered_cat { t.accent } else { t.text.gamma_multiply(0.9) },
+                            if is_hovered_cat { t.accent } else { color_subtle(t.text) },
                         );
                         ui.painter().text(
                             egui::pos2(row_rect.right() - 8.0, row_rect.center().y),
@@ -286,9 +286,9 @@ pub fn show_drawing_tool_picker(
                                 cursor::clickable(ui, &resp);
                                 let hov = resp.hovered();
                                 let bg = if is_cur {
-                                    t.accent.gamma_multiply(0.25)
+                                    color_very_dim(t.accent)
                                 } else if hov {
-                                    t.accent.gamma_multiply(0.15)
+                                    color_very_dim(t.accent)
                                 } else { t.toolbar_bg };
                                 ui.painter().rect_filled(row_rect, 3.0, bg);
                                 let star_size = 18.0;
@@ -305,7 +305,7 @@ pub fn show_drawing_tool_picker(
                                 if star_resp.clicked() { star_toggle = Some(tool.to_string()); }
                                 let txt_x = row_rect.left() + star_size + 8.0;
                                 let row_col = if is_cur { t.accent }
-                                    else if hov { t.text } else { t.text.gamma_multiply(0.9) };
+                                    else if hov { t.text } else { color_subtle(t.text) };
                                 ui.painter().text(
                                     egui::pos2(txt_x, row_rect.center().y),
                                     egui::Align2::LEFT_CENTER,

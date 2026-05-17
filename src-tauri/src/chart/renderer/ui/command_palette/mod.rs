@@ -409,7 +409,7 @@ fn draw_normal_mode(
                             let chip_rect = egui::Rect::from_min_size(
                                 rect.min + egui::vec2(6.0, (row_h - 14.0) / 2.0),
                                 egui::vec2(62.0, 14.0));
-                            painter.rect_filled(chip_rect, current().r_sm, chip_col.gamma_multiply(0.22));
+                            painter.rect_filled(chip_rect, current().r_sm, color_very_dim(chip_col));
                             painter.text(chip_rect.center(), egui::Align2::CENTER_CENTER,
                                 cat_label, egui::FontId::proportional(super::style::font_xs()), chip_col);
 
@@ -418,7 +418,7 @@ fn draw_normal_mode(
                                 egui::Align2::LEFT_CENTER,
                                 label,
                                 egui::FontId::proportional(super::style::font_md()),
-                                if is_sel { t.text } else { t.text.gamma_multiply(0.88) },
+                                if is_sel { t.text } else { color_subtle(t.text) },
                             );
 
                             if let Some(hk) = hotkey_for(id) {

@@ -116,7 +116,7 @@ impl<'a> TradeCard<'a> {
         if !entry.notes.is_empty() {
             cy += 14.0;
             p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-                entry.notes, st::mono_sm(), theme.dim().gamma_multiply(0.35));
+                entry.notes, st::mono_sm(), st::color_dim(theme.dim()));
         }
 
         ui.add_space(gap_xs());
