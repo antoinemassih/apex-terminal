@@ -60,11 +60,49 @@
 //! - Form fields — use `FormRow`.
 //!
 //! Sister widgets: `SelectableRow`, `PanelKeyValueRow`, `PanelCard`.
+//!
+//! ## Trailing buttons slice (zero-allocation)
+//!
+//! When a row wants 2–4 inline icon buttons (delete / lock / visibility /
+//! reset), the closure-style `.trailing(|ui, t| ...)` slot forces callers to
+//! wire each click through a `Cell<bool>` trampoline because the `FnOnce`
+//! is consumed by `.show()`. Use `.trailing_buttons(&[...])` instead and
+//! call `.show_full(ui, t)` to read which one fired:
+//!
+//! ```ignore
+//! let resp = PanelListRow::new("drawing_42")
+//!     .leading(|ui, _| paint_swatch(ui, color))
+//!     .primary("Trendline AAPL")
+//!     .trailing_buttons(&[
+//!         TrailingBtn::icon(Icon::TRASH).tone(TrailingTone::Bear).tooltip("Delete"),
+//!         TrailingBtn::icon(if locked { Icon::LOCK } else { Icon::LOCK_OPEN })
+//!             .active(locked).tooltip("Lock"),
+//!         TrailingBtn::icon(if visible { Icon::EYE } else { Icon::EYE_SLASH })
+//!             .active(visible).tooltip("Visibility"),
+//!     ])
+//!     .show_full(ui, t);
+//! if resp.clicked { /* row body click */ }
+//! match resp.trailing_clicked_idx {
+//!     Some(0) => delete(),
+//!     Some(1) => toggle_lock(),
+//!     Some(2) => toggle_visible(),
+//!     _ => {}
+//! }
+//! ```
+//!
+//! `.trailing_buttons()` and `.trailing(closure)` are mutually exclusive —
+//! last setter wins. The slice is borrowed for one frame; no per-button heap
+//! allocations. Click reporting is `Option<usize>` because only one button
+//! can fire per frame and matching on an index reads cleaner than a
+//! `Vec<bool>` at the call site.
+//!
+//! For back-compat, `.show()` still returns `egui::Response`; use
+//! `.show_full()` when you need the trailing-button click index.
 
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Ui, Vec2};
 
 use crate::chart::renderer::ui::style::{
-    color_alpha, color_muted, font_sm, font_xs, gap_md, gap_xs, radius_sm,
+    color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs, radius_sm,
 };
 use crate::chart_renderer::gpu::Theme;
 
@@ -137,6 +175,78 @@ impl<'a> Column<'a> {
     }
 }
 
+/// Tone palette for `TrailingBtn`. Resolves to a `Theme` color at paint
+/// time so the row primitive stays theme-aware (no raw RGB at call sites).
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
+pub enum TrailingTone {
+    #[default]
+    Default,
+    Accent,
+    Bull,
+    Bear,
+    Warn,
+    Muted,
+}
+
+impl TrailingTone {
+    /// Resolve the tone to a concrete theme color.
+    #[inline]
+    fn resolve(self, t: &Theme) -> Color32 {
+        match self {
+            TrailingTone::Default => t.text,
+            TrailingTone::Accent => t.accent,
+            TrailingTone::Bull => t.bull,
+            TrailingTone::Bear => t.bear,
+            TrailingTone::Warn => t.warn,
+            TrailingTone::Muted => t.dim,
+        }
+    }
+}
+
+/// One inline icon button in `PanelListRow::trailing_buttons`. Borrow-
+/// friendly: stores `&str` for icon + tooltip so callers can build a stack
+/// slice each frame with no allocation. See the module docs for an
+/// end-to-end example.
+#[derive(Copy, Clone, Debug)]
+pub struct TrailingBtn<'a> {
+    pub icon: &'a str,
+    pub tone: TrailingTone,
+    pub tooltip: Option<&'a str>,
+    /// Toggled-on visual state — paints a subtle background tint at
+    /// `color_alpha(tone, alpha_soft())`.
+    pub active: bool,
+}
+
+impl<'a> TrailingBtn<'a> {
+    /// New trailing icon button with `TrailingTone::Default` styling.
+    pub fn icon(icon: &'a str) -> Self {
+        Self { icon, tone: TrailingTone::Default, tooltip: None, active: false }
+    }
+
+    pub fn tone(mut self, t: TrailingTone) -> Self { self.tone = t; self }
+    pub fn tooltip(mut self, s: &'a str) -> Self { self.tooltip = Some(s); self }
+    pub fn active(mut self, v: bool) -> Self { self.active = v; self }
+}
+
+/// Rich response from `PanelListRow::show_full`. Carries both the row body
+/// click signal and, when `.trailing_buttons(&[...])` was set, the index of
+/// the trailing button that fired this frame (at most one).
+#[derive(Clone, Debug, Default)]
+pub struct PanelListRowResponse {
+    /// `true` when the row body (not a trailing button) was clicked.
+    pub clicked: bool,
+    /// Hover state on the row body.
+    pub hovered: bool,
+    /// Index into the `&[TrailingBtn]` slice passed to `.trailing_buttons()`.
+    /// `None` when no trailing button fired this frame. Only one click per
+    /// frame is possible because egui consumes pointer presses on the
+    /// topmost interactable rect.
+    pub trailing_clicked_idx: Option<usize>,
+    /// The full underlying row `Response` — preserved so callers can still
+    /// reach for `.on_hover_ui(...)` etc. when needed.
+    pub response: Option<Response>,
+}
+
 /// Width (in px) of the left accent stripe for the selected state.
 const SELECTED_STRIPE_W: f32 = 2.0;
 
@@ -153,6 +263,11 @@ pub struct PanelListRow<'a> {
     secondary: Option<&'a str>,
     leading: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
     trailing: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
+    /// Typed slice slot — mutually exclusive with `trailing`. Last setter
+    /// wins. When set, the row paints N inline icon buttons in an RTL
+    /// strip on the right edge and reports clicks via
+    /// `PanelListRowResponse::trailing_clicked_idx`.
+    trailing_buttons: Option<&'a [TrailingBtn<'a>]>,
     /// When `Some`, the row paints as N free-form columns and IGNORES
     /// `primary` / `secondary` / `leading` / `trailing`. Selected and
     /// hover backgrounds still apply.
@@ -169,6 +284,7 @@ impl<'a> PanelListRow<'a> {
             secondary: None,
             leading: None,
             trailing: None,
+            trailing_buttons: None,
             columns: None,
             selected: false,
             dense: true,
@@ -204,6 +320,20 @@ impl<'a> PanelListRow<'a> {
 
     pub fn trailing(mut self, f: impl FnOnce(&mut Ui, &Theme) + 'a) -> Self {
         self.trailing = Some(Box::new(f));
+        // Last setter wins — clear the slice form so the two modes don't
+        // both paint and double-stack the right edge.
+        self.trailing_buttons = None;
+        self
+    }
+
+    /// Slice-based trailing slot for 2–4 inline icon buttons. Mutually
+    /// exclusive with `.trailing(closure)`; last setter wins. Clicks are
+    /// reported via `PanelListRowResponse::trailing_clicked_idx` from
+    /// `.show_full()`. With plain `.show()` the click is observable only
+    /// indirectly (the row body click is suppressed inside the button rect).
+    pub fn trailing_buttons(mut self, btns: &'a [TrailingBtn<'a>]) -> Self {
+        self.trailing_buttons = Some(btns);
+        self.trailing = None;
         self
     }
 
@@ -220,13 +350,31 @@ impl<'a> PanelListRow<'a> {
         self
     }
 
+    /// Back-compat entry point — returns the plain `Response` so existing
+    /// call sites compile unchanged. Use [`Self::show_full`] when you set
+    /// `.trailing_buttons(&[...])` and need the clicked index.
     pub fn show(self, ui: &mut Ui, t: &Theme) -> Response {
+        // Drive the same internal painter; discard the rich response.
+        self.show_full(ui, t).response.unwrap_or_else(|| {
+            // Defensive fallback — paint() always sets `response`. Allocate
+            // a zero-size rect at the cursor so callers can still call
+            // `.clicked()` without panicking on an unwrap.
+            let (_, r) = ui.allocate_exact_size(Vec2::ZERO, Sense::hover());
+            r
+        })
+    }
+
+    /// Rich entry point. Returns a [`PanelListRowResponse`] that carries
+    /// the body click signal **and** (when `.trailing_buttons(&[...])` was
+    /// set) the index of the trailing button that fired this frame.
+    pub fn show_full(self, ui: &mut Ui, t: &Theme) -> PanelListRowResponse {
         let Self {
             id_salt,
             primary,
             secondary,
             leading,
             trailing,
+            trailing_buttons,
             columns,
             selected,
             dense,
@@ -239,11 +387,61 @@ impl<'a> PanelListRow<'a> {
             Sense::click(),
         );
         let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-        let resp = ui.interact(rect, ui.id().with(("panel_list_row", id_salt)), Sense::click())
-            .union(resp);
+
+        // ── Reserve trailing-button strip BEFORE interacting with the row
+        // body — clicks inside the strip belong to the buttons, not the row.
+        let btn_size = gap_lg(); // 16px square hit rect per button
+        let btn_gap = gap_xs();
+        let (trail_strip_rect, trail_btn_rects) = match trailing_buttons {
+            Some(btns) if !btns.is_empty() => {
+                let n = btns.len();
+                let strip_w = (n as f32) * btn_size + ((n as f32) - 1.0).max(0.0) * btn_gap;
+                let strip_left = rect.right() - gap_md() - strip_w;
+                let strip = Rect::from_min_max(
+                    Pos2::new(strip_left, rect.top()),
+                    Pos2::new(rect.right() - gap_md(), rect.bottom()),
+                );
+                // Per-button rects, left-to-right inside the strip (RTL
+                // visually is just left-to-right placement starting from
+                // strip_left — order matches the slice index).
+                let mut rects: Vec<Rect> = Vec::with_capacity(n);
+                let cy = rect.center().y;
+                let mut x = strip_left;
+                for _ in 0..n {
+                    let cx = x + btn_size * 0.5;
+                    rects.push(Rect::from_center_size(
+                        Pos2::new(cx, cy),
+                        Vec2::splat(btn_size),
+                    ));
+                    x += btn_size + btn_gap;
+                }
+                (Some(strip), rects)
+            }
+            _ => (None, Vec::new()),
+        };
+
+        // Row body interaction — excludes the trailing strip when present.
+        let body_rect = match trail_strip_rect {
+            Some(strip) => Rect::from_min_max(
+                rect.min,
+                Pos2::new(strip.left() - btn_gap, rect.bottom()),
+            ),
+            None => rect,
+        };
+        let body_resp = ui.interact(
+            body_rect,
+            ui.id().with(("panel_list_row", id_salt)),
+            Sense::click(),
+        );
+        let resp = body_resp.union(resp);
 
         if !ui.is_rect_visible(rect) {
-            return resp;
+            return PanelListRowResponse {
+                clicked: resp.clicked(),
+                hovered: resp.hovered(),
+                trailing_clicked_idx: None,
+                response: Some(resp),
+            };
         }
 
         let painter = ui.painter_at(rect);
@@ -271,12 +469,23 @@ impl<'a> PanelListRow<'a> {
         // just the painter.
         if let Some(cols) = columns {
             paint_columns(ui, rect, cols, t);
-            return resp;
+            return PanelListRowResponse {
+                clicked: resp.clicked(),
+                hovered: resp.hovered(),
+                trailing_clicked_idx: None,
+                response: Some(resp),
+            };
         }
 
         // Layout LTR: leading | text block | (RTL) trailing.
         let inner_left = rect.left() + gap_md();
-        let inner_right = rect.right() - gap_md();
+        // When the trailing-button strip is reserved, the text block
+        // should stop short of it — otherwise long titles would draw
+        // underneath the icons.
+        let inner_right = match trail_strip_rect {
+            Some(strip) => strip.left() - btn_gap,
+            None => rect.right() - gap_md(),
+        };
         let content_rect = Rect::from_min_max(
             Pos2::new(inner_left, rect.top()),
             Pos2::new(inner_right, rect.bottom()),
@@ -320,7 +529,10 @@ impl<'a> PanelListRow<'a> {
                     }
                 });
 
-                // Trailing slot: float to the right.
+                // Trailing slot: float to the right. Only the closure form
+                // paints here — the slice form is painted below using the
+                // pre-allocated strip so per-button hit rects can be made
+                // independently of the nested layout.
                 if let Some(trail) = trailing {
                     ui.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
@@ -332,7 +544,64 @@ impl<'a> PanelListRow<'a> {
             },
         );
 
-        resp
+        // ── Trailing icon-button strip ──────────────────────────────────
+        // Paint each TrailingBtn at its pre-allocated rect via the painter,
+        // then call ui.interact() for click sense + tooltip. No nested Ui /
+        // closures / heap allocations per button.
+        let mut trailing_clicked_idx: Option<usize> = None;
+        if let Some(btns) = trailing_buttons {
+            for (i, btn) in btns.iter().enumerate() {
+                let r = trail_btn_rects[i];
+                let id = ui.id().with(("panel_list_row_trail_btn", id_salt, i));
+                let mut br = ui.interact(r, id, Sense::click());
+                if let Some(tip) = btn.tooltip {
+                    br = br.on_hover_text(tip);
+                }
+                crate::chart::renderer::ui::style::cursor::clickable(ui, &br);
+
+                let tone_col = btn.tone.resolve(t);
+                let painter = ui.painter_at(r);
+
+                // Active bg fill — subtle tint at alpha_soft().
+                if btn.active {
+                    painter.rect_filled(
+                        r,
+                        CornerRadius::same(radius_sm() as u8),
+                        color_alpha(
+                            tone_col,
+                            crate::chart::renderer::ui::style::alpha_soft(),
+                        ),
+                    );
+                }
+
+                // Icon glyph. Hover snaps to full tone color; idle is
+                // tone-at-`t.dim`-opacity so the icons sit visually quiet
+                // when the row is idle. Active state implies full color.
+                let glyph_color = if br.hovered() || btn.active {
+                    tone_col
+                } else {
+                    color_alpha(tone_col, t.dim.a())
+                };
+                painter.text(
+                    r.center(),
+                    egui::Align2::CENTER_CENTER,
+                    btn.icon,
+                    FontId::proportional(font_sm()),
+                    glyph_color,
+                );
+
+                if br.clicked() {
+                    trailing_clicked_idx = Some(i);
+                }
+            }
+        }
+
+        PanelListRowResponse {
+            clicked: resp.clicked(),
+            hovered: resp.hovered(),
+            trailing_clicked_idx,
+            response: Some(resp),
+        }
     }
 }
 

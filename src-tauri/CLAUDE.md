@@ -188,10 +188,30 @@ PanelSubSection::new("trend", "TREND INDICATORS")
     .show(ui, t, |ui, t| { /* body */ });
 ```
 
+Optional `.header_trailing(|ui, t| ...)` slot for group-level controls
+(visibility toggle, opacity picker) that conceptually belong to the
+category rather than any single body row. The slot is laid out
+right-to-left at the right edge of the header (between the count chip
+and the right margin). Clicks inside the slot do NOT toggle `expanded` —
+the toggle's click sense is reserved to the caret/title/chip region:
+
+```rust
+PanelSubSection::new("trend", "TREND INDICATORS")
+    .count(8)
+    .expanded(&mut group.expanded)
+    .header_trailing(|ui, t| {
+        if Button::icon(Icon::EYE).variant(Variant::Ghost).show(ui, t).clicked() {
+            group.all_visible = !group.all_visible;
+        }
+    })
+    .show(ui, t, |ui, t| { /* body */ });
+```
+
 | Hand-rolled pattern | Replace with |
 |---|---|
 | `indicators_panel.rs` LIBRARY category headers (caret + UPPER title + chip + inter-category divider) | `PanelSubSection` |
 | `object_tree.rs` folder rows | `PanelSubSection` |
+| `PanelSubSection` body's first row being the group-level toggle / opacity picker | `.header_trailing(|ui, t| { ... })` |
 | Generic non-categorical disclosure with proportional title in `t.text` | `Disclosure` (unchanged) |
 
 ### `PanelListRow::columns(&[Column...])` — free-form column layout
@@ -220,6 +240,53 @@ to avoid clashing with `Table`'s `Column` / `ColAlign`.
 | `tape_panel.rs` free-form 3-column print rows | `PanelListRow::columns(&[...])` |
 | `scanner_panel.rs` T&S column rows | `PanelListRow::columns(&[...])` |
 | Journal table rows (date / pnl / R / notes) | `PanelListRow::columns(&[...])` |
+
+### `PanelListRow::trailing_buttons(&[TrailingBtn...])` — typed icon strip
+
+When a row needs 2–4 inline icon buttons (delete / lock / visibility /
+reset), the closure-style `.trailing(|ui, t| ...)` slot forces callers
+to wire each click through a `Cell<bool>` trampoline because the
+`FnOnce` is consumed by `.show()`. The typed-slice form eliminates the
+boilerplate. Use `.show_full(ui, t)` to read which button fired:
+
+```rust
+let resp = PanelListRow::new("drawing_42")
+    .leading(|ui, _| paint_swatch(ui, color))
+    .primary("Trendline AAPL")
+    .trailing_buttons(&[
+        TrailingBtn::icon(Icon::TRASH).tone(TrailingTone::Bear).tooltip("Delete"),
+        TrailingBtn::icon(if locked { Icon::LOCK } else { Icon::LOCK_OPEN })
+            .active(locked).tooltip("Lock"),
+        TrailingBtn::icon(if visible { Icon::EYE } else { Icon::EYE_SLASH })
+            .active(visible).tooltip("Visibility"),
+    ])
+    .show_full(ui, t);
+if resp.clicked { /* row body click */ }
+match resp.trailing_clicked_idx {
+    Some(0) => delete(),
+    Some(1) => toggle_lock(),
+    Some(2) => toggle_visible(),
+    _ => {}
+}
+```
+
+API notes:
+- `TrailingTone` variants: `Default | Accent | Bull | Bear | Warn | Muted`
+  — resolve to a `Theme` color so call sites stay theme-aware (no raw RGB).
+- `.active(true)` paints a subtle bg fill at `color_alpha(tone, alpha_soft())`.
+- Idle glyph paints tone-at-`t.dim`-opacity; hover snaps to full tone color.
+- `.trailing_buttons(&[...])` and `.trailing(|ui, t| ...)` are mutually
+  exclusive — last setter wins.
+- Clicks are reported as `Option<usize>` (only one can fire per frame
+  since egui consumes pointer presses on the topmost interactable rect).
+- The slice is borrowed for one frame; no per-button heap allocations.
+- `.show()` still returns plain `Response` for backwards compatibility —
+  use `.show_full()` when you need the clicked index.
+
+| Hand-rolled pattern | Replace with |
+|---|---|
+| `PanelListRow` trailing closure with `Cell<bool>` trampolines for multiple icon buttons | `.trailing_buttons(&[TrailingBtn::icon(...).tone().tooltip().active(), ...])` + `.show_full()` |
+| Single inline trailing button or a custom non-icon widget (price, dropdown) | `.trailing(|ui, t| ...)` (unchanged) |
 
 ### Shell API contract (open flag, pane alignment)
 

@@ -46,7 +46,7 @@
 //! - For freeform expand/collapse with a normal-case title — use
 //!   `Disclosure`.
 
-use egui::{CornerRadius, FontId, Pos2, Sense, Stroke, Ui, Vec2};
+use egui::{CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
 use crate::chart::renderer::ui::style::{
@@ -76,6 +76,12 @@ pub struct PanelSubSection<'a> {
     title: &'a str,
     count: Option<usize>,
     expanded: Option<&'a mut bool>,
+    /// Optional RTL slot painted at the right edge of the header row.
+    /// Used for group-level controls (visibility toggle, opacity picker)
+    /// that conceptually belong to the category as a whole. Click events
+    /// inside this slot do **not** toggle `expanded` — the slot rect is
+    /// excluded from the header's click sense.
+    header_trailing: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
 }
 
 impl<'a> PanelSubSection<'a> {
@@ -85,7 +91,30 @@ impl<'a> PanelSubSection<'a> {
             title,
             count: None,
             expanded: None,
+            header_trailing: None,
         }
+    }
+
+    /// Mount a callback that renders inline in the header row's RTL slot,
+    /// at the right edge between the count chip and the right margin.
+    /// Used for group-level controls (visibility, opacity). Clicks landing
+    /// inside the slot do NOT toggle `expanded` — the slot reserves its
+    /// own rect and the header click sense excludes it.
+    ///
+    /// ```ignore
+    /// PanelSubSection::new("trend", "TREND INDICATORS")
+    ///     .count(8)
+    ///     .expanded(&mut group.expanded)
+    ///     .header_trailing(|ui, t| {
+    ///         if Button::icon(Icon::EYE).variant(Variant::Ghost).show(ui, t).clicked() {
+    ///             group.all_visible = !group.all_visible;
+    ///         }
+    ///     })
+    ///     .show(ui, t, |ui, t| { /* body */ });
+    /// ```
+    pub fn header_trailing(mut self, f: impl FnOnce(&mut Ui, &Theme) + 'a) -> Self {
+        self.header_trailing = Some(Box::new(f));
+        self
     }
 
     /// Add a count chip after the title.
@@ -108,15 +137,49 @@ impl<'a> PanelSubSection<'a> {
         t: &Theme,
         body: impl FnOnce(&mut Ui, &Theme) -> R,
     ) -> Option<R> {
-        let Self { id_salt, title, count, expanded } = self;
+        let Self { id_salt, title, count, expanded, header_trailing } = self;
 
         // Resolve current open state. If no state was bound, treat as
         // always-open so the widget still renders something useful.
         let is_open = expanded.as_ref().map(|b| **b).unwrap_or(true);
 
         let avail_w = ui.available_width();
-        let (rect, resp) = ui.allocate_exact_size(
+        // Allocate the full header strip up-front, then split out the
+        // header-trailing slot (when present) so its clicks are routed
+        // separately from the header toggle.
+        let (rect, _full_resp) = ui.allocate_exact_size(
             Vec2::new(avail_w, HEADER_H),
+            Sense::hover(),
+        );
+
+        // Reserve the header-trailing slot rect at the right edge. We
+        // reserve a generous slice (1/3 of available width, capped) so
+        // small clusters of icon buttons / chips fit comfortably without
+        // forcing the caller to size it. Empty slot reserves zero width.
+        let slot_w = if header_trailing.is_some() {
+            (avail_w * 0.33).clamp(0.0, 160.0)
+        } else {
+            0.0
+        };
+        let slot_rect = if slot_w > 0.0 {
+            Some(Rect::from_min_max(
+                Pos2::new(rect.right() - slot_w, rect.top()),
+                Pos2::new(rect.right(), rect.bottom()),
+            ))
+        } else {
+            None
+        };
+        // Header click area excludes the slot.
+        let header_click_rect = match slot_rect {
+            Some(s) => Rect::from_min_max(
+                rect.min,
+                Pos2::new(s.left() - gap_xs(), rect.bottom()),
+            ),
+            None => rect,
+        };
+        let resp = ui.interact(
+            header_click_rect,
+            ui.id().with(("panel_sub_section_header", id_salt)),
             Sense::click(),
         );
         let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
@@ -198,13 +261,17 @@ impl<'a> PanelSubSection<'a> {
             );
         }
 
-        // Ensure the interaction has a stable id even when the same title
-        // appears twice in a panel.
-        let _ = ui.interact(
-            rect,
-            ui.id().with(("panel_sub_section", id_salt)),
-            Sense::click(),
-        );
+        // Header-trailing slot — render the caller's RTL closure into a
+        // nested Ui scoped to the slot rect. Layouts right-to-left so the
+        // caller can simply `add` widgets and they pack from the right.
+        if let (Some(slot), Some(cb)) = (slot_rect, header_trailing) {
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(slot)
+                    .layout(egui::Layout::right_to_left(egui::Align::Center)),
+            );
+            cb(&mut child, t);
+        }
 
         // Body — only when expanded.
         if !is_open {
