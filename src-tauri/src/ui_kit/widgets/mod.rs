@@ -102,7 +102,7 @@ pub use panel_section::{
 pub use panel_empty::PanelEmpty;
 pub use panel_loading::PanelLoading;
 pub use panel_divider::panel_divider;
-pub use panel_list_row::PanelListRow;
+pub use panel_list_row::{PanelListRow, PanelListRowResponse, TrailingBtn, TrailingTone};
 // Foundation extension wave 2 (Agent V)
 // NOTE: Agent U is also adding re-exports in this file — merge conflict
 // expected here and trivial to resolve.
