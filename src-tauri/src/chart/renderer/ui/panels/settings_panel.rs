@@ -120,16 +120,10 @@ SettingsTab::Appearance => {
                 for (id, name) in chunk {
                     let id_us = *id as usize;
                     let active = id_us == cur_si;
-                    let fg = if active { t.accent } else { t.dim };
-                    let bg = if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT };
-                    let stroke = if active {
-                        egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_active()))
-                    } else {
-                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted()))
-                    };
-                    if Button::new(name.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(fg)
-                        .fill(bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).stroke(stroke)
-                        .min_size(egui::vec2(btn_w, btn_h)).show(ui, t).clicked() {
+                    if Button::toggle(name.as_str(), active)
+                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                        .min_size(egui::vec2(btn_w, btn_h))
+                        .show(ui, t).clicked() {
                         commands::push(AppCommand::SetStyleIdx { idx: id_us });
                     }
                 }
@@ -157,11 +151,11 @@ SettingsTab::Appearance => {
         ui.add_space(m);
         for (label, ppp) in [(60, 0.96_f32), (80, 1.28), (100, 1.6), (120, 1.92), (140, 2.24), (160, 2.56)] {
             let active = (watchlist.font_scale - ppp).abs() < 0.05;
-            let fg = if active { t.accent } else { t.dim.gamma_multiply(0.6) };
-            let bg = if active { color_alpha(t.accent, alpha_subtle()) } else { egui::Color32::TRANSPARENT };
             let pct_label = format!("{}%", label);
-            if Button::new(pct_label.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(fg)
-                .fill(bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(34.0, 20.0)).show(ui, t).clicked() {
+            if Button::toggle(pct_label.as_str(), active)
+                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                .min_size(egui::vec2(34.0, 20.0))
+                .show(ui, t).clicked() {
                 watchlist.font_scale = ppp;
             }
         }
