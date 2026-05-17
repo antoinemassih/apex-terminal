@@ -1,4 +1,5 @@
 pub mod bar_cache;
+pub mod connectivity;
 pub mod feeds;
 
 // Re-export everything from foundation::data_types so `crate::data::Bar` etc. still work
