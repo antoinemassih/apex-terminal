@@ -744,3 +744,110 @@ impl Broker for MockBroker {
         Ok(format!("mock:{}", args.idempotency_key))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bracket_args() -> BracketSubmitArgs {
+        BracketSubmitArgs {
+            symbol: "AAPL".into(),
+            side: "buy".into(),
+            qty: 10,
+            entry_order_type: "limit".into(),
+            entry_price: 100.0,
+            take_profit_price: 105.0,
+            stop_loss_price: 95.0,
+            idempotency_key: "bk-1".into(),
+        }
+    }
+
+    #[test]
+    fn mock_broker_records_bracket() {
+        let mock = MockBroker::new();
+        let args = bracket_args();
+        let resp = mock.submit_bracket(&args).expect("bracket ok");
+        assert!(resp.parent_backend_id.is_some());
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(matches!(calls[0], MockCall::Bracket(_)));
+    }
+
+    #[test]
+    fn mock_broker_records_oco() {
+        let mock = MockBroker::new();
+        let args = OcoSubmitArgs {
+            legs: vec![
+                OcoLeg { symbol: "AAPL".into(), side: "SELL".into(), qty: 10,
+                         order_type: "limit".into(), price: 110.0, stop_price: 0.0 },
+                OcoLeg { symbol: "AAPL".into(), side: "SELL".into(), qty: 10,
+                         order_type: "stop".into(),  price: 0.0,   stop_price: 90.0 },
+            ],
+            oca_group: "oca-1".into(),
+        };
+        let resp = mock.submit_oco(&args).expect("oco ok");
+        assert_eq!(resp.leg_backend_ids.len(), 2);
+        let calls = mock.calls();
+        assert!(matches!(calls[0], MockCall::Oco(_)));
+    }
+
+    #[test]
+    fn mock_broker_records_conditional() {
+        let mock = MockBroker::new();
+        let args = ConditionalSubmitArgs {
+            symbol: "AAPL".into(), side: "BUY".into(), qty: 5,
+            order_type: "limit".into(), price: 99.0,
+            conditions: vec![ConditionalCondition {
+                con_id: 12345, exchange: "SMART".into(),
+                is_more: true, price: Price::from_f32(100.0),
+            }],
+            conditions_logic: "and".into(),
+            conditions_cancel_order: false,
+            idempotency_key: "cond-1".into(),
+        };
+        let oid = mock.submit_conditional(&args).expect("cond ok");
+        assert!(oid.starts_with("mock:"));
+        assert!(matches!(mock.calls()[0], MockCall::Conditional(_)));
+    }
+
+    #[test]
+    fn mock_broker_records_options_trigger() {
+        let mock = MockBroker::new();
+        let args = OptionsTriggerArgs {
+            underlying: "SPY".into(), option_type: "call".into(),
+            strike: 500.0, expiration: "20260101".into(),
+            qty: 1, entry_price: 495.0, entry_direction: "above".into(),
+            exit_price: 505.0, exit_direction: "above".into(),
+            idempotency_key: "opt-1".into(),
+        };
+        let resp = mock.submit_options_trigger(&args).expect("opt ok");
+        assert!(resp.entry_backend_id.is_some());
+        assert!(matches!(mock.calls()[0], MockCall::OptionsTrigger(_)));
+    }
+
+    #[test]
+    fn mock_broker_records_combo() {
+        let mock = MockBroker::new();
+        let args = ComboSubmitArgs {
+            symbol: "SPY".into(), side: "buy".into(), qty: 1,
+            order_type: "limit".into(), limit_price: Some(2.50),
+            legs: vec![
+                ComboLeg { con_id: 1, ratio: 1,  side: "BUY".into() },
+                ComboLeg { con_id: 2, ratio: -1, side: "SELL".into() },
+            ],
+            idempotency_key: "combo-1".into(),
+        };
+        let oid = mock.submit_combo(&args).expect("combo ok");
+        assert!(oid.starts_with("mock:"));
+        assert!(matches!(mock.calls()[0], MockCall::Combo(_)));
+    }
+
+    #[test]
+    fn paper_broker_returns_synthetic_bracket_ids() {
+        let p = PaperBroker;
+        let resp = p.submit_bracket(&bracket_args()).expect("paper bracket ok");
+        assert_eq!(resp.parent_backend_id.as_deref(), Some("paper:bk-1:entry"));
+        assert_eq!(resp.take_profit_backend_id.as_deref(), Some("paper:bk-1:tp"));
+        assert_eq!(resp.stop_loss_backend_id.as_deref(), Some("paper:bk-1:sl"));
+    }
+}
