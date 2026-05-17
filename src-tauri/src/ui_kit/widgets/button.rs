@@ -873,7 +873,6 @@ fn resolve_palette(
     let surface = theme.surface();
     let text = theme.text();
     let border = theme.border();
-    let white = Color32::WHITE;
     let transparent = Color32::TRANSPARENT;
 
     match variant {
@@ -881,8 +880,8 @@ fn resolve_palette(
             accent,
             lighten(accent, 0.10),
             darken(accent, 0.08),
-            white,
-            white,
+            st::contrast_fg(accent),
+            st::contrast_fg(accent),
             transparent,
             st::color_alpha(accent, st::alpha_active()),
         ),
@@ -913,8 +912,8 @@ fn resolve_palette(
             bear,
             lighten(bear, 0.10),
             darken(bear, 0.08),
-            white,
-            white,
+            st::contrast_fg(bear),
+            st::contrast_fg(bear),
             transparent,
             st::color_alpha(bear, st::alpha_active()),
         ),

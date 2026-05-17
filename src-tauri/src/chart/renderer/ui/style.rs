@@ -138,6 +138,37 @@ pub const GAP_XL:  f32 = 20.0;
 pub const GAP_2XL: f32 = 24.0;
 pub const GAP_3XL: f32 = 32.0;
 
+// ─── Icon control sizes ──────────────────────────────────────────────────────
+// Standard square sizes for icon-only controls (toggle pills, trailing buttons,
+// inline icon-only buttons). Replaces hand-rolled vec2(14, 14) / vec2(16, 16) etc.
+#[inline] pub fn icon_xs() -> f32 { 14.0 }
+#[inline] pub fn icon_sm() -> f32 { 16.0 }
+#[inline] pub fn icon_md() -> f32 { 18.0 }
+#[inline] pub fn icon_lg() -> f32 { 20.0 }
+
+// ─── Row heights ─────────────────────────────────────────────────────────────
+// Canonical list/table row heights. PanelListRow defaults to row_height_default
+// (22) for dense lists and row_height_spacious (24) for breathable ones.
+#[inline] pub fn row_height_dense()     -> f32 { 18.0 }
+#[inline] pub fn row_height_compact()   -> f32 { 20.0 }
+#[inline] pub fn row_height_default()   -> f32 { 22.0 }
+#[inline] pub fn row_height_spacious()  -> f32 { 24.0 }
+#[inline] pub fn row_height_tall()      -> f32 { 30.0 }
+
+// ─── Card padding ────────────────────────────────────────────────────────────
+// Symmetric inner_margin presets for PanelCard / hand-rolled card bodies.
+#[inline] pub fn card_padding_compact()  -> f32 { 8.0 }
+#[inline] pub fn card_padding_default()  -> f32 { 12.0 }
+#[inline] pub fn card_padding_spacious() -> f32 { 16.0 }
+
+// ─── Divider insets ──────────────────────────────────────────────────────────
+// Vertical inset for hairline dividers (typically applied to top + bottom
+// of the dividing line so the rule doesn't kiss adjacent content).
+#[inline] pub fn divider_inset_xs() -> f32 { 1.0 }
+#[inline] pub fn divider_inset_sm() -> f32 { 2.0 }
+#[inline] pub fn divider_inset_md() -> f32 { 3.0 }
+#[inline] pub fn divider_inset_lg() -> f32 { 5.0 }
+
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 // 2026-05: function fallbacks reconciled with the const values (was 3/4/8).
 pub fn radius_xs() -> f32 { crate::dt_f32!(radius.xs, 2.0) }
@@ -1169,6 +1200,70 @@ pub fn color_alpha(c: Color32, alpha: u8) -> Color32 {
 #[inline] pub fn color_dim(c: Color32) -> Color32 { c.gamma_multiply(0.4) }
 /// 0.3× — barely visible (decorative chart rules, watermarks).
 #[inline] pub fn color_very_dim(c: Color32) -> Color32 { c.gamma_multiply(0.3) }
+
+// ─── Lighten / darken primitives ─────────────────────────────────────────────
+// Linear RGB lerp toward white / black. Used to derive hover/pressed states
+// from a base fill color.
+
+/// Lighten a color toward white by `amount` (0.0–1.0). Preserves alpha.
+#[inline]
+pub fn lighten(c: Color32, amount: f32) -> Color32 {
+    let amt = amount.clamp(0.0, 1.0);
+    let r = c.r() as f32 + (255.0 - c.r() as f32) * amt;
+    let g = c.g() as f32 + (255.0 - c.g() as f32) * amt;
+    let b = c.b() as f32 + (255.0 - c.b() as f32) * amt;
+    Color32::from_rgba_premultiplied(r as u8, g as u8, b as u8, c.a())
+}
+
+/// Darken a color toward black by `amount` (0.0–1.0). Preserves alpha.
+#[inline]
+pub fn darken(c: Color32, amount: f32) -> Color32 {
+    let amt = (1.0 - amount).clamp(0.0, 1.0);
+    Color32::from_rgba_premultiplied(
+        (c.r() as f32 * amt) as u8,
+        (c.g() as f32 * amt) as u8,
+        (c.b() as f32 * amt) as u8,
+        c.a(),
+    )
+}
+
+// ─── Semantic interaction-state colors ───────────────────────────────────────
+// Canonical hover / pressed / active / divider / disabled tones built on the
+// primitives above. Call-sites should reach for these instead of inlining
+// `lighten(c, 0.10)` / `color_alpha(t.toolbar_border, 36)` etc.
+
+/// Brighten a color by 10% — canonical hover treatment for filled surfaces.
+#[inline] pub fn color_hover(c: Color32) -> Color32 { lighten(c, 0.10) }
+
+/// Darken a color by 8% — canonical pressed/active state for filled surfaces.
+#[inline] pub fn color_pressed(c: Color32) -> Color32 { darken(c, 0.08) }
+
+/// Subtle text-color hover tint for rows/cells. Roughly matches PanelListRow's
+/// HOVER_BG_ALPHA constant — gives ~7% text alpha overlay.
+#[inline]
+pub fn hover_tint_text(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.text, 18)
+}
+
+/// Subtle accent fill for active chips/toggles. Use when a toggleable
+/// surface needs a "yes I'm on" visual that's quieter than a full accent.
+#[inline]
+pub fn active_chip_fill(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.accent, alpha_soft())
+}
+
+/// Standard hairline divider color. Wraps the toolbar_border + alpha 36 pair
+/// that's been hand-written across ~5 files for section dividers.
+#[inline]
+pub fn divider_color(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.toolbar_border, 36)
+}
+
+/// Disabled overlay — soft dim wash to apply over content that's not interactive.
+#[inline]
+pub fn disabled_overlay(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.dim, alpha_dim())
+}
 
 // ─── L2 surface helper (panel sub-section / card layer) ──────────────────────
 //

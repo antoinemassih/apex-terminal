@@ -157,16 +157,31 @@ pub(crate) struct Theme {
     // to signal hover/active/selected/disabled. Single accent at multiple
     // alphas — avoids cartoony hover treatments by NOT switching colors.
     /// Subtle bg tint on hover (text @ alpha 12).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) element_hover: egui::Color32,
     /// Pressed/active stronger (text @ alpha 24).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) element_active: egui::Color32,
     /// Selection background (accent @ alpha 24).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) element_selected: egui::Color32,
     /// Disabled wash on text (dim @ alpha 80).
     pub(crate) element_disabled: egui::Color32,
     /// Even subtler hover for ghost/nav buttons (text @ alpha 6).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) ghost_hover: egui::Color32,
     /// Active state for ghost variant (text @ alpha 12).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) ghost_active: egui::Color32,
     // ── Icon color ramp (Zed Phase 2) ───────────────────────────────────────
     // Icons get their own ramp, decoupled from text hierarchy. Lets a row
@@ -174,8 +189,14 @@ pub(crate) struct Theme {
     /// Full strength icon, default (= text).
     pub(crate) icon: egui::Color32,
     /// Secondary icons (toolbar idle) — text @ ~70% alpha (178).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) icon_muted: egui::Color32,
     /// Disabled icons — text @ ~40% alpha (102).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) icon_disabled: egui::Color32,
     /// Accent-tinted icons (selected/highlight) (= accent).
     pub(crate) icon_accent: egui::Color32,

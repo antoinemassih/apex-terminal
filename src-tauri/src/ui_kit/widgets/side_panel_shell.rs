@@ -195,7 +195,7 @@ impl<'a> SidePanelShell<'a> {
         let frame = PanelFrame::new(panel_surface(t), t.toolbar_border).theme(t).build();
         let panel = panel.frame(frame);
 
-        let SidePanelShell { title, icon, pane_metrics, header_actions, footer, .. } = self;
+        let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
 
         let mut close_clicked = false;
         panel.show(ctx, |ui| {
@@ -208,7 +208,7 @@ impl<'a> SidePanelShell<'a> {
                     let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
                     if closed { close_clicked = true; }
                 });
-            paint_header_underline_and_shadow(ui, t, header_resp.response.rect);
+            paint_header_underline_and_shadow(ui, t, header_resp.response.rect, id);
             render_body_and_footer(ui, t, body, footer);
         });
         SidePanelShellResponse { close_clicked }
@@ -318,7 +318,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
                     });
                     if closed { close_clicked = true; }
                 });
-            paint_header_underline_and_shadow(ui, t, header_resp.response.rect);
+            paint_header_underline_and_shadow(ui, t, header_resp.response.rect, id);
 
             let active = *current;
             render_body_and_footer(ui, t, move |ui, t| body(ui, t, active), footer);
@@ -331,7 +331,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
 /// Mirrors the chart pane header treatment so side-panel headers and
 /// chart pane headers read as one visual family. The shadow goes on the
 /// Foreground layer so it can't shift widget layer-ids mid-frame.
-fn paint_header_underline_and_shadow(ui: &mut Ui, t: &Theme, hr: egui::Rect) {
+fn paint_header_underline_and_shadow(ui: &mut Ui, t: &Theme, hr: egui::Rect, panel_id: &str) {
     // Hairline bottom rule — same color/alpha as the chart pane header
     // border so the whole header family reads as one bordered system.
     ui.painter().line_segment(
@@ -347,7 +347,7 @@ fn paint_header_underline_and_shadow(ui: &mut Ui, t: &Theme, hr: egui::Rect) {
     let shadow_h = 6.0_f32;
     let layer = egui::LayerId::new(
         egui::Order::Foreground,
-        ui.id().with(("side_panel_shell_shadow", hr.left().to_bits(), hr.top().to_bits())),
+        ui.id().with(("side_panel_shell_shadow", panel_id)),
     );
     let painter = ui.ctx().layer_painter(layer);
     for i in 0..shadow_h as i32 {
