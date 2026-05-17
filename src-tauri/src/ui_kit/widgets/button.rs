@@ -177,6 +177,20 @@ impl<'a> Button<'a> {
         b
     }
 
+    /// Outline + full-width — a Ghost button (no fill) sized small that
+    /// stretches across the available width. Used for the "+ Add …" row
+    /// at the bottom of a `PanelSection` body where the affordance should
+    /// span the section but stay visually quiet. Replaces the
+    /// `Button::simple(label).variant(Ghost).min_size(vec2(avail, 22.0))`
+    /// workaround that several panels had to reach for.
+    pub fn outline_full_width(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Ghost;
+        b.size = Size::Sm;
+        b.full_width = true;
+        b
+    }
+
     /// Toolbar — top-nav button surface. Status mode + Ghost variant so
     /// the bg only paints on hover/active.
     pub fn toolbar(label: impl Into<&'a str>) -> Self {

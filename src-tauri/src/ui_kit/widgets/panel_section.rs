@@ -37,7 +37,7 @@
 //!   `kit::PanelHeader`.
 //! - Form-field grouping with input gutters — use `FormSection`.
 
-use egui::{Color32, FontId, Pos2, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::chart::renderer::ui::style::{
     color_alpha, font_xs, gap_md, gap_sm, gap_xs, stroke_thin,
@@ -254,4 +254,294 @@ fn section_action_button(ui: &mut Ui, label: &str, color: Color32) -> bool {
     );
     let _ = text;
     resp.clicked()
+}
+
+// ─── PanelSectionGroup ──────────────────────────────────────────────────────
+//
+// Stacks N PanelSections vertically with user-draggable grippy dividers
+// between adjacent sections. The caller owns the persistent fraction state
+// as a `&mut [f32; N]` slice; the group normalizes the sum to 1.0 and
+// enforces a configurable minimum section height.
+//
+// Why this exists: PanelSection is natural-flow — it takes whatever
+// vertical space it needs. Several panels (indicators, alerts) want
+// "TOOLS / ACTIVE / LIBRARY"-style 3-way splits where the user can drag
+// the divider between sections to give one more room than another. Each
+// pane has a header (the PanelSection title) and a scrollable body. The
+// dividers BETWEEN sections are the affordance — hence a group widget
+// rather than a `.resizable()` builder on a single section.
+//
+// Divider visual (matches PanelDivider hairline aesthetic):
+//   - 5px tall hit/paint band, hairline rule centered
+//   - Center dot triplet (3 dots, 2px diameter, gap 3px) as grab affordance
+//   - Idle  : `color_alpha(t.toolbar_border, 36)`
+//   - Hover : `color_alpha(t.toolbar_border, 96)` (and dots brightened)
+//   - Cursor: `CursorIcon::ResizeVertical` on hover/drag
+
+/// Divider hit-band height (px). Drawn between adjacent sections.
+const DIVIDER_BAND_H: f32 = 6.0;
+/// Idle alpha of the divider hairline + dots (matches PanelSection rule).
+const DIVIDER_IDLE_ALPHA: u8 = 36;
+/// Hover / drag alpha of the divider hairline + dots.
+const DIVIDER_HOVER_ALPHA: u8 = 96;
+/// Default minimum section height when the caller doesn't override it.
+const DEFAULT_MIN_SECTION_H: f32 = 32.0;
+
+/// Vertical stack of N resizable [`PanelSection`]s with grippy dividers
+/// between them.
+///
+/// State (`&mut [f32; N]`) lives on the caller (e.g.
+/// `Watchlist::indicators_section_fracs`). Fractions sum to 1.0 — the
+/// group renormalizes if the caller's storage drifts. A minimum section
+/// height is enforced when dragging.
+///
+/// ```ignore
+/// PanelSectionGroup::new(&mut watchlist.indicators_section_fracs)
+///     .min_section_height(40.0)
+///     .show(ui, t, |grp| {
+///         grp.section(|ui, t| {
+///             PanelSection::new("TOOLS").show(ui, t, |ui, t| { /* ... */ });
+///         });
+///         grp.section(|ui, t| {
+///             PanelSection::new("ACTIVE").count(n).show(ui, t, |ui, t| { /* ... */ });
+///         });
+///         grp.section(|ui, t| {
+///             PanelSection::new("LIBRARY").show(ui, t, |ui, t| { /* ... */ });
+///         });
+///     });
+/// ```
+///
+/// The caller must invoke `grp.section(...)` exactly `N` times (one per
+/// fraction in the storage slice). Extra calls are silently dropped;
+/// missing calls leave those rects unrendered.
+#[must_use = "PanelSectionGroup must be rendered with `.show(...)`"]
+pub struct PanelSectionGroup<'a> {
+    fracs: &'a mut [f32],
+    min_section_height: f32,
+}
+
+impl<'a> PanelSectionGroup<'a> {
+    pub fn new(fracs: &'a mut [f32]) -> Self {
+        Self {
+            fracs,
+            min_section_height: DEFAULT_MIN_SECTION_H,
+        }
+    }
+
+    /// Minimum height (px) any one section is allowed to shrink to while
+    /// the user drags a divider. Defaults to 32px.
+    pub fn min_section_height(mut self, px: f32) -> Self {
+        self.min_section_height = px.max(8.0);
+        self
+    }
+
+    pub fn show<F>(self, ui: &mut Ui, t: &Theme, mut body: F)
+    where
+        F: FnMut(&mut PanelSectionGroupBuilder<'_>),
+    {
+        let n = self.fracs.len();
+        if n == 0 {
+            return;
+        }
+
+        // Available rect — full remaining width × height inside the parent
+        // UI. We allocate it up front so divider drags stay anchored to
+        // the same band regardless of scrollbar reflow inside a section.
+        let avail = ui.available_size_before_wrap();
+        let total_w = if avail.x.is_finite() && avail.x > 0.0 { avail.x } else { 200.0 };
+        let total_h = if avail.y.is_finite() && avail.y > 0.0 { avail.y } else { 200.0 };
+        if total_h <= 1.0 {
+            return;
+        }
+
+        let (rect, _resp) = ui.allocate_exact_size(
+            Vec2::new(total_w, total_h),
+            Sense::hover(),
+        );
+
+        // Normalize fractions (defensive — caller might init to zeros).
+        let sum: f32 = self.fracs.iter().copied().filter(|f| f.is_finite()).sum();
+        if sum <= 0.0001 {
+            let even = 1.0 / n as f32;
+            for f in self.fracs.iter_mut() {
+                *f = even;
+            }
+        } else if (sum - 1.0).abs() > 0.001 {
+            for f in self.fracs.iter_mut() {
+                *f /= sum;
+            }
+        }
+
+        // ── Drag handling ──────────────────────────────────────────────
+        //
+        // For each of the N-1 dividers we allocate a thin hit rect and,
+        // if dragged, transfer height between the two adjacent sections.
+        // Compute initial pixel heights from fractions.
+        let divider_total = DIVIDER_BAND_H * (n - 1) as f32;
+        let body_total = (total_h - divider_total).max(0.0);
+        let min_h = self.min_section_height;
+
+        let mut heights: Vec<f32> = self.fracs.iter().map(|f| f * body_total).collect();
+
+        // Process each divider — must do it in a separate pass so we can
+        // mutate heights[i] and heights[i+1] together.
+        let base_id = ui.id().with("ui_kit_panel_section_group");
+        let mut hovered_divider: Option<usize> = None;
+        for i in 0..n.saturating_sub(1) {
+            // Compute divider band y-position from current heights.
+            let mut y = rect.top();
+            for j in 0..=i {
+                y += heights[j];
+                if j < i {
+                    y += DIVIDER_BAND_H;
+                }
+            }
+            let div_rect = Rect::from_min_size(
+                Pos2::new(rect.left(), y),
+                Vec2::new(rect.width(), DIVIDER_BAND_H),
+            );
+            // Expand hit rect a couple px for ease of grabbing.
+            let hit_rect = div_rect.expand2(Vec2::new(0.0, 2.0));
+            let resp = ui.interact(
+                hit_rect,
+                base_id.with(("div", i)),
+                Sense::click_and_drag(),
+            );
+            if resp.hovered() || resp.dragged() {
+                hovered_divider = Some(i);
+                ui.ctx().set_cursor_icon(CursorIcon::ResizeVertical);
+            }
+            if resp.dragged() {
+                let dy = resp.drag_delta().y;
+                if dy.abs() > 0.0 {
+                    let a = heights[i];
+                    let b = heights[i + 1];
+                    // Clamp transfer by min-height on the shrinking side.
+                    let new_a = (a + dy).max(min_h).min(a + b - min_h);
+                    let delta = new_a - a;
+                    heights[i] += delta;
+                    heights[i + 1] -= delta;
+                }
+            }
+        }
+
+        // Write heights back as fractions of body_total.
+        if body_total > 0.0 {
+            for (h, f) in heights.iter().zip(self.fracs.iter_mut()) {
+                *f = h / body_total;
+            }
+            // Re-normalize for floating point drift.
+            let s: f32 = self.fracs.iter().sum();
+            if s > 0.0 {
+                for f in self.fracs.iter_mut() {
+                    *f /= s;
+                }
+            }
+        }
+
+        // ── Paint sections + dividers ──────────────────────────────────
+        let mut builder = PanelSectionGroupBuilder {
+            ui,
+            t,
+            outer_rect: rect,
+            heights: &heights,
+            divider_h: DIVIDER_BAND_H,
+            index: 0,
+            cursor_y: rect.top(),
+            hovered_divider,
+        };
+        body(&mut builder);
+
+        // Paint dividers AFTER section bodies so the grippy sits on top
+        // of any section bottom-rule.
+        for i in 0..n.saturating_sub(1) {
+            let mut y = rect.top();
+            for j in 0..=i {
+                y += heights[j];
+                if j < i {
+                    y += DIVIDER_BAND_H;
+                }
+            }
+            let div_rect = Rect::from_min_size(
+                Pos2::new(rect.left(), y),
+                Vec2::new(rect.width(), DIVIDER_BAND_H),
+            );
+            paint_grippy_divider(builder.ui, t, div_rect, hovered_divider == Some(i));
+        }
+    }
+}
+
+/// Builder handed to the closure passed to [`PanelSectionGroup::show`].
+/// Each call to [`Self::section`] consumes one fraction slot.
+pub struct PanelSectionGroupBuilder<'u> {
+    ui: &'u mut Ui,
+    t: &'u Theme,
+    outer_rect: Rect,
+    heights: &'u [f32],
+    divider_h: f32,
+    index: usize,
+    cursor_y: f32,
+    hovered_divider: Option<usize>,
+}
+
+impl<'u> PanelSectionGroupBuilder<'u> {
+    /// Render one section into the next slot. The closure runs inside a
+    /// child UI clipped to the section's allocated rect — typical use is
+    /// to call `PanelSection::new(...).show(ui, t, |ui, t| { ... })`
+    /// inside it.
+    pub fn section<F>(&mut self, add_contents: F)
+    where
+        F: FnOnce(&mut Ui, &Theme),
+    {
+        let i = self.index;
+        if i >= self.heights.len() {
+            return;
+        }
+        let h = self.heights[i].max(0.0);
+        let section_rect = Rect::from_min_size(
+            Pos2::new(self.outer_rect.left(), self.cursor_y),
+            Vec2::new(self.outer_rect.width(), h),
+        );
+
+        if section_rect.height() > 0.5 {
+            let mut child = self.ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(section_rect)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            child.set_clip_rect(section_rect);
+            add_contents(&mut child, self.t);
+        }
+
+        self.cursor_y += h;
+        if i + 1 < self.heights.len() {
+            self.cursor_y += self.divider_h;
+        }
+        self.index += 1;
+        let _ = self.hovered_divider; // silence unused on this path
+    }
+}
+
+/// Paint a hairline + 3-dot grippy in the middle of `rect`. The divider
+/// runs left→right; dots are centered horizontally.
+fn paint_grippy_divider(ui: &mut Ui, t: &Theme, rect: Rect, hovered: bool) {
+    let alpha = if hovered { DIVIDER_HOVER_ALPHA } else { DIVIDER_IDLE_ALPHA };
+    let line_color = color_alpha(t.toolbar_border, alpha);
+    let cy = rect.center().y;
+    let painter = ui.painter();
+    // Hairline rule across full width.
+    painter.line_segment(
+        [Pos2::new(rect.left(), cy), Pos2::new(rect.right(), cy)],
+        Stroke::new(stroke_thin(), line_color),
+    );
+    // Center dot triplet — three filled circles, ~1.4px radius, gap 3px,
+    // tinted with the same border color but a touch brighter.
+    let dot_color = color_alpha(t.toolbar_border, alpha.saturating_add(48));
+    let dot_r = 1.4;
+    let gap = 3.0;
+    let cx = rect.center().x;
+    let xs = [cx - (dot_r * 2.0 + gap), cx, cx + (dot_r * 2.0 + gap)];
+    for x in xs {
+        painter.circle_filled(Pos2::new(x, cy), dot_r, dot_color);
+    }
 }
