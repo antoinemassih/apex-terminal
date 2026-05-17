@@ -2,6 +2,26 @@
 
 > Read this **before** touching any UI code. The full audit lives in `docs/UI_AUDIT.md`.
 
+## 🔒 Sacred code: `src/chart/renderer/render/pane/core.rs`
+
+This file contains the GPU-optimized chart paint pipeline — hottest
+code path in the app. **Do NOT touch it as part of any design-system
+sweep, token migration, button consolidation, or "for cleanliness"
+refactor.** Function-call overhead, lost inlining, and parameter
+passing can manifest as measurable frame drops.
+
+Rules:
+- No mechanical sweeps inside `core.rs`. Literals stay until a
+  performance-conscious owner replaces them with benchmark cover.
+- No extraction of helpers "for organization." If you think you need
+  one, write a doc explaining why and benchmark it before merging.
+- One owner at a time. Multi-agent fanout does NOT cover this file.
+- Visual tweaks (color/spacing/layout the user requests) are fine, but
+  land them with a single owner who can verify in the running app.
+
+See `docs/PANE_RS_SPLIT_PLAN.md` for context. The plan is deferred
+indefinitely — the perf risk outweighs the organizational wins.
+
 ## Hard rules
 
 ### 1. Never hardcode `&THEMES[0]`

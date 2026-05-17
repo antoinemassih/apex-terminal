@@ -1,25 +1,27 @@
 //! Chart pane rendering.
 //!
-//! This module is being split incrementally from the original
-//! `pane.rs` monolith (~12,500 lines). See `docs/PANE_RS_SPLIT_PLAN.md`
-//! at the repo root for the wave-by-wave plan.
+//! ## `core.rs` is SACRED
 //!
-//! **Wave 0 (current state):** The entire original file lives in
-//! `core.rs`. This `mod.rs` exists only to give the split a destination
-//! directory and to re-export the public entry points so call sites
-//! (`render::pane::render_toolbar`, `render::pane::draw_chart`) keep
-//! working unchanged.
+//! `core.rs` contains the GPU-optimized chart paint pipeline. It is the
+//! hottest code path in the app — sub-millisecond per-frame budgets,
+//! tight inlining, deeply shared local state. **Do not refactor it
+//! without per-frame benchmark evidence of zero regression.**
 //!
-//! **Future waves** will move:
-//! - free helpers → `pane/drawing_helpers.rs`, `pane/deferred.rs`
-//! - pure paint sub-systems → `pane/paint.rs`, `pane/geometry.rs`
-//! - indicator overlays → `pane/indicators/`
-//! - drawing renderer + hit-test → `pane/drawings/`
-//! - order chrome → `pane/orders/`
-//! - options overlays → `pane/options/`
+//! Specifically:
+//! - No mechanical token-compliance sweeps inside `core.rs`. Literals
+//!   stay until a performance-conscious owner replaces them with
+//!   benchmark cover.
+//! - No "for cleanliness" function extractions. Function call overhead,
+//!   lost inlining, and parameter passing can manifest as frame drops.
+//! - No multi-agent fanout inside this file. One owner at a time, with
+//!   the ability to profile a frame before merging.
 //!
-//! Each wave preserves bit-identical visual behavior. Do not mix wave
-//! cuts with feature work — sequencing matters.
+//! Multi-agent design-system work runs on everything else in the tree
+//! (panels, tools, widgets, drawing tool modal UI). The chart paint
+//! pipeline stays single-owner.
+//!
+//! See `docs/PANE_RS_SPLIT_PLAN.md` for the original split proposal and
+//! the decision to defer it indefinitely.
 
 mod core;
 
