@@ -1,10 +1,8 @@
 //! Playbook panel — standalone sidebar for trade idea plays.
 
 use egui;
-use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Chart, Theme};
-use super::super::widgets::frames::PanelFrame;
-use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};
 
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -15,19 +13,14 @@ pub(crate) fn draw(
 ) {
     if !watchlist.playbook_panel_open { return; }
 
-    egui::SidePanel::right("playbook_panel")
-        .default_width(280.0)
-        .min_width(240.0)
-        .max_width(440.0)
-        .resizable(true)
-        .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
-        .show(ctx, |ui| {
-            if PanelHeaderWithClose::new("PLAYBOOK").theme(t).watchlist(watchlist).show(ui) {
-                watchlist.playbook_panel_open = false;
-            }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_sm());
-
+    let pane_h    = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
+    let resp = SidePanelShell::new("playbook_panel", "PLAYBOOK")
+        .width(Width::Narrow)
+        .resizable(240.0..=440.0)
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t| {
             super::plays_panel::draw_content(ui, watchlist, panes, ap, t);
         });
+    if resp.close_clicked { watchlist.playbook_panel_open = false; }
 }
