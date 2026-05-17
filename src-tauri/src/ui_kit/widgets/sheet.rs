@@ -301,6 +301,7 @@ impl<'a> Sheet<'a> {
                                 .variant(Variant::Ghost)
                                 .size(KitSize::Sm)
                                 .show(ui, theme)
+                                .on_hover_text("Close")
                                 .clicked()
                             {
                                 header_close = true;
@@ -321,6 +322,7 @@ impl<'a> Sheet<'a> {
                                         .variant(Variant::Ghost)
                                         .size(KitSize::Sm)
                                         .show(ui, theme)
+                                        .on_hover_text("Close")
                                         .clicked()
                                     {
                                         header_close = true;

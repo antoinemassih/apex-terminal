@@ -248,6 +248,7 @@ fn paint_calendar<'a>(
                 if Button::icon(super::super::icons::Icon::CARET_LEFT)
                     .size(Size::Sm)
                     .show(ui, theme)
+                    .on_hover_text("Previous month")
                     .clicked()
                 {
                     pending_view = Some(add_months(view_month, -1));
@@ -380,6 +381,7 @@ fn paint_calendar<'a>(
                 if Button::icon(super::super::icons::Icon::CARET_RIGHT)
                     .size(Size::Sm)
                     .show(ui, theme)
+                    .on_hover_text("Next month")
                     .clicked()
                 {
                     pending_view = Some(add_months(view_month, 1));

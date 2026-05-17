@@ -51,7 +51,7 @@ pub(crate) fn draw(
                 ui.horizontal(|ui| {
                     ui.add(SectionLabel::new("TEMPLATES").lg().color(t.accent));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if KitButton::close().show(ui, t).clicked() { close_popup = true; }
+                        if KitButton::close().show(ui, t).on_hover_text("Close").clicked() { close_popup = true; }
                     });
                 });
                 ui.add_space(gap_sm());

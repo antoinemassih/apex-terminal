@@ -185,7 +185,7 @@ pub(crate) fn draw_content(
                             .primary(&primary)
                             .secondary(&secondary)
                             .trailing(move |ui, t| {
-                                if Button::close().show(ui, t).clicked() {
+                                if Button::close().show(ui, t).on_hover_text("Delete screenshot").clicked() {
                                     delete_ref.set(true);
                                 }
                                 if Button::small_action("View").tint(accent_col).show(ui, t).clicked() {

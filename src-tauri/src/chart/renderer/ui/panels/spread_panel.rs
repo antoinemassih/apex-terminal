@@ -355,7 +355,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         );
                         // Render an IconBtn inside the pre-allocated rect using a child UI.
                         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(x_rect));
-                        if child.add(Button::icon("\u{00D7}").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() {
+                        if child.add(Button::icon("\u{00D7}").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).on_hover_text("Remove leg").clicked() {
                             remove_leg = Some(idx);
                         }
                     }
@@ -371,9 +371,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             leg.side = if leg.side == "BUY" { "SELL".into() } else { "BUY".into() };
                         }
                         // Qty
-                        if ui.add(Button::icon(Icon::MINUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() && leg.qty > 1 { leg.qty -= 1; }
+                        if ui.add(Button::icon(Icon::MINUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).on_hover_text("Decrease quantity").clicked() && leg.qty > 1 { leg.qty -= 1; }
                         ui.add(MonospaceCode::new(&format!("{}", leg.qty)).size_px(9.0).color(t.text));
-                        if ui.add(Button::icon(Icon::PLUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).clicked() { leg.qty += 1; }
+                        if ui.add(Button::icon(Icon::PLUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim)).on_hover_text("Increase quantity").clicked() { leg.qty += 1; }
                         // Option type toggle
                         let ot_col = if leg.option_type == "CALL" { t.bull } else { t.bear };
                         if ui.add(Button::new(leg.option_type.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(ot_col).min_size(egui::vec2(34.0, 14.0))).clicked() {
@@ -444,11 +444,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Qty").size_px(9.0).color(t.dim));
                     ui.add_space(8.0);
-                    if ui.add(Button::icon("-").variant(Variant::Ghost).glyph_color(t.dim)).clicked() && watchlist.spread_state.combo_qty > 1 {
+                    if ui.add(Button::icon("-").variant(Variant::Ghost).glyph_color(t.dim)).on_hover_text("Decrease quantity").clicked() && watchlist.spread_state.combo_qty > 1 {
                         watchlist.spread_state.combo_qty -= 1;
                     }
                     ui.add(MonospaceCode::new(&format!("{}", watchlist.spread_state.combo_qty)).size_px(12.0).strong(true).color(t.text));
-                    if ui.add(Button::icon("+").variant(Variant::Ghost).glyph_color(t.dim)).clicked() {
+                    if ui.add(Button::icon("+").variant(Variant::Ghost).glyph_color(t.dim)).on_hover_text("Increase quantity").clicked() {
                         watchlist.spread_state.combo_qty += 1;
                     }
                 });

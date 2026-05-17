@@ -210,7 +210,8 @@ impl<'a> FloatingPaneChrome<'a> {
                             ui.add_space(pad);
                             if self.show_close {
                                 let cr = ui.add(Button::icon(Icon::X)
-                                    .variant(Variant::InlineClose));
+                                    .variant(Variant::InlineClose))
+                                    .on_hover_text("Close");
                                 if cr.clicked() { close_clicked = true; }
                                 if cr.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                             }

@@ -84,7 +84,7 @@ pub(crate) fn draw(
                             ui.label(egui::RichText::new(format!("@ {:.2}", spot))
                                 .monospace().size(font_sm()).color(t.dim));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if KitButton::close().show(ui, t).clicked() { close_picker = true; }
+                                if KitButton::close().show(ui, t).on_hover_text("Close").clicked() { close_picker = true; }
                             });
                         });
                         ui.add_space(gap_sm());

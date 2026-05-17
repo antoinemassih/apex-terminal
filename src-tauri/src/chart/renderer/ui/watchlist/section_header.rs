@@ -75,7 +75,7 @@ impl<'a> SectionHeader<'a> {
                     .size(Size::Sm)
                     .glyph_color(color_muted(self.dim))
                     .frameless(true),
-            ).clicked() {
+            ).on_hover_text("Expand / collapse").clicked() {
                 chevron_clicked = true;
             }
 
@@ -104,7 +104,7 @@ impl<'a> SectionHeader<'a> {
                             .size(Size::Sm)
                             .glyph_color(color_very_dim(self.dim))
                             .frameless(true),
-                    ).clicked() {
+                    ).on_hover_text("Delete section").clicked() {
                         delete_clicked = true;
                     }
                 }

@@ -181,6 +181,7 @@ pub fn color_picker_row(ui: &mut Ui, current: &str) -> Option<String> {
         for &(hex, color) in DRAW_COLORS {
             let is_cur = current == hex;
             let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), Sense::click());
+            crate::chart::renderer::ui::style::cursor::clickable(ui, &resp);
             ui.painter().circle_filled(r.center(), if is_cur { 7.0 } else { 5.5 }, color);
             if is_cur { ui.painter().circle_stroke(r.center(), 8.0, egui::Stroke::new(crate::chart::renderer::ui::style::stroke_bold(), crate::chart::renderer::ui::style::contrast_fg(color))); }
             if resp.clicked() { result = Some(hex.to_string()); }
@@ -234,6 +235,7 @@ pub fn delete_button(ui: &mut Ui) -> bool {
     button::Button::icon(Icon::X)
         .variant(tokens::Variant::Danger)
         .show(ui, theme::active_theme(ui.ctx()))
+        .on_hover_text("Delete")
         .clicked()
 }
 
