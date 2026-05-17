@@ -166,7 +166,7 @@ impl<'a> TagInput<'a> {
                         painter.rect_stroke(
                             container_rect,
                             radius,
-                            Stroke::new(1.0, border_col),
+                            Stroke::new(st::stroke_std(), border_col),
                             StrokeKind::Inside,
                         );
                     }
@@ -328,7 +328,7 @@ impl<'a> TagInput<'a> {
 
                         egui::Frame::none()
                             .fill(bg)
-                            .stroke(Stroke::new(1.0, border))
+                            .stroke(Stroke::new(st::stroke_std(), border))
                             .corner_radius(CornerRadius::same(st::radius_sm() as u8))
                             .inner_margin(Margin::symmetric(st::gap_xs() as i8, st::gap_2xs() as i8))
                             .show(ui, |ui| {

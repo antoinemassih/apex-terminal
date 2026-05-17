@@ -77,9 +77,9 @@ impl<'a> Kbd<'a> {
             for (i, k) in self.keys.iter().enumerate() {
                 let w = cap_widths[i];
                 let cap_rect = egui::Rect::from_min_size(Pos2::new(x, rect.top()), Vec2::new(w, cap_h));
-                let cr = CornerRadius::same(3);
+                let cr = CornerRadius::same(3); // TODO: off-token
                 painter.rect_filled(cap_rect, cr, bg);
-                painter.rect_stroke(cap_rect, cr, Stroke::new(1.0, border), StrokeKind::Inside);
+                painter.rect_stroke(cap_rect, cr, Stroke::new(st::stroke_std(), border), StrokeKind::Inside);
                 painter.text(
                     cap_rect.center(),
                     egui::Align2::CENTER_CENTER,

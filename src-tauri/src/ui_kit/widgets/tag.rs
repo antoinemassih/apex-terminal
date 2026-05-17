@@ -125,7 +125,7 @@ impl<'a> Tag<'a> {
             let cr = CornerRadius::same(radius);
 
             if self.outline {
-                painter.rect_stroke(rect, cr, Stroke::new(1.0, tone_col), StrokeKind::Inside);
+                painter.rect_stroke(rect, cr, Stroke::new(st::stroke_std(), tone_col), StrokeKind::Inside);
             } else {
                 let bg = st::color_alpha(tone_col, 32);
                 painter.rect_filled(rect, cr, bg);

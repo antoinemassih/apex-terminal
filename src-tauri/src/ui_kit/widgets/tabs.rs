@@ -399,7 +399,7 @@ fn paint_tabs(
         );
         ui.painter().rect_filled(
             total_rect,
-            CornerRadius::same(6),
+            CornerRadius::same(st::radius_md() as u8),
             st::color_alpha(theme.surface(), 200),
         );
     }
@@ -557,7 +557,7 @@ fn paint_tabs(
             st::color_alpha(theme.surface(), 200),
             hover_t,
         );
-        ui.painter().rect_filled(plus_rect, CornerRadius::same(4), bg);
+        ui.painter().rect_filled(plus_rect, CornerRadius::same(st::radius_sm() as u8), bg);
         ui.painter().text(
             plus_rect.center(),
             Align2::CENTER_CENTER,
@@ -629,7 +629,7 @@ fn paint_tabs(
     // Zed parity. Only between tabs (not before first / after last).
     if matches!(treatment, TabTreatment::Line) && n > 1 {
         let sep_color = st::color_alpha(theme.dim(), 60);
-        let stroke = Stroke::new(1.0, sep_color);
+        let stroke = Stroke::new(st::stroke_std(), sep_color);
         for i in 1..n {
             let r = displaced_rects[i];
             ui.painter().line_segment(
@@ -760,7 +760,7 @@ fn paint_one_tab_painter(
             if is_active {
                 let inset = rect.shrink2(Vec2::new(2.0, 2.0));
                 let bg = motion::fade_in(theme.bg(), active_t);
-                painter.rect_filled(inset, CornerRadius::same(4), alpha(bg));
+                painter.rect_filled(inset, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
@@ -768,20 +768,20 @@ fn paint_one_tab_painter(
                     hover_t,
                 );
                 painter.rect_filled(rect.shrink2(Vec2::new(2.0, 2.0)),
-                    CornerRadius::same(4), alpha(bg));
+                    CornerRadius::same(st::radius_sm() as u8), alpha(bg));
             }
         }
         TabTreatment::Filled => {
             if is_active {
                 let bg = motion::fade_in(theme.surface(), active_t);
-                painter.rect_filled(rect, CornerRadius::same(4), alpha(bg));
+                painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
                     st::color_alpha(theme.surface(), 120),
                     hover_t,
                 );
-                painter.rect_filled(rect, CornerRadius::same(4), alpha(bg));
+                painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
             }
         }
         TabTreatment::Pane => {
@@ -944,7 +944,7 @@ fn paint_one_tab_painter(
         let bw = (bg.rect.width() + 10.0).max(14.0);
         let bh = 14.0;
         let br = Rect::from_min_size(Pos2::new(cx, cy - bh * 0.5), Vec2::new(bw, bh));
-        painter.rect_filled(br, CornerRadius::same(7), alpha(theme.bear()));
+        painter.rect_filled(br, CornerRadius::same(7), alpha(theme.bear())); // TODO: off-token
         painter.text(br.center(), Align2::CENTER_CENTER, &s,
             FontId::monospace(10.0), Color32::WHITE);
         cx += bw + inner_gap;
@@ -964,8 +964,8 @@ fn paint_one_tab_painter(
     if matches!(treatment, TabTreatment::Filled) && is_active {
         painter.rect_stroke(
             rect,
-            CornerRadius::same(4),
-            Stroke::new(1.0, alpha(st::color_alpha(theme.border(), 180))),
+            CornerRadius::same(st::radius_sm() as u8),
+            Stroke::new(st::stroke_std(), alpha(st::color_alpha(theme.border(), 180))),
             StrokeKind::Inside,
         );
     }

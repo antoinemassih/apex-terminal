@@ -35,7 +35,7 @@ pub fn show(ctx: &egui::Context) {
         .frame(
             egui::Frame::NONE
                 .fill(egui::Color32::from_rgb(18, 18, 24))
-                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 42, 54)))
+                .stroke(egui::Stroke::new(crate::chart::renderer::ui::style::stroke_std(), egui::Color32::from_rgb(40, 42, 54)))
                 .inner_margin(8.0),
         )
         .show(ctx, |ui| {

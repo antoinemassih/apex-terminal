@@ -617,7 +617,7 @@ fn paint_button<'a>(
             let y = rect.bottom() - 2.0;
             let x0 = rect.left() + pad_x * 0.5;
             let x1 = rect.right() - pad_x * 0.5;
-            painter.line_segment([Pos2::new(x0, y), Pos2::new(x1, y)], Stroke::new(1.0, underline));
+            painter.line_segment([Pos2::new(x0, y), Pos2::new(x1, y)], Stroke::new(st::stroke_std(), underline));
         }
 
         // ── Layout content (icon | label | trailing) ──
@@ -738,7 +738,7 @@ fn paint_button<'a>(
             painter.rect_stroke(
                 rect.expand(2.0),
                 cr,
-                Stroke::new(2.0, ring_color),
+                Stroke::new(st::stroke_thick(), ring_color),
                 StrokeKind::Outside,
             );
         }
@@ -1069,7 +1069,7 @@ fn paint_spinner(ui: &Ui, rect: Rect, color: Color32) {
         let p1 = center + Vec2::new(a.cos(), a.sin()) * radius;
         let alpha = (60.0 + 195.0 * t).round().clamp(0.0, 255.0) as u8;
         let c = Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), alpha.min(color.a()));
-        painter.line_segment([p0, p1], Stroke::new(1.5, c));
+        painter.line_segment([p0, p1], Stroke::new(st::stroke_bold(), c));
     }
 }
 
@@ -1143,9 +1143,9 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
         let _ = Button::new("Connect")
             .variant(Variant::Chrome)
             .fill(theme.surface())
-            .stroke(Stroke::new(1.0, theme.border()))
+            .stroke(Stroke::new(st::stroke_std(), theme.border()))
             .min_size(Vec2::new(80.0, 24.0))
-            .corner_radius(4.0)
+            .corner_radius(st::radius_sm())
             .fg(theme.text())
             .show(ui, theme);
         // ChromeBtn::frameless parity.

@@ -143,7 +143,7 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
             theme.surface()
         };
         painter.rect_filled(rect, radius, bg);
-        painter.rect_stroke(rect, radius, Stroke::new(1.0, border_col), StrokeKind::Inside);
+        painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
 
         let icon_color = motion::lerp_color(theme.dim(), theme.accent(), focus_t);
         let cy = rect.center().y;
@@ -217,7 +217,7 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
 
                 egui::Frame::none()
                     .fill(bg)
-                    .stroke(Stroke::new(1.0, border))
+                    .stroke(Stroke::new(st::stroke_std(), border))
                     .corner_radius(CornerRadius::same(st::radius_sm() as u8))
                     .inner_margin(Margin::same(st::gap_sm() as i8))
                     .show(ui, |ui| {
@@ -255,7 +255,7 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
                                     .color(theme.accent()),
                             )
                             .fill(st::color_alpha(theme.accent(), 24))
-                            .stroke(Stroke::new(1.0, st::color_alpha(theme.accent(), 80))),
+                            .stroke(Stroke::new(st::stroke_std(), st::color_alpha(theme.accent(), 80))),
                         );
                         if now_resp.clicked() {
                             let now = Local::now().time();
@@ -278,7 +278,7 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
                                             .color(theme.text()),
                                     )
                                     .fill(egui::Color32::TRANSPARENT)
-                                    .stroke(Stroke::new(1.0, theme.border())),
+                                    .stroke(Stroke::new(st::stroke_std(), theme.border())),
                                 );
                                 if pr.clicked() {
                                     sel_hour = preset_time.hour();
@@ -377,7 +377,7 @@ fn render_scroll_column(
                         if is_sel || item_resp.hovered() {
                             painter.rect_filled(
                                 item_rect,
-                                CornerRadius::same(3),
+                                CornerRadius::same(3), // TODO: off-token
                                 if item_resp.hovered() && !is_sel {
                                     st::color_alpha(theme.dim(), 20)
                                 } else {

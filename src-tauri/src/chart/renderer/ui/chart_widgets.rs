@@ -2432,7 +2432,7 @@ fn draw_tape_speed(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         p.line_segment([
             egui::pos2(cx + r * a0.cos(), cy + r * a0.sin()),
             egui::pos2(cx + r * a1.cos(), cy + r * a1.sin())],
-            egui::Stroke::new(5.0, col));
+            egui::Stroke::new(5.0, col)); // TODO: off-token
     }
 
     // Needle
@@ -3462,7 +3462,7 @@ fn draw_conviction_meter(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
     draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
         Stroke::new(stroke_heavy(), color_alpha(t.toolbar_border, ALPHA_MUTED)), 40);
     let sweep = (score / 100.0) * PI;
-    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI, Stroke::new(3.5, color), 30);
+    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI, Stroke::new(3.5, color), 30); // TODO: off-token
 
     // Needle
     let a = PI - (score / 100.0) * PI;

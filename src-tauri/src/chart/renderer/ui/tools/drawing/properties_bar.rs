@@ -110,7 +110,7 @@ pub fn show_drawing_properties_bar_ui(
                         let resp = crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new("")
                             .fill(c)
                             .min_size(egui::vec2(20.0, 20.0))
-                            .corner_radius(3.0)
+                            .corner_radius(3.0) // TODO: off-token
                             .stroke(if is_cur { egui::Stroke::new(stroke_bold(), t.text) } else { egui::Stroke::NONE }));
                         if resp.clicked() {
                             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {

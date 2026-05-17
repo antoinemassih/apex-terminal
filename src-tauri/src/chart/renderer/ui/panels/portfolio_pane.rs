@@ -221,7 +221,7 @@ pub(crate) fn render(
                 painter.line_segment([
                     egui::pos2(donut_cx + donut_r * a0.cos(), donut_cy + donut_r * a0.sin()),
                     egui::pos2(donut_cx + donut_r * a1.cos(), donut_cy + donut_r * a1.sin())],
-                    egui::Stroke::new(10.0, color));
+                    egui::Stroke::new(10.0, color)); // TODO: off-token
             }
             // Label
             let mid_a = angle + sweep * 0.5;

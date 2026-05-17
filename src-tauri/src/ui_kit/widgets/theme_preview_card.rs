@@ -15,6 +15,7 @@ use egui::{Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, StrokeKin
 use super::label::Label;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
+use crate::chart::renderer::ui::style as st;
 
 const DEFAULT_SIZE: Vec2 = Vec2::new(132.0, 80.0);
 const BORDER_WIDTH: f32 = 2.0;
@@ -128,7 +129,7 @@ impl<'a> ThemePreviewCard<'a> {
                     // Slightly muted so the preview doesn't scream.
                     let color = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200);
                     let lr = Rect::from_min_max(Pos2::new(x0, y), Pos2::new(x1, y + line_h));
-                    painter.rect_filled(lr, CornerRadius::same(1), color);
+                    painter.rect_filled(lr, CornerRadius::same(1), color); // TODO: off-token
                     y += line_h + line_gap;
                     if y + line_h > inner_bottom {
                         break;
@@ -167,7 +168,7 @@ impl<'a> ThemePreviewCard<'a> {
                         Pos2::new(card_rect.left() + 4.0, axis_y),
                         Pos2::new(card_rect.right() - 4.0, axis_y),
                     ],
-                    Stroke::new(1.0, axis_color),
+                    Stroke::new(st::stroke_std(), axis_color),
                 );
 
                 let body_w = 3.5_f32;
@@ -186,7 +187,7 @@ impl<'a> ThemePreviewCard<'a> {
                             Pos2::new(cx, (body_top - wick_up).max(inner_top - 1.0)),
                             Pos2::new(cx, (body_bot + wick_dn).min(inner_bottom + 1.0)),
                         ],
-                        Stroke::new(1.0, color),
+                        Stroke::new(st::stroke_std(), color),
                     );
 
                     // Body rect.
@@ -204,7 +205,7 @@ impl<'a> ThemePreviewCard<'a> {
                         Pos2::new(card_rect.left() + 4.0, accent_y),
                         Pos2::new(card_rect.right() - 4.0, accent_y),
                     ],
-                    Stroke::new(1.0, preview_theme.accent()),
+                    Stroke::new(st::stroke_std(), preview_theme.accent()),
                 );
             }
         }

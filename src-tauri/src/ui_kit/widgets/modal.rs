@@ -446,7 +446,7 @@ fn dialog_window_frame(
     egui::Frame::popup(&ctx.style())
         .fill(toolbar_bg)
         .inner_margin(0.0)
-        .stroke(Stroke::new(1.0, border))
+        .stroke(Stroke::new(style::stroke_std(), border))
         .corner_radius(r_lg_cr())
         .shadow(egui::epaint::Shadow {
             offset: [0, 8],

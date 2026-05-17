@@ -110,7 +110,7 @@ impl<'a> TimeframeSelector<'a> {
     }
     pub fn show(self, ui: &mut Ui) -> Option<usize> {
         let mut clicked = None;
-        let pill_r = egui::CornerRadius::same(99);
+        let pill_r = egui::CornerRadius::same(radius_pill() as u8);
         let prev_item_spacing = ui.spacing().item_spacing.x;
         ui.spacing_mut().item_spacing.x = gap_xs();
         let prev_pad = ui.spacing().button_padding;

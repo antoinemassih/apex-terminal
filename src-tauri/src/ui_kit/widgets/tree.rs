@@ -220,7 +220,7 @@ fn render_row<T: TreeNode>(
     let hovered = response.hovered();
     let selected = state.selected == Some(id);
     let hover_t = motion::ease_bool(ui.ctx(), row_id.with("hov"), hovered, motion::FAST);
-    let cr = CornerRadius::same(3);
+    let cr = CornerRadius::same(3); // TODO: off-token
 
     if selected {
         painter.rect_filled(rect, cr, st::color_alpha(theme.accent(), st::ALPHA_GHOST));
@@ -236,7 +236,7 @@ fn render_row<T: TreeNode>(
             let x = rect.left() + (d as f32) * cfg.indent_size + cfg.indent_size * 0.5;
             painter.line_segment(
                 [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-                Stroke::new(1.0, guide_col),
+                Stroke::new(st::stroke_std(), guide_col),
             );
         }
     }
@@ -279,11 +279,11 @@ fn render_row<T: TreeNode>(
         let on = state.is_checked(id);
         let on_t = motion::ease_bool(ui.ctx(), row_id.with("cb_on"), on, motion::FAST);
         let bg = motion::lerp_color(Color32::TRANSPARENT, theme.accent(), on_t);
-        painter.rect_filled(cb_rect, CornerRadius::same(2), bg);
+        painter.rect_filled(cb_rect, CornerRadius::same(st::radius_xs() as u8), bg);
         painter.rect_stroke(
             cb_rect,
-            CornerRadius::same(2),
-            Stroke::new(1.0, motion::lerp_color(theme.border(), theme.accent(), on_t)),
+            CornerRadius::same(st::radius_xs() as u8),
+            Stroke::new(st::stroke_std(), motion::lerp_color(theme.border(), theme.accent(), on_t)),
             egui::StrokeKind::Inside,
         );
         if on {
@@ -292,7 +292,7 @@ fn render_row<T: TreeNode>(
             let p1 = Pos2::new(c.x - s * 0.25, c.y + s * 0.02);
             let p2 = Pos2::new(c.x - s * 0.05, c.y + s * 0.20);
             let p3 = Pos2::new(c.x + s * 0.28, c.y - s * 0.18);
-            let stroke = Stroke::new(1.4, Color32::WHITE);
+            let stroke = Stroke::new(1.4, Color32::WHITE); // TODO: off-token
             painter.line_segment([p1, p2], stroke);
             painter.line_segment([p2, p3], stroke);
         }

@@ -160,11 +160,11 @@ fn paint_date_picker<'a>(
     border_col = motion::lerp_color(border_col, theme.accent(), focus_t);
     border_col = border_col.gamma_multiply(dim_mul);
 
-    let radius = CornerRadius::same(4);
+    let radius = CornerRadius::same(st::radius_sm() as u8);
     if ui.is_rect_visible(rect) {
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, radius, theme.surface().gamma_multiply(dim_mul));
-        painter.rect_stroke(rect, radius, Stroke::new(1.0, border_col), StrokeKind::Inside);
+        painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
 
         // Leading calendar icon.
         let icon_color = motion::lerp_color(theme.dim(), theme.accent(), focus_t).gamma_multiply(dim_mul);
