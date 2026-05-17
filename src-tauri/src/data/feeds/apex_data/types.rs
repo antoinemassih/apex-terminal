@@ -315,3 +315,158 @@ pub struct SymbolsResponse {
 impl AssetClass {
     pub fn as_default_stock() -> Self { Self::Stock }
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Replay (SOTA §4.2) — historical scrubbing session
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Stable identifier for a replay session, returned by `POST /api/replay/start`.
+pub type ReplayId = String;
+
+/// What kind of frames the replay session should emit. The MVP backend
+/// supports the four `*_bars` modes only; trades/quotes return HTTP 501.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplayMode {
+    StockBars,
+    OptionBars,
+    MarkBarsStocks,
+    MarkBarsOptions,
+    /// Returns 501 today — UI keeps the option visible with a "(not yet
+    /// implemented)" label so the user knows it's a roadmap item.
+    Trades,
+    /// Returns 501 today — see above.
+    Quotes,
+}
+
+impl ReplayMode {
+    /// Wire string sent to the backend. Matches the snake_case serialization
+    /// the server expects in `POST /api/replay/start { mode }`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReplayMode::StockBars       => "stock_bars",
+            ReplayMode::OptionBars      => "option_bars",
+            ReplayMode::MarkBarsStocks  => "mark_bars_stocks",
+            ReplayMode::MarkBarsOptions => "mark_bars_options",
+            ReplayMode::Trades          => "trades",
+            ReplayMode::Quotes          => "quotes",
+        }
+    }
+    /// Human-friendly label for the radio buttons.
+    pub fn label(self) -> &'static str {
+        match self {
+            ReplayMode::StockBars       => "Stock bars",
+            ReplayMode::OptionBars      => "Option bars",
+            ReplayMode::MarkBarsStocks  => "Mark bars (stocks)",
+            ReplayMode::MarkBarsOptions => "Mark bars (options)",
+            ReplayMode::Trades          => "Trades",
+            ReplayMode::Quotes          => "Quotes",
+        }
+    }
+    /// MVP backend only supports the bars modes; trades/quotes 501 today.
+    pub fn is_implemented(self) -> bool {
+        matches!(self, ReplayMode::StockBars | ReplayMode::OptionBars
+                     | ReplayMode::MarkBarsStocks | ReplayMode::MarkBarsOptions)
+    }
+}
+
+/// Lifecycle state of a replay session. Mirrors what the backend's
+/// `GET /api/replay/:id/status` returns in its `state` field. Anything we
+/// don't recognize is mapped to `Unknown` so the UI never crashes on a new
+/// server-side state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReplayState {
+    NotStarted,
+    Running,
+    Paused,
+    Completed,
+    Stopped,
+    Failed,
+    Unknown,
+}
+
+impl Default for ReplayState {
+    fn default() -> Self { ReplayState::NotStarted }
+}
+
+impl ReplayState {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, ReplayState::Completed | ReplayState::Stopped | ReplayState::Failed)
+    }
+    pub fn is_active(self) -> bool {
+        matches!(self, ReplayState::Running | ReplayState::Paused)
+    }
+}
+
+/// User-side configuration the panel posts to `POST /api/replay/start`.
+/// `from_ts` / `to_ts` are epoch milliseconds (matches the rest of the
+/// ApexData contract — see §4.2 / `BarUpdate.bar.time`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplayConfig {
+    pub from_ts: i64,
+    pub to_ts: i64,
+    pub symbols: Vec<String>,
+    pub speed_multiplier: f32,
+    pub asset_class: AssetClass,
+    /// `"last"` or `"mark"` — matches the bars `source` query param used elsewhere.
+    pub source: String,
+    pub mode: ReplayMode,
+}
+
+/// Response from `POST /api/replay/start`. We tolerate extra fields the
+/// server may add later via `#[serde(default)]` on everything except the id.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ReplayStartResponse {
+    pub replay_id: ReplayId,
+    #[serde(default)] pub state: Option<ReplayState>,
+    #[serde(default)] pub estimated_frames: Option<u64>,
+    /// Free-form note from the server (e.g. "1 day, 1 symbol → ~21k bars").
+    #[serde(default)] pub note: Option<String>,
+}
+
+/// Status from `GET /api/replay/:id/status`. Field set follows the spec at
+/// SOTA §3.1 — anything not present defaults to a sensible value so the UI
+/// can render even if the server omits fields.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ReplayStatus {
+    #[serde(default)] pub state: ReplayState,
+    #[serde(default)] pub frames_emitted: u64,
+    /// 0.0..=1.0 — fraction of the requested time window that has been emitted.
+    #[serde(default)] pub progress: f32,
+    /// Current playhead, epoch milliseconds. 0 before the first frame.
+    #[serde(default)] pub current_ts_ms: i64,
+    #[serde(default)] pub speed_multiplier: f32,
+    #[serde(default)] pub error: Option<String>,
+}
+
+/// Lightweight summary of one streamed frame, retained in the events log.
+/// We don't keep the whole bar — the chart pane already owns that. Keeping
+/// this tiny lets the 500-cap log stay under ~50 KB even with long symbols.
+#[derive(Debug, Clone)]
+pub struct ReplayEvent {
+    /// `"bar" | "trade" | "quote" | "snapshot" | "error" | "info"` — the
+    /// envelope `type` field, copied verbatim. Pre-canned to a `&'static
+    /// str` when the type is one of the common ones; otherwise `String`
+    /// via `event_type_owned`.
+    pub kind: &'static str,
+    pub symbol: String,
+    pub t_ms: i64,
+    /// Convenience for the UI — usually `bar.close` when `kind == "bar"`.
+    pub price: Option<f64>,
+}
+
+impl ReplayEvent {
+    pub fn new_bar(symbol: impl Into<String>, t_ms: i64, close: f64) -> Self {
+        ReplayEvent { kind: "bar", symbol: symbol.into(), t_ms, price: Some(close) }
+    }
+    pub fn new_trade(symbol: impl Into<String>, t_ms: i64, price: f64) -> Self {
+        ReplayEvent { kind: "trade", symbol: symbol.into(), t_ms, price: Some(price) }
+    }
+    pub fn new_info(msg: impl Into<String>, t_ms: i64) -> Self {
+        ReplayEvent { kind: "info", symbol: msg.into(), t_ms, price: None }
+    }
+    pub fn new_error(msg: impl Into<String>) -> Self {
+        ReplayEvent { kind: "error", symbol: msg.into(), t_ms: 0, price: None }
+    }
+}

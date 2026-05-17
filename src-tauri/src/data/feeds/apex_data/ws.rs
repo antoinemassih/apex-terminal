@@ -333,6 +333,241 @@ fn handle_binary(mgr: &Arc<Manager>, bytes: &[u8]) {
     }
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Replay subscription (SOTA §4.2) — dedicated WS, separate from the live data
+// session above. Replay frames carry their own `replay_id` in the envelope so
+// callers can correlate but we route them straight to the user callback rather
+// than mixing them with live state.
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Handle returned by [`subscribe_replay`]. Drop or call [`ReplaySubscription::stop`]
+/// to close the underlying socket. Cloning the handle is cheap (Arc<AtomicBool>).
+#[derive(Clone)]
+pub struct ReplaySubscription {
+    pub replay_id: String,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl ReplaySubscription {
+    /// Signal the background task to close the WS on the next loop iteration.
+    /// Idempotent — safe to call multiple times. Doesn't block.
+    pub fn stop(&self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    pub fn is_stopped(&self) -> bool {
+        self.stop.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl Drop for ReplaySubscription {
+    fn drop(&mut self) {
+        // Only the *last* clone going out of scope actually shuts down the
+        // socket — Arc handles refcount. The stop flag is read by the task
+        // on every recv loop iteration so the close is bounded by one frame
+        // (or one ping interval) of latency.
+        if Arc::strong_count(&self.stop) == 1 {
+            self.stop();
+        }
+    }
+}
+
+/// Open a dedicated WS to `/api/replay/:id/stream`. Frames are passed verbatim
+/// to `on_frame` on the tokio worker thread, so the callback **must be**
+/// `Send + Sync + 'static` and should hand off via a channel (don't block).
+///
+/// The returned [`ReplaySubscription`] keeps the socket alive; drop it (or
+/// call [`ReplaySubscription::stop`]) to tear down.
+///
+/// Uses the same WS URL base as the live data session (`apex_ws_url()`) but
+/// rewrites the path to `/api/replay/:id/stream`. Auth token, if set, is
+/// passed as `?token=...` to mirror what the live WS does.
+pub fn subscribe_replay<F>(replay_id: impl Into<String>, on_frame: F) -> ReplaySubscription
+where
+    F: Fn(super::types::ReplayEvent) + Send + Sync + 'static,
+{
+    let replay_id = replay_id.into();
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop_bg = stop.clone();
+    let id_bg = replay_id.clone();
+    let cb = Arc::new(on_frame);
+
+    runtime().spawn(async move {
+        run_replay_stream(id_bg, stop_bg, cb).await;
+    });
+
+    ReplaySubscription { replay_id, stop }
+}
+
+async fn run_replay_stream<F>(
+    replay_id: String,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    on_frame: Arc<F>,
+)
+where
+    F: Fn(super::types::ReplayEvent) + Send + Sync + 'static,
+{
+    // Derive the per-session URL from the live WS base. The live URL points at
+    // `/api/ws` (or similar) — replace the path with `/api/replay/:id/stream`.
+    let base = apex_ws_url();
+    let url = build_replay_url(&base, &replay_id);
+    eprintln!("[apex_data.ws.replay] connect {url}");
+
+    let req = match url.clone().into_client_request() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[apex_data.ws.replay] bad url: {e}");
+            on_frame(super::types::ReplayEvent::new_error(format!("bad url: {e}")));
+            return;
+        }
+    };
+
+    // Reuse the LAN-IP override path (same trick the live WS uses) so the
+    // replay socket also bypasses public DNS in the homelab.
+    let lan_override = match (super::config::apex_lan_ip(), super::config::apex_host_port()) {
+        (Some(ip), Some((_host, port))) => Some((ip, port)),
+        _ => None,
+    };
+
+    let conn_result = if let Some((ip, port)) = lan_override.as_ref() {
+        match TcpStream::connect((ip.as_str(), *port)).await {
+            Ok(stream) => match client_async(req, MaybeTlsStream::Plain(stream)).await {
+                Ok((ws, _)) => Ok(ws),
+                Err(e) => Err(format!("handshake: {e}")),
+            },
+            Err(e) => Err(format!("tcp {ip}:{port}: {e}")),
+        }
+    } else {
+        match connect_async(req).await {
+            Ok((ws, _)) => Ok(ws),
+            Err(e) => Err(format!("{e}")),
+        }
+    };
+
+    let ws = match conn_result {
+        Ok(ws) => ws,
+        Err(e) => {
+            eprintln!("[apex_data.ws.replay] connect failed: {e}");
+            on_frame(super::types::ReplayEvent::new_error(format!("connect: {e}")));
+            return;
+        }
+    };
+    eprintln!("[apex_data.ws.replay] connected ({replay_id})");
+
+    let (_tx_ws, mut rx_ws) = ws.split();
+
+    loop {
+        if stop.load(std::sync::atomic::Ordering::SeqCst) {
+            eprintln!("[apex_data.ws.replay] stop requested ({replay_id})");
+            break;
+        }
+        // Bound the recv so the stop flag is observed within ~250ms even
+        // when the server is idle — important when the user clicks Stop on a
+        // replay that has finished server-side but hasn't sent a Close yet.
+        let next = tokio::time::timeout(Duration::from_millis(250), rx_ws.next()).await;
+        match next {
+            Err(_) => continue,                                   // timeout — re-check stop flag
+            Ok(None) => { eprintln!("[apex_data.ws.replay] stream ended"); break; }
+            Ok(Some(Err(e))) => {
+                eprintln!("[apex_data.ws.replay] recv error: {e}");
+                on_frame(super::types::ReplayEvent::new_error(format!("recv: {e}")));
+                break;
+            }
+            Ok(Some(Ok(msg))) => match msg {
+                Message::Close(_) => { eprintln!("[apex_data.ws.replay] close"); break; }
+                Message::Binary(bytes) => handle_replay_bytes(&bytes, &on_frame),
+                Message::Text(text)    => handle_replay_text(&text, &on_frame),
+                _ => {}
+            },
+        }
+    }
+    eprintln!("[apex_data.ws.replay] closed ({replay_id})");
+}
+
+/// Build the replay stream URL by reusing the live WS host:port and swapping
+/// the path. `apex_ws_url()` may end in `/api/ws` or similar — we strip the
+/// path and append `/api/replay/:id/stream?format=msgpack[&token=...]`.
+fn build_replay_url(base: &str, replay_id: &str) -> String {
+    // The base URL is constructed elsewhere; rather than parse it fully we
+    // do a cheap split on `://` + first `/` of the authority portion.
+    let (scheme_auth, _path) = match base.find("://") {
+        Some(i) => {
+            let rest = &base[i + 3..];
+            match rest.find('/') {
+                Some(j) => (&base[..i + 3 + j], &rest[j..]),
+                None    => (base, ""),
+            }
+        }
+        None => (base, ""),
+    };
+    let token_q = apex_token().map(|t| format!("&token={t}")).unwrap_or_default();
+    format!("{scheme_auth}/api/replay/{replay_id}/stream?format=msgpack{token_q}")
+}
+
+fn handle_replay_text<F>(text: &str, on_frame: &Arc<F>)
+where F: Fn(super::types::ReplayEvent) + Send + Sync + 'static {
+    match serde_json::from_str::<InEnvelope>(text) {
+        Ok(env) => dispatch_replay(env, on_frame),
+        Err(e) => eprintln!("[apex_data.ws.replay] bad json frame: {e}"),
+    }
+}
+
+fn handle_replay_bytes<F>(bytes: &[u8], on_frame: &Arc<F>)
+where F: Fn(super::types::ReplayEvent) + Send + Sync + 'static {
+    match rmp_serde::from_slice::<InEnvelope>(bytes) {
+        Ok(env) => dispatch_replay(env, on_frame),
+        Err(_) => {
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                if let Ok(env) = serde_json::from_str::<InEnvelope>(text) {
+                    dispatch_replay(env, on_frame); return;
+                }
+            }
+            eprintln!("[apex_data.ws.replay] bad msgpack frame");
+        }
+    }
+}
+
+/// Replay-side dispatch: map envelope `type` → lightweight ReplayEvent and
+/// hand it to the user callback. We deliberately keep the event shape
+/// minimal — the chart pane already owns the heavy bar/trade structs — so
+/// the events log stays cheap to retain.
+fn dispatch_replay<F>(env: InEnvelope, on_frame: &Arc<F>)
+where F: Fn(super::types::ReplayEvent) + Send + Sync + 'static {
+    use super::types::ReplayEvent;
+    let evt: ReplayEvent = match env.kind.as_str() {
+        "bar" => {
+            // bar payload is a BarUpdate; pull (symbol, t, close).
+            let bar = env.data.get("bar").unwrap_or(&env.data);
+            let symbol = bar.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let t_ms   = bar.get("time").and_then(|v| v.as_i64()).unwrap_or(0);
+            let close  = bar.get("close").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            ReplayEvent::new_bar(symbol, t_ms, close)
+        }
+        "trade" => {
+            let symbol = env.data.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let t_ms   = env.data.get("time").and_then(|v| v.as_i64()).unwrap_or(0);
+            let price  = env.data.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            ReplayEvent::new_trade(symbol, t_ms, price)
+        }
+        "snapshot" => {
+            let bar = env.data.get("bar").unwrap_or(&env.data);
+            let symbol = bar.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let t_ms   = bar.get("time").and_then(|v| v.as_i64()).unwrap_or(0);
+            let close  = bar.get("close").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            ReplayEvent { kind: "snapshot", symbol, t_ms, price: Some(close) }
+        }
+        "error" => {
+            let message = env.data.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            ReplayEvent::new_error(message)
+        }
+        other => {
+            // Unknown frame type — keep it in the log as an "info" so the
+            // user can see something happened, but don't choke.
+            ReplayEvent::new_info(format!("frame: {other}"), 0)
+        }
+    };
+    on_frame(evt);
+}
+
 fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
     let frame = match env.kind.as_str() {
         "hello" => {

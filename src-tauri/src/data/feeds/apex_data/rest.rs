@@ -166,6 +166,59 @@ fn get<T: serde::de::DeserializeOwned>(path: &str) -> Option<T> {
     }
 }
 
+/// POST helper that mirrors `get` — sends a JSON body, parses a JSON response,
+/// and routes through the same breaker / stats pipeline. Returns `None` on any
+/// non-2xx HTTP, network error, body-parse failure, or breaker-open shortcut.
+///
+/// Kept private; new endpoints add typed wrappers (see `start_replay`,
+/// `replay_pause`, etc.) so callers never touch reqwest directly.
+fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(path: &str, body: &B) -> Option<T> {
+    if !is_enabled() {
+        crate::apex_log!("rest.skip", "disabled: POST {path}");
+        record(RestCall { path: format!("POST {path}"), status: 0, outcome: "skip", ms: 0, at: std::time::SystemTime::now() });
+        return None;
+    }
+    if breaker_is_open() {
+        crate::apex_log!("rest.skip", "breaker open: POST {path}");
+        record(RestCall { path: format!("POST {path}"), status: 1, outcome: "skip", ms: 0, at: std::time::SystemTime::now() });
+        return None;
+    }
+    let url = format!("{}{path}", apex_url());
+    crate::apex_log!("rest.req", "POST {url}");
+    let t0 = Instant::now();
+    let mut req = client().post(&url).json(body);
+    if let Some(tok) = apex_token() { req = req.bearer_auth(tok); }
+    match req.send() {
+        Ok(r) if r.status().is_success() => {
+            let status = r.status();
+            match r.json::<T>() {
+                Ok(v) => {
+                    crate::apex_log!("rest.ok", "POST {path} → {} ({:?})", status, t0.elapsed());
+                    breaker_note_success();
+                    record(RestCall { path: format!("POST {path}"), status: status.as_u16(), outcome: "ok", ms: t0.elapsed().as_millis(), at: std::time::SystemTime::now() });
+                    Some(v)
+                }
+                Err(e) => {
+                    crate::apex_log!("rest.parse", "POST {path} → {} body parse failed: {e}", status);
+                    record(RestCall { path: format!("POST {path}"), status: status.as_u16(), outcome: "parse", ms: t0.elapsed().as_millis(), at: std::time::SystemTime::now() });
+                    None
+                }
+            }
+        }
+        Ok(r) => {
+            crate::apex_log!("rest.http", "POST {path} → {} ({:?})", r.status(), t0.elapsed());
+            record(RestCall { path: format!("POST {path}"), status: r.status().as_u16(), outcome: "http", ms: t0.elapsed().as_millis(), at: std::time::SystemTime::now() });
+            None
+        }
+        Err(e) => {
+            crate::apex_log!("rest.err", "POST {path} network error ({:?}): {e}", t0.elapsed());
+            breaker_note_failure();
+            record(RestCall { path: format!("POST {path}"), status: 0, outcome: "err", ms: t0.elapsed().as_millis(), at: std::time::SystemTime::now() });
+            None
+        }
+    }
+}
+
 // ── §5.3 bars ──────────────────────────────────────────────────────────────
 
 /// `GET /api/bars/:class/:symbol/:tf[?source=last|mark]` — MARK_BARS_PROTOCOL §REST.
@@ -286,5 +339,74 @@ pub fn fetch_holdings(ticker: &str) -> Option<Vec<(String, Option<f32>)>> {
 pub fn is_live() -> bool {
     let url = format!("{}/api/health/live", apex_url());
     client().get(&url).send().map(|r| r.status().is_success()).unwrap_or(false)
+}
+
+// ── §3.1 / SOTA §4.2 — replay session control ──────────────────────────────
+
+/// `POST /api/replay/start` — kick off a new replay session.
+/// On success returns the server-assigned `replay_id` (and any extra metadata).
+/// Pair with `crate::apex_data::ws::subscribe_replay(replay_id, ...)` to start
+/// receiving frames.
+pub fn start_replay(cfg: &ReplayConfig) -> Option<ReplayStartResponse> {
+    // Use a borrow-friendly wire struct so we can serialize the enum mode
+    // with its snake_case string form without changing ReplayConfig's
+    // serde plumbing.
+    #[derive(serde::Serialize)]
+    struct Wire<'a> {
+        from_ts: i64,
+        to_ts: i64,
+        symbols: &'a [String],
+        speed_multiplier: f32,
+        asset_class: AssetClass,
+        source: &'a str,
+        mode: &'a str,
+    }
+    let body = Wire {
+        from_ts: cfg.from_ts,
+        to_ts: cfg.to_ts,
+        symbols: &cfg.symbols,
+        speed_multiplier: cfg.speed_multiplier,
+        asset_class: cfg.asset_class,
+        source: &cfg.source,
+        mode: cfg.mode.as_str(),
+    };
+    post_json("/api/replay/start", &body)
+}
+
+/// `GET /api/replay/:id/status` — current frames-emitted / progress / state.
+/// Returns `None` only on transport/HTTP failure; a 200 with a `Failed`
+/// `state` still comes back as `Some(...)` so the UI can render the error.
+pub fn replay_status(id: &str) -> Option<ReplayStatus> {
+    get(&format!("/api/replay/{id}/status"))
+}
+
+/// `POST /api/replay/:id/pause` — server returns `{ ok, state }`.
+/// Only the new `state` is surfaced; the `ok` flag is implicit in `Some(_)`.
+pub fn replay_pause(id: &str) -> Option<ReplayState> {
+    replay_control(id, "pause")
+}
+
+/// `POST /api/replay/:id/resume`.
+pub fn replay_resume(id: &str) -> Option<ReplayState> {
+    replay_control(id, "resume")
+}
+
+/// `POST /api/replay/:id/stop`.
+pub fn replay_stop(id: &str) -> Option<ReplayState> {
+    replay_control(id, "stop")
+}
+
+/// Internal: the three control endpoints share the same `{ ok, state }`
+/// response shape, so we collapse them through one helper.
+fn replay_control(id: &str, action: &str) -> Option<ReplayState> {
+    #[derive(serde::Deserialize)]
+    struct Ctrl {
+        #[serde(default)] ok: bool,
+        #[serde(default)] state: ReplayState,
+    }
+    // Body is empty — the action lives in the URL path.
+    let resp: Ctrl = post_json(&format!("/api/replay/{id}/{action}"), &serde_json::json!({}))?;
+    if !resp.ok { crate::apex_log!("replay.ctrl", "{id}/{action} returned ok=false"); }
+    Some(resp.state)
 }
 
