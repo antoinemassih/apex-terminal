@@ -18,7 +18,7 @@
 use egui;
 use super::super::style::*;
 use crate::ui_kit::widgets::{
-    Button, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Width,
+    Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Width,
 };
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::Input;
@@ -518,8 +518,7 @@ fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
         + overlay_count;
 
     if total_active == 0 {
-        ui.label(egui::RichText::new("No indicators or overlays on this pane.")
-            .monospace().size(font_sm()).color(color_subtle(t.dim)));
+        PanelEmpty::new("No indicators or overlays on this pane.").show(ui, t);
         ui.add_space(gap_xs());
         add_overlay_button(ui, t, chart);
         return;

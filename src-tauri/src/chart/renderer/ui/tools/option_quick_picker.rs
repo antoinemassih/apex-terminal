@@ -10,6 +10,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::PanelLoading;
 
 const DTE_LIST: &[i32] = &[0, 1, 2, 3, 7, 14, 30, 60];
 
@@ -209,12 +210,7 @@ pub(crate) fn draw(
                         let (calls, puts) = (&chain_ref.0, &chain_ref.1);
 
                         if calls.is_empty() && puts.is_empty() {
-                            ui.add_space(gap_lg());
-                            ui.vertical_centered(|ui| {
-                                ui.label(egui::RichText::new("Loading chain…")
-                                    .monospace().size(font_sm()).color(t.dim));
-                            });
-                            ui.add_space(gap_lg());
+                            PanelLoading::new().show(ui, t);
                         } else {
                             // Build a sorted list of unique strikes
                             let mut strikes: Vec<f32> = calls.iter().map(|r| r.strike)
