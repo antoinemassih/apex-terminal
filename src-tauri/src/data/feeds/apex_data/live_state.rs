@@ -4,7 +4,8 @@
 //! WS frame dispatcher on the tokio thread + two poller threads (health + snap).
 //! All access is mutex-guarded.
 
-use super::types::{Quote, Trade, Snapshot, HealthReady, FeedsResponse, GreeksRow, ChainRow};
+use super::types::{Quote, Trade, Snapshot, HealthReady, FeedsResponse, GreeksRow, ChainRow,
+    TradePlanV2, SpikeExplanation};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -34,7 +35,20 @@ struct State {
     connected: Mutex<bool>,
     health: Mutex<Option<HealthReady>>,
     feeds:  Mutex<Option<FeedsResponse>>,
+    // ── SOTA §4.4 — TradePlan v2 (latest per symbol) ─────────────────────
+    latest_trade_plan: Mutex<HashMap<String, TradePlanV2>>,
+    // ── SOTA §4.5 — Spike explanations (capped ring) ─────────────────────
+    /// Bounded ring of the most recent N spike explanations. Newest at the
+    /// back; capacity SPIKE_HISTORY_CAP.
+    recent_spike_explanations: Mutex<VecDeque<SpikeExplanation>>,
+    /// Dedup set — popup component reads this to skip re-pushed ids it
+    /// already dismissed. Server may republish on reconnect; we don't want
+    /// the toast to re-fire.
+    dismissed_spikes: Mutex<HashSet<String>>,
 }
+
+/// Max spikes kept in the ring (per §4.5 — recent activity, not history).
+const SPIKE_HISTORY_CAP: usize = 10;
 
 static STATE: OnceLock<State> = OnceLock::new();
 
@@ -54,6 +68,9 @@ fn state() -> &'static State {
         connected: Mutex::new(false),
         health: Mutex::new(None),
         feeds:  Mutex::new(None),
+        latest_trade_plan: Mutex::new(HashMap::new()),
+        recent_spike_explanations: Mutex::new(VecDeque::with_capacity(SPIKE_HISTORY_CAP)),
+        dismissed_spikes: Mutex::new(HashSet::new()),
     })
 }
 
@@ -277,4 +294,76 @@ pub fn push_toast(msg: impl Into<String>) {
 }
 pub fn drain_toasts() -> Vec<String> {
     state().toasts.lock().ok().map(|mut g| std::mem::take(&mut *g)).unwrap_or_default()
+}
+
+// ── SOTA §4.4 — Trade plan v2 (latest per symbol) ──────────────────────────
+
+/// Upsert the latest TradePlan v2 for a symbol. Idempotent. Older plans for
+/// the same symbol are replaced wholesale — the panel only ever shows the
+/// most recent one.
+pub fn push_trade_plan(plan: TradePlanV2) {
+    if let Ok(mut g) = state().latest_trade_plan.lock() {
+        g.insert(plan.symbol.clone(), plan);
+    }
+}
+
+/// Read the latest plan for a symbol. Returns `None` if no plan has arrived
+/// for this symbol yet (or the lock is poisoned).
+pub fn get_trade_plan(symbol: &str) -> Option<TradePlanV2> {
+    state().latest_trade_plan.lock().ok()?.get(symbol).cloned()
+}
+
+/// Snapshot all current trade plans (cheap clone of the inner HashMap). Used
+/// by the trade-plan panel which renders one row per active symbol.
+pub fn all_trade_plans() -> HashMap<String, TradePlanV2> {
+    state().latest_trade_plan.lock().ok().map(|g| g.clone()).unwrap_or_default()
+}
+
+// ── SOTA §4.5 — Spike explanations ─────────────────────────────────────────
+
+/// Push a freshly arrived spike explanation into the recent-ring. Drops the
+/// oldest if at cap. The dedup set is *not* mutated here — it's the popup
+/// component's responsibility to call `dismiss_spike(id)` when the user
+/// closes a toast. We deliberately keep "the server pushed it again" and
+/// "the user dismissed it" as orthogonal state.
+pub fn push_spike(spike: SpikeExplanation) {
+    if let Ok(mut g) = state().recent_spike_explanations.lock() {
+        // Idempotent: if the same id already lives in the ring, replace it in
+        // place rather than appending a duplicate. Lets the server republish
+        // freely (e.g. on reconnect) without bloating the ring.
+        if let Some(idx) = g.iter().position(|s| s.id == spike.id) {
+            g[idx] = spike;
+            return;
+        }
+        g.push_back(spike);
+        while g.len() > SPIKE_HISTORY_CAP { g.pop_front(); }
+    }
+}
+
+/// Snapshot of all spikes currently in the ring, newest-first. Cheap clone —
+/// SPIKE_HISTORY_CAP is small (10).
+pub fn iter_spikes() -> Vec<SpikeExplanation> {
+    state().recent_spike_explanations.lock().ok()
+        .map(|g| g.iter().rev().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Mark a spike id as dismissed. The popup component checks this set before
+/// re-rendering an old toast that the server republished.
+pub fn dismiss_spike(id: &str) {
+    if let Ok(mut g) = state().dismissed_spikes.lock() {
+        g.insert(id.to_string());
+    }
+}
+
+/// Test: has this spike id been dismissed? Used by the popup state machine.
+pub fn is_spike_dismissed(id: &str) -> bool {
+    state().dismissed_spikes.lock().ok().map(|g| g.contains(id)).unwrap_or(false)
+}
+
+#[cfg(test)]
+pub fn reset_spike_state_for_tests() {
+    if let Ok(mut g) = state().recent_spike_explanations.lock() { g.clear(); }
+    if let Ok(mut g) = state().dismissed_spikes.lock() { g.clear(); }
+    if let Ok(mut g) = state().latest_trade_plan.lock() { g.clear(); }
 }

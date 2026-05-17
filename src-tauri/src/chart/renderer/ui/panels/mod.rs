@@ -28,9 +28,11 @@ pub mod seasonality_panel;
 pub mod settings_panel;
 pub mod side_panel;
 pub mod signals_panel;
+pub mod spike_popup;
 pub mod spread_panel;
 pub mod spreadsheet_pane;
 pub mod tape_panel;
+pub mod trade_plan_panel;
 pub mod watchlist_panel;
 pub mod widget_gallery;
 
