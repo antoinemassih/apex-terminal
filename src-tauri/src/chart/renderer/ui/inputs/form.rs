@@ -18,8 +18,11 @@ use crate::ui_kit::icons::Icon;
 // Shorthand for the Theme type used across the codebase.
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn ft() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
+/// Resolve the ambient theme stashed by the render loop. Used by `Widget`
+/// impls and `show()` methods that don't receive a `&Theme` argument, so we
+/// never have to fall back to `&THEMES[0]` (which would break light themes).
+fn ambient_theme(ctx: &egui::Context) -> &'static Theme {
+    crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
 // ─── FormRow ──────────────────────────────────────────────────────────────────
@@ -346,7 +349,7 @@ impl<'a> HelpText<'a> {
 
 impl<'a> egui::Widget for HelpText<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let base = self.color.unwrap_or_else(|| ft().dim);
+        let base = self.color.unwrap_or_else(|| ambient_theme(ui.ctx()).dim);
         let c = color_alpha(base, alpha_dim());
         ui.label(
             RichText::new(self.text)
@@ -376,7 +379,7 @@ impl<'a> ErrorText<'a> {
 
 impl<'a> egui::Widget for ErrorText<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let c = self.color.unwrap_or_else(|| ft().bear);
+        let c = self.color.unwrap_or_else(|| ambient_theme(ui.ctx()).bear);
         ui.label(
             RichText::new(self.text)
                 .monospace()
@@ -406,7 +409,7 @@ impl Default for RequiredMarker {
 
 impl egui::Widget for RequiredMarker {
     fn ui(self, ui: &mut Ui) -> Response {
-        let c = self.color.unwrap_or_else(|| ft().bear);
+        let c = self.color.unwrap_or_else(|| ambient_theme(ui.ctx()).bear);
         ui.label(
             RichText::new("*")
                 .monospace()
@@ -461,18 +464,19 @@ impl InlineValidation {
 
 impl egui::Widget for InlineValidation {
     fn ui(self, ui: &mut Ui) -> Response {
+        let amb = ambient_theme(ui.ctx());
         let (glyph, color) = match self.state {
             ValidationState::Ok => (
                 Icon::CHECK,
-                self.ok_color.unwrap_or_else(|| ft().bull),
+                self.ok_color.unwrap_or(amb.bull),
             ),
             ValidationState::Error => (
                 "✗",
-                self.err_color.unwrap_or_else(|| ft().bear),
+                self.err_color.unwrap_or(amb.bear),
             ),
             ValidationState::Neutral => (
                 "•",
-                self.dim_color.unwrap_or_else(|| ft().dim),
+                self.dim_color.unwrap_or(amb.dim),
             ),
         };
         ui.label(
@@ -544,16 +548,19 @@ pub struct MeridienOrderTicket<'a> {
 
 impl<'a> MeridienOrderTicket<'a> {
     pub fn new() -> Self {
-        let t = ft();
+        // Color fields are intentionally TRANSPARENT placeholders. Callers
+        // MUST call `.theme(t)` before `.show(...)` — every call site does.
+        // Avoids the `&THEMES[0]` light-theme bug.
+        let z = Color32::TRANSPARENT;
         Self {
             theme:  None,
-            bg:     t.toolbar_bg,
-            text:   t.text,
-            dim:    t.dim,
-            bull:   t.bull,
-            bear:   t.bear,
-            accent: t.accent,
-            border: t.toolbar_border,
+            bg:     z,
+            text:   z,
+            dim:    z,
+            bull:   z,
+            bear:   z,
+            accent: z,
+            border: z,
             width:  0.0,
         }
     }
@@ -1008,12 +1015,13 @@ impl<'a> IndicatorParamRow<'a> {
     pub fn show(self, ui: &mut Ui) -> bool {
         use crate::ui_kit::widgets::Button;
         use crate::ui_kit::widgets::tokens::{Variant, Size};
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
-        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
+        let amb = ambient_theme(ui.ctx());
+        let accent = self.accent.unwrap_or(amb.accent);
+        let dim = self.dim.unwrap_or(amb.dim);
+        let border = self.border.unwrap_or(amb.toolbar_border);
         let value = self.value;
         let mut changed = false;
-        let theme = self.theme.unwrap_or_else(|| ft());
+        let theme = self.theme.unwrap_or(amb);
 
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
@@ -1103,14 +1111,15 @@ impl<'a> IndicatorParamRowF<'a> {
     pub fn show(self, ui: &mut Ui) -> bool {
         use crate::ui_kit::widgets::Button;
         use crate::ui_kit::widgets::tokens::{Variant, Size};
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let amb = ambient_theme(ui.ctx());
+        let accent = self.accent.unwrap_or(amb.accent);
+        let dim = self.dim.unwrap_or(amb.dim);
         let d = self.decimals;
         let value = self.value;
         // Treat 0.0 as "use default"
         if *value <= 0.0 { *value = self.default; }
         let mut changed = false;
-        let theme = self.theme.unwrap_or_else(|| ft());
+        let theme = self.theme.unwrap_or(amb);
 
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
