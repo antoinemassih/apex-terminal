@@ -55,8 +55,11 @@ pub(crate) fn draw(
     if !watchlist.journal_panel_open { return; }
 
     let resp = SidePanelShell::new("journal_panel", "TRADE JOURNAL")
-        .icon(Icon::NOTEBOOK)
         .width(Width::Medium)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
         .show(ctx, t, |ui, t| {
             if watchlist.journal_entries.is_empty() {
                 ui.add_space(gap_3xl());

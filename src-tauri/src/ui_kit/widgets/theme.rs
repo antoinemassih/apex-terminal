@@ -23,6 +23,27 @@ pub trait ComponentTheme {
     fn bg(&self) -> Color32;
     fn surface(&self) -> Color32; // raised surface, e.g. toolbar_bg
 
+    /// L2 surface — one layer up from `surface()`. Used for inputs,
+    /// cards, sub-section bodies. Direction-aware: lighter on dark
+    /// themes, darker on light themes. Default impl uses the standard
+    /// `color_layer_up(t, 1)` 7%-step heuristic.
+    fn surface_raised(&self) -> Color32 {
+        // Heuristic: detect dark vs light by `bg()` luminance, shift
+        // surface() toward text() by ~7%. Matches `style::color_layer_up`.
+        let base = self.surface();
+        let target = self.text();
+        let bg = self.bg();
+        let is_dark = (bg.r() as i16 + bg.g() as i16 + bg.b() as i16) < 384;
+        let _ = target;
+        let shift: i16 = if is_dark { 18 } else { -18 };
+        let clamp = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
+        Color32::from_rgb(
+            clamp(base.r() as i16 + shift),
+            clamp(base.g() as i16 + shift),
+            clamp(base.b() as i16 + shift),
+        )
+    }
+
     // Element state alpha overlays (Zed-derived). Applied OVER an element's
     // idle background to signal hover/active/selected/disabled without
     // switching colors. Pre-computed in the theme preset.

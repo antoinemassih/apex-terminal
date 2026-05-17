@@ -126,9 +126,18 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
     } = input;
 
     let h = size.height();
-    let pad_x = size.padding_x();
-    let font_size = size.font_size();
-    let icon_gap = st::gap_2xs();
+    // Use gap_md for inputs even at smaller sizes — icons and text
+    // were previously scrunched against the edges. The Size token's
+    // padding_x is calibrated for buttons (denser); inputs deserve
+    // more breathing room.
+    let pad_x = size.padding_x().max(st::gap_md());
+    // Bump font one tier above the Size default for legibility.
+    // Md inputs were rendering text at font_sm (11px) which felt
+    // cramped against the larger Md height (28px).
+    let font_size = size.font_size().max(st::font_md());
+    // gap_sm (8px) instead of gap_2xs (2px) — magnifier glyph
+    // should not touch the text that follows.
+    let icon_gap = st::gap_sm();
 
     let mut clear_clicked = false;
 
@@ -178,7 +187,10 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             border_col = theme.bear();
         }
 
-        let bg_fill = theme.surface();
+        // L2 surface: lighter on dark themes, darker on light themes.
+        // Makes the input visually pop out of the panel body instead
+        // of dissolving into it.
+        let bg_fill = theme.surface_raised();
 
         let radius = CornerRadius::same(4);
 
@@ -203,7 +215,10 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
 
         let painter = ui.painter_at(rect);
 
-        // Leading icon
+        // Leading icon + vertical divider separating it from the text.
+        // The divider gives the icon its own visual region (file
+        // chooser / search style) rather than feeling like it's just
+        // floating inside the text column.
         if let Some(ic) = leading_icon {
             painter.text(
                 Pos2::new(left_x, cy),
@@ -213,6 +228,15 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                 icon_color,
             );
             left_x += font_size * 1.1 + icon_gap;
+            // Vertical divider — inset 4px top/bottom from the input
+            // rect, hairline at theme.border() so it reads against the
+            // raised input surface.
+            let div_x = (left_x).round() + 0.5;
+            painter.line_segment(
+                [Pos2::new(div_x, rect.top() + st::gap_xs()), Pos2::new(div_x, rect.bottom() - st::gap_xs())],
+                Stroke::new(st::stroke_thin(), st::color_alpha(theme.border(), st::alpha_strong())),
+            );
+            left_x += icon_gap;
         }
 
         // Prefix

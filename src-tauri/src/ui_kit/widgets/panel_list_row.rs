@@ -274,6 +274,11 @@ pub struct PanelListRow<'a> {
     columns: Option<&'a [Column<'a>]>,
     selected: bool,
     dense: bool,
+    /// Paint a faint bottom hairline below the row. Opt-in for lists
+    /// where consecutive rows would otherwise blur together (indicator
+    /// library, accordion children). Leave off for selected-row lists
+    /// where the selected-row stripe + tint already carries the divide.
+    divided: bool,
 }
 
 impl<'a> PanelListRow<'a> {
@@ -288,7 +293,16 @@ impl<'a> PanelListRow<'a> {
             columns: None,
             selected: false,
             dense: true,
+            divided: false,
         }
+    }
+
+    /// Paint a faint bottom hairline beneath the row so consecutive
+    /// rows in a dense list (indicator library, settings list) read
+    /// as distinct entries instead of blurring together.
+    pub fn divided(mut self, on: bool) -> Self {
+        self.divided = on;
+        self
     }
 
     /// Switch this row into column-layout mode for streaming-data panels
@@ -378,6 +392,7 @@ impl<'a> PanelListRow<'a> {
             columns,
             selected,
             dense,
+            divided,
         } = self;
 
         let h = if dense { 22.0 } else { 32.0 };
@@ -461,6 +476,19 @@ impl<'a> PanelListRow<'a> {
                 Pos2::new(rect.left() + SELECTED_STRIPE_W, rect.bottom()),
             );
             painter.rect_filled(stripe, 0.0, t.accent);
+        }
+
+        // Optional bottom hairline divider — opt-in via .divided(true)
+        // for dense lists where consecutive rows would otherwise blur
+        // together (indicator library, settings rows). Painted at the
+        // toolbar_border color so it reads against both panel surface
+        // and recessed sub-section header strips above/below.
+        if divided {
+            let y = rect.bottom() - 0.5;
+            painter.line_segment(
+                [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+                egui::Stroke::new(crate::chart_renderer::ui::style::stroke_thin(), color_alpha(t.toolbar_border, 60)),
+            );
         }
 
         // ── Columns mode ────────────────────────────────────────────

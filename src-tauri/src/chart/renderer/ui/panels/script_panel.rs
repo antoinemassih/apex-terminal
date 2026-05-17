@@ -245,8 +245,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     if !watchlist.script_open { return; }
 
     let resp = SidePanelShell::new("apex_script", "APEX SCRIPT")
-        .icon(Icon::CODE)
         .width(Width::Wide)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
         .show(ctx, t, |ui, t| {
             draw_body(ui, watchlist, t, true);
         });

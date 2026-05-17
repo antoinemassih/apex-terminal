@@ -32,8 +32,11 @@ pub(crate) fn draw(
 ) {
     if !watchlist.alerts_panel_open { return; }
     let resp = SidePanelShell::new("alerts_panel", "ALERTS")
-        .icon(Icon::BELL)
         .width(Width::Narrow)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
         .show(ctx, t, |ui, t| {
             let cx = UiCtx::new(t);
             draw_content_cx(ui, watchlist, panes, ap, &cx);

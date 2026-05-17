@@ -38,7 +38,10 @@ impl<'a> SearchInput<'a> {
             placeholder: "Search…",
             full_width: false,
             width: None,
-            size: Size::Sm,
+            // Lg (34px) — search bars are the most-touched input in the
+            // app and deserve real breathing room. Callers that want a
+            // compact form can opt in via .size(Size::Md) or Sm.
+            size: Size::Lg,
             disabled: false,
         }
     }

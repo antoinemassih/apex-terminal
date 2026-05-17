@@ -131,7 +131,6 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
     if !watchlist.tape_open { return; }
 
     let resp = SidePanelShell::new("time_and_sales", "TIME & SALES")
-        .icon(Icon::CLOCK)
         .width(Width::Narrow)
         .resizable(180.0..=350.0)
         .show(ctx, t, |ui, t| {

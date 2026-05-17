@@ -116,8 +116,11 @@ pub(crate) fn draw(
     if !watchlist.screenshot_open { return; }
 
     let resp = SidePanelShell::new("screenshot_library", "SCREENSHOTS")
-        .icon(Icon::CAMERA)
         .width(Width::Narrow)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
         .show(ctx, t, |ui, t| {
             draw_content(ui, watchlist, t, panes, active_pane);
         });

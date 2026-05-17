@@ -362,8 +362,11 @@ pub(crate) fn draw(
     let ap = ap.min(panes.len() - 1);
 
     let resp = SidePanelShell::new("indicators_panel", "INDICATORS")
-        .icon(Icon::PULSE)
         .width(Width::Medium)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
         .show(ctx, t, |ui, t| {
             // 3-way user-resizable split (TOOLS / ACTIVE / LIBRARY). The
             // section fractions persist on the Watchlist so the user's
@@ -476,9 +479,14 @@ fn draw_tools_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
 /// preset so the active accent tint matches every other toggle chip in the app.
 fn tool_btn(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, tg: Tg, tooltip: &str) {
     let active = bool_get(chart, tg);
-    let resp = Button::toggle(tool_icon(tg), active)
+    // Icon-only toggle: use Button::icon() so leading_icon is populated
+    // (the icon_only paint path only renders leading_icon, not label).
+    // Then layer Variant::Toggle on top so the active state matches
+    // every other toggle chip in the app.
+    let resp = Button::icon(tool_icon(tg))
+        .variant(crate::ui_kit::widgets::tokens::Variant::Toggle)
+        .active(active)
         .size(KitSize::Sm)
-        .icon_only(true)
         .min_size(egui::vec2(26.0, 24.0))
         .show(ui, t)
         .on_hover_text(format!("{}\n{}", bool_label(tg), tooltip));
@@ -907,6 +915,7 @@ fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Ch
         .primary(label)
         .secondary(long)
         .selected(selected)
+        .divided(true)
         .trailing(move |ui, _t| {
             ui.label(
                 egui::RichText::new(&trail_text)

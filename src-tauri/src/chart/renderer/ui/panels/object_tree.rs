@@ -116,7 +116,6 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
     let pane_font = watchlist.pane_header_size.title_font();
 
     let resp = SidePanelShell::new("object_tree", "OBJECTS")
-        .icon(Icon::TREE_STRUCTURE)
         .side(Side::Left)
         .width(Width::Narrow)
         .pane_metrics(pane_h, pane_font)

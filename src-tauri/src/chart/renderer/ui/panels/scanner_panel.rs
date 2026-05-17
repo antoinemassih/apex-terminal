@@ -360,7 +360,6 @@ pub(crate) fn draw(
     let mut pending_symbol: Option<String> = None;
 
     let resp = SidePanelShell::new("scanner_panel", "SCANNERS")
-        .icon(Icon::MAGNIFYING_GLASS)
         .width(Width::Narrow)
         .resizable(180.0..=420.0)
         .show(ctx, t, |ui, t| {

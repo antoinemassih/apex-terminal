@@ -46,7 +46,9 @@ use egui::{Context, Ui};
 use super::placement::Side;
 use crate::chart::renderer::ui::panels::kit::{PanelHeader, PanelHeaderTabs};
 use crate::chart::renderer::ui::components::frames_widget::PanelFrame;
-use crate::chart::renderer::ui::style::{gap_lg, gap_md, gap_sm};
+use crate::chart::renderer::ui::style::{
+    gap_lg, gap_md, gap_sm, header_border, header_surface, panel_surface, shadow_color_alpha, stroke_thin,
+};
 use crate::chart_renderer::gpu::{Theme, Watchlist};
 
 /// Response from rendering a [`SidePanelShell`] / [`SidePanelShellTabs`] /
@@ -190,15 +192,23 @@ impl<'a> SidePanelShell<'a> {
         body: impl FnOnce(&mut Ui, &Theme),
     ) -> SidePanelShellResponse {
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
-        let frame = PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build();
+        let frame = PanelFrame::new(panel_surface(t), t.toolbar_border).theme(t).build();
         let panel = panel.frame(frame);
 
         let SidePanelShell { title, icon, pane_metrics, header_actions, footer, .. } = self;
 
         let mut close_clicked = false;
         panel.show(ctx, |ui| {
-            let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
-            if closed { close_clicked = true; }
+            // Wrap the header in a Frame filled with `header_surface(t)`
+            // so the side panel's header band matches the chart pane
+            // header above it — same fill, same visual weight.
+            let header_resp = egui::Frame::NONE
+                .fill(header_surface(t))
+                .show(ui, |ui| {
+                    let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
+                    if closed { close_clicked = true; }
+                });
+            paint_header_underline_and_shadow(ui, t, header_resp.response.rect);
             render_body_and_footer(ui, t, body, footer);
         });
         SidePanelShellResponse { close_clicked }
@@ -280,7 +290,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
         body: impl FnOnce(&mut Ui, &Theme, T),
     ) -> SidePanelShellResponse {
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
-        let frame = PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build();
+        let frame = PanelFrame::new(panel_surface(t), t.toolbar_border).theme(t).build();
         let panel = panel.frame(frame);
 
         let SidePanelShellTabs {
@@ -298,15 +308,57 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
             }
 
             let mut actions = header_actions;
-            let closed = header.show_with(ui, t, |ui| {
-                if let Some(a) = actions.take() { a(ui, t); }
-            });
-            if closed { close_clicked = true; }
+            // Same header_surface wrap as the static-title variant for
+            // visual parity with the chart pane header.
+            let header_resp = egui::Frame::NONE
+                .fill(header_surface(t))
+                .show(ui, |ui| {
+                    let closed = header.show_with(ui, t, |ui| {
+                        if let Some(a) = actions.take() { a(ui, t); }
+                    });
+                    if closed { close_clicked = true; }
+                });
+            paint_header_underline_and_shadow(ui, t, header_resp.response.rect);
 
             let active = *current;
             render_body_and_footer(ui, t, move |ui, t| body(ui, t, active), footer);
         });
         SidePanelShellResponse { close_clicked }
+    }
+}
+
+/// Paint a hairline underline + inset drop shadow below a header strip.
+/// Mirrors the chart pane header treatment so side-panel headers and
+/// chart pane headers read as one visual family. The shadow goes on the
+/// Foreground layer so it can't shift widget layer-ids mid-frame.
+fn paint_header_underline_and_shadow(ui: &mut Ui, t: &Theme, hr: egui::Rect) {
+    // Hairline bottom rule — same color/alpha as the chart pane header
+    // border so the whole header family reads as one bordered system.
+    ui.painter().line_segment(
+        [
+            egui::Pos2::new(hr.left(), hr.bottom() - 0.5),
+            egui::Pos2::new(hr.right(), hr.bottom() - 0.5),
+        ],
+        egui::Stroke::new(stroke_thin(), header_border(t)),
+    );
+    // Inset drop shadow falling into the body. 6px gradient, fading
+    // alpha 38 → 0 over the height. Foreground layer keeps it from
+    // shifting widget layer-ids during interaction.
+    let shadow_h = 6.0_f32;
+    let layer = egui::LayerId::new(
+        egui::Order::Foreground,
+        ui.id().with(("side_panel_shell_shadow", hr.left().to_bits(), hr.top().to_bits())),
+    );
+    let painter = ui.ctx().layer_painter(layer);
+    for i in 0..shadow_h as i32 {
+        let frac = 1.0 - (i as f32 / shadow_h);
+        let a = (38.0 * frac) as u8;
+        if a == 0 { continue; }
+        let y = hr.bottom() + i as f32 + 0.5;
+        painter.line_segment(
+            [egui::Pos2::new(hr.left(), y), egui::Pos2::new(hr.right(), y)],
+            egui::Stroke::new(stroke_thin(), shadow_color_alpha(t, a)),
+        );
     }
 }
 
@@ -361,11 +413,16 @@ fn render_body_and_footer<'a>(
     body: impl FnOnce(&mut Ui, &Theme),
     footer: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
 ) {
-    // Body padding (spec): LR gap_md, top gap_sm under header, bottom gap_lg.
+    // Body padding: ZERO LR + ZERO TOP — PanelSection paints
+    // edge-to-edge header strips, and a section that's the first child
+    // in the body should sit FLUSH against the SidePanelShell header
+    // above it so the inset shadow from the panel header falls
+    // directly onto the section header below. The LR inset that used
+    // to live here moved into PanelSection's body Frame.
     let body_frame = egui::Frame::NONE.inner_margin(egui::Margin {
-        left:   gap_md() as i8,
-        right:  gap_md() as i8,
-        top:    gap_sm() as i8,
+        left:   0,
+        right:  0,
+        top:    0,
         bottom: gap_lg() as i8,
     });
 

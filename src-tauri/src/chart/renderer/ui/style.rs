@@ -1196,9 +1196,69 @@ pub(crate) fn color_layer_up(t: &crate::chart_renderer::gpu::Theme, n: u8) -> Co
     let bg = t.bg;
     // Match `gpu::hairline_border`'s dark-vs-light heuristic.
     let is_dark = (bg.r() as i16 + bg.g() as i16 + bg.b() as i16) < 384;
-    // 4% per step (≈10/255), capped at 5 steps so we never blow past L3.
+    // 7% per step (≈18/255), capped at 5 steps. Calibrated so an L2
+    // subsection visibly nests above L1 without looking like a separate
+    // surface; was 4% which read as nothing. Stays under the threshold
+    // where the lifted bg starts feeling like a separate card.
     let steps = n.min(5) as i16;
-    let shift: i16 = if is_dark { 10 * steps } else { -10 * steps };
+    let shift: i16 = if is_dark { 18 * steps } else { -18 * steps };
+    let clamp = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
+    Color32::from_rgb(
+        clamp(base.r() as i16 + shift),
+        clamp(base.g() as i16 + shift),
+        clamp(base.b() as i16 + shift),
+    )
+}
+
+/// Top-level panel header surface — closest to `t.bg` (chart pane
+/// background). Used by SidePanelShell so the topmost panel chrome
+/// reads as adjacent to the chart pane.
+#[inline]
+pub(crate) fn header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    t.bg.gamma_multiply(0.95)
+}
+
+/// Section header surface — one shade darker than `header_surface` so
+/// PanelSection headers sit visually below the SidePanelShell header
+/// above them. Creates the depth ramp: SidePanelShell (lightest) →
+/// PanelSection → PanelSubSection → panel body (darkest).
+#[inline]
+pub(crate) fn section_header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    t.bg.gamma_multiply(0.88)
+}
+
+/// Panel body surface — darker than `t.bg` so the side panel body
+/// recedes visually below the chart and below its own header.
+/// The pattern is: header (lighter, near `t.bg`) → body (darker,
+/// recessed) — readable depth without high-contrast slabs.
+#[inline]
+pub(crate) fn panel_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    t.bg.gamma_multiply(0.85)
+}
+
+/// Header border — matches the chart pane header's perimeter hairline:
+/// `color_alpha(t.text, 38)` at `stroke_thin()`. Use for every panel
+/// header bottom rule, accordion rule, and side-panel header rule so
+/// the entire chrome family reads as one bordered system.
+#[inline]
+pub(crate) fn header_border(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.text, 38)
+}
+
+/// Inverse of `color_layer_up` — moves the surface DOWN one or more
+/// layers (toward `t.bg`, away from `t.text`). Use for elements that
+/// should read as RECESSED rather than RAISED — section header bands,
+/// trough surfaces, inset wells. Direction-aware: darker on dark themes,
+/// lighter on light themes (always away from the foreground).
+#[inline]
+pub(crate) fn color_layer_down(t: &crate::chart_renderer::gpu::Theme, n: u8) -> Color32 {
+    let base = t.toolbar_bg;
+    let bg = t.bg;
+    let is_dark = (bg.r() as i16 + bg.g() as i16 + bg.b() as i16) < 384;
+    let steps = n.min(5) as i16;
+    // OPPOSITE direction from color_layer_up — dark themes go darker,
+    // light themes go lighter (move toward t.bg).
+    let shift: i16 = if is_dark { -18 * steps } else { 18 * steps };
     let clamp = |c: i16| -> u8 {
         if c < 0 { 0 } else if c > 255 { 255 } else { c as u8 }
     };

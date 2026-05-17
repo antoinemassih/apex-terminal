@@ -40,7 +40,7 @@
 use egui::{Color32, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::chart::renderer::ui::style::{
-    color_alpha, font_xs, gap_md, gap_sm, gap_xs, stroke_thin,
+    color_alpha, font_xs, gap_lg, gap_md, gap_sm, gap_xs, header_border, section_header_surface, shadow_color_alpha, stroke_thin,
 };
 use crate::chart_renderer::gpu::Theme;
 
@@ -84,7 +84,11 @@ impl Tone {
 }
 
 /// Alpha (out of 255) of the section hairline rule — locked per user spec.
-const RULE_ALPHA: u8 = 36;
+/// Section rule alpha. Bumped from 36 → 100 so section boundaries
+/// actually read against the panel surface. The "calm machine" goal
+/// is fewer separators, not invisible ones — this rule fires only
+/// when `.rule(true)` so callers still control whether it appears.
+const RULE_ALPHA: u8 = 100;
 
 #[must_use = "PanelSection must be rendered with `.show(...)`"]
 pub struct PanelSection<'a> {
@@ -153,57 +157,118 @@ impl<'a> PanelSection<'a> {
         let title_color = self.title_color.unwrap_or(t.dim);
         let mut action_clicked = false;
 
+        // Header row: DARKER (recessed) L0 background + edge-to-edge
+        // top AND bottom rules. The header strip uses `color_layer_down`
+        // so it reads as recessed inset chrome — the panel's labeled
+        // band. Body content sits below on the regular panel surface.
+        //
+        // Edge-to-edge: SidePanelShell now drops the LR body inset, so
+        // the section rect spans the full panel chrome width. The
+        // inner_margin only applies to the title text and trailing
+        // actions; the FILL + rules cover the full strip width.
         let prev_pad = ui.spacing().item_spacing;
-        ui.horizontal(|ui| {
-            ui.add_space(gap_md());
-            ui.add_space(0.0);
-            // Title — uppercase mono_xs strong.
-            ui.label(
-                RichText::new(self.title.to_uppercase())
-                    .monospace()
-                    .size(font_xs())
-                    .strong()
-                    .color(title_color),
-            );
-            if let Some(n) = self.count {
-                ui.add_space(gap_xs());
-                ui.label(
-                    RichText::new(format!("{}", n))
-                        .monospace()
-                        .size(font_xs())
-                        .strong()
-                        .color(color_alpha(title_color, 200)),
-                );
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(gap_md());
-                if let Some((label, tone)) = &self.action {
-                    if section_action_button(ui, label, tone.color(t)) {
-                        action_clicked = true;
-                    }
-                    if self.meta.is_some() {
-                        ui.add_space(gap_sm());
-                    }
-                }
-                if let Some(m) = &self.meta {
+        let header_resp = egui::Frame::NONE
+            .inner_margin(egui::Margin {
+                left: gap_lg() as i8,
+                right: gap_lg() as i8,
+                top: gap_xs() as i8,
+                bottom: gap_xs() as i8,
+            })
+            .fill(section_header_surface(t))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // Title — uppercase mono_xs strong. One tier smaller
+                    // than the SidePanelShell header so the section
+                    // reads as nested chrome inside the panel.
                     ui.label(
-                        RichText::new(m)
+                        RichText::new(self.title.to_uppercase())
                             .monospace()
                             .size(font_xs())
-                            .color(color_alpha(t.dim, 160)),
+                            .strong()
+                            .color(title_color),
                     );
-                }
+                    if let Some(n) = self.count {
+                        ui.add_space(gap_xs());
+                        ui.label(
+                            RichText::new(format!("{}", n))
+                                .monospace()
+                                .size(font_xs())
+                                .strong()
+                                .color(color_alpha(title_color, 200)),
+                        );
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if let Some((label, tone)) = &self.action {
+                            if section_action_button(ui, label, tone.color(t)) {
+                                action_clicked = true;
+                            }
+                            if self.meta.is_some() {
+                                ui.add_space(gap_sm());
+                            }
+                        }
+                        if let Some(m) = &self.meta {
+                            ui.label(
+                                RichText::new(m)
+                                    .monospace()
+                                    .size(font_xs())
+                                    .color(color_alpha(t.dim, 160)),
+                            );
+                        }
+                    });
+                });
             });
-        });
         ui.spacing_mut().item_spacing = prev_pad;
-
-        ui.add_space(gap_xs());
+        // Edge-to-edge top + bottom rules bracketing the recessed strip.
+        // Border color matches the chart pane header — t.text @ 38 alpha.
+        let hr = header_resp.response.rect;
+        let rule_col = header_border(t);
+        ui.painter().line_segment(
+            [Pos2::new(hr.left(), hr.top() + 0.5), Pos2::new(hr.right(), hr.top() + 0.5)],
+            Stroke::new(stroke_thin(), rule_col),
+        );
         if self.rule {
-            paint_rule(ui, t);
+            ui.painter().line_segment(
+                [Pos2::new(hr.left(), hr.bottom() - 0.5), Pos2::new(hr.right(), hr.bottom() - 0.5)],
+                Stroke::new(stroke_thin(), rule_col),
+            );
         }
-        ui.add_space(gap_xs());
+        // Inset drop-shadow falling down from the bottom rule — 6px
+        // tall gradient painted into a stable layer above the body,
+        // fading from alpha 38 at the top to 0 at the bottom.
+        // Painted on the FOREGROUND layer (not ui.painter) so it
+        // doesn't shift widget layer-ids mid-frame.
+        let shadow_h = 6.0_f32;
+        {
+            let layer = egui::LayerId::new(
+                egui::Order::Foreground,
+                ui.id().with(("panel_section_shadow", hr.left().to_bits(), hr.top().to_bits())),
+            );
+            let painter = ui.ctx().layer_painter(layer);
+            for i in 0..shadow_h as i32 {
+                let frac = 1.0 - (i as f32 / shadow_h);
+                let a = (38.0 * frac) as u8;
+                if a == 0 { continue; }
+                let y = hr.bottom() + i as f32 + 0.5;
+                painter.line_segment(
+                    [Pos2::new(hr.left(), y), Pos2::new(hr.right(), y)],
+                    Stroke::new(stroke_thin(), shadow_color_alpha(t, a)),
+                );
+            }
+        }
+        ui.add_space(shadow_h + 2.0);
 
-        let r = body(ui, t);
+        // Body — natural flow on the panel surface. Inset by gap_lg so
+        // body content's left edge aligns with the header's title text
+        // (header uses gap_lg L/R via the Frame inner_margin above).
+        let r = egui::Frame::NONE
+            .inner_margin(egui::Margin {
+                left: gap_lg() as i8,
+                right: gap_lg() as i8,
+                top: 0,
+                bottom: 0,
+            })
+            .show(ui, |ui| body(ui, t))
+            .inner;
         ui.add_space(gap_sm());
 
         SectionResponse {
@@ -221,7 +286,7 @@ fn paint_rule(ui: &mut Ui, t: &Theme) {
             Pos2::new(rect.left(), y),
             Pos2::new(rect.right(), y),
         ],
-        Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, RULE_ALPHA)),
+        Stroke::new(stroke_thin(), header_border(t)),
     );
     ui.add_space(1.0);
 }

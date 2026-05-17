@@ -50,13 +50,14 @@ use egui::{CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
 use crate::chart::renderer::ui::style::{
-    color_alpha, font_xs, gap_2xs, gap_md, gap_xs, radius_sm, stroke_thin,
+    color_alpha, font_sm, gap_2xs, gap_md, gap_xs, header_border, header_surface, radius_sm, shadow_color_alpha, stroke_thin,
 };
 use crate::chart_renderer::gpu::Theme;
 
-/// Alpha (out of 255) of the bottom hairline rule. Matches `PanelSection`
-/// and `panel_divider` so nested grouping stays visually consistent.
-const RULE_ALPHA: u8 = 36;
+/// Alpha (out of 255) of the bottom hairline rule. Higher than the L2
+/// surface contrast so the separator actually reads against the lifted
+/// sub-section background — the previous 36 was barely visible.
+const RULE_ALPHA: u8 = 80;
 
 /// Hover background alpha (out of 255), applied to `t.text`. Matches
 /// `PanelListRow::HOVER_BG_ALPHA` so categories feel like the rows they
@@ -66,9 +67,10 @@ const HOVER_BG_ALPHA: u8 = 8;
 /// Caret glyph point size — proportional, matches Disclosure default.
 const CARET_FONT: f32 = 12.0;
 
-/// Header row height. `gap_lg()` (16px) is too tight for a clickable
-/// header with a count chip; 22 matches PanelListRow's dense row height.
-const HEADER_H: f32 = 22.0;
+/// Header row height. Parent accordion categories deserve more vertical
+/// breathing room than a list row — bumped from 22 to 30 so the parent
+/// vs. child distinction reads at a glance.
+const HEADER_H: f32 = 30.0;
 
 #[must_use = "PanelSubSection must be rendered with `.show(...)`"]
 pub struct PanelSubSection<'a> {
@@ -144,6 +146,9 @@ impl<'a> PanelSubSection<'a> {
         let is_open = expanded.as_ref().map(|b| **b).unwrap_or(true);
 
         let avail_w = ui.available_width();
+        // (Top + bottom rules are now painted on the header rect itself
+        // below, so consecutive sub-sections stack as bordered bands
+        // without needing a separate pre-header divider.)
         // Allocate the full header strip up-front, then split out the
         // header-trailing slot (when present) so its clicks are routed
         // separately from the header toggle.
@@ -196,41 +201,57 @@ impl<'a> PanelSubSection<'a> {
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
 
-            // Hover background — very subtle, matches PanelListRow hover.
+            // Header-strip uses the unified header_surface token —
+            // same fill as the chart pane header and the SidePanelShell
+            // header. Reads as a labeled band, consistent with the
+            // rest of the app's chrome family.
+            painter.rect_filled(
+                rect,
+                CornerRadius::ZERO,
+                header_surface(t),
+            );
+            // Hover overlay — faint warm tint on top of the recessed base.
             if resp.hovered() {
                 painter.rect_filled(
                     rect,
-                    CornerRadius::same(radius_sm() as u8),
+                    CornerRadius::ZERO,
                     color_alpha(t.text, HOVER_BG_ALPHA),
                 );
             }
 
             // Caret — proportional, in t.dim, vertically centered.
+            // No leading inset — the caret starts at rect.left so the
+            // title text aligns with the PanelSection title above
+            // (which sits at the same X via the parent section's body
+            // gap_md inset).
             let caret_glyph = if is_open { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
             let caret_font = FontId::proportional(CARET_FONT);
             let caret_galley = ui.fonts(|f| {
                 f.layout_no_wrap(caret_glyph.to_string(), caret_font, t.dim)
             });
             let cy = rect.center().y;
-            let mut x = rect.left() + gap_xs();
+            let mut x = rect.left();
             painter.galley(
                 Pos2::new(x, cy - caret_galley.rect.height() * 0.5),
                 caret_galley.clone(),
                 t.dim,
             );
-            x += caret_galley.rect.width() + gap_2xs();
+            x += caret_galley.rect.width() + gap_xs();
 
-            // Title — uppercase mono_xs strong in t.dim. (We paint via the
-            // painter for precise vertical centering alongside the caret.)
+            // Title — uppercase mono_sm strong (same tier as
+            // PanelSection title). Parent accordion categories deserve
+            // the same typographic weight as the section above them so
+            // the parent/child relationship is clear by hierarchy.
             let title_text = title.to_uppercase();
-            let title_font = FontId::monospace(font_xs());
+            let title_font = FontId::monospace(font_sm());
+            let title_color = color_alpha(t.text, 220);
             let title_galley = ui.fonts(|f| {
-                f.layout_no_wrap(title_text, title_font, t.dim)
+                f.layout_no_wrap(title_text, title_font, title_color)
             });
             painter.galley(
                 Pos2::new(x, cy - title_galley.rect.height() * 0.5),
                 title_galley.clone(),
-                t.dim,
+                title_color,
             );
             x += title_galley.rect.width();
 
@@ -239,7 +260,7 @@ impl<'a> PanelSubSection<'a> {
                 x += gap_xs();
                 let count_text = format!("{}", n);
                 let count_color = color_alpha(t.dim, 200);
-                let count_font = FontId::monospace(font_xs());
+                let count_font = FontId::monospace(font_sm());
                 let count_galley = ui.fonts(|f| {
                     f.layout_no_wrap(count_text, count_font, count_color)
                 });
@@ -250,14 +271,17 @@ impl<'a> PanelSubSection<'a> {
                 );
             }
 
-            // Bottom hairline rule — always, expanded or collapsed.
-            let rule_y = rect.bottom() - 0.5;
+            // Edge-to-edge top + bottom hairline rules — always,
+            // expanded or collapsed. Bracket the header band.
+            // Border matches chart pane header: t.text @ 38.
+            let rule_col = header_border(t);
             painter.line_segment(
-                [
-                    Pos2::new(rect.left(), rule_y),
-                    Pos2::new(rect.right(), rule_y),
-                ],
-                Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, RULE_ALPHA)),
+                [Pos2::new(rect.left(), rect.top() + 0.5), Pos2::new(rect.right(), rect.top() + 0.5)],
+                Stroke::new(stroke_thin(), rule_col),
+            );
+            painter.line_segment(
+                [Pos2::new(rect.left(), rect.bottom() - 0.5), Pos2::new(rect.right(), rect.bottom() - 0.5)],
+                Stroke::new(stroke_thin(), rule_col),
             );
         }
 
@@ -273,20 +297,48 @@ impl<'a> PanelSubSection<'a> {
             cb(&mut child, t);
         }
 
-        // Body — only when expanded.
+        // Body — only when expanded. Natural-flow, no background tint
+        // (the tint lives on the HEADER strip). Just indent and add
+        // breathing room. Use Frame for the inset — `horizontal {
+        // vertical }` would collapse to a single-line height.
         if !is_open {
             return None;
         }
 
+        // Inset drop-shadow under the header bottom rule, falling into
+        // the body. Matches the treatment under PanelSection and the
+        // chart pane header. Painted on the Foreground layer so it
+        // doesn't shift widget layer-ids mid-frame.
+        let shadow_h = 6.0_f32;
+        {
+            let layer = egui::LayerId::new(
+                egui::Order::Foreground,
+                ui.id().with(("panel_sub_section_shadow", rect.left().to_bits(), rect.top().to_bits())),
+            );
+            let painter = ui.ctx().layer_painter(layer);
+            for i in 0..shadow_h as i32 {
+                let frac = 1.0 - (i as f32 / shadow_h);
+                let a = (38.0 * frac) as u8;
+                if a == 0 { continue; }
+                let y = rect.bottom() + i as f32 + 0.5;
+                painter.line_segment(
+                    [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+                    Stroke::new(stroke_thin(), shadow_color_alpha(t, a)),
+                );
+            }
+        }
+        ui.add_space(shadow_h);
         ui.add_space(gap_2xs());
-        let mut out: Option<R> = None;
-        ui.horizontal(|ui| {
-            ui.add_space(gap_md());
-            ui.vertical(|ui| {
-                out = Some(body(ui, t));
-            });
-        });
+        let out = egui::Frame::NONE
+            .inner_margin(egui::Margin {
+                left: gap_md() as i8,
+                right: gap_xs() as i8,
+                top: gap_xs() as i8,
+                bottom: gap_xs() as i8,
+            })
+            .show(ui, |ui| body(ui, t))
+            .inner;
         ui.add_space(gap_xs());
-        out
+        Some(out)
     }
 }

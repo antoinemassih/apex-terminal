@@ -125,7 +125,6 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     };
 
     let resp = SidePanelShell::new("discord_chat", &title_owned)
-        .icon(Icon::CHAT_DOTS)
         .width(Width::Narrow)
         .side(Side::Left)
         .show(ctx, t, |ui, t| {

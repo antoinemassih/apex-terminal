@@ -200,9 +200,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     let use_demo = sectors.is_empty();
 
     PanelSection::new("RRG — RELATIVE ROTATION").show(ui, t, |ui, t| {
-        // Compute the square plot area
+        // Compute the square plot area. Don't enforce a min larger than
+        // what's actually available — the previous .max(200.0) prevented
+        // the side panel from being resized narrower than 200px because
+        // the plot would overflow.
         let avail = ui.available_size();
-        let plot_size = avail.x.min(avail.y - 30.0).max(200.0); // leave room for cycle text
+        let plot_size = avail.x.min(avail.y - 30.0).max(80.0);
         let (response, painter) = ui.allocate_painter(
             egui::vec2(plot_size, plot_size),
             egui::Sense::hover(),
@@ -274,7 +277,6 @@ pub(crate) fn draw(
     if !watchlist.rrg_open { return; }
 
     let resp = SidePanelShell::new("rrg_panel", "RRG")
-        .icon(Icon::CHART_LINE)
         .width(Width::Medium)
         .resizable(240.0..=500.0)
         .show(ctx, t, |ui, t| {
