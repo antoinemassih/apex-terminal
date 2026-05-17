@@ -97,6 +97,7 @@ There are 83 hand-rolled `egui::Button` calls in `chart/renderer/ui/`. Don't add
 | `simple_btn(ui, label, color, w)` | `Button::simple(label).tint(color).min_width(w).show(ui, t)` |
 | `small_action_btn(ui, label, c)` | `Button::small_action(label).tint(c).show(ui, t)` |
 | `close_button(ui, dim)` | `Button::close().show(ui, t).clicked()` |
+| `ui.add(egui::Button::new(label).fill(tint_active).stroke(...).fg(...))` for toggle chips | `Button::toggle(label, active).tint(color).show(ui, t)` |
 
 The free functions are `#[deprecated]`. Migrate when you're nearby.
 
