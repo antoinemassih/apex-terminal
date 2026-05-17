@@ -2,6 +2,12 @@
 //! glyph atlas (which forces grayscale) and gives us per-channel LCD
 //! coverage end-to-end.
 //!
+//! ### NOTE: foundation primitive, not a widget
+//! This is a GPU pipeline (wgpu render-pass callback) consumed by the
+//! text engine, not a UI component. There is no builder + `show(ui, theme)`
+//! and never will be. The "Builder + show()" rule in `CLAUDE.md` does
+//! not apply.
+//!
 //! ## Trick
 //!
 //! swash's `Format::Subpixel` produces an RGB bitmap where each color

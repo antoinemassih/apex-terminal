@@ -1,6 +1,12 @@
 //! GPU-blurred shadow pipeline. Real two-pass separable Gaussian on
 //! an offscreen texture, composited via egui_wgpu::CallbackTrait.
 //!
+//! ### NOTE: foundation primitive, not a widget
+//! This is a wgpu render-pass implementation called by `shadow.rs` when
+//! the requested blur radius exceeds the stacked-rect fast path threshold.
+//! There is no builder + `show(ui, theme)`. The "Builder + show()" rule
+//! in `CLAUDE.md` does not apply.
+//!
 //! Used by `shadow::paint_shadow_gpu` for radii > 16. Below 16, the
 //! stacked-rect path in shadow.rs is faster and visually equivalent.
 //!

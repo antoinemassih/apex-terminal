@@ -11,6 +11,14 @@
 //!
 //! API surface (builder method names, ModalResponse) is unchanged from the
 //! legacy struct so callers keep compiling via the chrome::modal re-export.
+//!
+//! ### Signature note
+//! `Modal::show(body)` does NOT take `ui: &mut Ui` or `theme: &dyn ComponentTheme`
+//! as parameters. A modal is a top-level floating Area on the egui Context
+//! (not a child of any parent `Ui`), so it takes a `Context` via `.ctx(ctx)`
+//! and a theme via `.theme(t)` as builder methods. The `.show(body)` call
+//! then runs the body inside the modal's own internal Ui. This is an explicit,
+//! documented variance from the "Builder + show(ui, theme)" rule in `CLAUDE.md`.
 
 #![allow(dead_code)]
 
