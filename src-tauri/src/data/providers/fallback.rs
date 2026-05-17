@@ -65,6 +65,7 @@ impl Connection for FallbackProvider {
 
 #[async_trait::async_trait]
 impl MarketDataProvider for FallbackProvider {
+    #[tracing::instrument(skip(self), level = "debug", fields(provider = %self.name, symbol, timeframe, limit))]
     async fn bars(
         &self,
         symbol: &str,
@@ -122,6 +123,7 @@ impl MarketDataProvider for FallbackProvider {
             p.unsubscribe_trades(symbol);
         }
     }
+    #[tracing::instrument(skip(self), level = "debug", fields(provider = %self.name, underlying = u))]
     async fn chain_snapshot(&self, u: &str) -> Result<ChainSnapshot, ApiError> {
         let mut errors: Vec<String> = Vec::new();
         for p in &self.providers {

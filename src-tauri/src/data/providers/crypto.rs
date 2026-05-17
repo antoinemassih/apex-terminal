@@ -37,7 +37,14 @@ impl Connection for CryptoProvider {
         // Wave-3 will expose a is_connected() hook.
         ConnectionState::Idle
     }
-    fn metrics(&self) -> ConnectionMetrics { ConnectionMetrics::default() }
+    fn metrics(&self) -> ConnectionMetrics {
+        super::ib::feed_metrics_snapshot(
+            &crate::data::feeds::crypto_feed::MESSAGES_IN,
+            &crate::data::feeds::crypto_feed::PARSE_ERRORS,
+            &crate::data::feeds::crypto_feed::RECONNECT_COUNT,
+            &crate::data::feeds::crypto_feed::LAST_MESSAGE_AT_MS,
+        )
+    }
 }
 
 #[async_trait::async_trait]

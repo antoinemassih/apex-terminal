@@ -21,6 +21,7 @@ pub mod crypto;
 pub mod signals;
 pub mod http_fallback;
 pub mod registry;
+pub mod mock;
 
 pub use provider::{
     BarStream, ChainSnapshot, ChainStream, MarketDataProvider, ProviderCapabilities,
@@ -31,3 +32,4 @@ pub use fallback::FallbackProvider;
 pub use cached::CachedProvider;
 pub use replay::ReplayProvider;
 pub use http_fallback::HttpFallbackProvider;
+pub use mock::{MockFrame, MockMarketDataProvider};

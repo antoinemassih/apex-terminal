@@ -17,8 +17,23 @@ use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
+
+// ── Wave 6: per-feed metrics counters ────────────────────────────────────────
+// Read by `data/providers/apex_data.rs::Connection::metrics()` and surfaced to
+// Prometheus via `foundation/monitoring.rs`.
+pub(crate) static MESSAGES_IN:        AtomicU64 = AtomicU64::new(0);
+pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
+pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
+pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
 
 use tokio::sync::mpsc;
 use tokio::net::TcpStream;
@@ -233,8 +248,13 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
     // Infinite reconnect attempts — exponential backoff w/ jitter prevents
     // thundering herd. WS feeds should never give up.
     let mut backoff = Backoff::new().with_max_attempts(None);
+    let mut first_attempt = true;
     loop {
         if mgr.shutdown.load(Ordering::SeqCst) { break; }
+        if !first_attempt {
+            RECONNECT_COUNT.fetch_add(1, Ordering::Relaxed);
+        }
+        first_attempt = false;
         let url = format!("{}?format=msgpack{}", apex_ws_url(),
             apex_token().map(|t| format!("&token={t}")).unwrap_or_default());
         report(ErrorLevel::Info, "apex_data.ws", "connecting", format!("→ {url}"));
@@ -364,13 +384,20 @@ fn broadcast(mgr: &Arc<Manager>, f: &Frame) {
 }
 
 fn handle_text(mgr: &Arc<Manager>, text: &str) {
+    MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+    LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
     match serde_json::from_str::<InEnvelope>(text) {
         Ok(env) => dispatch(mgr, env),
-        Err(e) => report(ErrorLevel::Warn, "apex_data.ws", "parse_json", e.to_string()),
+        Err(e) => {
+            PARSE_ERRORS.fetch_add(1, Ordering::Relaxed);
+            report(ErrorLevel::Warn, "apex_data.ws", "parse_json", e.to_string())
+        }
     }
 }
 
 fn handle_binary(mgr: &Arc<Manager>, bytes: &[u8]) {
+    MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+    LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
     match rmp_serde::from_slice::<InEnvelope>(bytes) {
         Ok(env) => dispatch(mgr, env),
         Err(e) => {
@@ -380,6 +407,7 @@ fn handle_binary(mgr: &Arc<Manager>, bytes: &[u8]) {
                     dispatch(mgr, env); return;
                 }
             }
+            PARSE_ERRORS.fetch_add(1, Ordering::Relaxed);
             report(ErrorLevel::Warn, "apex_data.ws", "parse_msgpack", e.to_string());
         }
     }

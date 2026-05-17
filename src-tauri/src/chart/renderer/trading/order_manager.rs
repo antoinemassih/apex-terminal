@@ -715,6 +715,7 @@ impl OrderManager {
     }
 
     /// Submit an order intent. Returns the result.
+    #[tracing::instrument(skip(self, intent), level = "debug", fields(symbol = %intent.symbol, side = ?intent.side, qty = intent.qty, price = intent.price))]
     pub(crate) fn submit(&mut self, intent: OrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
@@ -1085,6 +1086,7 @@ impl OrderManager {
     /// Submit a bracket order (entry + take profit + stop loss) via POST /orders/bracket.
     /// Creates 3 local managed orders and submits the bracket to the backend.
     /// Returns (entry_result, tp_order_id, sl_order_id).
+    #[tracing::instrument(skip(self, intent), level = "debug", fields(symbol = %intent.symbol, qty = intent.qty, tp = take_profit_price, sl = stop_loss_price))]
     pub(crate) fn submit_bracket(&mut self, intent: OrderIntent, take_profit_price: f32, stop_loss_price: f32) -> (OrderResult, Option<u64>, Option<u64>) {
         if self.kill_engaged { return (OrderResult::Rejected("kill switch engaged".into()), None, None); }
         if self.halted { return (OrderResult::Rejected(self.halt_reason().into()), None, None); }
@@ -1236,6 +1238,7 @@ impl OrderManager {
 
     /// Submit an OCO (One-Cancels-Other) order group via POST /orders/oco.
     /// Creates all orders locally paired together, then submits to the backend.
+    #[tracing::instrument(skip(self, orders), level = "debug", fields(legs = orders.len()))]
     pub(crate) fn submit_oco(&mut self, orders: Vec<OrderIntent>) -> Vec<OrderResult> {
         if self.kill_engaged { return vec![OrderResult::Rejected("kill switch engaged".into())]; }
         if self.halted { return vec![OrderResult::Rejected(self.halt_reason().into())]; }
@@ -1355,6 +1358,7 @@ impl OrderManager {
 
     /// Submit a conditional order via POST /orders/conditional.
     /// The order executes when price conditions on watched contracts are met.
+    #[tracing::instrument(skip(self, intent), level = "debug")]
     pub(crate) fn submit_conditional(&mut self, intent: ConditionalOrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
@@ -1455,6 +1459,7 @@ impl OrderManager {
     /// Submit an options trigger via POST /orders/options-trigger.
     /// Creates entry + exit conditional orders on an option based on underlying price levels.
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(self), level = "debug", fields(underlying, option_type, strike, qty))]
     pub(crate) fn submit_options_trigger(&mut self,
         underlying: &str, option_type: &str, strike: f32, expiration: &str,
         qty: u32, entry_price: f32, entry_direction: &str,
@@ -1538,6 +1543,7 @@ impl OrderManager {
     /// Submit a combo/spread order via POST /orders/combo.
     /// All legs fill atomically via IB's native combo mechanism.
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(self, legs), level = "debug", fields(symbol, n_legs = legs.len(), side, qty, order_type))]
     pub(crate) fn submit_combo(&mut self, symbol: &str, legs: Vec<ComboLeg>,
         side: &str, qty: u32, order_type: &str, limit_price: Option<f32>,
     ) -> OrderResult {
@@ -1625,6 +1631,7 @@ impl OrderManager {
     }
 
     /// Cancel an order
+    #[tracing::instrument(skip(self), level = "debug", fields(order_id))]
     pub(crate) fn cancel(&mut self, order_id: u64) -> bool {
         // Find the order and its pair_id
         let (is_active, pair_id) = self.orders.iter()
@@ -1722,6 +1729,7 @@ impl OrderManager {
     /// `modify_inflight`, subsequent calls coalesce into `modify_pending_price`
     /// and fire after the in-flight one completes. Each PUT carries a
     /// monotonic `modify_version` so out-of-order responses are discarded.
+    #[tracing::instrument(skip(self), level = "debug", fields(order_id, new_price = ?new_price))]
     pub(crate) fn modify_price(&mut self, order_id: u64, new_price: Price) -> bool {
         let paper = self.paper_mode;
         let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state.is_active()) else {
@@ -1991,6 +1999,7 @@ pub(crate) fn confirm_order(id: u64) -> bool {
 }
 
 /// Cancel an order
+#[tracing::instrument(level = "debug", fields(order_id = id))]
 pub(crate) fn cancel_order(id: u64) -> bool {
     let r = with_mgr(|mgr| mgr.cancel(id));
     with_mgr(|mgr| mgr.save_to_disk());
@@ -2260,6 +2269,7 @@ pub(crate) fn update_risk_limits(limits: RiskLimits) {
 }
 
 /// Reconcile OrderManager state with IB backend data (called each frame with account poller data)
+#[tracing::instrument(skip(ib_orders), level = "debug", fields(n_orders = ib_orders.len()))]
 pub(crate) fn reconcile_with_ib(ib_orders: &[super::IbOrder]) {
     with_mgr(|mgr| reconcile_with_ib_inner(mgr, ib_orders));
     with_mgr(|mgr| mgr.save_to_disk());

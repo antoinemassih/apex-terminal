@@ -9,6 +9,20 @@
 //! receive side stays unchanged.
 
 use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64};
+
+// ── Wave 6: per-feed metrics counters ────────────────────────────────────────
+pub(crate) static MESSAGES_IN:        AtomicU64 = AtomicU64::new(0);
+pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
+pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
+pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -79,8 +93,11 @@ async fn ws_loop(
     shutdown: Arc<AtomicBool>,
 ) {
     let mut backoff = Backoff::new().with_max_attempts(None);
+    let mut first = true;
     loop {
         if shutdown.load(Ordering::SeqCst) { return; }
+        if !first { RECONNECT_COUNT.fetch_add(1, Ordering::Relaxed); }
+        first = false;
         match connect_async(WS_URL).await {
             Ok((stream, _)) => {
                 backoff.reset();
@@ -118,7 +135,11 @@ async fn ws_loop(
                         frame = read.next() => match frame {
                             // ── Hot path: binary msgpack tick data ──────────
                             Some(Ok(Message::Binary(bytes))) => {
-                                if let Ok(val) = rmp_serde::from_slice::<Value>(&bytes) {
+                                MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+                                LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
+                                let parsed = rmp_serde::from_slice::<Value>(&bytes);
+                                if parsed.is_err() { PARSE_ERRORS.fetch_add(1, Ordering::Relaxed); }
+                                if let Ok(val) = parsed {
                                     // Forward to native chart renderer if active
                                     if let Value::Object(ref map) = val {
                                         if let (Some(price), Some(volume)) = (

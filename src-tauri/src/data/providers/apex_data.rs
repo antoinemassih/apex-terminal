@@ -126,14 +126,34 @@ impl Connection for ApexDataProvider {
     }
 
     fn metrics(&self) -> ConnectionMetrics {
-        // Wave-2: most counters are not yet plumbed through live_state — fill
-        // what's available and leave the rest at zero.
-        ConnectionMetrics::default()
+        use std::sync::atomic::Ordering;
+        let last_ms = ws::LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
+        let last_message_at = if last_ms > 0 {
+            // Best-effort: derive an `Instant` from the recorded unix-ms by
+            // subtracting "ms since the last message" from `Instant::now()`.
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(last_ms);
+            let age = (now_ms - last_ms).max(0) as u64;
+            std::time::Instant::now().checked_sub(std::time::Duration::from_millis(age))
+        } else {
+            None
+        };
+        ConnectionMetrics {
+            messages_in:    ws::MESSAGES_IN.load(Ordering::Relaxed),
+            messages_out:   0,
+            parse_errors:   ws::PARSE_ERRORS.load(Ordering::Relaxed),
+            reconnect_count: ws::RECONNECT_COUNT.load(Ordering::Relaxed),
+            last_message_at,
+            queue_depth:    None,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl MarketDataProvider for ApexDataProvider {
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe))]
     async fn bars(
         &self,
         symbol: &str,
@@ -175,6 +195,7 @@ impl MarketDataProvider for ApexDataProvider {
         }
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe))]
     fn subscribe_bars(&self, symbol: &str, timeframe: &str) -> Result<BarStream, ApiError> {
         let (tx, rx) = mpsc::unbounded_channel::<BarWire>();
         {
@@ -193,6 +214,7 @@ impl MarketDataProvider for ApexDataProvider {
         ws::remove_bar_sub(symbol, timeframe);
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     fn subscribe_quotes(&self, symbol: &str) -> Result<QuoteStream, ApiError> {
         let (tx, rx) = mpsc::unbounded_channel::<Quote>();
         {
@@ -212,6 +234,7 @@ impl MarketDataProvider for ApexDataProvider {
         }
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     fn subscribe_trades(&self, symbol: &str) -> Result<TradeStream, ApiError> {
         let (tx, rx) = mpsc::unbounded_channel::<Trade>();
         {
@@ -230,6 +253,7 @@ impl MarketDataProvider for ApexDataProvider {
         }
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(underlying))]
     async fn chain_snapshot(&self, underlying: &str) -> Result<ChainSnapshot, ApiError> {
         if !apex_data::is_enabled() {
             return Err(ApiError::NotSupported("apex_data: disabled".into()));

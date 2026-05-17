@@ -57,6 +57,7 @@ fn to_internal_bars(bars: &[BarWire]) -> Vec<crate::data::Bar> {
 
 #[async_trait::async_trait]
 impl MarketDataProvider for CachedProvider {
+    #[tracing::instrument(skip(self), level = "debug", fields(provider = %self.name, symbol, timeframe, limit))]
     async fn bars(
         &self,
         symbol: &str,
