@@ -46,6 +46,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
 
     // Pre-compute header data so the painter closure doesn't need to
     // borrow `panes` (the body closure borrows it mutably).
+    // WHITE is a never-rendered placeholder: the closing branch (no indicator
+    // found) sets close_editor = true and the dot is never painted.
     let (hdr_color, hdr_name) = panes[ap].indicators.iter().find(|i| i.id == edit_id)
         .map(|i| (hex_to_color(&i.color, 1.0), i.display_name()))
         .unwrap_or((egui::Color32::WHITE, String::new()));
@@ -87,7 +89,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
             // movable(true) (set via Modal::draggable_header) handles motion.
             let hdr_rect = header_resp.response.rect;
             let drag_resp = ui.interact(hdr_rect, egui::Id::new(("ind_editor_drag", edit_id)), egui::Sense::drag());
-            if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+            crate::chart_renderer::ui::style::cursor::draggable(ui, &drag_resp);
             hdr_close
         })
         .show(|ui| {
@@ -275,7 +277,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     for (i, &tf) in tfs.iter().enumerate() {
                         let label = if tf.is_empty() { "Chart" } else { tf };
                         let sel = ind.source_tf == tf;
-                        let fg = if sel { egui::Color32::WHITE } else { color_subtle(t.dim) };
+                        let fg = if sel { t.text } else { color_subtle(t.dim) };
                         let bg = if sel { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                         let rounding = if i == 0 {
                             egui::CornerRadius { nw: r_sm, sw: r_sm, ne: 0, se: 0 }

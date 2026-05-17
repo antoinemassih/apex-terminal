@@ -9,6 +9,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::Button as KitButton;
 
 const DTE_LIST: &[i32] = &[0, 1, 2, 3, 7, 14, 30, 60];
 
@@ -83,7 +84,7 @@ pub(crate) fn draw(
                             ui.label(egui::RichText::new(format!("@ {:.2}", spot))
                                 .monospace().size(font_sm()).color(t.dim));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if close_button(ui, t.dim) { close_picker = true; }
+                                if KitButton::close().show(ui, t).clicked() { close_picker = true; }
                             });
                         });
                         ui.add_space(gap_sm());
@@ -130,8 +131,8 @@ pub(crate) fn draw(
                                 // Prev strike
                                 let (prev_rect, prev_resp) = ui.allocate_exact_size(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
+                                crate::chart_renderer::ui::style::cursor::clickable(ui, &prev_resp);
                                 let prev_bg = if prev_resp.hovered() {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     color_alpha(t.accent, alpha_tint())
                                 } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                                 ui.painter().rect_filled(prev_rect, r_md_cr(), prev_bg);
@@ -157,8 +158,8 @@ pub(crate) fn draw(
                                 // Next strike
                                 let (next_rect, next_resp) = ui.allocate_exact_size(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
+                                crate::chart_renderer::ui::style::cursor::clickable(ui, &next_resp);
                                 let next_bg = if next_resp.hovered() {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     color_alpha(t.accent, alpha_tint())
                                 } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                                 ui.painter().rect_filled(next_rect, r_md_cr(), next_bg);
@@ -236,8 +237,8 @@ pub(crate) fn draw(
                                             let call_text = call_row.map(|r| format!("{:.2}", r.bid))
                                                 .unwrap_or_else(|| "-".into());
                                             let (crect, cresp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
+                                            crate::chart_renderer::ui::style::cursor::clickable(ui, &cresp);
                                             if cresp.hovered() {
-                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                                 ui.painter().rect_filled(crect, r_sm_cr(), color_alpha(t.bull, alpha_ghost()));
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
@@ -262,8 +263,8 @@ pub(crate) fn draw(
                                             let put_text = put_row.map(|r| format!("{:.2}", r.bid))
                                                 .unwrap_or_else(|| "-".into());
                                             let (prect, presp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
+                                            crate::chart_renderer::ui::style::cursor::clickable(ui, &presp);
                                             if presp.hovered() {
-                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                                 ui.painter().rect_filled(prect, r_sm_cr(), color_alpha(t.bear, alpha_ghost()));
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,

@@ -43,7 +43,7 @@ if panes[ap].overlay_editing {
                     // Color cycle (click to cycle through colors)
                     let (cr, cresp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
                     ui.painter().circle_filled(cr.center(), 5.0, oc);
-                    if cresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &cresp);
                     if cresp.clicked() {
                         let all_colors: Vec<&str> = OVERLAY_COLORS.iter().chain(INDICATOR_COLORS.iter().filter(|c| !OVERLAY_COLORS.contains(c))).copied().collect();
                         let cur_idx = all_colors.iter().position(|&c| c == ov_color).unwrap_or(0);
