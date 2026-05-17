@@ -15,12 +15,12 @@ use crate::ui_kit::widgets::theme_preview_card::PreviewKind;
 /// Build a FormRow pre-configured to match the legacy `setting_row` look:
 /// 190px label gutter, left-aligned label in white_alpha(180), body right-aligned
 /// with 10px inner pad, gap_xs() bottom margin.
-fn srow<'a>(label: &'a str, margin: f32) -> FormRow<'a> {
+fn srow<'a>(label: &'a str, margin: f32, t: &Theme) -> FormRow<'a> {
     FormRow::new(label)
         .gutter(190.0)
         .leading_space(margin)
         .label_left(true)
-        .label_color(egui::Color32::from_white_alpha(180))
+        .label_color(color_alpha(t.text, 180))
         .alignment(FormRowAlign::Right)
         .inner_pad(10.0)
         .margins(0.0, gap_xs())
@@ -142,7 +142,7 @@ SettingsTab::Appearance => {
     // ── Font Scale ──
     ui.horizontal(|ui| { ui.add_space(m); FormSection::new("FONT SCALE").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
-    srow("Size", m).show(ui, t, |ui| {
+    srow("Size", m, t).show(ui, t, |ui| {
         let display_pct = ((watchlist.font_scale - 0.96) / 0.016).round() as i32 + 60;
         let mut dp = display_pct.clamp(60, 160);
         if crate::ui_kit::widgets::Slider::new(&mut dp, 60..=160)
@@ -187,6 +187,7 @@ SettingsTab::Appearance => {
                     let name = font_names[i];
                     let sel = current_idx == i;
                     let (r, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
 
                     let bg = if sel { color_alpha(t.accent, alpha_tint()) }
                         else if resp.hovered() { color_alpha(t.toolbar_border, alpha_subtle()) }
@@ -203,7 +204,7 @@ SettingsTab::Appearance => {
                     ui.painter().text(
                         egui::pos2(r.center().x, r.top() + 14.0),
                         egui::Align2::CENTER_CENTER,
-                        name, egui::FontId::monospace(font_sm()), name_col);
+                        name, mono_sm(), name_col);
 
                     // Type badge + sample
                     let type_label = if is_mono[i.min(is_mono.len()-1)] { "mono" } else { "sans" };
@@ -217,9 +218,8 @@ SettingsTab::Appearance => {
                     ui.painter().text(
                         egui::pos2(r.right() - 8.0, r.bottom() - 12.0),
                         egui::Align2::RIGHT_CENTER,
-                        "0123 AAPL $9.50", egui::FontId::monospace(font_xs()), sample_col);
+                        "0123 AAPL $9.50", mono_xs(), sample_col);
 
-                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if resp.clicked() && !sel {
                         watchlist.font_idx = i;
                         crate::ui_kit::icons::init_fonts(ui.ctx(), i);
@@ -239,7 +239,7 @@ SettingsTab::Appearance => {
     setting_toggle_described(ui, m, "Auto-Hide Toolbar",
         Some("Hide the toolbar until the cursor approaches the top of the pane."),
         t, &mut watchlist.toolbar_auto_hide);
-    srow("Pane Headers", m).show(ui, t, |ui| {
+    srow("Pane Headers", m, t).show(ui, t, |ui| {
         use crate::chart_renderer::PaneHeaderSize;
         let current = watchlist.pane_header_size;
         let labels = [
@@ -309,7 +309,7 @@ SettingsTab::Chart => {
             Some("Visually distinguish regular and extended trading hours on the chart."),
             t, &mut chart.session_shading);
         if chart.session_shading {
-            srow("ETH Bar Opacity", m).show(ui, t, |ui| {
+            srow("ETH Bar Opacity", m, t).show(ui, t, |ui| {
                 let mut pct = (chart.eth_bar_opacity * 100.0).round() as i32;
                 if crate::ui_kit::widgets::Slider::new(&mut pct, 0..=100)
                     .step(1.0)
@@ -326,7 +326,7 @@ SettingsTab::Chart => {
                     for (label, hex) in [("Navy", "#1a1a2e"), ("Purple", "#2d1b4e"), ("Green", "#1a2e1a"), ("Red", "#2e1a1a"), ("Blue", "#1a2e3e")] {
                         let active = chart.session_bg_color == hex;
                         let c = hex_to_color(hex, 1.0);
-                        let fg = if active { t.accent } else { egui::Color32::from_white_alpha(120) };
+                        let fg = if active { t.accent } else { color_alpha(t.text, 120) };
                         let bg = if active { color_alpha(c, alpha_strong()) } else { color_alpha(c, alpha_muted()) };
                         if Button::new(label).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                             .fill(bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(38.0, 18.0)).show(ui, t).clicked() {
@@ -334,7 +334,7 @@ SettingsTab::Chart => {
                         }
                     }
                 });
-                srow("Tint Opacity", m).show(ui, t, |ui| {
+                srow("Tint Opacity", m, t).show(ui, t, |ui| {
                     let mut pct = (chart.session_bg_opacity * 100.0).round() as i32;
                     if crate::ui_kit::widgets::Slider::new(&mut pct, 0..=100)
                         .step(1.0)
@@ -396,23 +396,23 @@ SettingsTab::Trading => {
     // ── Order Defaults ──
     ui.horizontal(|ui| { ui.add_space(m); FormSection::new("ORDER DEFAULTS").spacing(0.0).show(ui, t, |_ui| {}); });
     ui.add_space(gap_sm());
-    srow("Stock Qty", m).show(ui, t, |ui| {
+    srow("Stock Qty", m, t).show(ui, t, |ui| {
         let mut v = watchlist.default_stock_qty as i32;
         if NumberStepper::new(&mut v).range(1..=100_000).step(10.0).suffix(" shares").integer().show(ui, t).changed() {
             watchlist.default_stock_qty = v.max(1) as u32;
         }
     });
-    srow("Options Qty", m).show(ui, t, |ui| {
+    srow("Options Qty", m, t).show(ui, t, |ui| {
         let mut v = watchlist.default_options_qty as i32;
         if NumberStepper::new(&mut v).range(1..=10_000).step(1.0).suffix(" contracts").integer().show(ui, t).changed() {
             watchlist.default_options_qty = v.max(1) as u32;
         }
     });
-    srow("Order Type", m).show(ui, t, |ui| {
+    srow("Order Type", m, t).show(ui, t, |ui| {
         const ORDER_TYPES: &[(usize, &str)] = &[(0, "MKT"), (1, "LMT"), (2, "STP")];
         SegmentedControl::new(&mut watchlist.default_order_type, ORDER_TYPES).show(ui, t);
     });
-    srow("Time in Force", m).show(ui, t, |ui| {
+    srow("Time in Force", m, t).show(ui, t, |ui| {
         const TIF_OPTS: &[(usize, &str)] = &[(0, "DAY"), (1, "GTC"), (2, "IOC")];
         SegmentedControl::new(&mut watchlist.default_tif, TIF_OPTS).show(ui, t);
     });
@@ -425,33 +425,33 @@ SettingsTab::Trading => {
     {
         use crate::chart_renderer::trading::order_manager;
         let mut limits = order_manager::get_risk_limits();
-        srow("Max Order Qty", m).show(ui, t, |ui| {
+        srow("Max Order Qty", m, t).show(ui, t, |ui| {
             let mut v = limits.max_order_qty as i32;
             if NumberStepper::new(&mut v).range(1..=100_000).step(10.0).integer().show(ui, t).changed() {
                 limits.max_order_qty = v.max(1) as u32;
             }
         });
-        srow("Max Position", m).show(ui, t, |ui| {
+        srow("Max Position", m, t).show(ui, t, |ui| {
             let mut v = limits.max_position_qty as i32;
             if NumberStepper::new(&mut v).range(1..=500_000).step(100.0).integer().show(ui, t).changed() {
                 limits.max_position_qty = v.max(1) as u32;
             }
         });
-        srow("Max Notional $", m).show(ui, t, |ui| {
+        srow("Max Notional $", m, t).show(ui, t, |ui| {
             let mut v = limits.max_notional as i64;
             if ui.add(egui::DragValue::new(&mut v).range(0..=10_000_000).speed(1000)
                 .custom_formatter(|v, _| if v as i64 == 0 { "OFF".into() } else { format!("${}", v as i64) })).changed() {
                 limits.max_notional = v.max(0) as f64;
             }
         });
-        srow("Fat Finger %", m).show(ui, t, |ui| {
+        srow("Fat Finger %", m, t).show(ui, t, |ui| {
             let mut v = limits.fat_finger_pct;
             if ui.add(egui::DragValue::new(&mut v).range(0.0..=50.0).speed(0.5).suffix("%")
                 .custom_formatter(|v, _| if v < 0.1 { "OFF".into() } else { format!("{:.1}%", v) })).changed() {
                 limits.fat_finger_pct = v.max(0.0);
             }
         });
-        srow("Max Open Orders", m).show(ui, t, |ui| {
+        srow("Max Open Orders", m, t).show(ui, t, |ui| {
             let mut v = limits.max_open_orders as i32;
             if crate::ui_kit::widgets::Slider::new(&mut v, 1..=1000)
                 .step(1.0)
@@ -461,14 +461,14 @@ SettingsTab::Trading => {
                 limits.max_open_orders = v.max(1) as usize;
             }
         });
-        srow("Max Daily Loss $", m).show(ui, t, |ui| {
+        srow("Max Daily Loss $", m, t).show(ui, t, |ui| {
             let mut v = limits.max_daily_loss as i64;
             if ui.add(egui::DragValue::new(&mut v).range(0..=1_000_000).speed(500)
                 .custom_formatter(|v, _| if v as i64 == 0 { "OFF".into() } else { format!("${}", v as i64) })).changed() {
                 limits.max_daily_loss = v.max(0) as f64;
             }
         });
-        srow("Dedup Cooldown", m).show(ui, t, |ui| {
+        srow("Dedup Cooldown", m, t).show(ui, t, |ui| {
             let mut v = limits.dedup_cooldown_ms as i32;
             if crate::ui_kit::widgets::Slider::new(&mut v, 100..=5000)
                 .step(50.0)
@@ -496,7 +496,7 @@ SettingsTab::Trading => {
             if enabled { crate::apex_data::ws::start(); }
         }
 
-        srow("Base URL", m)
+        srow("Base URL", m, t)
             .show_with_cx(ui, t, |ui, _cx| {
                 let id = egui::Id::new("apex_data_url_edit");
                 let mut buf: String = ui.data_mut(|d|
@@ -508,7 +508,7 @@ SettingsTab::Trading => {
                 }
             });
 
-        srow("Auth Token", m)
+        srow("Auth Token", m, t)
             .password(true)
             .hint("optional — leave blank if no token required")
             .show_with_cx(ui, t, |ui, cx| {

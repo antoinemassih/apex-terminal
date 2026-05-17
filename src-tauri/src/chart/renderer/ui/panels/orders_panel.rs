@@ -72,7 +72,7 @@ if watchlist.orders_panel_open {
                     wtext::section_label(ui, "POSITIONS", t.accent);
                     if has_positions {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if small_action_btn(ui, "Close All", t.bear) {
+                            if Button::small_action("Close All").tint(t.bear).show(ui, t).clicked() {
                                 // Fire close-all via ApexIB
                                 std::thread::spawn(|| {
                                     let _ = reqwest::blocking::Client::new()
@@ -228,18 +228,19 @@ if watchlist.orders_panel_open {
                 let draft_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft).count()).sum();
                 let active_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed).count()).sum();
                 let history_count: usize = panes.iter().map(|p| p.orders.iter().filter(|o| o.status == OrderStatus::Executed || o.status == OrderStatus::Cancelled).count()).sum();
-                if action_btn(ui, &format!("Place All ({})", draft_count), t.accent, draft_count > 0) {
+                let place_all_label = format!("Place All ({})", draft_count);
+                if Button::action(place_all_label.as_str()).tint(t.accent).disabled(draft_count == 0).show(ui, t).clicked() {
                     commands::push(AppCommand::PlaceAllDraftOrders);
                 }
-                if action_btn(ui, "Cancel All", t.bear, active_count > 0) {
+                if Button::action("Cancel All").tint(t.bear).disabled(active_count == 0).show(ui, t).clicked() {
                     commands::push(AppCommand::CancelAllOrders);
                 }
-                if action_btn(ui, "Clear", t.dim, history_count > 0) {
+                if Button::action("Clear").tint(t.dim).disabled(history_count == 0).show(ui, t).clicked() {
                     commands::push(AppCommand::ClearOrderHistory);
                 }
                 // Spread Builder shortcut
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if small_action_btn(ui, "Spread", t.dim) {
+                    if Button::small_action("Spread").tint(t.dim).show(ui, t).clicked() {
                         watchlist.spread_open = !watchlist.spread_open;
                     }
                 });
@@ -252,12 +253,12 @@ if watchlist.orders_panel_open {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.add(MonospaceCode::new(&format!("{} selected", sel_count)).size_px(font_sm_tight()).strong(true).color(t.accent));
-                    action_btn(ui, "Place", t.accent, true).then(|| {
+                    if Button::action("Place").tint(t.accent).show(ui, t).clicked() {
                         commands::push(AppCommand::PlaceSelectedOrders);
-                    });
-                    action_btn(ui, "Cancel", t.bear, true).then(|| {
+                    }
+                    if Button::action("Cancel").tint(t.bear).show(ui, t).clicked() {
                         commands::push(AppCommand::CancelSelectedOrders);
-                    });
+                    }
                     if icon_btn(ui, "Deselect", t.dim, 8.0).clicked() {
                         watchlist.selected_order_ids.clear();
                     }

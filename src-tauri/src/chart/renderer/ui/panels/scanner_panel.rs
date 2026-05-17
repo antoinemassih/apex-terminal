@@ -206,8 +206,9 @@ pub(crate) fn draw_content(
                     let color = if is_preset { t.accent } else { t.dim };
                     let label_resp = ui.add(egui::Label::new(
                         egui::RichText::new(format!("{} ({})", &scanner_name, results.len()))
-                            .monospace().size(9.0).strong().color(color))
+                            .monospace().size(font_xs()).strong().color(color))
                         .sense(egui::Sense::click()));
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &label_resp);
                     if label_resp.clicked() {}
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -255,7 +256,7 @@ pub(crate) fn draw_content(
                             .sym_font(mono_sm())
                             .chg_font(mono_sm())
                             .price_font(mono_sm())
-                            .fg(egui::Color32::from_gray(200))
+                            .fg(t.text)
                             .hover_overlay(color_alpha(t.accent, alpha_ghost()))
                             .show(ui);
                         if resp.response.hovered() {
