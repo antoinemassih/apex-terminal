@@ -19,7 +19,7 @@ use std::hash::Hash;
 use egui::{Color32, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 use super::super::style::*;
 use crate::ui_kit::icons::Icon;
-use super::inputs::{TextInput, SearchInput};
+use super::inputs::SearchInput;
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
