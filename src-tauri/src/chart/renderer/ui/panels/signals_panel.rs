@@ -1,13 +1,18 @@
 //! Signals panel — sidebar with subdivided sections, each with its own tab bar.
+//!
+//! Chrome (outer side panel, header, "+", tab strips, dividers, close-X)
+//! is delegated to [`SplitSectionPanel`](crate::ui_kit::widgets::SplitSectionPanel).
+//! This module is now responsible only for tab definitions and per-tab
+//! body dispatch.
 
 use egui;
 use super::super::style::*;
 use super::super::widgets as widgets;
-use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
-use super::super::widgets::headers::PanelHeaderWithClose;
+use super::super::super::gpu::{Watchlist, Chart, Theme};
 use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::side_panel_shell::Width;
+use crate::ui_kit::widgets::{Button, SplitSectionPanel};
 
 const ALL_TABS: &[(SignalsTab, &str)] = &[
     (SignalsTab::Alerts, "Alerts"),
@@ -23,110 +28,35 @@ pub(crate) fn draw(
 ) {
     if !watchlist.signals_panel_open { return; }
 
-    egui::SidePanel::right("signals_panel")
-        .default_width(260.0)
-        .min_width(240.0)
-        .max_width(420.0)
-        .resizable(true)
-        .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
-        .show(ctx, |ui| {
-            // Header — title + add-section button + close. Pre-resolve
-            // pane-aligned metrics to avoid a watchlist borrow conflict with
-            // the mutating closure below.
-            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
-            let title_font_size = watchlist.pane_header_size.title_font();
-            let closed = PanelHeaderWithClose::new("SIGNALS").theme(t)
-                .height(header_h).font_size(title_font_size)
-                .show_with(ui, |ui| {
-                if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("+").monospace().size(font_sm()).color(t.dim))
-                    .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(20.0, 20.0))).clicked() {
-                    let used: Vec<SignalsTab> = watchlist.signals_splits.iter().map(|s| s.tab).collect();
-                    let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
-                        .map(|(tab, _)| *tab).unwrap_or(SignalsTab::Alerts);
-                    if let Some(last) = watchlist.signals_splits.last_mut() { last.frac *= 0.5; }
-                    let frac = watchlist.signals_splits.last().map(|s| s.frac).unwrap_or(1.0);
-                    watchlist.signals_splits.push(SplitSection::new(next, frac));
-                }
-            });
-            if closed { watchlist.signals_panel_open = false; }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    // Snapshot the active tab per section so the body closure can dispatch
+    // without holding a borrow into `watchlist.signals_splits` (which the
+    // widget owns mutably for the duration of `.show()`).
+    let tab_snapshot: Vec<SignalsTab> =
+        watchlist.signals_splits.iter().map(|s| s.tab).collect();
 
-            let available_h = ui.available_height();
-            let n = watchlist.signals_splits.len();
-            if watchlist.signals_splits.is_empty() {
-                watchlist.signals_splits.push(SplitSection::new(SignalsTab::Alerts, 1.0));
-            }
+    // Move splits out of watchlist so the body closure can take `&mut watchlist`
+    // freely (child draw_content panels require it). Restore after `.show()`.
+    let mut splits = std::mem::take(&mut watchlist.signals_splits);
+    let mut open = watchlist.signals_panel_open;
 
-            let divider_total = n.saturating_sub(1) as f32 * 6.0;
-            let tab_bar_total = n as f32 * 28.0;
-            let content_h = (available_h - divider_total - tab_bar_total).max(40.0);
-            let total_frac: f32 = watchlist.signals_splits.iter().map(|s| s.frac).sum();
-            let norm = if total_frac > 0.001 { 1.0 / total_frac } else { 1.0 };
-            let heights: Vec<f32> = watchlist.signals_splits.iter()
-                .map(|s| (s.frac * norm * content_h).max(30.0)).collect();
-
-            let mut remove_idx: Option<usize> = None;
-            let mut divider_drags: Vec<(usize, f32)> = Vec::new();
-
-            for i in 0..n {
-                let tab = watchlist.signals_splits[i].tab;
-                let h = heights[i];
-                let can_close = n > 1;
-
-                ui.horizontal(|ui| {
-                    ui.set_min_height(26.0);
-                    for (t_val, t_label) in ALL_TABS {
-                        let sel = tab == *t_val;
-                        let fg = if sel { t.accent } else { t.dim.gamma_multiply(0.5) };
-                        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(*t_label).monospace().size(font_xs()).color(fg))
-                            .fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE)
-                            .min_size(egui::vec2(0.0, 22.0))).clicked() {
-                            watchlist.signals_splits[i].tab = *t_val;
-                        }
-                    }
-                    if can_close {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{00D7}").size(font_sm()).color(t.dim.gamma_multiply(0.4)))
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
-                                remove_idx = Some(i);
-                            }
-                        });
-                    }
-                });
-                ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
-                     egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-                    egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
-
-                egui::ScrollArea::vertical().id_salt(format!("sig_sec_{}", i)).max_height(h).show(ui, |ui| {
-                    match tab {
-                        SignalsTab::Alerts => super::alerts_panel::draw_content(ui, watchlist, panes, ap, t),
-                        SignalsTab::Signals => draw_signals_toggles(ui, panes, ap, t),
-                    }
-                });
-
-                if i + 1 < n {
-                    let d = split_divider(ui, &format!("sdiv_{}", i), t.dim);
-                    if d != 0.0 { divider_drags.push((i, d)); }
-                }
-            }
-
-            if let Some(idx) = remove_idx {
-                let removed = watchlist.signals_splits[idx].frac;
-                watchlist.signals_splits.remove(idx);
-                if !watchlist.signals_splits.is_empty() {
-                    let share = removed / watchlist.signals_splits.len() as f32;
-                    for s in &mut watchlist.signals_splits { s.frac += share; }
-                }
-            }
-            for (idx, delta) in divider_drags {
-                if idx + 1 < watchlist.signals_splits.len() {
-                    let fd = delta / available_h.max(1.0);
-                    watchlist.signals_splits[idx].frac = (watchlist.signals_splits[idx].frac + fd).clamp(0.05, 0.90);
-                    watchlist.signals_splits[idx + 1].frac = (watchlist.signals_splits[idx + 1].frac - fd).clamp(0.05, 0.90);
-                }
+    SplitSectionPanel::new("signals_panel", &mut splits)
+        .title("SIGNALS")
+        .tabs(ALL_TABS)
+        .default_tab(SignalsTab::Alerts)
+        .width(Width::Narrow)
+        .resizable(240.0..=420.0)
+        .show(ctx, t, &mut open, |ui, t, i, _frac| {
+            let tab = tab_snapshot.get(i).copied().unwrap_or(SignalsTab::Alerts);
+            match tab {
+                SignalsTab::Alerts =>
+                    super::alerts_panel::draw_content(ui, watchlist, panes, ap, t),
+                SignalsTab::Signals =>
+                    draw_signals_toggles(ui, panes, ap, t),
             }
         });
+
+    watchlist.signals_splits = splits;
+    watchlist.signals_panel_open = open;
 }
 
 /// Per-signal visibility toggles.
