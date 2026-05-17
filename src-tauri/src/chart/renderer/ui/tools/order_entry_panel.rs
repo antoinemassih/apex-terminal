@@ -43,7 +43,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
             .frame(PopupFrame::new()
                 .colors(color_alpha(c.t.toolbar_bg, 235), color_alpha(c.t.toolbar_border, 100))
                 .ctx(c.ctx)
-                .inner_margin(egui::Margin { left: gap_lg() as i8, right: gap_lg() as i8, top: gap_sm() as i8, bottom: gap_sm() as i8 })
+                .inner_margin(egui::Margin::symmetric(gap_lg() as i8, gap_sm() as i8))
                 .corner_radius(radius_lg())
                 .build())
             .show(c.ctx, |ui| {
@@ -73,7 +73,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
         // TODO(ui-kit): expanded panel uses corner_radius(4.0) and zero margin — can't use PopupFrame without changing visuals.
         .frame(egui::Frame::popup(&c.ctx.style())
             .fill(c.t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
+            .inner_margin(egui::Margin::ZERO)
             .stroke(egui::Stroke::new(stroke_std(), color_alpha(c.t.toolbar_border, 100)))
             .corner_radius(radius_sm()))
         .show(c.ctx, |ui| {
