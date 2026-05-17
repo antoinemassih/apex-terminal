@@ -142,7 +142,7 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
         );
         let resp = ui.allocate_rect(rect, self.sense);
 
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let default_t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
         let border = self.theme_border.unwrap_or(default_t.toolbar_border);
         let accent = self.theme_accent.unwrap_or(default_t.accent);
 

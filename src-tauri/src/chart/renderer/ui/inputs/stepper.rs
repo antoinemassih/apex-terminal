@@ -94,7 +94,7 @@ impl<'a, V: NumericValue> NumericStepper<'a, V> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let theme = match self.theme { Some(t) => t, None => &crate::chart_renderer::gpu::THEMES[0] };
+        let theme = match self.theme { Some(t) => t, None => crate::ui_kit::widgets::theme::active_theme(ui.ctx()) };
         let dim   = theme.dim;
         let text  = theme.text;
         let border = theme.toolbar_border;

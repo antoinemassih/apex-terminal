@@ -75,15 +75,16 @@ pub struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new() -> Self {
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
         Self {
             title: None,
             subtitle: None,
             variant: CardVariant::Bordered,
+            // Sentinel TRANSPARENT — resolved against the ambient theme in show()
+            // if the caller never called .theme() / .colors().
             bg:     Color32::TRANSPARENT,
             border: Color32::TRANSPARENT,
-            fg:     default_t.text,
-            dim:    default_t.dim,
+            fg:     Color32::TRANSPARENT,
+            dim:    Color32::TRANSPARENT,
         }
     }
 
@@ -108,6 +109,11 @@ impl<'a> Card<'a> {
 
     /// Render header (if any) then body.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<R> {
+        // Resolve unset colors against the ambient theme so callers that never
+        // called `.theme()` still get sensible text + dim colors.
+        let amb = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let fg  = if self.fg  == Color32::TRANSPARENT { amb.text } else { self.fg };
+        let dim = if self.dim == Color32::TRANSPARENT { amb.dim  } else { self.dim };
         let frame = match self.variant {
             CardVariant::Bordered => CardFrame::new().colors(self.bg, self.border).build(),
             CardVariant::Elevated => CardFrame::new().colors(self.bg, self.border).build(),
@@ -117,10 +123,10 @@ impl<'a> Card<'a> {
         let mut out = None;
         frame.show(ui, |ui| {
             if let Some(t) = self.title {
-                ui.label(RichText::new(t).monospace().size(font_md()).strong().color(self.fg));
+                ui.label(RichText::new(t).monospace().size(font_md()).strong().color(fg));
             }
             if let Some(s) = self.subtitle {
-                ui.label(RichText::new(s).monospace().size(font_sm()).color(self.dim));
+                ui.label(RichText::new(s).monospace().size(font_sm()).color(dim));
             }
             if self.title.is_some() || self.subtitle.is_some() {
                 ui.add_space(gap_xs());
