@@ -59,6 +59,12 @@ pub trait ComponentTheme {
     fn icon_muted(&self) -> Color32;
     fn icon_disabled(&self) -> Color32;
     fn icon_accent(&self) -> Color32;
+
+    /// Shadow tint. Themes pick a near-black for dark palettes and a soft
+    /// gray for light palettes so drops don't read as a hard black smudge
+    /// on Bauhaus / Peach / Ivory / Newsprint. The default impl returns
+    /// `Color32::BLACK` as a safe fallback; concrete themes override.
+    fn shadow_color(&self) -> Color32 { Color32::BLACK }
 }
 
 impl ComponentTheme for crate::chart_renderer::gpu::Theme {
@@ -82,6 +88,7 @@ impl ComponentTheme for crate::chart_renderer::gpu::Theme {
     fn icon_muted(&self) -> Color32 { self.icon_muted }
     fn icon_disabled(&self) -> Color32 { self.icon_disabled }
     fn icon_accent(&self) -> Color32 { self.icon_accent }
+    fn shadow_color(&self) -> Color32 { self.shadow_color }
 }
 
 // Blanket impl so callers can pass `&T` where T: ComponentTheme through
@@ -121,4 +128,5 @@ impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {
     fn icon_muted(&self) -> Color32 { (**self).icon_muted() }
     fn icon_disabled(&self) -> Color32 { (**self).icon_disabled() }
     fn icon_accent(&self) -> Color32 { (**self).icon_accent() }
+    fn shadow_color(&self) -> Color32 { (**self).shadow_color() }
 }

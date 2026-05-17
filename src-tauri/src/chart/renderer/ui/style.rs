@@ -695,7 +695,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
             let galley = ui.fonts(|f| f.layout_no_wrap(
                 display_label.clone(),
                 egui::FontId::monospace(label_size),
-                Color32::WHITE,
+                Color32::WHITE, // layout-only: color discarded, only width is read below
             ));
             galley.rect.width() + 16.0 // approx button padding
         };
@@ -912,13 +912,31 @@ pub fn dialog_separator(ui: &mut egui::Ui, margin: f32, color: Color32) {
 
 /// Inset separator + soft gradient shadow below (3 fading lines).
 /// Uses `stroke_thick` for the main divider line so bold-separator sites are style-driven.
+///
+/// LEGACY: hardcoded black for the shadow gradient — breaks light themes.
+/// Prefer [`dialog_separator_shadow_themed`] in new code.
 pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
+    dialog_separator_shadow_impl(ui, margin, color, Color32::BLACK);
+}
+
+/// Inset separator + soft gradient shadow below — theme-aware.
+pub fn dialog_separator_shadow_themed(
+    ui: &mut egui::Ui,
+    margin: f32,
+    color: Color32,
+    t: &super::super::gpu::Theme,
+) {
+    dialog_separator_shadow_impl(ui, margin, color, t.shadow_color);
+}
+
+#[inline]
+fn dialog_separator_shadow_impl(ui: &mut egui::Ui, margin: f32, color: Color32, shadow_tint: Color32) {
     let rect = ui.available_rect_before_wrap();
     let y = ui.cursor().min.y;
     let left = rect.left() + margin;
     let right = rect.right() - margin;
     ui.painter().line_segment([egui::pos2(left, y), egui::pos2(right, y)], Stroke::new(current().stroke_thick, color));
-    // Fading shadow gradient: 3 strokes at decreasing black alpha
+    // Fading shadow gradient: 3 strokes at decreasing alpha (themed tint).
     #[cfg(feature = "design-mode")]
     let shadow_alphas = {
         if let Some(t) = crate::design_tokens::get() { t.shadow.gradient } else { [20u8, 12, 4] }
@@ -928,7 +946,11 @@ pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
     for (i, &a) in shadow_alphas.iter().enumerate() {
         ui.painter().line_segment(
             [egui::pos2(left, y + (i + 1) as f32), egui::pos2(right, y + (i + 1) as f32)],
-            Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(0, 0, 0, a)));
+            Stroke::new(
+                stroke_thin(),
+                Color32::from_rgba_unmultiplied(shadow_tint.r(), shadow_tint.g(), shadow_tint.b(), a),
+            ),
+        );
     }
     ui.add_space(crate::dt_f32!(separator.shadow_space, 4.0));
 }
@@ -1158,9 +1180,23 @@ pub fn stat_row(ui: &mut egui::Ui, label: &str, value: &str, label_color: Color3
 }
 
 /// Paint a drop shadow behind a painter-based tooltip rect (call BEFORE painting the bg).
+///
+/// LEGACY: hardcoded black tint — breaks light themes. Prefer
+/// [`paint_tooltip_shadow_themed`] in new code.
 pub fn paint_tooltip_shadow(painter: &egui::Painter, rect: egui::Rect, radius: f32) {
     let shadow_rect = rect.translate(egui::vec2(shadow_offset(), shadow_offset()));
     painter.rect_filled(shadow_rect, radius, Color32::from_rgba_unmultiplied(0, 0, 0, shadow_alpha()));
+}
+
+/// Theme-aware drop shadow behind a painter-based tooltip rect.
+pub fn paint_tooltip_shadow_themed(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    radius: f32,
+    t: &super::super::gpu::Theme,
+) {
+    let shadow_rect = rect.translate(egui::vec2(shadow_offset(), shadow_offset()));
+    painter.rect_filled(shadow_rect, radius, shadow_color_alpha(t, shadow_alpha()));
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
@@ -1461,7 +1497,7 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
         (color.r() as f32 * bright) as u8,
         (color.g() as f32 * bright) as u8,
         (color.b() as f32 * bright) as u8);
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(Color32::WHITE))
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(contrast_fg(bg)))
         .fill(bg).min_size(egui::vec2(width, 24.0)).corner_radius(3.0));
     hit(&resp.rect, "TRADE_BTN", "Buttons");
     if resp.hovered() {
@@ -1473,7 +1509,7 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
             (color.b() as f32 * hb).min(255.0) as u8);
         ui.painter().rect_filled(resp.rect, radius_md(), hover_bg);
         ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
-            label, egui::FontId::monospace(font_lg()), Color32::WHITE);
+            label, egui::FontId::monospace(font_lg()), contrast_fg(hover_bg));
     }
     resp.clicked()
 }
@@ -1486,7 +1522,7 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
 pub fn cta_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
     let st = current();
     let fill = st.active_fill_color.unwrap_or(color);
-    let fg   = st.active_text_color.unwrap_or(Color32::WHITE);
+    let fg   = st.active_text_color.unwrap_or_else(|| contrast_fg(fill));
     let h    = st.cta_height_px;
     let px   = st.cta_padding_x;
     let cr   = st.r_sm as f32;

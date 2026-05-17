@@ -251,7 +251,7 @@ impl<'a> Modal<'a> {
                 .colors(bg, border)
                 .ctx(ctx)
                 .build(),
-            FrameKind::DialogWindow => dialog_window_frame(ctx, bg, border, None),
+            FrameKind::DialogWindow => dialog_window_frame(ctx, bg, border, None, t.shadow_color()),
             FrameKind::Custom(f) => f,
         };
 
@@ -359,7 +359,7 @@ impl<'a> Modal<'a> {
                             super::paint_shadow_gpu(
                                 ui.painter(),
                                 shadow_rect,
-                                super::ShadowSpec::lg(),
+                                super::ShadowSpec::lg_themed(t),
                             );
                         });
                 }
@@ -400,7 +400,7 @@ impl<'a> Modal<'a> {
                             super::paint_shadow_gpu(
                                 ui.painter(),
                                 r,
-                                super::ShadowSpec::lg(),
+                                super::ShadowSpec::lg_themed(t),
                             );
                         }
                         let resp = frame.show(ui, |ui| {
@@ -441,6 +441,7 @@ fn dialog_window_frame(
     toolbar_bg: Color32,
     toolbar_border: Color32,
     border_color: Option<Color32>,
+    shadow_tint: Color32,
 ) -> egui::Frame {
     let border = border_color.unwrap_or(color_alpha(toolbar_border, 80));
     egui::Frame::popup(&ctx.style())
@@ -452,6 +453,8 @@ fn dialog_window_frame(
             offset: [0, 8],
             blur:   28,
             spread: 2,
-            color:  Color32::from_black_alpha(80),
+            color:  Color32::from_rgba_unmultiplied(
+                shadow_tint.r(), shadow_tint.g(), shadow_tint.b(), 80,
+            ),
         })
 }

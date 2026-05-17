@@ -151,7 +151,10 @@ impl<'a> Tooltip<'a> {
                 super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
-                    super::ShadowSpec::sm().color(Color32::from_black_alpha(48)),
+                    super::ShadowSpec::sm_themed(theme).color({
+                        let s = theme.shadow_color();
+                        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 48)
+                    }),
                 );
                 let frame = egui::Frame::popup(ui.style())
                     .fill(bg)
@@ -162,7 +165,10 @@ impl<'a> Tooltip<'a> {
                         offset: [0, 2],
                         blur: 8,
                         spread: 0,
-                        color: Color32::from_black_alpha(60),
+                        color: {
+                            let s = theme.shadow_color();
+                            Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 60)
+                        },
                     });
                 frame.show(ui, |ui| {
                     ui.set_max_width(MAX_WIDTH);
@@ -227,7 +233,10 @@ pub fn paint_tooltip_card(
         painter.rect_filled(
             rect.translate(egui::vec2(0.0, shadow_offset())).expand(1.0),
             cr,
-            egui::Color32::from_rgba_unmultiplied(0, 0, 0, shadow_alpha()),
+            {
+                let s = theme.shadow_color();
+                egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), shadow_alpha())
+            },
         );
     }
 

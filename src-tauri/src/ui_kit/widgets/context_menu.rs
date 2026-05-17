@@ -42,6 +42,8 @@ pub struct MenuTheme {
     pub bg: Color32,
     pub fg: Color32,
     pub danger: Color32,
+    /// Themed shadow tint (light themes use soft gray, dark themes black).
+    pub shadow: Color32,
 }
 
 impl MenuTheme {
@@ -52,6 +54,7 @@ impl MenuTheme {
             bg: t.bg,
             fg: t.text,
             danger: t.bear,
+            shadow: <Theme as ComponentTheme>::shadow_color(t),
         }
     }
     pub fn from_component<T: ComponentTheme + ?Sized>(t: &T) -> Self {
@@ -61,6 +64,7 @@ impl MenuTheme {
             bg: t.bg(),
             fg: t.text(),
             danger: t.bear(),
+            shadow: t.shadow_color(),
         }
     }
 }
@@ -141,10 +145,16 @@ impl ContextMenu {
             .show(ui.ctx(), |ui| {
                 ui.set_opacity(appear_t);
                 let shadow_rect = egui::Rect::from_min_size(pos, prior_size);
+                // Use the menu's themed shadow tint so light themes get a
+                // soft gray drop instead of a hard black smudge.
+                let s = theme.shadow;
                 super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
-                    super::ShadowSpec::md(),
+                    #[allow(deprecated)]
+                    super::ShadowSpec::md().color(
+                        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 77),
+                    ),
                 );
                 let frame = PopupFrame::new()
                     .colors(theme.bg, theme.dim)
