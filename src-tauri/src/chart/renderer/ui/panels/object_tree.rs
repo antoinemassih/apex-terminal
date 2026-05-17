@@ -396,9 +396,10 @@ egui::SidePanel::left("object_tree_panel")
                         for ds in &group_draws {
                             let is_sel = chart.selected_ids.contains(&ds.id);
                             let dc = hex_to_color(&ds.color, if is_hidden { 0.3 } else { 1.0 });
-                            let label_col = if is_sel { egui::Color32::WHITE }
+                            // Light-theme parity: use t.text instead of hardcoded WHITE; muted body uses color_muted(t.text).
+                            let label_col = if is_sel { t.text }
                                 else if is_hidden { t.dim.gamma_multiply(0.3) }
-                                else { egui::Color32::from_white_alpha(170) };
+                                else { color_muted(t.text) };
                             let kind_label = ds.kind_label;
                             let sig_score = ds.sig_score;
                             let locked = ds.locked;
@@ -614,6 +615,7 @@ egui::SidePanel::left("object_tree_panel")
         // Color32 values that can be moved into the Fn closure.
         let theme_dim = t.dim;
         let theme_bear = t.bear;
+        let theme_text = t.text;
         let tree_resp = Tree::new(&mut tree_state, &tree_items)
             .row_height(20.0)
             .indent_size(12.0)
@@ -630,7 +632,8 @@ egui::SidePanel::left("object_tree_panel")
                         // colored dot
                         let (dot_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
                         ui.painter().circle_filled(dot_r.center(), 3.0, color);
-                        let label_col = if visible { egui::Color32::from_white_alpha(180) }
+                        // Light-theme parity: use theme text (muted) instead of hardcoded white alpha.
+                        let label_col = if visible { color_muted(theme_text) }
                             else { theme_dim.gamma_multiply(0.3) };
                         ui.add(MonospaceCode::new(&item.label).size_px(font_sm()).color(label_col));
                         // right-aligned eye toggle
@@ -649,7 +652,8 @@ egui::SidePanel::left("object_tree_panel")
                         let (color, visible) = snap.map(|s| (s.1, s.2)).unwrap_or((theme_dim, true));
                         let (dot_r, _) = ui.allocate_exact_size(egui::vec2(8.0, 18.0), egui::Sense::hover());
                         ui.painter().circle_filled(dot_r.center(), 3.0, color);
-                        let label_col = if visible { egui::Color32::from_white_alpha(180) }
+                        // Light-theme parity: use theme text (muted) instead of hardcoded white alpha.
+                        let label_col = if visible { color_muted(theme_text) }
                             else { theme_dim.gamma_multiply(0.3) };
                         ui.add(MonospaceCode::new(&item.label).size_px(font_sm()).color(label_col));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -744,7 +748,8 @@ egui::SidePanel::left("object_tree_panel")
                 let label = w.kind.label();
                 let vis = w.visible;
                 let dot_col = if vis { t.accent } else { t.dim.gamma_multiply(0.3) };
-                let label_col = if vis { egui::Color32::from_white_alpha(180) }
+                // Light-theme parity: use theme text (muted) instead of hardcoded white alpha.
+                let label_col = if vis { color_muted(t.text) }
                     else { t.dim.gamma_multiply(0.3) };
                 let opacity = w.opacity;
                 ListRow::new(18.0)

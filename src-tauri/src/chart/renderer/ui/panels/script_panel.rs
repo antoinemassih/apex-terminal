@@ -248,7 +248,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     .width(w - 36.0)
                     .font_size(9.5)
                     .placeholder("Describe your indicator or strategy...")
-                    .text_color(egui::Color32::from_gray(210))
+                    .text_color(t.text)
                     .margin(egui::Margin::symmetric(gap_md() as i8, gap_xs() as i8))
                     .theme(t)
                     .show(ui);

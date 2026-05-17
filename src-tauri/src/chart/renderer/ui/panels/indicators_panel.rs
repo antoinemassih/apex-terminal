@@ -450,7 +450,7 @@ fn section_header(ui: &mut egui::Ui, title: &str, count: Option<usize>, t: &Them
         egui::pos2(rect.left() + 10.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
         title,
-        egui::FontId::monospace(font_xs()),
+        mono_xs(),
         t.text,
     );
 
@@ -458,7 +458,7 @@ fn section_header(ui: &mut egui::Ui, title: &str, count: Option<usize>, t: &Them
     if let Some(n) = count {
         let chip_text = format!("{}", n);
         let galley = p.layout_no_wrap(chip_text.clone(),
-            egui::FontId::monospace(font_xs()), t.dim.gamma_multiply(0.85));
+            mono_xs(), t.dim.gamma_multiply(0.85));
         let chip_w = galley.size().x + 10.0;
         let chip_h = 14.0;
         let chip_rect = egui::Rect::from_min_size(
@@ -470,7 +470,7 @@ fn section_header(ui: &mut egui::Ui, title: &str, count: Option<usize>, t: &Them
             chip_rect.center(),
             egui::Align2::CENTER_CENTER,
             chip_text,
-            egui::FontId::monospace(font_xs()),
+            mono_xs(),
             t.dim,
         );
     }
@@ -904,20 +904,20 @@ fn draw_library_section(
             egui::pos2(h_rect.left() + 8.0, cy),
             egui::Align2::LEFT_CENTER,
             caret,
-            egui::FontId::monospace(font_sm()),
+            mono_sm(),
             t.dim,
         );
         painter.text(
             egui::pos2(h_rect.left() + 22.0, cy),
             egui::Align2::LEFT_CENTER,
             sec.title,
-            egui::FontId::monospace(font_sm()),
+            mono_sm(),
             if hovered { t.text } else { t.text.gamma_multiply(0.92) },
         );
         // Count chip — pill-shaped, mirrors the section-header chip.
         let chip_text = format!("{}", matches.len());
         let galley = painter.layout_no_wrap(chip_text.clone(),
-            egui::FontId::monospace(font_xs()), t.dim);
+            mono_xs(), t.dim);
         let chip_w = galley.size().x + 10.0;
         let chip_h = 14.0;
         let chip_rect = egui::Rect::from_min_size(
@@ -926,7 +926,7 @@ fn draw_library_section(
         );
         painter.rect_filled(chip_rect, 7.0, color_alpha(t.toolbar_border, alpha_subtle()));
         painter.text(chip_rect.center(), egui::Align2::CENTER_CENTER,
-            chip_text, egui::FontId::monospace(font_xs()), t.dim);
+            chip_text, mono_xs(), t.dim);
 
         if h_resp.clicked() && !force_open {
             if collapsed { watchlist.indicators_lib_collapsed.remove(&key); }
@@ -1021,22 +1021,22 @@ fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Ch
     let label_x = rect.left() + 16.0;
     let label_col = if single && active { t.accent } else { t.text };
     painter.text(egui::pos2(label_x, cy), egui::Align2::LEFT_CENTER,
-        kind.label(), egui::FontId::monospace(font_sm()), label_col);
+        kind.label(), mono_sm(), label_col);
     let tag_w = 50.0;
     painter.text(egui::pos2(label_x + tag_w, cy), egui::Align2::LEFT_CENTER,
-        type_long_name(kind), egui::FontId::monospace(font_xs()), t.dim);
+        type_long_name(kind), mono_xs(), t.dim);
 
     let right_x = rect.right() - 8.0;
     if single {
         let lbl = if active { "ON" } else { "+" };
         let col = if active { t.accent } else { t.dim };
-        painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER, lbl, egui::FontId::monospace(font_xs()), col);
+        painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER, lbl, mono_xs(), col);
     } else if count > 0 {
         painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-            format!("+ ({})", count), egui::FontId::monospace(font_xs()), t.dim.gamma_multiply(0.8));
+            format!("+ ({})", count), mono_xs(), t.dim.gamma_multiply(0.8));
     } else {
         painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-            "+", egui::FontId::monospace(font_md()), t.dim);
+            "+", mono_md(), t.dim);
     }
 
     if resp.clicked() {
@@ -1070,13 +1070,13 @@ fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart) {
     let label_x = rect.left() + 16.0;
     let label_col = if active { t.accent } else { t.text };
     painter.text(egui::pos2(label_x, cy), egui::Align2::LEFT_CENTER,
-        bool_label(tg), egui::FontId::monospace(font_sm()), label_col);
+        bool_label(tg), mono_sm(), label_col);
 
     let right_x = rect.right() - 8.0;
     let lbl = if active { "ON" } else { "+" };
     let col = if active { t.accent } else { t.dim };
     painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-        lbl, egui::FontId::monospace(font_xs()), col);
+        lbl, mono_xs(), col);
 
     if resp.clicked() { bool_set(chart, tg, !active); }
 }
@@ -1097,13 +1097,13 @@ fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
     let label_x = rect.left() + 16.0;
     let label_col = if active { t.accent } else { t.text };
     painter.text(egui::pos2(label_x, cy), egui::Align2::LEFT_CENTER,
-        "Volume profile", egui::FontId::monospace(font_sm()), label_col);
+        "Volume profile", mono_sm(), label_col);
 
     let right_x = rect.right() - 8.0;
     let lbl = if active { vp_label(chart.vp_mode) } else { "+" };
     let col = if active { t.accent } else { t.dim };
     painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-        lbl, egui::FontId::monospace(font_xs()), col);
+        lbl, mono_xs(), col);
 
     if resp.clicked() {
         // Cycle Off → Classic → Heatmap → Strip → Clean → Off
@@ -1134,13 +1134,13 @@ fn lib_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
     let label_x = rect.left() + 16.0;
     let label_col = if active { t.accent } else { t.text };
     painter.text(egui::pos2(label_x, cy), egui::Align2::LEFT_CENTER,
-        "SwingRange", egui::FontId::monospace(font_sm()), label_col);
+        "SwingRange", mono_sm(), label_col);
 
     let right_x = rect.right() - 8.0;
     let lbl = if active { swing_label(chart.swing_leg_mode) } else { "+" };
     let col = if active { t.accent } else { t.dim };
     painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-        lbl, egui::FontId::monospace(font_xs()), col);
+        lbl, mono_xs(), col);
 
     if resp.clicked() { chart.swing_leg_mode = (chart.swing_leg_mode + 1) % 3; }
 }

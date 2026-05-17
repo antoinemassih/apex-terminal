@@ -156,6 +156,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             ui.add_space(4.0);
                             ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(color_half(t.dim)));
                         } else {
+                            // WHITE foreground is intentional brand contrast on the Discord blurple fill.
                             if ui.add(Button::new("  Connect Discord  ")
                                 .variant(Variant::Chrome)
                                 .size(Size::Sm)
@@ -181,13 +182,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                 ui.horizontal(|ui| {
                     ui.add_space(8.0);
                     if !watchlist.discord_channel.is_empty() {
-                        ui.add(widgets::text::BodyLabel::new(&watchlist.discord_channel).monospace(true).strong(true).size(font_sm()).color(egui::Color32::WHITE));
+                        ui.add(widgets::text::BodyLabel::new(&watchlist.discord_channel).monospace(true).strong(true).size(font_sm()).color(t.text));
                     } else {
                         ui.add(widgets::text::SectionLabel::new("DISCORD").color(discord_blurple));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(8.0);
-                        if close_button(ui, t.dim) { watchlist.discord_open = false; }
+                        if Button::close().show(ui, t).clicked() { watchlist.discord_open = false; }
                         if ui.add(Button::new("×")
                             .variant(Variant::TextOnly)
                             .size(Size::Sm)
@@ -293,6 +294,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                         ui.add_space(4.0);
                                         ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(color_half(t.dim)));
                                         ui.add_space(8.0);
+                                        // WHITE foreground is intentional brand contrast on the Discord blurple fill.
                                         if ui.add(Button::new("  Add Bot to Server  ")
                                             .variant(Variant::Chrome)
                                             .size(Size::Sm)
@@ -481,6 +483,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                                     .placeholder(&format!("Message {}...", watchlist.discord_channel))
                                     .theme(t)
                                     .show(ui);
+                                // WHITE foreground is intentional brand contrast on the Discord blurple fill.
                                 let send_clicked = ui.add(Button::new("Send")
                                     .variant(Variant::Chrome)
                                     .size(Size::Sm)
