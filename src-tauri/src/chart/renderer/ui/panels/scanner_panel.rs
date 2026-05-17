@@ -3,18 +3,25 @@
 //! Shows collapsible scanner sections (Top Gainers, Top Losers, Most Active)
 //! populated from bulk quote data. Each symbol row is clickable to load a chart.
 //! Includes "Save as Watchlist" and a custom scanner builder.
+//!
+//! Migrated to the canonical ui_kit side-panel primitives:
+//!   - `SidePanelShell` for outer chrome (was hand-rolled SidePanel + CompactPanelFrame)
+//!   - `PanelCard` for the custom-scanner builder (replaces `ui.group()` default frame)
+//!   - `PanelEmpty` for the "fetching quotes" empty state (replaces local `EmptyState`)
+//!   - `Button::icon(Icon::ARROW_COUNTER_CLOCKWISE).variant(Variant::Ghost)` for the
+//!     refresh control (was hand-rolled `icon_btn` chrome).
 
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
-use super::super::widgets::frames::CompactPanelFrame;
 use super::super::widgets::status::Spinner;
-use super::super::widgets::layout::EmptyState;
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use super::super::widgets::form::FormRow;
 use super::super::widgets::rows::WatchlistRow;
-use crate::ui_kit::widgets::{Button, Input, NumberStepper, Skeleton};
+use crate::ui_kit::widgets::{
+    Button, Input, NumberStepper, Skeleton, PanelCard, PanelEmpty, SidePanelShell, Width,
+};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
@@ -77,7 +84,9 @@ pub(crate) fn draw_content(
     ui.set_min_width(0.0);
     ui.set_max_width(panel_w);
 
-    // ── Header ──
+    // ── Header (in-body — when rendered as a tab the SidePanelShell header is
+    // owned by analysis_panel). The standalone `draw` path attaches SCANNERS
+    // as the shell title and skips this row.
     ui.horizontal(|ui| {
         ui.add(SectionLabel::new("SCANNERS").xs().color(t.accent));
         if let Some(last) = watchlist.scanner_last_fetch {
@@ -89,81 +98,93 @@ pub(crate) fn draw_content(
             ui.add(Spinner::new().sm().theme(t));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if icon_btn(ui, Icon::ARROW_COUNTER_CLOCKWISE, t.dim, font_md())
-                .on_hover_text("Refresh now").clicked()
+            if Button::icon(Icon::ARROW_COUNTER_CLOCKWISE)
+                .variant(Variant::Ghost)
+                .size(KitSize::Sm)
+                .show(ui, t)
+                .on_hover_text("Refresh now")
+                .clicked()
             {
                 watchlist.scanner_last_fetch = None;
             }
-            if icon_btn(ui, Icon::PLUS, t.dim, font_md())
-                .on_hover_text("New custom scanner").clicked()
+            if Button::icon(Icon::PLUS)
+                .variant(Variant::Ghost)
+                .size(KitSize::Sm)
+                .show(ui, t)
+                .on_hover_text("New custom scanner")
+                .clicked()
             {
                 watchlist.scanner_builder_open = !watchlist.scanner_builder_open;
             }
         });
     });
     separator(ui, t.toolbar_border);
-    ui.add_space(4.0);
+    ui.add_space(gap_xs());
 
-    // ── Custom scanner builder (collapsible) ──
+    // ── Custom scanner builder (collapsible) — now a PanelCard instead of
+    //    `ui.group()` (which paints egui's default gray frame that matches
+    //    nothing else in the app).
     if watchlist.scanner_builder_open {
-        ui.group(|ui| {
-            ui.set_width(panel_w - 6.0);
-            ui.add(MonospaceCode::new("New Scanner").size_px(font_sm_tight()).strong(true).color(t.accent));
-            ui.add_space(4.0);
+        PanelCard::new()
+            .padding(gap_md())
+            .show(ui, t, |ui, t| {
+                ui.set_width(panel_w - 6.0);
+                ui.add(MonospaceCode::new("New Scanner").size_px(font_sm_tight()).strong(true).color(t.accent));
+                ui.add_space(gap_xs());
 
-            FormRow::new("Name").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                Input::new(&mut watchlist.scanner_new_name)
-                    .min_width(panel_w - 60.0)
-                    .size(KitSize::Xs)
-                    .show(ui, t);
-            });
-            FormRow::new("Min %").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                NumberStepper::new(&mut watchlist.scanner_new_min_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
-                ui.add(MonospaceCode::new("Max %").size_px(font_xs()).color(t.dim));
-                NumberStepper::new(&mut watchlist.scanner_new_max_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
-            });
-            FormRow::new("Min Vol").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                Input::new(&mut watchlist.scanner_new_min_volume)
-                    .min_width(80.0)
-                    .size(KitSize::Xs)
-                    .placeholder("e.g. 1000000")
-                    .show(ui, t);
-            });
+                FormRow::new("Name").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
+                    Input::new(&mut watchlist.scanner_new_name)
+                        .min_width(panel_w - 60.0)
+                        .size(KitSize::Xs)
+                        .show(ui, t);
+                });
+                FormRow::new("Min %").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
+                    NumberStepper::new(&mut watchlist.scanner_new_min_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
+                    ui.add(MonospaceCode::new("Max %").size_px(font_xs()).color(t.dim));
+                    NumberStepper::new(&mut watchlist.scanner_new_max_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
+                });
+                FormRow::new("Min Vol").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
+                    Input::new(&mut watchlist.scanner_new_min_volume)
+                        .min_width(80.0)
+                        .size(KitSize::Xs)
+                        .placeholder("e.g. 1000000")
+                        .show(ui, t);
+                });
 
-            ui.horizontal(|ui| {
-                if ui.add(Button::new("Create").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(60.0, 0.0))).clicked() {
-                    let name = if watchlist.scanner_new_name.trim().is_empty() {
-                        "Custom Scanner".to_string()
-                    } else {
-                        watchlist.scanner_new_name.trim().to_string()
-                    };
-                    let min_vol: u64 = watchlist.scanner_new_min_volume.trim()
-                        .replace(['_', ','], "")
-                        .parse().unwrap_or(0);
-                    watchlist.scanner_defs.push(ScannerDef {
-                        name,
-                        preset: None,
-                        min_change: watchlist.scanner_new_min_change,
-                        max_change: watchlist.scanner_new_max_change,
-                        min_volume: min_vol,
-                        sort_by: ScanSort::ChangeDesc,
-                        limit: 20,
-                        collapsed: false,
-                    });
-                    watchlist.scanner_new_name.clear();
-                    watchlist.scanner_new_min_change = -999.0;
-                    watchlist.scanner_new_max_change = 999.0;
-                    watchlist.scanner_new_min_volume.clear();
-                    watchlist.scanner_builder_open = false;
-                }
-                if ui.add(Button::new("Cancel").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(50.0, 0.0))).clicked() {
-                    watchlist.scanner_builder_open = false;
-                }
+                ui.horizontal(|ui| {
+                    if Button::new("Create").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(60.0, 0.0)).show(ui, t).clicked() {
+                        let name = if watchlist.scanner_new_name.trim().is_empty() {
+                            "Custom Scanner".to_string()
+                        } else {
+                            watchlist.scanner_new_name.trim().to_string()
+                        };
+                        let min_vol: u64 = watchlist.scanner_new_min_volume.trim()
+                            .replace(['_', ','], "")
+                            .parse().unwrap_or(0);
+                        watchlist.scanner_defs.push(ScannerDef {
+                            name,
+                            preset: None,
+                            min_change: watchlist.scanner_new_min_change,
+                            max_change: watchlist.scanner_new_max_change,
+                            min_volume: min_vol,
+                            sort_by: ScanSort::ChangeDesc,
+                            limit: 20,
+                            collapsed: false,
+                        });
+                        watchlist.scanner_new_name.clear();
+                        watchlist.scanner_new_min_change = -999.0;
+                        watchlist.scanner_new_max_change = 999.0;
+                        watchlist.scanner_new_min_volume.clear();
+                        watchlist.scanner_builder_open = false;
+                    }
+                    if Button::new("Cancel").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(50.0, 0.0)).show(ui, t).clicked() {
+                        watchlist.scanner_builder_open = false;
+                    }
+                });
             });
-        });
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
         separator(ui, t.toolbar_border);
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
     }
 
     // ── Scanner sections ──
@@ -176,13 +197,15 @@ pub(crate) fn draw_content(
             ui.set_min_width(panel_w - 4.0);
 
             if pool.is_empty() {
-                ui.add_space(20.0);
+                ui.add_space(gap_lg());
                 ui.vertical_centered(|ui| {
                     ui.add(Spinner::new().md().theme(t));
                     ui.add_space(gap_sm());
                 });
-                EmptyState::new("\u{1F50D}", "Fetching quotes",
-                    &format!("{} symbols in universe", SCANNER_UNIVERSE.len())).theme(t).show(ui);
+                PanelEmpty::new("Fetching quotes")
+                    .glyph("\u{1F50D}")
+                    .hint(&format!("{} symbols in universe", SCANNER_UNIVERSE.len()))
+                    .show(ui, t);
                 ui.add_space(gap_sm());
                 let row_w = (panel_w - 8.0).max(80.0);
                 for _ in 0..6 {
@@ -336,16 +359,16 @@ pub(crate) fn draw(
 
     let mut pending_symbol: Option<String> = None;
 
-    egui::SidePanel::right("scanner_panel")
-        .default_width(240.0)
-        .min_width(180.0)
-        .max_width(420.0)
-        .resizable(true)
-        .frame(CompactPanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
-        .show(ctx, |ui| {
+    let resp = SidePanelShell::new("scanner_panel", "SCANNERS")
+        .icon(Icon::MAGNIFYING_GLASS)
+        .width(Width::Narrow)
+        .resizable(180.0..=420.0)
+        .show(ctx, t, |ui, t| {
             let panel_w = ui.available_width();
             draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w);
         });
+
+    if resp.close_clicked { watchlist.scanner_open = false; }
 
     if let Some(sym) = pending_symbol {
         if let Some(p) = panes.get_mut(ap) {
