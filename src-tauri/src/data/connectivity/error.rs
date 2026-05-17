@@ -41,6 +41,9 @@ pub enum ApiError {
     /// Shutdown is in progress; new requests are rejected.
     #[error("shutdown in progress")]
     ShuttingDown,
+    /// Provider does not implement this method (e.g. IB has no chain stream).
+    #[error("not supported: {0}")]
+    NotSupported(String),
 }
 
 /// Token lifecycle failure surface.
