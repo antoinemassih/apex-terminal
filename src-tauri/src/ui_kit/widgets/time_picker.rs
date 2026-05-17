@@ -124,6 +124,7 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
     };
 
     let (rect, mut response) = ui.allocate_exact_size(Vec2::new(desired_w, h), Sense::click());
+    if !disabled { st::cursor::clickable(ui, &response); }
     let id = response.id;
 
     let hovered = response.hovered() && !disabled;
@@ -371,6 +372,7 @@ fn render_scroll_column(
                         Vec2::new(col_w, font_size + 6.0),
                         Sense::click(),
                     );
+                    st::cursor::clickable(ui, &item_resp);
 
                     if ui.is_rect_visible(item_rect) {
                         let painter = ui.painter_at(item_rect);

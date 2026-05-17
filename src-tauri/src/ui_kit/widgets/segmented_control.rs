@@ -167,6 +167,7 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             let seg_id = outer_resp.id.with(i);
             let seg_sense = if self.disabled { Sense::hover() } else { Sense::click() };
             let seg_resp = ui.interact(seg_rect, seg_id, seg_sense);
+            if !self.disabled { st::cursor::clickable(ui, &seg_resp); }
             let hovered = seg_resp.hovered() && !self.disabled;
 
             if seg_resp.clicked() && !is_active && !self.disabled {

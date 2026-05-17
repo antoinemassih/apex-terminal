@@ -116,6 +116,7 @@ impl<'a> Tag<'a> {
         let w = content_w + pad_x * 2.0;
         let desired = Vec2::new(w, h);
         let (rect, response) = ui.allocate_exact_size(desired, Sense::click());
+        st::cursor::clickable(ui, &response);
 
         let mut closed = false;
 

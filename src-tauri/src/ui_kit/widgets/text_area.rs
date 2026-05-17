@@ -134,6 +134,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
 
         let (border_rect, border_resp) =
             ui.allocate_exact_size(Vec2::new(desired_w, actual_h), Sense::click());
+        if !disabled { st::cursor::text_input(ui, &border_resp); }
 
         // ── Animated border color ──
         let hovered = border_resp.hovered() && !disabled;

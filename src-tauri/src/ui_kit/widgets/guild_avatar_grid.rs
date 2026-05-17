@@ -65,6 +65,7 @@ impl<'a> GuildAvatarGrid<'a> {
             let (rect, resp) = ui.allocate_exact_size(
                 egui::vec2(icon_size + 6.0, icon_size + 8.0),
                 egui::Sense::click());
+            st::cursor::clickable(ui, &resp);
             let hovered = resp.hovered();
 
             let icon_rect = egui::Rect::from_center_size(

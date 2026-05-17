@@ -223,6 +223,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             Vec2::splat(COLLAPSE_BTN),
         );
         let btn_resp = ui.interact(btn_rect, outer_id.with("collapse"), Sense::click());
+        st::cursor::clickable(ui, &btn_resp);
         let hov = motion::ease_bool(ui.ctx(), outer_id.with("collapse_hov"),
             btn_resp.hovered(), motion::FAST);
         let bg = motion::lerp_color(
@@ -315,6 +316,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         let id = outer_id.with(("item", my_idx));
         let sense = if item.disabled { Sense::hover() } else { Sense::click() };
         let resp = ui.interact(row_rect, id, sense);
+        if !item.disabled { st::cursor::clickable(ui, &resp); }
 
         let is_active = my_idx == cur_active;
         let hover_t = motion::ease_bool(ui.ctx(), id.with("hov"),

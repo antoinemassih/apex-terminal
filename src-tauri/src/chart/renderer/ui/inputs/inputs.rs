@@ -802,6 +802,7 @@ impl<'a> ColorSwatchPicker<'a> {
             };
             let is_cur = value.as_str() == hex;
             let (r, resp) = ui.allocate_exact_size(egui::vec2(sz, sz), Sense::click());
+            cursor::clickable(ui, &resp);
             if is_cur {
                 ui.painter().rect_stroke(r, 2.0,
                     egui::Stroke::new(stroke_std(), col_full), egui::StrokeKind::Outside);

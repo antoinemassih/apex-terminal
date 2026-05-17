@@ -44,7 +44,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeK
 
 use super::super::style::{
     alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
-    color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_md_plus, font_sm, gap_md, gap_sm, gap_xs,
+    color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, cursor, drawing_palette, font_md, font_md_plus, font_sm, gap_md, gap_sm, gap_xs,
     radius_sm, radius_md, stroke_hair, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
@@ -513,6 +513,7 @@ impl<'a> PainterPaneHeader<'a> {
             {
                 let r = Rect::from_center_size(pos2(cx + NAV_BTN_SIZE / 2.0, rect.center().y), Vec2::splat(NAV_BTN_SIZE));
                 let resp = ui.allocate_rect(r, Sense::click());
+                cursor::clickable(ui, &resp);
                 let (bg, fg) = nav_colors(self.can_go_back, resp.hovered(), t, ui);
                 painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_LEFT,
@@ -524,6 +525,7 @@ impl<'a> PainterPaneHeader<'a> {
             {
                 let r = Rect::from_center_size(pos2(cx + NAV_BTN_SIZE / 2.0, rect.center().y), Vec2::splat(NAV_BTN_SIZE));
                 let resp = ui.allocate_rect(r, Sense::click());
+                cursor::clickable(ui, &resp);
                 let (bg, fg) = nav_colors(self.can_go_fwd, resp.hovered(), t, ui);
                 painter.rect_filled(r, radius_sm(), bg);
                 painter.text(r.center(), Align2::CENTER_CENTER, Icon::CARET_RIGHT,

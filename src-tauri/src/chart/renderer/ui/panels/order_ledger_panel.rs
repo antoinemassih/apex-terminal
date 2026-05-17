@@ -139,6 +139,7 @@ pub(crate) fn draw(
                     let resp = ui.add(egui::Label::new(
                         egui::RichText::new(v.label()).monospace().size(font_sm()).color(fg)
                     ).sense(egui::Sense::click()));
+                    cursor::clickable(ui, &resp);
                     let r = resp.rect.expand2(egui::vec2(4.0, 1.0));
                     ui.painter().rect_filled(r, radius_sm(), bg);
                     if resp.clicked() { watchlist.order_ledger_view = v as u8; }
@@ -201,6 +202,7 @@ pub(crate) fn draw(
                         let resp = ui.add(egui::Label::new(
                             egui::RichText::new(f.label()).monospace().size(font_xs()).color(fg)
                         ).sense(egui::Sense::click()));
+                        cursor::clickable(ui, &resp);
                         ui.painter().rect_filled(resp.rect.expand2(egui::vec2(3.0, 1.0)), radius_sm(), bg);
                         if resp.clicked() { watchlist.order_ledger_filter = i as u8; }
                     }
@@ -317,6 +319,7 @@ fn draw_active_row(ui: &mut egui::Ui, t: &Theme, row: &ActiveRow) {
         ui.add(MonospaceCode::new(" UI ").size_px(font_xs()).color(t.dim).gamma(0.5));
         ui.add(MonospaceCode::new(&format!("{:<8}", row.cid8)).size_px(font_xs()).color(t.dim).gamma(0.5));
     }).response.interact(egui::Sense::click());
+    cursor::clickable(ui, &resp);
 
     // Right-click → cancel via global API. The snapshot exposes the
     // canonical u64 id, so cancellation no longer relies on the legacy

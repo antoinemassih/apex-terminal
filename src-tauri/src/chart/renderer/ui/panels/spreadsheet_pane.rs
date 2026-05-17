@@ -742,6 +742,7 @@ pub(crate) fn render(
                         let id = ui.id().with(("ss_cell", r, c));
                         let resp = ui.interact(cell_rect, id,
                             egui::Sense::click_and_drag());
+                        cursor::clickable(ui, &resp);
                         if resp.clicked() {
                             let shift = ui.input(|i| i.modifiers.shift);
                             if shift {

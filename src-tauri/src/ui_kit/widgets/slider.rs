@@ -126,6 +126,7 @@ fn paint_slider<T: egui::emath::Numeric>(
             let row_size = Vec2::new(track_w, total_h);
             let sense = if disabled { Sense::hover() } else { Sense::click_and_drag() };
             let (rect, mut response) = ui.allocate_exact_size(row_size, sense);
+            if !disabled { st::cursor::draggable(ui, &response); }
             let id = response.id;
 
             // Track rect (centered vertically in row).

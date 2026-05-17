@@ -90,6 +90,7 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
 
     let sense = if disabled { Sense::hover() } else { Sense::click() };
     let (rect, mut response) = ui.allocate_exact_size(Vec2::new(total_w, total_h), sense);
+    if !disabled { st::cursor::clickable(ui, &response); }
 
     if response.clicked() && !disabled {
         *value = !*value;

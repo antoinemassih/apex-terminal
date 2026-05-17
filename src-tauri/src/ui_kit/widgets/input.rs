@@ -166,6 +166,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         };
         let row_size = Vec2::new(desired_w, h);
         let (rect, response) = ui.allocate_exact_size(row_size, Sense::click());
+        if !disabled { st::cursor::text_input(ui, &response); }
 
         let id = response.id;
         // The TextEdit gets a stable nested id so focus tracking is reliable.

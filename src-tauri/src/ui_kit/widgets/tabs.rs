@@ -416,6 +416,7 @@ fn paint_tabs(
 
         let tab_id = outer_id.with(("tab", i));
         let tab_resp = ui.interact(rect, tab_id, Sense::click_and_drag());
+        if !item.disabled { st::cursor::clickable(ui, &tab_resp); }
 
         let hover_t = motion::ease_bool(ui.ctx(), tab_id.with("hov"),
             tab_resp.hovered() && !item.disabled, motion::FAST);
@@ -466,6 +467,7 @@ fn paint_tabs(
                     rect.center().y);
                 let close_rect = Rect::from_center_size(close_center, Vec2::splat(CLOSE_HIT));
                 let close_resp = ui.interact(close_rect, tab_id.with("close_btn"), Sense::click());
+                st::cursor::clickable(ui, &close_resp);
                 if close_t > 0.01 {
                     let base = if close_resp.hovered() { theme.text() } else { theme.dim() };
                     let col = Color32::from_rgba_premultiplied(
@@ -550,6 +552,7 @@ fn paint_tabs(
             Vec2::new(row_h, row_h),
         );
         let plus_resp = ui.interact(plus_rect, outer_id.with("add"), Sense::click());
+        st::cursor::clickable(ui, &plus_resp);
         let hover_t = motion::ease_bool(ui.ctx(), outer_id.with("add_hov"),
             plus_resp.hovered(), motion::FAST);
         let bg = motion::lerp_color(

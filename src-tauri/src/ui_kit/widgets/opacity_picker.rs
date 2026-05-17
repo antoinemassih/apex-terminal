@@ -13,6 +13,7 @@
 
 use egui::{Color32, Response, Sense, Ui};
 use super::theme::ComponentTheme;
+use crate::chart::renderer::ui::style as st;
 
 /// Six discrete opacity levels used across the app. Re-exported so panels can
 /// share the same constant instead of defining their own.
@@ -87,6 +88,7 @@ impl<'a> OpacityPicker<'a> {
             egui::vec2(total_w, self.seg_h + 2.0),
             Sense::click(),
         );
+        st::cursor::clickable(ui, &resp);
         let painter = ui.painter_at(rect);
         let mut clicked_idx: Option<usize> = None;
 

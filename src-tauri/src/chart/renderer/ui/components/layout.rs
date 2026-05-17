@@ -13,7 +13,7 @@
 use egui::{Color32, Response, Sense, Ui, Vec2};
 use crate::ui_kit::icons::Icon;
 use super::super::style::{
-    self, color_dim, color_muted, split_divider, gap_sm, gap_md, gap_lg, GAP_SM, GAP_MD, GAP_LG,
+    self, cursor, color_dim, color_muted, split_divider, gap_sm, gap_md, gap_lg, GAP_SM, GAP_MD, GAP_LG,
 };
 use super::super::components::empty_state_panel;
 
@@ -224,6 +224,7 @@ impl<'a> Collapsible<'a> {
             )
             .sense(Sense::click()),
         );
+        cursor::clickable(ui, &resp);
         if resp.clicked() {
             *self.expanded = !*self.expanded;
         }

@@ -519,6 +519,7 @@ fn paint_sv_square(
 ) {
     let (rect, resp) =
         ui.allocate_exact_size(Vec2::splat(SV_SIZE), Sense::click_and_drag());
+    st::cursor::crosshair(ui, &resp);
     let painter = ui.painter_at(rect);
 
     // Pure hue at full saturation/value.
@@ -599,6 +600,7 @@ fn paint_hue_strip(
 ) {
     let (rect, resp) =
         ui.allocate_exact_size(Vec2::new(SV_SIZE, HUE_H), Sense::click_and_drag());
+    st::cursor::crosshair(ui, &resp);
     let painter = ui.painter_at(rect);
 
     let segments = 36usize;

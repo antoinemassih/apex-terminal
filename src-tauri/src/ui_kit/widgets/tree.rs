@@ -211,6 +211,7 @@ fn render_row<T: TreeNode>(
     let avail_w = ui.available_width().max(0.0);
 
     let (rect, response) = ui.allocate_exact_size(Vec2::new(avail_w, row_h), Sense::click());
+    st::cursor::clickable(ui, &response);
     if !ui.is_rect_visible(rect) { return; }
 
     let painter = ui.painter_at(rect);
@@ -276,6 +277,7 @@ fn render_row<T: TreeNode>(
         let bs = 13.0_f32;
         let cb_rect = Rect::from_min_size(Pos2::new(x, cy - bs * 0.5), Vec2::splat(bs));
         let cb_resp = ui.interact(cb_rect, row_id.with("cb"), Sense::click());
+        st::cursor::clickable(ui, &cb_resp);
         let on = state.is_checked(id);
         let on_t = motion::ease_bool(ui.ctx(), row_id.with("cb_on"), on, motion::FAST);
         let bg = motion::lerp_color(Color32::TRANSPARENT, theme.accent(), on_t);

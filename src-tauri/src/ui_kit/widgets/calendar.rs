@@ -248,6 +248,7 @@ fn paint_calendar<'a>(
                 if Button::icon(super::super::icons::Icon::CARET_LEFT)
                     .size(Size::Sm)
                     .show(ui, theme)
+                    .on_hover_text("Previous month")
                     .clicked()
                 {
                     pending_view = Some(add_months(view_month, -1));
@@ -267,6 +268,7 @@ fn paint_calendar<'a>(
                 };
                 let (title_rect, title_resp) =
                     ui.allocate_exact_size(Vec2::new(title_w.max(80.0), size.height()), Sense::click());
+                st::cursor::clickable(ui, &title_resp);
                 let hovered = title_resp.hovered();
                 let hover_t = motion::ease_bool(ui.ctx(), id.with("title_hover"), hovered, motion::FAST);
                 let bg_hover = st::color_alpha(theme.text(), st::ALPHA_GHOST);
@@ -380,6 +382,7 @@ fn paint_calendar<'a>(
                 if Button::icon(super::super::icons::Icon::CARET_RIGHT)
                     .size(Size::Sm)
                     .show(ui, theme)
+                    .on_hover_text("Next month")
                     .clicked()
                 {
                     pending_view = Some(add_months(view_month, 1));

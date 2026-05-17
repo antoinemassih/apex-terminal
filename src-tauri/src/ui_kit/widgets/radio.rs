@@ -84,6 +84,7 @@ fn paint_radio<T: PartialEq + Copy>(
 
     let sense = if r.disabled { Sense::hover() } else { Sense::click() };
     let (rect, mut response) = ui.allocate_exact_size(Vec2::new(total_w, total_h), sense);
+    if !r.disabled { st::cursor::clickable(ui, &response); }
 
     let selected = *r.group == r.this;
 

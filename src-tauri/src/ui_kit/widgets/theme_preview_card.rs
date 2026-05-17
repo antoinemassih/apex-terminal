@@ -78,6 +78,7 @@ impl<'a> ThemePreviewCard<'a> {
         let total = Vec2::new(size.x, size.y + gap + label_h);
 
         let (rect, response) = ui.allocate_exact_size(total, Sense::click());
+        st::cursor::clickable(ui, &response);
         if !ui.is_rect_visible(rect) {
             return response;
         }

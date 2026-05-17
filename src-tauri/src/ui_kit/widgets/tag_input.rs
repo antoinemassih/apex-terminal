@@ -152,6 +152,7 @@ impl<'a> TagInput<'a> {
                     // Allocate the container.
                     let (container_rect, container_response) =
                         ui.allocate_exact_size(Vec2::new(desired_w, container_h), Sense::click());
+                    if !disabled { st::cursor::text_input(ui, &container_response); }
 
                     // ── Paint border + background ──
                     if ui.is_rect_visible(container_rect) {

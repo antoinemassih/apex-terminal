@@ -53,6 +53,7 @@ use super::theme::ComponentTheme;
 use super::tooltip::Tooltip;
 
 use crate::chart_renderer::ui::style::{
+    self as st,
     alpha_muted, alpha_tint, color_alpha, font_sm, font_xs, gap_2xs, gap_xs, stroke_thin,
     ALPHA_GHOST,
 };
@@ -317,6 +318,7 @@ impl<'a, T: Clone> Table<'a, T> {
                     Sense::hover()
                 };
                 let resp = ui.interact(cell, ui.id().with(("apex_table_hdr", i)), sense);
+                if col.sortable { st::cursor::clickable(ui, &resp); }
 
                 let is_sorted = self.state.sort_col == Some(i)
                     && self.state.sort_dir != SortDir::None;
@@ -539,6 +541,7 @@ impl<'a, T: Clone> Table<'a, T> {
                         Sense::hover()
                     };
                     let row_resp = ui.interact(row_rect, row_id, sense);
+                    if selectable { st::cursor::clickable(ui, &row_resp); }
 
                     if row_resp.hovered() {
                         state.hovered_row = Some(ri);

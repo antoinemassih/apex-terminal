@@ -393,6 +393,7 @@ fn paint_select<'a, T: 'a>(
 
     let row_size = Vec2::new(desired_w, h);
     let (rect, mut response) = ui.allocate_exact_size(row_size, Sense::click());
+    st::cursor::clickable(ui, &response);
     let id = response.id;
 
     let mut mem = load_mem(ui, id);
@@ -830,6 +831,7 @@ fn render_panel<'a, T>(
                 let search_h = 24.0;
                 let (s_rect, s_resp) =
                     ui.allocate_exact_size(Vec2::new(width, search_h), Sense::click());
+                st::cursor::text_input(ui, &s_resp);
                 let painter = ui.painter_at(s_rect);
                 painter.rect_filled(
                     s_rect,
@@ -979,6 +981,7 @@ fn render_row<'a, T>(
 ) -> bool {
     let h = 28.0;
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, h), Sense::click());
+    st::cursor::clickable(ui, &resp);
     let hovered = resp.hovered();
 
     let hover_t = motion::ease_bool(

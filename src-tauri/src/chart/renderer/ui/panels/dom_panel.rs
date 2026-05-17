@@ -343,6 +343,7 @@ pub(crate) fn draw(
     let arm_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
     let arm_radius = egui::CornerRadius::same(radius_sm() as u8);
     let arm_resp = ui.allocate_rect(arm_rect, egui::Sense::click());
+    cursor::clickable(ui, &arm_resp);
     if *dom_armed {
         // Filled red bg, white icon, subtle border.
         painter.rect_filled(arm_rect, arm_radius, t.bear);

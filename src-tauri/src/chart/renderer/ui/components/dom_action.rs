@@ -28,6 +28,7 @@ pub fn paint_search_command_pill(
     label_color: Color32,
 ) -> Response {
     let resp = ui.allocate_rect(rect, egui::Sense::click());
+    cursor::clickable(ui, &resp);
     let p = ui.painter_at(panel_rect);
     let r_cr = egui::CornerRadius::same(crate::dt_f32!(radius.xs, 2.0) as u8);
     let actual_bg = if resp.hovered() { bg_hover } else { bg };
@@ -70,6 +71,7 @@ pub fn paint_window_control_button(
     neutral_hover_bg: Color32,
 ) -> Response {
     let resp = ui.allocate_rect(button_rect, egui::Sense::click());
+    cursor::clickable(ui, &resp);
     if resp.hovered() {
         let bg = if danger { danger_bg } else { neutral_hover_bg };
         let full = egui::Rect::from_min_max(
@@ -132,6 +134,7 @@ pub fn paint_dom_action(
 ) -> Response {
     use DomActionTier::*;
     let resp = ui.allocate_rect(rect, egui::Sense::click());
+    cursor::clickable(ui, &resp);
     let hover = resp.hovered();
     let r_xs = egui::CornerRadius::same(crate::dt_f32!(radius.xs, 2.0) as u8);
     let r_sm = egui::CornerRadius::same(crate::dt_f32!(radius.sm, 3.0) as u8);
@@ -232,6 +235,7 @@ pub fn paint_pane_header_action(
     dim_color: Color32,
 ) -> Response {
     let resp = ui.allocate_rect(rect, egui::Sense::click());
+    cursor::clickable(ui, &resp);
     let fg = if active {
         text_color
     } else if resp.hovered() {

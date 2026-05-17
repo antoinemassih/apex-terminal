@@ -111,6 +111,7 @@ impl<'a> SelectableRow<'a> {
 
         let sense = if disabled { Sense::hover() } else { Sense::click() };
         let (rect, response) = ui.allocate_exact_size(Vec2::new(avail_w, h), sense);
+        if !disabled { st::cursor::clickable(ui, &response); }
 
         if !ui.is_rect_visible(rect) {
             return response;

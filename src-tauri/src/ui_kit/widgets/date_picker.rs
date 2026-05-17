@@ -149,6 +149,7 @@ fn paint_date_picker<'a>(
     let row_size = Vec2::new(desired_w, h);
     let sense = if disabled { Sense::hover() } else { Sense::click() };
     let (rect, response) = ui.allocate_exact_size(row_size, sense);
+    if !disabled { st::cursor::clickable(ui, &response); }
     let id = response.id;
 
     let hovered = !disabled && response.hovered();

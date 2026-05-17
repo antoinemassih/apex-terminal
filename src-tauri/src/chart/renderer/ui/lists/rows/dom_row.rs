@@ -389,6 +389,7 @@ impl<'a> DomRow<'a> {
                             // Hit-test: per-chip click + drag.
                             let id = ui.id().with(("dom_row_chip", ord.id));
                             let chip_resp = ui.interact(cr, id, Sense::click_and_drag());
+                            cursor::draggable(ui, &chip_resp);
                             let mut z = zones.borrow_mut();
                             if chip_resp.clicked() { z.order_clicked = Some(ord.id); }
                             if chip_resp.drag_started() { z.order_drag_started = Some(ord.id); }
@@ -412,14 +413,17 @@ impl<'a> DomRow<'a> {
                 let mut z = zones.borrow_mut();
                 if let Some(br) = find(DomColumn::Bid) {
                     let r = ui.interact(br, ui.id().with(("dom_row_bid", rect.min.x as i32, rect.min.y as i32)), Sense::click());
+                    cursor::clickable(ui, &r);
                     if r.clicked() { z.bid_clicked = true; }
                 }
                 if let Some(pr) = find(DomColumn::Price) {
                     let r = ui.interact(pr, ui.id().with(("dom_row_price", rect.min.x as i32, rect.min.y as i32)), Sense::click());
+                    cursor::clickable(ui, &r);
                     if r.clicked() { z.price_clicked = true; }
                 }
                 if let Some(ar) = find(DomColumn::Ask) {
                     let r = ui.interact(ar, ui.id().with(("dom_row_ask", rect.min.x as i32, rect.min.y as i32)), Sense::click());
+                    cursor::clickable(ui, &r);
                     if r.clicked() { z.ask_clicked = true; }
                 }
             })
@@ -457,6 +461,7 @@ impl<'a> DomRow<'a> {
         // Hit-test the row.
         let row_id = ui.id().with(("dom_row_ladder", rr.min.x as i32, rr.min.y as i32));
         let row_resp = ui.interact(rr, row_id, Sense::click());
+        cursor::clickable(ui, &row_resp);
         out.row_hovered = row_resp.hovered();
         out.row_clicked = row_resp.clicked();
         let hv = out.row_hovered;
@@ -594,6 +599,7 @@ impl<'a> DomRow<'a> {
             );
             let drag_id = ui.id().with(("dom_row_chip", oid));
             let drag_resp = ui.interact(br, drag_id, Sense::click_and_drag());
+            cursor::draggable(ui, &drag_resp);
             if drag_resp.drag_started() { out.order_drag_started = Some(oid); }
             if drag_resp.dragged() { out.order_dragging = Some((oid, drag_resp.drag_delta().y)); }
             if drag_resp.drag_stopped() { out.order_drag_stopped = Some(oid); }
