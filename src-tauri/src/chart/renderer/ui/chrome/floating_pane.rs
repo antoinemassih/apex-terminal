@@ -28,8 +28,6 @@ use crate::ui_kit::icons::Icon;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn ft() -> &'static Theme { &crate::chart_renderer::gpu::THEMES[0] }
-
 /// Outcome of rendering a floating pane chrome.
 #[derive(Default, Clone, Copy)]
 pub struct FloatingPaneChromeResponse {
@@ -102,7 +100,10 @@ impl<'a> FloatingPaneChrome<'a> {
 
     /// Render header → body → optional footer.
     pub fn show<B: FnOnce(&mut Ui)>(self, ui: &mut Ui, body: B) -> FloatingPaneChromeResponse {
-        let theme: &Theme = match self.theme { Some(t) => t, None => ft() };
+        let theme: &Theme = match self.theme {
+            Some(t) => t,
+            None => crate::ui_kit::widgets::theme::active_theme(ui.ctx()),
+        };
         let bg       = theme.toolbar_bg;
         let border_c = color_alpha(theme.toolbar_border, alpha_line());
         let header_bg = color_alpha(theme.toolbar_border, alpha_subtle());

@@ -17,9 +17,6 @@ use crate::chart_renderer::gpu::Theme;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 
-#[inline(always)]
-fn ft() -> &'static crate::chart_renderer::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
-
 #[must_use = "FilterPill must be added with `ui.add(...)` to render"]
 pub struct FilterPill<'a> {
     label: &'a str,
@@ -30,11 +27,14 @@ pub struct FilterPill<'a> {
 
 impl<'a> FilterPill<'a> {
     pub fn new(label: &'a str) -> Self {
+        // accent/dim are placeholders — actual paint goes through
+        // `Variant::Chip` which resolves via the ambient theme. TRANSPARENT
+        // avoids the `&THEMES[0]` light-theme parity bug.
         Self {
             label,
             active: false,
-            accent: ft().accent,
-            dim:    ft().dim,
+            accent: egui::Color32::TRANSPARENT,
+            dim:    egui::Color32::TRANSPARENT,
         }
     }
 
