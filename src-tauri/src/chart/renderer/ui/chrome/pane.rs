@@ -821,7 +821,7 @@ impl<'a> AccountStrip<'a> {
 
                         // Emergency action buttons
                         if ui.add(
-                            egui::Button::new(RichText::new("CANCEL ALL").monospace().size(font_sm()).strong().color(Color32::WHITE))
+                            egui::Button::new(RichText::new("CANCEL ALL").monospace().size(font_sm()).strong().color(contrast_fg(t.bear)))
                                 .fill(color_alpha(t.bear, 120))
                                 .corner_radius(3.0) // TODO: off-token
                                 .min_size(egui::vec2(0.0, 22.0))
@@ -831,7 +831,7 @@ impl<'a> AccountStrip<'a> {
                         }
 
                         if ui.add(
-                            egui::Button::new(RichText::new("FLATTEN").monospace().size(font_sm()).strong().color(Color32::WHITE))
+                            egui::Button::new(RichText::new("FLATTEN").monospace().size(font_sm()).strong().color(contrast_fg(t.bear)))
                                 .fill(color_alpha(t.bear, 180))
                                 .corner_radius(3.0) // TODO: off-token
                                 .min_size(egui::vec2(0.0, 22.0))

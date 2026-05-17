@@ -77,6 +77,7 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
     // Measure label.
     let label_w = if let Some(s) = &label {
         let galley = ui.fonts(|f| {
+            // layout-only: color is discarded, we only read `.rect.width()` below.
             f.layout_no_wrap(s.clone(), FontId::proportional(font_size), Color32::WHITE)
         });
         galley.rect.width() + gap
@@ -121,7 +122,7 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
     let thumb_x = if on { x_on } else { x_off };
     let thumb_center = Pos2::new(thumb_x, track_rect.center().y);
 
-    let mut thumb_color = Color32::WHITE;
+    let mut thumb_color = st::contrast_fg(on_color);
 
     if disabled {
         track_color = with_alpha_scale(track_color, 0.5);

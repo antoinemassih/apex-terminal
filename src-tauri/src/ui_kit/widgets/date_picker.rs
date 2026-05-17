@@ -250,6 +250,7 @@ fn paint_date_picker<'a>(
 }
 
 fn truncate_to_width(ui: &Ui, text: &str, font_size: f32, max_w: f32) -> String {
+    // layout-only: only `.rect.width()` is read; color is discarded.
     let layout = ui.fonts(|f| f.layout_no_wrap(text.to_string(), FontId::monospace(font_size), egui::Color32::WHITE));
     if layout.rect.width() <= max_w || text.is_empty() {
         return text.to_string();

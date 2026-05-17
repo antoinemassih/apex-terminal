@@ -111,6 +111,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
 
     let label_w = if let Some(s) = &cb.label {
         let galley = ui.fonts(|f| {
+            // layout-only: only width is read; color is discarded.
             f.layout_no_wrap(s.clone(), FontId::proportional(font_size), Color32::WHITE)
         });
         galley.rect.width() + gap
@@ -161,7 +162,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
 
     let border_col = motion::lerp_color(border, accent, on_t);
 
-    let mut fg_mark = Color32::WHITE;
+    let mut fg_mark = st::contrast_fg(accent);
     let (mut bg_final, mut border_final) = (bg, border_col);
 
     if cb.disabled {

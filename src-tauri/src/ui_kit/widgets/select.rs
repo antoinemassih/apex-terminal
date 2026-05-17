@@ -362,6 +362,7 @@ fn paint_select<'a, T: 'a>(
     // Measure the widest label once (used for both trigger and popup widths).
     let label_font = FontId::proportional(font_size);
     let mut widest_label: f32 = 0.0;
+    // layout-only galleys in this block: only `.rect.width()` is read.
     for i in 0..display.len() {
         let label = display.label(i);
         let g = ui.fonts(|f| f.layout_no_wrap(label, label_font.clone(), Color32::WHITE));
@@ -1017,7 +1018,7 @@ fn render_row<'a, T>(
             let p1 = Pos2::new(bx.center().x - bs * 0.25, bx.center().y + bs * 0.02);
             let p2 = Pos2::new(bx.center().x - bs * 0.05, bx.center().y + bs * 0.20);
             let p3 = Pos2::new(bx.center().x + bs * 0.28, bx.center().y - bs * 0.18);
-            let s = Stroke::new(1.4, Color32::WHITE); // TODO: off-token
+            let s = Stroke::new(1.4, st::contrast_fg(theme.accent())); // TODO: off-token (stroke width)
             painter.line_segment([p1, p2], s);
             painter.line_segment([p2, p3], s);
         }

@@ -926,7 +926,7 @@ impl<'a> MeridienOrderTicket<'a> {
                         Button::buy(side_str)
                     } else {
                         Button::sell(side_str)
-                    }.sublabel(qty_sub).fg(egui::Color32::WHITE);
+                    }.sublabel(qty_sub).fg(crate::chart_renderer::ui::style::contrast_fg(side_color));
                     if ui.add(cta_btn.min_size(Vec2::new(cta_w, cta_h))).clicked() {
                         review_clicked = true;
                     }

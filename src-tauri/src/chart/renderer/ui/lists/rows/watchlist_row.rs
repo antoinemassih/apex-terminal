@@ -464,7 +464,7 @@ impl<'a> WatchlistRow<'a> {
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 5.5,
                         theme_ref.bear);
                     painter.text(egui::pos2(ind_x + 5.0, cy), egui::Align2::CENTER_CENTER,
-                        icon_set.alert, egui::FontId::proportional(11.0), Color32::WHITE);
+                        icon_set.alert, egui::FontId::proportional(11.0), contrast_fg(theme_ref.bear));
                     zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
                         egui::pos2(ind_x + 5.0, cy), egui::vec2(12.0, 12.0)));
                     ind_x += 14.0;

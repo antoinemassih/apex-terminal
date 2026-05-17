@@ -292,7 +292,7 @@ fn render_row<T: TreeNode>(
             let p1 = Pos2::new(c.x - s * 0.25, c.y + s * 0.02);
             let p2 = Pos2::new(c.x - s * 0.05, c.y + s * 0.20);
             let p3 = Pos2::new(c.x + s * 0.28, c.y - s * 0.18);
-            let stroke = Stroke::new(1.4, Color32::WHITE); // TODO: off-token
+            let stroke = Stroke::new(1.4, st::contrast_fg(theme.accent())); // TODO: off-token (stroke width)
             painter.line_segment([p1, p2], stroke);
             painter.line_segment([p2, p3], stroke);
         }

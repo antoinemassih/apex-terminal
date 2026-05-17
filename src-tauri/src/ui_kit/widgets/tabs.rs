@@ -673,6 +673,7 @@ fn measure_tab_width(
         *w += seg_w;
         *first = false;
     };
+    // layout-only galleys in this block: only `.rect.width()` is read.
     if let Some(ic) = item.icon {
         let g = ui.fonts(|f| f.layout_no_wrap(ic.to_string(), font_icon.clone(), Color32::WHITE));
         add_segment(g.rect.width(), &mut w, &mut first);
@@ -940,13 +941,14 @@ fn paint_one_tab_painter(
     // Badge.
     if let Some(n) = item.badge {
         let s = if n > 99 { "99+".to_string() } else { n.to_string() };
+        // layout-only galley: width measurement only.
         let bg = painter.layout_no_wrap(s.clone(), FontId::monospace(10.0), Color32::WHITE);
         let bw = (bg.rect.width() + 10.0).max(14.0);
         let bh = 14.0;
         let br = Rect::from_min_size(Pos2::new(cx, cy - bh * 0.5), Vec2::new(bw, bh));
         painter.rect_filled(br, CornerRadius::same(7), alpha(theme.bear())); // TODO: off-token
         painter.text(br.center(), Align2::CENTER_CENTER, &s,
-            FontId::monospace(10.0), Color32::WHITE);
+            FontId::monospace(10.0), crate::chart_renderer::ui::style::contrast_fg(theme.bear()));
         cx += bw + inner_gap;
     }
 

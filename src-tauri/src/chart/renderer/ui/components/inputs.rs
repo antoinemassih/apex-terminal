@@ -195,7 +195,7 @@ pub fn toggle_switch(ui: &mut Ui, state: &mut bool, accent: Color32, dim: Color3
         let thumb_travel = track_w - thumb_d - pad * 2.0;
         let thumb_cx = rect.left() + pad + thumb_d / 2.0 + thumb_travel * t;
         let thumb_cy = rect.center().y;
-        p.circle_filled(egui::pos2(thumb_cx, thumb_cy), thumb_d / 2.0, Color32::WHITE);
+        p.circle_filled(egui::pos2(thumb_cx, thumb_cy), thumb_d / 2.0, contrast_fg(accent));
     }
     resp
 }

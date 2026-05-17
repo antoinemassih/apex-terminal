@@ -327,7 +327,7 @@ fn paint_calendar<'a>(
                                                 RichText::new(label)
                                                     .monospace()
                                                     .size(st::font_xs())
-                                                    .color(if is_cur { Color32::WHITE } else { theme.text() }),
+                                                    .color(if is_cur { st::contrast_fg(theme.accent()) } else { theme.text() }),
                                             )
                                             .fill(if is_cur { theme.accent() } else { Color32::TRANSPARENT })
                                             .min_size(Vec2::new(40.0, 20.0)),
@@ -352,7 +352,7 @@ fn paint_calendar<'a>(
                                                 RichText::new(&MONTH_NAMES[(m - 1) as usize][..3])
                                                     .monospace()
                                                     .size(st::font_xs())
-                                                    .color(if is_cur { Color32::WHITE } else { theme.text() }),
+                                                    .color(if is_cur { st::contrast_fg(theme.accent()) } else { theme.text() }),
                                             )
                                             .fill(if is_cur { theme.accent() } else { Color32::TRANSPARENT })
                                             .min_size(Vec2::new(40.0, 20.0)),
@@ -594,7 +594,7 @@ fn paint_one_month(
 
             // Number text.
             let text_col = match sel_state {
-                CellSel::Selected | CellSel::RangeStart | CellSel::RangeEnd => Color32::WHITE,
+                CellSel::Selected | CellSel::RangeStart | CellSel::RangeEnd => st::contrast_fg(accent),
                 CellSel::None => {
                     if !in_month {
                         st::color_alpha(theme.dim(), 80)

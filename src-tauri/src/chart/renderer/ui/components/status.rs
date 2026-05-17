@@ -294,7 +294,7 @@ impl<'a> Widget for ProgressBar<'a> {
                         painter.rect_filled(
                             Rect::from_min_max(Pos2::new(x0, fill_rect.top()), Pos2::new(x1, fill_rect.bottom())),
                             egui::CornerRadius::ZERO,
-                            color_alpha(Color32::WHITE, alpha_soft()),
+                            color_alpha(contrast_fg(fill), alpha_soft()),
                         );
                     }
                     x += stripe_w * 2.0;
@@ -479,7 +479,7 @@ pub struct NotificationBadge {
     count: u32,
     max: u32,
     color: Option<Color32>,
-    fg: Color32,
+    fg: Option<Color32>,
     show_zero: bool,
 }
 
@@ -489,15 +489,15 @@ impl NotificationBadge {
             count,
             max: 99,
             color: None,
-            fg: Color32::WHITE,
+            fg: None,
             show_zero: false,
         }
     }
     pub fn max(mut self, m: u32) -> Self { self.max = m; self }
     pub fn show_zero(mut self, v: bool) -> Self { self.show_zero = v; self }
     pub fn color(mut self, c: Color32) -> Self { self.color = Some(c); self }
-    pub fn fg(mut self, c: Color32) -> Self { self.fg = c; self }
-    pub fn theme(mut self, t: &Theme) -> Self { self.color = Some(t.bear); self.fg = t.text; self }
+    pub fn fg(mut self, c: Color32) -> Self { self.fg = Some(c); self }
+    pub fn theme(mut self, t: &Theme) -> Self { self.color = Some(t.bear); self.fg = Some(contrast_fg(t.bear)); self }
 }
 
 impl Widget for NotificationBadge {
@@ -523,7 +523,7 @@ impl Widget for NotificationBadge {
             egui::Align2::CENTER_CENTER,
             &label,
             mono_sm(),
-            self.fg,
+            self.fg.unwrap_or_else(|| contrast_fg(color)),
         );
         resp
     }
