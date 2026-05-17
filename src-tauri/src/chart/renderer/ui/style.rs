@@ -1482,7 +1482,7 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
     let border = if enabled { color_alpha(color, alpha_active()) } else { color_alpha(color, alpha_line())   };
     let resp = ui.add_enabled(enabled,
         egui::Button::new(RichText::new(label).monospace().size(font_sm_tight()).strong().color(fg))
-            .fill(bg).stroke(Stroke::new(0.5, border))
+            .fill(bg).stroke(Stroke::new(stroke_thin(), border))
             .corner_radius(3.0).min_size(egui::vec2(0.0, row_height_compact())));
     hit(&resp.rect, "ACTION_BTN", "Buttons");
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -2230,7 +2230,7 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
         let inact = &mut style.visuals.widgets.inactive;
         inact.bg_fill      = egui::Color32::TRANSPARENT;
         inact.weak_bg_fill = egui::Color32::TRANSPARENT;
-        inact.bg_stroke    = egui::Stroke::new(1.0, color_alpha(toolbar_border, 70));
+        inact.bg_stroke    = egui::Stroke::new(stroke_std(), color_alpha(toolbar_border, 70));
         inact.corner_radius = egui::CornerRadius::ZERO;
 
         let hov = &mut style.visuals.widgets.hovered;
