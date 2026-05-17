@@ -107,7 +107,7 @@ use crate::chart_renderer::gpu::{
 use crate::chart_renderer::ui::style::{
     color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, hex_to_color, segmented_control,
     contrast_fg,
-    dialog_window_themed, dialog_header, action_btn,
+    dialog_window_themed, dialog_header,
     STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
     BTN_ICON_SM, BTN_ICON_LG,
@@ -2053,7 +2053,8 @@ pub(crate) fn render(
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let can_create = !panes[ap].new_group_name.trim().is_empty();
-                    if action_btn(ui, &format!("{} Create", Icon::PLUS), t.accent, can_create) {
+                    let create_label = format!("{} Create", Icon::PLUS);
+                    if crate::ui_kit::widgets::Button::action(create_label.as_str()).tint(t.accent).enabled(can_create).show(ui, t).clicked() {
                         let name = panes[ap].new_group_name.trim().to_string();
                         let id = new_uuid();
                         crate::drawing_db::save_group(&id, &name, None);
