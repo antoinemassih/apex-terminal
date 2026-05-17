@@ -1,10 +1,14 @@
-//! Input — single-line text input.
+//! Input — single-line (and opt-in multi-line) text input.
 //!
 //! Replaces ad-hoc `egui::TextEdit::singleline` setups across the app
 //! with a token-aligned, themed, animated builder.
 //!
-//! Multi-line text and code editing are NOT this widget's job — use
-//! egui's TextEdit::multiline directly for those rare cases.
+//! Default mode is single-line monospace with a framed surface; the
+//! builder exposes opt-in knobs (`frameless`, `multiline`, `proportional`,
+//! `horizontal_align`, explicit `text_color`/`background_color`/`margin`/
+//! `id`/`width`/`font_size`) for the handful of call sites that need to
+//! override the canonical look (spreadsheet cells, command palette,
+//! right-aligned trading inputs, etc).
 //!
 //! API:
 //!   let mut buf = String::new();
@@ -19,6 +23,13 @@
 //!     .show(ui, theme);
 //!
 //!   Input::new(&mut password).password(true).show(ui, theme);
+//!
+//!   // Right-aligned, frameless price field (used in order_edit_dialog):
+//!   Input::new(&mut price_buf)
+//!     .width(110.0)
+//!     .horizontal_align(egui::Align::RIGHT)
+//!     .frameless(true)
+//!     .show(ui, theme);
 
 use egui::{
     CornerRadius, FontId, Key, Margin, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2,
@@ -45,10 +56,22 @@ pub struct Input<'a> {
     disabled: bool,
     full_width: bool,
     min_width: Option<f32>,
+    width: Option<f32>,
     size: Size,
     label: Option<String>,
     helper_text: Option<String>,
     char_limit: Option<usize>,
+    // Extended knobs (mirroring the legacy chart/renderer/ui/inputs::TextInput
+    // builder so callers can converge here).
+    font_size: Option<f32>,
+    horizontal_align: Option<egui::Align>,
+    frameless: bool,
+    proportional: bool,
+    multiline: bool,
+    text_color_override: Option<egui::Color32>,
+    background_color_override: Option<egui::Color32>,
+    margin_override: Option<Margin>,
+    explicit_id: Option<egui::Id>,
 }
 
 /// Result of showing an [`Input`]. The inner [`Response`] is for the
@@ -57,11 +80,24 @@ pub struct InputResponse {
     pub response: Response,
     pub clear_clicked: bool,
     pub submitted: bool,
+    /// `true` when the inner editor lost keyboard focus this frame.
+    /// Mirrors `egui::Response::lost_focus` for the inner `TextEdit`.
+    pub lost_focus: bool,
+    /// `true` when the inner editor currently has keyboard focus.
+    pub has_focus: bool,
     /// `egui::Id` of the internal `TextEdit`. Use this with
     /// `ui.memory_mut(|m| m.request_focus(resp.editor_id))` when a
     /// caller needs to programmatically focus the field (e.g. when
     /// the input first appears inside a popup / dialog).
     pub editor_id: egui::Id,
+}
+
+impl InputResponse {
+    /// Convenience: focus the inner editor on the next frame.
+    pub fn request_focus(&self, ctx: &egui::Context) {
+        let id = self.editor_id;
+        ctx.memory_mut(|m| m.request_focus(id));
+    }
 }
 
 impl<'a> Input<'a> {
@@ -80,10 +116,20 @@ impl<'a> Input<'a> {
             disabled: false,
             full_width: false,
             min_width: None,
+            width: None,
             size: Size::Md,
             label: None,
             helper_text: None,
             char_limit: None,
+            font_size: None,
+            horizontal_align: None,
+            frameless: false,
+            proportional: false,
+            multiline: false,
+            text_color_override: None,
+            background_color_override: None,
+            margin_override: None,
+            explicit_id: None,
         }
     }
 
@@ -99,13 +145,44 @@ impl<'a> Input<'a> {
     pub fn disabled(mut self, v: bool) -> Self { self.disabled = v; self }
     pub fn full_width(mut self) -> Self { self.full_width = true; self }
     pub fn min_width(mut self, px: f32) -> Self { self.min_width = Some(px); self }
+    /// Exact fixed width for the row. Overrides `min_width` / `full_width`.
+    pub fn width(mut self, px: f32) -> Self { self.width = Some(px); self }
     pub fn size(mut self, s: Size) -> Self { self.size = s; self }
     pub fn label(mut self, text: impl Into<String>) -> Self { self.label = Some(text.into()); self }
     pub fn helper_text(mut self, text: impl Into<String>) -> Self { self.helper_text = Some(text.into()); self }
     pub fn char_limit(mut self, max: usize) -> Self { self.char_limit = Some(max); self }
 
+    // ── Extended knobs ─────────────────────────────────────────────────────
+    /// Override the auto-derived font size for the inner editor.
+    pub fn font_size(mut self, px: f32) -> Self { self.font_size = Some(px); self }
+    /// Set the horizontal text alignment inside the inner `TextEdit`
+    /// (`Align::LEFT`, `Align::Center`, `Align::RIGHT`). Used by trading
+    /// inputs that want right-aligned prices / centred quantities.
+    pub fn horizontal_align(mut self, a: egui::Align) -> Self { self.horizontal_align = Some(a); self }
+    /// Disable the surrounding frame + bg fill (for inline cell editors
+    /// and contexts that paint their own chrome around the input).
+    pub fn frameless(mut self, v: bool) -> Self { self.frameless = v; self }
+    /// Use proportional font instead of monospace (default).
+    pub fn proportional(mut self, v: bool) -> Self { self.proportional = v; self }
+    /// Enable multiline mode (uses `egui::TextEdit::multiline`).
+    /// Disables most chrome (leading/trailing icons, prefix/suffix, clear
+    /// button) — caller is responsible for sizing.
+    pub fn multiline(mut self, v: bool) -> Self { self.multiline = v; self }
+    /// Override the editor text color (instead of `theme.text()`).
+    pub fn text_color(mut self, c: egui::Color32) -> Self { self.text_color_override = Some(c); self }
+    /// Override the input's background fill (instead of `theme.surface_raised()`).
+    pub fn background_color(mut self, c: egui::Color32) -> Self { self.background_color_override = Some(c); self }
+    /// Override the editor's inner margin (frameless multiline / cell editor).
+    pub fn margin(mut self, m: Margin) -> Self { self.margin_override = Some(m); self }
+    /// Explicit `egui::Id` for the input row (and its derived editor id).
+    pub fn id(mut self, id: egui::Id) -> Self { self.explicit_id = Some(id); self }
+
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> InputResponse {
-        paint_input(ui, theme, self)
+        if self.frameless || self.multiline {
+            paint_input_bare(ui, theme, self)
+        } else {
+            paint_input(ui, theme, self)
+        }
     }
 }
 
@@ -124,30 +201,30 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         disabled,
         full_width,
         min_width,
+        width,
         size,
         label,
         helper_text,
         char_limit,
+        font_size: font_size_override,
+        horizontal_align,
+        frameless: _,
+        proportional,
+        multiline: _,
+        text_color_override,
+        background_color_override,
+        margin_override: _,
+        explicit_id: _,
     } = input;
 
     let h = size.height();
-    // Use gap_md for inputs even at smaller sizes — icons and text
-    // were previously scrunched against the edges. The Size token's
-    // padding_x is calibrated for buttons (denser); inputs deserve
-    // more breathing room.
     let pad_x = size.padding_x().max(st::gap_md());
-    // Bump font one tier above the Size default for legibility.
-    // Md inputs were rendering text at font_sm (11px) which felt
-    // cramped against the larger Md height (28px).
-    let font_size = size.font_size().max(st::font_md());
-    // gap_sm (8px) instead of gap_2xs (2px) — magnifier glyph
-    // should not touch the text that follows.
+    let font_size = font_size_override.unwrap_or_else(|| size.font_size().max(st::font_md()));
     let icon_gap = st::gap_sm();
 
     let mut clear_clicked = false;
 
     let outer = ui.vertical(|ui| {
-        // ── Label above ──
         if let Some(lbl) = &label {
             ui.label(
                 egui::RichText::new(lbl)
@@ -158,8 +235,9 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             ui.add_space(st::gap_2xs() * 0.5);
         }
 
-        // ── Input row ──
-        let desired_w = if full_width {
+        let desired_w = if let Some(w) = width {
+            w
+        } else if full_width {
             ui.available_width()
         } else {
             min_width.unwrap_or(160.0)
@@ -168,13 +246,11 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         let (rect, response) = ui.allocate_exact_size(row_size, Sense::click());
 
         let id = response.id;
-        // The TextEdit gets a stable nested id so focus tracking is reliable.
         let edit_id = id.with("input_edit");
 
         let focused = ui.memory(|m| m.has_focus(edit_id));
         let hovered = response.hovered() && !disabled;
 
-        // ── Border color (animated) ──
         let hover_t = motion::ease_bool(ui.ctx(), id.with("hover"), hovered, motion::FAST);
         let focus_t = motion::ease_bool(ui.ctx(), id.with("focus"), focused, motion::FAST);
 
@@ -192,14 +268,10 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             border_col = theme.bear();
         }
 
-        // L2 surface: lighter on dark themes, darker on light themes.
-        // Makes the input visually pop out of the panel body instead
-        // of dissolving into it.
-        let bg_fill = theme.surface_raised();
+        let bg_fill = background_color_override.unwrap_or_else(|| theme.surface_raised());
 
         let radius = CornerRadius::same(st::radius_sm() as u8);
 
-        // ── Paint background + border ──
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
             let bg = if disabled { st::color_alpha(bg_fill, 128) } else { bg_fill };
@@ -207,7 +279,6 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
         }
 
-        // ── Layout content left→right and right→left to compute editor span ──
         let cy = rect.center().y;
         let mut left_x = rect.left() + pad_x;
         let mut right_x = rect.right() - pad_x;
@@ -216,14 +287,12 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         let icon_color_focus = theme.accent();
         let icon_color = motion::lerp_color(icon_color_idle, icon_color_focus, focus_t);
         let muted = theme.dim();
-        let text_col = if disabled { st::color_alpha(theme.text(), 128) } else { theme.text() };
+        let text_col = text_color_override.unwrap_or_else(|| {
+            if disabled { st::color_alpha(theme.text(), 128) } else { theme.text() }
+        });
 
         let painter = ui.painter_at(rect);
 
-        // Leading icon + vertical divider separating it from the text.
-        // The divider gives the icon its own visual region (file
-        // chooser / search style) rather than feeling like it's just
-        // floating inside the text column.
         if let Some(ic) = leading_icon {
             painter.text(
                 Pos2::new(left_x, cy),
@@ -233,9 +302,6 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                 icon_color,
             );
             left_x += font_size * 1.1 + icon_gap;
-            // Vertical divider — inset 4px top/bottom from the input
-            // rect, hairline at theme.border() so it reads against the
-            // raised input surface.
             let div_x = (left_x).round() + 0.5;
             painter.line_segment(
                 [Pos2::new(div_x, rect.top() + st::gap_xs()), Pos2::new(div_x, rect.bottom() - st::gap_xs())],
@@ -244,7 +310,6 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             left_x += icon_gap;
         }
 
-        // Prefix
         if let Some(p) = &prefix {
             let g = ui.fonts(|f| {
                 f.layout_no_wrap(p.clone(), FontId::monospace(font_size), muted)
@@ -259,7 +324,6 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             left_x += g.rect.width() + icon_gap;
         }
 
-        // Trailing icon (right edge)
         if let Some(ic) = trailing_icon {
             painter.text(
                 Pos2::new(right_x, cy),
@@ -271,7 +335,6 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             right_x -= font_size * 1.1 + icon_gap;
         }
 
-        // Suffix
         if let Some(s) = &suffix {
             let g = ui.fonts(|f| {
                 f.layout_no_wrap(s.clone(), FontId::monospace(font_size), muted)
@@ -286,7 +349,6 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             right_x -= g.rect.width() + icon_gap;
         }
 
-        // Clear button (right-most when value non-empty + clearable)
         let mut clear_rect: Option<Rect> = None;
         if clearable && !value.is_empty() && !disabled {
             let sz = font_size * 1.1;
@@ -302,7 +364,6 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             right_x -= sz + icon_gap;
         }
 
-        // ── Editor area ──
         let edit_left = left_x;
         let edit_right = right_x;
         let edit_w = (edit_right - edit_left).max(0.0);
@@ -311,17 +372,20 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             Pos2::new(edit_right, rect.bottom() - 1.0),
         );
 
-        // Place the TextEdit via a child UI clipped to edit_rect.
         let pre_value = value.clone();
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(edit_rect)
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
-        // Zero spacing inside the inner UI.
         child.spacing_mut().item_spacing = Vec2::ZERO;
         child.spacing_mut().button_padding = Vec2::ZERO;
 
+        let font_id = if proportional {
+            FontId::proportional(font_size)
+        } else {
+            FontId::monospace(font_size)
+        };
         let mut te = egui::TextEdit::singleline(value)
             .id(edit_id)
             .desired_width(edit_w)
@@ -329,13 +393,15 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             .frame(false)
             .password(password)
             .text_color(text_col)
-            .font(egui::FontSelection::FontId(FontId::monospace(font_size)));
+            .font(egui::FontSelection::FontId(font_id.clone()));
+        if let Some(a) = horizontal_align {
+            te = te.horizontal_align(a);
+        }
         if disabled {
             te = te.interactive(false);
         }
         let editor_resp = child.add(te);
 
-        // Placeholder paint when empty + not focused.
         if value.is_empty() && !focused {
             if let Some(ph) = &placeholder {
                 let painter2 = ui.painter_at(rect);
@@ -343,13 +409,12 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                     Pos2::new(edit_left, cy),
                     egui::Align2::LEFT_CENTER,
                     ph,
-                    FontId::monospace(font_size),
+                    font_id.clone(),
                     st::color_alpha(theme.dim(), 160),
                 );
             }
         }
 
-        // Clear-button click handling.
         if let Some(cr) = clear_rect {
             let click_resp = ui.interact(cr, id.with("clear"), Sense::click());
             if click_resp.hovered() {
@@ -361,17 +426,14 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             }
         }
 
-        // Cursor on hover over editor area.
         if hovered && !disabled {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
         }
 
-        // Click anywhere in the row focuses the editor.
         if response.clicked() && !disabled {
             ui.memory_mut(|m| m.request_focus(edit_id));
         }
 
-        // ── Char limit ──
         if let Some(max) = char_limit {
             if value.chars().count() > max {
                 let truncated: String = value.chars().take(max).collect();
@@ -379,22 +441,21 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             }
         }
 
-        // ── Submit detection ──
-        let submitted = editor_resp.lost_focus()
+        let lost_focus = editor_resp.lost_focus();
+        let has_focus = editor_resp.has_focus();
+        let submitted = lost_focus
             && ui.ctx().input(|i| i.key_pressed(Key::Enter));
 
-        // Mark the outer response changed if value changed.
         let mut row_resp = response;
         if *value != pre_value {
             row_resp.mark_changed();
         }
 
-        (row_resp, submitted, edit_id)
+        (row_resp, submitted, edit_id, lost_focus, has_focus)
     });
 
-    let (row_resp, submitted, editor_id) = outer.inner;
+    let (row_resp, submitted, editor_id, lost_focus, has_focus) = outer.inner;
 
-    // ── Helper text below ──
     if let Some(helper) = &helper_text {
         let color = if invalid {
             theme.bear()
@@ -416,6 +477,161 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         response: row_resp,
         clear_clicked,
         submitted,
+        lost_focus,
+        has_focus,
         editor_id,
+    }
+}
+
+/// "Bare" path used when `frameless(true)` or `multiline(true)` — skips
+/// the painted frame/border/icon chrome and just hands an `egui::TextEdit`
+/// to the parent UI. Used by inline cell editors, command palette text
+/// boxes, and right-aligned trading inputs that paint their own chrome.
+fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) -> InputResponse {
+    let Input {
+        value,
+        placeholder,
+        leading_icon: _,
+        trailing_icon: _,
+        prefix: _,
+        suffix: _,
+        clearable: _,
+        password,
+        invalid: _,
+        warning: _,
+        disabled,
+        full_width,
+        min_width,
+        width,
+        size,
+        label,
+        helper_text,
+        char_limit,
+        font_size: font_size_override,
+        horizontal_align,
+        frameless,
+        proportional,
+        multiline,
+        text_color_override,
+        background_color_override,
+        margin_override,
+        explicit_id,
+    } = input;
+
+    let font_size = font_size_override.unwrap_or_else(|| size.font_size().max(st::font_md()));
+    let text_col = text_color_override.unwrap_or_else(|| {
+        if disabled { st::color_alpha(theme.text(), 128) } else { theme.text() }
+    });
+    let font_id = if proportional {
+        FontId::proportional(font_size)
+    } else {
+        FontId::monospace(font_size)
+    };
+
+    if let Some(lbl) = &label {
+        ui.label(
+            egui::RichText::new(lbl)
+                .monospace()
+                .size(st::font_xs())
+                .color(theme.dim()),
+        );
+        ui.add_space(st::gap_2xs() * 0.5);
+    }
+
+    let edit_id = explicit_id.unwrap_or_else(|| ui.next_auto_id().with("input_edit"));
+
+    let desired_w = if let Some(w) = width {
+        w
+    } else if full_width {
+        ui.available_width()
+    } else {
+        min_width.unwrap_or_else(|| ui.available_width())
+    };
+
+    let pre_value = value.clone();
+
+    let editor_resp = if frameless {
+        let base = if multiline {
+            egui::TextEdit::multiline(value)
+        } else {
+            egui::TextEdit::singleline(value)
+        };
+        let mut te = base
+            .id(edit_id)
+            .desired_width(desired_w)
+            .margin(margin_override.unwrap_or(Margin::ZERO))
+            .frame(false)
+            .password(password)
+            .text_color(text_col)
+            .font(egui::FontSelection::FontId(font_id.clone()));
+        if let Some(ph) = &placeholder { te = te.hint_text(ph.as_str()); }
+        if let Some(a) = horizontal_align { te = te.horizontal_align(a); }
+        if disabled { te = te.interactive(false); }
+        ui.add(te)
+    } else {
+        // Frameless was off (so this branch fires only for multiline).
+        let bg_fill = background_color_override.unwrap_or_else(|| theme.surface_raised());
+        let bg = if disabled { st::color_alpha(bg_fill, 128) } else { bg_fill };
+        let inner_margin = margin_override.unwrap_or_else(|| Margin::same(st::gap_sm() as i8));
+        let frame = egui::Frame::NONE
+            .fill(bg)
+            .stroke(Stroke::new(st::stroke_std(), theme.border()))
+            .inner_margin(inner_margin)
+            .corner_radius(CornerRadius::same(st::radius_sm() as u8));
+        let mut out: Option<Response> = None;
+        frame.show(ui, |ui| {
+            let base = if multiline {
+                egui::TextEdit::multiline(value)
+            } else {
+                egui::TextEdit::singleline(value)
+            };
+            let mut te = base
+                .id(edit_id)
+                .desired_width(desired_w)
+                .margin(Margin::ZERO)
+                .frame(false)
+                .password(password)
+                .text_color(text_col)
+                .font(egui::FontSelection::FontId(font_id.clone()));
+            if let Some(ph) = &placeholder { te = te.hint_text(ph.as_str()); }
+            if let Some(a) = horizontal_align { te = te.horizontal_align(a); }
+            if disabled { te = te.interactive(false); }
+            out = Some(ui.add(te));
+        });
+        out.expect("multiline editor response")
+    };
+
+    if let Some(max) = char_limit {
+        if value.chars().count() > max {
+            let truncated: String = value.chars().take(max).collect();
+            *value = truncated;
+        }
+    }
+
+    if let Some(helper) = &helper_text {
+        ui.add_space(st::gap_2xs() * 0.5);
+        ui.label(
+            egui::RichText::new(helper)
+                .monospace()
+                .size(st::font_xs())
+                .color(theme.dim()),
+        );
+    }
+
+    let lost_focus = editor_resp.lost_focus();
+    let has_focus = editor_resp.has_focus();
+    let submitted = lost_focus && ui.ctx().input(|i| i.key_pressed(Key::Enter));
+    let mut response = editor_resp;
+    if *value != pre_value {
+        response.mark_changed();
+    }
+
+    InputResponse {
+        response,
+        clear_clicked: false,
+        submitted,
+        lost_focus,
+        has_focus,
+        editor_id: edit_id,
     }
 }

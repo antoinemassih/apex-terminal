@@ -7,7 +7,7 @@ use super::super::style::*;
 use super::super::components::*;
 use super::super::components_extra::*;
 use super::super::widgets::text::{BodyLabel, CaptionLabel};
-use super::super::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
 use super::super::super::gpu::*;
 
@@ -39,15 +39,14 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.label(egui::RichText::new(hint).size(font_md()).monospace().color(color_subtle(t.text)));
     }
     ui.add_space(gap_xl());
-    let te = TextInput::new(&mut watchlist.cmd_palette_ai_input)
+    let te = Input::new(&mut watchlist.cmd_palette_ai_input)
         .multiline(true)
         .width(pal_w - 16.0)
         .placeholder("Ask anything — Gemma 4 will answer (coming soon)…")
         .font_size(font_md())
         .proportional(true)
-        .theme(t)
-        .show(ui);
-    te.request_focus();
+        .show(ui, t);
+    te.request_focus(ui.ctx());
     ui.add_space(gap_md());
     ui.horizontal(|ui| {
         ui.add(BodyLabel::new("Gemma 4 is not wired up yet — this is a placeholder panel.").size(font_sm()).italics(true).color(t.dim));

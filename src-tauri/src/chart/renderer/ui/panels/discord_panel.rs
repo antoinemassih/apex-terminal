@@ -17,7 +17,7 @@
 use egui;
 use super::super::style::*;
 use super::super::widgets;
-use super::super::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::{
     Button, PanelEmpty, PanelSection, SidePanelShell, Width,
 };
@@ -469,12 +469,11 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(8.0);
-            let input = TextInput::new(&mut watchlist.discord_input)
+            let input = Input::new(&mut watchlist.discord_input)
                 .width(content_w - 60.0)
                 .text_color(t.text)
-                .placeholder(&format!("Message {}...", watchlist.discord_channel))
-                .theme(t)
-                .show(ui);
+                .placeholder(format!("Message {}...", watchlist.discord_channel))
+                .show(ui, t);
             // WHITE foreground is intentional brand contrast on the Discord blurple fill.
             let send_clicked = ui.add(Button::new("Send")
                 .variant(Variant::Chrome)
@@ -484,7 +483,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 .corner_radius(current().r_md as f32)
                 .min_size(egui::vec2(38.0, 22.0))
             ).clicked();
-            if (send_clicked || (input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+            if (send_clicked || (input.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter))))
                 && !watchlist.discord_input.trim().is_empty()
             {
                 let content = watchlist.discord_input.trim().to_string();

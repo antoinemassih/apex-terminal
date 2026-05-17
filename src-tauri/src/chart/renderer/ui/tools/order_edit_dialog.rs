@@ -7,7 +7,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::Theme;
 use crate::chart_renderer::trading::OrderSide;
 use crate::chart_renderer::ui::style::{color_alpha, color_half, color_muted, cursor, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, radius_xs, radius_md, shadow_color_alpha, stroke_thin};
-use crate::chart_renderer::ui::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::Input;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
@@ -112,13 +112,13 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 ui.add_space(m);
                 ui.label(egui::RichText::new(format!("{:6}", price_label)).monospace().size(font_sm()).color(c.t.dim));
                 ui.add_space(gap_sm());
-                let resp = TextInput::new(c.edit_price)
+                let resp = Input::new(c.edit_price)
                     .width(if is_trigger { 130.0 } else { 110.0 })
                     .font_size(font_sm())
                     .horizontal_align(egui::Align::RIGHT)
                     .frameless(true)
-                    .show(ui);
-                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    .show(ui, c.t);
+                if resp.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     if let Ok(p) = c.edit_price.parse::<f32>() { apply_price = Some(p); }
                 }
             });
@@ -138,13 +138,13 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                         apply_qty = Some(new_q);
                     }
                 }
-                let resp = TextInput::new(c.edit_qty)
+                let resp = Input::new(c.edit_qty)
                     .width(if is_trigger { 80.0 } else { 60.0 })
                     .font_size(font_sm())
                     .horizontal_align(egui::Align::Center)
                     .frameless(true)
-                    .show(ui);
-                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    .show(ui, c.t);
+                if resp.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     if let Ok(q) = c.edit_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
                 }
                 if cursor::click_widget(ui, egui::Button::new(egui::RichText::new("+").monospace().size(font_md()).color(c.t.dim))

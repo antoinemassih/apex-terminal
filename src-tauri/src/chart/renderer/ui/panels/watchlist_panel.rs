@@ -13,7 +13,6 @@ use crate::chart_renderer::trading::market_session;
 use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
-use super::super::widgets::inputs::TextInput;
 use crate::ui_kit::widgets::SearchInput;
 use super::super::widgets::frames::PopupFrame;
 use super::super::widgets::watchlist::{SectionHeader, NmfToggle};
@@ -64,11 +63,11 @@ if watchlist.open {
                         ui.set_min_height(20.0);
                         // Inline rename mode
                         if watchlist.watchlist_name_editing {
-                            let resp = super::super::widgets::inputs::TextInput::new(&mut watchlist.watchlist_name_buf)
+                            let resp = Input::new(&mut watchlist.watchlist_name_buf)
                                 .width(ui.available_width() - 50.0)
                                 .font_size(10.0)
-                                .show(ui);
-                            if resp.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                .show(ui, t);
+                            if resp.lost_focus || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 let new_name = watchlist.watchlist_name_buf.trim().to_string();
                                 if !new_name.is_empty() {
                                     if let Some(wl) = watchlist.saved_watchlists.get_mut(watchlist.active_watchlist_idx) {
@@ -78,7 +77,7 @@ if watchlist.open {
                                 watchlist.watchlist_name_editing = false;
                                 watchlist.persist();
                             } else {
-                                resp.request_focus();
+                                resp.request_focus(ui.ctx());
                             }
                         } else {
                             // Snapshot names and count for the dropdown to avoid borrow conflicts
@@ -617,9 +616,9 @@ if watchlist.open {
                                     let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
                                     ui.add(Button::icon(chevron).variant(Variant::TextOnly).glyph_color(color_muted(t.dim)).size(Size::Sm));
 
-                                    let te = super::super::widgets::inputs::TextInput::new(&mut watchlist.rename_buf)
-                                        .width((ui.available_width() - 10.0).max(40.0)).font_size(9.0).show(ui);
-                                    if te.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                    let te = Input::new(&mut watchlist.rename_buf)
+                                        .width((ui.available_width() - 10.0).max(40.0)).font_size(9.0).show(ui, t);
+                                    if te.lost_focus || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                             sec.title = watchlist.rename_buf.clone();
                                         }
@@ -629,7 +628,7 @@ if watchlist.open {
                                     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                                         watchlist.renaming_section = None;
                                     }
-                                    te.request_focus();
+                                    te.request_focus(ui.ctx());
                                 });
                             }
 
@@ -1314,19 +1313,18 @@ if watchlist.open {
                     ui.horizontal(|ui| {
                         let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
                         let input_bg = if has_focus { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
-                        let sym_resp = TextInput::new(&mut watchlist.chain_sym_input)
+                        let sym_resp = Input::new(&mut watchlist.chain_sym_input)
                             .id(egui::Id::new("chain_sym_edit"))
-                            .placeholder(&watchlist.chain_symbol)
+                            .placeholder(watchlist.chain_symbol.clone())
                             .width(70.0)
                             .font_size(14.0)
                             .text_color(t.accent)
                             .background_color(input_bg)
                             .margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
-                            .theme(t)
-                            .show(ui);
+                            .show(ui, t);
                         if !has_focus {
                             let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
-                            let r = sym_resp.rect;
+                            let r = sym_resp.response.rect;
                             ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
                                 display_text, mono_lg(), t.accent);
                         }
@@ -1336,7 +1334,7 @@ if watchlist.open {
                             ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(font_lg()).color(t.text));
                         }
                         // Search — static immediate + ApexIB background
-                        if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
+                        if sym_resp.response.changed() && !watchlist.chain_sym_input.is_empty() {
                             watchlist.search_results = crate::ui_kit::symbols::search_symbols(&watchlist.chain_sym_input, 5)
                                 .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
                             // Also fire ApexIB search in background

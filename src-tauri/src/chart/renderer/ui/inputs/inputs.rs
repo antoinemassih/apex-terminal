@@ -1,7 +1,7 @@
 //! Builder + impl Widget primitives — inputs family.
 //! See ui/widgets/mod.rs for the rationale.
 
-#![allow(dead_code, unused_imports)]
+#![allow(dead_code, unused_imports, deprecated)]
 
 use egui::{Color32, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 use super::super::style::*;
@@ -21,6 +21,11 @@ fn ambient(ctx: &egui::Context) -> &'static Theme {
 /// ```ignore
 /// let resp = TextInput::new(&mut buf).placeholder("Search…").width(200.0).show(ui);
 /// ```
+#[deprecated(since = "Wave I2", note = "Use `crate::ui_kit::widgets::Input` instead — \
+    same builder surface (width, font_size, horizontal_align, frameless, multiline, \
+    proportional, text_color, background_color, margin, id) but theme-aware and \
+    paired with the canonical InputResponse (with lost_focus / has_focus fields and \
+    a request_focus(&ctx) helper).")]
 #[must_use = "TextInput must be rendered via `.show(ui)`"]
 pub struct TextInput<'a, 'b> {
     buffer: &'b mut String,
@@ -210,6 +215,9 @@ impl<'a, 'b> TextInput<'a, 'b> {
 /// ```ignore
 /// let resp = NumericInput::new(&mut my_f32).placeholder("0.0").show(ui);
 /// ```
+#[deprecated(since = "Wave I2", note = "No remaining callers. Use `crate::ui_kit::widgets::Input` \
+    over a `&mut String` buffer and parse with `.lost_focus` + `value.parse::<f32>()` — \
+    matches the legacy behaviour without the hidden memory cache.")]
 #[must_use = "NumericInput must be rendered via `.show(ui)`"]
 pub struct NumericInput<'a, 'b> {
     value: &'b mut f32,

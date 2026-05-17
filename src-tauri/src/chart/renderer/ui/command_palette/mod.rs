@@ -14,7 +14,7 @@ use super::components_extra::*;
 use super::widgets::pills::*;
 use super::widgets::frames::PopupFrame;
 use super::widgets::text::BodyLabel;
-use super::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::Input;
 use super::super::gpu::*;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
 use crate::ui_kit::icons::Icon;
@@ -200,15 +200,14 @@ fn draw_normal_mode(
     // Header
     ui.horizontal(|ui| {
         ui.add(BodyLabel::new("⌕").size(font_lg()).color(t.dim));
-        let te = TextInput::new(&mut watchlist.cmd_palette_query)
+        let te = Input::new(&mut watchlist.cmd_palette_query)
             .width(pal_w - 180.0)
             .font_size(font_lg())
             .proportional(true)
             .placeholder("Search symbols, commands, widgets…  (Tab for AI)")
             .frameless(true)
-            .theme(t)
-            .show(ui);
-        te.request_focus();
+            .show(ui, t);
+        te.request_focus(ui.ctx());
 
         if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
             watchlist.cmd_palette_ai_mode = true; return;
