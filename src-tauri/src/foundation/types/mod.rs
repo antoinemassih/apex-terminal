@@ -1,3 +1,20 @@
+//! Foundation types — owned data shapes shared across the app.
+//!
+//! Wave 3 split `data_types.rs` into a directory so typed primitives
+//! (`Price`, `Timestamp`, `Symbol`) live alongside the legacy wire types
+//! (`Bar`, `OptionContract`, `OptionsChain`) without growing one giant file.
+//!
+//! Existing re-exports stay flat via `pub use` — downstream code that
+//! `use crate::foundation::*`-ed the old module is unaffected.
+
+pub mod price;
+pub mod timestamp;
+pub mod symbol;
+
+pub use price::Price;
+pub use timestamp::{Timestamp, TimeSource};
+pub use symbol::{Symbol, SymbolRegistry, Vendor, AssetClass, registry};
+
 use serde::{Deserialize, Serialize};
 
 /// Detect crypto symbols (Binance pairs)
