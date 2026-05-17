@@ -73,6 +73,7 @@ fn paint_radio<T: PartialEq + Copy>(
 
     let label_w = if let Some(s) = &r.label {
         let galley = ui.fonts(|f| {
+            // layout-only: only width is read; color is discarded.
             f.layout_no_wrap(s.clone(), FontId::proportional(font_size), Color32::WHITE)
         });
         galley.rect.width() + gap
@@ -123,7 +124,7 @@ fn paint_radio<T: PartialEq + Copy>(
 
     let mut bg_final = bg;
     let mut border_final = border_col;
-    let mut dot_color = Color32::WHITE;
+    let mut dot_color = st::contrast_fg(accent);
 
     if r.disabled {
         bg_final = with_alpha_scale(bg_final, 0.5);

@@ -313,7 +313,7 @@ impl<'a> DomRow<'a> {
 
                 // ── PRICE column ──
                 if let Some(pr) = find(DomColumn::Price) {
-                    let pc = if is_current { Color32::WHITE }
+                    let pc = if is_current { contrast_fg(accent) }
                         else if is_inside { accent }
                         else if price > 0.0 { fg } else { fg };
                     painter.text(pr.center(), egui::Align2::CENTER_CENTER,
@@ -530,7 +530,7 @@ impl<'a> DomRow<'a> {
 
         // PRICE — compact 5-char formatting when narrow
         let pc = self.price_color_override.unwrap_or_else(|| {
-            if self.current_price { Color32::WHITE }
+            if self.current_price { contrast_fg(accent) }
             else if self.selected { accent }
             else if self.imbalance > 0.0 { color_subtle(bull) }
             else { color_subtle(bear) }
@@ -610,7 +610,7 @@ impl<'a> DomRow<'a> {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 let xr = Rect::from_min_size(egui::pos2(br.right() - 12.0, br.top()), egui::vec2(12.0, br.height()));
                 painter.rect_filled(xr, 1.0, color_alpha(bear, alpha_dim()));
-                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", mono_sm(), Color32::WHITE);
+                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", mono_sm(), contrast_fg(bear));
                 let label_rect = Rect::from_min_max(br.min, egui::pos2(br.right() - 12.0, br.max.y));
                 draw_order_chip_label(painter, label_rect, side_ch, qty, theme_ref.overlay_text);
                 if drag_resp.clicked() {

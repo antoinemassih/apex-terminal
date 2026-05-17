@@ -107,6 +107,7 @@ fn paint_slider<T: egui::emath::Numeric>(
                 st::color_alpha(theme.text(), 180),
             );
             // Allocate the label space.
+            // layout-only: only `.rect.width()/.height()` is read.
             let galley = ui.fonts(|f| f.layout_no_wrap(
                 text.clone(), egui::FontId::proportional(label_font), Color32::WHITE));
             ui.allocate_exact_size(Vec2::new(galley.rect.width(), galley.rect.height() + 2.0), Sense::hover());

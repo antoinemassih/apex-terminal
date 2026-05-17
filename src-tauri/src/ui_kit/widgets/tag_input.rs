@@ -383,6 +383,7 @@ impl<'a> TagInput<'a> {
 /// Measure the pixel width of a tag label (without padding/icon overhead).
 fn measure_tag_width(ui: &Ui, text: &str, font_size: f32) -> f32 {
     ui.fonts(|f| {
+        // layout-only: only `.rect.width()` is read; color is discarded.
         f.layout_no_wrap(
             text.to_string(),
             FontId::proportional(font_size - 1.0),

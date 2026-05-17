@@ -207,7 +207,7 @@ fn paint_circle(
             egui::Align2::CENTER_CENTER,
             Icon::CHECK,
             FontId::proportional(diameter * 0.55),
-            Color32::WHITE,
+            st::contrast_fg(accent),
         );
     } else if idx == current {
         // Current: filled accent, white number, slightly larger ring.
@@ -218,7 +218,7 @@ fn paint_circle(
             egui::Align2::CENTER_CENTER,
             format!("{}", idx + 1),
             num_font.clone(),
-            Color32::WHITE,
+            st::contrast_fg(accent),
         );
     } else {
         // Future: transparent fill, dim border, dim number.

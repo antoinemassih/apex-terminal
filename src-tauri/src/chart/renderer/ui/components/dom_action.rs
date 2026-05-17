@@ -160,7 +160,7 @@ pub fn paint_dom_action(
         }
         SegmentChip => {
             let (fill, text_col) = if ctx.is_light {
-                (t.accent, Color32::WHITE)
+                (t.accent, contrast_fg(t.accent))
             } else {
                 (color_alpha(t.accent, if hover { 55 } else { 28 }), t.accent)
             };
@@ -181,7 +181,7 @@ pub fn paint_dom_action(
         Buy | Sell => {
             let semantic = if matches!(tier, Buy) { t.bull } else { t.bear };
             let (fill, text_col) = if ctx.is_light {
-                (if hover { semantic } else { semantic.gamma_multiply(0.92) }, Color32::WHITE)
+                (if hover { semantic } else { semantic.gamma_multiply(0.92) }, contrast_fg(semantic))
             } else {
                 (if hover { color_alpha(semantic, 70) } else { color_alpha(semantic, alpha_tint()) }, semantic)
             };

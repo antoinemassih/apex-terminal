@@ -106,6 +106,7 @@ use crate::chart_renderer::gpu::{
 };
 use crate::chart_renderer::ui::style::{
     color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, hex_to_color, segmented_control,
+    contrast_fg,
     dialog_window_themed, dialog_header, action_btn,
     STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
@@ -646,7 +647,7 @@ pub(crate) fn render(
                             egui::Align2::CENTER_CENTER,
                             draw_count.to_string(),
                             egui::FontId::proportional(font_4xs()),
-                            egui::Color32::WHITE,
+                            contrast_fg(t.accent),
                         );
                     }
                     if tree_resp.clicked() {
@@ -1508,7 +1509,7 @@ pub(crate) fn render(
                     let (resp, r) = win_btn(ui, true);
                     let c = r.center();
                     let s = 4.5;
-                    let col = if resp.hovered() { egui::Color32::WHITE } else { color_subtle(t.dim) };
+                    let col = if resp.hovered() { contrast_fg(t.bear) } else { color_subtle(t.dim) };
                     ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(STROKE_STD, col));
                     ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(STROKE_STD, col));
                     if resp.clicked() {
@@ -2209,7 +2210,7 @@ pub(crate) fn render(
                     .stroke(egui::Stroke::new(wl_tip_stroke_w, wl_tip_border))
                     .inner_margin(crate::chart_renderer::ui::style::gap_lg()).corner_radius(wl_tip_cr).show(ui, |ui| {
                     ui.set_max_width(tip_w);
-                    ui.label(TextStyle::NumericLg.as_rich(&tip.sym, egui::Color32::WHITE));
+                    ui.label(TextStyle::NumericLg.as_rich(&tip.sym, t.text));
                     ui.horizontal(|ui| {
                         ui.label(TextStyle::Numeric.as_rich(&format!("${:.2}", tip.price), color_alpha(t.text,220)));
                         ui.label(TextStyle::Numeric.as_rich(&format!("{:+.2}%", change_pct), chg_col));

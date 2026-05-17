@@ -499,6 +499,7 @@ fn paint_button<'a>(
             // visually match context menus, panel chrome, and dropdowns.
             // Tabular data (prices, tickers) should use RichText.monospace
             // directly, not Button labels.
+            // layout-only galley: only `.rect.width()` is read; color discarded.
             let galley = ui.fonts(|f| {
                 f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), Color32::WHITE)
             });
@@ -508,6 +509,7 @@ fn paint_button<'a>(
             content_w += icon_gap + font_size * 1.1;
         }
         if let Some(kt) = kbd_text.as_ref() {
+            // layout-only galley: width measurement only.
             let g = ui.fonts(|f| f.layout_no_wrap(kt.clone(), kbd_font.clone(), Color32::WHITE));
             content_w += st::gap_md() + g.rect.width();
         }
@@ -523,6 +525,7 @@ fn paint_button<'a>(
     if stacked {
         // Width: max(icon_w, label_w, sublabel_w) + side padding
         let mut max_w = stacked_icon_size;
+        // layout-only galleys in this stacked-measurement block: only `.rect.width()` is read.
         if !label.is_empty() {
             let g = ui.fonts(|f| f.layout_no_wrap(label.to_string(), stacked_label_font.clone(), Color32::WHITE));
             max_w = max_w.max(g.rect.width());

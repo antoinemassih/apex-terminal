@@ -114,6 +114,7 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
         let seg_widths: Vec<f32> = (0..count)
             .map(|i| {
                 let lbl = self.label_for(i);
+                // layout-only: only `.rect.width()` is read; color is discarded.
                 let galley = ui.fonts(|f| {
                     f.layout_no_wrap(lbl, FontId::monospace(font_size), Color32::WHITE)
                 });

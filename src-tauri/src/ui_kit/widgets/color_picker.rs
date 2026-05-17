@@ -259,6 +259,7 @@ fn paint_compact<'a>(
                     st::color_alpha(theme.text(), 200),
                 );
                 let galley = ui.fonts(|f| {
+                    // layout-only: only `.rect.width()` is read.
                     f.layout_no_wrap(
                         text.clone(),
                         FontId::proportional(st::font_sm()),

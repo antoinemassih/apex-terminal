@@ -901,7 +901,7 @@ impl<'a> ThicknessPicker<'a> {
 
         for (i, &th) in self.values.iter().enumerate() {
             let sel = (*value - th).abs() < 0.1;
-            let fg = if sel { Color32::WHITE } else { color_subtle(dim) };
+            let fg = if sel { contrast_fg(accent) } else { color_subtle(dim) };
             let bg = if sel { color_alpha(accent, alpha_dim()) } else { color_alpha(border, alpha_subtle()) };
             let rounding: egui::CornerRadius = if i == 0 {
                 egui::CornerRadius { nw: r_sm, sw: r_sm, ne: 0, se: 0 }
