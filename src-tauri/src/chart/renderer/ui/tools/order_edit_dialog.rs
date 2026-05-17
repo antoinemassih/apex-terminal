@@ -6,7 +6,7 @@
 use egui::Context;
 use crate::chart_renderer::gpu::Theme;
 use crate::chart_renderer::trading::OrderSide;
-use crate::chart_renderer::ui::style::{color_alpha, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, shadow_color_alpha, stroke_thin};
+use crate::chart_renderer::ui::style::{color_alpha, cursor, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, shadow_color_alpha, stroke_thin};
 use crate::chart_renderer::ui::widgets::inputs::TextInput;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
@@ -129,7 +129,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 ui.add_space(m);
                 ui.label(egui::RichText::new("Qty   ").monospace().size(font_sm()).color(c.t.dim));
                 ui.add_space(gap_sm());
-                if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(font_md()).color(c.t.dim))
+                if cursor::click_widget(ui, egui::Button::new(egui::RichText::new("-").monospace().size(font_md()).color(c.t.dim))
                     .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(2.0).min_size(egui::vec2(20.0, 22.0))).clicked() {
                     if let Ok(q) = c.edit_qty.parse::<u32>() {
                         let step = if q > 100 { 10 } else if q > 10 { 5 } else { 1 };
@@ -147,7 +147,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     if let Ok(q) = c.edit_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
                 }
-                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(font_md()).color(c.t.dim))
+                if cursor::click_widget(ui, egui::Button::new(egui::RichText::new("+").monospace().size(font_md()).color(c.t.dim))
                     .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(2.0).min_size(egui::vec2(20.0, 22.0))).clicked() {
                     if let Ok(q) = c.edit_qty.parse::<u32>() {
                         let step = if q >= 100 { 10 } else if q >= 10 { 5 } else { 1 };
@@ -167,7 +167,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                     let sel = current_qty == preset;
                     let fg = if sel { c.t.accent } else { c.t.dim.gamma_multiply(0.5) };
                     let bg = if sel { color_alpha(c.t.accent, 25) } else { egui::Color32::TRANSPARENT };
-                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", preset)).monospace().size(font_xs()).color(fg))
+                    if cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{}", preset)).monospace().size(font_xs()).color(fg))
                         .fill(bg).corner_radius(2.0).min_size(egui::vec2(24.0, 16.0))).clicked() {
                         *c.edit_qty = format!("{}", preset);
                         apply_qty = Some(preset);

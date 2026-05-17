@@ -4,7 +4,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
-use crate::chart_renderer::ui::style::{gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg};
+use crate::chart_renderer::ui::style::{cursor, gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg, mono_sm};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 
 /// Output from the picker.
@@ -178,6 +178,7 @@ pub fn show_drawing_tool_picker(
                                     || drawing_is_active(tool, chart);
                                 let (cell, resp) = ui.allocate_exact_size(
                                     egui::vec2(cell_w, cell_h), egui::Sense::click());
+                                cursor::clickable(ui, &resp);
                                 let hov = resp.hovered();
                                 let bg = if is_cur {
                                     t.accent.gamma_multiply(0.30)
@@ -196,7 +197,6 @@ pub fn show_drawing_tool_picker(
                                 ui.painter().text(cell.center(), egui::Align2::CENTER_CENTER,
                                     icon, egui::FontId::proportional((cell_w * 0.55).max(11.0)), txt_col);
                                 if hov {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     resp.clone().on_hover_text(drawing_label(tool));
                                 }
                                 if resp.clicked() { chosen = Some(tool.clone()); }
@@ -217,6 +217,7 @@ pub fn show_drawing_tool_picker(
                             egui::vec2(ui.available_width(), 20.0),
                             egui::Sense::hover(),
                         );
+                        cursor::clickable(ui, &resp);
                         let bg = if is_hovered_cat || resp.hovered() {
                             t.accent.gamma_multiply(0.18)
                         } else { t.toolbar_bg };
@@ -225,7 +226,7 @@ pub fn show_drawing_tool_picker(
                             egui::pos2(row_rect.left() + gap_lg(), row_rect.center().y),
                             egui::Align2::LEFT_CENTER,
                             cat,
-                            egui::FontId::monospace(font_sm()),
+                            mono_sm(),
                             if is_hovered_cat { t.accent } else { t.text.gamma_multiply(0.9) },
                         );
                         ui.painter().text(
@@ -236,7 +237,6 @@ pub fn show_drawing_tool_picker(
                             t.dim,
                         );
                         if resp.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                             chart.draw_picker_hover_cat = Some(cat.to_string());
                             chart.draw_picker_hover_cat_y = row_rect.top();
                         }
@@ -283,6 +283,7 @@ pub fn show_drawing_tool_picker(
                                     egui::vec2(ui.available_width(), 22.0),
                                     egui::Sense::click(),
                                 );
+                                cursor::clickable(ui, &resp);
                                 let hov = resp.hovered();
                                 let bg = if is_cur {
                                     t.accent.gamma_multiply(0.25)
@@ -296,6 +297,7 @@ pub fn show_drawing_tool_picker(
                                     egui::vec2(star_size, row_rect.height() - 4.0),
                                 );
                                 let star_resp = ui.allocate_rect(star_rect, egui::Sense::click());
+                                cursor::clickable(ui, &star_resp);
                                 let s_col = if starred { t.accent } else { t.dim };
                                 ui.painter().text(
                                     star_rect.center(), egui::Align2::CENTER_CENTER,
@@ -308,10 +310,9 @@ pub fn show_drawing_tool_picker(
                                     egui::pos2(txt_x, row_rect.center().y),
                                     egui::Align2::LEFT_CENTER,
                                     format!("{}  {}", icon, label),
-                                    egui::FontId::monospace(font_sm()),
+                                    mono_sm(),
                                     row_col,
                                 );
-                                if hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                                 if resp.clicked() { chosen = Some(tool.to_string()); }
                             }
                         });

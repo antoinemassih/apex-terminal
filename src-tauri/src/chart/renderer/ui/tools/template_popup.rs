@@ -5,7 +5,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, INDICATOR_COLORS};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::{Button as KitButton, Input};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 pub(crate) fn draw(
@@ -51,7 +51,7 @@ pub(crate) fn draw(
                 ui.horizontal(|ui| {
                     ui.add(SectionLabel::new("TEMPLATES").lg().color(t.accent));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if close_button(ui, t.dim) { close_popup = true; }
+                        if KitButton::close().show(ui, t).clicked() { close_popup = true; }
                     });
                 });
                 ui.add_space(gap_sm());
@@ -135,8 +135,8 @@ pub(crate) fn draw(
                                         let row_rect = row_resp.response.rect;
                                         let click_resp = ui.interact(row_rect,
                                             egui::Id::new(("tmpl_apply", pi, i)), egui::Sense::click());
+                                        crate::chart_renderer::ui::style::cursor::clickable(ui, &click_resp);
                                         if click_resp.hovered() {
-                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             ui.painter().rect_filled(row_rect, radius_sm(),
                                                 color_alpha(t.accent, alpha_faint()));
                                         }
@@ -162,7 +162,7 @@ pub(crate) fn draw(
                                 .show(ui, t);
                             let can_save = !panes[pi].template_save_name.trim().is_empty();
                             if can_save {
-                                if small_action_btn(ui, "Save", t.accent) {
+                                if KitButton::small_action("Save").tint(t.accent).show(ui, t).clicked() {
                                     let name = panes[pi].template_save_name.trim().to_string();
                                     let p = &panes[pi];
                                     let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({

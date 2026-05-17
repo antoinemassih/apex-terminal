@@ -6,7 +6,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, render_order_entry_body};
 use crate::chart_renderer::trading::{OrderSide, OrderLevel, OrderStatus, OrderState, AccountSummary, Position, IbOrder};
 use crate::chart_renderer::gpu::Watchlist;
-use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, stroke_std};
+use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, cursor, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, stroke_std};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 use crate::ui_kit::icons::Icon;
 
@@ -55,7 +55,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
                 });
                 let pill_resp = ui.interact(resp.response.rect, egui::Id::new(("order_pill_interact", c.pane_idx)), egui::Sense::click_and_drag());
                 if pill_resp.double_clicked() { chart.order_collapsed = false; }
-                if pill_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                cursor::draggable(ui, &pill_resp);
                 if pill_resp.dragged() {
                     let delta = pill_resp.drag_delta();
                     chart.order_panel_pos.x += delta.x;
@@ -113,18 +113,18 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
                     let dbl = ui.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
                     let armed_rect = egui::Rect::from_min_size(hdr_rect.min, egui::vec2(22.0, 22.0));
                     if armed_rect.contains(mpos) {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        cursor::modal(ui, egui::CursorIcon::PointingHand);
                         if released { chart.armed = !chart.armed; }
                     } else if mpos.x > hdr_rect.right() - 50.0 && mpos.x < hdr_rect.right() - 20.0 {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        cursor::modal(ui, egui::CursorIcon::PointingHand);
                         if released { chart.dom_open = !chart.dom_open; }
                     } else if mpos.x > hdr_rect.right() - 20.0 {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        cursor::modal(ui, egui::CursorIcon::PointingHand);
                         if released { chart.order_advanced = !chart.order_advanced; }
                     } else if dbl {
                         chart.order_collapsed = true;
                     } else {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                        cursor::modal(ui, egui::CursorIcon::Grab);
                     }
                 }
             }
@@ -221,7 +221,7 @@ fn render_dom_ladder(
             let col_w = (panel_w - gap_lg()) / 3.0;
             let bc = if rh { t.bull } else { color_muted(t.bull) };
             let bbg = if rh { color_alpha(t.bull, 15) } else { egui::Color32::TRANSPARENT };
-            if ui.add(egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(font_sm()).color(bc)).fill(bbg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
+            if cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(font_sm()).color(bc)).fill(bbg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
                 use crate::chart_renderer::trading::order_manager::*;
                 if let Some(id) = submit_and_get_id(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Buy,
@@ -232,12 +232,12 @@ fn render_dom_ladder(
                     chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                 }
             }
-            let pc = if is_current { egui::Color32::WHITE } else if price > current_price { color_subtle(t.bull) } else { color_subtle(t.bear) };
+            let pc = if is_current { t.text } else if price > current_price { color_subtle(t.bull) } else { color_subtle(t.bear) };
             let pf = if tick >= 1.0 { format!("{:.0}", price) } else { format!("{:.2}", price) };
             ui.add_sized(egui::vec2(col_w, row_h), egui::Label::new(egui::RichText::new(pf).monospace().size(font_sm()).strong().color(pc)));
             let ac = if rh { t.bear } else { color_muted(t.bear) };
             let abg = if rh { color_alpha(t.bear, 15) } else { egui::Color32::TRANSPARENT };
-            if ui.add(egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(font_sm()).color(ac)).fill(abg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
+            if cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(font_sm()).color(ac)).fill(abg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
                 use crate::chart_renderer::trading::order_manager::*;
                 if let Some(id) = submit_and_get_id(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Sell,
