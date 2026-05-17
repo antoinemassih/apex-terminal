@@ -1,5 +1,13 @@
 //! GPU-blurred drop shadow for floating panels.
 //!
+//! ### NOTE: foundation primitive, not a widget
+//! This module is a paint primitive consumed by widgets (Modal, Popover,
+//! Sheet, ContextMenu, Tooltip). It exposes a free `paint()` function and
+//! `ShadowSpec` presets — there is no builder + `show(ui, theme)` because
+//! shadows are painted *underneath* a widget's own rect, not as a
+//! standalone interactive element. The "Builder + show()" rule in
+//! `CLAUDE.md` does not apply here.
+//!
 //! egui's built-in `egui::epaint::Shadow` paints a feathered rectangle
 //! that looks like 2010 Win32 chrome. This module paints a real
 //! Gaussian-blurred-looking quad behind a target rect — used by

@@ -1,6 +1,20 @@
 //! Overlay placement engine — shared by Tooltip, Popover, HoverCard, and
 //! eventually Select. Picks an anchor point + flips the overlay if it
 //! would overflow the screen.
+//!
+//! ### NOTE: foundation primitive, not a widget
+//! This module is pure geometry (`Side`, `Align`, `Placement`, `compute()`).
+//! It draws nothing and has no theme dependency. It is called by the
+//! overlay widgets to position themselves; consumers of the design system
+//! shouldn't need to touch it directly. The "Builder + show()" rule in
+//! `CLAUDE.md` does not apply.
+//!
+//! ### What it does
+//! Given a trigger rect, an overlay size, a desired `Side` + `Align`, and
+//! the screen rect, returns the top-left position for the overlay and
+//! the side it actually landed on (after auto-flip). Used by Popover,
+//! HoverCard, Tooltip; Select will adopt it once its custom logic is
+//! consolidated.
 
 use egui::{Pos2, Rect, Vec2};
 

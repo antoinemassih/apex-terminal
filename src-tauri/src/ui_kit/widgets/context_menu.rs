@@ -8,6 +8,16 @@
 //!     keyed on the menu id so concurrent menus animate independently.
 //!   * Public types (`MenuTheme`, `MenuBuilder`, `MenuItem`, etc.)
 //!     are unchanged so callers compile via the back-compat re-export.
+//!
+//! ### Signature note
+//! `ContextMenu::show(ui, body)` intentionally does NOT take
+//! `theme: &dyn ComponentTheme` as a third parameter — the standard
+//! ui_kit shape. Theme is captured at construction time via
+//! `ContextMenu::new(theme)` because the menu snapshots a `MenuTheme`
+//! (a `Copy` palette) so the body closure can be handed a
+//! `&mut MenuBuilder<'_>` without lifetime gymnastics tying the closure
+//! to the original `&dyn ComponentTheme`. This is an explicit, documented
+//! variance from the "Builder + show(ui, theme)" rule in `CLAUDE.md`.
 
 #![allow(dead_code, unused_imports)]
 
