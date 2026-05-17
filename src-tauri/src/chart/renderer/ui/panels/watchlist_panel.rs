@@ -17,57 +17,37 @@ use super::super::widgets::inputs::TextInput;
 use crate::ui_kit::widgets::SearchInput;
 use super::super::widgets::frames::PopupFrame;
 use super::super::widgets::watchlist::{SectionHeader, NmfToggle};
-use crate::ui_kit::widgets::{Input, Tag, TagTone};
+use crate::ui_kit::widgets::{
+    Input, PanelEmpty, PanelLoading, PanelSection, SidePanelShell, Tag, TagTone, Width,
+};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
-use super::super::widgets::headers::PanelHeaderWithTabs;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
     let _z_watchlist = crate::foundation::frame_profiler::profile_zone("watchlist_panel");
 // ── Watchlist side panel ───────────────────────────────────────────────────
 if watchlist.open {
-    egui::SidePanel::right("watchlist")
-        .default_width(240.0)
-        .min_width(140.0)
-        .max_width(500.0)
-        .resizable(true)
-        .frame(super::super::widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
-        .show(ctx, |ui| {
-            // Force content to never exceed the panel's actual width
-            let panel_w = ui.available_width();
-            ui.set_min_width(0.0);
-            ui.set_max_width(panel_w);
+    // Snapshot the active tab so SidePanelShell::tabs can take a &mut without
+    // conflicting with `&mut watchlist` inside the body closure (orders_panel
+    // pattern). Written back after the shell returns.
+    let mut active_tab = watchlist.tab;
+    // Pre-resolve pane-aligned metrics outside the mutable borrow window so the
+    // body can borrow &mut watchlist freely.
+    let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let title_font_size = watchlist.pane_header_size.title_font();
+    let tabs = [
+        (WatchlistTab::Stocks, "LIST", None),
+        (WatchlistTab::Chain,  "CHAIN", None),
+        (WatchlistTab::Heat,   "HEAT", None),
+    ];
+    let shell_resp = SidePanelShell::tabs("watchlist", &mut active_tab, &tabs)
+        .width(Width::Narrow)
+        .pane_metrics(header_h, title_font_size)
+        .show(ctx, t, |ui, t, tab| {
             let mut wl_switch_to: Option<usize> = None;
             let mut wl_fetch_syms: Vec<String> = Vec::new();
             let mut wl_rename_idx: Option<usize> = None;
             let mut wl_delete_idx: Option<usize> = None;
             let mut wl_dup_idx: Option<usize> = None;
-
-            // ── A) Tab-driven header (LIST / CHAIN / HEAT) + market-session badge + close ──
-            // Pre-resolve pane-aligned metrics outside the mutable borrow window.
-            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
-            let title_font_size = watchlist.pane_header_size.title_font();
-            let closed = PanelHeaderWithTabs::new(&mut watchlist.tab, &[
-                (WatchlistTab::Stocks, "LIST"),
-                (WatchlistTab::Chain, "CHAIN"),
-                (WatchlistTab::Heat, "HEAT"),
-            ])
-            .theme(t)
-            .height(header_h)
-            .font_size(title_font_size)
-            .show(ui);
-            if closed { watchlist.open = false; }
-
-            // Body padding — the panel frame is zero-margin (so the header
-            // sits flush at the panel edge), so the body content needs its
-            // own inner inset. Top gap clears the 10px header drop-shadow.
-            egui::Frame::NONE
-                .inner_margin(egui::Margin {
-                    left:   gap_sm() as i8,
-                    right:  gap_sm() as i8,
-                    top:    gap_sm() as i8,
-                    bottom: gap_sm() as i8,
-                })
-                .show(ui, |ui| {
 
             let mut open_option_chart: Option<(String, f32, bool, String)> = None;
             // OCC ticker for the click → routed into pending_opt_chart_contract
@@ -75,7 +55,7 @@ if watchlist.open {
             // back on synthesize_occ (which is wrong for non-Friday expiries).
             let mut clicked_occ_ticker: Option<String> = None;
 
-            match watchlist.tab {
+            match tab {
                 // ── STOCKS TAB (LIST) ──────────────────────────────────────────
                 WatchlistTab::Stocks => {
                     // ── B) Watchlist selector + options toggle ──
@@ -507,8 +487,10 @@ if watchlist.open {
                             for (si, ii, pin_sym, pin_price, pin_prev, _pin_loaded, avg_range) in &pinned_items {
                                 let is_active = *pin_sym == active_sym;
                                 let change_pct = if *pin_prev > 0.0 { (*pin_price / *pin_prev - 1.0) * 100.0 } else { 0.0 };
-                                // Active row paints over an accent-tinted bg; WHITE locks contrast across all themes.
-                                let sym_fg = if is_active { egui::Color32::WHITE } else { color_alpha(t.text, 230) };
+                                // Active row paints over an accent-tinted bg; use the theme's
+                                // text color so light themes (Bauhaus / Peach / Ivory / Newsprint)
+                                // don't get unreadable white-on-light foreground.
+                                let sym_fg = if is_active { t.text } else { color_alpha(t.text, 230) };
                                 let wresp = WatchlistRow::new(pin_sym, *pin_price, change_pct)
                                     .theme(t)
                                     .height(28.0)
@@ -1060,25 +1042,32 @@ if watchlist.open {
                         // Store divider Y position for drag handling outside the panel
                         watchlist.divider_y = div_rect.center().y;
                         watchlist.divider_total_h = total_avail;
-                        // Show resize cursor on hover
-                        if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                            if div_rect.expand(6.0).contains(pos) || watchlist.divider_dragging {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                            }
+                        // Show resize cursor on hover — wired through the canonical
+                        // cursor helper. Synthesize a one-frame Response over the
+                        // divider rect so the helper's hover/drag transitions fire.
+                        let div_hover_resp = ui.interact(
+                            div_rect.expand(6.0),
+                            egui::Id::new("wl_options_divider_cursor"),
+                            egui::Sense::hover(),
+                        );
+                        crate::chart_renderer::ui::style::cursor::resize_v(ui, &div_hover_resp);
+                        if watchlist.divider_dragging {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                         }
                         ui.add_space(gap_md());
 
-                        // OPTIONS label
-                        ui.horizontal(|ui| {
-                            ui.add(MonospaceCode::new("OPTIONS").size_px(font_sm_tight()).strong(true).color(t.accent).gamma(0.7));
-                            let opt_count: usize = watchlist.sections.iter()
-                                .filter(|s| s.title.contains("Options"))
-                                .map(|s| s.items.len()).sum();
-                            if opt_count > 0 {
-                                ui.add(MonospaceCode::new(&format!("({})", opt_count)).size_px(font_xs()).color(t.dim).gamma(0.4));
-                            }
-                        });
-                        ui.add_space(gap_xs());
+                        // OPTIONS sub-header — migrated to PanelSection chrome.
+                        // `rule(false)` suppresses the section's hairline because the
+                        // divider above already separates the LIST scroll from the
+                        // options scroll. Count chip preserves the prior "(n)" badge.
+                        let opt_count: usize = watchlist.sections.iter()
+                            .filter(|s| s.title.contains("Options"))
+                            .map(|s| s.items.len()).sum();
+                        PanelSection::new("OPTIONS")
+                            .count(opt_count)
+                            .title_color(t.accent)
+                            .rule(false)
+                            .show(ui, t, |_ui, _t| {});
 
                         egui::ScrollArea::vertical().id_salt("wl_options").show(ui, |ui| {
                             let active_sym = panes[ap].symbol.clone();
@@ -1221,12 +1210,11 @@ if watchlist.open {
                                 ui.add_space(gap_sm());
                             }
 
-                            // Empty state
+                            // Empty state — canonical PanelEmpty with hint.
                             if option_section_ids.is_empty() {
-                                ui.add_space(gap_lg());
-                                ui.add(MonospaceCode::new("No options saved").size_px(font_sm_tight()).color(t.dim).gamma(0.35));
-                                ui.add(MonospaceCode::new("Shift+click contracts in the CHAIN tab").size_px(font_xs()).color(t.dim).gamma(0.25));
-                                ui.add_space(gap_lg());
+                                PanelEmpty::new("No options saved")
+                                    .hint("Shift+click contracts in the CHAIN tab")
+                                    .show(ui, t);
                             }
 
                             // "+ Section" button at bottom of options area
@@ -1343,7 +1331,7 @@ if watchlist.open {
                         // Price display
                         if chain_price > 0.0 {
                             ui.add_space(gap_md());
-                            ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(font_lg()).color(TEXT_PRIMARY));
+                            ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(font_lg()).color(t.text));
                         }
                         // Search — static immediate + ApexIB background
                         if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
@@ -1389,12 +1377,9 @@ if watchlist.open {
                         egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
                     ui.add_space(gap_sm());
 
-                    // Loading indicator
+                    // Loading indicator — canonical PanelLoading.
                     if watchlist.chain_loading {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.add(MonospaceCode::new("Loading chain...").size_px(font_sm_tight()).color(t.dim));
-                        });
+                        PanelLoading::new().reason("Loading chain").show(ui, t);
                     }
 
                     // ── Column layout ──
@@ -1668,7 +1653,7 @@ if watchlist.open {
                             };
                             ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER,
                                 &badge_text, mono_md(),
-                                TEXT_PRIMARY);
+                                t.text);
                         }
                         ui.add_space(20.0);
 
@@ -1824,9 +1809,10 @@ if watchlist.open {
                 watchlist.pending_opt_chart = Some(info);
                 watchlist.pending_opt_chart_contract = clicked_occ_ticker.take();
             }
+        }); // close SidePanelShell::tabs body closure
 
-            }); // close body-padding Frame
-        });
+    if shell_resp.close_clicked { watchlist.open = false; }
+    watchlist.tab = active_tab;
 }
 
 
