@@ -94,7 +94,9 @@ pub use header::{Header, HeaderVariant, HeaderResponse};
 pub use side_panel_shell::{SidePanelShell, SidePanelShellResponse, SidePanelShellTabs, Width};
 pub use split_section_panel::SplitSectionPanel;
 pub use panel_footer::{PanelFooter, Tone as PanelFooterTone};
-pub use panel_section::{PanelSection, SectionResponse, Tone as PanelTone};
+pub use panel_section::{
+    PanelSection, PanelSectionGroup, PanelSectionGroupBuilder, SectionResponse, Tone as PanelTone,
+};
 pub use panel_empty::PanelEmpty;
 pub use panel_loading::PanelLoading;
 pub use panel_divider::panel_divider;

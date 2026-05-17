@@ -98,6 +98,7 @@ There are 83 hand-rolled `egui::Button` calls in `chart/renderer/ui/`. Don't add
 | `small_action_btn(ui, label, c)` | `Button::small_action(label).tint(c).show(ui, t)` |
 | `close_button(ui, dim)` | `Button::close().show(ui, t).clicked()` |
 | `ui.add(egui::Button::new(label).fill(tint_active).stroke(...).fg(...))` for toggle chips | `Button::toggle(label, active).tint(color).show(ui, t)` |
+| `Button::simple(label).variant(Variant::Ghost).min_size(vec2(avail, 22.0))` (full-width add-row) | `Button::outline_full_width(label).show(ui, t)` |
 
 The free functions are `#[deprecated]`. Migrate when you're nearby.
 
@@ -138,6 +139,39 @@ Width presets: `Width::Narrow` (240px), `Width::Medium` (300px), `Width::Wide` (
 Floating panels (settings, news, connection): use `Header::dialog` + `Modal`, not SidePanelShell.
 
 Body primitives (PanelSection/PanelEmpty/PanelLoading/PanelListRow/PanelCard/PanelKeyValueRow/PanelDivider) — see Agent K's foundation PR.
+
+### `PanelSectionGroup` — user-resizable section stack
+
+When a panel body wants N stacked `PanelSection`s with user-draggable
+dividers between them (TOOLS / ACTIVE / LIBRARY style), use
+`PanelSectionGroup`. The caller owns the persistent fraction state as a
+`&mut [f32; N]` (typically a field on `Watchlist`). Each entry is the
+section's fraction of the available vertical body height; the sum is
+renormalized to 1.0 internally and a min-section-height is enforced
+while dragging.
+
+```rust
+PanelSectionGroup::new(&mut watchlist.indicators_section_fracs)
+    .min_section_height(40.0)
+    .show(ui, t, |grp| {
+        grp.section(|ui, t| {
+            PanelSection::new("TOOLS").show(ui, t, |ui, t| { /* ... */ });
+        });
+        grp.section(|ui, t| {
+            PanelSection::new("ACTIVE").count(n).show(ui, t, |ui, t| { /* ... */ });
+        });
+        grp.section(|ui, t| {
+            PanelSection::new("LIBRARY").show(ui, t, |ui, t| { /* ... */ });
+        });
+    });
+```
+
+Divider visual: 6px hit-band, hairline rule at
+`color_alpha(t.toolbar_border, 36)` with a center 3-dot triplet
+(1.4px radius, gap 3px). Hover brightens both to alpha 96. Cursor
+becomes `ResizeVertical` on hover/drag. Plain `PanelSection` stays
+the right primitive when the body is natural-flow; reach for the
+group only when the user benefit of dragging the split is real.
 
 ### Shell API contract (open flag, pane alignment)
 

@@ -18,9 +18,9 @@
 use egui;
 use super::super::style::*;
 use crate::ui_kit::widgets::{
-    Button, PanelListRow, PanelSection, SidePanelShell, Width,
+    Button, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Width,
 };
-use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
+use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::Input;
 use super::super::super::gpu::{
     Watchlist, Chart, Theme, Indicator, IndicatorType, INDICATOR_COLORS, VolumeProfileMode,
@@ -365,38 +365,54 @@ pub(crate) fn draw(
         .icon(Icon::PULSE)
         .width(Width::Medium)
         .show(ctx, t, |ui, t| {
-            // ── TOOLS ──
+            // 3-way user-resizable split (TOOLS / ACTIVE / LIBRARY). The
+            // section fractions persist on the Watchlist so the user's
+            // chosen ratio survives panel close / app restart.
             let tools_count = active_tools_count(&panes[ap]);
-            PanelSection::new("TOOLS")
-                .count(tools_count)
-                .show(ui, t, |ui, t| {
-                    draw_tools_section(ui, &mut panes[ap], t);
-                });
-
-            // ── ACTIVE ──
             let active_total = active_count(&panes[ap]);
-            PanelSection::new("ACTIVE")
-                .count(active_total)
-                .show(ui, t, |ui, t| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("indicators_active_scroll")
-                        .max_height(ui.available_height() * 0.45)
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            draw_active_section(ui, &mut panes[ap], t);
-                        });
+            // Snapshot section fractions into a local so the group can
+            // own the &mut without locking out the body closures that
+            // also need &mut watchlist (for library search state).
+            let mut fracs = watchlist.indicators_section_fracs;
+            let chart = &mut panes[ap];
+            PanelSectionGroup::new(&mut fracs)
+                .min_section_height(40.0)
+                .show(ui, t, |grp| {
+                    // ── TOOLS ──
+                    grp.section(|ui, t| {
+                        PanelSection::new("TOOLS")
+                            .count(tools_count)
+                            .show(ui, t, |ui, t| {
+                                draw_tools_section(ui, chart, t);
+                            });
+                    });
+                    // ── ACTIVE ──
+                    grp.section(|ui, t| {
+                        PanelSection::new("ACTIVE")
+                            .count(active_total)
+                            .show(ui, t, |ui, t| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("indicators_active_scroll")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        draw_active_section(ui, chart, t);
+                                    });
+                            });
+                    });
+                    // ── LIBRARY ──
+                    grp.section(|ui, t| {
+                        PanelSection::new("LIBRARY")
+                            .show(ui, t, |ui, t| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("indicators_library_scroll")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        draw_library_section(ui, watchlist, chart, t);
+                                    });
+                            });
+                    });
                 });
-
-            // ── LIBRARY ──
-            PanelSection::new("LIBRARY")
-                .show(ui, t, |ui, t| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("indicators_library_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            draw_library_section(ui, watchlist, &mut panes[ap], t);
-                        });
-                });
+            watchlist.indicators_section_fracs = fracs;
         });
 
     if resp.close_clicked {
@@ -611,11 +627,7 @@ fn active_symbol_overlay_row(
 
 fn add_overlay_button(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
     let label = format!("{}  Add symbol overlay", Icon::PLUS);
-    let avail = ui.available_width();
-    let resp = Button::simple(label.as_str())
-        .variant(Variant::Ghost)
-        .min_size(egui::vec2(avail, 22.0))
-        .show(ui, t);
+    let resp = Button::outline_full_width(label.as_str()).show(ui, t);
     if resp.clicked() {
         chart.overlay_editing = true;
         chart.overlay_editing_idx = None;
