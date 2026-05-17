@@ -654,7 +654,7 @@ impl<'a> WatchlistRow<'a> {
                     ui.label(
                         egui::RichText::new(&price_str)
                             .monospace()
-                            .size(14.0)
+                            .size(font_md_plus())
                             .color(card_fg),
                     );
 
@@ -682,7 +682,7 @@ impl<'a> WatchlistRow<'a> {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(label)
-                                    .size(11.0)
+                                    .size(font_sm())
                                     .color(label_col),
                             );
                             ui.with_layout(
@@ -691,7 +691,7 @@ impl<'a> WatchlistRow<'a> {
                                     ui.label(
                                         egui::RichText::new(value)
                                             .monospace()
-                                            .size(11.0)
+                                            .size(font_sm())
                                             .color(value_col),
                                     );
                                 },
