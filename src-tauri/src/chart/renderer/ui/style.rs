@@ -351,11 +351,30 @@ pub const SHADOW_SPREAD: f32 = 4.0;
 // Returns egui::epaint::Shadow ready for `Frame::shadow(...)`. Backed by the
 // `shadow_preset` design-token sub-struct when design-mode is on, else hard-
 // coded defaults that match the original inline values they replace.
+//
+// LEGACY: `shadow_card / _modal / _tooltip / _dropdown` (no theme arg) use
+// black as the shadow color — fine on dark themes, but on light themes
+// (Bauhaus, Peach, Ivory, Newsprint) they paint as a hard black smudge.
+// Prefer the `_themed` variants — they pull `t.shadow_color` so light
+// themes get a soft gray drop. The legacy variants are kept compiling for
+// the ~30 call sites that don't currently have a theme handle.
 #[inline]
 fn shadow_from_preset(offset: [i8; 2], blur: u8, spread: u8, alpha: u8) -> egui::epaint::Shadow {
     egui::epaint::Shadow {
         offset, blur, spread,
         color: Color32::from_black_alpha(alpha),
+    }
+}
+
+#[inline]
+fn shadow_from_preset_themed(
+    t: &super::super::gpu::Theme,
+    offset: [i8; 2], blur: u8, spread: u8, alpha: u8,
+) -> egui::epaint::Shadow {
+    let s = t.shadow_color;
+    egui::epaint::Shadow {
+        offset, blur, spread,
+        color: Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), alpha),
     }
 }
 
@@ -369,6 +388,16 @@ pub fn shadow_card() -> egui::epaint::Shadow {
     shadow_from_preset([0, 2], 4, 0, 60)
 }
 
+/// Card / panel — theme-aware. Use this in new code.
+pub fn shadow_card_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(dt) = crate::design_tokens::get() {
+        let p = dt.shadow_preset.card;
+        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset_themed(t, [0, 2], 4, 0, 60)
+}
+
 /// Modal dialog — tall, soft. Defaults: offset (0,8), blur 28, spread 2, alpha 80.
 pub fn shadow_modal() -> egui::epaint::Shadow {
     #[cfg(feature = "design-mode")]
@@ -377,6 +406,16 @@ pub fn shadow_modal() -> egui::epaint::Shadow {
         return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
     }
     shadow_from_preset([0, 8], 28, 2, 80)
+}
+
+/// Modal dialog — theme-aware. Use this in new code.
+pub fn shadow_modal_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(dt) = crate::design_tokens::get() {
+        let p = dt.shadow_preset.modal;
+        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset_themed(t, [0, 8], 28, 2, 80)
 }
 
 /// Tooltip — small, crisp. Used for hover bubbles.
@@ -389,6 +428,16 @@ pub fn shadow_tooltip() -> egui::epaint::Shadow {
     shadow_from_preset([0, 2], 0, 0, 60)
 }
 
+/// Tooltip — theme-aware. Use this in new code.
+pub fn shadow_tooltip_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(dt) = crate::design_tokens::get() {
+        let p = dt.shadow_preset.tooltip;
+        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset_themed(t, [0, 2], 0, 0, 60)
+}
+
 /// Dropdown / popover. Defaults: offset (0,8), blur 24, spread 1, alpha 40.
 pub fn shadow_dropdown() -> egui::epaint::Shadow {
     #[cfg(feature = "design-mode")]
@@ -397,6 +446,16 @@ pub fn shadow_dropdown() -> egui::epaint::Shadow {
         return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
     }
     shadow_from_preset([0, 8], 24, 1, 40)
+}
+
+/// Dropdown / popover — theme-aware. Use this in new code.
+pub fn shadow_dropdown_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(dt) = crate::design_tokens::get() {
+        let p = dt.shadow_preset.dropdown;
+        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset_themed(t, [0, 8], 24, 1, 40)
 }
 
 // ─── Semantic color accessors ────────────────────────────────────────────────
@@ -556,6 +615,7 @@ fn label_is_icon_only(s: &str) -> bool {
     })
 }
 
+#[deprecated(note = "use `ui_kit::Button::toolbar(label).active(b).show(ui, theme)` (which is exactly what the `toolbar_btn(ui, label, active, t)` helper in components/toolbar/mod.rs already does)")]
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let st = current();
     // Apply uppercase transform per active style (#5).
@@ -992,6 +1052,7 @@ pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egu
 }
 
 /// Close button (X icon) — square icon_btn, standard panel close.
+#[deprecated(note = "use `ui_kit::Button::close().show(ui, theme).clicked()`")]
 #[inline]
 pub fn close_button(ui: &mut egui::Ui, dim: Color32) -> bool {
     icon_btn(ui, crate::ui_kit::icons::Icon::X, dim, font_lg()).clicked()
@@ -1184,6 +1245,7 @@ pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: 
 // ─── Buttons ──────────────────────────────────────────────────────────────────
 
 /// Action button — tinted bg, for Place/Cancel/Clear. Disabled = greyed out.
+#[deprecated(note = "use `ui_kit::Button::action(label).tint(color).enabled(b).show(ui, theme)`")]
 pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
     let bg     = if enabled { color_alpha(color, alpha_muted())  } else { color_alpha(color, alpha_faint())  };
     let fg     = if enabled { color                              } else { color_alpha(color, alpha_active()) };
@@ -1198,6 +1260,7 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
 }
 
 /// Trade button — deep saturated bg for BUY/SELL. White bold text.
+#[deprecated(note = "use `ui_kit::Button::trade(label).tint(color).min_size((width, 24.0)).show(ui, theme)`")]
 pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> bool {
     let bright = crate::dt_f32!(button.trade_brightness, 0.55);
     let bg = Color32::from_rgb(
@@ -1225,6 +1288,7 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
 /// Use for the "REVIEW BUY" / "PLACE ORDER" terminal action at the bottom of order tickets.
 /// The fill color and text color follow `active_fill_color` / `active_text_color` overrides
 /// when set (Newsprint: black fill + white text), otherwise uses `color` directly.
+#[deprecated(note = "use `ui_kit::Button::cta(label).tint(color).enabled(b).show(ui, theme)`")]
 pub fn cta_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
     let st = current();
     let fill = st.active_fill_color.unwrap_or(color);
@@ -1249,6 +1313,7 @@ pub fn cta_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) ->
 }
 
 /// Small action button — for inline header actions like "Clear All", "Close All".
+#[deprecated(note = "use `ui_kit::Button::small_action(label).tint(color).show(ui, theme)`")]
 pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool {
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(color))
         .fill(color_alpha(color, alpha_soft()))
@@ -1261,6 +1326,7 @@ pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool 
 }
 
 /// Simple button — subtle border, for form actions (Create, Cancel).
+#[deprecated(note = "use `ui_kit::Button::simple(label).tint(color).min_width(w).show(ui, theme)`")]
 pub fn simple_btn(ui: &mut egui::Ui, label: &str, color: Color32, min_width: f32) -> bool {
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).color(color))
         .fill(color_alpha(color, alpha_faint()))

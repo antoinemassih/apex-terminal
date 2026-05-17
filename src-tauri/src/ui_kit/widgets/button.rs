@@ -124,6 +124,77 @@ impl<'a> Button<'a> {
         b
     }
 
+    // ─── Named presets for the legacy free-function helpers ────────────
+    //
+    // These cover the role-specific buttons that previously lived as free
+    // functions in `chart/renderer/ui/style.rs` (action_btn, trade_btn,
+    // cta_btn, simple_btn, small_action_btn, close_button, tb_btn). New
+    // code should use these named presets so every button surface goes
+    // through one canonical widget.
+
+    /// Action button — tinted bg for Place / Cancel / Clear. Pass the
+    /// semantic color (bull / bear / accent / warn) as the tint.
+    pub fn action(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Secondary;
+        b.size = Size::Sm;
+        b
+    }
+
+    /// Trade button — deep saturated bg for BUY/SELL. Use `.tint(bull)`
+    /// or `.tint(bear)` to color it.
+    pub fn trade(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Primary;
+        b.size = Size::Md;
+        b
+    }
+
+    /// Primary CTA button — solid filled accent, full-width default.
+    /// Used for the terminal action at the bottom of order tickets
+    /// ("REVIEW BUY", "PLACE ORDER").
+    pub fn cta(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Primary;
+        b.size = Size::Md;
+        b.full_width = true;
+        b
+    }
+
+    /// Small action — inline header actions like "Clear All", "Close All".
+    pub fn small_action(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Secondary;
+        b.size = Size::Xs;
+        b
+    }
+
+    /// Simple — subtle border, form-level actions (Create, Cancel).
+    pub fn simple(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Secondary;
+        b.size = Size::Sm;
+        b
+    }
+
+    /// Toolbar — top-nav button surface. Status mode + Ghost variant so
+    /// the bg only paints on hover/active.
+    pub fn toolbar(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.is_status = true;
+        b.size = Size::Sm;
+        b.variant = Variant::Ghost;
+        b
+    }
+
+    /// Close (×) affordance — small icon-only Ghost. Pair with
+    /// `.size(Size::Xs)` for compact contexts.
+    pub fn close() -> Self {
+        let mut b = Self::icon(crate::ui_kit::icons::Icon::X);
+        b.size = Size::Xs;
+        b
+    }
+
     pub fn variant(mut self, v: Variant) -> Self { self.variant = v; self }
     pub fn size(mut self, s: Size) -> Self { self.size = s; self }
     pub fn icon_only(mut self, v: bool) -> Self { self.icon_only = v; self }

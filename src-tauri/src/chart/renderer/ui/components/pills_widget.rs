@@ -5,6 +5,12 @@
 //! Each chip picks a `ChipVariant` + `Size` + content + optional close
 //! affordance. The public API (type names + builder methods) is unchanged so
 //! callers in widgets/menus, toolbar, pane chrome and headers keep working.
+//!
+//! **DEPRECATED in the design-system pass.** Prefer `ui_kit::Tag` (with
+//! `TagTone::Normal | Muted | Success | Warning`) for label/pill use
+//! cases, and `ui_kit::Badge` for counts. The builder types in this file
+//! (`RemovableChip`, `DisplayChip`) will be retired during the panel
+//! sweep — do not add new uses.
 
 #![allow(dead_code, unused_imports)]
 

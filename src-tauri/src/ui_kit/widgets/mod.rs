@@ -74,7 +74,11 @@ pub mod time_picker;
 pub mod range_slider;
 pub mod form_row;
 pub mod form_section;
+pub mod panel;
+pub mod header;
 
+pub use panel::{Panel, PanelCtx, PanelResponse};
+pub use header::{Header, HeaderVariant, HeaderResponse};
 pub use range_slider::RangeSlider;
 pub use form_row::{FormRow, FormRowAlign};
 pub use form_section::{FormSection, FieldSet, FormActions};

@@ -1,4 +1,9 @@
 //! Chips: keybind hint, filter (deprecated), display, removable, notification badge.
+//!
+//! **DEPRECATED.** Prefer `ui_kit::Tag` (for labels with tone variants) or
+//! `ui_kit::Badge` (for counts / notifications). This module is kept
+//! compiling for existing call sites; the panel migration sweep will
+//! replace them. Do not add new entry points here.
 
 use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};

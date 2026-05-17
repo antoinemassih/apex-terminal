@@ -1,4 +1,8 @@
 //! Pills, chips, status badges, and the canonical `pill_button`.
+//!
+//! **DEPRECATED.** Prefer `ui_kit::Tag` for any pill-shaped label and
+//! `ui_kit::Badge` for status counts. New code should not call into
+//! this module — the panel sweep will retire it.
 
 use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};

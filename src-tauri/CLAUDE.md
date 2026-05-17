@@ -66,7 +66,29 @@ Button::new(label)
 
 There are 83 hand-rolled `egui::Button` calls in `chart/renderer/ui/`. Don't add an 84th — convert one when you're nearby.
 
+`ui_kit::Button` has named role presets for the common cases — use them instead of the deprecated free functions in `chart/renderer/ui/style.rs`:
+
+| You used to call | Now use |
+|---|---|
+| `tb_btn(ui, label, active, ...)` | `Button::toolbar(label).active(b).show(ui, t)` |
+| `action_btn(ui, label, color, en)` | `Button::action(label).tint(color).enabled(en).show(ui, t)` |
+| `trade_btn(ui, label, color, w)` | `Button::trade(label).tint(color).min_size((w, 24.0)).show(ui, t)` |
+| `cta_btn(ui, label, color, en)` | `Button::cta(label).tint(color).enabled(en).show(ui, t)` |
+| `simple_btn(ui, label, color, w)` | `Button::simple(label).tint(color).min_width(w).show(ui, t)` |
+| `small_action_btn(ui, label, c)` | `Button::small_action(label).tint(c).show(ui, t)` |
+| `close_button(ui, dim)` | `Button::close().show(ui, t).clicked()` |
+
+The free functions are `#[deprecated]`. Migrate when you're nearby.
+
 If you find yourself adding `.fg(...)` / `.glyph_color(...)` / using `Variant::Chrome`, you probably need a new variant (see audit §6.1). Talk before reaching for Chrome — it's the escape hatch, not the default.
+
+For chips / pills / tags / badges: prefer `ui_kit::Tag` (label with `TagTone::Normal | Muted | Success | Warning`) and `ui_kit::Badge` (count / notification). The legacy modules `chart/renderer/ui/components/{chips,pills,pills_widget}.rs` are `#[deprecated]`.
+
+For panel headers: prefer `ui_kit::Header` (`Header::panel(title) | Header::dialog(title) | Header::section(title)`). The legacy `panel_header()` / `dialog_header()` / `section_label()` free functions in `style.rs` will be retired.
+
+For shadows: use the `_themed` variants (`shadow_card_themed(t)`, `shadow_modal_themed(t)`, `shadow_tooltip_themed(t)`, `shadow_dropdown_themed(t)`). They pull `t.shadow_color` so light themes get soft gray drops instead of hardcoded black smudges. The non-`_themed` variants are kept for legacy compatibility but should not be used in new code.
+
+For new panels: implement `ui_kit::Panel` (`fn id(&self)`, `fn render(&mut self, ctx: PanelCtx) -> PanelResponse`) so the host can route close / focus / dirty signals through a common contract.
 
 ### 5. Don't use `ui.menu_button(...)` directly
 
