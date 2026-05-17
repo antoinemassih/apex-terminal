@@ -3,12 +3,16 @@
 //! Subscribes to patterns/alerts/trendlines/significance channels.
 //! Pushes PatternLabels / AlertTriggered / AutoTrendlines / SignificanceUpdate to the chart renderer.
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use crate::chart_renderer::{ChartCommand, PatternLabel};
+use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff};
 
 const APEX_SIGNALS_WS: &str = "ws://localhost:8200/ws";
 
 static FEED_RUNNING: OnceLock<Mutex<bool>> = OnceLock::new();
+static SHUTDOWN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 
 pub fn start() {
     let running = FEED_RUNNING.get_or_init(|| Mutex::new(false));
@@ -17,27 +21,51 @@ pub fn start() {
     *guard = true;
     drop(guard);
 
-    std::thread::spawn(|| {
+    let shutdown = SHUTDOWN.get_or_init(|| Arc::new(AtomicBool::new(false))).clone();
+    connectivity::register("signals_feed", Arc::new(SignalsFeedShutdown { shutdown: shutdown.clone() }));
+
+    std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
         rt.block_on(async {
+            let mut backoff = Backoff::new().with_max_attempts(None);
             loop {
-                if let Err(e) = run_feed().await {
-                    eprintln!("[signals-feed] Error: {e} — reconnecting in 5s");
+                if shutdown.load(Ordering::SeqCst) { break; }
+                match run_feed().await {
+                    Ok(()) => { backoff.reset(); }
+                    Err(e) => {
+                        report(ErrorLevel::Warn, "signals_feed", "reconnect", e.to_string());
+                    }
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                if shutdown.load(Ordering::SeqCst) { break; }
+                if let Some(d) = backoff.next_delay() {
+                    tokio::time::sleep(d).await;
+                }
             }
         });
     });
+}
+
+struct SignalsFeedShutdown {
+    shutdown: Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl connectivity::Shutdown for SignalsFeedShutdown {
+    async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        self.shutdown.store(true, Ordering::SeqCst);
+        tokio::time::sleep(deadline.min(Duration::from_millis(200))).await;
+        Ok(())
+    }
 }
 
 async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use futures_util::{StreamExt, SinkExt};
     use tokio_tungstenite::connect_async;
 
-    eprintln!("[signals-feed] Connecting to {}", APEX_SIGNALS_WS);
+    report(ErrorLevel::Info, "signals_feed", "connecting", APEX_SIGNALS_WS);
     let (ws, _) = connect_async(APEX_SIGNALS_WS).await?;
     let (mut write, mut read) = ws.split();
 
@@ -48,7 +76,7 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     write.send(tokio_tungstenite::tungstenite::Message::Text(
         sub_msg.to_string().into()
     )).await?;
-    eprintln!("[signals-feed] Connected — subscribed to patterns/alerts/trendlines/significance");
+    report(ErrorLevel::Info, "signals_feed", "connected", "patterns/alerts/trendlines/significance");
 
     while let Some(msg) = read.next().await {
         let msg = msg?;

@@ -1132,101 +1132,51 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
         .map(|g| g.clone())
         .unwrap_or_default();
     if txs.is_empty() { return; }
+
+    // Route through the canonical Wave-2 provider chain (crypto → cached
+    // apex_data → OCOCO → yfinance → Yahoo). The chain encapsulates the
+    // 6-tier `if-else` ladder this function used to inline.
     std::thread::spawn(move || {
-        let send_bars = |bars: &[crate::data::Bar], src: &str| -> bool {
-            if bars.is_empty() { return false; }
-            let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
-                open: b.open as f32, high: b.high as f32, low: b.low as f32,
-                close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
-            }).collect();
-            let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
-            eprintln!("[native-chart] {} bars for {} {} from {}", gpu_bars.len(), sym, tf, src);
-            let cmd = ChartCommand::LoadBars { symbol: sym.clone(), timeframe: tf.clone(), bars: gpu_bars, timestamps };
-            for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
-            true
+        let chain = crate::data::providers::registry::bar_chain();
+        // Spin a private tokio runtime — fetch is called from background
+        // threads outside any existing async context.
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                eprintln!("[native-chart] fetch runtime: {e}");
+                return;
+            }
         };
-
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("Mozilla/5.0")
-            .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-
-        // 0. Crypto → ApexCrypto (skip local cache, ApexCrypto manages its own + Binance backfill)
-        if crate::data::is_crypto(&sym) {
-            let apex_url = format!("http://192.168.1.56:30840/api/bars/{}/{}", sym, tf);
-            if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(5)).send() {
-                if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
-                    if !bars.is_empty() {
-                        if send_bars(&bars, "ApexCrypto") { return; }
-                    }
-                }
-            }
-            // Crypto-only: don't fall through to Yahoo
-            return;
-        }
-
-        // 0. ApexData — authoritative source (REST + WS live updates)
-        if crate::apex_data::is_enabled() {
-            let class = crate::apex_data::AssetClass::from_symbol(&sym);
-            if let Some(bars) = crate::apex_data::rest::get_bars(class, &sym, &tf, crate::apex_data::BarSource::Last) {
-                if !bars.is_empty() {
-                    // ApexData's ChartBar has the same shape as our data::Bar (time in secs).
-                    let adapted: Vec<crate::data::Bar> = bars.into_iter().map(|b| crate::data::Bar {
-                        time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
-                    }).collect();
-                    crate::bar_cache::set(&sym, &tf, &adapted);
-                    // Subscribe to live updates for this (symbol, tf).
-                    crate::apex_data::ws::add_bar_sub(&sym, &tf);
-                    if send_bars(&adapted, "ApexData") { return; }
-                }
-            }
-        }
-
-        // 1. Redis cache — instant (stocks only)
-        if let Some(cached) = crate::bar_cache::get(&sym, &tf) {
-            if send_bars(&cached, "Redis cache") { return; }
-        }
-
-        // 2. OCOCO (InfluxDB cache)
-        let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", sym, tf);
-        if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(2)).send() {
-            if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
-                if !bars.is_empty() {
-                    crate::bar_cache::set(&sym, &tf, &bars);
-                    if send_bars(&bars, "OCOCO") { return; }
-                }
-            }
-        }
-
-        // 2. yfinance sidecar
-        let (yf_interval, yf_range) = match tf.as_str() {
-            "1m" => ("1m","5d"), "2m" => ("2m","5d"), "5m" => ("5m","5d"),
-            "15m" => ("15m","60d"), "30m" => ("30m","60d"), "1h" => ("60m","60d"),
-            "4h" => ("1h","730d"), "1d" => ("1d","5y"), "1wk" => ("1wk","10y"),
-            _ => ("5m","5d"),
+        let result = rt.block_on(chain.bars(&sym, &tf, 0, 0, None));
+        let bars = match result {
+            Ok(b) if !b.is_empty() => b,
+            Ok(_) => { eprintln!("[native-chart] {} {} empty", sym, tf); return; }
+            Err(e) => { eprintln!("[native-chart] {} {} all sources failed: {e}", sym, tf); return; }
         };
-        let yf_url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", sym, yf_interval, yf_range);
-        if let Ok(resp) = client.get(&yf_url).timeout(std::time::Duration::from_secs(3)).send() {
-            if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
-                if !bars.is_empty() {
-                    crate::bar_cache::set(&sym, &tf, &bars);
-                    if send_bars(&bars, "yfinance-sidecar") { return; }
-                }
-            }
+        // For ApexData live updates: subscribe to the WS bar stream so
+        // incremental bar updates flow into NATIVE_CHART_TXS via the existing
+        // apex_data::ws frame listener. The previous inline path did this.
+        if crate::apex_data::is_enabled() && !crate::data::is_crypto(&sym) {
+            crate::apex_data::ws::add_bar_sub(&sym, &tf);
         }
-
-        // 3. Direct Yahoo Finance v8 API — universal fallback
-        let yahoo_url = format!(
-            "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}",
-            sym, yf_interval, yf_range
-        );
-        if let Ok(resp) = client.get(&yahoo_url).timeout(std::time::Duration::from_secs(5)).send() {
-            if let Ok(json) = resp.json::<serde_json::Value>() {
-                if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
-                    crate::bar_cache::set(&sym, &tf, &bars);
-                    send_bars(&bars, "Yahoo Finance");
-                }
-            }
-        }
+        let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
+            open: b.open as f32, high: b.high as f32, low: b.low as f32,
+            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+        }).collect();
+        // BarWire.time is in ms; LoadBars wants seconds.
+        let timestamps: Vec<i64> = bars.iter().map(|b| b.time / 1000).collect();
+        eprintln!("[native-chart] {} bars for {} {} via provider chain", gpu_bars.len(), sym, tf);
+        let cmd = ChartCommand::LoadBars {
+            symbol: sym.clone(),
+            timeframe: tf.clone(),
+            bars: gpu_bars,
+            timestamps,
+        };
+        for tx in &txs { let _ = tx.send(cmd.clone()); }
+        crate::wake_native_ui();
     });
 }
 
