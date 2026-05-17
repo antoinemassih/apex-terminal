@@ -82,6 +82,21 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
         ))
         .separator(false)
         .show(|ui| {
+            // Global Enter → commit both fields + close. Per-field
+            // `lost_focus() && Enter` handlers further down still cover
+            // typing-then-Enter inside an input; this binding is for when
+            // the user has tabbed away (or never focused a field) and just
+            // wants to confirm. Skip when any widget has keyboard focus so
+            // we don't double-commit alongside the per-field handlers.
+            let nothing_focused = ui.memory(|m| m.focused().is_none());
+            if nothing_focused
+                && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+            {
+                if let Ok(p) = c.edit_price.parse::<f32>() { apply_price = Some(p); }
+                if let Ok(q) = c.edit_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
+                close_editor = true;
+            }
+
             ui.add_space(gap_sm());
             let m = gap_lg();
 

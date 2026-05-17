@@ -430,6 +430,14 @@ impl<'a> Modal<'a> {
             }
         }
 
+        // Global Escape → close. Modals are always considered "open" for
+        // the duration of this call, so we don't gate on visibility. We do
+        // consume the key so background widgets behind the modal don't also
+        // react to the same Escape press.
+        if !closed && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            closed = true;
+        }
+
         ModalResponse { inner, closed }
     }
 }

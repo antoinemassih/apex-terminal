@@ -205,6 +205,19 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             let bg = if disabled { st::color_alpha(bg_fill, 128) } else { bg_fill };
             painter.rect_filled(rect, radius, bg);
             painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
+
+            // Focus ring overlay — paired with the accent border animation
+            // to give keyboard users an unambiguous focus indicator that
+            // doesn't depend on subtle color shifts.
+            if focused {
+                let ring = st::color_alpha(theme.accent(), st::alpha_strong());
+                painter.rect_stroke(
+                    rect.expand(1.0),
+                    radius,
+                    Stroke::new(st::stroke_std(), ring),
+                    StrokeKind::Outside,
+                );
+            }
         }
 
         // ── Layout content left→right and right→left to compute editor span ──

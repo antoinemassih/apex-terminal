@@ -304,6 +304,27 @@ pub mod cursor {
         clickable(ui, &r);
         r
     }
+
+    /// Paint an inset focus ring around a focused widget. Theme-aware (uses
+    /// `t.accent`). Call after a widget that supports keyboard focus — only
+    /// emits when `resp.has_focus()`. Inset stroke so it never bleeds outside
+    /// the widget's reported rect.
+    #[inline]
+    pub fn focus_ring(ui: &mut Ui, resp: &Response, t: &crate::chart_renderer::gpu::Theme) {
+        if resp.has_focus() {
+            let painter = ui.painter();
+            let rect = resp.rect.expand(1.0);
+            painter.rect_stroke(
+                rect,
+                super::radius_sm(),
+                egui::Stroke::new(
+                    super::stroke_std(),
+                    super::color_alpha(t.accent, super::alpha_strong()),
+                ),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
 }
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
