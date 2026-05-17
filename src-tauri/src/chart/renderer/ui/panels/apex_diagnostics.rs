@@ -40,7 +40,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .show(|ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 let r = PanelSection::new("CONFIG")
-                    .action(("reset breaker", PanelTone::Warn), |_, _| {})
+                    .action("reset breaker", PanelTone::Warn)
                     .show(ui, t, section_config);
                 if r.action_clicked { reset_breaker = true; }
 

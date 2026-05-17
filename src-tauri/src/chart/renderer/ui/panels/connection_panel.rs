@@ -59,7 +59,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
                 ("yahoo",    "Yahoo",    "OK",        true,    "query1.finance.yahoo.com"),
             ];
             let md_resp = PanelSection::new("MARKET DATA")
-                .action(("diag", crate::ui_kit::widgets::PanelTone::Accent), |_, _| {})
+                .action("diag", crate::ui_kit::widgets::PanelTone::Accent)
                 .show(ui, t, |ui, t| {
                     for (id, name, status, ok, detail) in market_data {
                         service_row(ui, t, id, name, status, *ok, detail);

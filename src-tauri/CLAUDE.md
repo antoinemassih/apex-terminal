@@ -139,6 +139,49 @@ Floating panels (settings, news, connection): use `Header::dialog` + `Modal`, no
 
 Body primitives (PanelSection/PanelEmpty/PanelLoading/PanelListRow/PanelCard/PanelKeyValueRow/PanelDivider) — see Agent K's foundation PR.
 
+### Shell API contract (open flag, pane alignment)
+
+`SidePanelShell::show` / `SidePanelShell::tabs::show` / `SplitSectionPanel::show`
+do NOT take `&mut open`. The caller does its own early-return and writes its
+flag back from the returned `SidePanelShellResponse.close_clicked`. This
+removes the borrow conflict that arises when the body closure also needs
+`&mut watchlist` (where the open flag lives).
+
+```rust
+if watchlist.alerts_panel_open {
+    let resp = SidePanelShell::new("alerts", "ALERTS")
+        .icon(Icon::BELL)
+        .width(Width::Narrow)
+        .show(ctx, t, |ui, t| { /* body, &mut watchlist OK */ });
+    if resp.close_clicked { watchlist.alerts_panel_open = false; }
+}
+```
+
+For pane-header alignment, prefer `.pane_aligned(&watchlist)` when the body
+closure does NOT borrow `watchlist`. When it does, pre-resolve and pass via
+`.pane_metrics(height, title_font)`:
+
+```rust
+let pane_h    = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+let pane_font = watchlist.pane_header_size.title_font();
+SidePanelShell::new(...)
+    .pane_metrics(pane_h, pane_font)
+    .show(ctx, t, |ui, t| { /* uses &mut watchlist freely */ });
+```
+
+### `PanelSection::action` — no closure
+
+`PanelSection::action(label, tone)` takes only the label and tone. The click
+surfaces via `SectionResponse.action_clicked` from `.show(...)`:
+
+```rust
+let resp = PanelSection::new("ACTIVE")
+    .count(n)
+    .action("Clear All", PanelTone::Danger)
+    .show(ui, t, |ui, t| { /* body */ });
+if resp.action_clicked { /* handle */ }
+```
+
 ## Where to find things
 
 | Question | File |

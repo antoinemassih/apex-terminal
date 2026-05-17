@@ -49,6 +49,16 @@ use crate::chart::renderer::ui::components::frames_widget::PanelFrame;
 use crate::chart::renderer::ui::style::{gap_lg, gap_md, gap_sm};
 use crate::chart_renderer::gpu::{Theme, Watchlist};
 
+/// Response from rendering a [`SidePanelShell`] / [`SidePanelShellTabs`] /
+/// [`SplitSectionPanel`]. Caller writes its own open-flag back when
+/// `close_clicked` is `true`. Returned by value so the shell never holds a
+/// mutable borrow of the caller's flag during body execution.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct SidePanelShellResponse {
+    /// `true` if the close-X was clicked this frame.
+    pub close_clicked: bool,
+}
+
 /// Width preset for side panels. Default presets cover ~95% of cases; if a
 /// panel needs an off-preset width it can still call `.resizable(min..=max)`
 /// to override the bounds.
@@ -97,7 +107,7 @@ pub struct SidePanelShell<'a> {
     width: Width,
     width_bounds: Option<RangeInclusive<f32>>,
     side: Side,
-    watchlist: Option<&'a Watchlist>,
+    pane_metrics: Option<(f32, f32)>,
     header_actions: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
     footer: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
 }
@@ -112,7 +122,7 @@ impl<'a> SidePanelShell<'a> {
             width: Width::default(),
             width_bounds: None,
             side: Side::Right,
-            watchlist: None,
+            pane_metrics: None,
             header_actions: None,
             footer: None,
         }
@@ -135,9 +145,23 @@ impl<'a> SidePanelShell<'a> {
     pub fn side(mut self, side: Side) -> Self { self.side = side; self }
 
     /// Pin the header height + title font to the chart-pane metrics so an
-    /// open panel lines up pixel-y with the pane header above it.
-    pub fn pane_aligned(mut self, wl: Option<&'a Watchlist>) -> Self {
-        self.watchlist = wl; self
+    /// open panel lines up pixel-y with the pane header above it. Convenience
+    /// over [`Self::pane_metrics`] for callers that don't have a borrow
+    /// conflict; internally just resolves the two values.
+    pub fn pane_aligned(mut self, wl: &Watchlist) -> Self {
+        self.pane_metrics = Some((
+            crate::chart_renderer::gpu::pane_tabs_header_h(wl),
+            wl.pane_header_size.title_font(),
+        ));
+        self
+    }
+
+    /// Pin the header height + title font to caller-resolved values. Use this
+    /// when `.pane_aligned(&watchlist)` conflicts with `&mut watchlist` in the
+    /// body — resolve the metrics before borrowing.
+    pub fn pane_metrics(mut self, height: f32, title_font: f32) -> Self {
+        self.pane_metrics = Some((height, title_font));
+        self
     }
 
     /// Trailing header actions, painted to the LEFT of the close-X.
@@ -152,48 +176,32 @@ impl<'a> SidePanelShell<'a> {
         self
     }
 
-    /// Render the shell. `open` is toggled to `false` when the close-X is
-    /// clicked. The body closure is called inside the standard panel padding
-    /// (LR `gap_md`, top `gap_sm` under header, bottom `gap_lg`).
+    /// Render the shell. Returns a [`SidePanelShellResponse`] — caller writes
+    /// its open-flag back to `false` if `close_clicked` is `true`. The body
+    /// closure is called inside the standard panel padding (LR `gap_md`, top
+    /// `gap_sm` under header, bottom `gap_lg`).
+    ///
+    /// The caller is responsible for the open/closed early-return — only call
+    /// `.show()` when the panel is open.
     pub fn show(
         self,
         ctx: &Context,
         t: &Theme,
-        open: &mut bool,
         body: impl FnOnce(&mut Ui, &Theme),
-    ) {
-        if !*open { return; }
-
+    ) -> SidePanelShellResponse {
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
         let frame = PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build();
         let panel = panel.frame(frame);
 
-        let SidePanelShell { title, icon, watchlist, header_actions, footer, .. } = self;
+        let SidePanelShell { title, icon, pane_metrics, header_actions, footer, .. } = self;
 
-        match self.side {
-            Side::Right => {
-                panel.show(ctx, |ui| {
-                    let closed = render_header(ui, t, title, icon, watchlist, header_actions);
-                    if closed { *open = false; }
-                    render_body_and_footer(ui, t, body, footer);
-                });
-            }
-            Side::Left => {
-                panel.show(ctx, |ui| {
-                    let closed = render_header(ui, t, title, icon, watchlist, header_actions);
-                    if closed { *open = false; }
-                    render_body_and_footer(ui, t, body, footer);
-                });
-            }
-            _ => {
-                // Side panels only — top/bottom not supported in this shell.
-                panel.show(ctx, |ui| {
-                    let closed = render_header(ui, t, title, icon, watchlist, header_actions);
-                    if closed { *open = false; }
-                    render_body_and_footer(ui, t, body, footer);
-                });
-            }
-        }
+        let mut close_clicked = false;
+        panel.show(ctx, |ui| {
+            let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
+            if closed { close_clicked = true; }
+            render_body_and_footer(ui, t, body, footer);
+        });
+        SidePanelShellResponse { close_clicked }
     }
 
     // ── Sibling constructor for tab-driven shells ─────────────────────────
@@ -212,7 +220,7 @@ impl<'a> SidePanelShell<'a> {
             width: Width::default(),
             width_bounds: None,
             side: Side::Right,
-            watchlist: None,
+            pane_metrics: None,
             header_actions: None,
             footer: None,
         }
@@ -231,7 +239,7 @@ pub struct SidePanelShellTabs<'a, T: PartialEq + Copy> {
     width: Width,
     width_bounds: Option<RangeInclusive<f32>>,
     side: Side,
-    watchlist: Option<&'a Watchlist>,
+    pane_metrics: Option<(f32, f32)>,
     header_actions: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
     footer: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
 }
@@ -242,8 +250,18 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
         self.width_bounds = Some(bounds); self
     }
     pub fn side(mut self, side: Side) -> Self { self.side = side; self }
-    pub fn pane_aligned(mut self, wl: Option<&'a Watchlist>) -> Self {
-        self.watchlist = wl; self
+    /// See [`SidePanelShell::pane_aligned`].
+    pub fn pane_aligned(mut self, wl: &Watchlist) -> Self {
+        self.pane_metrics = Some((
+            crate::chart_renderer::gpu::pane_tabs_header_h(wl),
+            wl.pane_header_size.title_font(),
+        ));
+        self
+    }
+    /// See [`SidePanelShell::pane_metrics`].
+    pub fn pane_metrics(mut self, height: f32, title_font: f32) -> Self {
+        self.pane_metrics = Some((height, title_font));
+        self
     }
     pub fn header_actions(mut self, f: impl FnOnce(&mut Ui, &Theme) + 'a) -> Self {
         self.header_actions = Some(Box::new(f)); self
@@ -252,39 +270,43 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
         self.footer = Some(Box::new(f)); self
     }
 
+    /// Render. Caller is responsible for the open/closed early-return — only
+    /// call `.show()` when the panel is open. Returns
+    /// [`SidePanelShellResponse`] for the close-X click.
     pub fn show(
         self,
         ctx: &Context,
         t: &Theme,
-        open: &mut bool,
         body: impl FnOnce(&mut Ui, &Theme, T),
-    ) {
-        if !*open { return; }
-
+    ) -> SidePanelShellResponse {
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
         let frame = PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build();
         let panel = panel.frame(frame);
 
         let SidePanelShellTabs {
-            id, current, tabs, watchlist, header_actions, footer, ..
+            id, current, tabs, pane_metrics, header_actions, footer, ..
         } = self;
 
+        let mut close_clicked = false;
         panel.show(ctx, |ui| {
             // Strip the glyph for the underlying PanelHeaderTabs widget which
             // takes `&[(T, &str)]`. Glyphs are reserved for a future enhancement.
             let stripped: Vec<(T, &str)> = tabs.iter().map(|(v, l, _)| (*v, *l)).collect();
             let mut header = PanelHeaderTabs::new(current, &stripped).id_salt(id);
-            if let Some(wl) = watchlist { header = header.watchlist(wl); }
+            if let Some((h, f)) = pane_metrics {
+                header = header.height(h).font_size(f);
+            }
 
             let mut actions = header_actions;
             let closed = header.show_with(ui, t, |ui| {
                 if let Some(a) = actions.take() { a(ui, t); }
             });
-            if closed { *open = false; }
+            if closed { close_clicked = true; }
 
             let active = *current;
             render_body_and_footer(ui, t, move |ui, t| body(ui, t, active), footer);
         });
+        SidePanelShellResponse { close_clicked }
     }
 }
 
@@ -318,12 +340,14 @@ fn render_header<'a>(
     t: &Theme,
     title: &'a str,
     icon: Option<&'a str>,
-    watchlist: Option<&'a Watchlist>,
+    pane_metrics: Option<(f32, f32)>,
     actions: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
 ) -> bool {
     let mut header = PanelHeader::new(title);
     if let Some(g) = icon { header = header.icon(g); }
-    if let Some(wl) = watchlist { header = header.watchlist(wl); }
+    if let Some((h, f)) = pane_metrics {
+        header = header.height(h).font_size(f);
+    }
 
     let mut taken = actions;
     header.show_with(ui, t, |ui| {
