@@ -86,6 +86,40 @@ impl std::ops::Div<i64> for Price {
     fn div(self, rhs: i64) -> Price { Price(self.0 / rhs) }
 }
 
+// ── Wire-compat serde adapters ──────────────────────────────────────────────
+//
+// `Price`'s native serde shape is a bare i64 (transparent). For structs that
+// persist to disk in an older f32 format (e.g. `orders.json` predates this
+// type), use `#[serde(with = "price_serde::as_f32")]` on the field to keep
+// the wire shape as f32 while the in-memory type is `Price`.
+//
+// `as_f32_opt` is the `Option<Price>` variant.
+
+pub mod price_serde {
+    use super::Price;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub mod as_f32 {
+        use super::*;
+        pub fn serialize<S: Serializer>(p: &Price, s: S) -> Result<S::Ok, S::Error> {
+            p.to_f32().serialize(s)
+        }
+        pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Price, D::Error> {
+            f32::deserialize(d).map(Price::from_f32)
+        }
+    }
+
+    pub mod as_f32_opt {
+        use super::*;
+        pub fn serialize<S: Serializer>(p: &Option<Price>, s: S) -> Result<S::Ok, S::Error> {
+            p.map(|x| x.to_f32()).serialize(s)
+        }
+        pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Price>, D::Error> {
+            Option::<f32>::deserialize(d).map(|o| o.map(Price::from_f32))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

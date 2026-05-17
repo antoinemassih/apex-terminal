@@ -44,7 +44,7 @@ pub(crate) fn working_notional(orders: &[ManagedOrder], symbol: &str) -> f64 {
         .iter()
         .filter(|o| o.symbol == symbol)
         .filter(|o| is_working(o.state))
-        .map(|o| o.qty.saturating_sub(o.filled_qty) as f64 * o.price as f64)
+        .map(|o| o.qty.saturating_sub(o.filled_qty) as f64 * o.price.to_dollars())
         .sum()
 }
 
@@ -52,19 +52,22 @@ pub(crate) fn working_notional(orders: &[ManagedOrder], symbol: &str) -> f64 {
 mod tests {
     use super::*;
     use super::super::order_manager::{ManagedOrder, ManagedOrderType, OrderSource, OrderState};
+    use crate::foundation::types::{Price, Timestamp, TimeSource, Symbol};
 
     fn mk(id: u64, symbol: &str, side: OrderSide, state: OrderState, price: f32, qty: u32, filled_qty: u32) -> ManagedOrder {
+        let t0 = Timestamp::from_millis(0, TimeSource::Local);
         ManagedOrder {
             id,
             client_order_id: format!("test-{}", id),
             symbol: symbol.to_string(),
+            symbol_typed: Symbol::equity(symbol),
             side,
             order_type: ManagedOrderType::Limit,
-            price,
-            stop_price: 0.0,
+            price: Price::from_f32(price),
+            stop_price: Price::ZERO,
             qty,
             filled_qty,
-            avg_fill_price: 0.0,
+            avg_fill_price: Price::ZERO,
             state,
             pair_id: None,
             trail_amount: None,
@@ -72,12 +75,12 @@ mod tests {
             option_symbol: None,
             option_con_id: None,
             source: OrderSource::OrderPanel,
-            created_at: 0,
-            updated_at: 0,
+            created_at: t0,
+            updated_at: t0,
             backend_order_id: None,
             tif: 0,
             outside_rth: false,
-            state_history: vec![(state, 0)],
+            state_history: vec![(state, t0)],
             rejection_reason: None,
             modify_version: 0,
             modify_inflight: false,

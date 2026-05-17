@@ -56,6 +56,58 @@ impl Timestamp {
     pub fn millis(self) -> i64 { self.unix_ms }
 }
 
+// ── Wire-compat serde adapters ──────────────────────────────────────────────
+//
+// Persisted older formats store ms as bare `u64`. Use
+// `#[serde(with = "timestamp_serde::as_u64_local")]` on the field to keep the
+// wire shape as a bare u64 (ms) while the in-memory type is `Timestamp`.
+// The reconstituted `Timestamp` is tagged with `TimeSource::Local` since
+// disk-persisted manager state is wall-clock UTC ms.
+
+pub mod timestamp_serde {
+    use super::*;
+
+    pub mod as_u64_local {
+        use super::*;
+        use serde::{Deserialize, Deserializer, Serialize, Serializer};
+        pub fn serialize<S: Serializer>(t: &Timestamp, s: S) -> Result<S::Ok, S::Error> {
+            (t.unix_ms as u64).serialize(s)
+        }
+        pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Timestamp, D::Error> {
+            let ms = u64::deserialize(d)? as i64;
+            Ok(Timestamp::from_millis(ms, TimeSource::Local))
+        }
+    }
+
+    /// State-history field: `Vec<(OrderState, u64)>` is the legacy wire
+    /// shape. We keep the wire as `(_, u64)` and convert the second element
+    /// to a `Timestamp` on the way in. Caller still picks an enum type for
+    /// the first element (untouched by this adapter).
+    pub mod as_pairs_u64_local {
+        use super::*;
+        use serde::{Deserialize, Deserializer, Serialize, Serializer};
+        use serde::de::DeserializeOwned;
+        pub fn serialize<S, T>(v: &Vec<(T, Timestamp)>, s: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+            T: Serialize + Clone,
+        {
+            let raw: Vec<(T, u64)> = v.iter().map(|(t, ts)| (t.clone(), ts.unix_ms as u64)).collect();
+            raw.serialize(s)
+        }
+        pub fn deserialize<'de, D, T>(d: D) -> Result<Vec<(T, Timestamp)>, D::Error>
+        where
+            D: Deserializer<'de>,
+            T: DeserializeOwned,
+        {
+            let raw: Vec<(T, u64)> = Vec::deserialize(d)?;
+            Ok(raw.into_iter()
+                .map(|(t, ms)| (t, Timestamp::from_millis(ms as i64, TimeSource::Local)))
+                .collect())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
