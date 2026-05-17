@@ -6,6 +6,8 @@
 use crate::chart_renderer::gpu::Chart;
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::theme::active_theme;
 use crate::chart_renderer::ui::style::font_sm;
 
 /// Output from the drawing-tool submenu.
@@ -41,18 +43,19 @@ pub fn show_drawing_tool_menu(
         }};
     }
 
-    ui.menu_button("Lines \u{25BA}", |ui| {
+    let t = active_theme(ui.ctx());
+    KitButton::menu("Lines").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
         ctx_tool_btn!(ui, "Trendline", "trendline");
         ctx_tool_btn!(ui, "H-Line", "hline");
         ctx_tool_btn!(ui, "Vertical Line", "vline");
         ctx_tool_btn!(ui, "Ray", "ray");
     });
-    ui.menu_button("Channels \u{25BA}", |ui| {
+    KitButton::menu("Channels").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
         ctx_tool_btn!(ui, "Channel", "channel");
         ctx_tool_btn!(ui, "Fib Channel", "fibchannel");
         ctx_tool_btn!(ui, "Pitchfork", "pitchfork");
     });
-    ui.menu_button("Fibonacci \u{25BA}", |ui| {
+    KitButton::menu("Fibonacci").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
         ctx_tool_btn!(ui, "Fib Retracement", "fibonacci");
         ctx_tool_btn!(ui, "Fib Extension", "fibext");
         ctx_tool_btn!(ui, "Fib Time Zones", "fibtimezone");
@@ -60,16 +63,16 @@ pub fn show_drawing_tool_menu(
         ctx_tool_btn!(ui, "Gann Fan", "gannfan");
         ctx_tool_btn!(ui, "Gann Box", "gannbox");
     });
-    ui.menu_button("Ranges \u{25BA}", |ui| {
+    KitButton::menu("Ranges").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
         ctx_tool_btn!(ui, "H-Zone", "hzone");
         if ui.button("Price Range").clicked() { new_tool = Some("pricerange"); ui.close_menu(); }
         if ui.button("Risk/Reward").clicked() { new_tool = Some("riskreward"); ui.close_menu(); }
     });
-    ui.menu_button("Computed \u{25BA}", |ui| {
+    KitButton::menu("Computed").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
         if ui.button("Regression Channel").clicked() { new_tool = Some("regression"); ui.close_menu(); }
         if ui.button("Anchored VWAP").clicked()      { new_tool = Some("avwap");      ui.close_menu(); }
     });
-    ui.menu_button("Patterns \u{25BA}", |ui| {
+    KitButton::menu("Patterns").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
         if ui.button("XABCD Harmonic").clicked()         { new_tool = Some("xabcd");                 ui.close_menu(); }
         if ui.button("Elliott Impulse").clicked()        { new_tool = Some("elliott_impulse");       ui.close_menu(); }
         if ui.button("Elliott ABC").clicked()            { new_tool = Some("elliott_corrective");    ui.close_menu(); }
@@ -78,10 +81,10 @@ pub fn show_drawing_tool_menu(
         if ui.button("Elliott Sub-Impulse").clicked()    { new_tool = Some("elliott_sub_impulse");   ui.close_menu(); }
         if ui.button("Elliott Sub-Corrective").clicked() { new_tool = Some("elliott_sub_corrective"); ui.close_menu(); }
     });
-    ui.menu_button("Markers \u{25BA}", |ui| {
+    KitButton::menu("Markers").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
         if ui.button("Bar Marker").clicked() { new_tool = Some("barmarker"); ui.close_menu(); }
     });
-    ui.menu_button("Annotations \u{25BA}", |ui| {
+    KitButton::menu("Annotations").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
         ctx_tool_btn!(ui, "Text Note", "textnote");
     });
 
@@ -110,14 +113,18 @@ pub fn show_template_menu(
     let mut apply_tmpl: Option<usize> = None;
 
     if !watchlist.pane_templates.is_empty() {
-        ui.menu_button(format!("{} Apply Template {}", Icon::STAR, Icon::CARET_RIGHT), |ui| {
-            for (i, (name, _)) in watchlist.pane_templates.iter().enumerate() {
-                if ui.button(egui::RichText::new(name).monospace().size(font_sm())).clicked() {
-                    apply_tmpl = Some(i);
-                    ui.close_menu();
+        let t = active_theme(ui.ctx());
+        KitButton::menu("Apply Template")
+            .leading_icon(Icon::STAR)
+            .trailing_icon(Icon::CARET_RIGHT)
+            .show_menu(ui, t, |ui| {
+                for (i, (name, _)) in watchlist.pane_templates.iter().enumerate() {
+                    if ui.button(egui::RichText::new(name).monospace().size(font_sm())).clicked() {
+                        apply_tmpl = Some(i);
+                        ui.close_menu();
+                    }
                 }
-            }
-        });
+            });
     }
 
     let save_as_template = ui.button(format!("{} Save as Template", Icon::STAR)).clicked();

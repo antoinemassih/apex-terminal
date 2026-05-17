@@ -201,6 +201,32 @@ impl<'a> Button<'a> {
         b
     }
 
+    /// Menu trigger — the canonical "I open a dropdown" preset. Pairs
+    /// `Variant::Toolbar` (Status + Ghost so the bg only paints on
+    /// hover) with a trailing caret indicator so the button reads as a
+    /// menu trigger consistent with the rest of the toolbar surfaces.
+    /// Pair with [`Button::show_menu`] to render and attach the popup.
+    ///
+    /// ```ignore
+    /// Button::menu("Mode")
+    ///     .icon(Icon::ARROW_RIGHT)             // optional leading icon
+    ///     .show_menu(ui, t, |ui| {
+    ///         if ui.button("Item 1").clicked() { /* ... */ }
+    ///     });
+    /// ```
+    ///
+    /// Replaces raw
+    /// `ui.menu_button(RichText::new(label).monospace().size(font_sm()).color(t.dim), ...)`
+    /// patterns that have drifted across the toolbar / tool-menu / object-tree.
+    pub fn menu(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.is_status = true;
+        b.size = Size::Sm;
+        b.variant = Variant::Ghost;
+        b.trailing_icon = Some(crate::ui_kit::icons::Icon::CARET_DOWN);
+        b
+    }
+
     /// Close (×) affordance — small icon-only Ghost. Pair with
     /// `.size(Size::Xs)` for compact contexts.
     pub fn close() -> Self {
@@ -350,10 +376,20 @@ impl<'a> Button<'a> {
         let fg = self.fg_override.unwrap_or_else(|| theme.dim());
         let label_text = if self.icon_only && self.label.is_empty() {
             self.leading_icon.unwrap_or("").to_string()
-        } else if let Some(icon) = self.leading_icon {
-            format!("{}  {}", icon, self.label)
         } else {
-            self.label.to_string()
+            let mut s = String::new();
+            if let Some(icon) = self.leading_icon {
+                s.push_str(icon);
+                if !self.label.is_empty() {
+                    s.push_str("  ");
+                }
+            }
+            s.push_str(self.label);
+            if let Some(tic) = self.trailing_icon {
+                s.push(' ');
+                s.push_str(tic);
+            }
+            s
         };
         let glyph_size = self.glyph_px.unwrap_or(default_size);
         let rich = RichText::new(label_text).size(glyph_size).color(fg);

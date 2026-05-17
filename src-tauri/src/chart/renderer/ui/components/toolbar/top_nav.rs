@@ -492,7 +492,7 @@ pub(crate) fn render(
             ui.add_space(gap_xs());
             // ── Range dropdown (sets interval + visible bars) ──
             {
-                let range_label = {
+                let range_label: String = {
                     let presets: &[(&str, &str, u32)] = &[
                         ("1D", "5m", 78), ("2D", "5m", 156), ("3D", "5m", 234),
                         ("5D", "15m", 130), ("2W", "30m", 130), ("1M", "1h", 130),
@@ -500,10 +500,10 @@ pub(crate) fn render(
                     ];
                     presets.iter()
                         .find(|&&(_, tf, vc)| tf == panes[ap].timeframe && vc == panes[ap].vc)
-                        .map(|&(label, _, _)| label)
-                        .unwrap_or(panes[ap].timeframe.as_str())
+                        .map(|&(label, _, _)| label.to_string())
+                        .unwrap_or_else(|| panes[ap].timeframe.clone())
                 };
-                let range_resp = ui.menu_button(egui::RichText::new(range_label).monospace().size(font_sm()).strong().color(t.dim), |ui| {
+                let range_resp = KitButton::menu(range_label.as_str()).show_menu(ui, t, |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.label(egui::RichText::new("RANGE").monospace().size(font_sm()).color(color_dim(t.dim)));
@@ -556,6 +556,7 @@ pub(crate) fn render(
                 let has_tool = !panes[ap].draw_tool.is_empty();
                 let cur_tool = panes[ap].draw_tool.clone();
                 let mut new_tool: Option<String> = None;
+                // TODO: Button::menu doesn't cover conditional active-color (t.accent vs t.dim) + font_lg icon-as-label.
                 let drawing_menu = ui.menu_button(egui::RichText::new(draw_label).size(font_lg()).color(if has_tool { t.accent } else { t.dim }), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
@@ -690,7 +691,7 @@ pub(crate) fn render(
                 CandleMode::Renko => "RNK", CandleMode::RangeBar => "RNG", CandleMode::TickBar => "TCK",
             };
             let prev_candle_mode = panes[ap].candle_mode;
-            let mode_menu = ui.menu_button(egui::RichText::new(cm_label).monospace().size(font_sm()).strong().color(t.dim), |ui| {
+            let mode_menu = KitButton::menu(cm_label).show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 for (mode, label) in [
@@ -786,12 +787,13 @@ pub(crate) fn render(
 
             // ── Indicators dropdown — single chart-icon entry point with nested
             //    submenus for MAs / Oscillators / Volume / Overlays / Tools / Suites.
+            // TODO: Button::menu doesn't cover icon-only-as-label at font_lg (Indicators entry point).
             let indicators_menu = ui.menu_button(egui::RichText::new(Icon::CHART_LINE).size(font_lg()).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
             // Moving Averages dropdown (always creates new instance — supports multiple)
-            ui.menu_button(egui::RichText::new("MAs").monospace().size(font_sm()).strong().color(t.dim), |ui| {
+            KitButton::menu("MAs").show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
@@ -869,7 +871,7 @@ pub(crate) fn render(
             });
 
             // Oscillators dropdown (multi-select)
-            ui.menu_button(egui::RichText::new("Osc").monospace().size(font_sm()).strong().color(t.dim), |ui| {
+            KitButton::menu("Osc").show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let osc_types = [(IndicatorType::RSI, "RSI"), (IndicatorType::MACD, "MACD"),
@@ -919,7 +921,7 @@ pub(crate) fn render(
             });
 
             // Volume dropdown
-            ui.menu_button(egui::RichText::new("Vol").monospace().size(font_sm()).strong().color(t.dim), |ui| {
+            KitButton::menu("Vol").show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let vol = panes[ap].show_volume;
@@ -952,13 +954,13 @@ pub(crate) fn render(
             });
 
             // Overlays dropdown — two-layer with categories
-            ui.menu_button(egui::RichText::new("Overlay").monospace().size(font_sm()).strong().color(t.dim), |ui| {
+            KitButton::menu("Overlay").show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(150.0);
 
                 // ── Technical Overlays (indicator-based)
-                ui.menu_button(egui::RichText::new(format!("{} Technical", Icon::PULSE)).size(font_sm()).color(t.dim), |ui| {
+                KitButton::menu("Technical").leading_icon(Icon::PULSE).trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
                     ui.set_min_width(200.0);
                     let overlay_types = [
                         (IndicatorType::BollingerBands, "Bollinger Bands"),
@@ -995,7 +997,7 @@ pub(crate) fn render(
                 });
 
                 // ── Structure (S/R, volume, price levels)
-                ui.menu_button(egui::RichText::new(format!("{} Structure", Icon::TREE_STRUCTURE_FILL)).size(font_sm()).color(t.dim), |ui| {
+                KitButton::menu("Structure").leading_icon(Icon::TREE_STRUCTURE_FILL).trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
                     ui.set_min_width(220.0);
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
@@ -1044,7 +1046,7 @@ pub(crate) fn render(
                 });
 
                 // ── Regime (momentum, volatility, correlation)
-                ui.menu_button(egui::RichText::new(format!("{} Regime", Icon::BROADCAST_FILL)).size(font_sm()).color(t.dim), |ui| {
+                KitButton::menu("Regime").leading_icon(Icon::BROADCAST_FILL).trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
                     ui.set_min_width(220.0);
                     macro_rules! overlay_toggle {
                         ($field:ident, $label:expr) => {
@@ -1062,7 +1064,7 @@ pub(crate) fn render(
                 });
 
                 // ── Data (events, dark pool, etc.)
-                ui.menu_button(egui::RichText::new(format!("{} Data", Icon::CHART_LINE_UP_FILL)).size(font_sm()).color(t.dim), |ui| {
+                KitButton::menu("Data").leading_icon(Icon::CHART_LINE_UP_FILL).trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
                     ui.set_min_width(200.0);
                     let events = panes[ap].show_events;
                     if ui.add(SelectableRow::new("Event Markers", events)).clicked() {
@@ -1130,7 +1132,7 @@ pub(crate) fn render(
             });
 
             // Tools dropdown — display tools and cursor enhancements (now nested under Indicators)
-            ui.menu_button(egui::RichText::new("Tools").monospace().size(font_sm()).strong().color(t.dim), |ui| {
+            KitButton::menu("Tools").show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
@@ -1180,7 +1182,7 @@ pub(crate) fn render(
             });
 
             // ── Suites dropdown (advanced analysis tools — also nested under Indicators) ──
-            ui.menu_button(egui::RichText::new("Suites").monospace().size(font_sm()).strong().color(t.dim), |ui| {
+            KitButton::menu("Suites").show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 let sl_mode = panes[ap].swing_leg_mode;
@@ -1219,6 +1221,7 @@ pub(crate) fn render(
             }
 
             // ── Widgets dropdown — two-layer categorized picker with mini previews ──
+            // TODO: Button::menu doesn't cover icon-only-as-label at font_lg (Widgets entry point).
             let widgets_menu = ui.menu_button(egui::RichText::new(Icon::CIRCLES_FOUR).size(font_lg()).color(t.dim), |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
@@ -1254,6 +1257,7 @@ pub(crate) fn render(
                         format!("{} {}", cat_icon, cat_name)
                     };
 
+                    // TODO: Button::menu doesn't cover conditional active-color (t.accent vs t.dim) for widget categories.
                     ui.menu_button(egui::RichText::new(&cat_label).monospace().size(font_sm())
                         .color(if active_in_cat > 0 { t.accent } else { t.dim }), |ui| {
                         ui.set_min_width(280.0);
@@ -1351,6 +1355,7 @@ pub(crate) fn render(
             // ── Workspace — icon-only dropdown (active workspace shown inside the menu) ──
             {
                 let ws_names = list_workspaces();
+                // TODO: Button::menu doesn't cover icon-only-as-label at font_lg (Workspace entry point).
                 let ws_menu = ui.menu_button(egui::RichText::new(Icon::BROWSERS).size(font_lg()).color(t.dim), |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;

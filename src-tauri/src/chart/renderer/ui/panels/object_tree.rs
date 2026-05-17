@@ -205,7 +205,7 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                 // Per-type fade menu
                 let sym2 = sym.to_string();
                 let tf2 = tf.to_string();
-                ui.menu_button(egui::RichText::new("type").monospace().size(font_xs()).color(t.dim), |ui| {
+                Button::menu("type").show_menu(ui, t, |ui| {
                     let mut type_keys: Vec<&'static str> = chart.drawings.iter()
                         .map(|d| kind_type_key(&d.kind)).collect();
                     type_keys.sort(); type_keys.dedup();
