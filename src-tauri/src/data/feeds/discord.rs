@@ -538,3 +538,30 @@ pub fn disconnect() {
     let _ = std::fs::remove_file(token_path());
     eprintln!("[discord] Disconnected");
 }
+
+// ── Wave 1: Authenticated adapter ──────────────────────────────────────────
+//
+// Discord OAuth2 supports refresh via `grant_type=refresh_token` against
+// `/api/oauth2/token`, but this codebase does not currently call it (tokens
+// are simply discarded on expiry — see `load_auth_from_disk`). The adapter
+// below returns `RefreshFailed("not implemented")` so callers using
+// `with_auth_retry` get the typed surface today; the actual POST can land
+// in a follow-up without touching consumers.
+//
+// TODO(wave-2): implement refresh by POSTing `grant_type=refresh_token` +
+// `refresh_token=<stored>` to Discord's token endpoint and re-saving
+// DiscordAuth.
+
+pub struct DiscordAuthProvider;
+
+#[async_trait::async_trait]
+impl crate::data::connectivity::Authenticated for DiscordAuthProvider {
+    async fn refresh_token(&self) -> Result<String, crate::data::connectivity::AuthError> {
+        Err(crate::data::connectivity::AuthError::RefreshFailed(
+            "discord: refresh flow not yet wired (TODO wave-2)".into(),
+        ))
+    }
+    fn current_token(&self) -> Option<String> {
+        get_auth().map(|a| a.access_token)
+    }
+}

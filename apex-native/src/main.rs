@@ -14,6 +14,15 @@ fn main() {
     eprintln!("║  Apex Terminal — Native GPU Edition   ║");
     eprintln!("╚══════════════════════════════════════╝");
 
+    // Wave 1: unified tracing FIRST. Bind the WorkerGuard to a local that
+    // lives until the bottom of `main` so the non-blocking writer thread
+    // stays alive for the program's duration.
+    let log_dir = std::env::var("APEX_LOG_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("apex-terminal-logs"));
+    let _tracing_guard = _scaffold_lib::data::connectivity::init_tracing(&log_dir);
+    tracing::info!(target: "apex_native", log_dir = %log_dir.display(), "tracing initialized");
+
     // Initialize Redis bar cache
     _scaffold_lib::bar_cache::init();
 
@@ -73,5 +82,13 @@ fn main() {
         }
     }
 
+    // Wave 1: drain registered connections before exit. Uses the
+    // already-built tokio runtime from above. 3s deadline mirrors the Tauri
+    // entry point.
+    rt.block_on(async {
+        _scaffold_lib::data::connectivity::drain_all(std::time::Duration::from_secs(3)).await;
+    });
+
     eprintln!("[apex-native] All windows closed. Exiting.");
+    drop(_tracing_guard);
 }
