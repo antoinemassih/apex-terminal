@@ -766,7 +766,7 @@ impl<'a> AccountStrip<'a> {
         ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
             ui.horizontal(|ui| {
                 let avail = ui.available_width();
-                ui.spacing_mut().item_spacing.x = 16.0;
+                ui.spacing_mut().item_spacing.x = gap_lg();
 
                 if let Some(acct) = self.account_data {
                     if acct.connected {

@@ -1612,7 +1612,7 @@ pub(crate) fn render(
                 let prev_spacing = ui.spacing().item_spacing.x;
                 let prev_panel_pad = ui.spacing().button_padding;
                 // 8px gap between buttons (4px on each side of the divider).
-                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.spacing_mut().item_spacing.x = gap_sm();
                 // gap_lg horizontal padding so labels breathe and the hover
                 // column has visible margin on either side of the text.
                 ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_sm());
