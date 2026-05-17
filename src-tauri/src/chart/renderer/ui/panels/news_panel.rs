@@ -52,7 +52,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
 
     let resp = crate::ui_kit::widgets::PanelSection::new(section_title)
         .meta(active_label.to_string())
-        .action(("filter", filter_tone), |_, _| {})
+        .action("filter", filter_tone)
         .show(ui, t, |ui, t| {
             let filtered: Vec<&NewsItem> = watchlist.news_items.iter()
                 .filter(|n| !watchlist.news_filter_symbol || n.symbol == active_symbol)

@@ -31,17 +31,14 @@ pub(crate) fn draw(
     t: &Theme,
 ) {
     if !watchlist.alerts_panel_open { return; }
-    // Pull the open flag out so the shell's `&mut open` doesn't conflict with
-    // borrowing `watchlist` inside the body closure. Write it back after.
-    let mut open = watchlist.alerts_panel_open;
-    SidePanelShell::new("alerts_panel", "ALERTS")
+    let resp = SidePanelShell::new("alerts_panel", "ALERTS")
         .icon(Icon::BELL)
         .width(Width::Narrow)
-        .show(ctx, t, &mut open, |ui, t| {
+        .show(ctx, t, |ui, t| {
             let cx = UiCtx::new(t);
             draw_content_cx(ui, watchlist, panes, ap, &cx);
         });
-    watchlist.alerts_panel_open = open;
+    if resp.close_clicked { watchlist.alerts_panel_open = false; }
 }
 
 /// Tab body content (no SidePanel wrapper, no header). Used by signals_panel.
@@ -102,7 +99,7 @@ fn draw_content_cx(
     if !pane_drafts.is_empty() {
         let r = PanelSection::new("DRAFT")
             .count(pane_drafts.len())
-            .action(("Place All", PanelTone::Accent), |_, _| {})
+            .action("Place All", PanelTone::Accent)
             .show(ui, t, |ui, t| {
                 for (pi, alert) in &pane_drafts {
                     draft_row(ui, t, cx, *pi, alert);
@@ -131,7 +128,7 @@ fn draw_content_cx(
         .title_color(t.accent)
         .count(total_active);
     if total_active > 0 {
-        active_section = active_section.action(("Clear All", PanelTone::Danger), |_, _| {});
+        active_section = active_section.action("Clear All", PanelTone::Danger);
     }
     let active_resp = active_section.show(ui, t, |ui, t| {
         egui::ScrollArea::vertical()
@@ -166,7 +163,7 @@ fn draw_content_cx(
     if total_triggered > 0 {
         let r = PanelSection::new("TRIGGERED")
             .count(total_triggered)
-            .action(("Dismiss All", PanelTone::Default), |_, _| {})
+            .action("Dismiss All", PanelTone::Default)
             .show(ui, t, |ui, t| {
                 egui::ScrollArea::vertical()
                     .id_salt("triggered_scroll")

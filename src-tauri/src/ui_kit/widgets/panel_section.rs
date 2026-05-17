@@ -10,7 +10,7 @@
 //! PanelSection::new("ACTIVE")
 //!     .count(3)
 //!     .meta("12 total")
-//!     .action(("Clear", Tone::Danger), |ui, t| { /* ... */ })
+//!     .action("Clear", Tone::Danger)
 //!     .show(ui, t, |ui, t| {
 //!         for row in &active { /* ... */ }
 //!     });
@@ -22,7 +22,7 @@
 //! - Count: numeric badge after title, mono_xs strong, tinted with title color.
 //! - Meta: muted right-aligned mono_xs (e.g. "12 total").
 //! - Action: trailing ghost button (`panel_action_btn` style), right-aligned
-//!   before meta. Caller passes a closure that runs after the click is captured.
+//!   before meta. The click is surfaced via `SectionResponse.action_clicked`.
 //! - Bottom rule: hairline at `color_alpha(t.toolbar_border, 36)`, **on by
 //!   default** per user spec (matches chart-pane header rule).
 //!
@@ -92,7 +92,7 @@ pub struct PanelSection<'a> {
     title_color: Option<Color32>,
     count: Option<usize>,
     meta: Option<String>,
-    action: Option<(&'a str, Tone)>,
+    action: Option<(String, Tone)>,
     rule: bool,
 }
 
@@ -131,19 +131,10 @@ impl<'a> PanelSection<'a> {
         self
     }
 
-    /// Add a trailing action button. The closure runs (with the UI and theme)
-    /// after the click is detected.
-    pub fn action<F>(mut self, action: (&'a str, Tone), _on_click: F) -> Self
-    where
-        F: FnOnce(&mut Ui, &Theme),
-    {
-        // The closure is consumed at `show` time via the response — but to
-        // keep the builder ergonomic (per spec) we store the label/tone and
-        // expose the click via `SectionResponse::action_clicked`. The closure
-        // parameter is accepted for spec parity; callers can also just inspect
-        // the return value.
-        let _ = _on_click; // signature parity with spec, not stored
-        self.action = Some(action);
+    /// Add a trailing action button. The click is exposed via
+    /// [`SectionResponse::action_clicked`] returned from [`Self::show`].
+    pub fn action(mut self, label: impl Into<String>, tone: Tone) -> Self {
+        self.action = Some((label.into(), tone));
         self
     }
 
@@ -186,7 +177,7 @@ impl<'a> PanelSection<'a> {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(gap_md());
-                if let Some((label, tone)) = self.action {
+                if let Some((label, tone)) = &self.action {
                     if section_action_button(ui, label, tone.color(t)) {
                         action_clicked = true;
                     }

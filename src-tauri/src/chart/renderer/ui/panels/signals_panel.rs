@@ -37,15 +37,17 @@ pub(crate) fn draw(
     // Move splits out of watchlist so the body closure can take `&mut watchlist`
     // freely (child draw_content panels require it). Restore after `.show()`.
     let mut splits = std::mem::take(&mut watchlist.signals_splits);
-    let mut open = watchlist.signals_panel_open;
+    let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
 
-    SplitSectionPanel::new("signals_panel", &mut splits)
+    let resp = SplitSectionPanel::new("signals_panel", &mut splits)
         .title("SIGNALS")
         .tabs(ALL_TABS)
         .default_tab(SignalsTab::Alerts)
         .width(Width::Narrow)
         .resizable(240.0..=420.0)
-        .show(ctx, t, &mut open, |ui, t, i, _frac| {
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t, i, _frac| {
             let tab = tab_snapshot.get(i).copied().unwrap_or(SignalsTab::Alerts);
             match tab {
                 SignalsTab::Alerts =>
@@ -56,7 +58,7 @@ pub(crate) fn draw(
         });
 
     watchlist.signals_splits = splits;
-    watchlist.signals_panel_open = open;
+    if resp.close_clicked { watchlist.signals_panel_open = false; }
 }
 
 /// Per-signal visibility toggles.

@@ -91,7 +91,7 @@ pub mod panel_key_value_row;
 
 pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
-pub use side_panel_shell::{SidePanelShell, SidePanelShellTabs, Width};
+pub use side_panel_shell::{SidePanelShell, SidePanelShellResponse, SidePanelShellTabs, Width};
 pub use split_section_panel::SplitSectionPanel;
 pub use panel_footer::{PanelFooter, Tone as PanelFooterTone};
 pub use panel_section::{PanelSection, SectionResponse, Tone as PanelTone};

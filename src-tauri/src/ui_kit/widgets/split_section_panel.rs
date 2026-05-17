@@ -44,7 +44,7 @@ use std::ops::RangeInclusive;
 use egui::{Color32, Context, Pos2, Sense, Stroke, Ui, Vec2};
 
 use super::placement::Side;
-use super::side_panel_shell::Width;
+use super::side_panel_shell::{SidePanelShellResponse, Width};
 use crate::chart::renderer::ui::components::frames_widget::PanelFrame;
 use crate::chart::renderer::ui::panels::kit::PanelHeader;
 use crate::chart::renderer::ui::style::{
@@ -67,7 +67,7 @@ pub struct SplitSectionPanel<'a, T: PartialEq + Copy + Clone + 'a> {
     width: Width,
     width_bounds: Option<RangeInclusive<f32>>,
     side: Side,
-    watchlist: Option<&'a Watchlist>,
+    pane_metrics: Option<(f32, f32)>,
     min_section_height: f32,
     allow_add: bool,
 }
@@ -84,7 +84,7 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
             width: Width::Wide,
             width_bounds: None,
             side: Side::Right,
-            watchlist: None,
+            pane_metrics: None,
             min_section_height: 30.0,
             allow_add: true,
         }
@@ -111,8 +111,18 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
         self.width_bounds = Some(bounds); self
     }
     pub fn side(mut self, side: Side) -> Self { self.side = side; self }
-    pub fn pane_aligned(mut self, wl: Option<&'a Watchlist>) -> Self {
-        self.watchlist = wl; self
+    /// See [`super::side_panel_shell::SidePanelShell::pane_aligned`].
+    pub fn pane_aligned(mut self, wl: &Watchlist) -> Self {
+        self.pane_metrics = Some((
+            crate::chart_renderer::gpu::pane_tabs_header_h(wl),
+            wl.pane_header_size.title_font(),
+        ));
+        self
+    }
+    /// See [`super::side_panel_shell::SidePanelShell::pane_metrics`].
+    pub fn pane_metrics(mut self, height: f32, title_font: f32) -> Self {
+        self.pane_metrics = Some((height, title_font));
+        self
     }
     /// Minimum pixel height for any section. Default 30px.
     pub fn min_section_height(mut self, h: f32) -> Self {
@@ -121,17 +131,16 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
     /// Disable the header "+" add-section button.
     pub fn allow_add(mut self, on: bool) -> Self { self.allow_add = on; self }
 
-    /// Render. `open` flips to false on close-X. The `body` closure is
+    /// Render. Caller is responsible for the open/closed early-return — only
+    /// call `.show()` when the panel is open. Returns
+    /// [`SidePanelShellResponse`] for the close-X click. The `body` closure is
     /// called once per section with `(section_idx, frac)`.
     pub fn show(
         self,
         ctx: &Context,
         t: &Theme,
-        open: &mut bool,
         mut body: impl FnMut(&mut Ui, &Theme, usize, f32),
-    ) {
-        if !*open { return; }
-
+    ) -> SidePanelShellResponse {
         let bounds = self.width_bounds.clone().unwrap_or_else(|| self.width.bounds());
         let egui_id = egui::Id::new(("ui_kit_split_section_panel", self.id));
         let panel = match self.side {
@@ -145,15 +154,18 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
         .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build());
 
         let SplitSectionPanel {
-            title, icon, splits, available_tabs, default_tab, watchlist,
+            title, icon, splits, available_tabs, default_tab, pane_metrics,
             min_section_height, allow_add, ..
         } = self;
 
+        let mut close_clicked = false;
         panel.show(ctx, |ui| {
             // ── Header ────────────────────────────────────────────────────
             let mut header = PanelHeader::new(title);
             if let Some(g) = icon { header = header.icon(g); }
-            if let Some(wl) = watchlist { header = header.watchlist(wl); }
+            if let Some((h, f)) = pane_metrics {
+                header = header.height(h).font_size(f);
+            }
 
             let mut add_clicked = false;
             let closed = header.show_with(ui, t, |ui| {
@@ -166,7 +178,7 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
                     }
                 }
             });
-            if closed { *open = false; }
+            if closed { close_clicked = true; }
 
             if add_clicked && !available_tabs.is_empty() {
                 let used: Vec<T> = splits.iter().map(|s| s.tab).collect();
@@ -292,5 +304,6 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
             // Touch unused symbol to silence -Wunused on borderline configs.
             let _ = Sense::hover();
         });
+        SidePanelShellResponse { close_clicked }
     }
 }

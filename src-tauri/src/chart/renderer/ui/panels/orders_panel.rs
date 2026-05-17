@@ -32,8 +32,6 @@ pub(crate) fn draw(
 ) {
     if !watchlist.orders_panel_open { return; }
 
-    // Local copies for the shell borrow — written back after the panel closes.
-    let mut open = watchlist.orders_panel_open;
     let mut book_tab = watchlist.book_tab;
 
     let tabs = [
@@ -41,15 +39,15 @@ pub(crate) fn draw(
         (BookTab::Journal, "JOURNAL", None),
     ];
 
-    // NOTE: `.pane_aligned(Some(watchlist))` would let the panel header line
-    // up pixel-perfect with the chart-pane header above, but it requires a
-    // borrow of `watchlist` that conflicts with the body closure (which needs
-    // `&mut watchlist` for spread_open / selected_order_ids / alerts mutation).
-    // Skipping it costs ~1px of header alignment in exchange for a single
-    // unified body borrow — flagged for follow-up.
-    SidePanelShell::tabs("orders", &mut book_tab, &tabs)
+    // Pre-resolve pane metrics so the body closure can borrow `watchlist`
+    // mutably without conflicting with `.pane_aligned(&watchlist)`.
+    let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
+
+    let resp = SidePanelShell::tabs("orders", &mut book_tab, &tabs)
         .width(Width::Medium)
-        .show(ctx, t, &mut open, |ui, t, tab| {
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t, tab| {
             match tab {
                 BookTab::Journal => {
                     super::journal_panel::draw_content(ui, watchlist, t);
@@ -60,7 +58,7 @@ pub(crate) fn draw(
             }
         });
 
-    watchlist.orders_panel_open = open;
+    if resp.close_clicked { watchlist.orders_panel_open = false; }
     watchlist.book_tab = book_tab;
 
     // Update position current prices from chart data.
@@ -94,7 +92,7 @@ fn draw_book(
         let resp = PanelSection::new("POSITIONS")
             .count(pos_count)
             .title_color(t.accent)
-            .action(("Close All", PanelTone::Bear), |_ui, _t| {})
+            .action("Close All", PanelTone::Bear)
             .show(ui, t, |ui, t| {
                 if has_positions {
                     let mut total_pnl: f64 = 0.0;

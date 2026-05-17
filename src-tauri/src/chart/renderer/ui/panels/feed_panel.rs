@@ -38,15 +38,17 @@ pub(crate) fn draw(
     // Move splits out so the body closure can use `&mut watchlist` freely
     // for the child draw_content panels. Restore after `.show()`.
     let mut splits = std::mem::take(&mut watchlist.feed_splits);
-    let mut open = watchlist.feed_panel_open;
+    let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
 
-    SplitSectionPanel::new("feed_panel", &mut splits)
+    let resp = SplitSectionPanel::new("feed_panel", &mut splits)
         .title("FEED")
         .tabs(ALL_TABS)
         .default_tab(FeedTab::News)
         .width(Width::Medium)
         .resizable(260.0..=480.0)
-        .show(ctx, t, &mut open, |ui, t, i, _frac| {
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t, i, _frac| {
             let tab = tab_snapshot.get(i).copied().unwrap_or(FeedTab::News);
             match tab {
                 FeedTab::News =>
@@ -59,5 +61,5 @@ pub(crate) fn draw(
         });
 
     watchlist.feed_splits = splits;
-    watchlist.feed_panel_open = open;
+    if resp.close_clicked { watchlist.feed_panel_open = false; }
 }
